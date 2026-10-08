@@ -313,6 +313,15 @@ describe('progress, share, and the one line on an outbound', () => {
         toldOn: null,
       }),
     ).toBe("Shared by Priya's family (opted in)");
+    expect(
+      sourceLabel({
+        sourceType: 'parent',
+        viewerIsOwner: true,
+        ownerFirstName: null,
+        sharerFirstName: null,
+        toldOn: 'Sep 14',
+      }),
+    ).toBe('You told Hale · Sep\u00A014');
   });
 
   it('appends at most one line, and never onto an empty send', () => {

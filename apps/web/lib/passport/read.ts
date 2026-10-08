@@ -4,6 +4,7 @@ import { previewPassport } from '~/components/passport/fixture';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
 import { interestPassportDemo } from './demo';
+import { glueMonthDay } from './month-day';
 import { stampRecency } from './order';
 import { type SourceType, iconFor, progressLabel, sourceLabel, stampFaceDate } from './signals';
 import { canUndo } from './signals';
@@ -87,7 +88,7 @@ function shortDate(iso: string | null): string | null {
   const month = SHORT[Number(iso.slice(5, 7)) - 1];
   const day = Number(iso.slice(8, 10));
   if (!month || !day) return null;
-  return `${month} ${day}`;
+  return glueMonthDay(`${month} ${day}`);
 }
 
 function asSource(value: string): SourceType {

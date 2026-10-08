@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STAMP_PROFILES, stampTilt } from './stamp-mark';
+import { STAMP_PROFILES, miniIconPlacement, stampTilt } from './stamp-mark';
 
 const TABLE: Record<string, { shape: string; ink: string }> = {
   soccer: { shape: 'circle', ink: '#1B2160' },
@@ -38,5 +38,12 @@ describe('stamp gallery', () => {
       expect(tilt).toBeLessThanOrEqual(7);
     }
     expect(new Set(tilts).size).toBeGreaterThan(1);
+  });
+
+  it('draws the real icon at 14–16px with a 2px stroke inside the 26px mini', () => {
+    const { transform, strokeWidth } = miniIconPlacement();
+    const scale = (20 / 24) * (120 / 26);
+    expect(transform).toBe(`translate(${60 - 12 * scale} ${60 - 12 * scale}) scale(${scale})`);
+    expect(strokeWidth).toBeCloseTo(2 / ((26 / 120) * scale), 5);
   });
 });

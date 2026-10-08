@@ -9,6 +9,7 @@ import {
   familyShareAction,
   saveBasicsAction,
 } from '~/lib/passport/actions';
+import { glueMonthDay } from '~/lib/passport/month-day';
 import { sortStampsNewestFirst } from '~/lib/passport/order';
 import type { KidCard, PassportModel } from '~/lib/passport/read';
 
@@ -82,7 +83,12 @@ function KidRow({ child }: { child: KidCard }) {
           ) : null}
         </div>
       </div>
-      <Link className="pp-open" href={`/family/${child.id}`} data-testid="open-passport">
+      <Link
+        className="pp-open"
+        href={`/family/${child.id}`}
+        data-testid="open-passport"
+        aria-label={`Open ${child.name}'s passport, ${stamped} stamp${stamped === 1 ? '' : 's'}`}
+      >
         <span className="pp-mini">
           {minis.map((stamp) => (
             <StampMark
@@ -246,7 +252,7 @@ export function KidPassport({
                   {stamp.activity}
                   {stamp.level ? ` · ${stamp.level}` : ''}
                 </h3>
-                <p className="pp-meta">{stamp.sourceLabel}</p>
+                <p className="pp-meta">{glueMonthDay(stamp.sourceLabel)}</p>
                 <div className="pp-btns">
                   <button className="pp-primary" type="button" onClick={() => setOpenId(stamp.id)}>
                     Confirm

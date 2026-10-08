@@ -52,29 +52,19 @@ export const STAMP_PROFILES: Record<string, Profile> = {
   'christmas-market': profile('shield', SEA, 9, 0.05),
 };
 
-/** One or two strokes. The full icon turns into a blob at 26px. */
-const MINI_GLYPHS: Record<string, string> = {
-  soccer: `<circle cx="12" cy="12" r="6.5"/>`,
-  swimming: `<path d="M2 9c2.2 2 4.2 2 6.4 0s4.2-2 6.4 0 4.2 2 6.4 0M2 15c2.2 2 4.2 2 6.4 0s4.2-2 6.4 0 4.2 2 6.4 0"/>`,
-  skating: `<path d="M8 3h6l2 11H6zM4 20h16"/>`,
-  zoo: `<circle cx="12" cy="13" r="6"/><path d="M9 12h.1M15 12h.1M10 16c1.2.8 2.8.8 4 0"/>`,
-  karate: `<path d="M7 3h10l2 18H5zM7 12h10"/>`,
-  aquarium: `<path d="M3 12c4-5 10-5 16 0-6 5-12 5-16 0z"/>`,
-  ballet: `<path d="M7 6c1 7 .5 10-.5 13M17 6c-1 7-.5 10 .5 13"/>`,
-  farm: `<path d="M3 12 L12 4 L21 12 V21 H3 Z"/>`,
-  hockey: `<path d="M15 2 L8 17 H3M14 19h7"/>`,
-  basketball: `<circle cx="12" cy="12" r="7"/><path d="M12 5v14M5 12h14"/>`,
-  taekwondo: `<path d="M8 3v8l-4 9M8 8l12-3"/>`,
-  dance: `<circle cx="13" cy="4" r="2"/><path d="M13 7l-1 7 4 6M12 14l-5 3"/>`,
-  'figure-skating': `<circle cx="12" cy="4" r="2"/><path d="M12 7l1 8M8 20h8"/>`,
-  golf: `<path d="M8 21V4l8 4-8 4M14 17h5"/>`,
-  mma: `<path d="M7 8V5h9v5a4 4 0 01-4 4H9a2 2 0 01-2-2z"/>`,
-  gymnastics: `<circle cx="12" cy="4" r="2"/><path d="M12 7v7M6 8l6 2 6-2M8 21l4-7 4 7"/>`,
-  baseball: `<circle cx="12" cy="12" r="7"/>`,
-  skiing: `<path d="M4 16 L20 8M6 20 L18 6"/>`,
-  museum: `<path d="M3 10l9-6 9 6M6 10v9M12 10v9M18 10v9M4 19h16"/>`,
-  'christmas-market': `<path d="M12 3l3 5h-2l3 5h-2l3 6H7l3-6H8l3-5H9z"/>`,
-};
+/** The 24px artwork does not fill its box, so a 20px slot lands the drawn mark at 14–16px with a 2px stroke. */
+const MINI_PX = 26;
+const MINI_ICON_PX = 20;
+const MINI_STROKE_PX = 2;
+const ICON_GRID = 24;
+const VIEW = 120;
+
+export function miniIconPlacement(): { transform: string; strokeWidth: number } {
+  const scale = (MINI_ICON_PX / ICON_GRID) * (VIEW / MINI_PX);
+  const shift = VIEW / 2 - (ICON_GRID / 2) * scale;
+  const strokeWidth = MINI_STROKE_PX / ((MINI_PX / VIEW) * scale);
+  return { transform: `translate(${shift} ${shift}) scale(${scale})`, strokeWidth };
+}
 
 const LITES: Record<string, string> = {
   [NAVY]: '#C5CAF5',
@@ -132,8 +122,9 @@ export function StampMark({
   const nameY = known?.nameY ?? 68;
   const dateY = known?.dateY ?? 86;
   const dateSize = known?.dateSize ?? 10;
-  const iconTransform = ICON_AT[shape];
-  const size = mini ? 26 : kind === 'outing' ? 96 : 112;
+  const miniIcon = mini ? miniIconPlacement() : null;
+  const iconTransform = miniIcon?.transform ?? ICON_AT[shape];
+  const size = mini ? MINI_PX : kind === 'outing' ? 96 : 112;
   const safe = `${slot}-${id}`.replace(/[^a-zA-Z0-9_-]/g, '');
   const paths = STAMP_ICONS[icon] ?? '';
   return (
@@ -179,11 +170,11 @@ export function StampMark({
             transform={iconTransform}
             fill="none"
             stroke={mini ? '#fff' : 'currentColor'}
-            strokeWidth={mini ? 3.2 : 1.9}
+            strokeWidth={miniIcon?.strokeWidth ?? 1.9}
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <IconShapes markup={mini ? (MINI_GLYPHS[icon] ?? paths) : paths} />
+            <IconShapes markup={paths} />
           </g>
         ) : null}
         {mini ? null : arc ? (

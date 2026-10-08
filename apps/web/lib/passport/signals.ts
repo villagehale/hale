@@ -10,6 +10,8 @@
  * visit stamp. An unclear signal does not stamp and does not ask.
  */
 
+import { glueMonthDay } from './month-day';
+
 export type StampKind = 'activity' | 'outing';
 export type SourceType = 'gmail' | 'calendar' | 'parent' | 'group_share';
 export type StampState = 'inferred' | 'confirmed' | 'removed';
@@ -664,7 +666,7 @@ export function sourceLabel(input: {
   }
   if (input.sourceType === 'calendar') return 'Weekly Calendar event';
   if (input.sourceType === 'parent') {
-    return input.toldOn ? `You told Hale · ${input.toldOn}` : 'You told Hale';
+    return glueMonthDay(input.toldOn ? `You told Hale · ${input.toldOn}` : 'You told Hale');
   }
   const sharer = input.sharerFirstName?.trim().split(/\s+/)[0];
   return sharer ? `Shared by ${sharer}'s family (opted in)` : 'Shared by a family (opted in)';

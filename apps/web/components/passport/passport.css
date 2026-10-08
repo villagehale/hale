@@ -62,7 +62,12 @@
 .pp-sheet .pp-share-row,
 .pp-sheet .pp-share-row b,
 .pp-sheet .pp-share-row span,
-.pp-sheet h2,
+.pp-surface .pp-kid span,
+.pp-surface .pp-legend,
+.pp-surface .pp-legend span,
+.pp-surface .pp-stats span,
+.pp-surface .pp-share-copy,
+.pp-surface .pp-share-copy a,
 .pp-surface button.pp-ghost,
 .pp-surface a.pp-ghost,
 .pp-sheet button.pp-ghost,
@@ -441,8 +446,8 @@
 .pp-stats span {
   display: block;
   color: var(--pp-slate);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 13.6px;
+  font-weight: 600;
 }
 
 .pp-book {
@@ -583,11 +588,13 @@
   border: 0;
 }
 
-button.pp-sheet-dim[type="button"] {
+button.pp-sheet-dim[type="button"],
+dialog.pp-sheet::backdrop {
   background: rgb(12 26 54 / 0.46);
 }
 
-dialog.pp-sheet {
+dialog.pp-sheet,
+dialog.pp-sheet:modal {
   position: fixed;
   top: auto;
   right: auto;
@@ -649,15 +656,43 @@ dialog.pp-sheet {
   display: flex;
   gap: 14px;
   align-items: center;
+  padding-right: 40px;
 }
 
 .pp-sheet h2 {
   margin: 0;
-  font-family: var(--font-ui), Figtree, sans-serif;
-  font-size: 16px;
+  font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  font-size: 23px;
   font-weight: 600;
   line-height: 1.2;
   color: var(--pp-ink);
+}
+
+dialog.pp-sheet button.pp-sheet-x {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--pp-card);
+  box-shadow: inset 0 0 0 1px var(--pp-line);
+  color: var(--pp-navy);
+  cursor: pointer;
+}
+
+dialog.pp-sheet button.pp-sheet-x svg {
+  width: 16px;
+  height: 16px;
+}
+
+dialog.pp-sheet button.pp-sheet-x:focus-visible {
+  outline: 2px solid var(--pp-navy);
+  outline-offset: 2px;
 }
 
 .pp-src {
