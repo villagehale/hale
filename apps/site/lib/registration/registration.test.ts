@@ -132,6 +132,13 @@ describe('city registration guides', () => {
     }
   });
 
+  it('drops the Canada line from the guide footer', () => {
+    for (const guide of REGISTRATION_GUIDES) {
+      expect(guide.footerNote).toBe('');
+      expect(guide.footerNote).not.toMatch(/Canada/);
+    }
+  });
+
   it('says Hale is unofficial and names founding families', () => {
     for (const guide of REGISTRATION_GUIDES) {
       const text = allText(guide);

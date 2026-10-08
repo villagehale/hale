@@ -45,17 +45,18 @@ describe('PricingSection (landing pricing)', () => {
   it('renders French tier names and paid features, not the English list', () => {
     const french = renderToStaticMarkup(createElement(PricingSection, { locale: 'fr' }));
     expect(french).toContain('Gratuit');
-    expect(french).toContain('Famille');
+    expect(french).toContain('>Max<');
+    expect(french).not.toContain('Famille');
     expect(french).toContain('Tout ce qu’il y a dans Gratuit');
     expect(french).toContain('Tout ce qu’il y a dans Plus');
-    expect(french).toContain('Rappels et brouillons, à mesure qu’ils arrivent');
-    expect(french).toContain('La vue du foyer sur l’année, à mesure qu’elle arrive');
-    expect(french).toContain('Conciergerie et soutien prioritaire');
-    // VIL-367 FR twins, Sloane + Miles 2026-09-23. Exact bytes.
+    expect(french).toContain('Un petit coup de pouce quand la fin de semaine est vide');
+    expect(french).toContain('Les limites les plus hautes pour les recherches et la surveillance des places');
+    expect(french).toContain('Soutien prioritaire');
+    expect(french).toContain('Les inscriptions de toute une saison, d’un coup');
     const lockedFr = {
       free: 'Trouvez ce qu’il y a et ouvrez l’année. Les matins que vous surveillez déjà restent gratuits.',
-      plus: 'Des rappels quand un week-end est vide ou qu’une liste d’attente s’ouvre — plus la mémoire de l’année, à mesure qu’elle arrive.',
-      family: 'Un plan pour le foyer. Le coparent reste dedans.',
+      plus: 'Plus de choses faites pour toi, toute l’année.',
+      family: 'Le maximum de ce que Hale peut faire.',
     } as const;
     expect(fr.PricingSection.tierLines).toEqual(lockedFr);
     for (const line of Object.values(lockedFr)) {
@@ -74,19 +75,29 @@ describe('PricingSection (landing pricing)', () => {
     expect(fr.PricingSection.tierNames).toEqual({
       free: 'Gratuit',
       plus: 'Plus',
-      family: 'Famille',
+      family: 'Max',
     });
+    expect(french).toContain('$19 CAD/mo');
+    expect(french).toContain('$159 CAD/yr');
+    expect(french).toContain('$39 CAD/mo');
+    expect(french).toContain('$329 CAD/yr');
+    expect(french).toContain('Seul Gratuit est disponible aujourd’hui.');
+    expect(french).toContain('Bientôt disponible');
+    expect([...french.matchAll(/disabled/g)]).toHaveLength(2);
+    expect([...french.matchAll(/Bientôt disponible/g)]).toHaveLength(2);
   });
 
   it('renders Chinese tier names and paid features, not the English feature list', () => {
-    // Plus and Family stay the names the rest of the zh pricing page already uses.
-    // Free does not: the page says 免费, and the card was still saying Free.
+    // Plus stays the name the rest of the zh pricing page already uses. The
+    // family tier displays as Max. Free is 免费, not the English Free.
     const chinese = renderToStaticMarkup(createElement(PricingSection, { locale: 'zh' }));
     expect(chinese).toContain('>免费<');
-    expect(chinese).toContain('免费档的全部');
-    expect(chinese).toContain('提醒和草稿，随这些部分陆续上线');
-    expect(chinese).toContain('Plus 的全部');
-    expect(chinese).toContain('专属礼宾和优先支持');
+    expect(chinese).toContain('免费档里的全部');
+    expect(chinese).toContain('周末空着的时候提你一句');
+    expect(chinese).toContain('Plus 里的全部');
+    expect(chinese).toContain('搜索和盯名额，额度最高');
+    expect(chinese).toContain('优先支持');
+    expect(chinese).toContain('一整季的报名，一次办完');
     expect(chinese).toContain('给 Hale 发短信');
     expect(chinese).not.toContain('Everything in Free');
     expect(chinese).not.toContain('Rec dates watched');
@@ -94,19 +105,29 @@ describe('PricingSection (landing pricing)', () => {
     expect(chinese).not.toContain('>Free<');
     expect(zh.PricingSection.tierNames.free).toBe('免费');
     expect(zh.PricingSection.tierNames.plus).toBe('Plus');
-    expect(zh.PricingSection.tierNames.family).toBe('Family');
+    expect(zh.PricingSection.tierNames.family).toBe('Max');
+    expect(chinese).toContain('>Max<');
+    expect(chinese).not.toContain('Family');
+    expect(chinese).toContain('$19 CAD/mo');
+    expect(chinese).toContain('$159 CAD/yr');
+    expect(chinese).toContain('$39 CAD/mo');
+    expect(chinese).toContain('$329 CAD/yr');
+    expect(chinese).toContain('目前只有免费档可用。');
+    expect([...chinese.matchAll(/即将推出/g)]).toHaveLength(2);
+    expect([...chinese.matchAll(/disabled/g)]).toHaveLength(2);
   });
 
   it('shows both monthly and annual prices for the paid tiers', () => {
-    expect(html).toContain('$9 CAD/mo');
-    expect(html).toContain('$79 CAD/yr');
+    expect(html).toContain('$0 CAD/mo');
     expect(html).toContain('$19 CAD/mo');
     expect(html).toContain('$159 CAD/yr');
+    expect(html).toContain('$39 CAD/mo');
+    expect(html).toContain('$329 CAD/yr');
   });
 
   it('leads with the core being free, and argues it without a metaphor to decode', () => {
     expect(html).toContain('Free');
-    expect(html).toContain('The whole core is free');
+    expect(html).toContain('Only Free is available today.');
     // "The village" as a synonym for Hale was a third governing metaphor at the
     // close (after chief of staff and radar) — a word the reader has to translate
     // before learning the price. It is earned in exactly one place now: the About
@@ -123,9 +144,9 @@ describe('PricingSection (landing pricing)', () => {
   it('states the locked year-attention one-liners, not Village or Companion', () => {
     // VIL-367, Sloane + Miles 2026-09-23. Exact bytes — the cards must not paraphrase.
     const locked = {
-      free: 'Find what’s on and open the year. Watching mornings you’ve already set stays free.',
-      plus: 'Nudges when a weekend’s empty or a waitlist opens — plus year memory as it ships.',
-      family: 'One plan for the household. Co-parent stays in.',
+      free: 'Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.',
+      plus: 'More done for you, all year.',
+      family: 'The most Hale can do.',
     } as const;
     expect(en.PricingSection.tierLines).toEqual(locked);
     for (const line of Object.values(locked)) {
@@ -143,20 +164,14 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).not.toContain('Companion:');
   });
 
-  it('routes every tier to a LIVE action — no dead waitlist, checkout, or "Coming soon"', () => {
-    expect(html).not.toContain('Coming soon');
+  it('opens the composer on Free only — Plus and Max say Coming soon', () => {
+    expect(html).toContain('Coming soon');
+    expect([...html.matchAll(/Coming soon/g)]).toHaveLength(2);
     expect(html).not.toContain('#waitlist');
     expect(html.toLowerCase()).not.toContain('checkout');
-    // Free and paid alike open the one front door the site chrome offers. There is one
-    // CTA per tier, and all three carry the same destination — free vs paid differs in
-    // emphasis (btn-primary vs btn-secondary), not in where it goes.
     const { href, label } = chromeCta();
-    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(
-      PLAN_TIERS_ORDERED.length,
-    );
-    expect([...html.matchAll(new RegExp(escapeRe(label), 'g'))]).toHaveLength(
-      PLAN_TIERS_ORDERED.length,
-    );
+    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(1);
+    expect([...html.matchAll(new RegExp(`>${escapeRe(label)}<`, 'g'))]).toHaveLength(1);
   });
 
   /**
@@ -194,8 +209,10 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).toContain('about three months free');
   });
 
-  it('carries the founding-families banner with the first-100 badge promise', () => {
-    expect(html).toContain('Founding families join free.');
-    expect(html).toContain('first 100 families get a permanent founding badge');
+  it('carries the founding-families note for every family until paid plans start', () => {
+    expect(html).not.toMatch(/keep\s+their\s+rate/);
+    expect(html).toContain('Founding families get every feature free until paid plans start.');
+    expect(html).not.toMatch(/first\s+100/);
+    expect(html).not.toMatch(/founding\s+badge/);
   });
 });

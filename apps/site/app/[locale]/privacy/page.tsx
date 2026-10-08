@@ -79,6 +79,7 @@ const SECTIONS: LegalSection[] = [
   { id: 'ai-processing', title: 'AI and automated processing' },
   { id: 'how-we-share', title: 'Who your family’s data is shared with' },
   { id: 'sub-processors', title: 'Sub-processors and cross-border processing' },
+  { id: 'google-api-limited-use', title: 'Google API Services User Data Policy' },
   { id: 'sms', title: 'Text messages (SMS)' },
   { id: 'residency-retention', title: 'Data residency, retention, and security' },
   { id: 'your-rights', title: 'Your rights' },
@@ -495,6 +496,17 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           to cross-border processing, and we put appropriate contractual safeguards in place with
           these providers. Because some processing occurs outside Quebec and Canada, that data may
           be accessible to authorities in those jurisdictions under their laws.
+        </p>
+      </LegalSectionBlock>
+
+      <LegalSectionBlock id="google-api-limited-use" title="Google API Services User Data Policy">
+        <p>
+          Hale&rsquo;s use and transfer to any other app of information received from Google APIs
+          will adhere to the{' '}
+          <a href="https://developers.google.com/terms/api-services-user-data-policy" className="link">
+            Google API Services User Data Policy
+          </a>
+          , including the Limited Use requirements.
         </p>
       </LegalSectionBlock>
 

@@ -1,14 +1,14 @@
 {
   "Common": {
-    "textHale": "Texter Hale",
+    "textHale": "Texte Hale",
     "emailHale": "Écrire à Hale",
     "skipToContent": "Aller au contenu"
   },
   "HomeMeta": {
-    "title": "Hale · un planificateur pour l’année de vos enfants",
-    "description": "Trouvez ce qu’il y a. Écoutez comment ça va. Hale trouve ce qui se donne vraiment près de vos enfants — natation, camps, haltes-jeux, le centre ON y va du quartier — surveille les matins d’inscription dans {count} municipalités du Grand Toronto, vous remet le lien de votre ville la veille au soir, et revient vous demander comment ça s’est passé. Pas d’appli, pas de compte. Vos données restent au Canada.",
-    "ogDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Hale trouve ce qui se donne vraiment près de chez vous et surveille les matins d’inscription dans {count} municipalités du Grand Toronto, puis revient vous demander comment ça s’est passé. Pas d’appli, pas de compte. Vos données restent au Canada.",
-    "twitterDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Ce qui vaut la peine avec les enfants. Pas d’appli, pas de compte. Vos données restent au Canada."
+    "title": "Hale · un planificateur pour l’année de tes enfants",
+    "description": "L’année de tes enfants, sans casse-tête. Hale trouve ce qui se passe, surveille les places et revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
+    "ogDescription": "L’année de tes enfants, sans casse-tête. Hale trouve ce qui se passe, surveille les places, puis revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
+    "twitterDescription": "L’année de tes enfants, sans casse-tête. Ce qui vaut la peine avec les enfants."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -17,10 +17,10 @@
     "signIn": "Se connecter"
   },
   "Footer": {
-    "blurb": "Hale est un planificateur pour l’année de vos enfants. Trouvez ce qu’il y a. Écoutez comment ça va.",
+    "blurb": "Hale est un planificateur pour l’année de tes enfants. Trouve ce qu’il y a. Sache comment ça s’est passé.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
-    "pronunciationSuffix": "— hawaïen pour « maison ».",
+    "pronunciationSuffix": "— hawaïen pour « maison ».",
     "productHeading": "Produit",
     "resourcesHeading": "Ressources",
     "linkPricing": "Tarifs",
@@ -32,12 +32,19 @@
     "linkContact": "Contact",
     "linkPrivacy": "Politique de confidentialité",
     "linkTerms": "Conditions d’utilisation",
+    "cookieSettings": "Paramètres des témoins",
     "copyright": "© {year} Hale. Tous droits réservés.",
-    "company": "Village Hale Technologies Inc., Georgetown, Ontario. Vos données restent au Canada.",
+    "company": "Village Hale Technologies Inc.",
     "signIn": "Se connecter"
   },
   "LanguageSwitcher": {
     "label": "Langue"
+  },
+  "Consent": {
+    "text": "Hale utilise des témoins pour mesurer ses pubs et voir comment le site est utilisé. Rien ne se charge tant que tu n’as pas dit oui.",
+    "reject": "Non merci",
+    "accept": "Accepter",
+    "region": "Témoins"
   },
   "ThemeSwitch": {
     "light": "Clair",
@@ -55,289 +62,9 @@
     "copy": "Copier {email}",
     "copied": "Copié ✓"
   },
-  "Landing": {
-    "eyebrow": "Hale · /HAH-leh/ · hawaïen pour « maison »",
-    "heroH1a": "Trouvez ce qu’il y a.",
-    "heroH1b": "Écoutez comment",
-    "heroH1Accent": "ça va.",
-    "heroSub": "Ce qui vaut la peine avec les enfants.",
-    "heroThread": [
-      {
-        "dir": "out",
-        "text": "Bonjour — Mia a 4 ans, on est à Stouffville, L4A. La natation et les programmes d’automne."
-      },
-      {
-        "dir": "in",
-        "text": "Voici ce qu’il y a pour vos enfants cette année :\n1. Natation parent-enfant (2 à 4 ans) — les samedis à 9 h 15, d’après le guide des loisirs de Stouffville.\n2. Jeu libre préscolaire (18 mois à 4 ans) — sans inscription, d’après la page de la bibliothèque.\n3. Petits bougeurs (2 à 5 ans) — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés."
-      }
-    ],
-    "heroFounding": "Les familles fondatrices commencent gratuitement — et gardent leur tarif fondateur pour toujours.",
-    "heroThreadCap": "Exemple : un premier texto à Hale, et la réponse",
-    "bubbleYou": "Vous :",
-    "bubbleHale": "Hale :",
-    "threadEyebrow": "Texter Hale, ça ressemble à ça",
-    "threadH2a": "Textez-moi comme vous textez",
-    "threadH2Accent": "un ami.",
-    "threadLede": "Pas d’appli, pas de menus — et rien n’est envoyé sans votre accord.",
-    "threadCap": "Votre fil avec Hale",
-    "threadBubbles": [
-      {
-        "dir": "time",
-        "text": "Une semaine avant · mar. 10 h 04"
-      },
-      {
-        "dir": "in",
-        "text": "Les inscriptions aux programmes de loisirs d’automne de Halton Hills ouvrent mardi à 7 h pour Mia. Votre code postal vous donne la date réservée aux résidents. Répondez OUI et je fais la matinée avec vous."
-      },
-      {
-        "dir": "out",
-        "text": "OUI"
-      },
-      {
-        "dir": "time",
-        "text": "La veille au soir · lun. 19 h 04"
-      },
-      {
-        "dir": "in",
-        "text": "Demain : les programmes de loisirs d’automne de Halton Hills ouvrent à 7 h pour Mia. Connectez-vous ce soir et gardez ceci ouvert : haltonhills.ca/Play/Recreation/Programs"
-      },
-      {
-        "dir": "time",
-        "text": "Quinze minutes avant · mar. 6 h 45"
-      },
-      {
-        "dir": "in",
-        "text": "Les programmes de loisirs d’automne de Halton Hills ouvrent à 7 h. Votre lien : haltonhills.ca/Play/Recreation/Programs"
-      },
-      {
-        "dir": "time",
-        "text": "Quatre heures plus tard · mar. 11 h 02"
-      },
-      {
-        "dir": "in",
-        "text": "Comment ça s’est passé pour les programmes de loisirs d’automne de Halton Hills? Répondez « inscrit », « liste d’attente #12 » ou « manqué »."
-      },
-      {
-        "dir": "out",
-        "text": "inscrit 🙌"
-      },
-      {
-        "dir": "in",
-        "text": "C’est une place. Noté : programmes de loisirs d’automne de Halton Hills, inscrit."
-      }
-    ],
-    "howEyebrow": "Comment Hale fonctionne",
-    "howH2a": "Un plan pour l’année,",
-    "howH2Accent": "dans un seul fil.",
-    "steps": [
-      {
-        "when": "Tout de suite",
-        "step": "Vous textez les noms, les âges et un code postal",
-        "body": "Un texto. Pas d’appli, pas de compte."
-      },
-      {
-        "when": "Dans le même fil",
-        "step": "Je vous texte votre semaine",
-        "body": "Des noms, des âges, un code postal — et je vous réponds avec toutes les dates d’inscription que je surveille désormais pour vous."
-      },
-      {
-        "when": "Chaque semaine",
-        "step": "Je monte la garde",
-        "body": "Le plan la veille au soir, une relance dès l’ouverture."
-      }
-    ],
-    "howRail": "Comment Hale fonctionne, en trois étapes",
-    "consentLine": "Je suggère et je prépare. Je demande comment ça s’est passé. Rien n’est réservé. Des preuves pour tout, et rien ne se passe sans votre oui.",
-    "watchEyebrow": "La partie qui compte",
-    "watchH2Accent": "je suis déjà debout.",
-    "watchLede": "{count} municipalités, tous les calendriers, pour que personne n’ait à le faire.",
-    "contrast": [
-      {
-        "title": "Sans moi",
-        "body": "Vous tenez l’année vous-même. Chaque matin d’inscription, chaque chrono des listes d’attente, et ce qui se donne vraiment près de vos enfants."
-      },
-      {
-        "title": "Avec moi",
-        "body": "Je tiens cette veille. Je trouve ce qu’il y a, le lien de votre ville est prêt la veille au soir, et je demande comment ça s’est passé."
-      }
-    ],
-    "coverageLine": "Dans {count} municipalités du Grand Toronto.",
-    "watched": [
-      {
-        "title": "Cours de natation",
-        "body": "Se remplissent en quelques minutes — certaines villes les ouvrent à leur propre date."
-      },
-      {
-        "title": "Camps",
-        "body": "Les camps du congé des Fêtes ouvrent discrètement dès août."
-      },
-      {
-        "title": "Service de garde parascolaire",
-        "body": "Certaines villes l’ouvrent à part, un matin bien à elle."
-      },
-      {
-        "title": "Le chrono des listes d’attente",
-        "body": "Une journée pour accepter dans certaines villes, deux dans d’autres."
-      }
-    ],
-    "watchRail": "Ce que je surveille",
-    "coachingEyebrow": "Quand vous me demandez quelque chose",
-    "coachingH2a": "Sommeil, solides, propreté —",
-    "coachingH2Accent": "une réponse, puis un plan.",
-    "coachingLede": "La journée d’inscription, c’est pourquoi les familles me textent en premier. La question de 3 h du matin, c’est pourquoi le fil reste ouvert.",
-    "coaching": [
-      {
-        "step": "Vous demandez",
-        "body": "Deux phrases en retour, ajustées à l’âge réel de votre enfant — et la chose à essayer ce soir."
-      },
-      {
-        "step": "Je vous propose le plan complet",
-        "body": "La vraie méthode, nommée — les tableaux de vérification de Ferber, le protocole de propreté en trois jours, l’introduction des allergènes selon Santé Canada."
-      },
-      {
-        "step": "Quelques jours plus tard, je demande comment ça s’est passé",
-        "body": "Je nomme le jour dans le plan et je programme ce rappel moi-même."
-      }
-    ],
-    "coachingStopTitle": "Là où je m’arrête",
-    "coachingStopBody": "Je ne pose pas de diagnostic et je ne nomme jamais de dose — et un plan nomme la seule situation qui mérite d’être signalée à votre médecin.",
-    "helpersEyebrow": "Vos aidants",
-    "helpersH2a": "Vos aidants,",
-    "helpersH2Accent": "seulement ce qu’il leur faut.",
-    "caregivers": [
-      {
-        "title": "Les grands-parents et la gardienne",
-        "body": "Ajoutés par un seul texto, avec l’horaire pour seul accès — rien d’autre de chez vous."
-      },
-      {
-        "title": "Votre coparent",
-        "body": "Toujours gratuit. La même semaine et les mêmes rappels, sur son propre numéro."
-      }
-    ],
-    "helpersRail": "Vos aidants",
-    "privacyEyebrow": "Confidentialité",
-    "privacyH2a": "La confidentialité,",
-    "privacyH2Accent": "à la canadienne.",
-    "privacyBody1": "Les données de votre famille restent au Canada, et l’information d’un enfant est sensible par défaut. Chaque permission s’accorde par texto et se retire par texto.",
-    "privacyLink": "Comment je traite vos données",
-    "closingH2a": "Les familles fondatrices adhèrent",
-    "closingH2Accent": "gratuitement.",
-    "closingSub": "Gratuit tant que je suis nouveau — et les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Pas de compte à rebours, juste le numéro.",
-    "heroTerms": "Gratuit pour commencer. C’est vous qui textez en premier; les tarifs de messagerie standards s’appliquent, répondez STOP à tout moment. Vos données restent au Canada —",
-    "heroTermsLink": "politique de confidentialité",
-    "heroLoopCap": "Le fil d’une famille avec Hale, du début à la fin",
-    "heroLoop": [
-      {
-        "elapsed": "Le premier texto",
-        "rows": [
-          {
-            "dir": "out",
-            "text": "Mia a 3 ans, on est à Vaughan. La natation, et ce qu’il y a autour."
-          },
-          {
-            "dir": "in",
-            "text": "Voici ce qu’il y a pour vos enfants cette année :\n1. Natation parent-enfant (2 à 4 ans) — les samedis à 9 h 15, d’après le guide des loisirs de la ville.\n2. Jeu libre préscolaire (18 mois à 4 ans) — sans inscription, d’après la page de la bibliothèque.\n3. Petits bougeurs (2 à 5 ans) — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés."
-          }
-        ]
-      },
-      {
-        "elapsed": "Une semaine plus tard, la veille au soir",
-        "rows": [
-          {
-            "dir": "in",
-            "text": "Demain : les cours de natation de Vaughan ouvrent à 7 h 00 pour Mia. Connectez-vous ce soir et gardez ceci ouvert : vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
-          }
-        ]
-      },
-      {
-        "elapsed": "Le lendemain matin",
-        "rows": [
-          {
-            "dir": "in",
-            "text": "Les cours de natation de Vaughan ouvrent à 7 h 00. Votre lien : vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
-          }
-        ]
-      },
-      {
-        "elapsed": "Quatre heures plus tard",
-        "rows": [
-          {
-            "dir": "in",
-            "text": "Comment se sont passés les cours de natation de Vaughan? Répondez « got in », « waitlisted #12 » ou « missed it »."
-          },
-          {
-            "dir": "out",
-            "text": "got in"
-          },
-          {
-            "dir": "in",
-            "text": "C’est une place — vous êtes inscrits aux cours de natation de Vaughan."
-          }
-        ]
-      },
-      {
-        "elapsed": "Ce soir-là",
-        "rows": [
-          {
-            "dir": "in",
-            "text": "Comment s’est passée la journée avec Mia? Une ligne suffit."
-          },
-          {
-            "dir": "out",
-            "text": "Des larmes à l’arrivée, et puis elle ne voulait plus partir."
-          },
-          {
-            "dir": "in",
-            "text": "Merci — c’est utile. Répondez NO pour ne plus en recevoir."
-          }
-        ]
-      }
-    ],
-    "findEyebrow": "Ce que je vous enverrais ce soir",
-    "findH2a": "Trois choses,",
-    "findH2Accent": "pas trente.",
-    "findLede": "Vous me donnez les âges et le code postal. Je vais voir ce qui se donne vraiment près de chez vous cette saison — le guide des loisirs de la ville, le centre ON y va, la bibliothèque, le Y, le studio à deux rues — et je reviens avec trois, pas avec une liste.",
-    "findCap": "Un exemple de ce qui revient",
-    "finds": [
-      {
-        "name": "Natation parent-enfant",
-        "ageFit": "2 à 4 ans",
-        "when": "Les samedis, 9 h 15",
-        "sourceName": "le guide des loisirs de la ville"
-      },
-      {
-        "name": "Jeu libre préscolaire",
-        "ageFit": "18 mois à 4 ans",
-        "when": "Sans inscription, les mardis et jeudis matin",
-        "sourceName": "la bibliothèque"
-      },
-      {
-        "name": "Petits bougeurs",
-        "ageFit": "2 à 5 ans",
-        "when": null,
-        "sourceName": "le centre communautaire"
-      }
-    ],
-    "findNoTime": "Horaires d’hiver pas encore affichés",
-    "findHonesty": "Si une page n’a pas encore affiché ses horaires d’hiver, je vous le dis au lieu d’en inventer un.",
-    "watchH2a": "Le matin où ça ouvre,",
-    "watchSpots": "Et quand le cours que vous vouliez est déjà complet, je continue de le surveiller et je vous texte à la minute où une place se libère.",
-    "seeH2a": "Puis je reviens",
-    "seeH2Accent": "vous demander.",
-    "seeBody": "Quatre heures après l’ouverture, je demande si vous avez eu la place. Quelques jours après le premier cours, je demande comment ça s’est passé. Et le soir, une ligne — comment était la journée. Répondez LESS et ça devient hebdomadaire, NO et ça s’arrête. Ce que vous me dites reste entre nous : aucune autre famille ne le voit, et les mots eux-mêmes disparaissent au bout de trente jours.",
-    "howLines": [
-      "C’est vous qui textez en premier — pas de menus, et je ne texte jamais un numéro qui ne m’a pas écrit.",
-      "Vous textez les noms, les âges et un code postal. C’est tout le paramétrage — un texto. Pas d’appli, pas de compte.",
-      "Votre coparent reçoit les mêmes dates et les mêmes rappels sur son propre numéro. Toujours gratuit.",
-      "Un grand-parent ou une gardienne s’ajoute par un texto, avec seulement l’horaire dans sa portée — rien d’autre de ce qui est à vous."
-    ],
-    "howConnectors": "Si vous connectez Gmail, je lis l’objet, l’expéditeur et la première ligne de chaque nouveau message — assez pour repérer une date où votre famille doit être quelque part — et je n’ouvre un message que lorsqu’il en a l’air. De votre calendrier, je lis ce qu’un événement dit de lui-même : son titre, ses notes, où il a lieu et quand. C’est tout ce que je demande, et c’est tout ce que j’en fais.",
-    "centresLine": "Vous dirigez un centre ON y va, une succursale de bibliothèque ou un centre? Voici quoi dire à un parent au sujet de Hale.",
-    "centresLink": "Pour les centres"
-  },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale est un planificateur pour l’année de vos enfants. Trouvez ce qu’il y a. Écoutez comment ça va. Barton Dong, PDG, et Eugene Song, directeur technique, chez Village Hale Technologies Inc. à Georgetown, en Ontario.",
+    "metaDescription": "Hale est un planificateur pour l’année de tes enfants. Deux parents qui bâtissent l’aide qu’on aurait voulu avoir. Barton Dong, PDG, et Eugene Song, directeur technique, chez Village Hale Technologies Inc.",
     "eyebrow": "À propos de Hale",
     "headline": [
       {
@@ -361,7 +88,7 @@
         "accent": true
       }
     ],
-    "howLede": "Hale commence par trouver ce qui se passe et demander comment ça s’est passé. L’échelle, c’est tout le produit : il monte un échelon à la fois, et seulement quand vous le permettez.",
+    "howLede": "Hale commence par trouver ce qui se passe et demander comment ça s’est passé. L’échelle, c’est tout le produit : il monte un échelon à la fois, et seulement quand vous le permettez.",
     "ladder": [
       {
         "tag": "Recommander",
@@ -412,18 +139,14 @@
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Gratuit tant que Hale est nouveau — chaque étape, chaque enfant. Plus et Famille ajoutent davantage de l’année planifiée avec vous, à mesure que ces parties arrivent. Vos données restent au Canada.",
+    "metaDescription": "Gratuit, textos illimités. Plus, c’est plus de choses faites pour toi, toute l’année. Max, c’est le maximum de ce que Hale peut faire.",
     "eyebrow": "Tarifs",
     "headline": [
       {
-        "text": "Gratuit tant que Hale est"
-      },
-      {
-        "text": "nouveau.",
-        "accent": true
+        "text": "Gratuit, textos illimités."
       }
     ],
-    "lede": "Tout l’essentiel — chaque étape, chaque enfant — est gratuit. Plus et Famille ajoutent davantage de l’année suivie avec vous, à mesure que chaque partie arrive.",
+    "lede": "Tout l’essentiel — chaque étape, chaque enfant — est gratuit. Plus et Max ajoutent davantage de l’année suivie avec vous, à mesure que chaque partie arrive.",
     "cta": "Commencez gratuitement aujourd’hui — et laissez Hale grandir vers le reste quand vous serez prêt."
   },
   "PricingSection": {
@@ -431,36 +154,39 @@
     "headline": "Tout l’essentiel est gratuit. Les forfaits payants ajoutent davantage de l’année, jamais un péage sur la surveillance.",
     "lede": "Tout ce que Hale fait aujourd’hui — la recherche, la surveillance, les plans, les réponses — est gratuit, à chaque étape et pour chaque enfant. Les forfaits payants n’ouvriront que lorsqu’il y aura davantage de l’année à planifier avec vous. Les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Un coparent est toujours gratuit.",
     "foundingTitle": "Les familles fondatrices adhèrent gratuitement.",
-    "foundingNote": "Les 100 premières familles reçoivent un insigne de fondateur permanent — et un accès prioritaire à l’ouverture de Plus et Famille.",
+    "foundingNote": "Les familles fondatrices ont chaque fonction gratuite jusqu’à ce que les forfaits payants commencent.",
     "annualNote": "facturé à l’année — environ trois mois gratuits",
-    "footnote": "Hale est gratuit pour commencer. Plus et Famille s’ouvrent à mesure que leurs intégrations arrivent.",
+    "footnote": "Seul Gratuit est disponible aujourd’hui.",
+    "comingSoon": "Bientôt disponible",
     "tierLines": {
       "free": "Trouvez ce qu’il y a et ouvrez l’année. Les matins que vous surveillez déjà restent gratuits.",
-      "plus": "Des rappels quand un week-end est vide ou qu’une liste d’attente s’ouvre — plus la mémoire de l’année, à mesure qu’elle arrive.",
-      "family": "Un plan pour le foyer. Le coparent reste dedans."
+      "plus": "Plus de choses faites pour toi, toute l’année.",
+      "family": "Le maximum de ce que Hale peut faire."
     },
     "tierNames": {
       "free": "Gratuit",
       "plus": "Plus",
-      "family": "Famille"
+      "family": "Max"
     },
     "paidFeatures": {
       "plus": [
         "Tout ce qu’il y a dans Gratuit",
-        "Rappels et brouillons, à mesure qu’ils arrivent",
-        "Davantage de l’année suivie avec vous"
+        "La mémoire de l’année, saison après saison",
+        "Inscriptions faites pour toi, quand tu dis oui"
       ],
       "family": [
         "Tout ce qu’il y a dans Plus",
-        "La vue du foyer sur l’année, à mesure qu’elle arrive",
-        "Conciergerie et soutien prioritaire"
+        "Les limites les plus hautes pour les recherches et la surveillance des places",
+        "Soutien prioritaire",
+        "Les inscriptions de toute une saison, d’un coup"
       ]
     },
     "freeFeatures": [
       "Textez Hale",
       "Dates d’inscription surveillées",
       "Réponses",
-      "Tarif fondateur"
+      "Tarif fondateur",
+      "Un petit coup de pouce quand la fin de semaine est vide"
     ]
   },
   "Contact": {
@@ -488,13 +214,11 @@
         "line": "Demandes d’accès, de correction ou de suppression, et tout ce qui touche la façon dont nous traitons les données de votre famille."
       }
     },
-    "note": "Hale est conçu par Village Hale Technologies Inc., Georgetown, Ontario, Canada.",
     "centresNote": "Vous travaillez dans un centre, une bibliothèque ou un programme communautaire ?",
     "centresLink": "Voyez ce que Hale change pour les familles que vous accueillez"
   },
   "ForCentres": {
     "metaTitle": "Pour les centres et les partenaires · Hale",
-    "metaDescription": "Ce que Hale change pour les familles que votre centre accueille, et trois façons d’y orienter une famille. Un planificateur pour l’année de leurs enfants — pas d’appli, pas de compte, et des données qui restent au Canada.",
     "eyebrow": "Pour les centres et les partenaires",
     "headline": [
       {
@@ -505,8 +229,6 @@
         "accent": true
       }
     ],
-    "lede": "Hale est un planificateur pour l’année des enfants d’une famille. Il trouve des activités qui conviennent à l’enfant, surveille les matins d’inscription dans {count} municipalités du Grand Toronto, et prend des nouvelles ensuite.",
-    "notLine": "Il n’y a pas d’appli à installer ni de compte à créer. Rien de ce qui touche une famille n’est vendu ni partagé, Hale est conçu en Ontario selon la LPRPDE, et les données d’une famille restent au Canada.",
     "townsLabel": "Villes surveillées",
     "getEyebrow": "Ce qu’une famille reçoit",
     "getHeadline": [
@@ -519,7 +241,7 @@
       }
     ],
     "getLede": "C’est le parent qui envoie le premier message — Hale ne texte jamais une famille en premier. En voici un, et ce qui est revenu.",
-    "getAfter": "Entre les choses qui comptent, il se fait discret : le lien la veille de l’ouverture d’une inscription, un rappel quinze minutes avant, et une ligne le soir pour demander comment la journée s’est passée.",
+    "getAfter": "Entre les choses qui comptent, il se fait discret : le lien la veille de l’ouverture d’une inscription, un rappel quinze minutes avant, et une ligne le soir pour demander comment la journée s’est passée.",
     "waysEyebrow": "Comment orienter une famille vers Hale",
     "waysHeadline": [
       {
@@ -580,10 +302,6 @@
       {
         "title": "Les mots d’un enfant restent à son parent",
         "body": "Hale parle aux parents. Pour un enfant de 13 ans ou plus, le parent voit le sujet et un résumé plutôt que les mots — sauf s’il y a un enjeu de sécurité, et alors l’adolescent en est informé."
-      },
-      {
-        "title": "Conçu et gardé au Canada",
-        "body": "Village Hale Technologies Inc., Georgetown, Ontario. Les données des familles restent au Canada, selon la LPRPDE et la Loi 25 du Québec."
       }
     ],
     "officialEyebrow": "Si une famille demande si Hale est officiel",
@@ -622,8 +340,8 @@
     "ctaQuiet": "Autres façons de nous joindre"
   },
   "Faq": {
-    "metaTitle": "Hale est-il gratuit, privé et fait pour votre famille? · Hale",
-    "metaDescription": "Des réponses claires sur Hale pour les parents : c’est gratuit pour commencer, les données de votre famille restent au Canada, ça fonctionne pour tous les âges de 0 à 18 ans, et ça n’agit jamais sans votre consentement.",
+    "metaTitle": "Hale : gratuit, privé, fait pour ta famille? · Hale",
+    "metaDescription": "Des réponses claires sur Hale pour les parents : gratuit, textos illimités, pour les enfants de 0 à 18 ans, et Hale n'agit jamais sans toi.",
     "eyebrow": "Vos questions, nos réponses",
     "headline": [
       {
@@ -636,7 +354,6 @@
     ],
     "lede": "Les réponses honnêtes aux questions que les parents nous posent le plus — sur le coût, la confidentialité et le fonctionnement réel de Hale.",
     "ctaHeading": "Encore des doutes? Demandez-moi, tout simplement.",
-    "ctaSub": "Gratuit pour commencer. Vos données restent au Canada.",
     "items": [
       {
         "question": "Qu’est-ce que Hale?",
@@ -651,18 +368,6 @@
         "answer": "Non. Hale trouve ce qui se passe et demande comment ça s’est passé — il ne réserve pas de cours et ne vous inscrit pas. Chaque message nomme ce qu’il a trouvé, et Hale garde le dossier complet de qui a demandé, de ce qui a été envoyé et de quand."
       },
       {
-        "question": "Est-ce que les données de ma famille sont privées?",
-        "answer": "Vos données sont stockées au Canada et n’en sortent jamais, conformément à la PIPEDA et à la Loi 25 du Québec, et Hale ne les vend jamais. Chaque permission est précise et révocable par texto. Le texto lui-même n’est pas scellé comme l’est une appli — un message traverse votre fournisseur de téléphonie et le fournisseur de messagerie de Hale — alors Hale écrit en tenant compte de cette réalité et nomme la tâche, jamais le diagnostic. Le contenu d’un adolescent est caviardé pour les parents par défaut."
-      },
-      {
-        "question": "Est-ce un robot? Qui lit vraiment mes textos?",
-        "answer": "Hale est un planificateur pour l’année de vos enfants, et il ne prétend jamais être une personne. Il est conçu et exploité par Village Hale Technologies Inc., une petite entreprise fondée par un parent à Georgetown, en Ontario — et une vraie personne lit tout ce que vous envoyez à aloha@villagehale.com. Hale ne texte jamais un numéro qui ne lui a pas écrit en premier, ne vous demande jamais de retexter un mot de passe, un numéro de carte ou un code, et STOP met fin à la conversation en tout temps."
-      },
-      {
-        "question": "Que surveille Hale, au juste?",
-        "answer": "Les inscriptions municipales dans 21 municipalités de la région du Grand Toronto — programmes de loisirs, cours de natation, camps et service de garde parascolaire — y compris la longueur d’avance réservée aux résidents, les villes qui ouvrent la natation à leur propre date, et les camps du congé des Fêtes dont les inscriptions ouvrent dès le mois d’août. Il surveille aussi le chrono des listes d’attente, qui est d’une journée dans certaines villes et de deux dans d’autres. Et quand le cours que vous vouliez est déjà complet, Hale continue de le surveiller et vous texte à la minute où une place se libère."
-      },
-      {
         "question": "À quelle fréquence Hale va-t-il me texter?",
         "answer": "Un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. Le soir, Hale demande en une ligne comment la journée s’est passée — répondez LESS et ça devient hebdomadaire, NO et ça s’arrête. STOP fonctionne en tout temps."
       },
@@ -672,7 +377,7 @@
       },
       {
         "question": "Est-ce que Hale est gratuit?",
-        "answer": "Hale est gratuit tant qu’il est nouveau, et les familles qui commencent maintenant gardent leur tarif fondateur. Un coparent est toujours gratuit — les mêmes dates et les mêmes rappels sur son propre numéro, jamais un deuxième foyer à payer."
+        "answer": "Oui. Hale est gratuit, textos illimités. Les familles qui commencent maintenant ont toutes les fonctions gratuites, jusqu’à ce que les forfaits payants commencent."
       },
       {
         "question": "Est-ce que je dois utiliser le site Web?",
@@ -683,49 +388,14 @@
         "answer": "Pas encore. Aujourd’hui, Hale demande comment ça s’est passé. Dire au prochain parent ce que d’autres familles en ont pensé, c’est ce que Hale veut bâtir ensuite — et quand ce sera fait, ce sera un nombre et un verdict, jamais les mots de qui que ce soit."
       },
       {
-        "question": "Pouvez-vous nous aider en voyage?",
-        "answer": "Pas encore. Aujourd’hui, je surveille les inscriptions et ce qui se passe là où vous habitez, dans la région du Grand Toronto."
-      },
-      {
         "question": "Pouvez-vous me dire qui d’autre y sera?",
         "answer": "Pas encore. Aujourd’hui, je ne vous parle que de votre propre famille, jamais de celle de quelqu’un d’autre."
-      },
-      {
-        "question": "Est-ce que Hale est offert à l’extérieur du Canada?",
-        "answer": "Pas encore. Hale est d’abord canadien parce que garder les données de votre famille en sol canadien est une promesse fondamentale plutôt qu’un réglage, et les données d’inscription qu’il surveille sont des données municipales de la région du Grand Toronto. D’autres régions sont prévues dans la feuille de route."
       }
     ]
   },
   "Activities": {
-    "metaTitle": "Activités à faire avec les enfants, par ville · Hale",
-    "metaDescription": "Des activités gratuites et abordables pour les bébés, les tout-petits et les jeunes enfants dans les villes canadiennes — heures du conte à la bibliothèque, jeu libre sans inscription, bain parent-enfant, parcs et programmes familiaux locaux.",
-    "eyebrow": "Près de chez vous",
-    "headline": [
-      {
-        "text": "Des activités à faire avec vos enfants,"
-      },
-      {
-        "text": "par ville.",
-        "accent": true
-      }
-    ],
-    "lede": "Les sorties gratuites et abordables que les familles utilisent vraiment — heures du conte, jeu libre sans inscription, bain parent-enfant, parcs et programmes locaux. Choisissez votre ville pour commencer.",
-    "registrationLead": "Inscriptions d’automne, par ville — pas les sorties de la fin de semaine :",
-    "linkTorontoFall": "Rec d’automne à Toronto",
-    "linkTorontoSwim": "Natation à Toronto",
-    "linkBramptonSwim": "Natation à Brampton (non-résidents 21 sept.)",
-    "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end",
-    "ctaSub": "Textez à Hale l’âge de vos enfants et un code postal, et recevez trois choses à faire près de chez vous, pas trente. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
-  },
-  "ActivityCity": {
-    "metaTitle": "Activités à faire avec les enfants à {city} · Hale",
-    "metaDescription": "Des activités gratuites et abordables pour les bébés et les tout-petits à {city} : heures du conte à la bibliothèque, jeu libre sans inscription, bain parent-enfant, parcs et programmes familiaux de {provinceCode}.",
-    "breadcrumb": "Activités",
-    "headlineLead": "Activités à faire avec vos enfants à",
-    "commonQuestions": "Questions fréquentes sur {city}",
-    "disclaimer": "Les programmes et les lieux changent — voyez ceci comme un point de départ et confirmez les détails directement auprès de votre ville ou du programme. Dernière révision le {date, date, long}.",
-    "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end à {city}",
-    "ctaSub": "Textez à Hale l’âge de vos enfants et un code postal, et recevez trois choses à faire près de chez vous, pas trente. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
+    "metaTitle": "Activités à faire avec les enfants, près de chez toi · Hale",
+    "metaDescription": "Des activités pour tes enfants, près de chez toi — heures du conte, jeu libre, natation, camps de jour et loisirs."
   },
   "Answers": {
     "metaTitle": "Guides parentaux · Hale",
@@ -743,7 +413,6 @@
     "lede": "Des guides pratiques pour les questions que les parents recherchent vraiment — chacun fondé sur des cadres de référence fiables en santé parentale et honnête quant à ses limites. Des conseils généraux, jamais un remplacement de votre professionnel de la santé.",
     "empty": "Nos premiers guides parentaux sont en révision. Entre-temps, le moyen le plus rapide d’obtenir des conseils pour votre propre enfant — en tenant compte de son âge et de votre famille — c’est de poser votre question à Hale.",
     "ctaHeading": "Vous avez une question sur votre propre enfant?",
-    "ctaSub": "Demandez à Hale — en tenant compte de l’âge de votre enfant et de votre famille. Gratuit pour commencer, et vos données restent au Canada.",
     "stageLabels": {
       "newborn": "Nouveau-né · 0–11 mois",
       "toddler": "Tout-petit · 1–3 ans",
@@ -758,7 +427,7 @@
     "parentsAlsoAsk": "Les parents demandent aussi",
     "sources": "Sources",
     "sourcesLede": "Chaque affirmation sur cette page est attribuée à l’un des cadres de référence en santé parentale dont Hale s’inspire. Suivez une source vers son éditeur; les livres sont nommés plutôt que liés.",
-    "inSummary": "En résumé : ",
+    "inSummary": "En résumé : ",
     "disclaimerEyebrow": "À lire",
     "disclaimerHeading": "Ceci est un conseil général, pas un avis médical.",
     "disclaimerBody": "Hale résume des conseils en santé parentale largement recommandés et documentés. Il ne peut pas voir votre enfant, et il ne pose pas de diagnostic, ne prescrit rien et n’interprète pas les symptômes. Pour tout ce qui touche la santé de votre enfant — y compris le diagnostic, le dosage ou les symptômes — parlez à votre pédiatre ou à votre professionnel de la santé. En cas d’urgence, communiquez avec les services d’urgence de votre région.",
@@ -774,33 +443,16 @@
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Ce qui vaut la peine avec les enfants.",
-    "headline": "Trouvez ce qu’il y a. Écoutez comment ça va.",
-    "lede": "Ce qui vaut la peine avec les enfants.",
-    "sentLabel": "Ce que vous enverrez :",
-    "sentGloss": "Salut Hale, qu'est-ce qui se passe?",
-    "previewLabel": "Le texto que vous recevrez en retour :",
-    "greeting": "Bonjour, je suis Hale. J'aide a planifier l'annee de vos enfants - ce qui se passe près d'eux, les matins d'inscription, et comment ca s'est passé. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
-    "greetingLadderSms": "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez toi. Quel est ton code postal? Je te montre ce qui est au programme cette semaine.",
-    "greetingLadderImessage": "Salut, c'est Hale. Je trouve ce qui se passe pour les enfants pres de chez toi. Partage ta position et je te montre ce qui est au programme cette semaine.",
-    "afterSend": "Votre première veille arrive dans la minute.",
-    "trustLine": "Gratuit · Pas d’appli · Pas de compte · Répondez STOP en tout temps",
-    "saveContact": "Enregistrer Hale dans vos contacts",
-    "prefilledWithSource": "Votre message porte une courte étiquette qui me dit quelle affiche ou quel ami vous envoie. C’est vous qui l’envoyez; je ne texte jamais en premier.",
-    "prefilledNoSource": "C’est vous qui l’envoyez; je ne texte jamais en premier.",
+    "metaDescription": "L’année de tes enfants, sans casse-tête. Ce qui vaut la peine avec les enfants.",
     "onLaptop": "Sur un ordinateur portable?",
     "scanHint": "Scannez le code avec l’appareil photo de votre téléphone, ou copiez le numéro et textez-le depuis votre téléphone. Les tarifs de messagerie habituels s’appliquent; répondez STOP en tout temps.",
-    "numberComing": "Le numéro s’en vient — cette page n’est pas encore annoncée.",
-    "footerPre": "Village Hale Technologies Inc., Georgetown, Ontario. Vos données restent au Canada —",
-    "privacyLink": "politique de confidentialité",
     "qrAria": "Code QR — scannez pour texter Hale",
     "chooserHeadline": "Bienvenue. Choisissez où on se parle.",
     "chooserLede": "Votre premier message est déjà écrit — vous l’envoyez, je réponds. Je n’écris jamais en premier.",
     "continueMessages": "Continuer dans Messages",
     "continueWhatsapp": "Continuer sur WhatsApp",
     "orMessages": "Ou utiliser Messages",
-    "orWhatsapp": "Ou utiliser WhatsApp",
-    "termsLine": "Les tarifs de messagerie standards s’appliquent; répondez STOP à tout moment."
+    "orWhatsapp": "Ou utiliser WhatsApp"
   },
   "Registration": {
     "updated": "Updated {date, date, long}",
@@ -828,7 +480,345 @@
     ]
   },
   "Jsonld": {
-    "orgDescription": "Hale est un planificateur pour l’année de vos enfants — il trouve ce qui se passe près de vos enfants, surveille les fenêtres d’inscription des villes et revient prendre des nouvelles. Les données de chaque famille restent au Canada.",
-    "appDescription": "Trouvez ce qu’il y a. Écoutez comment ça va. Un planificateur pour l’année de vos enfants : Hale trouve ce qui se passe près de vos enfants, surveille les dates d’inscription dans toute la région du Grand Toronto et revient prendre des nouvelles. Des preuves pour tout, et les données de votre famille ne quittent jamais le Canada."
+    "orgDescription": "Hale est un planificateur pour l’année de tes enfants — il trouve ce qui se passe, surveille les inscriptions et revient prendre des nouvelles.",
+    "appDescription": "L’année de tes enfants, sans casse-tête. Un planificateur pour l’année de tes enfants : Hale trouve ce qui se passe, surveille les places et revient demander comment ça s’est passé."
+  },
+  "Rd": {
+    "0–11 months": "0–11 mois",
+    "10:00 AM": "10 h",
+    "13+ years": "13 ans et +",
+    "15 questions parents search.": "15 questions que les parents cherchent.",
+    "1–3 years": "1–3 ans",
+    "4–12 years": "4–12 ans",
+    "5:30 PM": "17 h 30",
+    "6 yes, 2 to go · on everyone’s calendar": "6 oui, il en reste 2 · au calendrier",
+    "7:00 PM": "19 h",
+    "9:30 AM": "9 h 30",
+    "A heads-up the week before, the link the night before. You register, and you’re ready when it opens.": "Un rappel la semaine d’avant, le lien la veille au soir. C’est toi qui t’inscris, et tu es prêt quand ça ouvre.",
+    "A joint birthday party": "Une fête d’anniversaire à deux",
+    "A nudge when a weekend’s empty": "Un petit coup de pouce quand la fin de semaine est vide",
+    "Example {index} of {count}": "Exemple {index} sur {count}",
+    "Family group chat examples": "Exemples de groupes texto",
+    "Next group chat": "Groupe texto suivant",
+    "Previous group chat": "Groupe texto précédent",
+    "Swipe or use arrow keys to change the group chat example": "Glisse, ou utilise les flèches, pour changer l’exemple de groupe texto",
+    "Today": "Aujourd’hui",
+    "A planner for your kids’ year that lives in your texts. It finds what’s on near you, watches for spots, reminds you before sign-ups and asks how it went. It answers any other question you send it, too.": "Un planificateur pour l’année de tes enfants, dans tes textos. Il trouve ce qui se passe près de chez toi, surveille les places, te rappelle avant les inscriptions et demande comment ça s’est passé. Il répond aussi à tes autres questions.",
+    "A planner for your kids’ year.": "Un planificateur pour l’année de tes enfants.",
+    "A question about your own child?": "Une question sur ton enfant?",
+    "A spot just opened": "Une place vient de se libérer",
+    "A text when a spot opens": "Un texto quand une place se libère",
+    "About Hale": "À propos de Hale",
+    "About pricing": "À propos des tarifs",
+    "Access, correction or deletion requests, and anything about how we handle your family’s data.": "Demandes d’accès, de correction ou de suppression, et tout ce qui touche aux données de ta famille.",
+    "Across the kids’ year": "Toute l’année des enfants",
+    "Activities": "Activités",
+    "After the first class": "Après le premier cours",
+    "Ages, what they love, what’s already on their week. Ask “what do you know” to see it all, or fix it in one text.": "Les âges, ce qu’ils aiment, ce qui est déjà dans la semaine. Demande « qu’est-ce que tu sais » pour tout voir, ou corrige en un texto.",
+    "Aisha, Jordan, Kate, Hale": "Aisha, Jordan, Kate, Hale",
+    "Alex driving": "Alex conduit",
+    "All questions": "Toutes les questions",
+    "All stages": "Toutes les étapes",
+    "Always. Same plan, same reminders, on their own phone.": "Toujours. Le même plan, les mêmes rappels, sur son propre téléphone.",
+    "Any week": "N’importe quelle semaine",
+    "Anything at all": "N’importe quoi",
+    "Anything for a 4-year-old this Saturday morning?": "Quelque chose pour un enfant de 4 ans, samedi matin?",
+    "Anything. Sleep, a rainy-day idea, what’s open Monday. Hale looks it up live and answers in a line or two.": "N’importe quoi. Le sommeil, une idée pour une journée de pluie, ce qui est ouvert lundi. Hale vérifie en direct et répond en une ligne ou deux.",
+    "Ask in the chat. Hale answers in a line or two, keeps track of what you decided, then goes quiet.": "Demande dans le groupe. Hale répond en une ligne ou deux, retient ce que le groupe a décidé, puis se fait discret.",
+    "Ask the way you’d ask a friend.": "Demande comme tu demanderais à un ami.",
+    "Asks how it went": "Demande comment ça s’est passé",
+    "Before registration": "Avant les inscriptions",
+    "Before sign-ups": "Avant les inscriptions",
+    "Biting is common in toddlers and usually about frustration, teething, or limited language — not aggression. A calm, consistent response grounded in Lansbury and Markham.": "Mordre est courant chez les tout-petits : souvent de la frustration, des dents qui poussent, ou pas encore les mots — pas de l’agressivité. Une réponse calme et constante, appuyée sur Lansbury et Markham.",
+    "Bunched evening feeds — cluster feeding — are a normal newborn pattern, not a sign of low supply. What it is, why it happens, and when to check with your provider.": "Les tétées groupées le soir sont un rythme normal de nouveau-né, pas un signe que le lait manque. Ce que c’est, pourquoi ça arrive, et quand en parler à ton professionnel.",
+    "CEO ·": "PDG ·",
+    "CTO ·": "directeur technique ·",
+    "Calm, cited guidance for every stage.": "Des conseils calmes et sourcés, pour chaque étape.",
+    "Camps": "Camps de jour",
+    "Can Hale join our group chat?": "Hale peut-il se joindre à notre groupe texto?",
+    "Can I ask it other things?": "Je peux lui demander autre chose?",
+    "Canadian guidance recommends little to no screen time under two, and no more than an hour a day for ages two to five. The numbers and the reasoning.": "Les recommandations canadiennes disent : presque pas d’écran avant deux ans, et pas plus d’une heure par jour de deux à cinq ans. Les chiffres, et pourquoi.",
+    "Can’t do Tuesday pickup this week 😩": "Je peux pas aller les chercher mardi 😩",
+    "Classes at community centres, from toddler gym to art and dance.": "Des cours au centre communautaire, du gym des tout-petits aux arts et à la danse.",
+    "Climbing gym · 2:00 PM": "Gym d’escalade · 14 h",
+    "Climbing gym! Booked Sat the 14th at 2": "Gym d’escalade! J’ai réservé samedi le 14 à 14 h",
+    "Coming soon": "Bientôt disponible",
+    "Contact": "Contact",
+    "Copy number": "Copier le numéro",
+    "Cost": "Coût",
+    "Current guidance encourages introducing common allergens like peanut early, around six months, once a baby is ready for solids. What that looks like and when to talk to your provider first.": "On recommande d’introduire tôt les allergènes courants, comme l’arachide, vers six mois, une fois que bébé est prêt pour les solides. À quoi ça ressemble, et quand en parler d’abord à ton professionnel.",
+    "Dana, Marco + 7 more": "Dana, Marco + 7 autres",
+    "Do I need an app or an account?": "J’ai besoin d’une appli ou d’un compte?",
+    "Do I need an app?": "J’ai besoin d’une appli?",
+    "Does Hale book or register for me?": "Est-ce que Hale réserve ou m’inscrit?",
+    "Done, it’s on everyone’s calendar. Jen’s driving.": "C’est fait, c’est dans le calendrier de tout le monde. C’est Jen qui conduit.",
+    "Driving · Tue Tom, Thu Mei": "Conduite · mar. Tom, jeu. Mei",
+    "Each plan comes as a calendar invite, so it lands in Google or Apple Calendar with one tap.": "Chaque plan arrive comme une invitation de calendrier : un tap et c’est dans Google ou Apple.",
+    "Either way, you text first. Hale never messages a number that hasn’t messaged it.": "Dans les deux cas, c’est toi qui textes en premier. Hale n’écrit jamais à un numéro qui ne lui a pas écrit.",
+    "Every parent should have someone who knows what’s on near them, remembers the date that fills in two minutes, and asks how it went. Across every stage of childhood, from the first months to almost grown.": "Chaque parent devrait avoir quelqu’un qui sait ce qui se passe près de chez lui, qui retient la date qui se remplit en deux minutes, et qui demande comment ça s’est passé. De tout-petit jusqu’à presque adulte.",
+    "Everything Hale does today is free: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.": "Tout ce que Hale fait aujourd’hui est gratuit : trouver, surveiller, rappeler, les groupes texto et les réponses. Plus et Max s’en viennent.",
+    "Everything Hale does today is free: the finding, the watching, the reminders and the group chats. Plus and Max are on the way.": "Tout ce que Hale fait aujourd’hui est gratuit : trouver, surveiller, rappeler et les groupes texto. Plus et Max s’en viennent.",
+    "Everything in Free": "Tout ce qu’il y a dans Gratuit",
+    "Everything in Plus": "Tout ce qu’il y a dans Plus",
+    "Example chat. Places and times are made up.": "Exemple de conversation. Les lieux et les heures sont inventés.",
+    "Example: a family calendar filled in by Hale, and the text thread that added it": "Exemple : un calendrier familial rempli par Hale, et le fil de textos qui l’a ajouté",
+    "Fair questions.": "Bonnes questions.",
+    "Fall programs open": "Les programmes d’automne ouvrent",
+    "Finds a plan when someone asks, keeps track of who’s in and who’s driving, and reminds the right person the night before. Otherwise it stays quiet.": "Trouve un plan quand quelqu’un demande, retient qui vient et qui conduit, et rappelle la bonne personne la veille. Le reste du temps, il n’écrit pas.",
+    "Finds activities": "Trouve quoi faire",
+    "Finds what’s on near you": "Trouve ce qui se passe près de chez toi",
+    "For school-age children, guidance shifts from fixed hour-caps to a family plan that protects sleep, activity, and family time. What that looks like in practice.": "Pour les enfants d’âge scolaire, on passe des plafonds d’heures à un plan de famille qui protège le sommeil, le jeu et le temps ensemble. À quoi ça ressemble vraiment.",
+    "Founding families join free.": "Les familles fondatrices commencent gratuitement.",
+    "Four small jobs, all year. Each one shows up as a text.": "Quatre petites jobs, toute l’année. Chacune arrive par texto.",
+    "Free": "Gratuit",
+    "Free for every family": "Gratuit pour chaque famille",
+    "Free outings, parks and one‑time events, when you need an idea for Saturday.": "Des sorties gratuites, des parcs et des activités ponctuelles, quand tu cherches une idée pour samedi.",
+    "Free. You text first; standard message rates apply, reply STOP any time.": "Gratuit. C’est toi qui textes en premier; les tarifs habituels s’appliquent, réponds STOP quand tu veux.",
+    "Founding families get everything free until paid plans start.": "Les familles fondatrices ont tout gratuit jusqu’à ce que les forfaits payants commencent.",
+    "Founding families get every feature free until paid plans start.": "Les familles fondatrices ont chaque fonction gratuite jusqu’à ce que les forfaits payants commencent.",
+    "Free, with unlimited chat.": "Gratuit, textos illimités.",
+    "$0 CAD/mo": "0 $ CAD/mois",
+    "$19 CAD/mo": "19 $ CAD/mois",
+    "$39 CAD/mo": "39 $ CAD/mois",
+    "From finding the class to hearing how it went.": "Du cours trouvé jusqu’à « comment ça s’est passé ».",
+    "General guidance, never a replacement for your provider.": "Des conseils généraux, jamais un remplacement pour ton professionnel.",
+    "Getting started": "Pour commencer",
+    "Got in! 🙌": "J’ai eu la place! 🙌",
+    "Got it. Tom on Tuesday, Mei on Thursday, 5:30 after soccer. I’ll remind whoever’s driving the night before.": "Compris. Tom le mardi, Mei le jeudi, 17 h 30 après le soccer. Je rappelle la veille à celui qui conduit.",
+    "Group": "Groupe",
+    "Group chats": "Groupes texto",
+    "Group chats and your co-parent": "Les groupes texto et l’autre parent",
+    "Guides": "Guides",
+    "Hale is built by Village Hale Technologies Inc.": "Hale est conçu par Village Hale Technologies Inc.",
+    "Hale is independent. It isn’t run by a centre, a town, a region or a province. Every date it sends comes with the source page, and if the two ever disagree, the source page wins.": "Hale est indépendant. Aucun centre, aucune ville, aucune région ni aucune province ne le gère. Chaque date arrive avec la page source, et si les deux ne disent pas la même chose, c’est la page source qui gagne.",
+    "Hale is made by Village Hale Technologies Inc. We’re small and early, and a real person reads every note.": "Hale est conçu par Village Hale Technologies Inc. On est petits et tout au début, et une vraie personne lit chaque message.",
+    "Hale joins the chats you already have.": "Hale se joint aux groupes que tu as déjà.",
+    "Hale looks them up live for your kids’ ages and where you are, then sends a short list with the source for each.": "Hale les cherche en direct, selon l’âge de tes enfants et où tu es, puis envoie une courte liste avec la source de chacune.",
+    "Here’s the library page. No sign-up needed for this one.": "Voici la page de la bibliothèque. Pas besoin de s’inscrire pour celle-là.",
+    "Here’s what’s on near you this week:\n1. Parent & tot swim (ages 2–4), Sat 9:15 a.m.\n2. Library storytime (ages 2–5), Tue 10:30 a.m.\n3. Little movers (ages 2–5), winter times not posted yet": "Voici ce qu’il y a près de chez toi cette semaine :\n1. Bain parent-enfant (2–4 ans), sam. 9 h 15\n2. Heure du conte à la bibliothèque (2–5 ans), mar. 10 h 30\n3. Petits sportifs (2–5 ans), les horaires d’hiver ne sont pas encore affichés",
+    "Hey Hale, what's going on?": "Salut Hale, qu'est-ce qui se passe?",
+    "Hey, it's Hale. I find what's on for kids near you. What's your postal code? I'll show you what's on this week.": "Salut, c’est Hale. Je trouve ce qui se passe pour les enfants près de chez toi. C’est quoi ton code postal? Je te montre ce qu’il y a cette semaine.",
+    "How did swim go? One line is plenty.": "La natation, ça s’est passé comment? Une ligne suffit.",
+    "How do I ease my toddler’s separation anxiety at daycare drop-off?": "Comment j’apaise l’angoisse de séparation de mon tout-petit à la garderie?",
+    "How do I handle constant fighting between my kids?": "Comment je gère les chicanes constantes entre mes enfants?",
+    "How do I handle my toddler’s tantrums?": "Comment je gère les crises de mon tout-petit?",
+    "How do I know my toddler is ready to potty train?": "Comment je sais si mon tout-petit est prêt pour la propreté?",
+    "How do I set boundaries with my teenager without pushing them away?": "Comment je mets des limites avec mon ado sans le pousser à s’éloigner?",
+    "How do I set screen time limits for my school-age child?": "Comment je limite les écrans pour mon enfant d’âge scolaire?",
+    "How do I start?": "Comment je commence?",
+    "How do I stop the nightly homework battles with my child?": "Comment j’arrête les batailles de devoirs, tous les soirs?",
+    "How much screen time is okay for a toddler?": "Combien de temps d’écran pour un tout-petit?",
+    "How often will Hale text me?": "Hale va me texter combien de fois?",
+    "If the class you wanted is full, Hale keeps an eye on it and texts you when a place opens.": "Si le cours que tu voulais est complet, Hale continue de le surveiller et t’écrit quand une place se libère.",
+    "In your group chats": "Dans tes groupes texto",
+    "Is Hale a person?": "Est-ce que Hale est une personne?",
+    "Is Hale official?": "Est-ce que Hale est officiel?",
+    "Is Hale right for your family?": "Hale convient-il à ta famille?",
+    "Is it free?": "C’est gratuit?",
+    "Is my co-parent free?": "L’autre parent, c’est gratuit pour lui aussi?",
+    "It remembers each kid": "Il se souvient de chaque enfant",
+    "It’s never sold or used for ads. Reply STOP and the texts stop. Our privacy policy covers what Hale keeps and why, and how to have it deleted.": "Ce n’est jamais vendu ni utilisé pour des pubs. Réponds STOP et les textos arrêtent. Notre politique de confidentialité dit ce que Hale garde et pourquoi, et comment le faire supprimer.",
+    "I’ll grab both Tue. You do Thu?": "Je prends les deux mardi. Tu fais jeudi?",
+    "Jen driving": "Jen conduit",
+    "Joint party for Leo and Aria? Somewhere indoor 🎈": "Une fête commune pour Leo et Aria? Quelque part à l’intérieur 🎈",
+    "Jump to": "Aller à",
+    "Just added": "Ajouté",
+    "Just you": "Juste toi",
+    "Leo & Aria’s party": "La fête de Leo et Aria",
+    "Leo’s soccer": "Le soccer de Leo",
+    "Libraries, family centres and play mornings you can just show up to.": "Bibliothèques, centres familiaux et matins de jeu où tu peux juste arriver.",
+    "Library playgroup": "Groupe de jeu à la bibliothèque",
+    "Live find": "Recherche en direct",
+    "Maya too!": "Maya aussi!",
+    "Mei driving": "Mei conduit",
+    "Mei, Tom, Hale": "Mei, Tom, Hale",
+    "Mia is 6 and loves swimming and drawing. Theo is 3. Thursdays I think are soccer, tell me if that changed.": "Mia a 6 ans et elle aime la natation et le dessin. Theo a 3 ans. Le jeudi je crois que c’est le soccer, dis-moi si ça a changé.",
+    "Mia · 4:30 PM": "Mia · 16 h 30",
+    "Mon": "lun.",
+    "Near you, by age": "Près de chez toi, selon l’âge",
+    "Newborn": "Nouveau-né",
+    "Nightly homework standoffs usually come from a power struggle, not laziness. Shifting from enforcer to supporter, grounded in Siegel and Markham.": "Les batailles de devoirs, le soir, viennent souvent d’un rapport de force, pas de la paresse. Passer de « je fais appliquer » à « je suis à côté », d’après Siegel et Markham.",
+    "No account": "Pas de compte",
+    "No app": "Pas d’appli",
+    "No, and it never pretends to be. Hale is built by Village Hale Technologies Inc., a small parent-founded company. Write to aloha@villagehale.com and a real person reads it.": "Non, et il ne prétend jamais l’être. Hale est conçu par Village Hale Technologies Inc., une petite entreprise fondée par des parents. Écris à aloha@villagehale.com et une vraie personne le lit.",
+    "No. Hale works in iMessage and regular texts. Add it to a group chat, or text it on its own.": "Non. Hale marche dans iMessage et les textos ordinaires. Ajoute-le à un groupe, ou texte-le tout seul.",
+    "No. Hale works in iMessage and regular texts. The website is only there if you want to look back at what Hale has sent.": "Non. Hale marche dans iMessage et les textos ordinaires. Le site est là seulement si tu veux revoir ce que Hale a envoyé.",
+    "Noah, Lily · 5:30 PM": "Noah, Lily · 17 h 30",
+    "Not in a group?": "Pas dans un groupe?",
+    "Not yet. Hale finds the class, watches for spots and texts you the link before sign-ups open. You register yourself. Signing up for you is coming later, and only when you say yes.": "Pas encore. Hale trouve le cours, surveille les places et t’envoie le lien avant l’ouverture des inscriptions. C’est toi qui t’inscris. L’inscription à ta place viendra plus tard, et seulement si tu dis oui.",
+    "Not yet. Today Hale asks how it went, and uses your answer to pick what to send you next.": "Pas encore. Aujourd’hui Hale demande comment ça s’est passé, et s’en sert pour choisir ce qu’il t’envoie ensuite.",
+    "More done for you, all year.": "Plus de choses faites pour toi, toute l’année.",
+    "On a laptop?": "Sur un ordinateur?",
+    "On your own, or in a group.": "Tout seul, ou dans un groupe.",
+    "One quick question after the first class. Your answer shapes what Hale sends you next.": "Une petite question après le premier cours. Ta réponse change ce que Hale t’envoie ensuite.",
+    "Only Free is available today.": "Pour l’instant, seul le forfait Gratuit est offert.",
+    "Only what’s said in that chat. Nothing from your own calendar, inbox or 1:1 texts with Hale shows up in a group.": "Seulement ce qui se dit dans ce groupe. Rien de ton calendrier, de ta boîte ou de tes textos seul à seul avec Hale n’apparaît dans un groupe.",
+    "Only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class. Reply LESS for fewer, or STOP to end it.": "Seulement quand il y a une raison : un rappel avant les inscriptions, le lien la veille, une question après le premier cours. Réponds LESS pour en avoir moins, ou STOP pour arrêter.",
+    "Or just text Hale.": "Ou texte simplement Hale.",
+    "Our mission": "Notre mission",
+    "Parent and tot, learn-to-swim levels, and when the next session opens.": "Parent-enfant, les niveaux de natation, et quand la prochaine session ouvre.",
+    "Parent-built in Georgetown, Ontario.": "Fait par des parents, à Georgetown, en Ontario.",
+    "Parenting guides": "Guides parentaux",
+    "Plans on your calendar": "Les plans dans ton calendrier",
+    "Playdate this weekend? Ava’s free Sat morning": "On se voit pour jouer cette fin de semaine? Ava est libre samedi matin",
+    "Playdate: story time + park": "Rendez-vous de jeu : conte + parc",
+    "Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.": "Plus, c’est plus de choses faites pour toi, toute l’année : la mémoire de l’année, et les inscriptions faites pour toi quand tu dis oui. Max, c’est le maximum de ce que Hale peut faire : tout Plus, les limites les plus hautes pour les recherches et la surveillance des places, le soutien prioritaire, et les inscriptions de toute une saison d’un coup.",
+    "Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.": "La propreté marche mieux quand on suit les signes que l’enfant est prêt, pas un âge fixe. Les signes physiques et de comportement, et une approche sans pression.",
+    "Practical guides to the questions parents search, grounded in trusted parenting-health frameworks and honest about their limits.": "Des guides concrets pour les questions que les parents cherchent, appuyés sur des cadres reconnus en santé parentale, et honnêtes sur leurs limites.",
+    "Pricing": "Tarifs",
+    "Priority support": "Soutien prioritaire",
+    "Privacy and safety": "Confidentialité et sécurité",
+    "Privacy and your data": "Confidentialité et tes données",
+    "Priya, Jen, Hale": "Priya, Jen, Hale",
+    "Questions": "Questions",
+    "Questions about your kids’ year get an answer the same minute.": "Les questions sur l’année de tes enfants ont une réponse dans la minute.",
+    "Questions, feedback, a class other families should know about. We read every note.": "Questions, commentaires, un cours que d’autres familles devraient connaître. On lit chaque message.",
+    "Read the guide": "Lire le guide",
+    "Rec programs": "Loisirs",
+    "Remembered: Mia loves swim": "Retenu : Mia aime la natation",
+    "Reminder": "Rappel",
+    "Reminder set · Mon 7 PM": "Rappel · lun. 19 h",
+    "Reminds you": "Te rappelle",
+    "Reminds you before it opens": "Te rappelle avant l’ouverture",
+    "Reply STOP anytime": "Réponds STOP quand tu veux",
+    "Room 4 parents 🍎": "Parents du local 4 🍎",
+    "SAT": "SAM",
+    "Same swim class for all three kids this winter?": "Le même cours de natation pour les trois enfants cet hiver?",
+    "Same swim class, three families": "Même cours de natation, trois familles",
+    "Sat": "sam.",
+    "Saturday crew": "La gang du samedi",
+    "Saturdays 9:30 at the community pool has room for all three. Sign-ups open Tuesday at 7. I’ll send you each the link the night before.": "Samedi à 9 h 30, la piscine du centre a de la place pour les trois. Les inscriptions ouvrent mardi à 19 h. Je t’envoie le lien la veille au soir, et aux autres parents aussi.",
+    "Save to contacts": "Enregistrer dans les contacts",
+    "Say hello.": "Dis bonjour.",
+    "Say hi to Hale.": "Dis salut à Hale.",
+    "Say how old the kids are and when you’re free. Hale answers with a few good options, not thirty.": "Dis l’âge des enfants et quand tu es libre. Hale répond avec quelques bonnes options, pas trente.",
+    "Say who’s taking them. Hale keeps track and reminds that person the night before.": "Dis qui les emmène. Hale le retient et rappelle cette personne la veille.",
+    "Scan the code with your phone’s camera, or copy the number and text it from your phone.": "Scanne le code avec l’appareil photo de ton téléphone, ou copie le numéro et texte-le depuis ton téléphone.",
+    "School age": "Âge scolaire",
+    "See Plus and Max pricing.": "Voir les tarifs Plus et Max.",
+    "See how it works": "Voir comment ça marche",
+    "Send the message above. Hale asks where you are, then shows you what’s on this week.": "Envoie le message plus haut. Hale demande où tu es, puis te montre ce qu’il y a cette semaine.",
+    "Separation anxiety at drop-off is a normal sign of healthy attachment. A short, warm, consistent goodbye routine — and what the research-backed frameworks suggest.": "L’angoisse au départ est un signe normal d’un attachement solide. Un au revoir court, chaud et toujours pareil — et ce que les cadres appuyés sur la recherche proposent.",
+    "Shared with Alex": "Partagé avec Alex",
+    "Shared with your co-parent": "Partagé avec l’autre parent",
+    "She loved it. Pool was freezing 🥶": "Elle a adoré. La piscine était gelée 🥶",
+    "Short, fragmented newborn sleep is developmentally normal, not a problem to fix. What to expect in the first months and what actually helps.": "Le sommeil du nouveau-né, court et en morceaux, est normal pour son âge, pas un problème à régler. À quoi s’attendre les premiers mois, et ce qui aide vraiment.",
+    "Sibling conflict is normal and even useful for learning to negotiate. How to step back from refereeing and coach conflict-resolution skills, grounded in Markham and Siegel.": "Les chicanes entre frères et sœurs sont normales, et même utiles pour apprendre à négocier. Comment arrêter d’arbitrer et les aider à se débrouiller, d’après Markham et Siegel.",
+    "Sign-ups done for you, when you say yes": "Inscriptions faites pour toi, quand tu dis oui",
+    "Sign-ups for a whole season in one go": "Les inscriptions de toute une saison, d’un coup",
+    "Six kinds of things worth doing.": "Six sortes de choses qui valent le coup.",
+    "Soccer": "Soccer",
+    "Soccer carpool 🚗": "Covoiturage de soccer 🚗",
+    "Soccer, skating, gymnastics and the rest, by age and day of the week.": "Soccer, patin, gymnastique et le reste, selon l’âge et le jour.",
+    "Solids usually start around six months, once a baby can sit up without support, has good head and neck control, and shows interest in food. The readiness signs and Canadian guidance.": "Les solides commencent en général vers six mois, quand bébé tient assis, contrôle bien sa tête et son cou, et s’intéresse à la nourriture. Les signes qu’il est prêt, et les recommandations canadiennes.",
+    "Some moodiness is normal in adolescence, but certain changes warrant a professional conversation. The warning signs, and how to open the door without pushing your teen away.": "Un peu de maussaderie est normale à l’adolescence, mais certains changements méritent d’en parler à un professionnel. Les signes, et comment ouvrir la porte sans pousser ton ado à s’éloigner.",
+    "Sports": "Sports",
+    "Standard message rates apply; reply STOP any time. Your data is never sold or used for ads; see our privacy policy.": "Les tarifs habituels s’appliquent; réponds STOP quand tu veux. Tes données ne sont jamais vendues ni utilisées pour des pubs; vois notre politique de confidentialité.",
+    "Start a group with them and Hale. Same week, same reminders, on their own phone. Always free.": "Pars un groupe avec eux et Hale. La même semaine, les mêmes rappels, sur leur propre téléphone. Toujours gratuit.",
+    "Start a group with them and Hale’s number, then say hi. Hale answers there, for everyone.": "Pars un groupe avec eux et le numéro de Hale, puis dis salut. Hale répond là, pour tout le monde.",
+    "Still wondering? Just ask.": "Tu te demandes encore? Demande, tout simplement.",
+    "Story time at the library at 10, then the playground next door?": "Heure du conte à la bibliothèque à 10 h, puis le parc à côté?",
+    "Story time! Link please": "L’heure du conte! Le lien, stp",
+    "Story times and drop-ins": "Heures du conte et jeux libres",
+    "Story times, drop-in play, swim, camps and rec programs. Tell Hale where you are and how old the kids are, and it finds what’s on.": "Heures du conte, jeu libre, natation, camps de jour et loisirs. Dis à Hale où tu es et l’âge des enfants, et il trouve ce qu’il y a.",
+    "Straight answers about what Hale does, what it costs and how your family’s data is handled.": "Des réponses directes sur ce que Hale fait, ce que ça coûte, et comment les données de ta famille sont traitées.",
+    "Summer, March break and days off school, with the date sign-ups open.": "L’été, la relâche et les congés, avec la date où les inscriptions ouvrent.",
+    "Swim lessons": "Cours de natation",
+    "Swim registration opens": "Les inscriptions à la natation ouvrent",
+    "Swim this winter? 🏊": "La natation cet hiver? 🏊",
+    "Swim, Swimmer 3": "Natation, Swimmer 3",
+    "Swim, camps, drop-ins, library programs, rec classes and things to do this weekend, picked for your kids’ ages and where you live. Every find comes with the page it came from.": "Natation, camps de jour, jeux libres, programmes de bibliothèque, cours de loisirs et idées pour la fin de semaine, choisis selon l’âge de tes enfants et où tu habites. Chaque trouvaille arrive avec la page d’où elle vient.",
+    "Swim, camps, drop-ins, the library down the street. Picked for your kids’ ages, from the places that run them.": "Natation, camps de jour, jeux libres, la bibliothèque au coin. Choisis selon l’âge de tes enfants, à partir des endroits qui les organisent.",
+    "THU": "JEU",
+    "TUE": "MAR",
+    "Tantrums are a normal part of toddler development, not misbehaviour to punish away. A calm, connection-first approach grounded in Markham, Lansbury, and Siegel.": "Les crises font partie du développement des tout-petits, ce n’est pas une mauvaise conduite à punir. Une approche calme, le lien d’abord, d’après Markham, Lansbury et Siegel.",
+    "Teenager": "Ado",
+    "Teens need both autonomy and limits. How to hold clear boundaries while keeping the relationship open, grounded in Siegel’s work on the adolescent brain.": "Les ados ont besoin d’autonomie et de limites. Comment garder des frontières claires sans fermer la relation, d’après le travail de Siegel sur le cerveau adolescent.",
+    "Text Hale": "Texte Hale",
+    "Text Hale like you’d text a friend.": "Texte Hale comme tu texterais un ami.",
+    "Text Hale on your own. Same finds, same reminders, just the two of you.": "Texte Hale de ton côté. Les mêmes trouvailles, les mêmes rappels, juste toi et Hale.",
+    "Text Hale the kids’ ages and where you are. It sends a few good options the same minute.": "Texte à Hale l’âge des enfants et où tu es. Il envoie quelques bonnes options dans la minute.",
+    "Text Hale your question. It answers in a line or two, the same minute.": "Texte ta question à Hale. Il répond en une ligne ou deux, dans la minute.",
+    "Text Hale. It answers with your child’s age in mind, in a line or two.": "Texte Hale. Il répond en pensant à l’âge de ton enfant, en une ligne ou deux.",
+    "Text the number. Hale asks where you are and how old the kids are, then shows you what’s on this week. Anything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.": "Texte le numéro. Hale demande où tu es et l’âge des enfants, puis te montre ce qu’il y a cette semaine. Le reste, il le demande plus tard, seulement quand il en a besoin. Hale ne texte jamais un numéro qui ne lui a pas écrit en premier.",
+    "Thanks, that helps. I’ll use it when I pick what to send you next.": "Merci, ça aide. Je m’en sers pour choisir ce que je t’envoie ensuite.",
+    "The highest limits on searches and spot watches": "Les limites les plus hautes pour les recherches et la surveillance des places",
+    "The most Hale can do.": "Le maximum de ce que Hale peut faire.",
+    "The logistics": "La logistique",
+    "The people": "Les gens",
+    "The widely recommended safe-sleep basics for babies — back to sleep, a bare crib, and room-sharing — with the Canadian guidance behind them.": "Les bases du sommeil sécuritaire, largement recommandées — sur le dos, un lit dégagé, et partager la chambre — avec les recommandations canadiennes derrière.",
+    "Things to do with your kids, near you.": "Des choses à faire avec tes enfants, près de chez toi.",
+    "This week": "Cette semaine",
+    "This weekend": "Cette fin de semaine",
+    "Three nearby:\n1. Parent & tot swim (ages 2–4), 9:15 a.m.\n2. Library story time (ages 2–5), 10:30 a.m.\n3. Free drop-in play at the community centre, 10 to noon\nWant the links?": "Trois pas loin :\n1. Bain parent-enfant (2–4 ans), 9 h 15\n2. Heure du conte (2–5 ans), 10 h 30\n3. Jeu libre au centre communautaire, de 10 h à midi\nTu veux les liens?",
+    "Thu": "jeu.",
+    "Toddler": "Tout-petit",
+    "Tom driving": "Tom conduit",
+    "Tomorrow · 7:00 a.m.": "Demain · 7 h",
+    "Tomorrow: fall programs at the rec centre open 7:00 a.m. for Mia. Sign in tonight and have the page open.": "Demain : les programmes d’automne du centre de loisirs ouvrent à 7 h pour Mia. Connecte-toi ce soir et laisse la page ouverte.",
+    "Try it": "Essaie",
+    "Tue": "mar.",
+    "Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+). Want me to track RSVPs?": "Deux places pas loin prennent des groupes de 8 le samedi : le gym d’escalade (3–7 ans) ou l’atelier de poterie (4 ans et +). Tu veux que je suive les réponses?",
+    "Two parents building the helper we wanted.": "Deux parents qui bâtissent l’aide qu’on aurait voulu avoir.",
+    "Two ways to start": "Deux façons de commencer",
+    "Unlimited chat": "Textos illimités",
+    "Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.": "Textos illimités, tout seul ou dans tes groupes. Hale trouve ce qui se passe, surveille les places et te rappelle avant les inscriptions.",
+    "WED": "MER",
+    "Want me to add it for everyone?": "Tu veux que je l’ajoute pour tout le monde?",
+    "Watches for a spot": "Surveille une place",
+    "Watches for spots": "Guette les places",
+    "We’re in, I can drive": "On est partants, je peux conduire",
+    "We’re small, parent-built and early, so a real person reads what you send. Email is the fastest way to reach us.": "On est petits, faits par des parents, et tout au début, alors une vraie personne lit ce que tu envoies. Le courriel est le plus rapide.",
+    "What Hale does": "Ce que Hale fait",
+    "What Hale looks for": "Ce que Hale cherche",
+    "What about our privacy?": "Et notre vie privée?",
+    "What are the safe sleep basics for a newborn?": "Quelles sont les bases du sommeil sécuritaire pour un nouveau-né?",
+    "What are warning signs of a mental health problem in my teenager?": "Quels signes me disent qu’un ado ne va pas bien?",
+    "What do other parents in the group see?": "Qu’est-ce que les autres parents du groupe voient?",
+    "What do you know about us?": "Qu’est-ce que tu sais sur nous?",
+    "What does Hale do in a group?": "Que fait Hale dans un groupe?",
+    "What does Hale find?": "Qu’est-ce que Hale trouve?",
+    "What happens to our data?": "Qu’arrive-t-il à nos données?",
+    "What is Hale?": "C’est quoi, Hale?",
+    "What parents ask first.": "Ce que les parents demandent en premier.",
+    "What should I do when my toddler bites?": "Que faire quand mon tout-petit mord?",
+    "What you’ll get back": "Ce que tu vas recevoir",
+    "What you’ll send": "Ce que tu vas envoyer",
+    "What’s on this weekend?": "Qu’est-ce qu’il y a cette fin de semaine?",
+    "What’s the difference between Plus and Max?": "C’est quoi la différence entre Plus et Max?",
+    "When a class fills": "Quand un cours se remplit",
+    "When and how do I introduce peanuts to my baby?": "Quand et comment j’introduis les arachides à mon bébé?",
+    "When classes open": "Quand les cours ouvrent",
+    "When do Plus and Max open?": "Quand est-ce que Plus et Max ouvrent?",
+    "When is my baby ready to start solid foods?": "Quand mon bébé est-il prêt pour les solides?",
+    "When the parts they add are ready. Until then, everything Hale does is free.": "Quand les parties qu’ils ajoutent sont prêtes. D’ici là, tout ce que Hale fait est gratuit.",
+    "Who, when and where, kept straight.": "Qui, quand et où, sans s’emmêler.",
+    "Who’s driving this week": "Qui conduit cette semaine",
+    "Who’s driving, sorted": "Qui conduit, c’est réglé",
+    "Who’s driving?": "Qui conduit?",
+    "Why does my newborn only sleep in short stretches?": "Pourquoi mon nouveau-né ne dort-il que par petits bouts?",
+    "Why does my newborn want to feed constantly in the evening?": "Pourquoi mon nouveau-né veut-il boire sans arrêt le soir?",
+    "Why “Hale”": "Pourquoi « Hale »",
+    "Will Hale tell me if a class is any good?": "Hale va me dire si un cours est bon?",
+    "With your co-parent or crew": "Avec l’autre parent ou la gang",
+    "Works in your group chats": "Dans tes groupes texto",
+    "Year memory, season to season": "La mémoire de l’année, saison après saison",
+    "Yes. Hale is free, with unlimited chat. Families who join now get every feature free until paid plans start.": "Oui. Hale est gratuit, textos illimités. Les familles qui commencent maintenant ont toutes les fonctions gratuites, jusqu’à ce que les forfaits payants commencent.",
+    "Yes. Start a group with Hale and whoever shares the load: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there.": "Oui. Pars un groupe avec Hale et ceux qui partagent la charge : l’autre parent, le covoiturage, d’autres parents du cours. Demande dans le groupe et Hale répond là.",
+    "Your co-parent sees the same plan": "L’autre parent voit le même plan",
+    "Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details.": "Les données de ta famille ne sont jamais vendues ni utilisées pour des pubs. Rien de ta boîte ou de ton calendrier personnel n’apparaît dans un groupe texto, et STOP arrête tout quand tu veux. Notre politique de confidentialité a les détails.",
+    "Your first message is already written. You send it, and Hale replies the same minute.": "Ton premier message est déjà écrit. Tu l’envoies, et Hale répond dans la minute.",
+    "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.": "Les plans de tes enfants sont déjà dans les groupes texto. Ajoute Hale : il trouve quoi faire, aide tout le monde à s’entendre, et le met au calendrier.",
+    "Your kids’ year,": "L’année de tes enfants,",
+    "aloha@villagehale.com": "aloha@villagehale.com",
+    "handled.": "sans casse-tête.",
+    "in Swimmer 3, Saturdays 9:30. Here’s the": " en Swimmer 3, le samedi à 9 h 30. Voici la ",
+    "is Hawaiian for home. The mark is a honu, a sea turtle.": "veut dire « maison » en hawaïen. La marque est une honu, une tortue de mer.",
+    "library page": "page de la bibliothèque",
+    "now": "à l’instant",
+    "or $159 CAD/yr, about three months free": "ou 159 $ CAD/an, environ trois mois gratuits",
+    "or $329 CAD/yr, about three months free": "ou 329 $ CAD/an, environ trois mois gratuits",
+    "privacy policy": "politique de confidentialité",
+    "sign-up page": "page d’inscription"
   }
 }

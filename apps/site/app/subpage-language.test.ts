@@ -5,19 +5,14 @@ import postcss from 'postcss';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import AboutPage from './[locale]/about/page.js';
-import ActivityCityRoute from './[locale]/activities/[city]/page.js';
 import ActivitiesHub from './[locale]/activities/page.js';
 import AnswerRoute from './[locale]/answers/[slug]/page.js';
 import AnswersIndexPage from './[locale]/answers/page.js';
-import BramptonSwimPage from './[locale]/brampton-swim-registration/page.js';
 import ContactPage from './[locale]/contact/page.js';
 import FaqPage from './[locale]/faq/page.js';
 import PricingPage from './[locale]/pricing/page.js';
 import PrivacyPage from './[locale]/privacy/page.js';
 import TermsPage from './[locale]/terms/page.js';
-import TorontoFallPage from './[locale]/toronto-fall-recreation-registration/page.js';
-import TorontoSwimPage from './[locale]/toronto-swim-registration/page.js';
-import YmcaSwimPage from './[locale]/ymca-gta-swim-registration/page.js';
 
 /**
  * The subpage design language (2026-08) — the five devices that carried the
@@ -67,48 +62,31 @@ const pages = {
 const slugHtml = await renderAsync(
   AnswerRoute({ params: Promise.resolve({ slug: 'introducing-peanuts-to-baby', ...EN }) }),
 );
-const cityHtml = await renderAsync(
-  ActivityCityRoute({ params: Promise.resolve({ city: 'toronto', ...EN }) }),
-);
-const torontoFallHtml = await renderAsync(TorontoFallPage({ params: Promise.resolve(EN) }));
-const torontoSwimHtml = await renderAsync(TorontoSwimPage({ params: Promise.resolve(EN) }));
-const bramptonSwimHtml = await renderAsync(BramptonSwimPage({ params: Promise.resolve(EN) }));
-const ymcaSwimHtml = await renderAsync(YmcaSwimPage({ params: Promise.resolve(EN) }));
 const privacyHtml = await renderAsync(PrivacyPage({ params: Promise.resolve(EN) }));
 const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 
 /** The eight pages that wear the pulled-up headline, and the sentence each must
  * still read as once the words are split apart. */
-const PULLED_UP: [name: string, html: string, headline: string][] = [
+const REDESIGN_H1: [name: string, html: string, headline: string][] = [
   ['/about', pages['/about'], 'A planner for your kids’ year.'],
-  ['/pricing', pages['/pricing'], 'Free while Hale is new.'],
+  ['/pricing', pages['/pricing'], 'Free, with unlimited chat.'],
   ['/faq', pages['/faq'], 'Is Hale right for your family?'],
   ['/contact', pages['/contact'], 'Say hello.'],
   ['/answers', pages['/answers'], 'Calm, cited guidance for every stage.'],
-  ['/activities', pages['/activities'], 'Things to do with your kids, by city.'],
-  ['/answers/[slug]', slugHtml, 'When and how do I introduce peanuts to my baby?'],
-  ['/activities/[city]', cityHtml, 'Things to do with your kids in Toronto'],
-  [
-    '/toronto-fall-recreation-registration',
-    torontoFallHtml,
-    'Toronto fall recreation registration 2026: the mornings, and what is left',
-  ],
-  [
-    '/toronto-swim-registration',
-    torontoSwimHtml,
-    'Toronto swim registration 2026: it is not a separate day',
-  ],
-  [
-    '/brampton-swim-registration',
-    bramptonSwimHtml,
-    'Brampton swim registration: non-residents open Monday, Sept 21',
-  ],
-  [
-    '/ymca-gta-swim-registration',
-    ymcaSwimHtml,
-    'YMCA Greater Toronto swim: listings still take spots to Oct 10',
-  ],
+  ['/activities', pages['/activities'], 'Things to do with your kids, near you.'],
 ];
+
+const PULLED_UP: [name: string, html: string, headline: string][] = [
+  ['/answers/[slug]', slugHtml, 'When and how do I introduce peanuts to my baby?'],
+];
+
+describe('the redesign headlines', () => {
+  it.each(REDESIGN_H1)('reads as its whole sentence on %s', (_name, html, headline) => {
+    expect(rawText(heading(html)).replace(/\u00a0/g, ' ')).toBe(headline);
+    expect(html).toContain('sp-h1');
+    expect(html).not.toContain('pull-word');
+  });
+});
 
 describe('the pulled-up headline', () => {
   it.each(PULLED_UP)('reads as its whole sentence on %s', (_name, html, headline) => {
@@ -147,9 +125,9 @@ describe('the pulled-up headline', () => {
   });
 
   it('staggers by word index, from zero, across the whole headline', () => {
-    const h1 = heading(pages['/about']);
+    const h1 = heading(slugHtml);
     const indices = [...h1.matchAll(/--w:\s*(\d+)/g)].map((m) => Number(m[1]));
-    expect(indices).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     // The beat runs across the style change rather than restarting at the accent.
     expect(h1.indexOf('--w:3')).toBeLessThan(h1.indexOf('--w:4'));
   });
@@ -170,13 +148,12 @@ describe('the pulled-up headline', () => {
     // (.v4-display / .v4-hero-h1), not the subpage pulled-up reveal. The two
     // never share the pull-word device — only the amber accent.
     const landing = readFileSync(
-      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
+      fileURLToPath(new URL('../components/redesign/home.tsx', import.meta.url)),
       'utf8',
     );
     expect(landing).not.toContain('pull-word');
     expect(landing).not.toContain('WordsPullUp');
-    expect(landing).toContain('v4-display');
-    expect(landing).toContain('v4-accent');
+    expect(landing).toContain('className="hero"');
   });
 });
 
@@ -197,51 +174,36 @@ describe('the accent is one device, whole site', () => {
 describe('/about — the locked page', () => {
   const html = pages['/about'];
 
-  it('says why now, in two sentences, and drops the old framing', () => {
+  it('says why now, and drops the old framing', () => {
     const text = rawText(html);
-    expect(text).toContain(
-      'What’s on near the kids gets missed; mornings fill in minutes; nobody asks how it went. Hale finds it, watches the date, asks after — by text.',
-    );
-    expect(text).not.toMatch(/not another app|another app|agentic|assistant|Anzhe/i);
+    expect(text.replace(/\u00a0/g, ' ')).toContain('Parent-built in Georgetown, Ontario.');
+    expect(text).toContain('Every parent should have someone who knows what’s on near them');
+    expect(text).not.toMatch(/agentic|Anzhe/i);
     expect(text).not.toMatch(/equity|ownership|cap table|cap-table/i);
   });
 
-  it('keeps Recommend → Prepare → Ask, and the Ask rung does not book', () => {
-    expect(html).toContain('Recommend');
-    expect(html).toContain('Prepare');
-    expect(html).toContain('Ask');
-    expect(rawText(html)).toContain('Hale does not book it for you.');
+  it('opens on the approved story line', () => {
+    expect(rawText(html)).toContain('Two parents building the helper we wanted.');
+    expect(rawText(html)).not.toContain('You register, and nothing happens without a yes');
   });
 
-  it('lines up two founders, Barton and Eugene, with local portraits and LinkedIn text links', () => {
+  it('lines up two founders, Barton and Eugene, with initials and LinkedIn text links', () => {
     const text = rawText(html);
     expect(text).toContain('Barton Dong');
     expect(text).toContain('Eugene Song');
     expect(text.indexOf('Barton Dong')).toBeLessThan(text.indexOf('Eugene Song'));
-    expect(text).toContain(', CEO');
-    expect(text).toContain(', CTO');
+    expect(text).toContain('CEO');
+    expect(text).toContain('CTO');
     expect(text).not.toContain('Anzhe');
-    // The profile slug stays in the href. The visible name does not.
     expect(html).toContain('href="https://linkedin.com/in/anzhe-dong"');
     expect(html).toContain('href="https://www.linkedin.com/in/yuhang-eugene-song-53b692172"');
     expect(html).not.toContain('media.licdn.com');
     expect(html).not.toContain('linkedin.com/dms');
     expect(html).not.toContain('x.com/therealbossdong');
     expect(html).not.toContain('github.com/donganzh');
-
-    const portraits = [...html.matchAll(/<img[^>]*class="founder-portrait"[^>]*>/g)].map(
-      (m) => m[0],
-    );
-    expect(portraits).toHaveLength(2);
-    for (const img of portraits) {
-      expect(img).toContain('alt=""');
-      expect(img).toContain('width="48"');
-      expect(img).toContain('height="48"');
-      expect(img).toMatch(/founder-(barton-dong|eugene-song)/);
-    }
-    expect(portraits[0]).toContain('founder-barton-dong');
-    expect(portraits[1]).toContain('founder-eugene-song');
-    // Two LinkedIn text links, one per line — the word is the link, not an icon.
+    expect(html).toContain('>BD<');
+    expect(html).toContain('>ES<');
+    expect(html).not.toContain('founder-portrait');
     expect(html.match(/>LinkedIn</g)).toHaveLength(2);
   });
 
@@ -344,59 +306,41 @@ describe('/about — the locked page', () => {
 describe('/pricing — the tier cards have anatomy', () => {
   const html = pages['/pricing'];
 
-  it('numbers the three tiers in ladder order, inside an ordered list', () => {
-    expect(html).toContain('<ol');
-    for (const [i, tier] of PLAN_TIERS_ORDERED.entries()) {
-      // Split on the class attribute's closing quote, so the card's own parts
-      // (numbered-card-head / -num / -list) do not each open a new slice.
-      const card = html.split('numbered-card">')[i + 1] ?? '';
-      expect(card).toContain(PLAN_DISPLAY[tier].name);
-      expect(card).toContain(`0${i + 1}`);
+  it('names the three tiers in ladder order', () => {
+    let cursor = 0;
+    for (const tier of PLAN_TIERS_ORDERED) {
+      const at = html.indexOf(PLAN_DISPLAY[tier].name, cursor);
+      expect(at, PLAN_DISPLAY[tier].name).toBeGreaterThan(cursor);
+      cursor = at;
     }
-    expect(html.match(/numbered-card-num/g)).toHaveLength(PLAN_TIERS_ORDERED.length);
+    expect(html).toContain('$0');
+    expect(html).toContain('$19');
+    expect(html).toContain('$39');
+    expect(html).toContain('CAD/mo');
   });
 
-  it('titles each card with its price and lists every feature as a check', () => {
-    const marketingFree = ['Text Hale', 'Rec dates watched', 'Answers', 'Founding rate'];
-    for (const feature of marketingFree) {
-      expect(html).toContain(feature);
-    }
-    expect(html).not.toContain('Your village feed');
-    expect(html).not.toContain('Companion:');
-    for (const tier of PLAN_TIERS_ORDERED.filter((t) => t !== 'free')) {
+  it('lists every shipped feature, and marks Plus and Max coming soon', () => {
+    for (const tier of PLAN_TIERS_ORDERED) {
       for (const feature of PLAN_DISPLAY[tier].features) {
-        expect(html).toContain(feature);
+        expect(rawText(html)).toContain(feature);
       }
     }
-    expect(html.match(/numbered-card-list/g)).toHaveLength(PLAN_TIERS_ORDERED.length);
-    const features =
-      marketingFree.length +
-      PLAN_TIERS_ORDERED.filter((t) => t !== 'free').reduce(
-        (total, tier) => total + PLAN_DISPLAY[tier].features.length,
-        0,
-      );
-    expect(html.match(/lucide-check/g)).toHaveLength(features);
+    expect(html.match(/Coming soon/g)).toHaveLength(2);
+    expect(html).toContain('>Text Hale<');
   });
 
-  it('keeps the verified free-first copy exactly as it was reviewed', () => {
+  it('keeps the free-first footnote', () => {
     const text = rawText(html).replace(/\s+/g, ' ');
-    expect(text).toContain(
-      'The whole core — every stage, every child — is free. Plus and Family add more of the year watched with you, as each part ships.',
-    );
-    expect(text).toContain(
-      'The whole core is free. Paid plans add more of the year, never a paywall on the watching.',
-    );
+    expect(text).toContain('Only Free is available today.');
     expect(text).toContain('Founding families join free.');
-    expect(text).toContain(
-      'Hale is free to start. Plus and Family open as their integrations ship.',
-    );
+    expect(text).toContain('about three months free');
   });
 
   it('drops the pre-pivot village headline', () => {
     expect(heading(html)).not.toContain('build the village');
     // Positive control: the headline is present and is the new one, so the
     // absence above is a real replacement rather than a missing <h1>.
-    expect(rawText(heading(html))).toBe('Free while Hale is new.');
+    expect(rawText(heading(html)).replace(/\u00a0/g, ' ')).toBe('Free, with unlimited chat.');
   });
 });
 
@@ -408,7 +352,7 @@ describe('the pages keep the doors they had', () => {
       expect(html, `${name} must not link the deleted wizard`).not.toContain('/onboarding');
     }
     // Positive control: /about really does still close on an action.
-    expect(pages['/about']).toContain('btn-on-navy');
+    expect(pages['/about']).toContain('Text Hale');
   });
 
   it('keeps every page’s conversion CTA on the shared front door', () => {
@@ -427,7 +371,9 @@ describe('the policies stay quiet', () => {
   it('wears no headline reveal — one fade on the masthead is the whole motion', () => {
     for (const [name, html] of Object.entries(legal)) {
       expect(html, `${name} must not pull up its title`).not.toContain('pull-word');
-      expect(html).toContain('legal-measure rise rise-1');
+      expect(html).toContain('sp-legal');
+      expect(html).toContain('lg-toc');
+      expect(html).not.toContain('hs-close');
     }
   });
 

@@ -44,5 +44,6 @@ describe('llms.txt', () => {
     expect(text.toLowerCase()).not.toContain('family ai');
     expect(text.toLowerCase()).toContain('0–18');
     expect(text.toLowerCase()).toContain('not medical advice');
+    expect(text).not.toContain('/for-centres');
   });
 });

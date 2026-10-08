@@ -18,7 +18,7 @@ export function LogoMark({ size = 32, className }: { size?: number; className?: 
       width={size}
       height={size}
       priority
-      className={className}
+      className={['logo-tile', className].filter(Boolean).join(' ')}
       style={{
         width: size,
         height: size,

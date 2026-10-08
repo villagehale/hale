@@ -8,9 +8,9 @@ import {
 
 /**
  * Prices are the confirmed freemium model (CAD — Canada-first), asserted against
- * the spec, not copied from runtime: Free $0, Plus $9/mo or $79/yr, Family $19/mo
- * or $159/yr, each rendered with an explicit CAD label.
- * Tier names follow the standard plain convention (Free / Plus / Family). The
+ * the spec, not copied from runtime: Free $0, Plus $19/mo or $159/yr, Max $39/mo
+ * or $329/yr, each rendered with an explicit CAD label.
+ * Tier names are Free / Plus / Max. The `family` enum key is unchanged. The
  * display data is presentation-only and must not change the PlanTier enum values
  * (free/plus/family).
  */
@@ -20,10 +20,10 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
     expect(Object.keys(PLAN_DISPLAY).sort()).toEqual(['family', 'free', 'plus']);
   });
 
-  it('uses the standard plain tier names (Free / Plus / Family)', () => {
+  it('uses the public tier names (Free / Plus / Max)', () => {
     expect(PLAN_DISPLAY.free.name).toBe('Free');
     expect(PLAN_DISPLAY.plus.name).toBe('Plus');
-    expect(PLAN_DISPLAY.family.name).toBe('Family');
+    expect(PLAN_DISPLAY.family.name).toBe('Max');
   });
 
   it('drops the old cutesy names entirely', () => {
@@ -37,11 +37,11 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
     expect(PLAN_DISPLAY.free.monthlyPriceCad).toBe(0);
     expect(PLAN_DISPLAY.free.annualPriceCad).toBe(0);
 
-    expect(PLAN_DISPLAY.plus.monthlyPriceCad).toBe(9);
-    expect(PLAN_DISPLAY.plus.annualPriceCad).toBe(79);
+    expect(PLAN_DISPLAY.plus.monthlyPriceCad).toBe(19);
+    expect(PLAN_DISPLAY.plus.annualPriceCad).toBe(159);
 
-    expect(PLAN_DISPLAY.family.monthlyPriceCad).toBe(19);
-    expect(PLAN_DISPLAY.family.annualPriceCad).toBe(159);
+    expect(PLAN_DISPLAY.family.monthlyPriceCad).toBe(39);
+    expect(PLAN_DISPLAY.family.annualPriceCad).toBe(329);
   });
 
   it('annual is the better value — under twelve months of monthly for paid tiers', () => {
@@ -61,10 +61,11 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
     // VIL-318: Free is the number you text, not Village or Companion.
     // Casing matches apps/site PricingSection.freeFeatures (PR 549).
     expect(PLAN_DISPLAY.free.features).toEqual([
-      'Text Hale',
-      'Rec dates watched',
-      'Answers',
-      'Founding rate',
+      'Unlimited chat',
+      'Live find',
+      'A text when a spot opens',
+      'Group chats and your co-parent',
+      'A nudge when a weekend’s empty',
     ]);
   });
 
@@ -72,6 +73,29 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
     const features = PLAN_DISPLAY.free.features.join(' ');
     expect(features).not.toMatch(/village/i);
     expect(features).not.toMatch(/companion/i);
+  });
+
+  it('sells Plus and Max as features and usage, not seats', () => {
+    expect(PLAN_DISPLAY.plus.tagline).toBe('More done for you, all year.');
+    expect(PLAN_DISPLAY.plus.features).toEqual([
+      'Everything in Free',
+      'Year memory, season to season',
+      'Sign-ups done for you, when you say yes',
+    ]);
+    expect(PLAN_DISPLAY.family.tagline).toBe('The most Hale can do.');
+    expect(PLAN_DISPLAY.family.features).toEqual([
+      'Everything in Plus',
+      'The highest limits on searches and spot watches',
+      'Priority support',
+      'Sign-ups for a whole season in one go',
+    ]);
+    for (const tier of ['plus', 'family'] as const) {
+      const blob = `${PLAN_DISPLAY[tier].tagline} ${PLAN_DISPLAY[tier].features.join(' ')}`.toLowerCase();
+      expect(blob).not.toContain('every kid');
+      expect(blob).not.toContain('caregiver');
+      expect(blob).not.toContain('everyone who helps');
+      expect(blob).not.toContain('whole crew');
+    }
   });
 
   it('never sells multi-child or co-parent as paid features — both are free', () => {
@@ -93,10 +117,10 @@ describe('formatPlanPrice', () => {
   });
 
   it('shows per-month vs per-year for paid tiers, in explicit CAD', () => {
-    expect(formatPlanPrice('plus', 'monthly')).toBe('$9 CAD/mo');
-    expect(formatPlanPrice('plus', 'annual')).toBe('$79 CAD/yr');
-    expect(formatPlanPrice('family', 'monthly')).toBe('$19 CAD/mo');
-    expect(formatPlanPrice('family', 'annual')).toBe('$159 CAD/yr');
+    expect(formatPlanPrice('plus', 'monthly')).toBe('$19 CAD/mo');
+    expect(formatPlanPrice('plus', 'annual')).toBe('$159 CAD/yr');
+    expect(formatPlanPrice('family', 'monthly')).toBe('$39 CAD/mo');
+    expect(formatPlanPrice('family', 'annual')).toBe('$329 CAD/yr');
   });
 
   it('every tier formats in every period without throwing', () => {

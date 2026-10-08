@@ -23,7 +23,7 @@ describe('site chrome CTA', () => {
   it('prefills the French twin on a French page, still the cross-platform form', () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
     const cta = chromeCta('fr');
-    expect(cta.label).toBe('Texter Hale');
+    expect(cta.label).toBe('Texte Hale');
     expect(cta.href).toContain('sms:+16475551234?&body=');
     expect(cta.href).toContain('Salut%20Hale');
     expect(cta.href).toContain('%27');

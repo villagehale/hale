@@ -302,9 +302,6 @@ export function RegistrationGuidePage({
               </li>
             ))}
           </ul>
-          <p className="meta reading-measure mt-8" style={{ lineHeight: 1.6 }}>
-            {guide.footerNote}
-          </p>
         </div>
       </section>
 

@@ -3,6 +3,7 @@
 import type { PostHog } from 'posthog-js';
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { Locale } from '~/i18n/routing';
+import { CONSENT_EVENT, readConsent } from '~/lib/site/consent';
 import { type CapturedEvent, type EventProperties, PAGEVIEW, buildEvent } from './events';
 import { type SessionLike, readFirstTouchSourceCode } from './source-code';
 
@@ -110,20 +111,27 @@ export function PostHogProvider({
     // string like 'direct' — a bucket that means "no card" must not look like a card.
     const base: EventProperties = { locale, ...(sourceCode ? { source_code: sourceCode } : {}) };
 
-    void import('posthog-js').then(({ default: posthog }) => {
-      if (!active) return;
-      if (!posthog.__loaded) {
-        posthog.init(KEY, {
-          api_host: HOST ?? 'https://us.i.posthog.com',
-          ...POSTHOG_INIT_CONFIG,
-        });
-      }
-      const pageview = buildEvent(PAGEVIEW, base);
-      posthog.capture(pageview.event, pageview.properties);
-      setAnalytics({ client: posthog, base });
-    });
+    const start = () => {
+      if (!active || readConsent() !== 'granted') return;
+      void import('posthog-js').then(({ default: posthog }) => {
+        if (!active || readConsent() !== 'granted') return;
+        if (!posthog.__loaded) {
+          posthog.init(KEY, {
+            api_host: HOST ?? 'https://us.i.posthog.com',
+            ...POSTHOG_INIT_CONFIG,
+          });
+        }
+        const pageview = buildEvent(PAGEVIEW, base);
+        posthog.capture(pageview.event, pageview.properties);
+        setAnalytics({ client: posthog, base });
+      });
+    };
+
+    start();
+    window.addEventListener(CONSENT_EVENT, start);
     return () => {
       active = false;
+      window.removeEventListener(CONSENT_EVENT, start);
     };
   }, [locale]);
 
