@@ -38,19 +38,21 @@ function adsWindow(): AdsWindow | null {
 export function installGoogleAds(): void {
   const w = adsWindow();
   if (!w || w.__haleAds) return;
-  w.__haleAds = true;
-  w.dataLayer = w.dataLayer || [];
+  // A nested function loses the narrowing on `w`, so the closure uses `win`.
+  const win = w;
+  win.__haleAds = true;
+  win.dataLayer = win.dataLayer || [];
   // Google's loader reads Arguments objects, not arrays. A rest-param push
   // would drop Consent Mode.
   function gtag() {
     // biome-ignore lint/style/noArguments: gtag.js reads an Arguments object, not an array.
-    w.dataLayer?.push(arguments);
+    win.dataLayer?.push(arguments);
   }
-  w.gtag = gtag as Gtag;
-  w.gtag('consent', 'default', DENIED);
-  w.gtag('consent', 'update', GRANTED);
-  w.gtag('js', new Date());
-  w.gtag('config', GOOGLE_ADS_ID);
+  win.gtag = gtag as Gtag;
+  win.gtag('consent', 'default', DENIED);
+  win.gtag('consent', 'update', GRANTED);
+  win.gtag('js', new Date());
+  win.gtag('config', GOOGLE_ADS_ID);
   const script = document.createElement('script');
   script.async = true;
   script.src = GOOGLE_ADS_GTAG_SRC;
