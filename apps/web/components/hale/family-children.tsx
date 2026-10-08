@@ -160,11 +160,14 @@ export function FamilyChildren({
   emptyLabel = 'no kids added yet',
   addLabel = 'add a child',
   editLabel = 'edit',
+  fill = false,
 }: {
   kids: FamilyChild[];
   emptyLabel?: string;
   addLabel?: string;
   editLabel?: string;
+  /** One full-width row per child. The name keeps a minimum width and never breaks mid-word. */
+  fill?: boolean;
 }) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -174,7 +177,9 @@ export function FamilyChildren({
       {kids.length === 0 ? (
         <p className="font-display text-[1.5rem]">{emptyLabel}</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div
+          className={fill ? 'flex w-full flex-col gap-4' : 'grid grid-cols-1 md:grid-cols-2 gap-6'}
+        >
           {kids.map((child) =>
             editingId === child.id ? (
               <ChildForm
@@ -185,17 +190,29 @@ export function FamilyChildren({
                 onCancel={() => setEditingId(null)}
               />
             ) : (
-              <Card key={child.id}>
+              <Card key={child.id} className={fill ? 'w-full' : undefined}>
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
+                  <div
+                    className={
+                      fill
+                        ? 'flex min-w-32 flex-1 items-center gap-3'
+                        : 'flex min-w-0 items-center gap-3'
+                    }
+                  >
                     <Avatar
                       tone="child"
                       src={child.avatarUrl}
                       initials={childInitials(child.name, child.lastName)}
                       size={32}
                     />
-                    <div className="min-w-0" data-hale-pii>
-                      <p className="font-display text-[1.5rem] leading-tight break-words">
+                    <div className={fill ? 'min-w-32 flex-1' : 'min-w-0'} data-hale-pii>
+                      <p
+                        className={
+                          fill
+                            ? 'font-display text-[1.5rem] leading-tight overflow-hidden text-ellipsis whitespace-nowrap [overflow-wrap:normal] [word-break:normal]'
+                            : 'font-display text-[1.5rem] leading-tight break-words'
+                        }
+                      >
                         {child.name}
                       </p>
                       <p className="meta mt-1">{child.stageLabel}</p>

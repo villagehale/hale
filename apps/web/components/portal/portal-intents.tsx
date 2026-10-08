@@ -75,7 +75,7 @@ export function PortalIntents({ intents }: { intents: OnboardingIntent[] }) {
         onClick={() => void submit()}
         disabled={state === 'saving'}
       >
-        {state === 'saving' ? 'saving…' : 'save'}
+        {state === 'saving' ? 'Saving…' : 'Save'}
       </button>
     </>
   );

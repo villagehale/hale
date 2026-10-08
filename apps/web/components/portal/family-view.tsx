@@ -38,6 +38,7 @@ export function PortalFamily({
               emptyLabel="No kids yet."
               addLabel="Add a child"
               editLabel="Edit"
+              fill
             />
           </section>
           <section className={styles.card}>
