@@ -35,7 +35,9 @@ import type { Locale } from '~/i18n/routing';
  *
  * 2026-10-07: Sloane's redline. The product description, group chats, and the
  * approval model match what Hale does today. A paid-plans clause is included
- * without prices. Counsel should read the diff.
+ * without prices. That ISO date is the Toronto day the text was last edited,
+ * and it is what the public line shows in every locale. A later merge should
+ * bump it to the merge date. Counsel should read the diff.
  *
  * app.villagehale.com/terms is now a permanent 308 here (VIL-256) — kept forever,
  * because the mobile app, sent emails and stored consent records all name the old

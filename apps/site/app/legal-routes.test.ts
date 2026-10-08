@@ -112,6 +112,29 @@ describe('legal pages (long-form shell)', () => {
     expect(privacyHtml).toContain('href="/terms"');
   });
 
+  it('dates both policies on the Toronto day the text was last edited', async () => {
+    // Hard-coded calendar day, formatted in America/Toronto. UTC had already
+    // rolled to October 8 when the text was edited.
+    expect(privacyHtml).toContain('Last updated October 7, 2026');
+    expect(termsHtml).toContain('Last updated October 7, 2026');
+    expect(privacyHtml).not.toContain('October 8, 2026');
+    expect(termsHtml).not.toContain('October 8, 2026');
+    const fr = { params: Promise.resolve({ locale: 'fr' as const }) };
+    const zh = { params: Promise.resolve({ locale: 'zh' as const }) };
+    const frPrivacy = renderToStaticMarkup(await PrivacyPage(fr));
+    const frTerms = renderToStaticMarkup(await TermsPage(fr));
+    const zhPrivacy = renderToStaticMarkup(await PrivacyPage(zh));
+    const zhTerms = renderToStaticMarkup(await TermsPage(zh));
+    for (const html of [frPrivacy, frTerms]) {
+      expect(html).toContain('Dernière mise à jour le 7 octobre 2026');
+      expect(html).not.toContain('8 octobre 2026');
+    }
+    for (const html of [zhPrivacy, zhTerms]) {
+      expect(html).toContain('最后更新于 2026年10月7日');
+      expect(html).not.toContain('10月8日');
+    }
+  });
+
   it('says plainly that the document is not legal advice', () => {
     for (const html of [termsHtml, privacyHtml]) {
       expect(html).toContain('is not legal advice');

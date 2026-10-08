@@ -46,12 +46,10 @@ import type { Locale } from '~/i18n/routing';
  * where the code or a confirmed fact supports them (message retention, consent records,
  * Google Drive read-only, PostHog replay).
  *
- * 2026-10-08: the main database is hosted in Canada (Supabase region ca-central-1).
- * The page says that, and that some listed providers may process data outside
- * Canada, mainly in the United States. It names no city. The same day, the public
- * site's cookie banner: Google Ads and PostHog load only after Accept. Speed
- * Insights is described from Vercel's privacy page, which does not say it sets
- * no cookies. Counsel should read the diff.
+ * The public "last updated" line is the Toronto calendar day the text was last
+ * edited (2026-10-07), not the UTC day. A later merge should bump that line to
+ * the merge date. The Canada hosting sentence, the cookie banner, and the Speed
+ * Insights wording all landed in that same edit. Counsel should read the diff.
  *
  * app.villagehale.com/privacy is now a permanent 308 here (VIL-256), so this is
  * the only copy. Still noindexed by choice — whether a privacy policy should be
@@ -114,7 +112,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     <LegalLayout
       locale={locale}
       title="Privacy Policy"
-      lastUpdatedIso="2026-10-08"
+      lastUpdatedIso="2026-10-07"
       intro={
         <p>
           Hale is a texted assistant for parents. It handles kids&rsquo; activities, reminders,
