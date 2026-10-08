@@ -151,12 +151,13 @@ function escapeRegExp(value: string): string {
 
 /** Characters a model reaches for that cost more than twice what their ASCII twin does. */
 const GSM7_SUBSTITUTIONS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/[‘’‛]/g, "'"],
+  [/[‘’‛\u201a\u201e\u2032\u2033\u00b4]/g, "'"],
   [/[“”]/g, '"'],
-  [/[–—―]/g, '-'],
+  [/[–—―\u2010\u2011\u2012\u2212]/g, '-'],
   [/…/g, '...'],
   [/[\u00a0\u2007\u202f\u2009]/g, ' '],
   [/[•·]/g, ''],
+  [/\u200b|\u200c|\u200d|\u2060|\ufeff|\u00ad/g, ''],
 ];
 
 /**
@@ -321,26 +322,45 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // Redacted with the answer, not after it: the referral line is composed by the model
   // and is the one piece of outbound text a parent forwards to somebody outside the
   // family, so the age-derived teen floor (rule #1) has to cover it too.
-  const suffix = redactTeenNames(
-    [args.planOffer, args.referral, activityLinkSuffix(redacted, args.activityLinks)]
+  const link = activityLinkSuffix(redacted, args.activityLinks);
+  // A plan offer or a referral still crowds the count out. An activity URL does not:
+  // the count is about that find, and the URL is that find's page, so both go out.
+  const protectedTail = redactTeenNames(
+    [args.planOffer, args.referral]
       .map((part) => part?.trim() ?? '')
       .filter((part) => part !== '')
       .join(' '),
     args.children,
     args.now,
   );
-  if (suffix === '') {
-    // MEASURED WITH THE BODY, like the two above it: a clause appended to an answer
-    // already at the ceiling is how a two-segment reply quietly becomes three, and the
-    // count is the one part of this message nobody is paying attention to. Room is
-    // reserved only when the answer as composed names the target, and the clause is
-    // dropped anyway if the trim took the name away with it.
-    const reserved = nearbyClause(redacted, args.nearby) ?? '';
-    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS, reserved, args.onTrimmed);
-    const nearby = nearbyClause(fittedAlone, args.nearby);
-    return nearby === null ? fittedAlone : `${fittedAlone} ${nearby}`;
+  if (protectedTail === '') {
+    // MEASURED WITH THE BODY: a clause or a URL appended to an answer already at the
+    // ceiling is how a two-segment reply quietly becomes three. Room is reserved only
+    // when the answer as composed names the target, and the count is dropped anyway
+    // if the trim took the name away with it. The URL stays at the end.
+    const answer = dropDuplicateOffer(redacted, link);
+    const reserved = [nearbyClause(answer, args.nearby) ?? '', link]
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .join(' ');
+    const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, reserved, args.onTrimmed);
+    const nearby = nearbyClause(fitted, args.nearby);
+    const tail = [nearby ?? '', link]
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .join(' ');
+    if (tail === '') return fitted;
+    if (fitted === '') return tail;
+    return `${fitted} ${tail}`;
   }
 
+  const suffix = redactTeenNames(
+    [protectedTail, link]
+      .filter((part) => part.trim() !== '')
+      .join(' '),
+    args.children,
+    args.now,
+  );
   // The tools told the model to hand these in rather than write them into the answer;
   // this is the backstop for when it does both, because the visible cost is the same
   // sentence arriving twice.
@@ -348,9 +368,9 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // Nothing but the suffix left: the model answered with it and nothing else, so it IS
   // the reply. Joining an empty answer to it would send a leading space.
   if (answer === '') return suffix;
-  // PRECEDENCE, and it is deliberate rather than an omission: when this turn also made
-  // a promise or handed over a link, the nearby count is dropped. A count is the least
-  // important thing in any message that also carries one of those.
+  // PRECEDENCE: a plan offer or a referral drops the nearby count. A count is the least
+  // important thing in a message that also carries a promise. The activity URL still
+  // rides along — it is the find, not a second ask.
   const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix, args.onTrimmed);
   return `${fitted} ${suffix}`;
 }
@@ -369,7 +389,8 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
  *
  * PRECEDENCE: a turn that also registered a plan offer or a referral drops this
  * altogether (see the caller). A count is the least important thing in any message that
- * also carries a promise or a link.
+ * also carries a promise. An activity URL does not drop it — the count is about that
+ * find, and the page is how the parent opens it.
  */
 function nearbyClause(fittedBody: string, nearby: SmsReplyArgs['nearby']): string | null {
   if (!nearby) return null;

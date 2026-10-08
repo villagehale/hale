@@ -123,6 +123,8 @@ import {
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
+import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
+import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
   JUDGE_MIN,
@@ -304,12 +306,13 @@ function smsSegments(text) {
 // definition, which is the thing the fix exists to remove.
 
 const GSM7_SUBSTITUTIONS = [
-  [/[‘’‛]/g, "'"],
+  [/[‘’‛\u201a\u201e\u2032\u2033\u00b4]/g, "'"],
   [/[“”]/g, '"'],
-  [/[–—―]/g, '-'],
+  [/[–—―\u2010\u2011\u2012\u2212]/g, '-'],
   [/…/g, '...'],
   [/[\u00a0\u2007\u202f\u2009]/g, ' '],
   [/[•·]/g, ''],
+  [/\u200b|\u200c|\u200d|\u2060|\ufeff|\u00ad/g, ''],
 ];
 
 function plainText(text) {
@@ -509,24 +512,44 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
   // The protected tail, mirroring reply.ts: the offer, the referral block, and any
   // activity URL the reply named. The referral block is redacted with the answer
   // because a parent forwards it OUT.
-  const suffix = redactTeenNames(
-    [planOffer, referral, activityLinkSuffix(redacted, activityLinks)]
+  const link = activityLinkSuffix(redacted, activityLinks);
+  // A plan offer or a referral still crowds the count out. An activity URL does not:
+  // the count is about that find, and the URL is that find's page.
+  const protectedTail = redactTeenNames(
+    [planOffer, referral]
       .map((part) => part?.trim() ?? '')
       .filter((part) => part !== '')
       .join(' '),
     children,
     NOW,
   );
-  if (!suffix) {
-    // Measured WITH the body, mirroring reply.ts: the count is protected from the trim,
-    // not from the budget, and room is reserved only when the answer as composed names
-    // its subject.
-    const reserved = nearbyClause(redacted, nearby) ?? '';
-    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS, reserved);
-    const clause = fittedAlone === null ? null : nearbyClause(fittedAlone, nearby);
-    return clause === null ? fittedAlone : `${fittedAlone} ${clause}`;
+  if (!protectedTail) {
+    const answer = dropDuplicateOffer(redacted, link);
+    const reserved = [nearbyClause(answer, nearby) ?? '', link]
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .join(' ');
+    const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, reserved);
+    if (fitted === null) return null;
+    const clause = nearbyClause(fitted, nearby);
+    const tail = [clause ?? '', link]
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .join(' ');
+    if (tail === '') return fitted;
+    if (fitted === '') return tail;
+    return `${fitted} ${tail}`;
   }
-  const fitted = fitToBudget(dropDuplicateOffer(redacted, suffix), MAX_REPLY_SEGMENTS, suffix);
+  const suffix = redactTeenNames(
+    [protectedTail, link]
+      .filter((part) => part.trim() !== '')
+      .join(' '),
+    children,
+    NOW,
+  );
+  const answer = dropDuplicateOffer(redacted, suffix);
+  if (answer === '') return suffix;
+  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix);
   if (fitted === null) return null;
   return `${fitted} ${suffix}`;
 }
@@ -1378,58 +1401,6 @@ function fabrications(reply, hay, allowedUrls) {
   return [...new Set(offenders)];
 }
 
-/**
- * A date grounded only on find A cannot excuse the same date on find B.
- *
- * The global hay is one bag: story time's "Aug 8" and the farm's "Sun" are both
- * in it, so "Riverdale Farm on Sun Aug 8" used to pass while the farm's own when
- * is Sun, Aug 9. Each month-day in the reply is checked against the nearest
- * named source in that sentence — that find, that calendar row, or that
- * registration window — and nowhere else.
- */
-const DATE_ANCHOR_GENERIC = new Set([
-  'time',
-  'practice',
-  'lesson',
-  'class',
-  'visit',
-  'with',
-  'from',
-  'this',
-  'that',
-  'your',
-  'fall',
-  'open',
-  'free',
-  'week',
-  'park',
-]);
-
-function monthDayToken(month, day) {
-  return `${month.toLowerCase().slice(0, 3)} ${Number(day)}`;
-}
-
-function monthDaysIn(text) {
-  const pattern =
-    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/gi;
-  return [...String(text).matchAll(pattern)].map((match) => ({
-    token: monthDayToken(match[1], match[2]),
-    index: match.index ?? 0,
-  }));
-}
-
-function dateSource(label, when) {
-  const words = [
-    ...new Set(
-      label
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((word) => word.length >= 4 && !DATE_ANCHOR_GENERIC.has(word)),
-    ),
-  ];
-  return { label, words, dates: new Set(monthDaysIn(when).map((mention) => mention.token)) };
-}
-
 function calendarDate(iso) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
@@ -1460,36 +1431,6 @@ function dateSourcesFor(fixture, calls) {
     );
   }
   return sources.filter((source) => source.words.length > 0);
-}
-
-function borrowedFindDates(reply, sources) {
-  const offenders = [];
-  for (const sentence of reply.split(/(?<=[.!?])\s+|\n+/)) {
-    const hay = sentence.toLowerCase();
-    for (const mention of monthDaysIn(sentence)) {
-      const distances = sources.map((source) => {
-        let best = Number.POSITIVE_INFINITY;
-        for (const word of source.words) {
-          const found = hay.matchAll(new RegExp(`\\b${word}\\b`, 'g'));
-          for (const match of found) {
-            best = Math.min(best, Math.abs((match.index ?? 0) - mention.index));
-          }
-        }
-        return { source, best };
-      });
-      const nearestAt = Math.min(...distances.map((row) => row.best));
-      if (!Number.isFinite(nearestAt) || nearestAt > 80) continue;
-      const tied = distances.filter((row) => row.best === nearestAt).map((row) => row.source);
-      if (tied.some((source) => source.dates.has(mention.token))) continue;
-      const owned = tied
-        .map((source) => `${source.label}: ${[...source.dates].join(', ') || 'no calendar date'}`)
-        .join('; ');
-      offenders.push(
-        `date "${mention.token}" is not on the nearest find (${owned}); a date from another find does not count`,
-      );
-    }
-  }
-  return [...new Set(offenders)];
 }
 
 // ── grading ────────────────────────────────────────────────────────────────
@@ -1604,11 +1545,9 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   }
 
   // A draft that happened must be described as PENDING. "Moved" / "cancelled" /
-  // "done" would tell a parent something happened that has not (rule #4).
-  if (
-    drafts.length > 0 &&
-    /\b(i (?:have )?(?:moved|cancelled|canceled)|all set|done)\b/i.test(reply)
-  ) {
+  // "done" / "that one went through" would tell a parent something happened that
+  // has not (rule #4). The sentence has to ask them to confirm.
+  if (drafts.length > 0 && claimsDraftAlreadyHappened(reply)) {
     failures.push('describes a held draft as though it already happened (rule #4)');
   }
 

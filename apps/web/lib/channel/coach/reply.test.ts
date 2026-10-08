@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import { MAX_REPLY_SEGMENTS, ReplyNeedsShorter, redactTeenNames, toSmsReply } from './reply';
+import {
+  MAX_REPLY_SEGMENTS,
+  ReplyNeedsShorter,
+  plainText,
+  redactTeenNames,
+  toSmsReply,
+} from './reply';
 
 /**
  * The post-processing between the model and the carrier. Everything asserted here is a
@@ -518,6 +524,58 @@ describe('the nearby count', () => {
     // The control: the answer itself WAS trimmed, so the clause survived a real trim
     // rather than a message that happened to fit.
     expect(reply.length).toBeLessThan(long.length + NEARBY.clause.length);
+  });
+
+  it('keeps the count when the only suffix is the find URL', () => {
+    const reply = toSmsReply('Riverdale story time is Saturday at 10.', {
+      children: [],
+      now,
+      nearby: {
+        clause: '3 families near you say Riverdale Library is worth it.',
+        title: 'Riverdale story time',
+        otherTitles: [],
+      },
+      activityLinks: [
+        {
+          title: 'Riverdale story time',
+          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+          venue: 'Riverdale Library',
+        },
+      ],
+    });
+
+    expect(reply).toContain('3 families near you say Riverdale Library is worth it.');
+    expect(reply).toContain('https://www.torontopubliclibrary.ca/programs-and-classes/');
+    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+  });
+
+  it('still drops the count when a plan offer is the suffix', () => {
+    const reply = toSmsReply('Riverdale story time is Saturday at 10.', {
+      children: [],
+      now,
+      nearby: NEARBY,
+      planOffer: 'Want me to send the full plan?',
+      activityLinks: [
+        {
+          title: 'Riverdale story time',
+          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+        },
+      ],
+    });
+
+    expect(reply).not.toContain('families near you');
+    expect(reply).toContain('Want me to send the full plan?');
+    expect(reply).toContain('https://www.torontopubliclibrary.ca/programs-and-classes/');
+  });
+});
+
+describe('plain ASCII folding', () => {
+  it('folds a non-breaking hyphen and a zero-width space so a short reply stays GSM-7', () => {
+    const body = `${'Up at 2 is common at eight. '.repeat(4)}One quiet check, then back to bed\u2011same as last week.\u200b`;
+    const folded = plainText(body);
+    expect(folded).not.toMatch(/[\u2011\u200b]/);
+    expect(smsSegments(folded)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(body)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
   });
 });
 
