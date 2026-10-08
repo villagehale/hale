@@ -27,6 +27,7 @@ import { toVillageCandidateView } from '~/lib/village/mappers';
 import { type StandingOption, selectStandingOption } from '~/lib/village/standing-option';
 import { visibleCandidates } from '~/lib/village/visibility';
 import { buildConnectorTools } from './connector-tools';
+import { spokenFind } from './spoken-find';
 
 /**
  * The Ask Hale agent's tools — every one family-scoped (rule #1: a handler reads
@@ -132,8 +133,11 @@ async function standingOptionForFamily(
   });
 }
 
-/** One activity Hale may actually put in front of a parent. Every field is non-null
- * by construction — an offer a parent cannot turn up to is not an offer.
+/** One activity Hale may actually put in front of a parent. An offer a parent cannot
+ * turn up to is not an offer: the title and the day are always present.
+ *
+ * `venue` is omitted when the title already names that place. Handing both is what
+ * makes a reply say "Riverdale Farm visit at Riverdale Farm".
  *
  * NO ID, AND THAT IS LOAD-BEARING. Provenance travels beside the offer, never through
  * it: an id the model can see is an id the model can invent, reword or attach to the
@@ -143,7 +147,7 @@ interface OfferableActivity {
   title: string;
   kind: string;
   summary: string;
-  venue: string;
+  venue?: string;
   when: string;
 }
 
@@ -298,17 +302,20 @@ export function searchVillageTool(
           continue;
         }
         const row = rowsById.get(view.id);
+        const spoken = spokenFind(view.title, venue);
         offerable.push({
           candidate: {
-            title: view.title,
+            title: spoken.title,
             kind: view.kind,
             summary: view.summary,
-            venue,
+            ...(spoken.venue === null ? {} : { venue: spoken.venue }),
             when: formatCalendarDayLabel(view.eventDate, now),
           },
           offer: row
             ? {
-                title: view.title,
+                // The title the model was handed, so a later exact match is that
+                // string and not the stored column it was cleaned from.
+                title: spoken.title,
                 venue,
                 candidateId: row.id,
                 placeId: row.placeId,

@@ -1199,9 +1199,27 @@ function longMonth(abbr) {
   return LONG_MONTHS.get(abbr) ?? abbr;
 }
 
-/** What `search_village` returns for one text: its own village, or the corpus default. */
+/** What `search_village` returns for one text: its own village, or the corpus default.
+ * Titles are the spoken form from `spokenFind` (apps/web/lib/coach/spoken-find.ts),
+ * assigned in `main` before any fixture runs. A title that already names its venue
+ * does not also carry that venue, which is what made "Riverdale Farm visit at
+ * Riverdale Farm" the thing the model quoted. */
+let spokenFind = (title, venue) => ({ title, venue: venue?.trim() ? venue : null });
+
+function presentCandidate(candidate) {
+  const spoken = spokenFind(candidate.title, candidate.venue ?? '');
+  const next = { ...candidate, title: spoken.title };
+  if (spoken.venue === null) delete next.venue;
+  else next.venue = spoken.venue;
+  return next;
+}
+
+function presentVillage(village) {
+  return { ...village, candidates: (village.candidates ?? []).map(presentCandidate) };
+}
+
 function villageFor(fixture) {
-  return fixture.village ?? FIXTURE_VILLAGE;
+  return presentVillage(fixture.village ?? FIXTURE_VILLAGE);
 }
 
 /**
@@ -1799,6 +1817,10 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
+  ({ spokenFind } = await tsImport(
+    join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
+    import.meta.url,
+  ));
   const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
   const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
   const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
@@ -2098,8 +2120,10 @@ async function main() {
               // same four words an invented detail and put a correct reply below the
               // floor. Same half-blindness as `webFind` and `standingPlace` above, same
               // fix: show the judge what the tool showed the model.
-              offerable: villageFor(fixture).candidates.map(
-                (c) => `${c.title} at ${c.venue}, ${c.when} — ${c.summary}`,
+              offerable: villageFor(fixture).candidates.map((c) =>
+                c.venue
+                  ? `${c.title} at ${c.venue}, ${c.when} — ${c.summary}`
+                  : `${c.title}, ${c.when} — ${c.summary}`,
               ),
               stillBeingChecked: villageFor(fixture).inVerification,
               // The standing place, when the tool handed one over. Without it a judge

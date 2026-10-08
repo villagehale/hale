@@ -178,6 +178,28 @@ describe('search_village — offers only what it can name in full', () => {
     expect(result.inVerification).toBe(3);
   });
 
+  it('hands the model the place once when the title is that place plus a generic tail', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+
+    const result = await search([
+      candidate({
+        id: 'farm',
+        title: 'Riverdale Farm visit',
+        venueName: 'Riverdale Farm',
+      }),
+    ]);
+
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        title: 'Riverdale Farm',
+        summary: 'a warm local option',
+        when: 'Sat, Jul 11',
+      }),
+    ]);
+    expect(result.candidates[0]).not.toHaveProperty('venue');
+  });
+
   it('leaves a teen-attributed candidate out of BOTH the offers and the count (rule #1)', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);

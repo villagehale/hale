@@ -203,15 +203,17 @@ export const FIXTURE_VILLAGE_MIXED = {
  * makes load-bearing: the count attaches only to a body carrying EVERY distinctive word
  * of the offer's title, so a title the reply would routinely shorten ("Central Library
  * story time" → "story time at Bloor/Gladstone") grades whether the model wrote the
- * longer name rather than whether the gate works. The title here is the whole name a
- * reply uses, and the VENUE is a different string from it — which is the point: the
- * households answered about the branch, the body names the programme (founder decision
- * 2), and the pair proves the clause can land while saying neither one twice.
+ * longer name rather than whether the gate works. The title is the name a parent would
+ * say. "Riverdale storytime" as one lowercase word is not that name, and a model that
+ * is handed it rewrites it from the venue and the summary. The VENUE is a different
+ * string — the households answered about the branch, the body names the programme
+ * (founder decision 2), and the pair proves the clause can land while saying neither
+ * one twice.
  */
 export const FIXTURE_VILLAGE_POOLED = {
   candidates: [
     {
-      title: 'Riverdale storytime',
+      title: 'Riverdale story time',
       kind: 'drop_in',
       summary: 'Free indoor drop-in, all ages welcome.',
       venue: 'Riverdale Library',
@@ -1063,7 +1065,7 @@ export const COACH_CHANNEL_FIXTURES = [
       // Byte-for-byte what renderVerdictClause composes for this venue at k=3: the
       // positive count, no denominator, no adjective, the VENUE and not the programme.
       clause: '3 families near you say Riverdale Library is worth it.',
-      title: 'Riverdale storytime',
+      title: 'Riverdale story time',
       otherTitles: [],
     },
     note: 'The offered find is the one three households already answered about. The reply must name the find whole - that is what lets the count attach - and the count must arrive VERBATIM, because the parent is being told a number about a real place and a paraphrase of it is a different claim.',
@@ -1072,9 +1074,10 @@ export const COACH_CHANNEL_FIXTURES = [
       mustNotDraft: true,
       // Two assertions, deliberately split: the first says the model named the offer,
       // the second says the gate attached the count to it. One failure message tells
-      // you which half broke.
+      // you which half broke. The name is the natural title, and the check is that
+      // whole phrase — a paraphrase built from the venue and the summary still fails.
       mustMention: [
-        'riverdale storytime',
+        'riverdale story time',
         '3 families near you say riverdale library is worth it.',
       ],
       forbidden: [...HEDGES],
@@ -1088,7 +1091,7 @@ export const COACH_CHANNEL_FIXTURES = [
     expect: {
       mustCall: ['search_village'],
       mustNotDraft: true,
-      mustMention: ['riverdale storytime'],
+      mustMention: ['riverdale story time'],
       forbidden: [...HEDGES, 'families near you'],
     },
   },
