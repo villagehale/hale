@@ -10,6 +10,7 @@ import type { FamilyConnectorView } from '~/lib/integrations/load';
 import type { LoadLoopPrefsResult } from '~/lib/settings/loop-prefs';
 import { clockLabel } from './format';
 import type { ThreadItem } from './messages-board';
+import { portalHref } from './portal-href';
 import styles from './portal.module.css';
 
 function connected(connections: FamilyConnectorView[], provider: string): boolean {
@@ -31,6 +32,7 @@ export function PortalHome({
   connections,
   loop,
   smsHref,
+  basePath = '',
 }: {
   firstName: string | null;
   approvals: PendingApprovalView[];
@@ -39,6 +41,7 @@ export function PortalHome({
   connections: FamilyConnectorView[];
   loop: LoadLoopPrefsResult;
   smsHref: string | null;
+  basePath?: string;
 }) {
   const waiting = approvals[0] ?? null;
   const gmail = connected(connections, 'gmail');
@@ -92,7 +95,10 @@ export function PortalHome({
             ) : (
               <p className={styles.text}>Nothing here yet. Text Hale and it shows up here.</p>
             )}
-            <Link href="/messages" className={`${styles.primary} ${styles.block}`}>
+            <Link
+              href={portalHref(basePath, '/messages')}
+              className={`${styles.primary} ${styles.block}`}
+            >
               See all messages
             </Link>
           </section>
@@ -101,30 +107,35 @@ export function PortalHome({
           <section className={styles.card}>
             <span className={styles.tag}>Your setup</span>
             <SetupRow
+              basePath={basePath}
               href="/settings/connections"
               icon={<Mail aria-hidden="true" />}
               title="Connections"
               meta={`Gmail ${gmail ? 'on' : 'off'} · Calendar ${calendar ? 'on' : 'off'}`}
             />
             <SetupRow
+              basePath={basePath}
               href="/settings/texts"
               icon={<MessageCircle aria-hidden="true" />}
               title="Texts from Hale"
               meta={quiet}
             />
             <SetupRow
+              basePath={basePath}
               href="/family"
               icon={<UsersRound aria-hidden="true" />}
               title="Family"
               meta={kids}
             />
             <SetupRow
+              basePath={basePath}
               href="/settings/plan"
               icon={<Sparkles aria-hidden="true" />}
               title="Plan"
               meta="Founding family"
             />
             <SetupRow
+              basePath={basePath}
               href="/settings/privacy"
               icon={<Shield aria-hidden="true" />}
               title="Privacy & data"
@@ -185,6 +196,7 @@ function SetupRow({
   icon,
   title,
   meta,
+  basePath = '',
 }: {
   href:
     | '/settings/connections'
@@ -195,9 +207,10 @@ function SetupRow({
   icon: ReactNode;
   title: string;
   meta: string;
+  basePath?: string;
 }) {
   return (
-    <Link href={href} className={styles.row}>
+    <Link href={portalHref(basePath, href)} className={styles.row}>
       <span className={styles.tile}>{icon}</span>
       <span>
         <h3>{title}</h3>

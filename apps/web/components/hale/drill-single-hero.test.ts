@@ -100,6 +100,9 @@ describe('portal routes own their single heading', () => {
     expect(portalOwnsHeading('/messages')).toBe(true);
     expect(portalOwnsHeading('/family/members')).toBe(true);
     expect(portalOwnsHeading('/settings/plan')).toBe(true);
+    expect(portalOwnsHeading('/demo/portal/home')).toBe(true);
+    expect(portalOwnsHeading('/demo/portal/settings/plan')).toBe(true);
+    expect(portalOwnsHeading('/demo/portal/family')).toBe(true);
     expect(portalOwnsHeading('/approvals')).toBe(false);
     expect(portalOwnsHeading('/plan')).toBe(false);
     expect(portalOwnsHeading('/trail')).toBe(false);

@@ -3,6 +3,7 @@
 import { Camera, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useIsDesktop } from '~/components/hale/use-is-desktop';
+import portal from '~/components/portal/portal.module.css';
 import { Avatar } from '~/components/ui/avatar';
 import { Button } from '~/components/ui/button';
 import { Card } from '~/components/ui/card';
@@ -173,7 +174,7 @@ export function FamilyChildren({
   const [editingId, setEditingId] = useState<string | null>(null);
 
   return (
-    <div className="space-y-8">
+    <div className={fill ? 'flex w-full flex-col gap-4' : 'space-y-8'}>
       {kids.length === 0 ? (
         <p className="font-display text-[1.5rem]">{emptyLabel}</p>
       ) : (
@@ -189,30 +190,37 @@ export function FamilyChildren({
                 onDone={() => setEditingId(null)}
                 onCancel={() => setEditingId(null)}
               />
-            ) : (
-              <Card key={child.id} className={fill ? 'w-full' : undefined}>
-                <div className="flex items-start justify-between gap-4">
-                  <div
-                    className={
-                      fill
-                        ? 'flex min-w-32 flex-1 items-center gap-3'
-                        : 'flex min-w-0 items-center gap-3'
-                    }
+            ) : fill ? (
+              <div key={child.id} className={portal.kidRow}>
+                <span data-hale-pii>
+                  <h3 className={portal.kidName}>{child.name}</h3>
+                  <p className={portal.meta}>{child.stageLabel}</p>
+                </span>
+                <span className={portal.end}>
+                  <button
+                    type="button"
+                    className={portal.secondary}
+                    onClick={() => {
+                      setAdding(false);
+                      setEditingId(child.id);
+                    }}
                   >
+                    {editLabel}
+                  </button>
+                </span>
+              </div>
+            ) : (
+              <Card key={child.id}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
                     <Avatar
                       tone="child"
                       src={child.avatarUrl}
                       initials={childInitials(child.name, child.lastName)}
                       size={32}
                     />
-                    <div className={fill ? 'min-w-32 flex-1' : 'min-w-0'} data-hale-pii>
-                      <p
-                        className={
-                          fill
-                            ? 'font-display text-[1.5rem] leading-tight overflow-hidden text-ellipsis whitespace-nowrap [overflow-wrap:normal] [word-break:normal]'
-                            : 'font-display text-[1.5rem] leading-tight break-words'
-                        }
-                      >
+                    <div className="min-w-0" data-hale-pii>
+                      <p className="font-display text-[1.5rem] leading-tight break-words">
                         {child.name}
                       </p>
                       <p className="meta mt-1">{child.stageLabel}</p>
@@ -238,6 +246,18 @@ export function FamilyChildren({
 
       {adding ? (
         <ChildForm mode="add" onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
+      ) : fill ? (
+        <button
+          type="button"
+          className={portal.secondary}
+          onClick={() => {
+            setEditingId(null);
+            setAdding(true);
+          }}
+        >
+          <Plus aria-hidden="true" />
+          {addLabel}
+        </button>
       ) : (
         <Button
           variant="secondary"

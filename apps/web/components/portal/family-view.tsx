@@ -43,10 +43,10 @@ export function PortalFamily({
           </section>
           <section className={styles.card}>
             <span className={styles.tag}>What you want help with</span>
+            <PortalIntents intents={basics.intents} />
             <p className={styles.text}>
               Hale uses these to pick what to text you. Change them by text anytime.
             </p>
-            <PortalIntents intents={basics.intents} />
           </section>
         </div>
         <div className={styles.col}>
@@ -71,7 +71,7 @@ export function PortalFamily({
               </div>
             ) : (
               <AddCoParentCard
-                plain
+                appearance="row"
                 title="Add your co-parent"
                 description="They get the same texts and settings."
                 actionLabel="Invite"

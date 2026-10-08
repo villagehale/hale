@@ -10,6 +10,7 @@ import { navWithAdmin, primaryNav } from '~/components/hale/nav';
 import { signOutAction } from '~/lib/auth-actions';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { portalOwnsHeading } from './owns-heading';
+import { portalHref } from './portal-href';
 import styles from './portal.module.css';
 
 const FOOTER_LEAD = 'Never sold.';
@@ -30,31 +31,39 @@ export function PortalShell({
   showAdmin,
   canSignOut,
   roots,
+  basePath = '',
+  signOutTo,
 }: {
   children: ReactNode;
   showAdmin: boolean;
   canSignOut: boolean;
   roots: Record<RootRoute, RootHero>;
+  /** Prefix for nav targets. The seeded preview demo keeps links inside `/demo/portal`. */
+  basePath?: string;
+  /** When set, Sign out is a link (no session) instead of the auth action. */
+  signOutTo?: string;
 }) {
-  const pathname = usePathname() ?? '/home';
+  const pathname = usePathname() ?? portalHref(basePath, '/home');
   const stops = navWithAdmin(primaryNav(true), showAdmin);
   const tabs = primaryNav(true);
+  const homeHref = portalHref(basePath, '/home');
 
   return (
     <div className={styles.shell}>
       <aside className={styles.side} aria-label="Portal">
-        <Link href="/home" className={styles.brand} aria-label="Hale, home">
+        <Link href={homeHref} className={styles.brand} aria-label="Hale, home">
           <img className={styles.logo} src="/connect/hale-logo.jpeg" alt="" />
           <Wordmark className={styles.wordmark} />
         </Link>
         <nav className={styles.sidenav} aria-label="Sections">
           {stops.map((item) => {
             const Icon = item.icon;
-            const on = onRoute(pathname, item.href);
+            const href = portalHref(basePath, item.href);
+            const on = onRoute(pathname, href);
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={href}
                 className={on ? `${styles.navLink} ${styles.navOn}` : styles.navLink}
                 aria-current={on ? 'page' : undefined}
               >
@@ -64,8 +73,15 @@ export function PortalShell({
             );
           })}
         </nav>
-        {canSignOut ? (
-          <form action={signOutAction}>
+        {signOutTo ? (
+          <div className={styles.signoutForm}>
+            <Link href={portalHref('', signOutTo)} className={styles.signout}>
+              <SignOutIcon />
+              <span>Sign out</span>
+            </Link>
+          </div>
+        ) : canSignOut ? (
+          <form action={signOutAction} className={styles.signoutForm}>
             <button type="submit" className={styles.signout}>
               <SignOutIcon />
               <span>Sign out</span>
@@ -96,11 +112,12 @@ export function PortalShell({
       <nav className={styles.tabbar} aria-label="Sections">
         {tabs.map((item) => {
           const Icon = item.icon;
-          const on = onRoute(pathname, item.href);
+          const href = portalHref(basePath, item.href);
+          const on = onRoute(pathname, href);
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={href}
               className={on ? `${styles.tab} ${styles.tabOn}` : styles.tab}
               aria-current={on ? 'page' : undefined}
             >

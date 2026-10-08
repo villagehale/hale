@@ -1,20 +1,24 @@
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
+import { portalHref } from './portal-href';
 import styles from './portal.module.css';
 
 export function PortalHeading({
   title,
   lede,
   back,
+  basePath = '',
 }: {
   title: string;
   lede?: string;
   back?: boolean;
+  /** Prefix so a back crumb stays inside the seeded demo. */
+  basePath?: string;
 }) {
   return (
     <>
       {back ? (
-        <Link href="/settings" className={styles.crumb}>
+        <Link href={portalHref(basePath, '/settings')} className={styles.crumb}>
           <ChevronLeft aria-hidden="true" />
           Settings
         </Link>

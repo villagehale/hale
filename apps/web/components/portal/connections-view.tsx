@@ -37,6 +37,7 @@ export function ConnectionsView({
   gmailSince,
   calendarSince,
   driveSince,
+  basePath = '',
 }: {
   connections: FamilyConnectorView[];
   assistants: McpConnectionSummary[];
@@ -45,6 +46,7 @@ export function ConnectionsView({
   gmailSince: string | null;
   calendarSince: string | null;
   driveSince: string | null;
+  basePath?: string;
 }) {
   const gmail = liveRow(connections, 'gmail');
   const calendar = liveRow(connections, 'gcal');
@@ -52,7 +54,12 @@ export function ConnectionsView({
 
   return (
     <>
-      <PortalHeading back title="Connections" lede="What Hale can read, and how it reaches you." />
+      <PortalHeading
+        back
+        basePath={basePath}
+        title="Connections"
+        lede="What Hale can read, and how it reaches you."
+      />
       <div className={styles.one}>
         <section className={`${styles.card} ${styles.span}`}>
           <span className={styles.tag}>What Hale can read</span>

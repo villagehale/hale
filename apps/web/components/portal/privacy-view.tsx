@@ -15,13 +15,20 @@ import styles from './portal.module.css';
 export function PrivacyView({
   records,
   role,
+  basePath = '',
 }: {
   records: ViewerConsentRecord[];
   role: DeleteAccountRole;
+  basePath?: string;
 }) {
   return (
     <>
-      <PortalHeading back title="Privacy & data" lede="What Hale keeps, and how to take it back." />
+      <PortalHeading
+        back
+        basePath={basePath}
+        title="Privacy & data"
+        lede="What Hale keeps, and how to take it back."
+      />
       <div className={styles.one}>
         <section className={`${styles.card} ${styles.span}`}>
           <span className={styles.tag}>Our promise</span>
