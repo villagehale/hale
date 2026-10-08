@@ -8,6 +8,8 @@
  * unanswered. The stop-asking fact blocks everything until it expires.
  */
 
+import { cadenceSkipsNumericCaps } from '~/lib/channel/proactive/flag';
+
 export const SHARED_STOP_ASKING_KEY = 'duty-ask/stop-asking';
 export const ASK_UNANSWERED_MS = 24 * 60 * 60 * 1000;
 export const ASK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -84,12 +86,20 @@ export function judgeAskBudget(
   const same = input.rows.filter((row) => row.askKey === ask.askKey);
   if (same.some((row) => row.outcome === 'declined')) return { allow: false, reason: 'declined' };
   if (same.length > 0) return { allow: false, reason: 'already_asked' };
-  if (pauseAnchor(input.rows, input.now) && !input.parentWroteSincePause) {
-    return { allow: false, reason: 'paused' };
+  // VIL-226 · live cadence keeps a decline and an explicit stop. The counts
+  // and the two-unanswered pause become context the decider reads.
+  if (!cadenceSkipsNumericCaps()) {
+    if (pauseAnchor(input.rows, input.now) && !input.parentWroteSincePause) {
+      return { allow: false, reason: 'paused' };
+    }
   }
   // The friend-voice onboarding sequence is one conversation: name, calendar,
   // then email. The one-a-day cap would stop it on the logistics turn.
-  if (!options?.onboardingSequence && inAskWindow(input.now, input.familyStartedAt)) {
+  if (
+    !cadenceSkipsNumericCaps() &&
+    !options?.onboardingSequence &&
+    inAskWindow(input.now, input.familyStartedAt)
+  ) {
     const day = localCalendarDay(input.now, input.timeZone);
     if (input.rows.some((row) => row.localDay === day))
       return { allow: false, reason: 'ask_budget' };

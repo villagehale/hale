@@ -1,6 +1,5 @@
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { renderEmptySaturdayAsk } from '~/lib/channel/nudge/empty-saturday-copy';
 
 /**
  * Design-locked lines for the Linq household group (Sloane).
@@ -153,20 +152,6 @@ export function groupActivityHowItWent(
 ): string {
   if (name) return groupPostEventText(language, name, activity);
   return howItWentAsk(activity, language);
-}
-
-/**
- * Empty Saturday in the group. A known parent is named. An unknown parent
- * keeps English and switches French tu to vous.
- */
-export function groupEmptySaturdayLine(
-  language: ReplyLanguage,
-  name: string | null,
-  kid: string,
-): string {
-  const ask = renderEmptySaturdayAsk(kid, language);
-  if (name) return groupAddressedLine(name, ask);
-  return language === 'fr' ? groupBothReaderFrench(ask) : ask;
 }
 
 /**

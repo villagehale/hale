@@ -1,12 +1,11 @@
 import { type Database, schema } from '@hale/db';
+import { playbookFor } from '@hale/types';
 import { eq } from 'drizzle-orm';
+import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { f14Enabled, f14Allowlist } from '~/lib/channel/f14';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
@@ -14,16 +13,17 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type DueCommitment,
   fulfillCommitment,
   loadDueCommitments,
 } from '~/lib/commitments/ledger';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { pipelineClient } from '~/lib/pipeline/client';
 import { type NoteComposer, createNoteComposer } from './note';
 import { isPlanTopic, weekdayIn } from './topics';
-import { playbookFor } from '@hale/types';
-import { pipelineClient } from '~/lib/pipeline/client';
 
 /**
  * THE CHECK-IN — step four, and the only unprompted message in this arc.
@@ -81,7 +81,13 @@ function emptyResult(enabled: boolean): PlanCheckInResult {
     enabled,
     due: 0,
     sent: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: {
+      not_enrolled: 0,
+      no_watch_consent: 0,
+      frequency_cap: 0,
+      quiet_hours: 0,
+      line_health: 0,
+    },
     unsendable: 0,
     deferred: 0,
     failed: 0,

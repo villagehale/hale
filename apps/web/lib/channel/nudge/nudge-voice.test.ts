@@ -280,6 +280,16 @@ describe('nudgeVoiceStrings', () => {
   });
 });
 
+describe('composeNudgeMessage — weekday care', () => {
+  it('does not send a template when there is no model', async () => {
+    const message = await composeNudgeMessage(
+      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+      { familyId: 'fam-1', database: {} as never, client: null },
+    );
+    expect(message).toBeNull();
+  });
+});
+
 describe('composeNudgeMessage — empty Saturday', () => {
   it('does not fall back to the fixed sentence when there is no model', async () => {
     const message = await composeNudgeMessage(

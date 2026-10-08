@@ -12,7 +12,6 @@ import {
   decideWeekdayCareAsk,
   decideWeekdayDropIn,
 } from './nudge-decide.js';
-import { renderWeekdayFinderAsk } from './weekday-care-copy';
 
 /**
  * VIL-239 · M4 — DECIDE: the ONE thing worth texting a family unprompted, or nothing.
@@ -772,11 +771,8 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
     const nudge = decide(READY);
     if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
     expect(nudge.ask).toEqual({ prompt: 'weekend_fallback' });
-    expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-      'Those are weekend options. Want me to find something for weekdays too?',
-    );
-    expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Mia');
-    expect(renderWeekdayFinderAsk(nudge.ask).toLowerCase()).not.toContain('daycare');
+    expect(JSON.stringify(nudge.ask)).not.toContain('Mia');
+    expect(JSON.stringify(nudge.ask).toLowerCase()).not.toContain('daycare');
   });
 
   it('R1.1 — never twice: a family already asked is skipped by name', () => {
@@ -830,7 +826,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
       expect(nudge.ask.prompt).toBe('weekend_fallback');
-      const body = renderWeekdayFinderAsk(nudge.ask);
+      const body = JSON.stringify(nudge.ask);
       expect(body).not.toContain('Ada');
       expect(body.toLowerCase()).not.toContain('daycare');
       expect(body.toLowerCase()).not.toContain('after-school');
@@ -846,21 +842,16 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
         ],
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-      expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-        'Those are weekend options. Want me to find something for weekdays too?',
-      );
-      expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Sam');
-      expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Leo');
-      expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Mia');
+      expect(nudge.ask).toEqual({ prompt: 'weekend_fallback' });
+      expect(JSON.stringify(nudge.ask)).not.toContain('Sam');
+      expect(JSON.stringify(nudge.ask)).not.toContain('Leo');
+      expect(JSON.stringify(nudge.ask)).not.toContain('Mia');
     });
 
     it('one school-age child gets the locked after-school sentence', () => {
       const nudge = decide({ ...READY, healthChildren: [FEI], candidates: [] });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
       expect(nudge.ask).toEqual({ prompt: 'after_school_named', childId: 'fei', name: 'Maya' });
-      expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-        'Want me to find one good after-school option for Maya too?',
-      );
     });
 
     it('a school-age child with a daycare fact is still asked about after school', () => {
@@ -894,9 +885,6 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
       expect(nudge.ask).toEqual({ prompt: 'after_school_household' });
-      expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-        'Want me to find one good after-school option nearby too?',
-      );
     });
 
     it('a toddler beside a teenager gets the fallback and neither name', () => {
@@ -909,7 +897,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
         teenChildIds: ['teen-1'],
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-      const body = renderWeekdayFinderAsk(nudge.ask);
+      const body = JSON.stringify(nudge.ask);
       expect(nudge.ask.prompt).toBe('weekend_fallback');
       expect(body).not.toContain('Mia');
       expect(body).not.toContain('Ava');
@@ -924,7 +912,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       if (decision.nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
       expect(decision.nudge.ask.prompt).toBe('after_school_household');
       expect(decision.skips.name_not_printable).toBe(1);
-      expect(renderWeekdayFinderAsk(decision.nudge.ask)).not.toContain('Zoë');
+      expect(JSON.stringify(decision.nudge.ask)).not.toContain('Zoë');
     });
   });
 
@@ -948,12 +936,16 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       }),
     );
     if (outcome.nudge === null) throw new Error('expected the ask');
-    const body = renderWeekdayFinderAsk(outcome.nudge.ask);
-    expect(body).toBe('Want me to find one good after-school option for Maya too?');
-    expect(body.toLowerCase()).not.toContain('pa day');
-    expect(body.toLowerCase()).not.toContain('coming up');
-    expect(body.toLowerCase()).not.toContain('weekends are covered');
-    expect(body.toLowerCase()).not.toContain("how's school");
+    expect(outcome.nudge.ask).toEqual({
+      prompt: 'after_school_named',
+      childId: 'fei',
+      name: 'Maya',
+    });
+    const body = JSON.stringify(outcome.nudge.ask).toLowerCase();
+    expect(body).not.toContain('pa day');
+    expect(body).not.toContain('coming up');
+    expect(body).not.toContain('weekends are covered');
+    expect(body).not.toContain("how's school");
   });
 
   it('a verified PA day is the only ask, and it does not need a weekend send', () => {
@@ -974,10 +966,12 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       healthChildren: [{ ...TODDLER, id: 'fei', name: 'Maya', ageMonths: 102 }],
     });
     if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-    expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-      "There's a PA day coming up. Want me to find something nearby?",
-    );
-    expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('after-school');
+    expect(nudge.ask).toEqual({
+      prompt: 'verified_break',
+      eventKey: 'pa-day-2026-10-09',
+      label: 'PA day',
+    });
+    expect(JSON.stringify(nudge.ask)).not.toContain('after-school');
   });
 
   it('a verified named break uses that name and not a fabricated PA day', () => {
@@ -995,9 +989,11 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       },
     });
     if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-    expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-      "There's a March break coming up. Want me to find something nearby?",
-    );
+    expect(nudge.ask).toEqual({
+      prompt: 'verified_break',
+      eventKey: 'march-break-2027-03-15',
+      label: 'March break',
+    });
   });
 
   /**

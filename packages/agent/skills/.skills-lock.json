@@ -179,6 +179,14 @@
     "file": "party-extraction.md",
     "sha256": "7fe117e97be8e781456314c33596dd2d778a84ce5c367bdbeedd1f45258da539"
   },
+  "proactive-decider.md": {
+    "file": "proactive-decider.md",
+    "sha256": "7e92805faebba50ca0c763e62931f4be53cb6481b3a455cfc0ed14723fd44b98"
+  },
+  "proactive-writer.md": {
+    "file": "proactive-writer.md",
+    "sha256": "c3645b7ecd69710c643a5f3229867e1f2e21eb69abe4f157a54fd0ba6ed0eb8e"
+  },
   "radar-voice.md": {
     "file": "radar-voice.md",
     "sha256": "9256f73604bf6ffdd88848ef0dc4d4aec168f57b4ba997e6f4378354d4eadc8f"

@@ -1042,6 +1042,7 @@ describe('4 · the 48h nudge reaches a transport', () => {
       no_watch_consent: 0,
       frequency_cap: 0,
       quiet_hours: 0,
+      line_health: 0,
     });
     // Every check ran, against the rows intake wrote — not a stub that said yes.
     expect(journey.gateCalls.slice(0, 4)).toEqual([

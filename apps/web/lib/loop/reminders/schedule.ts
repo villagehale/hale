@@ -103,7 +103,9 @@ export type SuppressReason =
    * row and a child has a birthday between the two (VIL-241 · M6). Not 'cancelled': the
    * event is perfectly real, it is the disclosure that is not allowed.
    */
-  | 'out_of_scope';
+  | 'out_of_scope'
+  /** Live cadence took the day-before reminder into the family queue. */
+  | 'cadence_queued';
 
 export type ReminderDecision =
   | { action: 'fire' }

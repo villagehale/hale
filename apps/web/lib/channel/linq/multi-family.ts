@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { localCalendarDay } from '~/lib/channel/intake/cold-start/budget';
+import { cadenceSkipsNumericCaps } from '~/lib/channel/proactive/flag';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -143,6 +144,7 @@ export function judgeFamilyAskBudget(
   },
   familyId: string,
 ): { allow: true } | { allow: false; reason: 'ask_budget' } {
+  if (cadenceSkipsNumericCaps()) return { allow: true };
   const asks = input.rows.filter((row) => row.familyId === familyId && row.kind === 'ask');
   const day = localCalendarDay(input.now, input.timeZone);
   const today = asks.filter((row) => localCalendarDay(row.createdAt, input.timeZone) === day);
@@ -161,6 +163,7 @@ export function judgeFamilySendCap(
   },
   familyId: string,
 ): { allow: true } | { allow: false; reason: 'family_send_cap' | 'group_send_cap' } {
+  if (cadenceSkipsNumericCaps()) return { allow: true };
   const day = localCalendarDay(input.now, input.timeZone);
   const sendsToday = input.rows.filter(
     (row) => row.kind === 'send' && localCalendarDay(row.createdAt, input.timeZone) === day,

@@ -1,10 +1,12 @@
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import {
+  type FamilyTextRecipient,
+  loadFamilyTextRecipients,
+} from '~/lib/channel/family-recipients';
 import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { type SpotPortal, portalForMunicipality } from '~/lib/channel/spots/url';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
@@ -12,23 +14,21 @@ import {
   householdCopies,
   notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
-import {
-  type FamilyTextRecipient,
-  loadFamilyTextRecipients,
-} from '~/lib/channel/family-recipients';
-import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
-import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
+import { type SpotPortal, portalForMunicipality } from '~/lib/channel/spots/url';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
+import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { localParts } from '~/lib/loop/prefs';
 import { pipelineClient } from '~/lib/pipeline/client';
 import {
@@ -395,7 +395,13 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     deduped: 0,
     refused: 0,
     failed: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: {
+      not_enrolled: 0,
+      no_watch_consent: 0,
+      frequency_cap: 0,
+      quiet_hours: 0,
+      line_health: 0,
+    },
     skipped: Object.fromEntries(SKIP_REASONS.map((reason) => [reason, 0])) as Record<
       SequenceSkipReason,
       number
@@ -1340,10 +1346,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
         .insert(schema.registrationSequences)
         .values(input)
         .onConflictDoNothing({
-          target: [
-            schema.registrationSequences.familyId,
-            schema.registrationSequences.windowId,
-          ],
+          target: [schema.registrationSequences.familyId, schema.registrationSequences.windowId],
         })
         .returning({ id: schema.registrationSequences.id });
       return row?.id ?? null;

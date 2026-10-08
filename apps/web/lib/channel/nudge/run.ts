@@ -366,7 +366,13 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     quiet: 0,
     deduped: 0,
     failed: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: {
+      not_enrolled: 0,
+      no_watch_consent: 0,
+      frequency_cap: 0,
+      quiet_hours: 0,
+      line_health: 0,
+    },
     skips: {},
   };
 }
@@ -686,7 +692,10 @@ async function runForFamily(
       actionTaken: 'proactive_nudge_skipped',
       targetTable: 'families',
       targetId: family.familyId,
-      after: { reason: 'saturday_unvoiced', kind: nudge.kind },
+      after: {
+        reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
+        kind: nudge.kind,
+      },
     });
     return emptyTally({ quiet: true });
   }

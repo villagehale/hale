@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { cadenceSkipsNumericCaps } from '~/lib/channel/proactive/flag';
 
 /**
  * VIL-353 · THE CLOCK AND THE LADDER behind the evening check-in.
@@ -188,7 +189,9 @@ export function decideCheckIn(
     (state.silentStreakSince === null ||
       lastAskedAt.getTime() >= state.silentStreakSince.getTime());
   const silentStreak = lapsed ? state.silentStreak + 1 : 0;
-  if (silentStreak >= SILENT_ASKS_BEFORE_STEP_DOWN) {
+  // VIL-226 · the step-down count stays in the snapshot. Live cadence does not
+  // stop the ask here; the decider reads the streak.
+  if (!cadenceSkipsNumericCaps() && silentStreak >= SILENT_ASKS_BEFORE_STEP_DOWN) {
     return state.cadence === 'daily' ? { kind: 'step_down' } : { kind: 'dormant', silentStreak };
   }
   return { kind: 'ask', first: lastAskedAt === null, silentStreak };

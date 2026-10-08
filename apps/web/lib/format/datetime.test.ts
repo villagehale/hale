@@ -7,6 +7,7 @@ import {
   formatDateTime,
   formatDayHeading,
   formatLongDate,
+  formatSnapshotLocalNow,
   formatTime,
   formatWhenPhrase,
   foundStamp,
@@ -24,6 +25,14 @@ import {
 // → 07:05; UTC → 14:05. One instant, three zones, three answers.
 const SUMMER_INSTANT = '2026-06-11T14:05:00Z';
 const NOW_SAME_YEAR = new Date('2026-06-12T00:00:00Z');
+
+describe('formatSnapshotLocalNow', () => {
+  it('names Thursday 6:00 PM America/Toronto without asking the model to convert UTC', () => {
+    expect(formatSnapshotLocalNow(new Date('2026-10-08T22:00:00.000Z'), 'America/Toronto')).toBe(
+      'Thursday 6:00 PM America/Toronto',
+    );
+  });
+});
 
 describe('formatTime', () => {
   it('renders HH:MM 24h in the given zone', () => {
