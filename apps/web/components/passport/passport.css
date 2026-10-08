@@ -1,4 +1,13 @@
-.pp-portal {
+@font-face {
+  font-family: "Portal Source Serif 4";
+  src: url("../hale/connect/fonts/source-serif-4-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+.pp-surface,
+.pp-sheet {
   --pp-navy: #17294a;
   --pp-page: #fdfcfa;
   --pp-ink: #17294a;
@@ -11,15 +20,39 @@
   --pp-primary-ink: #fff;
   --pp-input-border: rgb(23 41 74 / 0.22);
   --pp-wash: #f7f4ec;
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  overflow: hidden;
-  background: var(--pp-page);
   color: var(--pp-ink);
-  font-family: var(--font-sans), Figtree, sans-serif;
+  font-family: "Portal Source Serif 4", Georgia, serif;
+}
+
+.pp-surface h1,
+.pp-sheet h2 {
+  font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+}
+
+.pp-card h2,
+.pp-crumb,
+.pp-open,
+.pp-fields,
+.pp-check,
+.pp-kids,
+.pp-sheet-foot {
+  font-family: var(--font-ui), Figtree, sans-serif;
+}
+
+.pp-surface {
+  min-width: 0;
+}
+
+.pp-crumb {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pp-slate);
+}
+
+.pp-crumb a {
+  color: inherit;
+  text-decoration: none;
 }
 
 .pp-side {
@@ -114,9 +147,9 @@
   overflow: auto;
   background: linear-gradient(
       180deg,
-      rgb(253 252 250 / 0.2),
-      rgb(253 252 250 / 0.88) 42%,
-      var(--pp-page) 70%
+      rgb(253 252 250 / 0.3),
+      rgb(253 252 250 / 0.6) 50%,
+      var(--pp-page)
     ), url("/passport/hale-shore-hero.webp") center 30% / cover no-repeat;
 }
 
@@ -130,7 +163,7 @@
 
 .pp-main h1 {
   margin: 0;
-  font-family: var(--font-display), "Source Serif 4", Georgia, serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
   font-size: 44px;
   font-weight: 450;
   line-height: 1.06;
@@ -143,7 +176,7 @@
   max-width: 36rem;
   color: var(--pp-ink);
   opacity: 0.9;
-  font-family: var(--font-display), "Source Serif 4", Georgia, serif;
+  font-family: "Portal Source Serif 4", Georgia, serif;
   font-size: 18px;
   line-height: 1.5;
 }
@@ -183,6 +216,7 @@
 
 .pp-card h2 {
   margin: 0 0 12px;
+  font-family: var(--font-ui), Figtree, sans-serif;
   font-size: 12px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -258,15 +292,21 @@
   font-weight: 600;
 }
 
-.pp-open svg {
+.pp-open .pp-chevron {
   width: 16px;
   height: 16px;
   flex: none;
 }
 
+.pp-fkt .pp-meta {
+  white-space: nowrap;
+}
+
+.pp-kid .pp-amber,
 .pp-amber {
-  color: var(--pp-amber);
-  font-weight: 700;
+  display: inline;
+  color: #8a5200;
+  font-weight: 650;
 }
 
 .pp-text-btn,
@@ -350,7 +390,7 @@
 
 .pp-stats b {
   display: block;
-  font-family: var(--font-display), "Source Serif 4", Georgia, serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
   font-size: 24px;
   font-weight: 600;
   line-height: 1.2;
@@ -492,7 +532,7 @@
   border: 0;
 }
 
-.pp-sheet {
+dialog.pp-sheet {
   position: fixed;
   top: auto;
   right: auto;
@@ -502,7 +542,9 @@
   display: flex;
   flex-direction: column;
   width: min(480px, 100%);
-  max-height: min(88vh, 760px);
+  max-width: calc(100vw - 24px);
+  max-height: calc(100svh - 12px);
+  max-height: calc(100dvh - 12px);
   margin: 0;
   overflow: hidden;
   padding: 0;
@@ -518,27 +560,34 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 10px 20px 8px;
+  padding: 8px 20px 12px;
 }
 
-.pp-sheet > .pp-share-row {
-  margin: 0 20px 4px;
+.pp-sheet-body .pp-share-row {
+  margin-top: 12px;
 }
 
 .pp-sheet-foot {
   display: flex;
-  flex: none;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 8px;
-  padding: 8px 20px 32px;
+  padding: 8px 20px 20px;
+  background: var(--pp-card);
+  box-shadow: 0 -1px 0 var(--pp-line);
 }
 
 .pp-grab {
   width: 40px;
   height: 5px;
-  margin: 0 auto 14px;
+  margin: 0 auto 8px;
   border-radius: 3px;
   background: var(--pp-line);
+}
+
+.pp-sheet .pp-top .pp-stamp {
+  width: 76px;
+  height: 76px;
 }
 
 .pp-top {
@@ -549,7 +598,7 @@
 
 .pp-sheet h2 {
   margin: 0;
-  font-family: var(--font-display), "Source Serif 4", Georgia, serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
   font-size: 23px;
   font-weight: 600;
   line-height: 1.2;
@@ -559,10 +608,10 @@
 .pp-src {
   display: flex;
   gap: 12px;
-  margin-top: 16px;
-  padding: 14px;
+  margin-top: 12px;
+  padding: 12px;
   border-radius: 14px;
-  background: var(--pp-wash);
+  background: #e7ebf0;
 }
 
 .pp-src svg {
@@ -592,8 +641,8 @@
 
 .pp-fields {
   display: grid;
-  gap: 10px;
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .pp-fields label,
@@ -611,7 +660,7 @@
 .pp-in {
   border: 1px solid var(--pp-input-border);
   border-radius: 12px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   background: var(--pp-field);
   color: var(--pp-ink);
   font: inherit;
@@ -705,7 +754,7 @@
   left: 21px;
 }
 
-.dark .pp-portal .pp-tog.on::after {
+.dark .pp-surface .pp-tog.on::after {
   background: #17294a;
 }
 
@@ -767,8 +816,10 @@
   margin-top: 12px;
 }
 
-.dark .pp-portal,
-[data-theme="dark"] .pp-portal {
+.dark .pp-surface,
+.dark .pp-sheet,
+[data-theme="dark"] .pp-surface,
+[data-theme="dark"] .pp-sheet {
   --pp-navy: #f7f4ec;
   --pp-page: #0c1a36;
   --pp-ink: #f7f4ec;
@@ -781,57 +832,64 @@
   --pp-primary-ink: #17294a;
   --pp-input-border: rgb(247 244 236 / 0.28);
   --pp-wash: #12233f;
-  background: var(--pp-page);
   color: var(--pp-ink);
 }
 
-.dark .pp-portal .pp-side,
-[data-theme="dark"] .pp-portal .pp-side {
+.dark .pp-amber,
+[data-theme="dark"] .pp-amber {
+  color: #e2a75a;
+}
+
+.dark .pp-sheet .pp-src,
+[data-theme="dark"] .pp-sheet .pp-src {
+  background: #243656;
+}
+
+.dark .pp-surface .pp-side,
+[data-theme="dark"] .pp-surface .pp-side {
   background: rgb(23 41 74 / 0.72);
   box-shadow: inset -1px 0 0 rgb(247 244 236 / 0.08);
 }
 
-.dark .pp-portal .pp-nav a.on,
-[data-theme="dark"] .pp-portal .pp-nav a.on,
-.dark .pp-portal .pp-tab a.on,
-[data-theme="dark"] .pp-portal .pp-tab a.on {
+.dark .pp-surface .pp-nav a.on,
+[data-theme="dark"] .pp-surface .pp-nav a.on,
+.dark .pp-surface .pp-tab a.on,
+[data-theme="dark"] .pp-surface .pp-tab a.on {
   background: rgb(255 255 255 / 0.12);
   color: var(--pp-ink);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
 }
 
-.dark .pp-portal .pp-stage,
-[data-theme="dark"] .pp-portal .pp-stage {
-  background: linear-gradient(
-      180deg,
-      rgb(12 26 54 / 0.25),
-      rgb(12 26 54 / 0.82) 42%,
-      var(--pp-page) 70%
-    ), url("/passport/hale-shore-hero.webp") center 30% / cover no-repeat;
+.dark .pp-surface .pp-stage,
+[data-theme="dark"] .pp-surface .pp-stage {
+  background: linear-gradient(180deg, rgb(12 26 54 / 0.3), rgb(12 26 54 / 0.6) 50%, var(--pp-page)),
+    url("/passport/hale-shore-hero.webp") center 30% / cover no-repeat;
 }
 
-.dark .pp-portal .pp-card,
-[data-theme="dark"] .pp-portal .pp-card,
-.dark .pp-portal .pp-sheet,
-[data-theme="dark"] .pp-portal .pp-sheet {
+.dark .pp-surface .pp-card,
+[data-theme="dark"] .pp-surface .pp-card,
+.dark .pp-sheet,
+[data-theme="dark"] .pp-sheet {
   background: #17294a;
   color: var(--pp-ink);
   box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.08), 0 8px 28px rgb(0 0 0 / 0.2);
 }
 
-.dark .pp-portal .pp-stamp,
-[data-theme="dark"] .pp-portal .pp-stamp {
+.dark .pp-surface .pp-stamp,
+.dark .pp-sheet .pp-stamp,
+[data-theme="dark"] .pp-surface .pp-stamp,
+[data-theme="dark"] .pp-sheet .pp-stamp {
   color: var(--stamp-ink-lite);
 }
 
-.dark .pp-portal .pp-tab,
-[data-theme="dark"] .pp-portal .pp-tab {
+.dark .pp-surface .pp-tab,
+[data-theme="dark"] .pp-surface .pp-tab {
   background: rgb(23 41 74 / 0.92);
   border-top-color: rgb(247 244 236 / 0.12);
 }
 
-.dark .pp-portal .pp-lg.is-dashed,
-[data-theme="dark"] .pp-portal .pp-lg.is-dashed {
+.dark .pp-surface .pp-lg.is-dashed,
+[data-theme="dark"] .pp-surface .pp-lg.is-dashed {
   border-color: #e2a75a;
 }
 
@@ -841,10 +899,10 @@
   box-shadow: inset 0 0 0 1px rgb(179 38 30 / 0.35);
 }
 
-.dark .pp-portal .pp-del,
-[data-theme="dark"] .pp-portal .pp-del,
-.dark .pp-portal .pp-sheet-foot .pp-del,
-[data-theme="dark"] .pp-portal .pp-sheet-foot .pp-del {
+.dark .pp-surface .pp-del,
+[data-theme="dark"] .pp-surface .pp-del,
+.dark .pp-sheet .pp-del,
+[data-theme="dark"] .pp-sheet .pp-del {
   color: #f3b4ae;
 }
 
@@ -947,5 +1005,15 @@
 
   .pp-who {
     order: 5;
+  }
+}
+
+@media (min-width: 801px) {
+  dialog.pp-sheet {
+    top: 48px;
+    bottom: auto;
+    max-height: calc(100vh - 96px);
+    max-height: calc(100svh - 96px);
+    border-radius: 24px;
   }
 }

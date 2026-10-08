@@ -10,7 +10,6 @@ import {
   shareStampAction,
   undoStampAction,
 } from '~/lib/passport/actions';
-import { sortStampsNewestFirst } from '~/lib/passport/order';
 import type { KidCard, StampCard } from '~/lib/passport/read';
 
 export function StampBook({
@@ -29,7 +28,7 @@ export function StampBook({
   const [localId, setLocalId] = useState<string | null>(initialStampId ?? null);
   const current = openId === undefined ? localId : openId;
   const setOpen = onOpenId ?? setLocalId;
-  const stamps = sortStampsNewestFirst(kid.stamps);
+  const stamps = kid.stamps;
   const stamp =
     stamps.find((item) => item.id === current) ??
     kid.removed.find((item) => item.id === current) ??
@@ -112,7 +111,10 @@ function StampSheet({
   const [host, setHost] = useState<HTMLElement | null>(null);
   const formId = `stamp-fields-${stamp.id}`;
   useEffect(() => {
-    const node = document.querySelector('[data-testid="interest-passport"]');
+    const main = document.getElementById('main-content');
+    const shell = main?.parentElement?.parentElement;
+    const surface = document.querySelector('[data-testid="interest-passport"]');
+    const node = shell instanceof HTMLElement ? shell : surface;
     setHost(node instanceof HTMLElement ? node : null);
   }, []);
   const fields = (form: FormData) => {
@@ -125,111 +127,114 @@ function StampSheet({
   const sheet = (
     <>
       <button className="pp-sheet-dim" type="button" aria-label="Close stamp" onClick={onClose} />
-      <dialog className="pp-sheet" open aria-label={stamp.activity} data-testid="stamp-sheet">
-        <form
-          id={formId}
-          className="pp-sheet-body"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            const result = await saveStampAction(fields(new FormData(event.currentTarget)));
-            setStatus(result.status);
-          }}
-        >
-          <div className="pp-grab" />
-          <div className="pp-top">
-            <StampMark
-              id={stamp.id}
-              slot="sheet"
-              icon={stamp.icon}
-              kind={stamp.kind}
-              inferred={stamp.inferred}
-              top={stamp.top}
-              bottom={stamp.face}
-            />
-            <div>
-              {stamp.inferred ? <div className="pp-check">Inferred · not stamped</div> : null}
-              <h2>
-                {stamp.activity}
-                {stamp.level ? `, ${stamp.level}` : ''}
-              </h2>
-              <p className="pp-meta">
-                {kid.name}
-                {stamp.whenLabel ? ` · ${stamp.whenLabel}` : ''}
-              </p>
-            </div>
-          </div>
-          <div className="pp-src">
-            <MailIcon />
-            <div>
-              <b>{stamp.sourceLabel}</b>
-              {stamp.sourceDetail ? <span>{stamp.sourceDetail}</span> : null}
-              {stamp.emailUrl ? (
-                <a href={stamp.emailUrl} target="_blank" rel="noreferrer">
-                  Open the email
-                </a>
-              ) : null}
-            </div>
-          </div>
-          <div className="pp-fields">
-            <label>
-              Activity
-              <input className="pp-in" name="activity" defaultValue={stamp.activity} />
-            </label>
-            <label>
-              Level or group
-              <input className="pp-in" name="level" defaultValue={stamp.level ?? ''} />
-            </label>
-            <div className="pp-field">
-              Kid
-              <div className="pp-kids">
-                {kids.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={childId === item.id ? 'on' : ''}
-                    onClick={() => setChildId(item.id)}
-                  >
-                    {item.name}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className={childId === 'both' ? 'on' : ''}
-                  onClick={() => setChildId('both')}
-                >
-                  Both
-                </button>
+      <dialog open className="pp-sheet" aria-label={stamp.activity} data-testid="stamp-sheet">
+        <div className="pp-sheet-body">
+          <form
+            id={formId}
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const result = await saveStampAction(fields(new FormData(event.currentTarget)));
+              setStatus(result.status);
+            }}
+          >
+            <div className="pp-grab" />
+            <div className="pp-top">
+              <StampMark
+                id={stamp.id}
+                slot="sheet"
+                icon={stamp.icon}
+                kind={stamp.kind}
+                inferred={stamp.inferred}
+                top={stamp.top}
+                bottom={stamp.face}
+              />
+              <div>
+                {stamp.inferred ? <div className="pp-check">Inferred · not stamped</div> : null}
+                <h2>
+                  {stamp.activity}
+                  {stamp.level ? `, ${stamp.level}` : ''}
+                </h2>
+                <p className="pp-meta">
+                  {kid.name}
+                  {(stamp.cadence ?? stamp.whenLabel)
+                    ? ` · ${stamp.cadence ?? stamp.whenLabel}`
+                    : ''}
+                </p>
               </div>
             </div>
-            <label>
-              When
-              <input
-                className="pp-in"
-                name="when"
-                defaultValue={stamp.whenLabel ?? stamp.progress ?? ''}
-              />
-            </label>
-          </div>
-        </form>
-        <form className="pp-share-row" action={shareStampAction}>
-          <input type="hidden" name="stampId" value={stamp.id} />
-          <input type="hidden" name="childId" value={kid.id} />
-          <input type="hidden" name="shared" value={stamp.shared ? 'false' : 'true'} />
-          <div>
-            <b>Share with your group</b>
-            <span>
-              {stamp.shared
-                ? 'On. Your group can see this stamp.'
-                : 'Off. Nobody sees this unless you turn it on.'}
-            </span>
-          </div>
-          <button
-            className={stamp.shared ? 'pp-tog on' : 'pp-tog'}
-            type="submit"
-            aria-pressed={stamp.shared}
-            aria-label="Share with your group"
-          />
-        </form>
+            <div className="pp-src">
+              <MailIcon />
+              <div>
+                <b>{stamp.sourceLabel}</b>
+                {stamp.sourceDetail ? <span>{stamp.sourceDetail}</span> : null}
+                {stamp.emailUrl ? (
+                  <a href={stamp.emailUrl} target="_blank" rel="noreferrer">
+                    Open the email
+                  </a>
+                ) : null}
+              </div>
+            </div>
+            <div className="pp-fields">
+              <label>
+                Activity
+                <input className="pp-in" name="activity" defaultValue={stamp.activity} />
+              </label>
+              <label>
+                Level or group
+                <input className="pp-in" name="level" defaultValue={stamp.level ?? ''} />
+              </label>
+              <div className="pp-field">
+                Kid
+                <div className="pp-kids">
+                  {kids.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={childId === item.id ? 'on' : ''}
+                      onClick={() => setChildId(item.id)}
+                    >
+                      {item.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={childId === 'both' ? 'on' : ''}
+                    onClick={() => setChildId('both')}
+                  >
+                    Both
+                  </button>
+                </div>
+              </div>
+              <label>
+                When
+                <input
+                  className="pp-in"
+                  name="when"
+                  defaultValue={stamp.whenLabel ?? stamp.progress ?? ''}
+                />
+              </label>
+            </div>
+          </form>
+          <form className="pp-share-row" action={shareStampAction}>
+            <input type="hidden" name="stampId" value={stamp.id} />
+            <input type="hidden" name="childId" value={kid.id} />
+            <input type="hidden" name="shared" value={stamp.shared ? 'false' : 'true'} />
+            <div>
+              <b>Share with your group</b>
+              <span>
+                {stamp.shared
+                  ? 'On. Your group can see this stamp.'
+                  : 'Off. Nobody sees this unless you turn it on.'}
+              </span>
+            </div>
+            <button
+              className={stamp.shared ? 'pp-tog on' : 'pp-tog'}
+              type="submit"
+              aria-pressed={stamp.shared}
+              aria-label="Share with your group"
+            />
+          </form>
+        </div>
         <div className="pp-sheet-foot">
           <button
             className="pp-primary"
@@ -257,14 +262,14 @@ function StampSheet({
               </button>
             </form>
           </div>
-          <output
+          <div
             className="pp-status"
             data-testid="stamp-status"
             aria-live="polite"
             aria-atomic="true"
           >
             {statusText}
-          </output>
+          </div>
         </div>
       </dialog>
     </>

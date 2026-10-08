@@ -77,7 +77,7 @@ function KidRow({ child }: { child: KidCard }) {
           {toCheck > 0 ? (
             <>
               {' · '}
-              <b className="pp-amber">{toCheck} to check</b>
+              <span className="pp-amber">{toCheck} to check</span>
             </>
           ) : null}
         </div>
@@ -351,7 +351,14 @@ function BasicsCard({ kid }: { kid: KidCard }) {
 
 function Chevron() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+    <svg
+      className="pp-chevron"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
       <path d="M8 5.5 12.5 10 8 14.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );

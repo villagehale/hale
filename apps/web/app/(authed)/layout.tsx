@@ -47,7 +47,20 @@ export default async function AuthedLayout({ children }: { children: React.React
   if (interestPassportDemo()) {
     const demoHeaders = await headers();
     if (demoHeaders.get(PASSPORT_DEMO_HEADER) === '1') {
-      return <main id="main-content">{children}</main>;
+      return (
+        <>
+          <a href="#main-content" className="skip-link">
+            Skip to content
+          </a>
+          <PortalShell
+            showAdmin={false}
+            canSignOut
+            roots={buildRootHeroes({ greeting: 'Hi', childName: null })}
+          >
+            {children}
+          </PortalShell>
+        </>
+      );
     }
   }
 

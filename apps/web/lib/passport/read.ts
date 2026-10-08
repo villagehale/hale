@@ -22,6 +22,8 @@ export interface StampCard {
   progress: string | null;
   face: string;
   whenLabel: string | null;
+  /** Sheet subtitle under the kid name. The When field keeps whenLabel. */
+  cadence?: string | null;
   icon: string;
   inferred: boolean;
   top: string;

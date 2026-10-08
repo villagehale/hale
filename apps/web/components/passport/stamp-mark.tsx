@@ -1,242 +1,82 @@
 import { type ReactNode, createElement } from 'react';
 import { STAMP_ICONS } from '~/lib/passport/icons';
 
-type Shape = 'circle' | 'rect' | 'oct' | 'oval' | 'shield' | 'pentagon';
+type Shape = 'circle' | 'rect' | 'oct' | 'oval' | 'shield';
 
 type Profile = {
   shape: Shape;
-  tilt: number;
-  arc: boolean;
   ink: string;
   nameSize: number;
   tracking: number;
   nameY: number;
   dateY: number;
   dateSize: number;
-  icon: string;
 };
 
-/** Gallery shapes. Soccer is a circle, Karate a shield. Hockey and Basketball differ. */
-const PROFILES: Record<string, Profile> = {
-  soccer: profile(
-    'circle',
-    -6,
-    true,
-    '#1B2160',
-    13,
-    1,
-    0,
-    88,
-    10.5,
-    'translate(45 46) scale(1.25)',
-  ),
-  swimming: profile(
-    'rect',
-    4,
-    false,
-    '#2E6DA4',
-    13,
-    0.6,
-    68,
-    90,
-    10.5,
-    'translate(46 26) scale(1.17)',
-  ),
-  skating: profile(
-    'oct',
-    -3,
-    false,
-    '#5B3A7A',
-    12.5,
-    1,
-    67,
-    82,
-    10,
-    'translate(46.5 27.5) scale(1.125)',
-  ),
-  zoo: profile('oval', 7, false, '#3F6B3A', 13, 1, 69, 84, 10, 'translate(46.5 28.5) scale(1.125)'),
-  karate: profile(
-    'shield',
-    -8,
-    false,
-    '#9A3B26',
-    12.5,
-    1,
-    67,
-    82,
-    10,
-    'translate(46.5 27.5) scale(1.125)',
-  ),
-  aquarium: profile(
-    'circle',
-    5,
-    true,
-    '#0F766E',
-    11,
-    0.4,
-    0,
-    88,
-    10.5,
-    'translate(45 46) scale(1.25)',
-  ),
-  ballet: profile(
-    'rect',
-    -2,
-    false,
-    '#5B3A7A',
-    14,
-    1.2,
-    68,
-    90,
-    10.5,
-    'translate(46 26) scale(1.17)',
-  ),
-  farm: profile(
-    'oct',
-    6,
-    false,
-    '#9A3B26',
-    12.5,
-    1,
-    67,
-    82,
-    10,
-    'translate(46.5 27.5) scale(1.125)',
-  ),
-  hockey: profile(
-    'pentagon',
-    -5,
-    false,
-    '#1A3A5C',
-    12,
-    0.6,
-    70,
-    84,
-    10,
-    'translate(46.5 30) scale(1.05)',
-  ),
-  basketball: profile(
-    'circle',
-    4,
-    false,
-    '#B45309',
-    10,
-    0.1,
-    72,
-    86,
-    10,
-    'translate(48 32) scale(1)',
-  ),
-  dance: profile(
-    'oval',
-    3,
-    false,
-    '#7A3E6D',
-    13,
-    1,
-    69,
-    84,
-    10,
-    'translate(46.5 28.5) scale(1.125)',
-  ),
-  museum: profile(
-    'oct',
-    -4,
-    false,
-    '#243056',
-    12,
-    0.6,
-    67,
-    82,
-    10,
-    'translate(46.5 27.5) scale(1.125)',
-  ),
-  'christmas-market': profile(
-    'rect',
-    5,
-    false,
-    '#8C3A2F',
-    11,
-    0.2,
-    68,
-    88,
-    10,
-    'translate(46 26) scale(1.1)',
-  ),
-  'figure-skating': profile(
-    'oval',
-    -4,
-    false,
-    '#6D28A8',
-    11,
-    0.2,
-    69,
-    84,
-    10,
-    'translate(46.5 28.5) scale(1.05)',
-  ),
-  baseball: profile(
-    'circle',
-    6,
-    false,
-    '#9F1239',
-    12,
-    0.4,
-    70,
-    84,
-    10,
-    'translate(48 32) scale(1)',
-  ),
-  golf: profile(
-    'oval',
-    -6,
-    false,
-    '#3F6212',
-    13,
-    1,
-    69,
-    84,
-    10,
-    'translate(46.5 28.5) scale(1.125)',
-  ),
+/** Gallery table. One shape and one of the six inks per activity. */
+const NAVY = '#1B2160';
+const SEA = '#2E6DA4';
+const TEAL = '#0F766E';
+const RUST = '#9A3B26';
+const PLUM = '#5B3A7A';
+const GREEN = '#3F6B3A';
+
+const ICON_AT: Record<Shape, string> = {
+  circle: 'translate(45 46) scale(1.25)',
+  rect: 'translate(46 26) scale(1.17)',
+  oct: 'translate(46.5 27.5) scale(1.125)',
+  oval: 'translate(46.5 28.5) scale(1.125)',
+  shield: 'translate(46.5 27.5) scale(1.125)',
+};
+
+export const STAMP_PROFILES: Record<string, Profile> = {
+  soccer: profile('circle', NAVY),
+  swimming: profile('rect', SEA, 11, 0.35),
+  skating: profile('oct', TEAL),
+  zoo: profile('oval', RUST),
+  karate: profile('shield', PLUM),
+  aquarium: profile('circle', GREEN, 10.5, 0.25),
+  ballet: profile('rect', NAVY),
+  farm: profile('oct', SEA),
+  hockey: profile('oval', TEAL),
+  basketball: profile('shield', RUST, 10, 0.1),
+  taekwondo: profile('circle', PLUM, 10, 0.15),
+  dance: profile('rect', GREEN),
+  'figure-skating': profile('oct', NAVY, 10, 0.1),
+  golf: profile('oval', SEA),
+  mma: profile('shield', TEAL),
+  gymnastics: profile('circle', RUST, 10, 0.15),
+  baseball: profile('rect', PLUM, 12, 0.4),
+  skiing: profile('oct', GREEN),
+  museum: profile('oval', NAVY),
+  'christmas-market': profile('shield', SEA, 9, 0.05),
 };
 
 const LITES: Record<string, string> = {
-  '#1B2160': '#C5CAF5',
-  '#2E6DA4': '#B9D7F2',
-  '#5B3A7A': '#E0D0F0',
-  '#3F6B3A': '#C9E4C4',
-  '#9A3B26': '#F3C7BC',
-  '#0F766E': '#B7E6E0',
-  '#1A3A5C': '#C5D4EA',
-  '#B45309': '#F6C99A',
-  '#7A3E6D': '#F3C4E4',
-  '#243056': '#C9D2EA',
-  '#8C3A2F': '#F3C4BA',
-  '#6D28A8': '#E4C8F5',
-  '#9F1239': '#F6C2CE',
-  '#3F6212': '#D5E8B0',
+  [NAVY]: '#C5CAF5',
+  [SEA]: '#B9D7F2',
+  [TEAL]: '#B7E6E0',
+  [RUST]: '#F3C7BC',
+  [PLUM]: '#E0D0F0',
+  [GREEN]: '#C9E4C4',
 };
 
-function profile(
-  shape: Shape,
-  tilt: number,
-  arc: boolean,
-  ink: string,
-  nameSize: number,
-  tracking: number,
-  nameY: number,
-  dateY: number,
-  dateSize: number,
-  icon: string,
-): Profile {
-  return { shape, tilt, arc, ink, nameSize, tracking, nameY, dateY, dateSize, icon };
+function profile(shape: Shape, ink: string, nameSize = 13, tracking = 1): Profile {
+  const nameY = shape === 'rect' ? 68 : shape === 'circle' ? 0 : 67;
+  const dateY = shape === 'rect' ? 90 : shape === 'circle' ? 88 : shape === 'oval' ? 84 : 82;
+  const dateSize = shape === 'circle' || shape === 'rect' ? 10.5 : 10;
+  return { shape, ink, nameSize, tracking, nameY, dateY, dateSize };
 }
 
 function hash(id: string): number {
   let h = 0;
   for (const char of id) h = (h * 31 + char.charCodeAt(0)) >>> 0;
   return h;
+}
+
+/** Gallery rotation: seeded by the stamp id, from −8° through +7°. */
+export function stampTilt(id: string): number {
+  return (hash(id) % 16) - 8;
 }
 
 export function StampMark({
@@ -258,17 +98,17 @@ export function StampMark({
   slot: string;
   mini?: boolean;
 }) {
-  const known = PROFILES[icon];
-  const ink = known?.ink ?? '#1B2160';
-  const shape = known?.shape ?? (kind === 'outing' ? 'circle' : 'rect');
-  const tilt = known?.tilt ?? [-6, -4, 4, 6][hash(id) % 4] ?? -4;
-  const arc = known?.arc ?? (shape === 'circle' && top.length <= 8);
+  const known = STAMP_PROFILES[icon];
+  const ink = known?.ink ?? NAVY;
+  const shape = known?.shape ?? (kind === 'outing' ? 'oval' : 'circle');
+  const tilt = stampTilt(id);
+  const arc = shape === 'circle' && top.length <= 10;
   const nameSize = known?.nameSize ?? (top.length > 8 ? 10 : 13);
   const tracking = known?.tracking ?? (top.length > 8 ? 0.15 : 1);
   const nameY = known?.nameY ?? 68;
   const dateY = known?.dateY ?? 86;
   const dateSize = known?.dateSize ?? 10;
-  const iconTransform = known?.icon ?? 'translate(46 28) scale(1.1)';
+  const iconTransform = ICON_AT[shape];
   const size = mini ? 26 : kind === 'outing' ? 96 : 112;
   const safe = `${slot}-${id}`.replace(/[^a-zA-Z0-9_-]/g, '');
   const paths = STAMP_ICONS[icon] ?? '';
@@ -307,14 +147,14 @@ export function StampMark({
           <feComposite in="SourceGraphic" in2="m" operator="in" />
         </filter>
       </defs>
-      <g filter={`url(#wear-${safe})`}>
-        <Edges shape={shape} inferred={inferred} />
-        {paths && !mini ? (
+      <g filter={mini ? undefined : `url(#wear-${safe})`}>
+        <Edges shape={shape} inferred={inferred} heavy={mini} />
+        {paths ? (
           <g
             transform={iconTransform}
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.7"
+            strokeWidth={mini ? 5.2 : 1.9}
             strokeLinecap="round"
             strokeLinejoin="round"
           >
@@ -368,19 +208,27 @@ export function StampMark({
   );
 }
 
-function Edges({ shape, inferred }: { shape: Shape; inferred: boolean }) {
+function Edges({
+  shape,
+  inferred,
+  heavy = false,
+}: {
+  shape: Shape;
+  inferred: boolean;
+  heavy?: boolean;
+}) {
   const dash = inferred ? '5 4' : undefined;
   const outer = {
     fill: 'none' as const,
     stroke: 'currentColor',
-    strokeWidth: 3,
+    strokeWidth: heavy ? 8 : 3,
     strokeDasharray: dash,
     className: 'pp-stamp-edge',
   };
   const inner = {
     fill: 'none' as const,
     stroke: 'currentColor',
-    strokeWidth: 1.2,
+    strokeWidth: heavy ? 3.2 : 1.2,
     strokeDasharray: dash,
   };
   if (shape === 'rect') {
@@ -421,29 +269,12 @@ function Edges({ shape, inferred }: { shape: Shape; inferred: boolean }) {
       </>
     );
   }
-  if (shape === 'pentagon') {
-    return (
-      <>
-        <polygon points={pentagon(54)} {...outer} />
-        <polygon points={pentagon(46)} {...inner} />
-      </>
-    );
-  }
   return (
     <>
       <circle cx="60" cy="60" r="56" {...outer} />
       <circle cx="60" cy="60" r="46" {...inner} />
     </>
   );
-}
-
-function pentagon(radius: number): string {
-  return Array.from({ length: 5 }, (_, index) => {
-    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / 5;
-    const x = 60 + radius * Math.cos(angle);
-    const y = 62 + radius * Math.sin(angle);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
 }
 
 function IconShapes({ markup }: { markup: string }) {
