@@ -38,6 +38,7 @@ it('plays only the centered chat, replays on selection, and respects visibility 
       finish: vi.fn(() => {
         animation.playState = 'finished';
       }),
+      onfinish: null as null | ((event?: Event) => void),
     };
     return animation;
   }
@@ -73,14 +74,11 @@ it('plays only the centered chat, replays on selection, and respects visibility 
   const chats = [0, 1].map((index) => ({
     querySelectorAll: () => [chatTarget],
     getAttribute: () => 'chat',
-    closest: (selector: string) =>
-      selector === '[data-gallery-active="true"]'
-        ? selected === index
-          ? gallery
-          : null
-        : moving
-          ? gallery
-          : null,
+    closest: (selector: string) => {
+      if (selector === '[data-chat-gallery]') return gallery;
+      if (selector === '[data-gallery-active="true"]') return selected === index ? gallery : null;
+      return moving ? gallery : null;
+    },
   }));
   hooks.root = {
     querySelectorAll: () => [hero, beat, ...chats],
@@ -123,7 +121,7 @@ it('plays only the centered chat, replays on selection, and respects visibility 
       })[name],
   }));
 
-  const button = HomeMotion();
+  HomeMotion();
   const [heroAnimation, beatAnimation, firstChat] = animations;
   const secondChat = animations[7];
   if (!heroAnimation || !beatAnimation || !firstChat || !secondChat)
@@ -145,13 +143,21 @@ it('plays only the centered chat, replays on selection, and respects visibility 
   notify([{ target: hero, isIntersecting: false, intersectionRatio: 0 }]);
   expect(heroAnimation.playState).toBe('paused');
   heroAnimation.playState = 'finished';
+  heroAnimation.currentTime = 500;
   const playCount = heroAnimation.play.mock.calls.length;
+  vi.useFakeTimers();
   notify([{ target: hero, isIntersecting: true, intersectionRatio: 0.8 }]);
   expect(heroAnimation.play).toHaveBeenCalledTimes(playCount);
-  button.props.onClick();
+  vi.advanceTimersByTime(2999);
+  expect(heroAnimation.currentTime).toBe(500);
+  vi.advanceTimersByTime(1);
+  const fade = animations.at(-1);
+  if (!fade?.onfinish) throw new Error('Hero restart should fade out before it replays');
+  fade.onfinish(new Event('finish'));
   expect(heroAnimation.currentTime).toBe(0);
   expect(heroAnimation.playState).toBe('running');
   expect(beatAnimation.playState).toBe('paused');
+  vi.useRealTimers();
 
   notify(chats.map((chat) => ({ target: chat, isIntersecting: true, intersectionRatio: 0.8 })));
   expect(firstChat.playState).toBe('running');
@@ -176,12 +182,95 @@ it('plays only the centered chat, replays on selection, and respects visibility 
   preference.matches = true;
   change();
   expect(animations.every((a) => a.cancel.mock.calls.length === 1)).toBe(true);
-  expect(hooks.setEnabled).toHaveBeenLastCalledWith(false);
-  button.props.onClick();
   expect(heroAnimation.play).toHaveBeenCalledTimes(playCount + 1);
   preference.matches = false;
   change();
-  expect(animations).toHaveLength(24);
-  expect(hooks.setEnabled).toHaveBeenLastCalledWith(true);
+  expect(animations).toHaveLength(25);
   expect(disconnect).toHaveBeenCalled();
+});
+
+it('plays a desktop chat once at the same threshold, and reduced motion stays on the end state', () => {
+  const animations: ReturnType<typeof makeDesk>[] = [];
+  function makeDesk() {
+    const animation = {
+      currentTime: 0,
+      playState: 'paused',
+      pause: vi.fn(),
+      play: vi.fn(() => {
+        animation.playState = 'running';
+      }),
+      cancel: vi.fn(),
+      finish: vi.fn(() => {
+        animation.playState = 'finished';
+      }),
+      onfinish: null as null | (() => void),
+    };
+    return animation;
+  }
+  const target = {
+    dataset: { motionStep: '1' },
+    querySelector: () => null,
+    animate: vi.fn(() => {
+      const animation = makeDesk();
+      animations.push(animation);
+      return animation;
+    }),
+  };
+  const desk = {
+    querySelectorAll: () => [target],
+    getAttribute: () => 'chat',
+    closest: () => null,
+  };
+  hooks.root = {
+    querySelectorAll: () => [desk],
+    querySelector: () => null,
+  };
+  let notify: (entries: object[]) => void = () => {};
+  class Observer {
+    constructor(callback: typeof notify) {
+      notify = callback;
+    }
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  }
+  const preference = { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  vi.stubGlobal('window', { IntersectionObserver: Observer });
+  vi.stubGlobal('IntersectionObserver', Observer);
+  vi.stubGlobal('matchMedia', () => preference);
+  vi.stubGlobal('document', {
+    hidden: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
+  vi.stubGlobal('getComputedStyle', () => ({
+    getPropertyValue: (name: string) =>
+      ({
+        '--oct-motion-enter-ms': '400',
+        '--oct-motion-step-ms': '1000',
+        '--oct-chat-step-ms': '1200',
+        '--oct-motion-distance': '8px',
+        '--ease-breathe': 'cubic-bezier(0.4, 0, 0.2, 1)',
+      })[name],
+  }));
+
+  HomeMotion();
+  const animation = animations[0];
+  if (!animation) throw new Error('Desktop chat needs an animation');
+  expect(animation.finish).not.toHaveBeenCalled();
+  expect(animation.playState).toBe('paused');
+  notify([{ target: desk, isIntersecting: true, intersectionRatio: 0.25 }]);
+  expect(animation.play).not.toHaveBeenCalled();
+  notify([{ target: desk, isIntersecting: true, intersectionRatio: 0.8 }]);
+  expect(animation.playState).toBe('running');
+  animation.playState = 'finished';
+  const plays = animation.play.mock.calls.length;
+  notify([{ target: desk, isIntersecting: true, intersectionRatio: 0.8 }]);
+  expect(animation.play).toHaveBeenCalledTimes(plays);
+
+  preference.matches = true;
+  const change = preference.addEventListener.mock.calls[1]?.[1] as (() => void) | undefined;
+  change?.();
+  expect(target.animate).toHaveBeenCalledTimes(1);
+  expect(animation.cancel).toHaveBeenCalled();
 });

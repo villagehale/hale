@@ -2,6 +2,7 @@ import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import type { Locale } from '~/i18n/routing';
 import { logoSrc, shoreSrc } from './assets';
+import { HomeMotion } from './home-motion';
 import { TextDoor } from './text-door';
 import { Phrase, tx } from './tx';
 
@@ -196,22 +197,40 @@ export function RedesignActivities({
               </div>
               <div className="sp-split-r">
                 <div className="sp-example">{t('Example chat. Places and times are made up.')}</div>
-                <div className="hs-card hs-art-pad hs-mini sp-preview">
-                  <div className="hs-msg out">
-                    {t('Anything for a 4-year-old this Saturday morning?')}
+                <div className="hs-card hs-art-pad hs-mini sp-preview" data-motion-scene="chat">
+                  <div data-motion-step="0.4">
+                    <div className="hs-msg out">
+                      {t('Anything for a 4-year-old this Saturday morning?')}
+                    </div>
                   </div>
-                  <div className="hs-msg in">
-                    {t(
-                      'Three nearby:\n1. Parent & tot swim (ages 2–4), 9:15 a.m.\n2. Library story time (ages 2–5), 10:30 a.m.\n3. Free drop-in play at the community centre, 10 to noon\nWant the links?',
-                    )}
+                  <div data-motion-step="1.4">
+                    <span className="chat-typing" data-motion-typing aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                    <div className="hs-msg in">
+                      {t(
+                        'Three nearby:\n1. Parent & tot swim (ages 2–4), 9:15 a.m.\n2. Library story time (ages 2–5), 10:30 a.m.\n3. Free drop-in play at the community centre, 10 to noon\nWant the links?',
+                      )}
+                    </div>
                   </div>
-                  <div className="hs-msg out">{t('Story time! Link please')}</div>
-                  <div className="hs-msg in">
-                    <Phrase
-                      locale={locale}
-                      sentence="Here’s the library page. No sign-up needed for this one."
-                      phrase="library page"
-                    />
+                  <div data-motion-step="2.4">
+                    <div className="hs-msg out">{t('Story time! Link please')}</div>
+                  </div>
+                  <div data-motion-step="3.4">
+                    <span className="chat-typing" data-motion-typing aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                    <div className="hs-msg in">
+                      <Phrase
+                        locale={locale}
+                        sentence="Here’s the library page. No sign-up needed for this one."
+                        phrase="library page"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -276,6 +295,7 @@ export function RedesignActivities({
             </div>
           </section>
         </div>
+        <HomeMotion />
       </div>
       <SiteFooter locale={locale} />
     </>

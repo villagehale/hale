@@ -143,9 +143,9 @@ export function RedesignHome({
             <div className="status">
               <span>9:41</span>
               <span className="icons">
-                <svg width="15" height="10" viewBox="0 0 17 11" fill="#000" aria-hidden="true"><rect x="0" y="7" width="3" height="4" rx="0.8" /><rect x="4.5" y="5" width="3" height="6" rx="0.8" /><rect x="9" y="2.5" width="3" height="8.5" rx="0.8" /><rect x="13.5" y="0" width="3" height="11" rx="0.8" /></svg>
-                <svg width="14" height="10" viewBox="0 0 15 11" fill="#000" aria-hidden="true"><path d="M7.5 2.2c2.1 0 4 .8 5.4 2.1l1.1-1.1A9.2 9.2 0 0 0 7.5.6 9.2 9.2 0 0 0 1 3.2l1.1 1.1a7.7 7.7 0 0 1 5.4-2.1Zm0 3.1c1.2 0 2.4.5 3.2 1.3l1.1-1.1A6.2 6.2 0 0 0 7.5 3.7c-1.7 0-3.2.7-4.3 1.8l1.1 1.1c.8-.8 2-1.3 3.2-1.3Zm0 3.1c-.4 0-.8.2-1.1.5L7.5 10l1.1-1.1a1.6 1.6 0 0 0-1.1-.5Z" /></svg>
-                <svg width="22" height="11" viewBox="0 0 25 12" aria-hidden="true"><rect x="0.5" y="0.5" width="21" height="11" rx="3.2" fill="none" stroke="#000" strokeOpacity="0.35" /><rect x="2" y="2" width="16" height="8" rx="2" fill="#000" /><path d="M23 4v4c.8-.3 1.3-1.1 1.3-2S23.8 4.3 23 4Z" fill="#000" fillOpacity="0.4" /></svg>
+                <svg width="15" height="10" viewBox="0 0 17 11" fill="currentColor" aria-hidden="true"><rect x="0" y="7" width="3" height="4" rx="0.8" /><rect x="4.5" y="5" width="3" height="6" rx="0.8" /><rect x="9" y="2.5" width="3" height="8.5" rx="0.8" /><rect x="13.5" y="0" width="3" height="11" rx="0.8" /></svg>
+                <svg width="14" height="10" viewBox="0 0 15 11" fill="currentColor" aria-hidden="true"><path d="M7.5 2.2c2.1 0 4 .8 5.4 2.1l1.1-1.1A9.2 9.2 0 0 0 7.5.6 9.2 9.2 0 0 0 1 3.2l1.1 1.1a7.7 7.7 0 0 1 5.4-2.1Zm0 3.1c1.2 0 2.4.5 3.2 1.3l1.1-1.1A6.2 6.2 0 0 0 7.5 3.7c-1.7 0-3.2.7-4.3 1.8l1.1 1.1c.8-.8 2-1.3 3.2-1.3Zm0 3.1c-.4 0-.8.2-1.1.5L7.5 10l1.1-1.1a1.6 1.6 0 0 0-1.1-.5Z" /></svg>
+                <svg width="22" height="11" viewBox="0 0 25 12" aria-hidden="true"><rect x="0.5" y="0.5" width="21" height="11" rx="3.2" fill="none" stroke="currentColor" strokeOpacity="0.35" /><rect x="2" y="2" width="16" height="8" rx="2" fill="currentColor" /><path d="M23 4v4c.8-.3 1.3-1.1 1.3-2S23.8 4.3 23 4Z" fill="currentColor" fillOpacity="0.4" /></svg>
               </span>
             </div>
             <div className="ihead">
@@ -164,7 +164,7 @@ export function RedesignHome({
               <div className="who" data-motion-step="0.6">Jen</div>
               <div className="row" data-motion-step="0.6"><span className="pic show mono-av">J</span><div className="msg in tail">{t("We’re in, I can drive")}</div></div>
               <div className="who" data-motion-step="1.6">Hale</div>
-              <div className="row" data-motion-step="1.6"><img className="pic show" src={logoSrc} alt="" /><div className="msg in tail">{t("Done, it’s on everyone’s calendar. Jen’s driving.")}</div></div>
+              <div className="row" data-motion-step="1.6"><img className="pic show" src={logoSrc} alt="" /><span className="chat-typing" data-motion-typing aria-hidden="true"><span /><span /><span /></span><div className="msg in tail">{t("Done, it’s on everyone’s calendar. Jen’s driving.")}</div></div>
             </div>
             <div className="compose">
               <span className="plus"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M6 1v10M1 6h10" /></svg></span>
@@ -175,7 +175,7 @@ export function RedesignHome({
         </div>
 
       </div>
-      <HomeMotion label={t("Replay example")} description={t("Replay the family plan example")} />
+      <HomeMotion />
     </div>
   </div>
 </main>
@@ -221,8 +221,8 @@ export function RedesignHome({
     <p className="hs-when">{t("Any week")}</p>
     <h3 className="hs-h3">{t("Finds what’s on near you")}</h3>
     <p className="hs-p">{t("Swim, camps, drop-ins, the library down the street. Picked for your kids’ ages, from the places that run them.")}</p>
-    <div className="hs-art"><div className="hs-card hs-art-pad hs-mini">
-     <div className="hs-msg in">{t("Here’s what’s on near you this week:\n1. Parent & tot swim (ages 2–4), Sat 9:15 a.m.\n2. Library storytime (ages 2–5), Tue 10:30 a.m.\n3. Little movers (ages 2–5), winter times not posted yet")}</div>
+    <div className="hs-art"><div className="hs-card hs-art-pad hs-mini" data-motion-scene="chat">
+     <div data-motion-step="0.4"><span className="chat-typing" data-motion-typing aria-hidden="true"><span /><span /><span /></span><div className="hs-msg in">{t("Here’s what’s on near you this week:\n1. Parent & tot swim (ages 2–4), Sat 9:15 a.m.\n2. Library storytime (ages 2–5), Tue 10:30 a.m.\n3. Little movers (ages 2–5), winter times not posted yet")}</div></div>
     </div></div>
    </div>
    <div className="hs-beat hs-glass">
@@ -247,11 +247,11 @@ export function RedesignHome({
     <p className="hs-when">{t("After the first class")}</p>
     <h3 className="hs-h3">{t("Asks how it went")}</h3>
     <p className="hs-p">{t("One quick question after the first class. Your answer shapes what Hale sends you next.")}</p>
-    <div className="hs-art"><div className="hs-card hs-art-pad hs-mini">
-     <div className="hs-msg in">{t("How did swim go? One line is plenty.")}</div>
-     <div className="hs-msg out">{t("She loved it. Pool was freezing 🥶")}</div>
-     <div className="hs-msg in">{t("Thanks, that helps. I’ll use it when I pick what to send you next.")}</div>
-     <span className="hs-did"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>{t("Remembered: Mia loves swim")}</span>
+    <div className="hs-art"><div className="hs-card hs-art-pad hs-mini" data-motion-scene="chat">
+     <div data-motion-step="0.4"><span className="chat-typing" data-motion-typing aria-hidden="true"><span /><span /><span /></span><div className="hs-msg in">{t("How did swim go? One line is plenty.")}</div></div>
+     <div data-motion-step="1.4"><div className="hs-msg out">{t("She loved it. Pool was freezing 🥶")}</div></div>
+     <div data-motion-step="2.4"><span className="chat-typing" data-motion-typing aria-hidden="true"><span /><span /><span /></span><div className="hs-msg in">{t("Thanks, that helps. I’ll use it when I pick what to send you next.")}</div></div>
+     <span className="hs-did" data-motion-step="3.2"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>{t("Remembered: Mia loves swim")}</span>
     </div></div>
    </div>
   </div>
@@ -275,9 +275,9 @@ export function RedesignHome({
     <div className="hs-wrow"><div className="hs-wday">{t("Mon")}<b>9</b></div><div><div className="hs-wt">{t("Swim, Swimmer 3")}</div><div className="hs-wm">{t("Mia · 4:30 PM")}</div></div><span className="hs-driver"><i>A</i>{t("Alex driving")}</span></div><div className="hs-wrow"><div className="hs-wday">{t("Tue")}<b>10</b></div><div><div className="hs-wt">{t("Soccer")}</div><div className="hs-wm">{t("Noah, Lily · 5:30 PM")}</div></div><span className="hs-driver"><i>T</i>{t("Tom driving")}</span></div><div className="hs-wrow"><div className="hs-wday">{t("Thu")}<b>12</b></div><div><div className="hs-wt">{t("Soccer")}</div><div className="hs-wm">{t("Noah, Lily · 5:30 PM")}</div></div><span className="hs-driver"><i>M</i>{t("Mei driving")}</span></div><div className="hs-wrow"><div className="hs-wday">{t("Sat")}<b>14</b></div><div><div className="hs-wt">{t("Leo & Aria’s party")}</div><div className="hs-wm">{t("Climbing gym · 2:00 PM")}</div></div><span className="hs-driver open">{t("Who’s driving?")}</span></div>
    </div>
    <div className="hs-card hs-memory">
-    <div className="hs-mini">
-     <div className="hs-msg out">{t("What do you know about us?")}</div>
-     <div className="hs-msg in">{t("Mia is 6 and loves swimming and drawing. Theo is 3. Thursdays I think are soccer, tell me if that changed.")}</div>
+    <div className="hs-mini" data-motion-scene="chat">
+     <div data-motion-step="0.4"><div className="hs-msg out">{t("What do you know about us?")}</div></div>
+     <div data-motion-step="1.4"><span className="chat-typing" data-motion-typing aria-hidden="true"><span /><span /><span /></span><div className="hs-msg in">{t("Mia is 6 and loves swimming and drawing. Theo is 3. Thursdays I think are soccer, tell me if that changed.")}</div></div>
     </div>
    </div>
   </div>

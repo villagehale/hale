@@ -47,7 +47,7 @@
 :root[data-theme="dark"] .rd .hs-ic, :root[data-theme="dark"] .rd .cx-tile, :root[data-theme="dark"] .rd .hs-lang span, :root[data-theme="dark"] .rd .sp-btn2, :root[data-theme="dark"] .rd .sp-chip, :root.dark .rd .hs-ic, :root.dark .rd .cx-tile, :root.dark .rd .hs-lang span, :root.dark .rd .sp-btn2, :root.dark .rd .sp-chip { background: rgb(247 244 236 / 0.06); }
 :root[data-theme="dark"] .rd .sp-chip.on, :root.dark .rd .sp-chip.on { background: var(--navy); }
 :root[data-theme="dark"] .rd .brand img, :root[data-theme="dark"] .rd .hs-foot-logo img, :root[data-theme="dark"] .rd .hs-close-brand img, :root[data-theme="dark"] .rd .cx-pill .brand img, :root.dark .rd .brand img, :root.dark .rd .hs-foot-logo img, :root.dark .rd .hs-close-brand img, :root.dark .rd .cx-pill .brand img { box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22); }
-:root[data-theme="dark"] .rd .phone, :root.dark .rd .phone { background: #05070d; box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.16), 0 40px 80px -32px rgb(0 0 0 / 0.8); }
+:root[data-theme="dark"] .rd, :root.dark .rd { --phone-metal: linear-gradient(155deg, #d4cfc6 0%, #7d786f 22%, #3c3936 48%, #8f8981 62%, #2a2826 84%, #6a655f 100%); --phone-metal-shadow: inset 0 0 0 0.6px rgb(255 255 255 / 0.42), inset 0 0 0 1.5px rgb(0 0 0 / 0.45), 0 22px 44px -22px rgb(0 0 0 / 0.72); }
 :root[data-theme="dark"] .rd .screen, :root.dark .rd .screen { background: var(--ios-bg); color: var(--ios-label); }
 :root[data-theme="dark"] .rd .island, :root[data-theme="dark"] .rd .home i, :root.dark .rd .island, :root.dark .rd .home i { background: #000; }
 :root[data-theme="dark"] .rd .home i, :root.dark .rd .home i { background: #fff; }
@@ -127,7 +127,7 @@
 :root:not([data-theme="light"]):not(.light) .rd .hs-ic, :root:not([data-theme="light"]):not(.light) .rd .cx-tile, :root:not([data-theme="light"]):not(.light) .rd .hs-lang span, :root:not([data-theme="light"]):not(.light) .rd .sp-btn2, :root:not([data-theme="light"]):not(.light) .rd .sp-chip { background: rgb(247 244 236 / 0.06); }
 :root:not([data-theme="light"]):not(.light) .rd .sp-chip.on { background: var(--navy); }
 :root:not([data-theme="light"]):not(.light) .rd .brand img, :root:not([data-theme="light"]):not(.light) .rd .hs-foot-logo img, :root:not([data-theme="light"]):not(.light) .rd .hs-close-brand img, :root:not([data-theme="light"]):not(.light) .rd .cx-pill .brand img { box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22); }
-:root:not([data-theme="light"]):not(.light) .rd .phone { background: #05070d; box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.16), 0 40px 80px -32px rgb(0 0 0 / 0.8); }
+:root:not([data-theme="light"]):not(.light) .rd { --phone-metal: linear-gradient(155deg, #d4cfc6 0%, #7d786f 22%, #3c3936 48%, #8f8981 62%, #2a2826 84%, #6a655f 100%); --phone-metal-shadow: inset 0 0 0 0.6px rgb(255 255 255 / 0.42), inset 0 0 0 1.5px rgb(0 0 0 / 0.45), 0 22px 44px -22px rgb(0 0 0 / 0.72); }
 :root:not([data-theme="light"]):not(.light) .rd .screen { background: var(--ios-bg); color: var(--ios-label); }
 :root:not([data-theme="light"]):not(.light) .rd .island, :root:not([data-theme="light"]):not(.light) .rd .home i { background: #000; }
 :root:not([data-theme="light"]):not(.light) .rd .home i { background: #fff; }

@@ -1,35 +1,47 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
-/** Animate the existing examples once; their complete markup is the static fallback. */
-export function HomeMotion({
-  label = 'Replay example',
-  description = 'Replay the family plan example',
-}: {
-  label?: string;
-  description?: string;
-} = {}) {
-  const button = useRef<HTMLButtonElement>(null);
-  const replay = useRef(() => {});
-  const [enabled, setEnabled] = useState(false);
+const HERO_HOLD_MS = 3000;
+const HERO_RESET_MS = 280;
+
+/** Play the examples. Chats run once; the hero holds, then loops. */
+export function HomeMotion() {
+  const anchor = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const root = button.current?.closest('.rd');
+    const root = anchor.current?.closest('.rd');
     if (!root || !('IntersectionObserver' in window)) return;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)');
     let observer: IntersectionObserver | undefined;
     let scenes = new Map<Element, Animation[]>();
+    let holdTimer: number | undefined;
+    let holdUntil = 0;
+    let holdRemaining = HERO_HOLD_MS;
+    let holding = false;
+    let resetting = false;
+    let heroVisible = false;
+    let resetAnims: Animation[] = [];
+
+    const clearHold = () => {
+      if (holdTimer) globalThis.clearTimeout(holdTimer);
+      holdTimer = undefined;
+    };
     const stop = () => {
       observer?.disconnect();
+      clearHold();
+      holding = false;
+      resetting = false;
+      heroVisible = false;
+      holdRemaining = HERO_HOLD_MS;
+      for (const fade of resetAnims) fade.cancel();
+      resetAnims = [];
       for (const animations of scenes.values())
         for (const animation of animations) animation.cancel();
       scenes.clear();
-      replay.current = () => {};
     };
     const setup = () => {
       stop();
-      setEnabled(!reduced.matches);
       if (reduced.matches) return;
       const style = getComputedStyle(root);
       const duration = Number.parseFloat(style.getPropertyValue('--oct-motion-enter-ms'));
@@ -37,15 +49,101 @@ export function HomeMotion({
       const chatStep = Number.parseFloat(style.getPropertyValue('--oct-chat-step-ms'));
       const distance = style.getPropertyValue('--oct-motion-distance').trim();
       const easing = style.getPropertyValue('--ease-breathe').trim();
-      const isChat = (scene: Element) => scene.getAttribute('data-motion-scene') === 'chat';
+      const sceneOf = (scene: Element) => scene.getAttribute('data-motion-scene');
+      const isChat = (scene: Element) => sceneOf(scene) === 'chat';
+      const isHero = (scene: Element) => sceneOf(scene) === 'hero';
+      const inGallery = (scene: Element) => Boolean(scene.closest('[data-chat-gallery]'));
       const centered = (scene: Element) => Boolean(scene.closest('[data-gallery-active="true"]'));
       const moving = (scene: Element) => Boolean(scene.closest('[data-gallery-scrolling="true"]'));
+      const hero = root.querySelector('[data-motion-scene="hero"]');
+      const heroAnimations = () => (hero && scenes.get(hero)) || [];
+      const heroSettled = () => {
+        const animations = heroAnimations();
+        return animations.length > 0 && animations.every((animation) => animation.playState === 'finished');
+      };
+      const beginReset = () => {
+        if (resetting || !hero) return;
+        resetting = true;
+        holding = false;
+        clearHold();
+        const steps = [...hero.querySelectorAll<HTMLElement>('[data-motion-step]')];
+        const fades = steps.map((el) =>
+          el.animate([{ opacity: 1 }, { opacity: 0 }], {
+            duration: HERO_RESET_MS,
+            easing,
+            fill: 'forwards',
+          }),
+        );
+        resetAnims = fades;
+        const replay = () => {
+          for (const fade of resetAnims) fade.cancel();
+          resetAnims = [];
+          resetting = false;
+          for (const animation of heroAnimations()) {
+            animation.pause();
+            animation.currentTime = 0;
+          }
+          if (heroVisible && !document.hidden)
+            for (const animation of heroAnimations()) animation.play();
+        };
+        if (fades.length === 0) {
+          replay();
+          return;
+        }
+        let pending = fades.length;
+        for (const fade of fades) {
+          fade.onfinish = () => {
+            pending -= 1;
+            if (pending === 0 && resetting) replay();
+          };
+        }
+      };
+      const armHold = () => {
+        if (holdTimer || resetting || !holding) return;
+        if (!heroVisible || document.hidden) return;
+        if (holdRemaining <= 0) {
+          beginReset();
+          return;
+        }
+        holdUntil = Date.now() + holdRemaining;
+        holdTimer = globalThis.setTimeout(() => {
+          holdTimer = undefined;
+          holding = false;
+          holdRemaining = HERO_HOLD_MS;
+          if (!heroVisible || document.hidden) {
+            holding = true;
+            holdRemaining = 0;
+            return;
+          }
+          beginReset();
+        }, holdRemaining);
+      };
+      const pauseHold = () => {
+        if (!holdTimer) return;
+        holdRemaining = Math.max(0, holdUntil - Date.now());
+        clearHold();
+      };
+      const scheduleHeroHold = () => {
+        if (resetting || !heroSettled()) return;
+        if (!holding) {
+          holding = true;
+          holdRemaining = HERO_HOLD_MS;
+        }
+        armHold();
+      };
+      const pauseReset = () => {
+        for (const fade of resetAnims) if (fade.playState === 'running') fade.pause();
+      };
+      const resumeReset = () => {
+        if (!heroVisible || document.hidden) return;
+        for (const fade of resetAnims) if (fade.playState === 'paused') fade.play();
+      };
       scenes = new Map(
         [...root.querySelectorAll('[data-motion-scene]')].map((scene) => [
           scene,
           [...scene.querySelectorAll<HTMLElement>('[data-motion-step]')].flatMap((target) => {
             const delay = Number(target.dataset.motionStep) * (isChat(scene) ? chatStep : step);
-            const bubble = isChat(scene) ? target.querySelector<HTMLElement>('.hs-msg') : null;
+            const bubble = target.querySelector<HTMLElement>(isChat(scene) ? '.hs-msg' : '.msg');
             const animations = [
               (bubble ?? target).animate(
                 [
@@ -55,7 +153,8 @@ export function HomeMotion({
                 { duration, delay, easing, fill: 'both' },
               ),
             ];
-            const avatar = bubble && target.querySelector<HTMLElement>('.hs-pic');
+            const avatar =
+              bubble && target.querySelector<HTMLElement>(isChat(scene) ? '.hs-pic' : '.pic');
             if (avatar)
               animations.push(
                 avatar.animate([{ opacity: 0 }, { opacity: 1 }], { duration, delay, fill: 'both' }),
@@ -95,7 +194,8 @@ export function HomeMotion({
             }
             for (const animation of animations) {
               animation.pause();
-              if (isChat(scene) && !centered(scene)) animation.finish();
+              if (isHero(scene)) animation.onfinish = () => scheduleHeroHold();
+              if (isChat(scene) && inGallery(scene) && !centered(scene)) animation.finish();
             }
             return animations;
           }),
@@ -103,15 +203,23 @@ export function HomeMotion({
       );
       const started = new Set<Element>();
       const visible = new Set<Element>();
+      const thresholdFor = (scene: Element) => (sceneOf(scene) === 'beat' ? 0.2 : 0.28);
       observer = new IntersectionObserver(
         (entries) => {
           for (const entry of entries) {
             const animations = scenes.get(entry.target) ?? [];
-            const threshold = entry.target.getAttribute('data-motion-scene') === 'beat' ? 0.2 : 0.28;
-            if (entry.isIntersecting && entry.intersectionRatio >= threshold)
-              visible.add(entry.target);
+            const threshold = thresholdFor(entry.target);
+            const shown = entry.isIntersecting && entry.intersectionRatio >= threshold;
+            if (shown) visible.add(entry.target);
             else visible.delete(entry.target);
-            if (isChat(entry.target) && (!centered(entry.target) || moving(entry.target))) {
+            if (isHero(entry.target)) {
+              heroVisible = shown && !document.hidden;
+              if (!heroVisible) {
+                pauseHold();
+                pauseReset();
+              }
+            }
+            if (isChat(entry.target) && inGallery(entry.target) && (!centered(entry.target) || moving(entry.target))) {
               for (const animation of animations) {
                 if (moving(entry.target)) animation.pause();
                 else animation.finish();
@@ -119,15 +227,17 @@ export function HomeMotion({
               continue;
             }
             if (
-              entry.isIntersecting &&
+              shown &&
               !document.hidden &&
-              (started.has(entry.target) ||
-                entry.intersectionRatio >=
-                  (entry.target.getAttribute('data-motion-scene') === 'beat' ? 0.2 : 0.28))
+              (started.has(entry.target) || entry.intersectionRatio >= threshold)
             ) {
               started.add(entry.target);
               for (const animation of animations)
                 if (animation.playState !== 'finished') animation.play();
+              if (isHero(entry.target)) {
+                resumeReset();
+                scheduleHeroHold();
+              }
             } else {
               for (const animation of animations)
                 if (animation.playState === 'running') animation.pause();
@@ -140,7 +250,7 @@ export function HomeMotion({
       const gallery = root.querySelector('[data-chat-gallery]');
       const selectChat = () => {
         for (const [scene, animations] of scenes) {
-          if (!isChat(scene)) continue;
+          if (!isChat(scene) || !inGallery(scene)) continue;
           for (const animation of animations) {
             if (moving(scene)) {
               if (centered(scene)) {
@@ -164,21 +274,16 @@ export function HomeMotion({
         }
       };
       gallery?.addEventListener('hale:gallerychange', selectChat);
-      const hero = root.querySelector('[data-motion-scene="hero"]');
-      replay.current = () => {
-        for (const animation of (hero && scenes.get(hero)) || []) {
-          animation.currentTime = 0;
-          animation.play();
-        }
-      };
       const visibility = () => {
         if (document.hidden) {
+          heroVisible = false;
+          pauseHold();
+          pauseReset();
           for (const animations of scenes.values()) {
             for (const animation of animations)
               if (animation.playState === 'running') animation.pause();
           }
         } else {
-          // Re-observing resumes only examples that are still in view.
           for (const scene of scenes.keys()) {
             observer?.unobserve(scene);
             observer?.observe(scene);
@@ -186,34 +291,32 @@ export function HomeMotion({
         }
       };
       document.addEventListener('visibilitychange', visibility);
+      const layout = matchMedia('(max-width: 767.98px)');
+      const onLayout = () => {
+        for (const scene of scenes.keys()) {
+          observer?.unobserve(scene);
+          observer?.observe(scene);
+        }
+      };
+      layout.addEventListener('change', onLayout);
       return () => {
         document.removeEventListener('visibilitychange', visibility);
         gallery?.removeEventListener('hale:gallerychange', selectChat);
+        layout.removeEventListener('change', onLayout);
       };
     };
-    let removeVisibility = setup();
+    let removeListeners = setup();
     const change = () => {
-      removeVisibility?.();
-      removeVisibility = setup();
+      removeListeners?.();
+      removeListeners = setup();
     };
     reduced.addEventListener('change', change);
     return () => {
-      removeVisibility?.();
+      removeListeners?.();
       reduced.removeEventListener('change', change);
       stop();
     };
   }, []);
 
-  return (
-    <button
-      ref={button}
-      type="button"
-      className="motion-replay"
-      hidden={!enabled}
-      onClick={() => replay.current()}
-      aria-label={description}
-    >
-      {label} <span aria-hidden="true">↻</span>
-    </button>
-  );
+  return <div ref={anchor} hidden />;
 }

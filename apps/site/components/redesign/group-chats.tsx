@@ -23,7 +23,7 @@ function Check() {
 /** The three group-chat examples. `framed` is the phone gallery; the desktop grid is the still. */
 export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
   const t = (s: string) => tx(locale, s);
-  const step = (value: string) => (framed ? { 'data-motion-step': value } : {});
+  const step = (value: string) => ({ 'data-motion-step': value });
   const wrap = (card: ReactNode) => (framed ? <PhoneChat>{card}</PhoneChat> : card);
   const stamp = () => (
     <div className="hs-stamp">
@@ -52,7 +52,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
               <div className="hs-chat-members">{t('Dana, Marco + 7 more')}</div>
             </div>
           </div>
-          <div className="hs-thread" {...(framed ? { 'data-motion-scene': 'chat' } : {})}>
+          <div className="hs-thread" data-motion-scene="chat">
             {stamp()}
             <div className="hs-who">Dana</div>
             <div className="hs-row">
@@ -64,7 +64,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             </div>
             <div className="hs-row" {...step('0.6')}>
               <img className="hs-pic show" src={logoSrc} alt="" />
-              {framed ? <TypingBubble /> : null}
+              <TypingBubble />
               <div className="hs-msg in">
                 {t(
                   'Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+). Want me to track RSVPs?',
@@ -76,7 +76,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             </div>
             <div className="hs-row" {...step('2.2')}>
               <span className="hs-pic mono show">D</span>
-              {framed ? <TypingBubble /> : null}
+              <TypingBubble />
               <div className="hs-msg in">{t('Climbing gym! Booked Sat the 14th at 2')}</div>
             </div>
             <span className="hs-did" {...step('3')}>
@@ -105,7 +105,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
               <div className="hs-chat-members">{t('Mei, Tom, Hale')}</div>
             </div>
           </div>
-          <div className="hs-thread" {...(framed ? { 'data-motion-scene': 'chat' } : {})}>
+          <div className="hs-thread" data-motion-scene="chat">
             {stamp()}
             <div className="hs-msg out">{t('Can’t do Tuesday pickup this week 😩')}</div>
             <div className="hs-who" {...step('0.6')}>
@@ -113,7 +113,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             </div>
             <div className="hs-row" {...step('0.6')}>
               <span className="hs-pic mono show">T</span>
-              {framed ? <TypingBubble /> : null}
+              <TypingBubble />
               <div className="hs-msg in">{t('I’ll grab both Tue. You do Thu?')}</div>
             </div>
             <div className="hs-who" {...step('1.6')}>
@@ -121,7 +121,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             </div>
             <div className="hs-row" {...step('1.6')}>
               <img className="hs-pic show" src={logoSrc} alt="" />
-              {framed ? <TypingBubble /> : null}
+              <TypingBubble />
               <div className="hs-msg in">
                 {t(
                   'Got it. Tom on Tuesday, Mei on Thursday, 5:30 after soccer. I’ll remind whoever’s driving the night before.',
@@ -154,7 +154,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
               <div className="hs-chat-members">{t('Aisha, Jordan, Kate, Hale')}</div>
             </div>
           </div>
-          <div className="hs-thread" {...(framed ? { 'data-motion-scene': 'chat' } : {})}>
+          <div className="hs-thread" data-motion-scene="chat">
             {stamp()}
             <div className="hs-who">Aisha</div>
             <div className="hs-row">
@@ -166,7 +166,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             </div>
             <div className="hs-row" {...step('0.6')}>
               <img className="hs-pic show" src={logoSrc} alt="" />
-              {framed ? <TypingBubble /> : null}
+              <TypingBubble />
               <div className="hs-msg in">
                 {t(
                   'Saturdays 9:30 at the community pool has room for all three. Sign-ups open Tuesday at 7. I’ll send you each the link the night before.',

@@ -3,6 +3,7 @@ import { Phrase, tx } from './tx';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { logoSrc, shoreSrc } from './assets';
+import { HomeMotion } from './home-motion';
 import { TextDoor } from './text-door';
 import { localeHref } from '~/i18n/navigation';
 import { CopyNumberButton } from '~/components/copy-number';
@@ -42,11 +43,11 @@ export function RedesignText({
     <p className="sp-lede">{t("Your first message is already written. You send it, and Hale replies the same minute.")}</p>
     <div className="sp-cta"><TextDoor className="btn btn-hero" placement="text" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor></div>
    </div>
-   <div className="sp-aside"><div className="hs-glass sp-panel sp-preview">
+   <div className="sp-aside"><div className="hs-glass sp-panel sp-preview" data-motion-scene="chat">
     <p className="sp-preview-label r">{t("What you’ll send")}</p>
-    <div className="hs-mini"><div className="hs-msg out">{t("Hey Hale, what's going on?")}</div></div>
+    <div className="hs-mini"><div data-motion-step="0.3"><div className="hs-msg out">{t("Hey Hale, what's going on?")}</div></div></div>
     <p className="sp-preview-label" style={{ marginTop: "var(--s4)" }}>{t("What you’ll get back")}</p>
-    <div className="hs-mini"><div className="hs-msg in">{t("Hey, it's Hale. I find what's on for kids near you. What's your postal code? I'll show you what's on this week.")}</div></div>
+    <div className="hs-mini"><div data-motion-step="1.2"><span className="chat-typing" data-motion-typing aria-hidden="true"><span /><span /><span /></span><div className="hs-msg in">{t("Hey, it's Hale. I find what's on for kids near you. What's your postal code? I'll show you what's on this week.")}</div></div></div>
    </div></div>
   </div>
  </main>
@@ -75,6 +76,7 @@ export function RedesignText({
 </div>
 
 
+        <HomeMotion />
       </div>
       <SiteFooter locale={locale} omitPrivacyLink />
     </>
