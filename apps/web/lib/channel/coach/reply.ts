@@ -204,12 +204,39 @@ function sentences(text: string): string[] {
 }
 
 /**
+ * The answer had no complete sentence that fits with the protected suffix.
+ *
+ * The caller asks the model for one shorter rewrite. This error carries no body: the
+ * text can be what the parent just typed (rule #1), and a thrown message is a log line.
+ */
+export class ReplyNeedsShorter extends Error {
+  constructor() {
+    super('channel coach: model answer had no complete sentence inside the segment budget');
+    this.name = 'ReplyNeedsShorter';
+  }
+}
+
+/**
+ * How many characters the answer itself may be, once a protected suffix is reserved.
+ *
+ * Two GSM-7 segments are 306 units. The suffix is joined with one space, and it is
+ * measured in characters because every suffix this path appends is plain ASCII.
+ */
+export function replyCharacterRoom(suffix: string): number {
+  const tail = suffix.trim();
+  const reserved = tail === '' ? 0 : tail.length + 1;
+  return smsUnitsBudget('plain ascii', MAX_REPLY_SEGMENTS) - reserved;
+}
+
+/**
  * Bring a body inside the segment budget by dropping whole sentences from the end.
  *
  * Sentence-first because a body cut mid-clause reads as a bug, and because the FIRST
  * sentence is where the skill puts the answer — so the part that survives is the part
- * that mattered. Only when a single sentence is itself over budget does it fall back to
- * a word-boundary trim, which is still never mid-word.
+ * that mattered. When that first sentence is itself over budget, this throws
+ * {@link ReplyNeedsShorter} rather than cutting it. A word-boundary trim used to append
+ * "..." and send the stump; that stump is not a sentence, and a capitalised fragment of
+ * it has been graded as a name Hale invented.
  *
  * It used to append "More in the app: <url>" to whatever survived, which meant the
  * app-point fired precisely when the answer was too long to send — the message where
@@ -229,36 +256,30 @@ function fitToBudget(
   const whole = withSuffix(body);
   if (smsSegments(whole) <= max) return body;
 
-  // Named rather than dropped in silence, like the siren below and for the same reason:
-  // what goes over the side here is work this turn already paid for. On 2026-08-21 the
-  // flagship question — "what's on Sept-Dec near me" — composed a verified Sep 1 opening
-  // plus two finds from a ~50s live web search, and the entire second paragraph was cut
-  // from a message that opened "Two things worth flagging here". Nothing downstream could
-  // tell that reply from one that fit, so it took a human reading a graded bench run to
-  // see it. A count makes the next one countable. The BODY never reaches the log — it can
-  // carry back what the parent typed (rule #1).
-  const overBy = smsUnits(whole) - smsUnitsBudget(whole, max);
-  console.warn(
-    `channel coach: model answer ran ${overBy} units past the ${max}-segment budget; sending the prefix that fits`,
-  );
-  onTrimmed?.(overBy);
-
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
     const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) {
+      // Named rather than dropped in silence, like the siren below and for the same
+      // reason: what goes over the side here is work this turn already paid for. On
+      // 2026-08-21 the flagship question — "what's on Sept-Dec near me" — composed a
+      // verified Sep 1 opening plus two finds from a ~50s live web search, and the
+      // entire second paragraph was cut from a message that opened "Two things worth
+      // flagging here". Nothing downstream could tell that reply from one that fit, so
+      // it took a human reading a graded bench run to see it. A count makes the next
+      // one countable. The BODY never reaches the log — it can carry back what the
+      // parent typed (rule #1). Only a prefix that is actually sent is counted; a body
+      // with no complete sentence inside the budget is a rewrite, not a trim.
+      const overBy = smsUnits(whole) - smsUnitsBudget(whole, max);
+      console.warn(
+        `channel coach: model answer ran ${overBy} units past the ${max}-segment budget; sending the prefix that fits`,
+      );
+      onTrimmed?.(overBy);
+      return candidate;
+    }
   }
 
-  const words = (parts[0] ?? body).split(' ');
-  for (let count = words.length - 1; count >= 1; count -= 1) {
-    const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
-  }
-
-  // Not even the first word fits: a model returning one unbroken 300-character token,
-  // which is a failed turn and not a long answer. Throwing hands it to the router's
-  // honesty template, the same place an empty body goes (rule #8 — no invented body).
-  throw new Error('channel coach: model answer had no prefix inside the segment budget');
+  throw new ReplyNeedsShorter();
 }
 
 /**

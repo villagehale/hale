@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import { MAX_REPLY_SEGMENTS, redactTeenNames, toSmsReply } from './reply';
+import { MAX_REPLY_SEGMENTS, ReplyNeedsShorter, redactTeenNames, toSmsReply } from './reply';
 
 /**
  * The post-processing between the model and the carrier. Everything asserted here is a
@@ -158,22 +158,23 @@ describe('toSmsReply', () => {
     expect(out).not.toContain('1-2:30 p.m.');
   });
 
-  it('trims a single unbroken over-budget sentence on a word boundary', () => {
+  it('refuses to cut a single over-budget sentence in half', () => {
     const raw = `${'swim '.repeat(80)}now`;
 
-    const out = toSmsReply(raw, { children: [], now: NOW });
-
-    expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
-    expect(out).not.toContain(LINK);
-    expect(out.endsWith('...')).toBe(true);
-    expect(out).not.toMatch(/swi\b/);
+    expect(() => toSmsReply(raw, { children: [], now: NOW })).toThrow(ReplyNeedsShorter);
+    try {
+      toSmsReply(raw, { children: [], now: NOW });
+    } catch (err) {
+      expect((err as Error).message).toMatch(/budget/i);
+      expect((err as Error).message).not.toContain('swim');
+    }
   });
 
-  /** No prefix of a single 300-character token fits, so there is nothing honest left to
-   * send. The router reads the throw as a failed turn and answers with its own template
-   * — the same outcome an empty body gets, and the right one. */
-  it('refuses a body with no prefix inside the budget', () => {
-    expect(() => toSmsReply('x'.repeat(400), { children: [], now: NOW })).toThrow(/budget/i);
+  /** No complete sentence of a single 300-character token fits. The throw is the
+   * signal to ask for a shorter rewrite — not a stump, and not a sentence this
+   * function invented. */
+  it('refuses a body with no complete sentence inside the budget', () => {
+    expect(() => toSmsReply('x'.repeat(400), { children: [], now: NOW })).toThrow(ReplyNeedsShorter);
   });
 
   it('refuses to emit an empty body', () => {

@@ -39,9 +39,13 @@
     "file": "coach-channel-group.md",
     "sha256": "1268847e1b4f3e3b66de39437232c1c1aeff72fb3dd1d53c417a910ea9ba38f9"
   },
+  "coach-channel-shorten.md": {
+    "file": "coach-channel-shorten.md",
+    "sha256": "1fa8c8140c7266765635214c3dcc4aaba596d219c055d51cbb013d2ab8479210"
+  },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "4d308c415978fe1ee51e634dd43403cdc89647ac31c45b8aaf9db877fdeb5065"
+    "sha256": "f26ae33a6f68ccca310dfc171162738a82c2c32a69b3cc3e58a8dd9a6d3aa59e"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",

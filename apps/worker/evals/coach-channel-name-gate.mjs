@@ -2,11 +2,11 @@
 // claim about THIS FAMILY that Hale was never handed?
 //
 // Extracted from run-coach-channel-eval.mjs so the normaliser can be tested directly.
-// The gate reads a composed SMS body, which is a TRIMMED body — the 2-segment budget
-// cuts mid-sentence and appends an ellipsis — so the punctuation a name arrives wearing
-// is the harness's own, not the model's. A normaliser that only recognises a possessive
-// at the very end of the word flagged "Remy's..." as an invented name while Remy sat in
-// the fixture's own children (#411).
+// The gate reads a composed SMS body. A trim used to cut mid-sentence and append an
+// ellipsis, and a model can still end a word that way, so the punctuation a name
+// arrives wearing may not be the model's. A normaliser that only recognises a
+// possessive at the very end of the word flagged "Remy's..." as an invented name
+// while Remy sat in the fixture's own children (#411).
 
 /**
  * Public-health authorities the coach may name.
