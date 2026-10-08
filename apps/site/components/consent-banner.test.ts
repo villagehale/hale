@@ -22,6 +22,7 @@ describe('consent banner glass', () => {
     expect(css).toContain('prefers-reduced-transparency: reduce');
     expect(css).toContain('prefers-reduced-motion: no-preference');
     expect(css).toContain('translateY(12px)');
+    expect(css).toMatch(/\.consent-inline a \{[^}]*text-decoration: underline/);
     expect(css).not.toContain('is-dark');
     expect(css).not.toContain('is-equal');
   });

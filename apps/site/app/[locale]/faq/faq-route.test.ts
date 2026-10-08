@@ -1,9 +1,20 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { FAQ } from '~/lib/faq/index.js';
 import FaqPage from './page.js';
 
-const html = renderToStaticMarkup(await FaqPage({ params: Promise.resolve({ locale: 'en' as const }) }));
+const messages = (name: string) =>
+  JSON.parse(
+    readFileSync(fileURLToPath(new URL(`../../../messages/${name}.json`, import.meta.url)), 'utf8'),
+  ) as {
+    Faq: { metaDescription: string };
+  };
+
+const html = renderToStaticMarkup(
+  await FaqPage({ params: Promise.resolve({ locale: 'en' as const }) }),
+);
 
 describe('/faq — canonical product FAQ', () => {
   it('renders every product question once in the visible accordion', () => {
@@ -31,6 +42,18 @@ describe('/faq — canonical product FAQ', () => {
       expect(html).toContain(item.question);
     }
     expect(html).not.toContain('<details');
+  });
+
+  it('locks the share description in English, French, and Chinese', () => {
+    expect(messages('en').Faq.metaDescription).toBe(
+      "Straight answers about Hale for parents: it's free with unlimited chat, works for kids 0–18, and never acts without you.",
+    );
+    expect(messages('fr').Faq.metaDescription).toBe(
+      "Des réponses claires sur Hale pour les parents : gratuit, textos illimités, pour les enfants de 0 à 18 ans, et Hale n'agit jamais sans toi.",
+    );
+    expect(messages('zh').Faq.metaDescription).toBe(
+      '给家长的 Hale 常见问题：免费、聊天不限量，适合 0–18 岁的孩子，没有你的同意绝不擅自行动。',
+    );
   });
 
   it('renders every answer’s text, open or closed', () => {

@@ -23,6 +23,10 @@ function rd(html: string): string {
   return found?.[0] ?? '';
 }
 
+function plain(html: string): string {
+  return html.replace(/<[^>]+>/g, '');
+}
+
 describe('every locale renders the redesign', () => {
   it.each(routing.locales)('%s has no homepage question chips and no v4 loop', (locale) => {
     const html = HTML[locale];
@@ -61,7 +65,7 @@ describe('every locale renders the redesign', () => {
     const fr = rd(HTML.fr);
     expect(fr).toContain('aide tout le monde à s’entendre');
     expect(fr).toContain('Inscriptions faites pour toi, quand tu dis oui');
-    expect(fr).toContain('Les inscriptions de toute une saison, d’un coup');
+    expect(plain(fr)).toContain('Les inscriptions de toute une saison, d’un coup');
     expect(fr).toContain('Plus de choses faites pour toi, toute l’année.');
     expect(fr).toContain('Le maximum de ce que Hale peut faire.');
     expect(fr).toContain('L’inscription à ta place viendra plus tard, et seulement si tu dis oui.');
@@ -74,7 +78,7 @@ describe('every locale renders the redesign', () => {
     const zh = rd(HTML.zh);
     expect(zh).toContain('它帮你找活动、让大家定下来');
     expect(zh).toContain('你点头后代你报名');
-    expect(zh).toContain('一整季的报名，一次办完');
+    expect(plain(zh)).toContain('一整季的报名，一次办完');
     expect(zh).toContain('一整年，更多事由它来做。');
     expect(zh).toContain('Hale 能做的，到这里最多。');
     expect(zh).not.toContain('每个孩子，照顾的人也算上');

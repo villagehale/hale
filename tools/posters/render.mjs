@@ -71,7 +71,7 @@ function platePage(plate) {
       <p class="cardbody">${plate.localLine}</p>
     </div>
 
-    <div class="banner">No app to install — Hale lives in your texts. Free to start.</div>
+    <div class="banner">No app to install — Hale lives in your texts. Free.</div>
 
     <div class="qrcard">
       ${qrSvg(plate.qrValue, 2.0, plate.qrEcc)}

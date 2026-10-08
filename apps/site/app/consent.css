@@ -110,6 +110,7 @@ html[data-consent] .consent-banner:not(.is-open) {
   font-weight: 600;
   font-size: 14px;
   color: var(--cb-ink);
+  text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
   white-space: nowrap;

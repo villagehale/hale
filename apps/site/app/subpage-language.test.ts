@@ -322,7 +322,7 @@ describe('/pricing — the tier cards have anatomy', () => {
   it('lists every shipped feature, and marks Plus and Max coming soon', () => {
     for (const tier of PLAN_TIERS_ORDERED) {
       for (const feature of PLAN_DISPLAY[tier].features) {
-        expect(html).toContain(feature);
+        expect(rawText(html)).toContain(feature);
       }
     }
     expect(html.match(/Coming soon/g)).toHaveLength(2);

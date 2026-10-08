@@ -741,6 +741,8 @@
 .rd .hs-close-brand img { width: 40px; height: 40px; border-radius: 30%; }
 .rd .hs-close-brand .wordmark { height: 25.6px; }
 .rd .hs-close-card h2 { margin-top: var(--s4); font-family: var(--font-display); font-size: 44.8px; font-weight: 450; line-height: 1.04; letter-spacing: -0.02em; color: var(--navy); text-wrap: balance; }
+.rd .hs-keep { white-space: nowrap; }
+.rd .t-max .hs-checks li { text-wrap: pretty; }
 .rd .hs-close-sub { margin-top: var(--s4); max-width: 30em; font-family: var(--font-body); font-size: 18.4px; line-height: 1.45; color: var(--navy); opacity: 0.9; text-wrap: balance; }
 .rd .hs-close-cta { margin-top: var(--s6); }
 /* small text over the art goes on glass, as production does for its closing QR block */
@@ -1110,6 +1112,8 @@
 .rd .hs-close-brand img { width: 40px; height: 40px; border-radius: 30%; }
 .rd .hs-close-brand .wordmark { height: 25.6px; }
 .rd .hs-close-card h2 { margin-top: var(--s4); font-family: var(--font-display); font-size: 44.8px; font-weight: 450; line-height: 1.04; letter-spacing: -0.02em; color: var(--navy); text-wrap: balance; }
+.rd .hs-keep { white-space: nowrap; }
+.rd .t-max .hs-checks li { text-wrap: pretty; }
 .rd .hs-close-sub { margin-top: var(--s4); max-width: 30em; font-family: var(--font-body); font-size: 18.4px; line-height: 1.45; color: var(--navy); opacity: 0.9; text-wrap: balance; }
 .rd .hs-close-cta { margin-top: var(--s6); }
 /* small text over the art goes on glass, as production does for its closing QR block */
