@@ -33,6 +33,10 @@ import type { Locale } from '~/i18n/routing';
  * worse than omitting the cap), and its WCAG accessibility commitment, which we
  * have not measured and will not claim. Counsel should read the diff.
  *
+ * 2026-10-07: Sloane's redline. The product description, group chats, and the
+ * approval model match what Hale does today. A paid-plans clause is included
+ * without prices. Counsel should read the diff.
+ *
  * app.villagehale.com/terms is now a permanent 308 here (VIL-256) — kept forever,
  * because the mobile app, sent emails and stored consent records all name the old
  * URL and none of those can be rewritten. This is the only copy now; it stays
@@ -53,6 +57,17 @@ export async function generateMetadata({
     title: TITLE,
     description: DESCRIPTION,
     alternates: buildAlternates(locale, '/terms'),
+    // Same as the privacy page: do not inherit the homepage preview, which says
+    // family data stays in Canada.
+    openGraph: {
+      title: TITLE,
+      description: DESCRIPTION,
+      url: localeHref(locale, '/terms'),
+    },
+    twitter: {
+      title: TITLE,
+      description: DESCRIPTION,
+    },
     robots: { index: false, follow: false },
   };
 }
@@ -66,6 +81,7 @@ const SECTIONS: LegalSection[] = [
   { id: 'licence', title: 'Your licence to use Hale' },
   { id: 'acceptable-use', title: 'Acceptable use' },
   { id: 'approval-model', title: 'How Hale works: you decide' },
+  { id: 'paid-plans', title: 'Price and paid plans' },
   { id: 'ownership', title: 'Ownership, your content, and feedback' },
   { id: 'third-party', title: 'Programs, venues, and tools run by others' },
   { id: 'ai-disclaimer', title: 'AI disclaimer — not professional advice' },
@@ -85,7 +101,7 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
     <LegalLayout
       locale={locale}
       title="Terms of Service"
-      lastUpdatedIso="2026-08-20"
+      lastUpdatedIso="2026-10-07"
       intro={
         <p>
           These terms are an agreement between you and Village Hale Technologies Inc.
@@ -105,23 +121,29 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
     >
       <LegalSectionBlock id="what-hale-is" title="What Hale is">
         <p>
-          Hale is a planner for your kids&rsquo; year, reached by text message, not an app you
-          install. Email and the web app are available too, and carry the same record.
+          Hale is a family assistant you reach by iMessage or text message, not an app you install.
+          Email and the web app are available too, and carry the same record.
         </p>
         <p>
-          Hale watches for things that matter in your family&rsquo;s day — including municipal
-          registration dates and programs where you live — answers parenting questions, and asks
-          how it went. Hale does not book a class or register you. Hale is a tool to support you
-          as a parent; it does not replace your judgment.
+          Hale helps with kids&rsquo; activities (city, YMCA and private programs), reminders before
+          registration opens, open-spot watches, family group chats and parenting questions. Today
+          Hale does not book, register or pay for anything on your behalf. Future features may let
+          Hale act on your instruction, for example completing a sign-up, but only after you confirm
+          each action, and under any extra terms we show you at the time. Hale is a tool to support
+          you as a parent; it does not replace your judgment.
         </p>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="eligibility" title="Who can use Hale">
         <p>
-          You must be at least 18 years old and the parent or legal guardian of the children you add.
-          You use Hale on your own behalf and on behalf of your children, and you confirm you have the
-          authority to provide their information and to make decisions for them within Hale. Some
-          actions that affect both parents&rsquo; data require both parents to have agreed.
+          You must be at least 18 years old and the parent or legal guardian of the children you
+          add. You use Hale on your own behalf and on behalf of your children, and you confirm you
+          have the authority to provide their information and to make decisions for them within
+          Hale. Some actions that affect both parents&rsquo; data require both parents to have
+          agreed. If you add Hale to a group chat, you confirm that you have permission to include
+          the other members, that they know Hale is in the chat, and that you understand
+          Hale&rsquo;s messages are visible to everyone in that chat. Members who are not parents or
+          guardians can use Hale only inside that chat.
         </p>
       </LegalSectionBlock>
 
@@ -131,25 +153,30 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
           <a href={localeHref(locale, '/privacy')} className="link">
             Privacy Policy
           </a>
-          , which forms part of these terms. It sets out what we collect, why, where it is stored,
-          who it is ever shared with, and the control you keep over it. If anything in these terms
-          conflicts with the Privacy Policy on how we handle your family&rsquo;s personal
-          information, the Privacy Policy governs.
+          , which forms part of these terms. It sets out what we collect, why, who it is ever shared
+          with, and the control you keep over it. If anything in these terms conflicts with the
+          Privacy Policy on how we handle your family&rsquo;s personal information, the Privacy
+          Policy governs.
         </p>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="text-messages" title="Text messages, STOP, and carrier rates">
         <p>
-          Hale texts the number the conversation started from. We never text a number that has not
-          texted us first, and your consent is recorded in the words you used to give it. How often
-          Hale texts depends on what your family has asked it to watch — typically a brief at the
-          start of the week and a message when something needs you.
+          Hale texts only people who texted it first, or whom a parent on the account invited or
+          added — a co-parent, a caregiver, or the members of a group chat that parent asked Hale to
+          start or join. Your consent is recorded in the words you used to give it. Anyone can reply
+          STOP. If you add Hale to a group chat, Hale can write in that chat, and everyone in it can
+          read those messages. How often Hale texts
+          depends on what your family has asked it to watch — typically a brief at the start of the
+          week and a message when something needs you.
         </p>
         <p>
           <strong>Reply STOP to any message and the messages stop</strong>, immediately, until you
           ask us to start again; reply HELP for help. Standard message and data rates from your
-          mobile carrier apply, and message delivery depends on your carrier, which we do not
-          control. Text messages are not end-to-end encrypted — see{' '}
+          mobile carrier apply. Message delivery isn&rsquo;t guaranteed and may depend on your
+          carrier or device, which we do not control. Carriers are not liable for delayed or
+          undelivered messages. Whether Hale reaches you by iMessage or SMS, treat the messages as
+          not end-to-end encrypted — see{' '}
           <a href={localeHref(locale, '/privacy')} className="link">
             our Privacy Policy
           </a>{' '}
@@ -174,10 +201,10 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
 
       <LegalSectionBlock id="licence" title="Your licence to use Hale">
         <p>
-          Subject to these terms, we grant you a limited, non-exclusive, non-transferable,
-          revocable licence to use Hale for your own family&rsquo;s personal, non-commercial
-          purposes. It lasts as long as these terms do, and it is the only right in Hale that these
-          terms give you.
+          Subject to these terms, we grant you a limited, non-exclusive, non-transferable, revocable
+          licence to use Hale for your own family&rsquo;s personal, non-commercial purposes. It
+          lasts as long as these terms do, and it is the only right in Hale that these terms give
+          you.
         </p>
       </LegalSectionBlock>
 
@@ -200,11 +227,19 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
 
       <LegalSectionBlock id="approval-model" title="How Hale works: you decide">
         <p>
-          Hale drafts; you decide. Hale prepares suggestions, but it does not act on its own — a
-          parent approves every action before anything happens in the outside world. New accounts
-          begin in an observe-only mode, and any move toward more automation requires your explicit,
-          per-action-type approval. Where an action would cost money, hard spending caps apply, and
-          an action that would exceed a cap is refused.
+          Hale writes and sends you messages, reminders and suggestions. It does not take actions in
+          the outside world for you, such as registering, paying, or sending email in your name. If
+          we add such a feature, Hale will act only after you confirm the specific action, and
+          spending limits will apply.
+        </p>
+      </LegalSectionBlock>
+
+      <LegalSectionBlock id="paid-plans" title="Price and paid plans">
+        <p>
+          Hale is free to use today. We may introduce paid plans in the future. If we do, we will
+          tell you before anything costs money, show the price and terms, and charge you only if you
+          choose a paid plan. Free features you already use will not start costing money without
+          notice.
         </p>
       </LegalSectionBlock>
 
@@ -237,13 +272,13 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
           Much of what Hale is useful for belongs to somebody else: a city&rsquo;s registration
           page, a camp, a library program, a swim school. We do not run any of them. Their prices,
           their deadlines, their availability and their own terms and privacy practices are theirs,
-          and anything you register for or buy is between you and them. Hale tells you what it
-          found and when it found it — check the source before you rely on it.
+          and anything you register for or buy is between you and them. Hale tells you what it found
+          and when it found it — check the source before you rely on it.
         </p>
         <p>
-          The same goes for tools you connect, such as an email account or a calendar. By
-          connecting one you confirm you are allowed to, and that tool&rsquo;s own terms keep
-          applying. You can disconnect it at any time.
+          The same goes for tools you connect, such as an email account or a calendar. By connecting
+          one you confirm you are allowed to, and that tool&rsquo;s own terms keep applying. You can
+          disconnect it at any time.
         </p>
       </LegalSectionBlock>
 
@@ -257,9 +292,12 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
           Information from Hale is for general support only.
         </p>
         <p>
-          For any concern about your child&rsquo;s health, development, or safety, consult a qualified
-          professional — such as your doctor or pediatrician. <strong>In an emergency, or if you
-          believe a child is in danger, contact your local emergency services immediately.</strong>{' '}
+          For any concern about your child&rsquo;s health, development, or safety, consult your
+          doctor or pediatrician.{' '}
+          <strong>
+            In an emergency, or if you believe a child is in danger, contact your local emergency
+            services immediately.
+          </strong>{' '}
           Do not rely on Hale in an emergency.
         </p>
       </LegalSectionBlock>
@@ -274,10 +312,10 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
           warrant that Hale will be uninterrupted or error-free.
         </p>
         <p>
-          To that same extent, we disclaim the implied warranties and conditions of
-          merchantability, fitness for a particular purpose, title, and non-infringement. Consumer
-          protection law in your province may give you warranties that cannot be excluded; where it
-          does, this section does not apply to them.
+          To that same extent, we disclaim the implied warranties and conditions of merchantability,
+          fitness for a particular purpose, title, and non-infringement. Consumer protection law in
+          your province may give you warranties that cannot be excluded; where it does, this section
+          does not apply to them.
         </p>
       </LegalSectionBlock>
 
@@ -285,8 +323,9 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
         <p>
           To the fullest extent permitted by law, Hale and its team will not be liable for any
           indirect, incidental, special, consequential, or punitive damages, or for any loss arising
-          from your reliance on Hale&rsquo;s output or your use of (or inability to use) the service.
-          Nothing in these terms limits any liability that cannot be limited under applicable law.
+          from your reliance on Hale&rsquo;s output or your use of (or inability to use) the
+          service. Nothing in these terms limits any liability that cannot be limited under
+          applicable law.
         </p>
       </LegalSectionBlock>
 

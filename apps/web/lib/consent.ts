@@ -6,13 +6,13 @@ import { type Database, schema } from '@hale/db';
  * bound to its live page by the drift test in consent.test.ts, so a re-dated
  * policy cannot silently leave its constant behind (VIL-257).
  *
- * Terms last moved August 20, 2026 (CC0 General-Legal scaffold rebuild). Privacy
- * moved again on August 27, 2026 to name Google Ads measurement cookies on the
- * marketing site. Nothing here forces a re-consent — POLICY_VERSION is only ever
- * WRITTEN into a consent row, never compared against a stored one.
+ * Terms moved October 7, 2026 with the redline. Privacy moved again on October 8,
+ * 2026 to say the main database is hosted in Canada. Nothing here forces a
+ * re-consent — POLICY_VERSION is only ever WRITTEN into a consent row, never
+ * compared against a stored one.
  */
-export const TERMS_VERSION = 'August 20, 2026';
-export const PRIVACY_VERSION = 'August 27, 2026';
+export const TERMS_VERSION = 'October 7, 2026';
+export const PRIVACY_VERSION = 'October 8, 2026';
 
 /**
  * The policy version a consent is recorded against, so a consent row names the

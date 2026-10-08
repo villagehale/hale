@@ -51,7 +51,7 @@ export function LegalLayout({
 
   return (
     <>
-      <SiteHeader locale={locale} />
+      <SiteHeader locale={locale} chrome="legal" />
       <div className="rd">
         <div className="stage sp-stage sp-legal">
           <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />

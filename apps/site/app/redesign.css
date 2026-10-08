@@ -1237,6 +1237,9 @@
 .rd .sp-cta { margin-top: var(--s6); display: flex; align-items: center; justify-content: center; gap: var(--s5); flex-wrap: wrap; }
 .rd .sp-legal .sp-hero { padding: 64px var(--s5) 96px; }
 .rd .sp-legal .sp-h1 { font-size: 60.8px; }
+/* Helvetica Neue 450 has no CJK face, so /zh synthesized a heavier fallback.
+   Hold the legal title at 400 and do not synthesize a weight. */
+:lang(zh) .rd .sp-legal .sp-h1 { font-weight: 400; font-synthesis-weight: none; }
 
 /* glass panel on the hero art (the home hero's .loop treatment) */
 .rd .sp-panel { padding: var(--s5); }

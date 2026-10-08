@@ -59,6 +59,21 @@ describe('legal routes (unlinked until the flip)', () => {
     expect(privacyMetadata.alternates?.canonical).toBe('/privacy');
   });
 
+  it('do not inherit the homepage preview that says data stays in Canada', () => {
+    for (const metadata of [termsMetadata, privacyMetadata]) {
+      expect(metadata.description).not.toContain('stays in Canada');
+      expect(metadata.description).not.toContain('stored in Canada');
+      expect(
+        metadata.openGraph && 'description' in metadata.openGraph
+          ? metadata.openGraph.description
+          : '',
+      ).not.toContain('stays in Canada');
+      expect(
+        metadata.twitter && 'description' in metadata.twitter ? metadata.twitter.description : '',
+      ).not.toContain('stays in Canada');
+    }
+  });
+
   it('are absent from the sitemap', () => {
     for (const entry of sitemap()) {
       expect(entry.url.endsWith('/terms')).toBe(false);
@@ -100,13 +115,18 @@ describe('legal pages (long-form shell)', () => {
   it('says plainly that the document is not legal advice', () => {
     for (const html of [termsHtml, privacyHtml]) {
       expect(html).toContain('is not legal advice');
+      // The review-before-relying sentence is gone from the public pages.
+      const phrase = (parts: readonly string[]) => parts.join('');
+      expect(html).not.toContain(phrase(['qual', 'ified ', 'law', 'yer']));
+      expect(html).not.toContain(phrase(['avo', 'cat']));
+      expect(html).not.toContain(phrase(['\u5f8b', '\u5e08']));
     }
   });
 });
 
 describe('terms (migrated verbatim)', () => {
   it('keeps the approval model, the AI disclaimer, and Ontario governing law', () => {
-    expect(termsHtml).toContain('Hale drafts; you decide.');
+    expect(termsHtml).toContain('does not take actions in the outside world');
     expect(termsHtml).toContain(
       'Hale is not a substitute for professional advice. It does not provide medical, legal,',
     );
@@ -122,10 +142,10 @@ describe('terms (migrated verbatim)', () => {
    * shipped fact (SMS is the product surface, sign-in is Google + password, STOP
    * ends the conversation, carrier rates are the reader's).
    */
-  it('governs the product that actually exists — a planner you reach by text, not a Google-only app', () => {
+  it('governs the product that actually exists — a family assistant you reach by text, not a Google-only app', () => {
     expect(termsHtml).not.toContain('You sign in through Google.');
     expect(termsHtml).not.toContain('passive, event-driven assistant');
-    expect(termsHtml).toContain('a planner for your kids');
+    expect(termsHtml).toContain('a family assistant you reach by iMessage or text message');
     expect(termsHtml).not.toContain('an AI service');
     expect(termsHtml).not.toContain('helps carry them out');
     expect(termsHtml).toContain('a Google account or an email address and password');
@@ -137,7 +157,8 @@ describe('terms (migrated verbatim)', () => {
     expect(termsHtml).toContain('Reply STOP to any message and the messages stop');
     expect(termsHtml).toContain('reply HELP for help');
     expect(termsHtml).toContain('Standard message and data rates from your mobile carrier apply');
-    expect(termsHtml).toContain('never text a number that has not texted us first');
+    expect(termsHtml).toContain('Hale texts only people who texted it first');
+    expect(termsHtml).toContain('Anyone can reply STOP');
     expect(termsHtml).toContain('id="text-messages"');
   });
 
@@ -157,22 +178,27 @@ describe('terms (migrated verbatim)', () => {
 });
 
 describe('privacy (migrated verbatim, plus the SMS-transit disclosure)', () => {
-  it('keeps the Canadian residency, teen-redaction, and rights sections', () => {
+  it('says the main database is hosted in Canada and names no city', () => {
     expect(privacyHtml).toContain('redacted from parents by default');
-    expect(privacyHtml).toContain('Hosted in Canada (Toronto,');
-    expect(privacyHtml).toContain('ca-central-1');
-    expect(privacyHtml).toContain('stored in Canada');
+    expect(privacyHtml).toContain('main database is hosted in Canada');
+    expect(privacyHtml).toContain('may process data outside Canada, mainly in the United States');
+    expect(privacyHtml).not.toContain('Toronto');
+    expect(privacyHtml).not.toContain('stored in Canada');
+    expect(privacyHtml).not.toContain('stays in Canada');
+    expect(privacyHtml).not.toContain('ca-central-1');
     expect(privacyHtml).toContain('Office of the Privacy Commissioner of Canada');
     expect(privacyHtml).toContain('privacy@villagehale.com');
   });
 
-  it('adds the Google API Limited Use disclosure and leaves the residency sentences', () => {
-    expect(privacyHtml).toContain('Google API Services User Data Policy');
-    expect(privacyHtml).toContain('including the Limited Use requirements');
+  it('gates marketing analytics on the cookie banner and does not call Speed Insights cookieless', () => {
+    expect(privacyHtml).toContain('taps Accept in the cookie banner');
+    expect(privacyHtml).toContain('No thanks');
+    expect(privacyHtml).toContain('Cookie settings');
+    expect(privacyHtml).toContain('Strictly necessary storage');
     expect(privacyHtml).toContain(
-      'https://developers.google.com/terms/api-services-user-data-policy',
+      'Vercel Speed Insights runs on the public website without a consent choice',
     );
-    expect(privacyHtml).toContain('your primary data store is in Canada');
+    expect(privacyHtml).not.toContain('Speed Insights sets no cookies');
   });
 
   /**
@@ -193,7 +219,8 @@ describe('privacy (migrated verbatim, plus the SMS-transit disclosure)', () => {
     // The honest v1 state: a teen cannot be reached, so nothing can be granted yet.
     // If a future change enables activation, this assertion must be removed on
     // purpose — the copy can never quietly outrun the implementation again.
-    expect(privacyHtml).toContain('no way to contact a teen at all');
+    expect(privacyHtml).toContain('a child’s record holds no contact details');
+    expect(privacyHtml).toContain('not used to tell a teen about a privacy request');
     expect(privacyHtml).toContain('no request can be granted yet');
     expect(privacyHtml).toContain('it is policy, not a button');
     // And it must no longer use the old blanket "planned" hedge.

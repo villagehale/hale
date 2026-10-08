@@ -1822,6 +1822,18 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     pointer-events: none;
   }
 
+  /* Legal pages scroll a long document under the bar. The shared glass (0.72)
+     lets body text show through; these pages ask for a nearly solid fill.
+     Scoped to .legal-chrome so the landing hero glass stays as it is. */
+  .legal-chrome .v4-glass { background: rgb(253 252 250 / 0.94); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .legal-chrome .v4-glass {
+      background: rgb(12 26 54 / 0.96);
+    }
+  }
+  :root[data-theme="dark"] .legal-chrome .v4-glass { background: rgb(12 26 54 / 0.96); }
+  :root[data-theme="light"] .legal-chrome .v4-glass { background: rgb(253 252 250 / 0.94); }
+
   /* ── Hero ─────────────────────────────────────────────────────────────── */
   .v4-hero {
     position: relative;

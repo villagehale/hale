@@ -26,7 +26,14 @@ import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
  * works everywhere. Every internal link carries the locale prefix.
  */
 
-export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale }) {
+export function SiteHeader({
+  locale = routing.defaultLocale,
+  chrome,
+}: {
+  locale?: Locale;
+  /** Legal pages ask for a more opaque bar so body text does not show through. */
+  chrome?: 'legal';
+}) {
   const t = getTranslator(locale, 'Header');
   const common = getTranslator(locale, 'Common');
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
@@ -54,7 +61,13 @@ export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale
   );
 
   return (
-    <header className="sticky top-0 z-50 px-4 sm:px-6">
+    <header
+      className={
+        chrome === 'legal'
+          ? 'legal-chrome sticky top-0 z-50 px-4 sm:px-6'
+          : 'sticky top-0 z-50 px-4 sm:px-6'
+      }
+    >
       <nav className="v4-nav v4-glass" aria-label="Primary">
         <a
           href={localeHref(locale, '/')}

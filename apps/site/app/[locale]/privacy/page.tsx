@@ -42,8 +42,16 @@ import type { Locale } from '~/i18n/routing';
  * gated — apps/site/lib/analytics/google-ads.test.ts fails if the tag and this
  * disclosure move alone; posthog-config.test.ts still gates the PostHog half.
  *
- * Still left for counsel rather than invented: a stated retention period, and a postal
- * address for the Privacy Officer. Counsel should read the diff.
+ * 2026-10-07: Sloane's redline. Product facts that the draft left open are stated only
+ * where the code or a confirmed fact supports them (message retention, consent records,
+ * Google Drive read-only, PostHog replay).
+ *
+ * 2026-10-08: the main database is hosted in Canada (Supabase region ca-central-1).
+ * The page says that, and that some listed providers may process data outside
+ * Canada, mainly in the United States. It names no city. The same day, the public
+ * site's cookie banner: Google Ads and PostHog load only after Accept. Speed
+ * Insights is described from Vercel's privacy page, which does not say it sets
+ * no cookies. Counsel should read the diff.
  *
  * app.villagehale.com/privacy is now a permanent 308 here (VIL-256), so this is
  * the only copy. Still noindexed by choice — whether a privacy policy should be
@@ -53,8 +61,7 @@ import type { Locale } from '~/i18n/routing';
  */
 
 const TITLE = 'Privacy Policy · Hale';
-const DESCRIPTION =
-  "How Hale collects, uses, and protects your family's data — built for PIPEDA, Quebec Law 25, and CASL, with your data stored in Canada.";
+const DESCRIPTION = "How Hale collects, uses, and protects your family's data, in plain language.";
 
 export async function generateMetadata({
   params,
@@ -66,6 +73,17 @@ export async function generateMetadata({
     title: TITLE,
     description: DESCRIPTION,
     alternates: buildAlternates(locale, '/privacy'),
+    // The locale layout's homepage preview still says family data stays in Canada.
+    // A legal URL must not inherit that claim.
+    openGraph: {
+      title: TITLE,
+      description: DESCRIPTION,
+      url: localeHref(locale, '/privacy'),
+    },
+    twitter: {
+      title: TITLE,
+      description: DESCRIPTION,
+    },
     robots: { index: false, follow: false },
   };
 }
@@ -74,13 +92,13 @@ const SECTIONS: LegalSection[] = [
   { id: 'who-we-are', title: 'Who we are' },
   { id: 'what-we-collect', title: 'What we collect, and where it comes from' },
   { id: 'why-we-use-it', title: 'Why we use it, and the consent we rely on' },
-  { id: 'childrens-data', title: "Children's data" },
+  { id: 'childrens-data', title: 'Children’s data' },
   { id: 'teen-privacy', title: 'Teen privacy (children 13 and older)' },
   { id: 'ai-processing', title: 'AI and automated processing' },
   { id: 'how-we-share', title: 'Who your family’s data is shared with' },
   { id: 'sub-processors', title: 'Sub-processors and cross-border processing' },
   { id: 'google-api-limited-use', title: 'Google API Services User Data Policy' },
-  { id: 'sms', title: 'Text messages (SMS)' },
+  { id: 'sms', title: 'Text messages (iMessage and SMS)' },
   { id: 'residency-retention', title: 'Data residency, retention, and security' },
   { id: 'your-rights', title: 'Your rights' },
   { id: 'your-choices', title: 'Your choices' },
@@ -96,15 +114,15 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     <LegalLayout
       locale={locale}
       title="Privacy Policy"
-      lastUpdatedIso="2026-08-27"
+      lastUpdatedIso="2026-10-08"
       intro={
         <p>
-          Hale helps families across every stage of childhood, and that means we handle some of the
-          most sensitive data there is — including information about newborns and children. We treat
-          that responsibility as the centre of the product, not an afterthought. This policy
-          explains, in plain language, what we collect, why, where it lives, who it is ever shared
-          with, and the control you keep over it. It is written for Canada&rsquo;s federal privacy
-          law (PIPEDA), Quebec&rsquo;s Law 25, and Canada&rsquo;s anti-spam law (CASL).
+          Hale is a texted assistant for parents. It handles kids&rsquo; activities, reminders,
+          family group chats and parenting questions, so it handles information about children. We
+          treat that responsibility as the centre of the product, not an afterthought. This policy
+          explains, in plain language, what we collect, why, who it is ever shared with, and the
+          control you keep over it. Village Hale Technologies Inc. is a Canadian company, and this
+          policy is written to meet Canada&rsquo;s PIPEDA, Quebec&rsquo;s Law 25 and CASL.
         </p>
       }
       sections={SECTIONS}
@@ -113,13 +131,17 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     >
       <LegalSectionBlock id="who-we-are" title="Who we are">
         <p>
-          Hale is a planner for your kids&rsquo; year, reached by text message. You (a
-          parent or legal guardian) text the number and tell Hale about your children; there is no account to
-          create, though you may sign in to the web app, and you may optionally connect tools you
-          already use. Hale finds what&rsquo;s on near your kids, watches registration dates, and
-          asks how it went. It does not book a class or register you. Hale is operated by Village Hale Technologies Inc., a
-          company incorporated in Ontario, Canada, which is the organization responsible for your
-          family&rsquo;s data under PIPEDA; see{' '}
+          Hale is a family assistant you reach by iMessage or text message. It finds activities for
+          your kids, reminds you before registration opens, watches for open spots, can join a
+          family group chat, and answers parenting questions. Today Hale does not book or register
+          on your behalf. If we later offer a feature that acts on your instruction (for example,
+          completing a sign-up), it will only act after you confirm that specific action, and we
+          will update this policy first. You (a parent or legal guardian) text the number and tell
+          Hale about your children. There is no account you must create, though you may sign in to
+          the web app, and you may optionally connect tools you already use. Hale is operated by
+          Village Hale Technologies Inc., a corporation incorporated in Ontario, Canada (corporation
+          no. 1001656484), which is the organization responsible for your family&rsquo;s data under
+          PIPEDA; see{' '}
           <a href="#contact" className="link">
             How to reach us
           </a>
@@ -133,8 +155,8 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
       <LegalSectionBlock id="what-we-collect" title="What we collect, and where it comes from">
         <p>
-          We collect only what we need to run Hale for your family. It reaches us four ways, and
-          the difference matters — most of it you typed, and none of it was bought.
+          We collect only what we need to run Hale for your family. It reaches us four ways, and the
+          difference matters — most of it you typed, and none of it was bought.
         </p>
         <p>
           <strong>What you give us.</strong> The things you tell Hale, in a text or in the web app:
@@ -154,10 +176,23 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           </li>
           <li>
             <strong>Care and activity logs.</strong> The day-to-day entries you record — feeds,
-            naps, milestones, and similar notes about your child&rsquo;s routine.
+            naps, diapers, milestones, and growth measurements.
           </li>
           <li>
             <strong>Hale conversations.</strong> The questions you ask Hale and its answers.
+          </li>
+          <li>
+            <strong>Group chats.</strong> If you add Hale to a group chat, or ask Hale to start one,
+            Hale receives the messages in that chat, including messages from other members (a
+            co-parent, a grandparent, a caregiver) and their phone numbers. Hale uses them only to
+            help that family, and only for the purposes in this policy. Please add Hale only to
+            chats whose members you have told about Hale. Hale introduces itself when it joins, and
+            a member can reply STOP to stop Hale writing to them in that chat. A member who is not a
+            Hale user can ask us at{' '}
+            <a href="mailto:privacy@villagehale.com" className="link">
+              privacy@villagehale.com
+            </a>{' '}
+            to access or delete their messages.
           </li>
           <li>
             <strong>Coarse location only.</strong> If you opt in to local discovery, we store a
@@ -174,29 +209,34 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         </ul>
         <p>
           <strong>What comes from services you connect.</strong> If you connect a tool (such as
-          email, calendar, or a daycare app), we store an encrypted authorization token and the
+          email or calendar), we store an encrypted authorization token and the
           minimum metadata needed to sync, plus the entries that tool records into your
           family&rsquo;s timeline. You control which integrations are connected and can disconnect
           them. When a flight, hotel or rental confirmation in a connected mailbox shows that your
-          children are travelling with you, what we keep is the destination city and the dates
-          only; we never store the message, the confirmation number, or what the trip cost.
+          children are travelling with you, what we keep is the destination city and the dates only;
+          we never store the message, the confirmation number, or what the trip cost.
         </p>
         <p>
-          PIPEDA asks for the purpose to be identified before the collection, and that is
-          per-source and per-use rather than one paragraph. So, for each thing you can connect:
+          PIPEDA asks for the purpose to be identified before the collection, and that is per-source
+          and per-use rather than one paragraph. So, for each thing you can connect:
         </p>
         <ul>
           <li>
             <strong>Gmail (optional).</strong> What is read: the subject, the sender, the first
             line, and the time it arrived. When a message looks like it carries a date your family
-            has to be somewhere, that message is opened. Why: to notice the date and offer to put
-            it on your week. What is never read: anything you have not connected, and any message
-            that does not look like a family date.
+            has to be somewhere, that message is opened. Why: to notice the date and offer to put it
+            on your week. What is never read: anything you have not connected, and any message that
+            does not look like a family date.
           </li>
           <li>
             <strong>Calendar (optional).</strong> What is read: an event&rsquo;s title, its notes,
-            start, end, place, and whether it was cancelled or moved. Why: so a change to your
-            week reaches you as a text rather than as a surprise.
+            start, end, place, and whether it was cancelled or moved. Why: so a change to your week
+            reaches you as a text rather than as a surprise.
+          </li>
+          <li>
+            <strong>Google Drive (optional).</strong> What is read: a file&rsquo;s name, its type,
+            when it was last modified, and a link to open it. Hale does not read the contents of the
+            file. Why: so Hale can find a file you ask about, such as a permission form.
           </li>
           <li>
             <strong>How it went.</strong> What is stored: your one-line answer to Hale&rsquo;s
@@ -205,9 +245,18 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           </li>
         </ul>
         <p>
+          By default Hale asks Google for read-only access to Gmail (<code>gmail.readonly</code>),
+          Calendar (<code>calendar.readonly</code>), and Drive (<code>drive.readonly</code>), plus
+          your basic profile (your name). For some accounts, Hale may also ask for permission to
+          create email drafts (<code>gmail.compose</code>; it never sends them) and to add or change
+          calendar events (<code>calendar.events</code>). Hale asks for these separately and uses
+          them only when you ask. It never deletes your email, it never asks for permission to send
+          email as you, and Drive stays read-only.
+        </p>
+        <p>
           <strong>What Hale works out for itself.</strong> A structured memory of facts and patterns
-          Hale infers from your family&rsquo;s activity — for example, a usual nap window or a
-          stated preference — so it can be more helpful over time. Inferred information about your
+          Hale infers from your family&rsquo;s activity — for example, a stated preference — so it
+          can be more helpful over time. Inferred information about your
           family is your family&rsquo;s personal information too, and everything in this policy
           applies to it.
         </p>
@@ -223,8 +272,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           <a href="#sub-processors" className="link">
             Sub-processors
           </a>
-          . Visitors to the marketing site also have that visit measured by Google Ads so we can
-          tell whether an advertisement led them there. That measurement does not include family
+          . On the public website, Google Ads measures a visit only after the visitor taps Accept in
+          the cookie banner, so we can tell whether an advertisement led them there. If they choose
+          No thanks, or make no choice, that measurement does not run. It does not include family
           data. We do not buy personal information about your family from data brokers, and we do
           not collect it from social media or other public sources.
         </p>
@@ -282,10 +332,10 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           the start, and separately again for each purpose that deserves its own answer: connecting
           an integration, sending your context to our AI provider, processing data across borders,
           letting Hale watch and text you unprompted, sharing a slice of your week with a caregiver
-          you name, letting a tool you connect read from Hale, being introduced to another household,
-          and unlocking any automated action. We record each consent — what was asked, the words you
-          answered in, the version of this policy, and the time — so the choice is verifiable
-          afterwards, and you can withdraw it at any time (see{' '}
+          you name, letting a tool you connect read from Hale, being introduced to another
+          household, and unlocking any automated action. We record each consent — what was asked,
+          the words you answered in, the version of this policy, and the time — so the choice is
+          verifiable afterwards, and you can withdraw it at any time (see{' '}
           <a href="#your-rights" className="link">
             Your rights
           </a>{' '}
@@ -297,90 +347,97 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         </p>
       </LegalSectionBlock>
 
-      <LegalSectionBlock id="childrens-data" title="Children's data">
+      <LegalSectionBlock id="childrens-data" title="Children’s data">
         <p>
           Hale is built around children&rsquo;s information, and we apply heightened protection to
-          it. A child&rsquo;s data is provided by you, their parent or guardian, and is processed on
-          your authority and for your family&rsquo;s benefit. Optional and sensitive fields — such
-          as gender — are exactly that: optional, and stored only if you provide them. A
-          child&rsquo;s information belongs to one family and is never visible to another family.
+          it. Information you share about your child is part of your family&rsquo;s information. You
+          provide it as their parent or guardian, and you can correct or delete it at any time. A
+          child&rsquo;s data is processed on your authority and for your family&rsquo;s benefit.
+          Optional and sensitive fields — such as gender — are exactly that: optional, and stored
+          only if you provide them. Messages sent in a multi-family group chat are visible to the
+          members of that chat. Nothing from one family&rsquo;s private data — an inbox, a calendar,
+          or a one-to-one text — is shown to another family unless that parent opts in to share it.
         </p>
         <p>
-          Hale is for parents and guardians. A child does not have a Hale account and does not text
-          Hale, and we do not knowingly collect information directly from a child — everything Hale
-          knows about your child came from you, or from a tool you chose to connect.
+          Hale is for parents and guardians. A child does not have a Hale account. We do not
+          knowingly collect information directly from a child. The exception is a family group chat
+          Hale is part of: Hale receives the messages a child sends there, the same as any other
+          member&rsquo;s messages, and those messages are visible to everyone in the chat. Hale does
+          not knowingly collect more from that child than the messages already in the chat and the
+          information you provide.
         </p>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="teen-privacy" title="Teen privacy (children 13 and older)">
         <p>
           As children grow, their privacy matters more. For a child aged 13 or older, raw content
-          (the actual text of a message or post Hale observes) is{' '}
-          <strong>redacted from parents by default</strong>. Parents see only a category or short
-          summary — enough to stay involved, without reading their teen&rsquo;s words verbatim.
+          Hale would show a parent on its own surfaces — the actual text of a message or post Hale
+          observes — is <strong>redacted from parents by default</strong>. Parents see only a
+          category or short summary. That is the web app, and the texts, email, calendar feeds,
+          exports, and connected tools Hale sends. A group chat is different: messages in a chat
+          Hale is part of, including a child&rsquo;s, are visible to the members of that chat. Hale
+          does not hide them from the people already in it. When Hale writes into that chat, it does
+          not name a child aged 13 or older, or that child&rsquo;s events.
         </p>
         <p>
           A parent can ask to see it. Asking reveals nothing on its own: we record what was asked
           for and the reason given, tell the teen, and open the content only if the teen agrees.
-          Access is limited to the kind of content that was asked for, lasts at most seven days,
-          and can be closed at any time by either of you. Every step — the request, the
-          teen&rsquo;s answer, the expiry, and any closure — is written to your family&rsquo;s
-          record.
+          Access is limited to the kind of content that was asked for, lasts at most seven days, and
+          can be closed at any time by either of you. Every step — the request, the teen&rsquo;s
+          answer, the expiry, and any closure — is written to your family&rsquo;s record.
         </p>
         <p>
-          There is one exception in this policy: a credible risk of harm, where relevant content
-          may be opened without waiting for the teen to agree. Because it skips their agreement it
-          is held to the strictest limits — at most 24 hours, a written reason on the record, and
-          the teen is always told.
+          There is one exception in this policy: a credible risk of harm, where relevant content may
+          be opened without waiting for the teen to agree. Because it skips their agreement it is
+          held to the strictest limits — at most 24 hours, a written reason on the record, and the
+          teen is always told.
         </p>
         <p>
-          Two limits worth stating plainly, because they describe Hale as it is today rather than
-          as we intend it.
+          Two limits worth stating plainly, because they describe Hale as it is today rather than as
+          we intend it.
         </p>
         <p>
-          First, access is only ever in-app. Even with an open grant, nothing widens what appears
-          in an email, a text message, a calendar feed, a data export, or anything Hale shares with
-          a connected tool — those always stay redacted.
+          First, access is only ever in-app. Even with an open grant, nothing widens what appears in
+          an email, a text message, a calendar feed, a data export, or anything Hale shares with a
+          connected tool — those always stay redacted.
         </p>
         <p>
-          Second, and more importantly: Hale currently has no way to contact a teen at all. We hold
-          no account and no contact details for them. Since telling the teen is a condition of
+          Second, and more importantly: a child&rsquo;s record holds no contact details, and a teen
+          has no Hale account. A phone number that appears because someone is in a group chat is not
+          used to tell a teen about a privacy request. Since telling the teen is a condition of
           opening anything, <strong>no request can be granted yet</strong> — a request is recorded,
           the notification we owe the teen is recorded as still outstanding, and the default
-          redaction above continues to apply unchanged. The same is true of the safety exception:
-          it is policy, not a button, and it stays unavailable until a teen can actually be told.
-          You can see the pending state and the outstanding notification on any request in
-          Settings. We will not enable either path before a teen can be reached.
+          redaction above continues to apply unchanged. The same is true of the safety exception: it
+          is policy, not a button, and it stays unavailable until a teen can actually be told. You
+          can see the pending state and the outstanding notification on any request in Settings. We
+          will not enable either path before a teen can be reached.
         </p>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="ai-processing" title="AI and automated processing">
         <p>
-          Hale uses artificial intelligence (Anthropic&rsquo;s Claude models) to read your
-          family&rsquo;s context and draft suggestions. To do this, relevant conversation and
-          context data is sent to our AI provider to generate a response.
+          Hale uses AI providers, including Anthropic, to write its replies and reminders. Anthropic
+          is called directly. Some requests are routed through Vercel AI Gateway, which may send
+          them to another model provider. The relevant parts of your conversation and family context
+          are sent to the provider that generates the reply.
         </p>
         <p>
-          <strong>Hale never acts on its own.</strong> The AI only drafts; a parent approves every
-          action before anything happens in the outside world. New accounts begin in an observe-only
-          mode, and any move toward more automation requires your explicit, per-action-type
-          approval. You are always the decision-maker.
+          Hale does not take any action in the outside world for you, such as registering, paying,
+          or sending an email in your name, unless you have confirmed that specific action. You are
+          the decision-maker for those actions.
         </p>
         <p>
           Stated the way Quebec&rsquo;s Law 25 asks us to state it:{' '}
-          <strong>
-            No decision about your family is made by automated processing alone.
-          </strong>{' '}
-          Hale produces drafts, suggestions and reminders; a person — you — decides. We do not
-          profile your family for advertising, and we do not use your family&rsquo;s data to train
-          anyone&rsquo;s models.
+          <strong>No decision about your family is made by automated processing alone.</strong> We
+          do not profile your family for advertising, and we do not use your family&rsquo;s data to
+          train AI models.
         </p>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="how-we-share" title="Who your family’s data is shared with">
         <p>
-          Nothing about your family is shared by default. There are five kinds of recipient, and
-          three of them exist only because you asked for them.
+          Nothing about your family is shared by default. There are six kinds of recipient, and four
+          of them exist only because you asked for them.
         </p>
         <ul>
           <li>
@@ -400,8 +457,8 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             is recorded as its own consent, and you can end it.
           </li>
           <li>
-            <strong>A tool you connect.</strong> If you authorize an AI assistant or another tool
-            to read from Hale, it receives only the scopes you selected — and what it reads is
+            <strong>A tool you connect.</strong> If you authorize an AI assistant or another tool to
+            read from Hale, it receives only the scopes you selected — and what it reads is
             re-rendered at the moment of the read to the strictest standard we apply anywhere: a
             teen&rsquo;s content removed on their age as of that moment, health and sensitive items
             generalized, locations dropped. You can revoke the authorization at any time.
@@ -416,9 +473,14 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             you can always see what was disclosed.
           </li>
           <li>
+            <strong>Other members of a group chat you add Hale to.</strong> Hale&rsquo;s replies in
+            a group are visible to everyone in it.
+          </li>
+          <li>
             <strong>Where the law requires it.</strong> To authorities and in legal process where we
             are required or permitted to, to protect a child or another person from serious harm,
-            and to our professional advisers — lawyers, accountants, insurers — in the course of
+            and to our professional advisers — legal advisers, accountants, insurers — in the course
+            of
             their work for us. If Hale is ever acquired, merged, or reorganized, your family&rsquo;s
             data may transfer with the business; this policy keeps applying to it, and we will tell
             you.
@@ -433,12 +495,17 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         </p>
         <ul>
           <li>
-            <strong>Supabase</strong> — our primary database. Hosted in Canada (Toronto,
-            <code> ca-central-1</code>). This is where your family&rsquo;s core data lives.
+            <strong>Supabase</strong> — our primary database. Hale&rsquo;s main database is hosted
+            in Canada. This is where your family&rsquo;s core data lives.
           </li>
           <li>
-            <strong>Anthropic</strong> — AI processing (the Claude models that draft suggestions).
-            Processed in the United States.
+            <strong>Anthropic</strong> — AI processing (the Claude models that write replies and
+            reminders). Called directly. Processed in the United States.
+          </li>
+          <li>
+            <strong>Vercel AI Gateway</strong> — routes some AI requests, which may be handled by
+            another model provider, including DeepSeek. Processed in the United States or another
+            country, depending on the provider that handles the request.
           </li>
           <li>
             <strong>Google Maps / Places</strong> — address autocomplete and public-venue lookup.
@@ -447,55 +514,65 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           </li>
           <li>
             <strong>Vercel</strong> — application hosting and content delivery, plus Web Analytics
-            and Speed Insights. Operates in the United States and on a global edge network. Vercel
-            Web Analytics is <strong>cookieless</strong> — it sets no cookies and builds no
-            cross-site profile.
+            and Speed Insights. The content-delivery network is global. Vercel Web Analytics is{' '}
+            <strong>cookieless</strong> — it sets no cookies and builds no cross-site profile.
+            Vercel Speed Insights runs on the public website without a consent choice. Vercel
+            documents that measurement as anonymous: it is not tied to a visitor or an IP address,
+            and it does not store information that would reconstruct a browsing session or identify
+            someone. A data point includes the page, the browser and device, the country, and a web
+            vital.
           </li>
           <li>
             <strong>PostHog</strong> — product analytics, session replay, and error tracking. Event
             data is coarse and non-identifying (no child data, no message content) — we capture only
             a few key product steps. Session replay is on so we can understand and fix problems, but
             every typed value (names, dates of birth, email, address) and all personal data shown on
-            screen — child names and ages, the health and activity timeline, and Hale
-            conversations — is <strong>masked</strong> before the recording leaves your browser.
-            Error tracking captures unhandled errors (a stack trace, not your data) so we can fix
-            them. Autocapture stays off, and we identify you by an opaque account id, never your name
-            or email. Processed in the United States. On the marketing site, PostHog is configured
-            to write nothing to your device.
+            screen — child names and ages, care logs, and Hale conversations
+            — is <strong>masked</strong> before the recording leaves your browser. Product analytics
+            and session replay are kept for 30 days. Error tracking captures unhandled errors (a
+            stack trace, not your data) so we can fix them. Autocapture stays off, and we identify
+            you by an opaque account id, never your name or email. Processed in the United States.
+            On the public website, PostHog analytics and session replay load only after the visitor
+            taps Accept in the cookie banner. If they choose No thanks, or make no choice, neither
+            loads. Visitors can change that choice at any time with Cookie settings in the site
+            footer. On the marketing site, PostHog is configured to write nothing to your device.
           </li>
           <li>
             <strong>Google Ads</strong> — advertising measurement on the marketing site
             (villagehale.com) only. Google&rsquo;s gtag (AW-18412881223) records that a visitor
             reached a landing page after seeing an advertisement. It may set advertising cookies on
-            that visit. It does not run on the product app, does not receive family data, message
-            content, or children&rsquo;s information, and Hale still shows no advertising. Processed
-            in the United States.
+            that visit. On the public website it loads only after the visitor taps Accept in the
+            cookie banner. If they choose No thanks, or make no choice, it does not load. Visitors
+            can change that choice at any time with Cookie settings in the site footer. It does not
+            run on the product app, does not receive family data, message content, or
+            children&rsquo;s information, and Hale still shows no advertising. Processed in the
+            United States.
           </li>
           <li>
             <strong>Resend</strong> — delivery of transactional and weekly-brief emails (United
             States).
           </li>
           <li>
-            <strong>Linq</strong> — delivery of text messages. The content of those messages passes
-            through Linq; see{' '}
+            <strong>Linq</strong> — delivery of iMessage and SMS. The content of those messages
+            passes through Linq; see{' '}
             <a href="#sms" className="link">
               Text messages
             </a>
             .
           </li>
           <li>
-            <strong>Langfuse</strong> — AI observability, so we can monitor and debug Hale.
-            A teen&rsquo;s raw content and contact details (emails, phone numbers, postal codes, and
+            <strong>Langfuse</strong> — AI observability, so we can monitor and debug Hale. A
+            teen&rsquo;s raw content and contact details (emails, phone numbers, postal codes, and
             precise addresses) are masked before any data is sent to this service.
           </li>
         </ul>
         <p>
-          To be clear about where data travels: your primary data store is in Canada, while some
-          processing — AI, application hosting, email delivery, observability, and advertising
-          measurement on the marketing site — happens in the United States. We ask for your consent
-          to cross-border processing, and we put appropriate contractual safeguards in place with
-          these providers. Because some processing occurs outside Quebec and Canada, that data may
-          be accessible to authorities in those jurisdictions under their laws.
+          Hale&rsquo;s main database is hosted in Canada. Some service providers listed in this
+          policy — for example hosting, AI model providers, and analytics — may process data outside
+          Canada, mainly in the United States. We ask for your consent to that cross-border
+          processing, and we put appropriate contractual safeguards in place with these providers.
+          Because some processing occurs outside Quebec and Canada, that data may be accessible to
+          authorities in those jurisdictions under their laws.
         </p>
       </LegalSectionBlock>
 
@@ -503,21 +580,37 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         <p>
           Hale&rsquo;s use and transfer to any other app of information received from Google APIs
           will adhere to the{' '}
-          <a href="https://developers.google.com/terms/api-services-user-data-policy" className="link">
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            className="link"
+          >
             Google API Services User Data Policy
           </a>
           , including the Limited Use requirements.
         </p>
+        <p>In particular:</p>
+        <ol type="i">
+          <li>We use Google user data only to provide and improve the features you see in Hale.</li>
+          <li>We do not use Google user data to train generalized or machine-learning models.</li>
+          <li>We do not use Google user data for advertising, and we do not sell it.</li>
+          <li>
+            We do not transfer Google user data to others, except as needed to provide those
+            features, for security, to comply with the law, or with your consent.
+          </li>
+          <li>
+            No person reads Google user data unless you ask us to, it is needed for security, the
+            law requires it, or the data is aggregated and used for internal operations.
+          </li>
+        </ol>
       </LegalSectionBlock>
 
-      <LegalSectionBlock id="sms" title="Text messages (SMS)">
+      <LegalSectionBlock id="sms" title="Text messages (iMessage and SMS)">
         <p>
-          If you use Hale by text message, that conversation travels over the ordinary mobile
-          network, and you should know exactly what that means.{' '}
-          <strong>Text messages are not end-to-end encrypted.</strong> Every message passes through
-          your mobile carrier and through our messaging provider, Linq, and anyone holding the phone
-          can read the thread. That is how SMS works everywhere; we cannot change it, so we tell you
-          plainly and we write to it.
+          Whether Hale reaches you by iMessage or SMS, your messages pass through our messaging
+          provider, Linq, and, for SMS, your mobile carrier.{' '}
+          <strong>Treat them as not end-to-end encrypted between you and Hale.</strong> Anyone
+          holding the phone can read the thread. That is how these channels work; we cannot change
+          it, so we tell you plainly and we write to it.
         </p>
         <p>
           Because the channel is open, the strictest limits we apply anywhere apply to what we put
@@ -525,9 +618,8 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         </p>
         <ul>
           <li>
-            a health or appointment reminder{' '}
-            <strong>names the task, never the condition</strong> — &ldquo;Max&rsquo;s appointment
-            Thursday at 4&rdquo;, never what it is for;
+            a health or appointment reminder <strong>names the task, never the condition</strong> —
+            &ldquo;Sam&rsquo;s appointment Thursday at 4&rdquo;, never what it is for;
           </li>
           <li>
             for a child aged 13 or older, nothing they wrote goes out over text — only a category or
@@ -553,8 +645,8 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           Standard message and data rates from your carrier apply.
         </p>
         <p>
-          If you would rather not use text at all, you do not have to — email and the web app are
-          always available instead, and you can tell us at{' '}
+          If you would rather not use text for a particular request, the web app is available, and
+          you can email us at{' '}
           <a href="mailto:privacy@villagehale.com" className="link">
             privacy@villagehale.com
           </a>
@@ -564,21 +656,40 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
       <LegalSectionBlock id="residency-retention" title="Data residency, retention, and security">
         <p>
-          <strong>Residency.</strong> Your family&rsquo;s primary data is stored in Canada
-          (Toronto). See{' '}
+          <strong>Where data is stored.</strong> Hale&rsquo;s main database is hosted in Canada.
+          Some service providers listed in this policy — for example hosting, AI model providers,
+          and analytics — may process data outside Canada, mainly in the United States. The named
+          providers are in{' '}
           <a href="#sub-processors" className="link">
             Sub-processors
-          </a>{' '}
-          for the processing that occurs elsewhere.
+          </a>
+          .
         </p>
         <p>
-          <strong>Retention.</strong> We keep your family&rsquo;s data for as long as your account
-          is active and as needed to provide Hale. When you delete your account or ask us to erase
-          your data, we delete it, except where we must retain certain records (such as audit logs)
-          to meet legal obligations. Removing a child removes that child&rsquo;s identifying data;
-          some family history is retained in de-identified form. In deciding how long to keep
-          anything, we weigh how sensitive it is, what we still genuinely need it for, the harm that
-          holding it could cause, and any legal requirement to keep it.
+          <strong>Retention.</strong> We keep your family&rsquo;s information only as long as we
+          need it. Your profile, your children&rsquo;s profiles, and what Hale remembers about your
+          family are kept while you use Hale, and deleted within 30 days of you asking us to delete
+          them. You can ask from the web app, or by emailing{' '}
+          <a href="mailto:privacy@villagehale.com" className="link">
+            privacy@villagehale.com
+          </a>
+          .
+        </p>
+        <p>
+          Message content, including messages from other members of a group chat Hale is in and from
+          people who are not Hale users, is deleted or redacted 12 months after it was sent, and
+          sooner if you or they ask. Your answer to Hale&rsquo;s evening question is kept for thirty
+          days. Disconnecting Gmail, Calendar, or Drive stops Hale reading that account. The details
+          already saved from it are deleted when your account is deleted, and message content within
+          them is deleted or redacted on the same 12-month schedule.
+        </p>
+        <p>
+          We keep a record of your consents and approvals, without the text of the messages, until
+          your account is deleted. If you pay for Hale, we keep the billing records tax law
+          requires. Anyone who is not a Hale user but whose messages Hale received can ask us to
+          delete them. In deciding how long to keep anything, we weigh how sensitive it is, what we
+          still genuinely need it for, the harm that holding it could cause, and any legal
+          requirement to keep it.
         </p>
         <p>
           <strong>Security.</strong> Access to your data is isolated per family at the database
@@ -663,10 +774,16 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             Hale gets less useful without them, and none of Hale stops working.
           </li>
           <li>
-            <strong>Advertising cookies on the marketing site.</strong> villagehale.com loads Google
-            Ads so we can measure landing-page visits. It may set advertising cookies on that visit.
-            Blocking third-party scripts in your browser stops that measurement and does not affect
-            Hale over text. The product app does not load this tag.
+            <strong>Cookies on the public website.</strong> On villagehale.com, Google Ads and
+            PostHog (analytics and session replay) load only after the visitor taps Accept in the
+            cookie banner. If they choose No thanks, or make no choice, neither loads. Visitors can
+            change their choice at any time with Cookie settings in the site footer. Vercel Speed
+            Insights runs without that choice. Vercel documents it as anonymous performance data: it
+            is not tied to a visitor or an IP address, and it does not store information that would
+            reconstruct a browsing session or identify someone. Strictly necessary storage, such as
+            the theme and language choice, needs no consent. Google Ads may set advertising cookies
+            only after Accept. Blocking third-party scripts in your browser also stops that
+            measurement and does not affect Hale over text. The product app does not load this tag.
           </li>
         </ul>
       </LegalSectionBlock>
@@ -684,10 +801,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         <p>
           We send you email that is necessary to run your account — such as security notices and the
           weekly brief and other updates you ask Hale to prepare. If we ever send commercial
-          electronic
-          messages, we do so only with your consent, we identify ourselves, and every such message
-          includes a clear, working way to unsubscribe. You can opt out of non-essential messages at
-          any time without affecting your account.
+          electronic messages, we do so only with your consent, we identify ourselves, and every
+          such message includes a clear, working way to unsubscribe. You can opt out of
+          non-essential messages at any time without affecting your account.
         </p>
       </LegalSectionBlock>
 
@@ -701,13 +817,14 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
       <LegalSectionBlock id="contact" title="How to reach us">
         <p>
-          Our Privacy Officer &mdash; the person in charge of personal information under
-          Quebec&rsquo;s Law 25 &mdash; is <strong>Anzhe Dong, Founder</strong>. For any privacy
-          question, or to exercise your rights, contact us at{' '}
+          Our Privacy Officer, the person in charge of the protection of personal information under
+          Quebec&rsquo;s Law 25, is <strong>Anzhe Dong, Founder</strong>. For any privacy question,
+          or to exercise your rights, email{' '}
           <a href="mailto:privacy@villagehale.com" className="link">
             privacy@villagehale.com
-          </a>
-          .
+          </a>{' '}
+          or write to: Privacy Officer, Village Hale Technologies Inc., 13394 Tenth Line,
+          Georgetown, ON L7G 4S8, Canada.
         </p>
       </LegalSectionBlock>
     </LegalLayout>
