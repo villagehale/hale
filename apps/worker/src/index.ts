@@ -1,10 +1,13 @@
-import { config } from './config.js';
-import { logger } from './logger.js';
-import { startQueue, stopQueue } from './queue.js';
+import { config, requireDatabaseUrl } from './config.js';
 import { registerConsumers } from './consumers/index.js';
 import { registerRetentionSchedules } from './consumers/retention-fanout.js';
+import { logger } from './logger.js';
+import { startQueue, stopQueue } from './queue.js';
 
 async function main(): Promise<void> {
+  // Import of this package must stay quiet when Preview has no database URL.
+  // The process itself still refuses to boot without one.
+  requireDatabaseUrl();
   logger.info({ env: config.NODE_ENV }, 'Hale worker starting');
 
   const boss = await startQueue();
