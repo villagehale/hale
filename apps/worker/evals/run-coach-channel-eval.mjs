@@ -1208,10 +1208,12 @@ let spokenFind = (title, venue) => ({ title, venue: venue?.trim() ? venue : null
 
 function presentCandidate(candidate) {
   const spoken = spokenFind(candidate.title, candidate.venue ?? '');
-  const next = { ...candidate, title: spoken.title };
-  if (spoken.venue === null) delete next.venue;
-  else next.venue = spoken.venue;
-  return next;
+  // Build the object without `delete`. The key has to be absent, not undefined:
+  // JSON.stringify drops both, but the key order and the missing property are what
+  // the recorded requests hashed. Omitting `venue` here matches that JSON.
+  const { venue: _venue, ...rest } = candidate;
+  if (spoken.venue === null) return { ...rest, title: spoken.title };
+  return { ...candidate, title: spoken.title, venue: spoken.venue };
 }
 
 function presentVillage(village) {
