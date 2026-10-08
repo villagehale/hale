@@ -77,7 +77,7 @@ const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
  * still read as once the words are split apart. */
 const REDESIGN_H1: [name: string, html: string, headline: string][] = [
   ['/about', pages['/about'], 'A planner for your kids’ year.'],
-  ['/pricing', pages['/pricing'], 'Free while Hale is new.'],
+  ['/pricing', pages['/pricing'], 'Free, with unlimited chat.'],
   ['/faq', pages['/faq'], 'Is Hale right for your family?'],
   ['/contact', pages['/contact'], 'Say hello.'],
   ['/answers', pages['/answers'], 'Calm, cited guidance for every stage.'],
@@ -368,7 +368,7 @@ describe('/pricing — the tier cards have anatomy', () => {
     expect(heading(html)).not.toContain('build the village');
     // Positive control: the headline is present and is the new one, so the
     // absence above is a real replacement rather than a missing <h1>.
-    expect(rawText(heading(html)).replace(/\u00a0/g, ' ')).toBe('Free while Hale is new.');
+    expect(rawText(heading(html)).replace(/\u00a0/g, ' ')).toBe('Free, with unlimited chat.');
   });
 });
 

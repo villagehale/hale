@@ -84,7 +84,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'Is it free?',
     answer:
-      'Yes. Hale is free while it’s new, and families who start now keep their founding rate. Your co-parent is always free.',
+      'Yes. Free stays free. Families who join now get every feature free until paid plans start.',
   },
   {
     question: 'What happens to our data?',

@@ -132,15 +132,11 @@
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Free while Hale is new. Plus is more done for you, all year. Max is the most Hale can do. Prices are in Canadian dollars.",
+    "metaDescription": "Free, with unlimited chat. Plus is more done for you, all year. Max is the most Hale can do. Prices are in Canadian dollars.",
     "eyebrow": "Pricing",
     "headline": [
       {
-        "text": "Free while Hale is"
-      },
-      {
-        "text": "new.",
-        "accent": true
+        "text": "Free, with unlimited chat."
       }
     ],
     "lede": "The whole core — every stage, every child — is free. Plus and Family add more of the year watched with you, as each part ships.",
@@ -151,7 +147,7 @@
     "headline": "The whole core is free. Paid plans add more of the year, never a paywall on the watching.",
     "lede": "Everything Hale does today — the finding, the watching, the plans, the answers — is free, for every stage and every child. Paid plans open when there is more of the year to plan with you. Families who start now keep their founding rate for good. A co-parent is always free.",
     "foundingTitle": "Founding families join free.",
-    "foundingNote": "The first 100 families get a permanent founding badge — and first access when Plus and Family open.",
+    "foundingNote": "Founding families get every feature free until paid plans start.",
     "annualNote": "billed yearly — about three months free",
     "footnote": "Only Free is available today.",
     "comingSoon": "Coming soon",
@@ -402,7 +398,7 @@
       },
       {
         "question": "Is it free?",
-        "answer": "Yes. Hale is free while it’s new, and families who start now keep their founding rate. Your co-parent is always free."
+        "answer": "Yes. Free stays free. Families who join now get every feature free until paid plans start."
       },
       {
         "question": "What happens to our data?",

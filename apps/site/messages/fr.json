@@ -132,15 +132,11 @@
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Gratuit tant que Hale est nouveau. Plus, c’est plus de choses faites pour toi, toute l’année. Max, c’est le maximum de ce que Hale peut faire.",
+    "metaDescription": "Gratuit, textos illimités. Plus, c’est plus de choses faites pour toi, toute l’année. Max, c’est le maximum de ce que Hale peut faire.",
     "eyebrow": "Tarifs",
     "headline": [
       {
-        "text": "Gratuit tant que Hale est"
-      },
-      {
-        "text": "nouveau.",
-        "accent": true
+        "text": "Gratuit, textos illimités."
       }
     ],
     "lede": "Tout l’essentiel — chaque étape, chaque enfant — est gratuit. Plus et Max ajoutent davantage de l’année suivie avec vous, à mesure que chaque partie arrive.",
@@ -151,7 +147,7 @@
     "headline": "Tout l’essentiel est gratuit. Les forfaits payants ajoutent davantage de l’année, jamais un péage sur la surveillance.",
     "lede": "Tout ce que Hale fait aujourd’hui — la recherche, la surveillance, les plans, les réponses — est gratuit, à chaque étape et pour chaque enfant. Les forfaits payants n’ouvriront que lorsqu’il y aura davantage de l’année à planifier avec vous. Les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Un coparent est toujours gratuit.",
     "foundingTitle": "Les familles fondatrices adhèrent gratuitement.",
-    "foundingNote": "Les 100 premières familles reçoivent un insigne de fondateur permanent — et un accès prioritaire à l’ouverture de Plus et Max.",
+    "foundingNote": "Les familles fondatrices ont chaque fonction gratuite jusqu’à ce que les forfaits payants partent.",
     "annualNote": "facturé à l’année — environ trois mois gratuits",
     "footnote": "Seul Gratuit est disponible aujourd’hui.",
     "comingSoon": "Bientôt disponible",
@@ -374,7 +370,7 @@
       },
       {
         "question": "Est-ce que Hale est gratuit?",
-        "answer": "Hale est gratuit tant qu’il est nouveau, et les familles qui commencent maintenant gardent leur tarif fondateur. Un coparent est toujours gratuit — les mêmes dates et les mêmes rappels sur son propre numéro, jamais un deuxième foyer à payer."
+        "answer": "Oui. Gratuit, ça reste gratuit. Les familles qui commencent maintenant ont toutes les fonctions gratuites, jusqu’à ce que les forfaits payants partent."
       },
       {
         "question": "Est-ce que je dois utiliser le site Web?",
@@ -572,8 +568,7 @@
     "Free for every family": "Gratuit pour chaque famille",
     "Free outings, parks and one‑time events, when you need an idea for Saturday.": "Des sorties gratuites, des parcs et des activités ponctuelles, quand tu cherches une idée pour samedi.",
     "Free to start. You text first; standard message rates apply, reply STOP any time.": "Gratuit pour commencer. C’est toi qui textes en premier; les tarifs habituels s’appliquent, réponds STOP quand tu veux.",
-    "Free while Hale is new, and families who start now keep their founding rate for good.": "Gratuit tant que Hale est nouveau, et les familles qui commencent maintenant gardent leur tarif fondateur pour de bon.",
-    "Free while Hale is new.": "Gratuit tant que Hale est nouveau.",
+    "Founding families get everything free until paid plans start.": "Les familles fondatrices ont tout gratuit jusqu’à ce que les forfaits payants partent.",
     "Free, with unlimited chat.": "Gratuit, textos illimités.",
     "From finding the class to hearing how it went.": "Du cours trouvé jusqu’à « comment ça s’est passé ».",
     "General guidance, never a replacement for your provider.": "Des conseils généraux, jamais un remplacement pour ton professionnel.",
@@ -799,7 +794,7 @@
     "With your co-parent or crew": "Avec l’autre parent ou la gang",
     "Works in your group chats": "Dans tes groupes texto",
     "Year memory, season to season": "La mémoire de l’année, saison après saison",
-    "Yes. Hale is free while it’s new, and families who start now keep their founding rate. Your co-parent is always free.": "Oui. Hale est gratuit tant qu’il est nouveau, et les familles qui commencent maintenant gardent leur tarif fondateur. L’autre parent est toujours gratuit.",
+    "Yes. Free stays free. Families who join now get every feature free until paid plans start.": "Oui. Gratuit, ça reste gratuit. Les familles qui commencent maintenant ont toutes les fonctions gratuites, jusqu’à ce que les forfaits payants partent.",
     "Yes. Start a group with Hale and whoever shares the load: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there.": "Oui. Pars un groupe avec Hale et ceux qui partagent la charge : l’autre parent, le covoiturage, d’autres parents du cours. Demande dans le groupe et Hale répond là.",
     "Your co-parent sees the same plan": "L’autre parent voit le même plan",
     "Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details.": "Les données de ta famille ne sont jamais vendues ni utilisées pour des pubs. Rien de ta boîte ou de ton calendrier personnel n’apparaît dans un groupe texto, et STOP arrête tout quand tu veux. Notre politique de confidentialité a les détails.",

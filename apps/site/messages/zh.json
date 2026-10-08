@@ -122,15 +122,11 @@
   },
   "Pricing": {
     "metaTitle": "价格 · Hale",
-    "metaDescription": "趁 Hale 还新，全程免费。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。",
+    "metaDescription": "免费，短信不限量。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。",
     "eyebrow": "价格",
     "headline": [
       {
-        "text": "趁 Hale 还"
-      },
-      {
-        "text": "年轻，免费。",
-        "accent": true
+        "text": "免费，短信不限量。"
       }
     ],
     "lede": "整个核心功能——每个阶段、每个孩子——都是免费的。随着每一部分上线，Plus 和 Max 会让更多的一年有人陪你盯着。",
@@ -141,7 +137,7 @@
     "headline": "整个核心功能都是免费的。付费只为多规划这一年，绝不为「替你盯着」设一道收费墙。",
     "lede": "Hale 今天所做的一切——替你找到、替你盯着、给出方案、回答问题——都是免费的，每个阶段、每个孩子。付费档位只有在还有更多的一年可以和你一起规划时才会开放。现在就开始的家庭，会永远保留他们的创始价。另一半永远免费。",
     "foundingTitle": "创始家庭，免费加入。",
-    "foundingNote": "前 100 个家庭会获得一枚永久的创始徽章——并在 Plus 和 Max 开放时享有优先体验。",
+    "foundingNote": "创始家庭在付费方案开始前，每项功能都免费。",
     "annualNote": "按年计费——大约免三个月",
     "footnote": "目前只有免费档可用。",
     "comingSoon": "即将推出",
@@ -349,7 +345,7 @@
       },
       {
         "question": "Hale 免费吗？",
-        "answer": "在 Hale 还是新面孔的这段时间，它是免费的，现在就开始的家庭会保留他们的创始价。另一半永远免费——同样的日期和提醒，发到他们自己的号码上，绝不会让你为第二个家庭再付一份钱。"
+        "answer": "是的。免费的一直免费。现在加入的家庭，在付费方案开始前，每项功能都免费。"
       },
       {
         "question": "我需要用网站吗？",
@@ -547,8 +543,7 @@
     "Free for every family": "每个家庭都免费",
     "Free outings, parks and one‑time events, when you need an idea for Saturday.": "免费出门、公园、一次性的活动，周六不知道去哪的时候。",
     "Free to start. You text first; standard message rates apply, reply STOP any time.": "免费开始。你先发短信；按普通短信资费，随时回复 STOP。",
-    "Free while Hale is new, and families who start now keep their founding rate for good.": "趁 Hale 还新，免费。现在开始的家庭，创始价一直留着。",
-    "Free while Hale is new.": "趁 Hale 还新，免费。",
+    "Founding families get everything free until paid plans start.": "创始家庭在付费方案开始前，全部免费。",
     "Free, with unlimited chat.": "免费，短信不限量。",
     "From finding the class to hearing how it went.": "从找到课，到问问上得怎么样。",
     "General guidance, never a replacement for your provider.": "通用建议，代替不了你的医生。",
@@ -774,7 +769,7 @@
     "With your co-parent or crew": "和另一位家长，或者你们一伙",
     "Works in your group chats": "在你的群聊里就行",
     "Year memory, season to season": "一年的记忆，一季一季",
-    "Yes. Hale is free while it’s new, and families who start now keep their founding rate. Your co-parent is always free.": "是的。趁 Hale 还新，免费，现在开始的家庭留着创始价。另一位家长一直免费。",
+    "Yes. Free stays free. Families who join now get every feature free until paid plans start.": "是的。免费的一直免费。现在加入的家庭，在付费方案开始前，每项功能都免费。",
     "Yes. Start a group with Hale and whoever shares the load: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there.": "可以。跟 Hale 和一起分担的人建个群：另一位家长、拼车的、班上别的家长。在群里问，Hale 就在群里答。",
     "Your co-parent sees the same plan": "另一位家长看到同一份安排",
     "Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details.": "你家的数据绝不出售，也不拿去打广告。你的收件箱和个人日历里的东西不会出现在群聊里，随时回复 STOP 就停。细节在隐私政策里。",
