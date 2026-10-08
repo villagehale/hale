@@ -6,6 +6,7 @@ const SNAPSHOT: FamilySnapshot = {
   timeZone: 'America/Toronto',
   now: '2026-10-08T14:00:00.000Z',
   household: { areaCoarse: null, childAgesYears: [] },
+  calendar: [],
   freeWindows: [],
   deadlines: [],
   watches: [],
@@ -15,6 +16,7 @@ const SNAPSHOT: FamilySnapshot = {
   frequencyPreference: null,
   declines: [],
   recentParentTexts: [],
+  priorDecisions: [],
 };
 
 describe('parseDeciderDecision', () => {

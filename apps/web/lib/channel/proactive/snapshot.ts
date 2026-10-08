@@ -32,6 +32,24 @@ export interface SnapshotCandidate {
   dedupeKey: string;
 }
 
+/** What is already on the calendar. A label is a title Hale may say, or "busy". */
+export interface CalendarEntry {
+  day: string;
+  label: string;
+  allDay: boolean;
+  start: string | null;
+  end: string | null;
+}
+
+/** A hold the decider already made. The hourly review does not reopen it early. */
+export interface PriorDecision {
+  id: string;
+  action: 'held';
+  at: string | null;
+  reason: string | null;
+  holdUntil: string | null;
+}
+
 export interface RecentSend {
   at: string;
   replied: boolean;
@@ -52,6 +70,7 @@ export interface FamilySnapshot {
   timeZone: string;
   now: string;
   household: HouseholdContext;
+  calendar: CalendarEntry[];
   freeWindows: FreeWindow[];
   deadlines: { what: string; at: string }[];
   watches: { what: string }[];
@@ -62,6 +81,7 @@ export interface FamilySnapshot {
   declines: string[];
   /** Inbound lines the parent actually sent. The decider reads cadence from these. */
   recentParentTexts: string[];
+  priorDecisions: PriorDecision[];
 }
 
 const WAKING_START = 9 * 60;
@@ -172,9 +192,30 @@ function blocksFrom(rows: readonly TimedRow[], timeZone: string): BusyBlock[] {
   return blocks;
 }
 
+function calendarEntry(
+  startAt: Date,
+  endAt: Date | null,
+  allDay: boolean,
+  timeZone: string,
+  label: string,
+): CalendarEntry {
+  const day = dayKeyOf(startAt, timeZone);
+  if (allDay) return { day, label, allDay: true, start: null, end: null };
+  const startMin = localMinutes(startAt, timeZone);
+  const endMin = endAt ? localMinutes(endAt, timeZone) : startMin + 60;
+  return {
+    day,
+    label,
+    allDay: false,
+    start: clock(startMin),
+    end: clock(endMin > startMin ? endMin : startMin + 60),
+  };
+}
+
 export interface LoadedFamilyContext {
   timeZone: string;
   household: HouseholdContext;
+  calendar: CalendarEntry[];
   freeWindows: FreeWindow[];
   deadlines: { what: string; at: string }[];
   watches: { what: string }[];
@@ -215,9 +256,11 @@ export async function loadFamilyContext(
   const until = new Date(now.getTime() + 15 * DAY_MS);
   const events = await database
     .select({
+      title: schema.familyEvents.title,
       startAt: schema.familyEvents.startsAt,
       endAt: schema.familyEvents.endsAt,
       transparency: schema.familyEvents.transparency,
+      sensitive: schema.familyEvents.sensitive,
     })
     .from(schema.familyEvents)
     .where(
@@ -235,6 +278,7 @@ export async function loadFamilyContext(
       allDay: schema.calendarEventSnapshots.allDay,
       status: schema.calendarEventSnapshots.status,
       transparency: schema.calendarEventSnapshots.transparency,
+      heldTitle: schema.calendarEventSnapshots.heldTitle,
     })
     .from(schema.calendarEventSnapshots)
     .innerJoin(
@@ -284,12 +328,40 @@ export async function loadFamilyContext(
     .from(schema.watchedSpots)
     .where(and(eq(schema.watchedSpots.familyId, familyId), isNull(schema.watchedSpots.releasedAt)))
     .limit(20);
+  const calendar = [
+    ...events.flatMap((row) => {
+      if (!row.startAt || row.transparency === 'transparent') return [];
+      return [
+        calendarEntry(
+          row.startAt,
+          row.endAt,
+          false,
+          timeZone,
+          row.sensitive ? 'A commitment' : row.title,
+        ),
+      ];
+    }),
+    ...snapshots.flatMap((row) => {
+      if (!row.startAt || row.status === 'cancelled' || row.status === 'free') return [];
+      if (row.transparency === 'transparent') return [];
+      return [
+        calendarEntry(
+          row.startAt,
+          row.endAt,
+          row.allDay,
+          timeZone,
+          row.heldTitle?.trim() || 'busy',
+        ),
+      ];
+    }),
+  ];
   return {
     timeZone,
     household: {
       areaCoarse: zone?.areaCoarse ?? null,
       childAgesYears: children.map((child) => ageYears(child.dateOfBirth, now)),
     },
+    calendar,
     freeWindows: freeWindowsForDays(days, blocks),
     deadlines: offers
       .filter((offer) => offer.resolution === null && offer.expiresAt.getTime() > now.getTime())

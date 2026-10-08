@@ -239,6 +239,9 @@ jobs:
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
 
+      - name: Proactive writer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:proactive-writer
+
       - name: Coaching plan composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-plan
 

@@ -27,9 +27,11 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       timeZone: 'America/Toronto',
       now: '2026-10-08T22:00:00.000Z',
       household: HOUSE,
+      calendar: [],
       freeWindows: [{ day: '2026-10-10', start: '09:00', end: '20:00' }],
       deadlines: [],
       watches: [],
+      priorDecisions: [],
       candidates: [
         candidate({
           id: 'weekend-swim',
@@ -51,14 +53,22 @@ export const PROACTIVE_DECIDER_FIXTURES = [
   },
   {
     id: 'busy-week',
-    expect: { actionIn: ['hold', 'drop'] },
+    expect: { action: 'drop', includes: ['market'] },
     snapshot: {
       timeZone: 'America/Toronto',
       now: '2026-10-08T22:00:00.000Z',
       household: HOUSE,
+      calendar: [
+        { day: '2026-10-08', label: 'piano', allDay: false, start: '16:00', end: '18:30' },
+        { day: '2026-10-09', label: 'school', allDay: false, start: '09:00', end: '15:30' },
+        { day: '2026-10-09', label: 'swim practice', allDay: false, start: '16:00', end: '19:30' },
+        { day: '2026-10-10', label: 'family visit', allDay: true, start: null, end: null },
+        { day: '2026-10-11', label: 'soccer tournament', allDay: true, start: null, end: null },
+      ],
       freeWindows: [],
       deadlines: [],
       watches: [],
+      priorDecisions: [],
       candidates: [
         candidate({
           id: 'market',
@@ -82,9 +92,11 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       timeZone: 'America/Toronto',
       now: '2026-10-08T22:00:00.000Z',
       household: HOUSE,
+      calendar: [],
       freeWindows: [],
       deadlines: [],
       watches: [{ what: 'the class they asked Hale to re-read' }],
+      priorDecisions: [],
       candidates: [
         candidate({
           id: 'watch-1',
@@ -112,9 +124,11 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       timeZone: 'America/Toronto',
       now: '2026-10-08T22:00:00.000Z',
       household: HOUSE,
+      calendar: [],
       freeWindows: [{ day: '2026-10-10', start: '09:00', end: '20:00' }],
       deadlines: [],
       watches: [],
+      priorDecisions: [],
       candidates: [
         candidate({
           id: 'extra-idea',
@@ -137,9 +151,13 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       timeZone: 'America/Toronto',
       now: '2026-10-08T22:00:00.000Z',
       household: HOUSE,
+      calendar: [
+        { day: '2026-10-09', label: 'school', allDay: false, start: '09:00', end: '15:00' },
+      ],
       freeWindows: [{ day: '2026-10-10', start: '09:00', end: '20:00' }],
       deadlines: [],
       watches: [],
+      priorDecisions: [],
       candidates: [
         candidate({
           id: 'sat-find',
@@ -163,12 +181,17 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       timeZone: 'America/Toronto',
       now: '2026-10-08T22:00:00.000Z',
       household: HOUSE,
+      calendar: [
+        { day: '2026-10-10', label: 'all-day commitment', allDay: true, start: null, end: null },
+        { day: '2026-10-11', label: 'study block', allDay: false, start: '09:00', end: '12:30' },
+      ],
       freeWindows: [
         { day: '2026-10-09', start: '09:00', end: '20:00' },
         { day: '2026-10-11', start: '12:30', end: '20:00' },
       ],
       deadlines: [],
       watches: [],
+      priorDecisions: [],
       candidates: [
         candidate({
           id: 'sat-tpl',
@@ -189,6 +212,43 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       unansweredStreak: 0,
       frequencyPreference: null,
       declines: ['indoor playground'],
+      recentParentTexts: [],
+    },
+  },
+  {
+    id: 'weekend-and-deadline',
+    expect: { action: 'send_now', includes: ['sat-find', 'reg-deadline'], exact: true },
+    snapshot: {
+      timeZone: 'America/Toronto',
+      now: '2026-10-08T22:00:00.000Z',
+      household: HOUSE,
+      calendar: [
+        { day: '2026-10-09', label: 'school', allDay: false, start: '09:00', end: '15:00' },
+      ],
+      freeWindows: [{ day: '2026-10-10', start: '13:00', end: '20:00' }],
+      deadlines: [{ what: 'Fall swim registration closes Friday', at: '2026-10-09T21:00:00.000Z' }],
+      watches: [],
+      priorDecisions: [],
+      candidates: [
+        candidate({
+          id: 'sat-find',
+          what: 'Fanous Lantern Craft at Toronto Public Library',
+          why: 'Saturday afternoon is open and this session is running',
+          sourceUrl: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+          worthlessAfter: '2026-10-10T18:00:00.000Z',
+        }),
+        candidate({
+          id: 'reg-deadline',
+          what: 'Fall swim registration closes Friday',
+          why: 'the window closes this week',
+          sourceUrl: 'https://www.toronto.ca/swim-registration',
+          worthlessAfter: '2026-10-09T23:00:00.000Z',
+        }),
+      ],
+      recentSends: [{ at: '2026-10-06T15:00:00.000Z', replied: true }],
+      unansweredStreak: 0,
+      frequencyPreference: null,
+      declines: [],
       recentParentTexts: [],
     },
   },

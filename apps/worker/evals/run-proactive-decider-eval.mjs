@@ -48,7 +48,23 @@ function parseDecision(text) {
   if (!json) return null;
   try {
     const raw = JSON.parse(json);
-    if (!raw || typeof raw.action !== 'string' || !Array.isArray(raw.item_ids)) return null;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    if (raw.action !== 'send_now' && raw.action !== 'hold' && raw.action !== 'drop') return null;
+    if (!Array.isArray(raw.item_ids) || raw.item_ids.some((id) => typeof id !== 'string')) {
+      return null;
+    }
+    if (typeof raw.reason !== 'string' || raw.reason.trim().length === 0) return null;
+    if (raw.hold_until != null && typeof raw.hold_until !== 'string') return null;
+    const pref = raw.frequency_preference;
+    if (pref != null) {
+      if (
+        typeof pref !== 'object' ||
+        (pref.direction !== 'less' && pref.direction !== 'more') ||
+        typeof pref.note !== 'string'
+      ) {
+        return null;
+      }
+    }
     return raw;
   } catch {
     return null;
@@ -70,6 +86,13 @@ function grade(fixture, decision) {
   }
   for (const id of expect.excludes ?? []) {
     if (decision.item_ids.includes(id)) failures.push(`included ${id}`);
+  }
+  if (expect.exact) {
+    const got = [...decision.item_ids].sort();
+    const want = [...(expect.includes ?? [])].sort();
+    if (got.join('|') !== want.join('|')) {
+      failures.push(`items ${got.join(',')} !== ${want.join(',')}`);
+    }
   }
   const direction = decision.frequency_preference?.direction ?? null;
   if (expect.frequency && direction !== expect.frequency) {

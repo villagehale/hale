@@ -11,8 +11,15 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { composeProactiveBatch } from './compose';
 import { decideForFamily } from './decide';
 import { proactiveCadence } from './flag';
+import { type OpenCandidate, planHourlyReview } from './hold';
 import { CADENCE_FACT_KEY, cadenceFactValue, readCadenceFact } from './preference';
-import type { FamilySnapshot, RecentSend, SnapshotCandidate } from './snapshot';
+import type {
+  FamilySnapshot,
+  LoadedFamilyContext,
+  PriorDecision,
+  RecentSend,
+  SnapshotCandidate,
+} from './snapshot';
 import { loadFamilyContext, unansweredStreak } from './snapshot';
 import { volumeIsUnusual } from './volume';
 
@@ -67,12 +74,18 @@ export async function runProactiveReview(
       worthlessAfter: schema.proactiveCandidates.worthlessAfter,
       parentRequested: schema.proactiveCandidates.parentRequested,
       dedupeKey: schema.proactiveCandidates.dedupeKey,
+      status: schema.proactiveCandidates.status,
+      reason: schema.proactiveCandidates.reason,
+      holdUntil: schema.proactiveCandidates.holdUntil,
+      decidedAt: schema.proactiveCandidates.decidedAt,
+      createdAt: schema.proactiveCandidates.createdAt,
     })
     .from(schema.proactiveCandidates)
     .where(inArray(schema.proactiveCandidates.status, ['queued', 'held']));
-  const byFamily = new Map<string, SnapshotCandidate[]>();
+  const byFamily = new Map<string, OpenCandidate[]>();
   for (const row of open) {
-    const item: SnapshotCandidate = {
+    if (row.status !== 'queued' && row.status !== 'held') continue;
+    const item: OpenCandidate = {
       id: row.id,
       what: row.what,
       why: row.why,
@@ -80,6 +93,11 @@ export async function runProactiveReview(
       worthlessAfter: row.worthlessAfter ? row.worthlessAfter.toISOString() : null,
       parentRequested: row.parentRequested,
       dedupeKey: row.dedupeKey,
+      status: row.status,
+      reason: row.reason,
+      holdUntil: row.holdUntil ? row.holdUntil.toISOString() : null,
+      decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
+      createdAt: row.createdAt.toISOString(),
     };
     const list = byFamily.get(row.familyId) ?? [];
     list.push(item);
@@ -113,14 +131,34 @@ export async function runProactiveReview(
 async function reviewFamily(
   database: Database,
   familyId: string,
-  candidates: SnapshotCandidate[],
+  candidates: OpenCandidate[],
   now: Date,
   client: AgentClient | null,
   transport: ChannelTransport | undefined,
   mode: 'shadow' | 'live',
   summary: ProactiveReviewSummary,
 ): Promise<void> {
-  const snapshot = await snapshotFor(database, familyId, candidates, now);
+  const context = await loadFamilyContext(database, familyId, now);
+  const anchor = signalAnchor(candidates);
+  const externalSignal = anchor ? await freshSignalSince(database, familyId, anchor) : false;
+  const plan = planHourlyReview({
+    items: candidates,
+    now,
+    timeZone: context.timeZone,
+    externalSignal,
+  });
+  if (plan.skipModel) {
+    summary.skipped += 1;
+    return;
+  }
+  const snapshot = await snapshotFor(
+    database,
+    familyId,
+    plan.candidates,
+    plan.priorDecisions,
+    context,
+    now,
+  );
   const { decision, skipped } = await decideForFamily({
     snapshot,
     client,
@@ -265,13 +303,77 @@ async function reviewSendTarget(
   return { to, transport: transport ?? createOutboundTransport() };
 }
 
+function signalAnchor(items: readonly OpenCandidate[]): Date | null {
+  const times = items
+    .filter((item) => item.status === 'held' && item.decidedAt)
+    .map((item) => Date.parse(item.decidedAt as string))
+    .filter((time) => !Number.isNaN(time));
+  if (times.length === 0) return null;
+  return new Date(Math.max(...times));
+}
+
+/** A parent reply, a new household occasion, a Gmail offer, or a calendar edit. */
+async function freshSignalSince(
+  database: Database,
+  familyId: string,
+  since: Date,
+): Promise<boolean> {
+  const [inbound] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, familyId),
+        eq(schema.channelMessages.direction, 'in'),
+        gte(schema.channelMessages.createdAt, since),
+      ),
+    )
+    .limit(1);
+  if (inbound) return true;
+  const [mail] = await database
+    .select({ id: schema.emailAlertOffers.id })
+    .from(schema.emailAlertOffers)
+    .where(
+      and(
+        eq(schema.emailAlertOffers.familyId, familyId),
+        gte(schema.emailAlertOffers.createdAt, since),
+      ),
+    )
+    .limit(1);
+  if (mail) return true;
+  const [occasion] = await database
+    .select({ id: schema.familyEvents.id })
+    .from(schema.familyEvents)
+    .where(
+      and(eq(schema.familyEvents.familyId, familyId), gte(schema.familyEvents.createdAt, since)),
+    )
+    .limit(1);
+  if (occasion) return true;
+  const [calendar] = await database
+    .select({ eventId: schema.calendarEventSnapshots.eventId })
+    .from(schema.calendarEventSnapshots)
+    .innerJoin(
+      schema.integrations,
+      eq(schema.calendarEventSnapshots.integrationId, schema.integrations.id),
+    )
+    .where(
+      and(
+        eq(schema.integrations.familyId, familyId),
+        gte(schema.calendarEventSnapshots.updatedAt, since),
+      ),
+    )
+    .limit(1);
+  return Boolean(calendar);
+}
+
 async function snapshotFor(
   database: Database,
   familyId: string,
   candidates: SnapshotCandidate[],
+  priorDecisions: PriorDecision[],
+  context: LoadedFamilyContext,
   now: Date,
 ): Promise<FamilySnapshot> {
-  const context = await loadFamilyContext(database, familyId, now);
   const since = new Date(now.getTime() - 14 * DAY_MS);
   const messages = await database
     .select({
@@ -308,6 +410,7 @@ async function snapshotFor(
     timeZone: context.timeZone,
     now: now.toISOString(),
     household: context.household,
+    calendar: context.calendar,
     freeWindows: context.freeWindows,
     deadlines: context.deadlines,
     watches: context.watches,
@@ -320,6 +423,7 @@ async function snapshotFor(
       .map((row) => (typeof row.body === 'string' ? row.body.slice(0, 160) : ''))
       .filter((text) => text.length > 0)
       .slice(-5),
+    priorDecisions,
   };
 }
 
