@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does two useful things: it surfaces Cedarvale Park from the live week (a verified park already on Sam's schedule) and offers Riverdale Farm from `offerable` with its correct date (Sun Aug 9), correct price (free), and the correct URL. The title \"Riverdale Farm\" is quoted whole and matches the offerable entry exactly. The date is right — Aug 9 is Riverdale Farm's own `when`. The URL is the one appended by the runtime from `offerable`, not invented. No greeting, no sign-off, no markdown, no app referral, no invented detail. One small blemish: \"For something more park-like\" is a slightly awkward pivot that adds a word or two without adding meaning, and the reply is slightly long — it could have been tighter. But it is essentially correct and complete.",
+    "score": 4
+  }
+}

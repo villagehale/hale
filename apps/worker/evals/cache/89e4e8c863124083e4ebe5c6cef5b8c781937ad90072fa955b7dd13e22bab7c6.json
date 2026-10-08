@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the resident opening date (Sep 1, 7:00 a.m.) and the general opening date (Sep 8) as flat recall — no hedging, no \"their site says.\" It correctly acknowledges it is not watching that window (watching: false). However, it stops there without explaining WHY it isn't watching it or what Sam could do — which, per the rules, is fine since Hale has no verb to start a watch. But the reply is honest and complete for the situation. The one small issue: it says \"I'm not watching that one\" without any explanation of what that means for Sam, leaving them slightly in the dark about whether this is a capability gap or a choice. Still, the rules say \"on a false window the DATE IS THE WHOLE ANSWER and saying it is not watching that one is honest, not a denial.\" The reply does exactly that — states the date and says it's not watching. No markdown, no sign-off, no greeting, no app referral, no invented detail. This is correct and complete per the rubric. A very slight blemish is that \"I'm not watching that one\" might leave Sam wondering what to do next, but the rubric explicitly says Hale has no verb to flip the watch and the date is the whole answer — so this shape is correct. Minor awkwardness in tone but substantively right.",
+    "score": 4
+  }
+}

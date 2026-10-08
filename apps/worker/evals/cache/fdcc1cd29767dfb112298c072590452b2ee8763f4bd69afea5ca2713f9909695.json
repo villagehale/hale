@@ -1,0 +1,51 @@
+{
+  "response": {
+    "id": "msg_011CfqeHb5RhsfaQL6fEUH4a",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Et0ICscCCBIYAipA0rb9TABVd64RE7aqq6QIWWBvezeRBcXMlhSpOfpoTKuumuZrkFfuoC0ZKPpbBEEg3+XQDfpGmoig6rfzXRg2bzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBqdCg1gbCAT0IBRAAGg8BZAkCVyIDTzcFSzUEJq0gAjIEEnHPJToECPGXwEIE5cvIGEoENYOdilALWgTZBeFWYAJoAXAB2gFgChZwcmVmaXhfYmVmb3JlX2Jsb2NrX3YxEiCAtgDvCdwkWIZflO82+2um0Y+bHrKuhQblQSWl7DbdPyIAMiDCwBPIapyS4i+Wbz2GF3aPi3pEyQKtzAl7+h4JivtOH0gDEgxTjOyGgohaIxKo1AUaDNzL1LHXTPxOocdN5SIw7iccSlKowoQia9r9HdzKqB5ftd/Xt4L/+PWJwr1LaxpMoe3J8LDWbH203FAEHZ/3KsIFQzpr7Lf2+nvH0fcpUPHPUBeuCvoIlfw6/xaC+xC/OWWE4dKxppD7fQph/jaCvQgHes6fBMs+DkMrKmsDF2e46uZWK04kwG3sOKQdGtusk0gmDlka+xiJJPgyLrVTV/4GOB9Yhc2CMl2fUsc5qV33NFBRSyeVXXcY10MqCn8URD/hUyLOF5cg/U8fH/VH7Jx8Xenx5nHgtytSdR+ANVX8/+z0Xq8uLwWAfKcsYZSXfXRptd0vNb5MU3oc+J7ugC9fyZPAq8Zgq2k5wBAoltm8+hMPRVgQfOmoiuM86PvmZoh+5NqXHuYhw96piYHh6wUvNbDFQoDkG17vE8XM1QDNK1tG6iZegoue24DdTu2XjLwVz5qKZANGI6nukGXpmo81cJzJCUF+Tsqzw8b4Yt695JazdTMasSIysLikT1YKjNxvIhlsIEDs9ViN72J86il77rBhAH4ZFgECY/HchoBqtdDRnKHVEOxekT5qJrJv2D+eQiUS2DZ2ixq1i2DE+yj1ujIbpqA3O5JAGM1s0FDA4KOib2S1vbBPsJs7QYzh0jn1JKcLyHPHHeUAjqYc4Drlc+Qazgs2VlkhBM9BABInTjV8yzsNNOecMkPW1hwDZI1VEqODNRWbPClXr6QSMyfMzBVBEZe5lBbwq0ceiteRctbqfhNvfwyK9gJFmaezDkOZPfV1748M+kg6dhQcswm402krdmr8etMOZpryLqmj76/zFTZMVX6ZKYz+ZpM+5zBQPOKMVbm9tBAqwNzUFP5imuGLeg+QcEqfBTiM9pB18tjzTxGs0mglmq5vy0K9KBDnW4hCIx06xHKh0c2W5UmtjGvO64d4wxKGLG5t/NTO9xGzuwGIiIVt5LENVpSVkToLa8c/Ny6pPgQ22fyA8BikBpblrlLdMo8agbogM/vU2g0DbfC/yg5WP4tC/4odIt2ZtBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MmjmwpFcVAtxo7rTdqRMDv",
+        "name": "search_village",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01J66bQQBRTiSjXCATiT4kbq",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 380,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20565,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 286,
+      "output_tokens_details": {
+        "thinking_tokens": 235
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3680
+}

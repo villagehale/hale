@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watch_for_opening` requires a course-page link pasted by the parent, and asks Sam for that link. This is exactly what `knows.can` specifies: \"watch ONE FULL CLASS for a spot, with `watch_for_opening`, and only on a course-page link the parent pasted in their own message — With no link there is nothing to watch, and asking for the link is the right answer rather than a stall.\" The reply is clean, no greeting, no sign-off, no markdown, one question, and it correctly states what it can do and what it needs. It does not invent a URL, does not send the parent to an app, and does not make an unbacked promise. The only minor issue is the phrase \"to start watching it\" could be read as implying Hale can flip a watch mid-reply like a switch, but in context it simply means \"to be able to watch\" — not a material overclaim. This is essentially a perfect, minimal, correct reply.",
+    "score": 5
+  }
+}

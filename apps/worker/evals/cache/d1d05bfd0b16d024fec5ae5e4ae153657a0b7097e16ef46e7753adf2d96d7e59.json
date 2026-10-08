@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies this as a parenting/coaching question about a 19-month-old toddler (Remy). It gives a concrete, actionable tip the parent can use tonight (consistent, brief, quiet response without picking up), accurately notes it's common at this age, and then offers the full plan — which is the correct product shape for a raising-kids question. The advice is grounded in the child's age. It correctly uses Remy's name and gender (\"she\") — though gender isn't specified in knows.children, the parent's text doesn't specify either, so \"she\" is a minor invention risk, but a very small one. The reply doesn't hand it back, doesn't refer to a doctor (no acute symptom), doesn't diagnose. It's appropriately concise. The closing offer (\"Want the full night-waking plan?\") is the correct product shape. One small issue: using \"she\" for Remy when the gender isn't given in knows — that's a minor invention. Overall this is very close to ideal.",
+    "score": 4
+  }
+}

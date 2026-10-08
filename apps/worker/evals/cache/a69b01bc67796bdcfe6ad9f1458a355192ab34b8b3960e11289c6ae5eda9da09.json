@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the Saturday soccer practice from the week, quotes the exact offerable title \"Riverdale story time at Riverdale Library\" with the correct day (Sat Aug 8) and attributes the URL (which is the runtime-appended activity page from offerable). The title is quoted whole, the day matches the offerable's when, and the URL belongs to that activity. The reply is concise, no greeting or sign-off, no markdown, one question at most (none here). The teenager's private items are not surfaced. The only minor note: the reply doesn't explicitly say it's free, though \"free drop-in indoors\" is included — actually it does say \"free drop-in indoors.\" This is a clean, complete, correct answer. It does the job and stops.",
+    "score": 5
+  }
+}

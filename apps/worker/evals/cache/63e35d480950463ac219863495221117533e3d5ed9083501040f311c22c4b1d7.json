@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the existing Saturday event (soccer at 10am, Cedarvale Park) and offers the one verified offerable activity by its exact title (\"Riverdale story time at Riverdale Library, Sat Aug 8, free drop-in indoors\") with the correct URL appended by the runtime. The title is quoted whole, the date matches the offerable's `when`, and the URL is the one associated with the offerable — all recall, no invention. The teenager is in the family but the offerable says \"all ages welcome,\" so age fit is fine. No greeting, no sign-off, no markdown, no redundant clauses. One small note: the runtime URL append rule says the URL belongs to the activity in `knows.offerable` and is appended by the runtime — it appears here as written by Hale, but since it matches exactly, this is effectively correct. The reply is tight, complete, and actionable. No issues to penalize.",
+    "score": 5
+  }
+}

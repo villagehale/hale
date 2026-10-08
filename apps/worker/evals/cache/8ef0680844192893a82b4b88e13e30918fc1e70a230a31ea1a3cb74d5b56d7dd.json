@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to move Thursday's swim lesson to 17h45. The week shows exactly one swim lesson on Thursday (5:15pm at East pool), so the reference is fully resolved — no ambiguity. A draft was correctly created. However, the current swim time is 5:15pm (17h15), and the parent asked to move it to 17h45 — that is a clear instruction on a single matching event, so drafting is right. The reply \"Je déplace la natation de jeudi à 17h45?\" is nearly correct in shape: it names the change and asks for confirmation in an ordinary sentence. Two small issues: (1) it ends with a question mark alone — the confirmation ask is implicit but acceptable; (2) it doesn't name the current time or the venue, which would help the parent confirm they mean the right event, but since there is only one Thursday swim lesson this is not a meaningful gap. The reply is short, correct, in the right language, names the change, and invites confirmation without using a keyword trigger. That is the product working. Minor: it could be slightly clearer (\"Natation de jeudi, 17h15 → 17h45 — je confirme?\") but the current form is functionally sound. This is a 5 with perhaps a very minor blemish for being slightly sparse on context (current time omitted), making it a 4.",
+    "score": 4
+  }
+}

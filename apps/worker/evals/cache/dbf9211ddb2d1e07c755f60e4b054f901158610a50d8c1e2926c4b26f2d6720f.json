@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the soccer practice from the week (Sat 10am, Cedarvale Park) and the offerable activity (Central Library story time at Bloor/Gladstone branch, Sat Aug 8) with its correct URL (which is the runtime-appended URL from the offerable entry, not invented). The title is quoted correctly (\"Central Library story time\"). The date Aug 8 belongs to the offerable entry's own `when` (Sat, Aug 8), so that's correct. There's 1 stillBeingChecked find, but Hale is not required to mention it unless it has a name to offer — correct to omit. The reply is concise, no greeting, no sign-off, no markdown, no question, answers the parent completely. One small note: the reply could have named it more precisely as \"Central Library story time at Bloor/Gladstone branch\" rather than just \"Central Library story time...at Bloor/Gladstone branch\" — but it does include both. The ages: story time is \"all ages welcome,\" which fits Milo (63mo) and Ada (101mo), and even the teenager. The reply is clean and does the job well. No invented details, no app referral. This is the product working correctly.",
+    "score": 5
+  }
+}

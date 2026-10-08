@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands the parent their own referral link and includes a natural description of what Hale does so the parent can forward it meaningfully. The link matches `knows.referralLinkAppended` exactly — recall, not invention. The reply correctly frames it as the parent's to forward, which matches the rule (\"the parent forwards it themselves; Hale never texts the friend\"). No greeting, no sign-off, no markdown, no app mention. One small blemish: the middle sentence (\"I use Hale to keep our family week straight - texts back on schedules, activities, parenting questions. Worth a try.\") is written in first person as if it's a pre-drafted forwarding pitch rather than Hale speaking to Sam directly — it reads a little oddly in that voice, and \"Worth a try\" is slightly surplus. But the core job is done correctly and cleanly.",
+    "score": 4
+  }
+}

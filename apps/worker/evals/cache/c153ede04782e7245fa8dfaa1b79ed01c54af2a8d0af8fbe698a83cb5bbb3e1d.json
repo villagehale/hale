@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces Saturday's soccer practice from the week and then offers the one offerable activity — \"Riverdale story time\" — with its correct venue, day, and the URL (which is the runtime-appended page from `offerable`, so it is recall, not invention). The nearby-count sentence is also runtime-appended, not written by Hale, so its presence is correct. The title \"Riverdale story time\" matches the offerable title exactly. The date Aug 8 matches the offerable entry's `when`. Ages: Milo (63 months, ~5) and Ada (101 months, ~8) fit \"all ages welcome.\" No greeting, no sign-off, no markdown, no questions, no app referral. Very clean. One tiny blemish: \"For something else that day\" is a slightly unnecessary bridging clause that adds a word or two beyond the minimum, but it does not mislead or inflate. The reply is otherwise tight and correct.",
+    "score": 4
+  }
+}

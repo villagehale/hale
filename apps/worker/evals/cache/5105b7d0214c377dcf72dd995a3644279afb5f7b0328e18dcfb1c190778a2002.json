@@ -1,0 +1,51 @@
+{
+  "response": {
+    "id": "msg_011CfqarJaS7GpLJmi8iNG4X",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Ep8FCscCCBIYAipAxvUPu53hzLubBCLmETc1n9E+dB/2n0sazARtHCmp4EzFCGfdBH4BYtOC2vdmaYzT7U4kzL6+CoqmztKme5g7tTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBl7ug1gbCAT0IBRAAGg8BtNkCvzIDTzcFZcEEJq0gAjIEEnHPJToEU1DZrkIERwHOmEoENYOdilALWgTZBeFWYAJoAXAB2gFgChZwcmVmaXhfYmVmb3JlX2Jsb2NrX3YxEiCYUqm8FUHBD7R+M2tV9chNIHPDU6IEJEk6MvRkE0fciyIAMiDCwBPIapyS4i+Wbz2GF3aPi3pEyQKtzAl7+h4JivtOH0gDEgxNJNGUh349KN/QvOgaDGLSlTn0Sog7diyKpiIwSV5p/H1xbuYqGJWMhJUp5JMgYq5ozrmvFKjhk1arSldyGepDCvYE63QOXic+lnYtKoQCpZVKooE2JqLLMc+C/HQSY7j50AGhD0E/Q2h+Gw2nb+SzyvN6YwhgBdhwOegBhRd/SM6IbAp3eEosX2UecY3ZCOApkq8+Xoy+JQWrT4ozexjyy+PsA/Qe3kew1SoZqEZa1TbojrPLP2vKk1pPG9F42Zvk31CT4AU37LIAjJ69Mp1PZsoUN2qlUhgof9O9tAq3Y7KCKTTlwa3/0z0/UbsztRbsCR8uePSezk9rENM031onEwils4jsy3k/F2hckyxShZj7z+H6ot0zA5QCSSwVJa5qLLaeV+sC1wYjxOMAzQtOCNjQ9DOTFrCXOVngKxs2MuhwHxGzXNymbRYO7SNKGgHClq4YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Sbf298azy9D9pddQTz2x1j",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MCDnkJgouHbEaH8PJRwvW3",
+        "name": "search_village",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 377,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20486,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 134,
+      "output_tokens_details": {
+        "thinking_tokens": 81
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 1801
+}

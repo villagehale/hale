@@ -1,0 +1,58 @@
+{
+  "response": {
+    "id": "msg_011CfqaoJyfGLFYs16U9jKtX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EroECscCCBIYAipArakIvDPqZs948SRsDMyaQKB7A/q3P73PxpzARrXhL5rCFgfHt4uoYwZOE9Oz1juPpmLHAZ78kpAG7WGs3CkljTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagB7rqg1gbCAT0IBRAAGg8BtNkCvzIDTzcFo2EEJq0gAjIEEnHPJToEU1DZrkIERwHOmEoENYOdilALWgTZBeFWYAJoAXAB2gFgChZwcmVmaXhfYmVmb3JlX2Jsb2NrX3YxEiAygJPwMUjmfp4268jdzrTZ4Nfh4ARokZY22NLha5rPSyIAMiDCwBPIapyS4i+Wbz2GF3aPi3pEyQKtzAl7+h4JivtOH0gDEgxPTUkmjcRC1gSY6jAaDOeqrp7pVbAFkRly4iIw9W+Mxd9bJJbTNPiaz8fv65IcQvn19ytr59bndhaVQM40c1UI8gGxsLpjo6uzuvR/Kp8B1V0Qmq+a6omb3QKQicmkHpODVeOiRrx2XETpe7Fj+ulxqaWkVG+X5YcVWyxQvloQdG/zAjjFAJkZ3Nj0CJ0/HmNcEPu/cuCZ3kyEg3IpGY12a6D0efcgQ3NSTvzXHG/KRVJ5v+D5TrsjJvEwfToOswFkAtv3fTQ4BIxhZMoNfEZkY03lNzvr+f6wpEyUfigL/vvAdA1gvoP4DLgHJkHTGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_015qWgwheUBZDcgo2ALgzk3X",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Bk6D2NBgYmqKDdDoYECHnY",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-milo",
+          "offer": "Want me to send the full plan for easing him into his own bed?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 388,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20486,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 255,
+      "output_tokens_details": {
+        "thinking_tokens": 59
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2410
+}

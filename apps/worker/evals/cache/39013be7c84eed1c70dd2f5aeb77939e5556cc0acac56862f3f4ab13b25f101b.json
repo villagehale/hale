@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent said \"cancel swim\" and there are exactly TWO swim lessons on the week — Mon 4:30pm at West pool and Thu 5:15pm at East pool. This is a genuine ambiguity case (text matches MORE THAN ONE event), so Hale must ask which one before drafting. The reply correctly identifies both swims and asks which to cancel. It does not draft anything yet, which is correct. The reply is concise, no greeting, no sign-off, no markdown, one question. This is the right shape for a genuine two-event ambiguity.",
+    "score": 5
+  }
+}

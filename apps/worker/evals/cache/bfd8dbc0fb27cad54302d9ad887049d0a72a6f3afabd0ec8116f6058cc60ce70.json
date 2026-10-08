@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week (Mon 4:30pm at West pool and Thu 5:15pm at East pool). This is genuine ambiguity — the reference resolves to more than one event — so Hale must ask which one before drafting anything. The reply correctly identifies both swim lessons and asks which to cancel. No draft was made prematurely, no app referral, no sign-off, no greeting, one question only. This is exactly the right shape for a two-match ambiguity.",
+    "score": 5
+  }
+}

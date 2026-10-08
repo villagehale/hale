@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks to move Thursday's swim lesson to 5:45pm (17h45). There is exactly one swim lesson on Thursday (5:15pm at East pool), so the reference is fully resolved — no ambiguity. A draft has been made (`calendar_move`). The reply names the change and asks for confirmation in a plain sentence, which is the correct shape. However, the reply is missing the current time (5:15pm) and the new time (5:45pm / 17h45) in a way that makes it fully clear what is being changed — it only echoes \"jeudi à 17h45\" without stating the move FROM 17h15. More importantly, the reply does not tell Sam where the lesson is (East pool) or ask whether to go ahead in a way that is clearly seeking approval — it just poses the move as a question mark at the end, which is a bit ambiguous. Still, the core job is done: one draft, the change is named, a confirmation question is implied. The reply is very short and does the job, though it omits the origin time (5:15pm → 5:45pm) which would make the confirmation clearer. This is a small blemish — the parent may not know if Hale understood the move correctly without seeing the \"from\" time. That's a minor but real gap, keeping it from a 5.",
+    "score": 4
+  }
+}

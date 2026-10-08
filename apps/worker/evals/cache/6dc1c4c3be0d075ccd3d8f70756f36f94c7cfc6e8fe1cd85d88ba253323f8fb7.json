@@ -1,0 +1,55 @@
+{
+  "response": {
+    "id": "msg_011CfqaDheEBxjfJoEzPNhXv",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EtoHCpQDCBIYAipAGEEFnaWAVjBF38zmq4ropmyugeYd+PhZRbFWfhYGxy2zewpbPtnnn/oUHwYSCQt9q7Y42xvJv1Kmfk6WGSU11DIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBqLeg1gbCAUkICRAAGhsBtNkCvzIDTzcFjOMEJq0KwTwDTzcLOJkEJq0gAjIEEnHPJToEU1DZrkIERwHOmEoENYOdilALWgTZBeFWYARoAXAB2gGgAQoWcHJlZml4X2JlZm9yZV9ibG9ja192MRIgQQu7AUghTe0ajNvJj776VIaEPiA+TztR5q3/SwKho8AiQIfexJam7Nh7zG8+q3G7REmv3Q5Ekv3YTz/eeJzqYsZwbJAjvhDjV+aehpkJ9uBDcIzF1jg6pe1zbaYsVTxN5NUyIMLAE8hqnJLiL5ZvPYYXdo+LekTJAq3MCXv6HgmK+04fSAMSDLi+unK5vKVs99MLzhoMRQCpIwAn/pxRHAX1IjAsmTQLXx3QAJDYgdLTzHpCBaK0kIjjYa4H1MYhlMudUBpUeEaMnQXEVx+9i4I+tpcq8gN4YqYrD+nokJiRmQjqmUbCeXxIA9f3D0rBVsiLrmt3YhVazg1FZywBPSrfk7/SMbnBn4uKc9AXLBW7vfc5u4I9gsdEzyj5lxADmZnBCPFb2rqQLrO0MCeYgBOTf2+Tu9sdnr7a++3rE5qOrG/ShKNywDtWD9MbQNnKXZXVDk/leHPXfxf4OUwbTtXRijLQTOdzSD7ZF8EvebxkOcdaVytogFlC+WRiSQMbhSJxUO0ISpOZfAA+MHR98xs1U9u4YTJ3BaucnoZUKTkYNU7fATMHFfZt43ISOMqMDy38ixWQSpcROoLCkoMbPR7PPAP7IXslK9kjnJiHY0V10x9i2x61N27DfYthGjANBs3dpW38DsgM3BKjYRc89WqhMhd7TRJIqIy1e8b0dxwofKa1T1RhEeEZIxoWsqUPc9L8q3VU2/ijNac9HQYnRk5A6NvfUPP7+grHSjxeMubxrApNNO/VXkW3tthbRP3fZpS8q9plHsRpf63q+GGrSyGuUkjR4kMS1C7aHAXORvhrEHDyDYaQYpevi41ojzbM4kTxVuaduZQy30ufIKP2klAV4/CBUoFxUJPMSWwCUr00ycxU6zLSCCq+4MvJDNmvtV+hCt32MciFGVbOh0njCrb9oMI4lU5O1day/emKcpaJAPSPm2iNzGAYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01JL8s8tu3qtJ1kgtRdZmtwk",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-mon"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01WxxmkpDKAcj4pSzPym8fPD",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-thu"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 924,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20486,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 302,
+      "output_tokens_details": {
+        "thinking_tokens": 178
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3062
+}

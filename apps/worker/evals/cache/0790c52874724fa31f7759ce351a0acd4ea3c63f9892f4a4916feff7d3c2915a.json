@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011CfqZy21cThFyft2DWG1Nk",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErMECpQDCBIYAipAA9QwSO7SwoQrlKB2qH4No7ldwsG2NZsUMjY3mmYA0ZZfsQ7v30lS+t7l4jV8W2Wq1EQIipY/RQ8IHWIVGWl42zIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagB37Wg1gbCAUkICRAAGhsBtNkCvzIDTzcFjCcEJq0KbzgDTzcLx9cEJq0gAjIEEnHPJToEU1DZrkIERwHOmEoENYOdilALWgTZBeFWYARoAXAB2gGgAQoWcHJlZml4X2JlZm9yZV9ibG9ja192MRIgRkKNoqfqwjRR0GqJ9k0DlEKAc9C5ij83Zj//awBpPPsiQB2qAmpZuMCnL7E8OCviu646t90K5LxzV8b7+hECZwPR763f/twy4MPgqU7BNx0hUJ9U9v7fUBU2RzbUv1Hc8i0yIMLAE8hqnJLiL5ZvPYYXdo+LekTJAq3MCXv6HgmK+04fSAMSDI/iPlSkvrkN+I0oVhoMYKN247YJgvcb+eR3IjAh/bIQfYtTNSbC5bofrFS/pnr2EzLBzdbkjXkPgU1tgxFGwAD8aLJJeu0Ju5LP3UUqTPJ0El3SK/YrYkfT5sqp2ub1+ixL7OgdhqFH/Lj3dyJFjcWDeq/A5yTOEPcyNn6pZ60ArQQh4rAcKM5m40nSEdwKdWZQXiLM3A9zKEsYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Ts6dJYF8ShwT2azTfuAWp2",
+        "name": "propose_calendar_move",
+        "input": {
+          "eventId": "evt-swim-thu",
+          "date": "2026-08-07",
+          "time": "17:15",
+          "weekday": "fri"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 884,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20486,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 173,
+      "output_tokens_details": {
+        "thinking_tokens": 38
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2096
+}

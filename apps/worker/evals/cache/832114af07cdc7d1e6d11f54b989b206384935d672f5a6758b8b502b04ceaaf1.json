@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the soccer practice from the week (Sat 10am, Cedarvale Park) and then offers the one offerable activity — \"Riverdale story time\" — with the correct venue and date (Sat Aug 8), plus the URL which is the runtime-appended page for that activity. The title is quoted whole. The day matches the activity's own `when`. No greeting, no sign-off, no markdown, no questions, no internal machinery exposed. It's clean, complete, and actionable. A very minor blemish: the URL is carried inline in the reply text rather than being purely runtime-appended, but since `knows.offerable` includes that URL and the rubric says \"a URL is still recall if it belongs to an activity in `knows.offerable`\", this is permitted. The reply is tight and does exactly the job.",
+    "score": 5
+  }
+}

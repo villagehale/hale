@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the exact opensFor time (Sep 1, 7:00 a.m.) and the residentsFirst fact, states watching is already active, and promises texts before it opens — all of which match `watching: true` and the registrationWindows entry. It does not invent anything, does not send Sam to the app, does not hedge with \"their site says\", and does not ask Sam to set their own alarm. It is concise, no greeting or sign-off, one sentence. The only tiny blemish is it doesn't mention the week-out and evening-before texts (the full ladder), but the rubric says \"I am already on it, and I will text you before\" is the whole point and a 5. This is exactly that shape.",
+    "score": 5
+  }
+}

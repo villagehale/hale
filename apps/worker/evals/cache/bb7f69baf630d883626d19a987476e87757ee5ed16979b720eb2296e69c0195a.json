@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the soccer practice from the week (Sat 10am, Cedarvale Park) and offers the offerable activity with its correct title (\"Central Library story time\"), venue (Bloor/Gladstone branch), and date (Sat Aug 8). The URL matches the one in offerable, so it is recall not invention. The activity is \"all ages welcome\" so it fits Milo (63mo), Ada (101mo), and could work for the teenager too. No greeting, no sign-off, no markdown. One small issue: the title in offerable is \"Central Library story time at Bloor/Gladstone branch\" — the reply renders it as \"Central Library story time\" with the venue named separately, which is a reasonable rendering rather than a rewrite. There is also 1 stillBeingChecked item; the reply does not mention it, which is acceptable since it has a verified offerable to offer. The reply is tight and complete. A very minor blemish: \"if you want something after\" is a slight hedge/softener that adds a tiny word beyond what was needed, but it does not misrepresent anything. Overall this is a clean, correct reply doing exactly the job.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to order groceries. This is genuinely outside what Hale can do — `knows.can` lists its capabilities and grocery ordering is not among them. The reply \"Ordering groceries is past me.\" is honest, brief, and correct. It does not send the parent to the app, does not explain internal machinery, does not invent a capability, and does not hand the job back in a way that burdens the parent with finding another solution (there is nothing Hale could redirect them to that would be more useful here — this is simply not a scheduling/parenting/activity task). It is one clean sentence that tells the parent plainly what they need to know. No greeting, no sign-off, no markdown, no extra questions. This is the product working correctly for an out-of-scope request.",
+    "score": 5
+  }
+}

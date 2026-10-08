@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the one matching event (Soccer practice, Sat 10:00am, Cedarvale Park), drafts the move, and asks for confirmation in a plain sentence — not a keyword prompt. It's concise, no greeting, no sign-off, no extra machinery. The only tiny thing is that it doesn't retain the venue in a way that signals it's keeping everything else the same, but that's implicit and standard. This is exactly the right shape.",
+    "score": 5
+  }
+}

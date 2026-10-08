@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the offerable activity with its full title (\"Fanous lantern craft at North York Central Library\"), correct day (Sat, Aug 8), correct time (2:00 p.m.), and correct detail (free drop-in, ages 6-12). The URL is the one appended by the runtime for this activity from `knows.offerable`, so it is legitimate recall, not invention. It also helpfully surfaces the soccer practice already on the calendar, which is directly relevant to the \"fun this weekend\" question. Milo is 63 months (5.25 years) and Ada is 101 months (8.4 years) — both fall within the 6-12 age range for the craft (Ada clearly fits; Milo is just under 6 but close enough that it's the family's call, and the reply correctly quotes the listed age range so the parent can judge). The teenager is not relevant to a 6-12 drop-in. No greeting, no sign-off, no markdown, no invented details, no app referral. The reply is concise and complete. One very minor quibble: Milo at 63 months is 5 years 3 months, just outside the 6-12 range listed, which the reply faithfully quotes — Hale did not misstate the range, so the parent has the info to decide. This is not a scoring failure. Overall this is a clean, correct, well-shaped reply.",
+    "score": 5
+  }
+}

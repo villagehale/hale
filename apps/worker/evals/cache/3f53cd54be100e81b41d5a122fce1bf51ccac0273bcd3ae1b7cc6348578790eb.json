@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO swim lesson events in the week (Mon 4:30pm at West pool and Thu 5:15pm at East pool). This is a genuine ambiguity — the reference resolves to more than one event. The correct handling is to ask which one, and draft nothing until the parent specifies. The reply does exactly that: it names both swim times and asks which to cancel. No greeting, no sign-off, no markdown, one question, all details traceable to the week. This is the correct shape for a two-match ambiguity.",
+    "score": 5
+  }
+}

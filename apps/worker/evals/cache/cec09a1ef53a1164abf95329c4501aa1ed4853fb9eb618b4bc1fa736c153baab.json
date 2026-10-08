@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the soccer practice from the week (Sat 10am, Cedarvale Park) and offers the one offerable activity with its full title (\"Central Library story time at Bloor/Gladstone branch\") and its date (Sat, Aug 8). The URL is the one appended by the runtime for this activity from `knows.offerable`, so it is valid recall. The title is quoted whole. The date matches the offerable entry (Aug 8). There is one still-being-checked find, but Hale is given no name for it, so not mentioning it is correct. No greeting, no sign-off, no markdown, no questions, no app referral. The reply is tight and complete. The only minor issue is it says \"For something after\" which subtly implies story time is after soccer — that is a reasonable inference (soccer is 10am, story time timing unspecified but Saturday) and not an invention. Overall this is a clean, correct, well-shaped reply.",
+    "score": 5
+  }
+}

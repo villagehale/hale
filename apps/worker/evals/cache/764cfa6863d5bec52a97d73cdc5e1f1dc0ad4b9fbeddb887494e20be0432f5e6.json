@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked about a nearby park. Hale correctly identifies Cedarvale Park (already in the week) and Riverdale Farm from offerable. Both are relevant and accurate. The Riverdale Farm title is quoted correctly, the URL matches the offerable entry, the date (Sun Aug 9) is correct. The reply is concise, no greeting or sign-off, no markdown, no drafting needed, no invented details. One small blemish: leading with \"Soccer practice is already on your week\" is a slight reach — the parent asked about parks, not soccer, and Cedarvale Park is a park only incidentally attached to soccer practice. It's a reasonable bridge (the park IS nearby and real) but it's not quite what the parent asked about. Overall the reply does the job cleanly and accurately.",
+    "score": 4
+  }
+}

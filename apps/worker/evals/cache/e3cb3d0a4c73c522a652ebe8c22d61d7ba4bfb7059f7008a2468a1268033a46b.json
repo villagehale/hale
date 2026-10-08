@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the soccer practice (day, time, venue — all from the week). It then hands over the webFind correctly: quotes the exact title \"Fanous lantern craft\", gives the day and age range, attributes it to \"Toronto Public Library's page\", and appends the URL the runtime provides for that source. All of this is required behaviour for a webFind. Milo is 63 months (5.25 years, just under 6) and Ada is 101 months (8.4 years, squarely in 6-12); the teenager is also in scope but the craft skews younger — the fit is reasonable for the two younger children and the reply does not over-promise. No greeting, no sign-off, no markdown, one coherent answer. The only small issue: Milo at just over 5 years old is technically below the stated 6-12 age floor, and the reply doesn't flag that, but Ada fits and the family asked for \"the kids\" broadly, so this is a minor imprecision rather than a wrong offer. Everything is attributable and correctly shaped. This is essentially the product working.",
+    "score": 5
+  }
+}
