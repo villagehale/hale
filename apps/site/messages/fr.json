@@ -437,7 +437,6 @@
   "Legal": {
     "eyebrow": "Mentions légales",
     "lastUpdated": "Dernière mise à jour le {date, date, long}",
-    "disclaimer": "Ce document est fourni de bonne foi, mais ne constitue pas un avis juridique. Hale devrait le faire réviser par un avocat qualifié avant de s’y fier.",
     "onThisPage": "Sur cette page",
     "seeAlsoPre": "Voir aussi notre"
   },

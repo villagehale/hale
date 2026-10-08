@@ -412,7 +412,6 @@
   "Legal": {
     "eyebrow": "法律",
     "lastUpdated": "最后更新于 {date, date, long}",
-    "disclaimer": "本文件出于善意提供，但不构成法律建议。Hale 在依赖它之前，应请一位合格的律师审阅。",
     "onThisPage": "本页内容",
     "seeAlsoPre": "另请参阅我们的"
   },
