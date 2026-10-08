@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event — Thursday swim lesson at 5:15pm at East pool — and asks to move it to Friday 5:15. There is no ambiguity. Hale correctly drafted the move and asks for confirmation in a plain sentence. It names the change (Fri 5:15pm at East pool), asks whether to go ahead, and stops. No greeting, no sign-off, no keyword instruction (\"reply YES\"), no markdown, no redundant detail. The venue (East pool) is correctly recalled from the week. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

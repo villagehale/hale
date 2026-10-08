@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names exactly one event — Thursday swim lesson at 5:15pm at East pool — and asks to move it to Friday 5:15. The week confirms it: \"Swim lesson, Thu 5:15pm, East pool.\" The reference is fully resolved. Hale drafted the move (calendar_move is in `drafted`) and the reply names the change and asks for confirmation in a plain sentence — \"Move swim to Fri 5:15pm at East pool?\" That is exactly the correct shape: one draft, one plain confirmation question, no keyword demanded, no sign-off, no app mention, no fluff. It retains the venue (East pool), carries the new day and time, and stops. This is the product working perfectly.",
+    "score": 5
+  }
+}

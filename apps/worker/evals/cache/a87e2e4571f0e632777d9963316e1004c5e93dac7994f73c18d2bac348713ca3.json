@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel (one of two allowed) and offers the one offerable indoor Saturday activity (Central Library story time at Bloor/Gladstone, Sat Aug 8) — verified and complete. It asks for confirmation of the cancel in a natural sentence without prompting a keyword like \"YES.\" It notes the time of the Thursday swim (5:15pm) which is accurate from the week. It does not mention Riverdale Farm (outdoor, wrong fit) or invent anything. No referral link issue (null). No app mention. The only small blemish: it doesn't surface that Saturday already has Soccer practice at Cedarvale Park — a parent asking to \"find something indoors for Saturday\" might need to know the existing Saturday commitment, as story time may overlap or the parent may not realize Saturday is already occupied. That context is relevant and its absence is a mild miss. Also, the reply doesn't confirm what it's doing about Saturday (it's just offering, not drafting a new item) — that's fine since the offerable is a drop-in needing no draft. Overall this is close to correct: clear draft question, correct offerable, no invented detail, no app redirect, proper shape. The missing mention of the Saturday soccer conflict is a small but real omission that could matter to Sam.",
+    "score": 4
+  }
+}

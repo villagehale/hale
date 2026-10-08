@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the referral link (which is set in `knows.referralLinkAppended`) and tells Sam to forward it themselves. It names what Hale does in a short clause, which is helpful context for forwarding. The link is the runtime-appended one, not invented. The reply is slightly long — it explains Hale's features in a sentence that isn't really needed for the referral task — but it's not wrong. No greeting, no sign-off, no markdown, no app redirect. One small blemish: the description of what Hale does (\"activities, schedules, deadlines\") adds a sentence beyond what the job required, and the phrase \"nothing else to sign up for\" is a minor redundancy. But overall it does the job correctly and cleanly.",
+    "score": 4
+  }
+}

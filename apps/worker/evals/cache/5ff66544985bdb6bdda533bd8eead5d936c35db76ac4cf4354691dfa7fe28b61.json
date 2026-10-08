@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces Cedarvale Park from the week (soccer practice Sat 10am) and offers Riverdale Farm from `offerable` as a free outdoor option. Both are grounded in recall. The reply is concise, no greeting/sign-off, no markdown, no app mention, no invented details. One small issue: the phrasing \"I didn't turn up another park specifically\" is slightly self-referential/machinery-exposing, and the Riverdale Farm offer is a bit loosely connected to the park question (it's a farm, not a park per se, but it is outdoor and free, so it's a reasonable answer). The reply is essentially correct and well-shaped, just slightly awkward in one clause.",
+    "score": 4
+  }
+}

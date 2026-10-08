@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draftCapPerMessage is 2, so Hale can only draft two per message. Hale correctly drafted the two swim lessons (Monday 4:30pm and Thursday 5:15pm) and said it will line up soccer and the Wednesday appointment next — which is exactly the correct handling of overflow. The Wednesday appointment is a private calendar item, but Hale doesn't need to know its content to draft a cancellation; it just needs the time, which it has (Wed 9:00am). The reply names what was drafted, asks for confirmation in a plain sentence (not \"reply YES\"), and says it will handle the rest — no app referral, no markdown, no sign-off, no greeting. One small issue: the Wednesday item is private, so \"the Wednesday appointment\" is technically Hale inferring content from a private item (the parent called it an \"appointment,\" and the private item is on Wednesday — Hale echoing that label back is reasonable since the parent named it, not Hale). This is fine. The reply is clean, correct, and exactly the right shape for a draftCap situation.",
+    "score": 5
+  }
+}
