@@ -4,6 +4,7 @@ import { previewPassport } from '~/components/passport/fixture';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
 import { interestPassportDemo } from './demo';
+import { stampRecency } from './order';
 import { type SourceType, iconFor, progressLabel, sourceLabel, stampFaceDate } from './signals';
 import { canUndo } from './signals';
 
@@ -35,6 +36,8 @@ export interface KidCard {
   grade: string | null;
   schoolDayEnds: string | null;
   notes: string | null;
+  /** Fixture kids carry a pronoun so the lede never falls back to "they've". */
+  pronoun?: 'her' | 'his' | null;
   stamps: StampCard[];
   removed: StampCard[];
 }
@@ -207,7 +210,10 @@ export async function readPassportModel(now = new Date()): Promise<PassportModel
           (removed ? item.card.state === 'removed' : item.card.state !== 'removed'),
       )
       .filter((item) => !removed || canUndo(item.removedAt, now))
-      .sort((a, b) => b.firstSeen - a.firstSeen)
+      .sort(
+        (a, b) =>
+          stampRecency(b.card.face) - stampRecency(a.card.face) || b.firstSeen - a.firstSeen,
+      )
       .map((item) => item.card);
 
   const kids: KidCard[] = children

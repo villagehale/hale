@@ -16,6 +16,7 @@ export function previewPassport(): PassportModel {
       kid(
         MIA,
         'Mia',
+        'her',
         'Age 7 · Grade 2',
         'Age 7',
         'Born March 2019',
@@ -27,6 +28,7 @@ export function previewPassport(): PassportModel {
       kid(
         LEO,
         'Leo',
+        'his',
         'Age 4 · Daycare',
         'Age 4',
         'Born June 2022',
@@ -43,6 +45,7 @@ export function previewPassport(): PassportModel {
 function kid(
   id: string,
   name: string,
+  pronoun: 'her' | 'his',
   meta: string,
   age: string,
   born: string,
@@ -51,7 +54,7 @@ function kid(
   notes: string | null,
   stamps: PassportModel['children'][number]['stamps'],
 ): PassportModel['children'][number] {
-  return { id, name, meta, age, born, grade, schoolDayEnds, notes, stamps, removed: [] };
+  return { id, name, pronoun, meta, age, born, grade, schoolDayEnds, notes, stamps, removed: [] };
 }
 
 function stamp(
