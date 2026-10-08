@@ -84,9 +84,10 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   });
 
   /**
-   * VIL-365 · a bare activity ask searches before it asks. "What's going on" and
-   * "who's around" call both search tools in the same turn. A named place, or
-   * that nearby question again, is answered as the place — not restarted.
+   * VIL-365 · a bare activity ask, and a what's-going-on ask, search the village
+   * before any question. A checked find is the answer and the turn stops. The
+   * live web is only when the radar has nothing to hand over. A full class with
+   * no link still asks for the page, and does not promise a text.
    */
   it('tells the coach to search before asking when a parent wants activities', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
@@ -100,10 +101,12 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).toContain('not an unresolved target');
     expect(skill.instructions).toContain('Anything going on Saturday');
     expect(skill.instructions).toContain("who's around this weekend");
-    expect(skill.instructions).toContain('Call `search_village` and `find_activities` both');
+    expect(skill.instructions).toContain('The live web only when');
     expect(skill.instructions).toContain('not them asking that nearby question again');
+    expect(skill.instructions).toContain('Do not search instead of asking');
+    expect(skill.instructions).toContain('Do not add a question offering to look again');
     expect(find.description).toContain('do not stop to ask which child');
-    expect(find.description).toContain('even when the radar already has a find');
-    expect(find.description).toContain('do not open it with a narrowing question');
+    expect(find.description).toContain('do not call this beside a checked find');
+    expect(find.description).not.toContain('even when the radar already has a find');
   });
 });
