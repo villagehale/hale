@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { StampMark } from '~/components/passport/stamp-mark';
 import {
@@ -27,6 +28,7 @@ export function StampBook({
   openId?: string | null;
   onOpenId?: (id: string | null) => void;
 }) {
+  const router = useRouter();
   const [localId, setLocalId] = useState<string | null>(initialStampId ?? null);
   const current = openId === undefined ? localId : openId;
   const setOpen = onOpenId ?? setLocalId;
@@ -98,7 +100,7 @@ export function StampBook({
           kid={kid}
           kids={kids}
           onClose={() => {
-            clearStampQuery();
+            clearStampQuery(router);
             setOpen(null);
           }}
         />
@@ -107,11 +109,11 @@ export function StampBook({
   );
 }
 
-function clearStampQuery(): void {
+function clearStampQuery(router: ReturnType<typeof useRouter>): void {
   const url = new URL(window.location.href);
   if (!url.searchParams.has('stamp')) return;
   url.searchParams.delete('stamp');
-  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
 }
 
 function StampSheet({
@@ -141,7 +143,7 @@ function StampSheet({
     const node = shell instanceof HTMLElement ? shell : surface;
     setHost(node instanceof HTMLElement ? node : null);
   }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!host) return;
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -159,8 +161,8 @@ function StampSheet({
         frozen.push(child);
       }
     }
-    closeRef.current?.focus();
     const scrollY = window.scrollY;
+    closeRef.current?.focus({ preventScroll: true });
     const root = document.documentElement;
     const body = document.body;
     const prevHtmlOverflow = root.style.overflow;
@@ -214,8 +216,20 @@ function StampSheet({
       body.style.left = prevBody.left;
       body.style.right = prevBody.right;
       body.style.width = prevBody.width;
-      window.scrollTo(0, scrollY);
-      returnTo?.focus();
+      const restore = () => {
+        const prevBehavior = root.style.scrollBehavior;
+        root.style.scrollBehavior = 'auto';
+        // Chrome drops an inline scroll-behavior change unless layout is flushed first.
+        root.getClientRects();
+        window.scrollTo(0, scrollY);
+        root.style.scrollBehavior = prevBehavior;
+      };
+      restore();
+      returnTo?.focus({ preventScroll: true });
+      // The stamp-param replace commits after this cleanup. Re-apply the saved
+      // position if that navigation still moves the viewport.
+      requestAnimationFrame(restore);
+      setTimeout(restore, 0);
     };
   }, [host, stamp.id]);
   const fields = (form: FormData) => {

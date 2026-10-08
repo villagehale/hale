@@ -374,6 +374,11 @@
   margin-top: 16px;
 }
 
+.pp-who .pp-add {
+  display: inline-block;
+  margin-top: 12px;
+}
+
 .pp-share-copy {
   margin: 12px 0 0;
   color: var(--pp-slate);
@@ -1118,11 +1123,6 @@ dialog.pp-sheet button.pp-sheet-x:focus-visible {
 
   .pp-who {
     order: 5;
-  }
-
-  .pp-who .pp-add {
-    display: inline-block;
-    margin-top: 12px;
   }
 }
 
