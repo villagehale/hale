@@ -33,6 +33,10 @@ import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
+import { productionParentIntentResolver, runParentIntentGate } from '~/lib/channel/intent/apply';
+import { aiIntentRouterEnabled } from '~/lib/channel/intent/flag';
+import { speakParentLine } from '~/lib/channel/intent/line';
+import type { ParentIntentReading } from '~/lib/channel/intent/types';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
@@ -252,6 +256,12 @@ export interface HandlerContext extends Omit<ChannelTurn, 'standingQuestions' | 
    * write a receipt with no provenance. The call door that produced those turns is retired.
    */
   inboundChannelMessageId: string | null;
+  /**
+   * Set only when the AI intent router already read this message. Handlers then
+   * act on these fields. Absent on the flag-off path, which still reads its own
+   * word lists.
+   */
+  parentIntent?: ParentIntentReading | null;
 }
 
 /** What the resolver decided, in the form the owning handler needs: which question, and
@@ -932,7 +942,12 @@ async function routeChannelMessageInner(
   //
   // A reply that picks nothing falls straight through to the chain below with the menu
   // SPENT — one shot, whatever the outcome.
-  const picked = await consumePendingDisambiguation(deps, turn, answer);
+  // Flag on: the intent gate reads the menu itself. The digit grammar stays
+  // the flag-off path, so a standing menu in prod still belongs to that menu.
+  const intentOn = aiIntentRouterEnabled();
+  const picked = intentOn
+    ? { status: 'carry_on' as const, ordinalSpent: false }
+    : await consumePendingDisambiguation(deps, turn, answer);
   if (picked.status === 'handled') {
     return done(deps, job, {
       status: 'resolved',
@@ -957,6 +972,23 @@ async function routeChannelMessageInner(
     });
   }
 
+  // Flag on: one reading, then the handler that owns it. A turn handed to the
+  // coach does not fall through into the word lists below.
+  let skipWordLists = false;
+  if (intentOn) {
+    const gate = await runParentIntentGate(deps, turn, productionParentIntentResolver());
+    if (gate.status === 'handled') {
+      await deliver(gate.verdict, answer);
+      return done(deps, job, {
+        status: 'handled',
+        handler: gate.handler,
+        conversationId,
+        lane: null,
+      });
+    }
+    skipWordLists = true;
+  }
+
   // GATE 2 — the deterministic handlers, in order. First claim ends the turn.
   //
   // SKIPPED ENTIRELY when the menu above spent a digit it could not place. Hale's other
@@ -967,7 +999,7 @@ async function routeChannelMessageInner(
   // #4). A digit typed while a menu was standing belongs to that menu; when the menu
   // cannot use it, nobody else may. The turn carries on to the resolver and the coach,
   // which can ask.
-  if (!picked.ordinalSpent) {
+  if (!skipWordLists && !picked.ordinalSpent) {
     for (const handler of deps.handlers) {
       const verdict = await handler.handle(deps.database, turn);
       if (!verdict.claimed) continue;
@@ -991,7 +1023,9 @@ async function routeChannelMessageInner(
   // is the same act as answering "yes", and a parent whose hour is spent must still be
   // able to approve, decline and opt out. It sits BELOW them because a free, exact read
   // must always win — no keyword was removed, only stopped being printed.
-  const natural = await resolveNaturalReply(deps, turn, answer);
+  const natural = skipWordLists
+    ? { status: 'carry_on' as const, questions: [] as readonly OpenQuestion[] }
+    : await resolveNaturalReply(deps, turn, answer);
   if (natural.status === 'handled') {
     return done(deps, job, { ...natural.result, conversationId, lane: null });
   }
@@ -1011,18 +1045,19 @@ async function routeChannelMessageInner(
   // ABOVE FLOOD CONTROL because a parent whose hour is spent still told us something true,
   // and losing it would cost them a reminder they had already answered.
   const callTimeoutMs = deps.callTimeoutMs ?? CALL_TIMEOUT_MS;
-  let stated: StatedStateOutcome;
+  let stated: StatedStateOutcome = { status: 'nothing_stated' };
   try {
-    stated = await withTimeout(
-      deps.recordStatedState(deps.database, {
-        familyId: turn.familyId,
-        parentUserId: turn.parentUserId,
-        body: turn.body,
-        now,
-      }),
-      callTimeoutMs,
-      GATE_TIMEOUT,
-    );
+    if (!skipWordLists)
+      stated = await withTimeout(
+        deps.recordStatedState(deps.database, {
+          familyId: turn.familyId,
+          parentUserId: turn.parentUserId,
+          body: turn.body,
+          now,
+        }),
+        callTimeoutMs,
+        GATE_TIMEOUT,
+      );
   } catch (err) {
     if (!isCallTimeout(err)) throw err;
     // not `not_recorded`: that status means the vocabulary drifted. A timeout
@@ -1062,7 +1097,10 @@ async function routeChannelMessageInner(
     prompt: 'after_school' | 'weekend_fallback' | 'break';
     eventKey: string | null;
   } | null = null;
-  if ((await turn.openQuestions()).some((question) => question.kind === 'weekday_care')) {
+  if (
+    !skipWordLists &&
+    (await turn.openQuestions()).some((question) => question.kind === 'weekday_care')
+  ) {
     // EVERY OUTCOME IS OBSERVED, in one place, and none of them is the words themselves
     // — GATE 2c's own logger is the precedent (`{familyId, state, reason}`, never the
     // body), and a message about a child's care arrangement is the last thing that
@@ -2124,9 +2162,17 @@ async function disposeOfFailedTurn(
   }
 
   if (drafted.length > 0) {
+    const locked = partialFailureReply(drafted.length);
+    const spoken = await speakParentLine({
+      flow: 'partial_failure',
+      facts: { sourceLine: locked, draftCount: drafted.length },
+      pendingAsk: 'whether to keep the drafted changes',
+      language: replyLanguage(args.turn.body),
+      locked,
+    });
     return {
       outcome: 'agent_failed',
-      reply: partialFailureReply(drafted.length),
+      reply: spoken.body,
       reason: 'drafts_receipt',
       log: {},
     };
@@ -2146,9 +2192,19 @@ async function disposeOfFailedTurn(
     // would be read by the approvals queue's own ordering instead (copy.ts).
     const polarity = unplaced.polarity;
     const { reply, shown } = clarifyWhichQuestion(args.questions, polarity !== null);
+    const spoken = await speakParentLine({
+      flow: 'which_one',
+      facts: {
+        sourceLine: reply,
+        optionOrder: shown.map((question) => question.subject),
+      },
+      pendingAsk: 'which of these',
+      language: replyLanguage(args.turn.body),
+      locked: reply,
+    });
     return {
       outcome: 'agent_failed',
-      reply,
+      reply: spoken.body,
       reason: 'unplaced_choice',
       // `shown` and nothing else: the ordinal a parent types counts positions in the
       // sentence they were sent, so the row has to hold exactly that list in exactly that

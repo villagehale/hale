@@ -29,8 +29,10 @@ export function authorizedSignupHandler(
   return {
     name: 'authorized_signup',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const directed = ctx.parentIntent?.intent === 'signup';
+      if (ctx.parentIntent && !directed) return { claimed: false };
       if (
-        isExplicitSignupUtterance(ctx.body) &&
+        (directed || isExplicitSignupUtterance(ctx.body)) &&
         (await declinePrivilegedGroupSeat(database, {
           familyId: ctx.familyId,
           userId: ctx.parentUserId,
@@ -45,6 +47,7 @@ export function authorizedSignupHandler(
           familyId: ctx.familyId,
           parentUserId: ctx.parentUserId,
           body: ctx.body,
+          resolverAuthorized: directed,
           inboundChannelMessageId: ctx.inboundChannelMessageId,
           existingThread: true,
           now: ctx.now,

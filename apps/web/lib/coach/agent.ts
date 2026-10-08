@@ -9,6 +9,8 @@ import {
   runAgentStreaming,
 } from '@hale/agent';
 import type { Database } from '@hale/db';
+import { productionParentIntentResolver } from '~/lib/channel/intent/apply';
+import { aiIntentRouterEnabled } from '~/lib/channel/intent/flag';
 import { rememberWorkstreamTurn } from '~/lib/memory/workstream-extract';
 import { workstreamsEnabled } from '~/lib/memory/workstreams';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -281,7 +283,16 @@ export async function askHale(
 
       // Surface gated action chips the answer implied — these create DRAFTS the
       // parent must approve (rule #4); the agent never auto-acts.
-      const actionIntents = detectActionIntents(result.answer);
+      const actionIntents = aiIntentRouterEnabled()
+        ? detectActionIntents(
+            result.answer,
+            await productionParentIntentResolver().read({
+              text: input.question,
+              recentTurns: [],
+              pending: [],
+            }),
+          )
+        : detectActionIntents(result.answer);
 
       return { answer: result.answer, conversationId, actionIntents, metrics };
     },

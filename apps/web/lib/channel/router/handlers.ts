@@ -52,6 +52,7 @@ import {
   handleParentCallNameReply,
 } from '~/lib/channel/identity/parent-call-name';
 import { intakeConnectorOffer } from '~/lib/channel/intake/copy';
+import type { ParentIntentReading } from '~/lib/channel/intent/types';
 import { replyLanguage } from '~/lib/channel/language';
 import {
   type CoParentNumberDeps,
@@ -59,7 +60,13 @@ import {
 } from '~/lib/channel/linq/coparent-invite';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
-import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
+import {
+  REC_MORNING_COPY,
+  type RecMorningTopic,
+  recMorningBody,
+  recMorningCouldUseWhere,
+  recMorningReply,
+} from '~/lib/channel/rec-morning';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import {
@@ -72,7 +79,11 @@ import {
   handleCourseBind,
   handleReadinessAnswer,
 } from '~/lib/registration/sequence/prepare-reply';
-import { type SequenceReplyDeps, handleSequenceReply } from '~/lib/registration/sequence/reply';
+import {
+  type CheckInIntent,
+  type SequenceReplyDeps,
+  handleSequenceReply,
+} from '~/lib/registration/sequence/reply';
 import {
   type ResolvedIntroAnswer,
   type VillageIntroReplyDeps,
@@ -83,6 +94,34 @@ import { checkupDraftedReply, failureReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
 import { type OpenQuestion, type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
+
+function connectorFromIntent(value: string | null): 'gcal' | 'gmail' | 'gdrive' | null {
+  if (value === 'gcal' || value === 'gmail' || value === 'gdrive') return value;
+  if (value === 'drive') return 'gdrive';
+  return null;
+}
+
+function registrationFromIntent(reading: ParentIntentReading): CheckInIntent | null {
+  if (reading.value === 'registered') return { outcome: 'registered' };
+  if (reading.value === 'missed') return { outcome: 'missed' };
+  if (reading.value === 'waitlisted') {
+    return { outcome: 'waitlisted', position: reading.index };
+  }
+  return null;
+}
+
+function recTopic(value: string | null): RecMorningTopic | null {
+  if (value && value in REC_MORNING_COPY) return value as RecMorningTopic;
+  return null;
+}
+
+function directedCadence(reading: ParentIntentReading | null | undefined): CheckInCadence | null {
+  if (reading?.intent !== 'cadence') return null;
+  if (reading.value === 'weekly' || reading.value === 'daily' || reading.value === 'off') {
+    return reading.value;
+  }
+  return null;
+}
 
 /**
  * May this handler act on a BARE affirmative right now?
@@ -221,11 +260,20 @@ export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
       // ordinal grammar: the two reads of the pending list are a co-parent's tap apart,
       // and only an id survives that.
       const resolved = ctx.resolved?.kind === 'approval' ? ctx.resolved : null;
+      if (ctx.parentIntent && !resolved && ctx.parentIntent.intent !== 'undo') {
+        return { claimed: false };
+      }
       const command = resolved
         ? ({ verb: resolved.polarity, index: null } as const)
-        : matchFastPath(ctx.body);
+        : ctx.parentIntent?.intent === 'undo'
+          ? ({ verb: 'undo', index: null } as const)
+          : matchFastPath(ctx.body);
       if (!command) return { claimed: false };
-      if (!resolved && !(await mayClaimBareWord(ctx, command, 'approval'))) {
+      if (
+        !resolved &&
+        ctx.parentIntent?.intent !== 'undo' &&
+        !(await mayClaimBareWord(ctx, command, 'approval'))
+      ) {
         return { claimed: false };
       }
       if (
@@ -365,12 +413,18 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
   return {
     name: 'connector_link',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const named = matchConnectorRequest(ctx.body);
-      const fresh = named
-        ? null
-        : matchFreshConnectorFollowUp(ctx.body)
+      const directedConnect =
+        ctx.parentIntent?.intent === 'connect' ? connectorFromIntent(ctx.parentIntent.value) : null;
+      const named = ctx.parentIntent ? directedConnect : matchConnectorRequest(ctx.body);
+      const fresh = ctx.parentIntent
+        ? ctx.parentIntent.intent === 'fresh_link'
           ? await latestConnectOfferTarget(database, ctx.conversationId)
-          : null;
+          : null
+        : named
+          ? null
+          : matchFreshConnectorFollowUp(ctx.body)
+            ? await latestConnectOfferTarget(database, ctx.conversationId)
+            : null;
       if (!named && !fresh) return { claimed: false };
       if (
         await declinePrivilegedGroupSeat(database, {
@@ -495,7 +549,11 @@ export function connectorDisconnectHandler(
   return {
     name: 'connector_disconnect',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const provider = matchConnectorDisconnectRequest(ctx.body);
+      const provider = ctx.parentIntent
+        ? ctx.parentIntent.intent === 'disconnect'
+          ? connectorFromIntent(ctx.parentIntent.value)
+          : null
+        : matchConnectorDisconnectRequest(ctx.body);
       if (!provider) return { claimed: false };
       if (
         await declinePrivilegedGroupSeat(database, {
@@ -601,7 +659,21 @@ export function forwardAddressHandler(log: Pick<Console, 'error'> = console): De
         };
       }
 
-      const ask = matchForwardAddressRequest(ctx.body);
+      if (
+        ctx.parentIntent &&
+        ctx.parentIntent.intent !== 'forward_address' &&
+        ctx.parentIntent.intent !== 'forward_off' &&
+        ctx.resolved?.kind !== 'forward_address_revoke'
+      ) {
+        return { claimed: false };
+      }
+      const ask = ctx.parentIntent
+        ? ctx.parentIntent.intent === 'forward_off'
+          ? 'turn_off'
+          : ctx.parentIntent.intent === 'forward_address'
+            ? 'address'
+            : null
+        : matchForwardAddressRequest(ctx.body);
       if (!ask) return { claimed: false };
 
       if (ask === 'turn_off') {
@@ -896,11 +968,19 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
     resolves: new Set<OpenQuestionKind>(['checkup_offer']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const resolved = ctx.resolved?.kind === 'checkup_offer' ? ctx.resolved : null;
+      const directedHealth =
+        ctx.parentIntent?.intent === 'health_done'
+          ? 'done'
+          : ctx.parentIntent?.intent === 'health_book'
+            ? 'booking'
+            : null;
+      if (ctx.parentIntent && !directedHealth && !resolved) return { claimed: false };
       // A tick or the word "done" is unambiguous and claims immediately. A bare "yes" is
       // not, and M8's own reading of one drafts an appointment — so it waits for
       // `soleOpenKind` like every other bare affirmative. A RESOLVED answer skips the
       // wait: it named its question, which is what the wait exists to establish.
       if (
+        !directedHealth &&
         !resolved &&
         readAffirmative(ctx.body) === 'yes' &&
         !soleOpenKind(await ctx.openQuestions(), 'checkup_offer')
@@ -914,13 +994,17 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
           parentUserId: ctx.parentUserId,
           body: ctx.body,
           now: ctx.now,
-          resolved: resolved ? 'booking' : null,
+          resolved: directedHealth ?? (resolved ? 'booking' : null),
         },
         deps,
       );
       switch (outcome.status) {
         case 'recorded_done':
-          return { claimed: true, outcome: outcome.status, reply: healthDoneReply() };
+          return {
+            claimed: true,
+            outcome: outcome.status,
+            reply: healthDoneReply(),
+          };
         case 'drafted_for_approval':
           return {
             claimed: true,
@@ -1161,6 +1245,30 @@ export function sequenceReplyHandler(
     name: 'registration',
     resolves: new Set(['registration_readiness']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      if (ctx.parentIntent?.intent === 'registration') {
+        const directed = registrationFromIntent(ctx.parentIntent);
+        if (!directed) return { claimed: false };
+        const outcome = await handleSequenceReply(
+          database,
+          {
+            familyId: ctx.familyId,
+            parentUserId: ctx.parentUserId,
+            body: ctx.body,
+            now: ctx.now,
+            directed,
+          },
+          deps,
+        );
+        if (outcome.status !== 'recorded') return { claimed: false };
+        return {
+          claimed: true,
+          outcome: outcome.status,
+          reply: outcome.reply,
+        };
+      }
+      if (ctx.parentIntent && ctx.resolved?.kind !== 'registration_readiness') {
+        return { claimed: false };
+      }
       const preOpen = await preOpenReply(database, ctx, prepare);
       if (preOpen !== null) return preOpen;
 
@@ -1259,10 +1367,16 @@ export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHa
   return {
     name: 'co_parent_number',
     async handle(database, ctx): Promise<HandlerVerdict> {
+      if (ctx.parentIntent && ctx.parentIntent.intent !== 'coparent_number') {
+        return { claimed: false };
+      }
       const outcome = await deliverCoParentNumberInvite(database, {
         familyId: ctx.familyId,
         parentUserId: ctx.parentUserId,
-        body: ctx.body,
+        body:
+          ctx.parentIntent?.intent === 'coparent_number'
+            ? (ctx.parentIntent.value ?? ctx.body)
+            : ctx.body,
         now: ctx.now,
         inboundChannelMessageId: ctx.inboundChannelMessageId,
         sendSms: deps.sendSms,
@@ -1271,7 +1385,7 @@ export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHa
       return {
         claimed: true,
         outcome: outcome.status,
-        reply: outcome.reply,
+        reply: outcome.reply || null,
         ...('templateKey' in outcome ? { templateKey: outcome.templateKey } : {}),
       };
     },
@@ -1511,13 +1625,29 @@ export function recMorningHandler(): DeterministicHandler {
   return {
     name: 'rec_morning',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const named = recMorningReply(ctx.body, ctx.now);
-      if (named !== null) return { claimed: true, outcome: 'rec_morning', reply: named };
-      if (!recMorningCouldUseWhere(ctx.body)) return { claimed: false };
-      const where = await loadFamilyRecWhere(database, ctx.familyId);
-      const reply = recMorningReply(ctx.body, ctx.now, where);
+      if (ctx.parentIntent && ctx.parentIntent.intent !== 'rec_morning') return { claimed: false };
+      let reply: string | null = null;
+      if (ctx.parentIntent?.intent === 'rec_morning') {
+        const topic = recTopic(ctx.parentIntent.value);
+        if (!topic) return { claimed: false };
+        const where = await loadFamilyRecWhere(database, ctx.familyId);
+        reply = recMorningBody(topic, ctx.now, where);
+      } else {
+        reply = recMorningReply(ctx.body, ctx.now);
+        if (reply === null && recMorningCouldUseWhere(ctx.body)) {
+          reply = recMorningReply(
+            ctx.body,
+            ctx.now,
+            await loadFamilyRecWhere(database, ctx.familyId),
+          );
+        }
+      }
       if (reply === null) return { claimed: false };
-      return { claimed: true, outcome: 'rec_morning', reply };
+      return {
+        claimed: true,
+        outcome: 'rec_morning',
+        reply,
+      };
     },
   };
 }
@@ -1562,7 +1692,12 @@ export function eveningCheckInHandler(): DeterministicHandler {
       if (ctx.resolved !== null) return { claimed: false };
 
       const questions = await ctx.openQuestions();
-      const cadence = readCadenceWord(ctx.body);
+      // Flag on: the resolver already named the cadence. The word list is the
+      // flag-off path, and it does not run once a reading is attached.
+      const cadence = ctx.parentIntent
+        ? directedCadence(ctx.parentIntent)
+        : readCadenceWord(ctx.body);
+      if (ctx.parentIntent?.intent === 'cadence' && cadence === null) return { claimed: false };
       if (cadence !== null) return moveEveningCadence(database, ctx, questions, cadence);
 
       const standing = questions.find((question) => question.kind === 'evening_check_in');
@@ -1597,7 +1732,7 @@ export function eveningCheckInHandler(): DeterministicHandler {
       return {
         claimed: true,
         outcome: outcome.status,
-        reply: outcome.reply,
+        reply: outcome.reply || null,
         templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
       };
     },
@@ -1655,7 +1790,7 @@ async function moveEveningCadence(
   return {
     claimed: true,
     outcome: outcome.status,
-    reply: outcome.reply,
+    reply: outcome.reply || null,
     templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
   };
 }

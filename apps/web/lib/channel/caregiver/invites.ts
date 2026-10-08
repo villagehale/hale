@@ -5,6 +5,7 @@ import {
   coParentScopeConfirm,
   inviterNameIsAffordable,
 } from '~/lib/channel/coparent/copy';
+import { voiceSourceLine } from '~/lib/channel/intent/line';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { CO_PARENT_GRANT_SCOPE, type CaregiverRole } from '~/lib/channel/role-scope';
 import { maskPhoneE164 } from '~/lib/channels/phone';
@@ -408,7 +409,16 @@ export async function startCaregiverInvite(
     },
   });
 
-  return { status: 'started', invite, reply: scopeConfirm(parsed.name, parsed.role) };
+  const locked = scopeConfirm(parsed.name, parsed.role);
+  const reply =
+    (await voiceSourceLine({
+      flow: 'caregiver_scope',
+      locked,
+      language: 'en',
+      pendingAsk: 'whether to text them',
+      facts: { name: parsed.name, role: parsed.role },
+    })) ?? '';
+  return { status: 'started', invite, reply };
 }
 
 /** Why Hale will not open a CO-PARENT invite. Every one of them is answered with its own
@@ -682,7 +692,16 @@ export async function startCoParentInvite(
     },
   });
 
-  return { status: 'started', invite, reply: coParentScopeConfirm(parsed.name, input.language) };
+  const locked = coParentScopeConfirm(parsed.name, input.language);
+  const reply =
+    (await voiceSourceLine({
+      flow: 'coparent_scope',
+      locked,
+      language: input.language,
+      pendingAsk: 'whether to text them',
+      facts: { name: parsed.name },
+    })) ?? '';
+  return { status: 'started', invite, reply };
 }
 
 /** The `caregiver_invites` row itself, with nobody texted yet. Shared by both start
@@ -822,7 +841,19 @@ export async function recordCoParentAssent(
     return true;
   });
 
-  return claimed ? coParentInviteBody(input.inviterName, input.language) : null;
+  if (!claimed) return null;
+  const locked = coParentInviteBody(input.inviterName, input.language);
+  return voiceSourceLine({
+    flow: 'coparent_invite',
+    locked,
+    language: input.language,
+    pendingAsk: 'whether they accept',
+    facts: {
+      complianceStop: true,
+      stopLine: input.language === 'fr' ? 'Répondez ARRET à tout moment.' : 'Reply STOP anytime.',
+      inviterName: input.inviterName,
+    },
+  });
 }
 
 /**
@@ -879,7 +910,21 @@ export async function recordParentAssent(
     });
   });
 
-  return inviteBody(input.inviterName, invite.role);
+  const locked = inviteBody(input.inviterName, invite.role);
+  return (
+    (await voiceSourceLine({
+      flow: 'caregiver_invite',
+      locked,
+      language: 'en',
+      pendingAsk: 'whether they accept',
+      facts: {
+        complianceStop: true,
+        stopLine: 'Reply STOP anytime.',
+        inviterName: input.inviterName,
+        role: invite.role,
+      },
+    })) ?? ''
+  );
 }
 
 /** Close an invite in a terminal state, with its audit row. */

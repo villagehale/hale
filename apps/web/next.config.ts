@@ -7,6 +7,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..');
 
 const config: NextConfig = {
+  // Inlined at build time so the web client can skip regex chips when the
+  // server is reading intent. Exactly `true` turns it on. Anything else is off.
+  env: {
+    AI_INTENT_ROUTER_ENABLED: process.env.AI_INTENT_ROUTER_ENABLED ?? '',
+  },
   reactStrictMode: true,
   poweredByHeader: false,
   typedRoutes: true,
