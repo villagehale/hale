@@ -40,7 +40,10 @@
 export const VOICE_TELLS = [
   [/\b(?:reach out|feel free|don'?t hesitate)\b/i, 'signs off like an assistant'],
   [/\blet me know\b/i, 'ends on a generic "let me know"'],
-  [/\bhappy to help\b/i, 'chirpy filler'],
+  [
+    /\b(?:happy|glad) to (?:help|assist)\b|\b(?:i'?d|i would) be happy to\b|\bhere to help\b/i,
+    'chirpy filler',
+  ],
   [
     /\b(?:i can only|more than i can|in one message|my limit)\b/i,
     "explains its own limits instead of the parent's week",

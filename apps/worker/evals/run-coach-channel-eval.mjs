@@ -544,82 +544,24 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
  * condition this gate makes load-bearing.
  */
 /**
- * Mirrors `activityLinkSuffix` in apps/web/lib/channel/coach/activity-links.ts, including
- * the distinctive-word list that function reads from followup/screen.ts. The model is
- * told never to write a URL. The link is appended here, and only for a title whose
- * distinctive words are all in the body.
+ * The REAL suffix and the REAL "does this reply name this find" check, assigned in
+ * `main` from activity-links.ts. That file has no `~/` import, so tsx can load it.
+ * A hand copy is how "lantern craft" dropped the Fanous page in the eval while the
+ * product check was supposed to be the same function.
  */
-const ACTIVITY_GENERIC_WORDS = new Set([
-  'class',
-  'classes',
-  'lesson',
-  'lessons',
-  'session',
-  'sessions',
-  'practice',
-  'club',
-  'camp',
-  'group',
-  'meetup',
-  'meeting',
-  'program',
-  'programme',
-  'activity',
-  'event',
-  'time',
-  'day',
-  'week',
-  'kids',
-  'kid',
-  'child',
-  'children',
-  'family',
-  'parent',
-  'baby',
-  'toddler',
-  'drop',
-  'and',
-  'the',
-  'for',
-  'with',
-  'from',
-  'this',
-  'that',
-  'your',
-  'our',
-]);
-
-function activityDistinctiveWords(title) {
-  return [
-    ...new Set(
-      String(title)
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((word) => word.length >= 4 && !ACTIVITY_GENERIC_WORDS.has(word)),
-    ),
-  ];
-}
-
-function activityLinkSuffix(body, links) {
-  if (!links || links.length === 0) return '';
-  const hay = body.toLowerCase();
-  const seen = new Set();
-  const out = [];
-  for (const link of links) {
-    if (seen.has(link.url) || hay.includes(link.url.toLowerCase())) continue;
-    const words = activityDistinctiveWords(link.title);
-    if (words.length === 0) continue;
-    if (!words.every((word) => hay.includes(word))) continue;
-    seen.add(link.url);
-    out.push(link.url);
-  }
-  return out.join(' ');
-}
+let activityLinkSuffix = () => '';
+let replyNamesActivity = () => false;
 
 function activityLinksFor(fixture, calls) {
   const links = [];
   for (const candidate of villageFor(fixture).candidates ?? []) {
-    if (candidate.url) links.push({ title: candidate.title, url: candidate.url });
+    if (candidate.url) {
+      links.push({
+        title: candidate.title,
+        url: candidate.url,
+        ...(candidate.venue ? { venue: candidate.venue } : {}),
+      });
+    }
   }
   if (calls.some((call) => call.tool === 'find_activities')) {
     const pick = webPickFor(fixture);
@@ -860,7 +802,7 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
   const searchVillage = agent.defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
     inputSchema: passthrough(),
     handler: async () => {
       record('search_village');
@@ -877,7 +819,7 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
   const findActivities = agent.defineTool({
     name: 'find_activities',
     description:
-      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly; any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the town are attached from their record.",
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly; any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the town are attached from their record.",
     inputSchema: z.object({
       subject: z.string().min(1),
       window: z.string().optional(),
@@ -1436,6 +1378,120 @@ function fabrications(reply, hay, allowedUrls) {
   return [...new Set(offenders)];
 }
 
+/**
+ * A date grounded only on find A cannot excuse the same date on find B.
+ *
+ * The global hay is one bag: story time's "Aug 8" and the farm's "Sun" are both
+ * in it, so "Riverdale Farm on Sun Aug 8" used to pass while the farm's own when
+ * is Sun, Aug 9. Each month-day in the reply is checked against the nearest
+ * named source in that sentence — that find, that calendar row, or that
+ * registration window — and nowhere else.
+ */
+const DATE_ANCHOR_GENERIC = new Set([
+  'time',
+  'practice',
+  'lesson',
+  'class',
+  'visit',
+  'with',
+  'from',
+  'this',
+  'that',
+  'your',
+  'fall',
+  'open',
+  'free',
+  'week',
+  'park',
+]);
+
+function monthDayToken(month, day) {
+  return `${month.toLowerCase().slice(0, 3)} ${Number(day)}`;
+}
+
+function monthDaysIn(text) {
+  const pattern =
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/gi;
+  return [...String(text).matchAll(pattern)].map((match) => ({
+    token: monthDayToken(match[1], match[2]),
+    index: match.index ?? 0,
+  }));
+}
+
+function dateSource(label, when) {
+  const words = [
+    ...new Set(
+      label
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((word) => word.length >= 4 && !DATE_ANCHOR_GENERIC.has(word)),
+    ),
+  ];
+  return { label, words, dates: new Set(monthDaysIn(when).map((mention) => mention.token)) };
+}
+
+function calendarDate(iso) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: FIXTURE_TIMEZONE,
+  }).format(new Date(iso));
+}
+
+function dateSourcesFor(fixture, calls) {
+  const sources = [];
+  for (const candidate of villageFor(fixture).candidates ?? []) {
+    sources.push(dateSource(candidate.title, candidate.when ?? ''));
+  }
+  if (calls.some((call) => call.tool === 'find_activities')) {
+    const pick = webPickFor(fixture);
+    sources.push(dateSource(pick.name, pick.when ?? ''));
+  }
+  for (const event of FIXTURE_EVENTS) {
+    if (isPrivate(event)) continue;
+    sources.push(dateSource(`${event.title} ${event.location ?? ''}`, calendarDate(event.startsAt)));
+  }
+  for (const window of fixture.registrationWindows ?? []) {
+    sources.push(
+      dateSource(
+        `${window.town} registration ${window.programs}`,
+        `${window.opensFor} ${window.generalOpens ?? ''}`,
+      ),
+    );
+  }
+  return sources.filter((source) => source.words.length > 0);
+}
+
+function borrowedFindDates(reply, sources) {
+  const offenders = [];
+  for (const sentence of reply.split(/(?<=[.!?])\s+|\n+/)) {
+    const hay = sentence.toLowerCase();
+    for (const mention of monthDaysIn(sentence)) {
+      const distances = sources.map((source) => {
+        let best = Number.POSITIVE_INFINITY;
+        for (const word of source.words) {
+          const found = hay.matchAll(new RegExp(`\\b${word}\\b`, 'g'));
+          for (const match of found) {
+            best = Math.min(best, Math.abs((match.index ?? 0) - mention.index));
+          }
+        }
+        return { source, best };
+      });
+      const nearestAt = Math.min(...distances.map((row) => row.best));
+      if (!Number.isFinite(nearestAt) || nearestAt > 80) continue;
+      const tied = distances.filter((row) => row.best === nearestAt).map((row) => row.source);
+      if (tied.some((source) => source.dates.has(mention.token))) continue;
+      const owned = tied
+        .map((source) => `${source.label}: ${[...source.dates].join(', ') || 'no calendar date'}`)
+        .join('; ');
+      offenders.push(
+        `date "${mention.token}" is not on the nearest find (${owned}); a date from another find does not count`,
+      );
+    }
+  }
+  return [...new Set(offenders)];
+}
+
 // ── grading ────────────────────────────────────────────────────────────────
 
 function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetries = 0) {
@@ -1527,10 +1583,11 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   }
 
   // A reply that names an activity the tools handed over has to carry that activity's
-  // URL. The runtime appends it when the model names the title and leaves the link out.
-  for (const link of activityLinksFor(fixture, calls)) {
-    const words = activityDistinctiveWords(link.title);
-    if (words.length === 0 || !words.every((word) => lower.includes(word))) continue;
+  // URL. The runtime appends it when the reply refers to the find, including a
+  // shortened title ("lantern craft", "Riverdale Library … story time").
+  const links = activityLinksFor(fixture, calls);
+  for (const link of links) {
+    if (!replyNamesActivity(reply, link, links)) continue;
     if (!lower.includes(link.url.toLowerCase())) {
       failures.push(`names "${link.title}" without its link`);
     }
@@ -1808,6 +1865,14 @@ const JUDGE_SYSTEM = [
   '`knows.promises` is every `promise_activity_followup` registered this turn. A',
   'sentence that Hale will come back is TRUE when that list is non-empty, and an',
   'unbacked promise when it is empty. Do not score a registered promise as invented.',
+  'QUOTE THE TITLE. The name of a find is the title in `knows.offerable` or',
+  '`knows.webFind`, whole. "Riverdale story time" and "Fanous lantern craft" are',
+  'not "storytime", "a lantern thing", or a rewrite built from the venue. A',
+  'paraphrase of the name is a miss; score it a 2 at most.',
+  "A DATE BELONGS TO ONE FIND. The day on an activity is that activity's own",
+  '`when`, and no other row\'s. Putting Aug 8 on a find whose when is Aug 9 is',
+  'an invention even when Aug 8 is sitting on a different find in the same turn.',
+  'Score that a 1.',
   "REGISTRATION WINDOWS ARE HALE'S OWN VERIFIED FACTS. `knows.registrationWindows` is a",
   'hand-checked municipal open date for THIS family: `opensFor` is the instant they can',
   'first register, `generalOpens` the later one everyone else waits for. Stating either',
@@ -1944,6 +2009,10 @@ async function main() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   ({ spokenFind } = await tsImport(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
+    import.meta.url,
+  ));
+  ({ activityLinkSuffix, replyNamesActivity } = await tsImport(
+    join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'activity-links.ts'),
     import.meta.url,
   ));
   const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
@@ -2202,7 +2271,8 @@ async function main() {
       // find_activities was handed it, and on every other turn naming it is invention.
       calls.some((call) => call.tool === 'find_activities') ? pick : null,
     ]);
-    const invented = reply === null ? [] : fabrications(reply, hay);
+    const invented =
+      reply === null ? [] : [...fabrications(reply, hay), ...borrowedFindDates(reply, dateSourcesFor(fixture, calls))];
     const verdict =
       broken || reply === null
         ? null
