@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SendRefusalReason } from '~/lib/channel/reconcile/gate';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import type { SendRefusalReason } from '~/lib/channel/reconcile/gate';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { recordSpotWatchPromise } from './promise';
 import {
@@ -335,7 +335,11 @@ describe('runWatchedSpotsSweep — the delivery-truth invariant', () => {
     // by the message that kept it.
     await setReceipt('delivered');
     const messageId = (await readWatch(spotId)).notifiedMessageId;
-    const tick3 = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, 2 * TEN_MINUTES));
+    const tick3 = await runWatchedSpotsSweep(
+      db.database,
+      test.deps,
+      later(MIDDAY, 2 * TEN_MINUTES),
+    );
     expect(tick3.released.notified).toBe(1);
     row = await readWatch(spotId);
     expect(row.releasedReason).toBe('notified');
@@ -369,13 +373,14 @@ describe('runWatchedSpotsSweep — the delivery-truth invariant', () => {
       .select({ key: schema.channelMessages.dedupeKey })
       .from(schema.channelMessages)
       .orderBy(asc(schema.channelMessages.createdAt));
-    expect(keys.map((k) => k.key)).toEqual([
-      spotOpenKey(spotId, 1, 1),
-      spotOpenKey(spotId, 1, 2),
-    ]);
+    expect(keys.map((k) => k.key)).toEqual([spotOpenKey(spotId, 1, 1), spotOpenKey(spotId, 1, 2)]);
 
     await setReceipt('failed');
-    const ended = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, 2 * TEN_MINUTES));
+    const ended = await runWatchedSpotsSweep(
+      db.database,
+      test.deps,
+      later(MIDDAY, 2 * TEN_MINUTES),
+    );
     expect(ended.released.delivery_failed).toBe(1);
     expect(test.sent).toHaveLength(2);
     const row = await readWatch(spotId);
@@ -1542,7 +1547,13 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
       awaitingReceipt: 0,
       refused: 0,
       failed: 0,
-      held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+      held: {
+        not_enrolled: 0,
+        no_watch_consent: 0,
+        frequency_cap: 0,
+        quiet_hours: 0,
+        line_health: 0,
+      },
       released: {
         notified: 0,
         expired: 0,

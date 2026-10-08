@@ -12,6 +12,12 @@ import {
 } from '~/lib/channel/outbound-transport';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
+import { cadenceSkipsNumericCaps } from '~/lib/channel/proactive/flag';
+import {
+  type CadenceLane,
+  candidateDedupeKey,
+  routeProactiveDelivery,
+} from '~/lib/channel/proactive/queue';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { type GroupHoldReason, groupAudienceAllows } from './group-audience';
@@ -211,6 +217,7 @@ export async function groupProactiveCapReached(
   database: Database,
   input: { familyId: string; chatId: string; now: Date },
 ): Promise<boolean> {
+  if (cadenceSkipsNumericCaps()) return false;
   const spend = await readGroupBubbleSpend(database, input);
   return (
     spend.discretionaryDay >= GROUP_DISCRETIONARY_DAY_MAX ||
@@ -303,7 +310,7 @@ export type FamilyOutboundDelivery =
       linkOmitted?: 'link_on_new_chat';
     }
   | { status: 'held'; reason: 'group_cap'; until: Date }
-  | { status: 'held'; reason: 'quiet_hours' | 'coparent_ask' }
+  | { status: 'held'; reason: 'quiet_hours' | 'coparent_ask' | 'queued' }
   | { status: 'skipped'; reason: string };
 
 function skippedRefusal(familyId: string, err: unknown): FamilyOutboundDelivery | null {
@@ -347,9 +354,36 @@ export async function deliverFamilyOutbound(
     bubbleKind?: GroupBubbleKind;
     mediaUrls?: string[];
     now?: Date;
+    /** reply and immediate still send when cadence is live. candidate queues. */
+    cadenceLane?: CadenceLane;
   },
 ): Promise<FamilyOutboundDelivery> {
   const target = input.target ?? (await familyOutboundTarget(database, input.familyId));
+  const lane: CadenceLane =
+    input.cadenceLane ??
+    (input.bubbleKind === 'rec_morning'
+      ? 'immediate'
+      : input.shareGroupCap === false || input.bubbleKind === 'uncapped'
+        ? 'reply'
+        : 'candidate');
+  if (lane === 'candidate') {
+    const url = input.body.match(/https?:\/\/[^\s]+/)?.[0] ?? null;
+    const routed = await routeProactiveDelivery(
+      database,
+      {
+        familyId: input.familyId,
+        kind: input.bubbleKind ?? 'proactive',
+        what: input.body.slice(0, 240),
+        why: input.bubbleKind ?? 'proactive',
+        sourceUrl: url,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: candidateDedupeKey(input.familyId, input.body),
+      },
+      lane,
+    );
+    if (routed === 'queued') return { status: 'held', reason: 'queued' };
+  }
   if (target.channel === 'group') {
     if (isCoparentAsk(input.body)) {
       console.warn(
@@ -379,7 +413,7 @@ export async function deliverFamilyOutbound(
       chatId: target.chatId,
       now,
     });
-    const held = kindHeld(kind, spend);
+    const held = cadenceSkipsNumericCaps() ? null : kindHeld(kind, spend);
     if (held) {
       console.warn(
         { familyId: input.familyId, kind },

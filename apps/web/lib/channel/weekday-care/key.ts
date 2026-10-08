@@ -13,7 +13,7 @@
  */
 
 import { proactiveNudgeTemplateKey } from '~/lib/channel/nudge/shell';
-import type { WeekdayFinderAsk, WeekdaySearchPrompt } from '~/lib/channel/nudge/weekday-care-copy';
+import type { WeekdayFinderAsk, WeekdaySearchPrompt } from '~/lib/channel/nudge/weekday-care-ask';
 
 const PREFIX = 'nudge';
 const KIND = 'weekday_care';

@@ -50,7 +50,9 @@ export type AgentTraceName =
   | 'radar-voice'
   | 'nudge-voice'
   | 'reply-copy'
-  | 'coach-channel-sms';
+  | 'coach-channel-sms'
+  | 'proactive-decider'
+  | 'proactive-writer';
 
 export interface AgentTraceContext {
   name: AgentTraceName;

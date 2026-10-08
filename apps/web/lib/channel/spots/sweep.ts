@@ -11,9 +11,9 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
 import { STATE_TOLD, type SpotReading, readSpot, transitionKind } from './availability';
@@ -370,7 +370,13 @@ function emptySummary(enabled: boolean): WatchedSpotsSweepSummary {
     awaitingReceipt: 0,
     refused: 0,
     failed: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: {
+      not_enrolled: 0,
+      no_watch_consent: 0,
+      frequency_cap: 0,
+      quiet_hours: 0,
+      line_health: 0,
+    },
     released: {
       notified: 0,
       expired: 0,
@@ -903,6 +909,7 @@ async function sendSpotOpen(
     to,
     legacy: deps.transport,
     shareGroupCap: false,
+    cadenceLane: spot.instant ? 'immediate' : 'candidate',
   });
   if (delivered.status === 'held') return { kind: 'held', reason: 'frequency_cap' };
   if (delivered.status === 'skipped') {

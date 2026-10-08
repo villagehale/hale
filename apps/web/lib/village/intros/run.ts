@@ -1,35 +1,34 @@
 import { type Database, schema } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
 import { and, asc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
-import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
-import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
-import { withOptOut } from '~/lib/channel/opt-out';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import {
-  type OutboundGatePorts,
-  type ProactiveHoldReason,
-  assertProactiveSendAllowed,
-  buildOutboundGatePorts,
-} from '~/lib/channel/outbound-gate';
 import {
   type IdentityAskVoice,
   type IdentityGap,
   productionIdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
 import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
+import { withOptOut } from '~/lib/channel/opt-out';
+import {
+  type OutboundGatePorts,
+  type ProactiveHoldReason,
+  assertProactiveSendAllowed,
+  buildOutboundGatePorts,
+} from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   familyHasSyntheticProbeChannel,
   resolveSendablePhone,
 } from '~/lib/channels/sms-consent-core';
+import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
 import { discoverableUserIds } from './consent';
 import { INTRO_SOFT_CLOSE, stageWord } from './copy';
-import { type IntroAskRequest, type IntroVoice, productionIntroVoice } from './voice';
 import { type IntroEmailSender, createIntroEmailSender, introFirstName } from './email';
-import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import {
   type IntroMatchSignal,
   type IntroSkipReason,
@@ -39,6 +38,7 @@ import {
   normalizeFsa,
   pairKey,
 } from './matcher';
+import { type IntroAskRequest, type IntroVoice, productionIntroVoice } from './voice';
 
 /**
  * Village intros v1 — the sweep. Three phases, run in order, every tick.
@@ -193,10 +193,7 @@ export interface IntroSweepDeps {
    * lib/channels/phone.ts). A probe exercises the real intake in its own thread and
    * must never put a cross-household text in front of a HUMAN — neither as the family
    * being announced nor as the recipient (2026-08-28 ads-week audit). */
-  syntheticProbeFamilyIds(
-    database: Database,
-    familyIds: readonly string[],
-  ): Promise<Set<string>>;
+  syntheticProbeFamilyIds(database: Database, familyIds: readonly string[]): Promise<Set<string>>;
   discoverableUserIds(database: Database, userIds: readonly string[]): Promise<Set<string>>;
   /** Parents who already carry ANY answer on the discoverability scope. */
   askedUserIds(database: Database, userIds: readonly string[]): Promise<Set<string>>;
@@ -357,7 +354,13 @@ function emptyResult(enabled: boolean): IntroSweepResult {
     identityAsked: 0,
     notAllowlisted: 0,
     closed: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: {
+      not_enrolled: 0,
+      no_watch_consent: 0,
+      frequency_cap: 0,
+      quiet_hours: 0,
+      line_health: 0,
+    },
     skipped: { no_fsa: 0, no_matchable_child: 0 },
     skippedSynthetic: 0,
     failed: 0,
@@ -635,7 +638,8 @@ async function runMatchPhase(
           // The counterpart id is named on purpose: a PIPEDA right-to-access read has to
           // be able to answer "who were we lined up with", and a family id is not PII.
           after: {
-            counterpartFamilyId: familyId === pairing.familyAId ? pairing.familyBId : pairing.familyAId,
+            counterpartFamilyId:
+              familyId === pairing.familyAId ? pairing.familyBId : pairing.familyAId,
             fsa: pairing.fsa,
             stage: pairing.stage,
             anchored: anchor !== null,
@@ -756,9 +760,7 @@ async function cardUnaskedSides(
       counterpartWord: stageWord(proposal.stage),
       ownChildPossessive: `${loopChildName(child, nameLevel, now)}'s`,
       anchorTitle: anchored ? proposal.anchorTitle : null,
-      anchorDay: anchored
-        ? weekdayIn(proposal.anchorStartsAt as Date, family.timeZone)
-        : null,
+      anchorDay: anchored ? weekdayIn(proposal.anchorStartsAt as Date, family.timeZone) : null,
     } as const;
 
     const outcome = await sendIntroSms(database, deps, scope, {
@@ -885,12 +887,7 @@ async function introduce(
       after: {
         counterpartFamilyId: other,
         channel: 'email',
-        disclosedFields: [
-          'parent_first_name',
-          'parent_email',
-          'child_stage',
-          'activity_title',
-        ],
+        disclosedFields: ['parent_first_name', 'parent_email', 'child_stage', 'activity_title'],
         anchored: proposal.anchorTitle !== null,
       },
     });
@@ -1135,10 +1132,7 @@ async function selectIntroFamilies(database: Database): Promise<IntroSweepFamily
     );
 }
 
-async function readIntroChildren(
-  database: Database,
-  familyId: string,
-): Promise<IntroSweepChild[]> {
+async function readIntroChildren(database: Database, familyId: string): Promise<IntroSweepChild[]> {
   return database
     .select({
       id: schema.children.id,

@@ -38,9 +38,10 @@ export const loopPrefs = pgTable('loop_prefs', {
   catApproval: boolean('cat_approval').notNull().default(true),
   catAlert: boolean('cat_alert').notNull().default(true),
   /** Quiet-hours window, wall-clock local (parent's users.timezone). Defaults
-   * 21:30 → 07:30. start == end means "no quiet window" (deliver anytime). */
-  quietHoursStart: time('quiet_hours_start').notNull().default('21:30:00'),
-  quietHoursEnd: time('quiet_hours_end').notNull().default('07:30:00'),
+   * 21:00 → 08:00, the same floor as every other unprompted send. start == end
+   * means "no quiet window" (deliver anytime). */
+  quietHoursStart: time('quiet_hours_start').notNull().default('21:00:00'),
+  quietHoursEnd: time('quiet_hours_end').notNull().default('08:00:00'),
   /** Whether time-sensitive messages (T-1h reminder, safety alert) may cross the
    * quiet window. Default ON, copy honest — normal messages always defer. */
   urgentBypassQuietHours: boolean('urgent_bypass_quiet_hours').notNull().default(true),

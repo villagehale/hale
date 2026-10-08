@@ -146,7 +146,9 @@ export type InboundRouteOutcome =
   | 'location_unread'
   /** WhatsApp is retired. The prefix is still recognized so a leftover Twilio
    * webhook is counted and dropped: no ledger row, no keyword, no SMS answer. */
-  | 'whatsapp_dropped';
+  | 'whatsapp_dropped'
+  /** Linq said the sending line is flagged or throttled, or that it recovered. */
+  | 'line_health';
 
 /**
  * Route one authenticated inbound text. Exported so the routing decisions are testable

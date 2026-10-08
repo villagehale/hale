@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { linqApiKey, linqFromE164 } from './config';
 
@@ -37,14 +38,46 @@ export class LinqSendError extends Error {
   readonly code: string;
   readonly httpStatus: number;
   readonly permanent: boolean;
+  /** Retry-After, when Linq sent one. Null when the refusal did not say. */
+  readonly retryAfterMs: number | null;
 
-  constructor(code: string, httpStatus: number, permanent: boolean) {
+  constructor(
+    code: string,
+    httpStatus: number,
+    permanent: boolean,
+    retryAfterMs: number | null = null,
+  ) {
     super(`linq send failed: ${code}`);
     this.name = 'LinqSendError';
     this.code = code;
     this.httpStatus = httpStatus;
     this.permanent = permanent;
+    this.retryAfterMs = retryAfterMs;
   }
+}
+
+/** Stable key for one chat and one body, so a retry is the same send. */
+export function linqMessageKey(chatId: string, body: string): string {
+  return createHash('sha256').update(`${chatId}\n${body}`).digest('hex');
+}
+
+/** Honor Retry-After. Without one, back off 1s, 2s, 4s. */
+export function linqBackoffMs(attempt: number, retryAfterMs: number | null): number {
+  if (retryAfterMs !== null && retryAfterMs >= 0) return retryAfterMs;
+  return 1000 * 2 ** Math.max(0, attempt);
+}
+
+function retryAfterMsOf(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds) * 1000;
+  const at = Date.parse(header);
+  if (Number.isNaN(at)) return null;
+  return Math.max(0, at - Date.now());
+}
+
+function isLinqRateLimit(status: number, code: string): boolean {
+  return status === 429 || code === '1007';
 }
 
 /** Standard iMessage tapbacks. `custom` carries the emoji in `customEmoji`. */
@@ -106,7 +139,8 @@ async function linqRequest(input: {
   path: string;
   body?: unknown;
   fetch?: typeof fetch;
-}): Promise<LinqHttpResult> {
+  idempotencyKey?: string;
+}): Promise<LinqHttpResult & { retryAfterMs: number | null }> {
   const apiKey = linqApiKey();
   if (!apiKey) throw new LinqSendError('not_configured', 0, true);
 
@@ -120,6 +154,7 @@ async function linqRequest(input: {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         ...(input.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(input.idempotencyKey ? { 'Idempotency-Key': input.idempotencyKey } : {}),
       },
       body: input.body !== undefined ? JSON.stringify(input.body) : undefined,
       signal: controller.signal,
@@ -132,13 +167,16 @@ async function linqRequest(input: {
   }
 
   const payload: unknown = response.status === 204 ? null : await response.json().catch(() => null);
-  const permanent = response.status >= 400 && response.status < 500 && response.status !== 429;
+  const code = linqErrorCode(payload) ?? `http_${response.status}`;
+  const rateLimited = isLinqRateLimit(response.status, code);
+  const permanent = response.status >= 400 && response.status < 500 && !rateLimited;
   return {
     ok: response.ok,
     status: response.status,
     payload,
-    code: linqErrorCode(payload) ?? `http_${response.status}`,
+    code,
     permanent,
+    retryAfterMs: rateLimited ? retryAfterMsOf(response.headers.get('retry-after')) : null,
   };
 }
 
@@ -241,6 +279,7 @@ export async function sendLinqParts(input: {
   parts: readonly LinqOutboundPart[];
   replyTo?: LinqReplyTarget;
   fetch?: typeof fetch;
+  idempotencyKey?: string;
 }): Promise<{ providerMessageId: string }> {
   assertParts(input.parts);
   if (input.replyTo && !input.replyTo.messageId) {
@@ -253,13 +292,27 @@ export async function sendLinqParts(input: {
       ...(input.replyTo.partIndex !== undefined ? { part_index: input.replyTo.partIndex } : {}),
     };
   }
-  const result = await linqRequest({
-    method: 'POST',
-    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
-    body: { message },
-    fetch: input.fetch,
-  });
-  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  const idempotencyKey =
+    input.idempotencyKey ?? linqMessageKey(input.chatId, JSON.stringify(message));
+  const once = () =>
+    linqRequest({
+      method: 'POST',
+      path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
+      body: { message },
+      fetch: input.fetch,
+      idempotencyKey,
+    });
+  let result = await once();
+  if (!result.ok && isLinqRateLimit(result.status, result.code)) {
+    const wait = linqBackoffMs(0, result.retryAfterMs);
+    if (wait <= 1000) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      result = await once();
+    }
+  }
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
   const providerMessageId = readLinqMessageId(result.payload);
   if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
   return { providerMessageId };
@@ -278,13 +331,16 @@ export async function sendLinqChatMessage(input: {
   text: string;
   replyTo?: LinqReplyTarget;
   fetch?: typeof fetch;
+  idempotencyKey?: string;
 }): Promise<{ providerMessageId: string }> {
+  const idempotencyKey = input.idempotencyKey ?? linqMessageKey(input.chatId, input.text);
   const send = (replyTo?: LinqReplyTarget) =>
     sendLinqParts({
       chatId: input.chatId,
       parts: [{ type: 'text', value: input.text }],
       replyTo,
       fetch: input.fetch,
+      idempotencyKey,
     });
   try {
     return await send(input.replyTo);

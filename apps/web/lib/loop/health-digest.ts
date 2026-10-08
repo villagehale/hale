@@ -628,6 +628,7 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
     '',
     `Weekly plans composed: ${summary.weekPlansComposed}`,
     `STOPs (loop unsubscribes): ${summary.stopCount}`,
+    lineResponseRateLine(summary.messageCounts),
     openLoopsLine(summary.commitmentDebt),
     providerHealthLine(summary.providerIncidents),
     '',
@@ -660,6 +661,22 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
     }
   }
   return lines.join('\n');
+}
+
+const SENT_OUT = new Set(['sent', 'delivered', 'queued']);
+
+/** Inbound replies divided by outbound sends over the digest window. Linq
+ * throttles a line once this sits under 15%. Counts only — no family ids. */
+export function lineResponseRateLine(counts: readonly MessageCountRow[]): string {
+  let outbound = 0;
+  let inbound = 0;
+  for (const row of counts) {
+    if (row.direction === 'out' && SENT_OUT.has(row.status)) outbound += row.count;
+    if (row.direction === 'in') inbound += row.count;
+  }
+  if (outbound === 0) return 'Linq 7-day response rate: no outbound this window';
+  const rate = Math.round((inbound / outbound) * 100);
+  return `Linq 7-day response rate: ${rate}% (${inbound} replies / ${outbound} outbound). Linq throttles below 15%.`;
 }
 
 const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';

@@ -834,7 +834,7 @@ function publish(result: PreparedBody): WorkstreamComposeResult {
 }
 
 /** Group-level holds are not the per-parent follow-up cap. */
-export type WorkstreamHoldReason = ProactiveHoldReason | 'group_cap' | 'coparent_ask';
+export type WorkstreamHoldReason = ProactiveHoldReason | 'group_cap' | 'coparent_ask' | 'queued';
 
 export interface WorkstreamFollowupResult {
   enabled: boolean;
@@ -861,8 +861,10 @@ function emptyHeld(): WorkstreamFollowupResult['held'] {
     no_watch_consent: 0,
     frequency_cap: 0,
     quiet_hours: 0,
+    line_health: 0,
     group_cap: 0,
     coparent_ask: 0,
+    queued: 0,
   };
 }
 
@@ -1378,14 +1380,21 @@ export async function runWorkstreamFollowupSweep(
       if (delivered.status === 'held') {
         result.held[delivered.reason] += 1;
         const timeZone = await zoneFor(database, row.familyId);
+        const until =
+          delivered.reason === 'group_cap'
+            ? delivered.until
+            : delivered.reason === 'queued'
+              ? new Date(now.getTime() + 60 * 60 * 1000)
+              : workstreamHoldUntil(
+                  delivered.reason === 'coparent_ask' ? 'coparent_ask' : 'quiet_hours',
+                  now,
+                  timeZone,
+                );
         await defer(database, {
           familyId: row.familyId,
           workstreamId: row.id,
           checkBackAt: row.checkBackAt,
-          until:
-            delivered.reason === 'group_cap'
-              ? delivered.until
-              : workstreamHoldUntil(delivered.reason, now, timeZone),
+          until,
           reason: delivered.reason,
           attempt: waiting?.attempt ?? 0,
           now,

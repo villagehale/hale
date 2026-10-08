@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import { cadenceSkipsNumericCaps } from '~/lib/channel/proactive/flag';
 import {
   type FamilyRole,
   classifyFamilyEvent,
@@ -750,6 +751,33 @@ export async function runReminderCron(
 
       // Compose-not-send: only reach real families once the founder flips the flag.
       if (!sendEnabled) continue;
+
+      // T-1h is requested and time-critical: it still leaves. The day-before
+      // reminder waits in the family queue when cadence is live.
+      if (batch.offset === '-P1D' && cadenceSkipsNumericCaps()) {
+        const { routeProactiveDelivery } = await import('~/lib/channel/proactive/queue');
+        const routed = await routeProactiveDelivery(
+          db,
+          {
+            familyId: group.familyId,
+            kind: 'reminder',
+            what: events[0]?.title ?? 'reminder',
+            why: 'day before',
+            sourceUrl: null,
+            worthlessAfter: null,
+            parentRequested: false,
+            dedupeKey: job.dedupeKey,
+          },
+          'candidate',
+        );
+        if (routed === 'queued') {
+          for (const ref of batch.eventRefs) {
+            const r = rowByRef.get(ref);
+            if (r) await deps.markStatus(db, r.reminderId, 'suppressed', 'cadence_queued');
+          }
+          continue;
+        }
+      }
 
       await deps.enqueue(job);
       for (const ref of batch.eventRefs) {

@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import { cadenceSkipsNumericCaps } from '~/lib/channel/proactive/flag';
 import { scopeWeekItemsForRole } from '~/lib/channel/role-scope';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { appBaseUrl, unsubscribeUrl } from '~/lib/cron/email-compliance';
@@ -292,6 +293,25 @@ export async function runSundaySendCron(
     // Compose-not-send: only reach real families once the founder flips the flag.
     if (!sendEnabled) continue;
 
+    if (cadenceSkipsNumericCaps()) {
+      const { routeProactiveDelivery } = await import('~/lib/channel/proactive/queue');
+      const routed = await routeProactiveDelivery(
+        db,
+        {
+          familyId: parent.familyId,
+          kind: 'weekly_plan',
+          what: 'weekly plan',
+          why: 'sunday send',
+          sourceUrl: null,
+          worthlessAfter: null,
+          parentRequested: false,
+          dedupeKey: job.dedupeKey,
+        },
+        'candidate',
+      );
+      if (routed === 'queued') continue;
+    }
+
     await deps.enqueue(job);
     enqueued += 1;
     // Coarse telemetry for X1 (buildEvent drops any PII key): counts + enum only.
@@ -360,6 +380,25 @@ export async function runSundaySendCron(
     };
 
     if (!sendEnabled) continue;
+
+    if (cadenceSkipsNumericCaps()) {
+      const { routeProactiveDelivery } = await import('~/lib/channel/proactive/queue');
+      const routed = await routeProactiveDelivery(
+        db,
+        {
+          familyId: seat.familyId,
+          kind: 'weekly_plan',
+          what: 'weekly plan',
+          why: 'sunday send',
+          sourceUrl: null,
+          worthlessAfter: null,
+          parentRequested: false,
+          dedupeKey: job.dedupeKey,
+        },
+        'candidate',
+      );
+      if (routed === 'queued') continue;
+    }
 
     await deps.enqueue(job);
     caregiverEnqueued += 1;

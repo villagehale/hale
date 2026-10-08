@@ -24,6 +24,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { cadenceSkipsNumericCaps } from '~/lib/channel/proactive/flag';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { teenChildIds } from '~/lib/channel/role-scope';
@@ -127,7 +128,9 @@ export type DutyDelivery =
         | 'not_enrolled'
         | 'no_watch_consent'
         | 'group_cap'
-        | 'ask_budget';
+        | 'ask_budget'
+        | 'line_health'
+        | 'queued';
     }
   | { status: 'not_sent'; reason: string };
 
@@ -944,6 +947,26 @@ export async function deliverDutyGroupLine(
     ports.gatePorts(database),
   );
   if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
+  if (cadenceSkipsNumericCaps()) {
+    const { routeProactiveDelivery, candidateDedupeKey } = await import(
+      '~/lib/channel/proactive/queue'
+    );
+    const routed = await routeProactiveDelivery(
+      database,
+      {
+        familyId: input.familyId,
+        kind: 'duty_ask',
+        what: input.text.slice(0, 240),
+        why: input.bubbleKind,
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.dedupeKey || candidateDedupeKey(input.familyId, input.text),
+      },
+      'candidate',
+    );
+    if (routed === 'queued') return { status: 'held', reason: 'queued' };
+  }
   const spend = await ports.spend(database, {
     familyId: input.familyId,
     chatId: target.chatId,

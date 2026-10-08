@@ -3,8 +3,11 @@ import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
+import { decryptString } from '~/lib/crypto/string-cipher';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
+import { cadenceSkipsNumericCaps } from './proactive/flag';
+import { quietStartForPhone } from './proactive/quiet';
 
 /**
  * F14 · THE OUTBOUND CHOKEPOINT (VIL-239 · M4 opens it).
@@ -134,7 +137,8 @@ export type ProactiveHoldReason =
   | 'not_enrolled'
   | 'no_watch_consent'
   | 'frequency_cap'
-  | 'quiet_hours';
+  | 'quiet_hours'
+  | 'line_health';
 
 /**
  * WHICH SUPPRESSION THE LEDGER RECORDS, per hold — dispatch.ts's four statuses, chosen by
@@ -153,7 +157,8 @@ export type ProactiveHoldReason =
 export type ProactiveHoldStatus =
   | 'suppressed_quiet_hours'
   | 'suppressed_cap'
-  | 'suppressed_consent';
+  | 'suppressed_consent'
+  | 'suppressed_pref';
 
 export function holdStatus(reason: ProactiveHoldReason): ProactiveHoldStatus {
   return HOLD_STATUS[reason];
@@ -164,6 +169,8 @@ const HOLD_STATUS: Record<ProactiveHoldReason, ProactiveHoldStatus> = {
   frequency_cap: 'suppressed_cap',
   not_enrolled: 'suppressed_consent',
   no_watch_consent: 'suppressed_consent',
+  // A flagged or throttled Hale line. Not a volume cap and not a consent gap.
+  line_health: 'suppressed_pref',
 };
 
 /**
@@ -441,6 +448,10 @@ export interface OutboundGatePorts {
    */
   proactiveSentSince(parentUserId: string, since: Date): Promise<boolean>;
   parentTimeZone(parentUserId: string): Promise<string>;
+  /** The parent's number, when the caller can read it. Absent means the 21:00 floor. */
+  parentPhone?(parentUserId: string): Promise<string | null>;
+  /** True when Linq has flagged or throttled Hale's sending line. */
+  linePaused?(): Promise<boolean>;
 }
 
 export interface ProactiveSendRequest {
@@ -473,29 +484,34 @@ export async function assertProactiveSendAllowed(
     return { allowed: false, reason: 'no_watch_consent' };
   }
 
-  const cap = PROACTIVE_CAP[request.kind];
-  if (cap !== null) {
-    const since = new Date(request.now.getTime() - cap.windowHours * 3_600_000);
-    if ((await ports.countProactiveSends(request.familyId, request.kind, since)) >= cap.max) {
-      return { allowed: false, reason: 'frequency_cap' };
+  // VIL-226 · live cadence reads the counters as context, not as a hold. The
+  // Record stays so every class still names its old budget. Shadow and off keep it.
+  if (!cadenceSkipsNumericCaps()) {
+    const cap = PROACTIVE_CAP[request.kind];
+    if (cap !== null) {
+      const since = new Date(request.now.getTime() - cap.windowHours * 3_600_000);
+      if ((await ports.countProactiveSends(request.familyId, request.kind, since)) >= cap.max) {
+        return { allowed: false, reason: 'frequency_cap' };
+      }
     }
+  }
+
+  const timeCritical = request.urgent === true && URGENCY_ALLOWED[request.kind];
+  if (ports.linePaused && (await ports.linePaused()) && !timeCritical) {
+    return { allowed: false, reason: 'line_health' };
   }
 
   // An uncapped class does not read the ledger at all, and an urgent leg does not read
   // the clock: in both cases the answer could not change the verdict, and the gate's
   // standing discipline is to look at nothing it is not entitled to act on.
-  if (request.urgent === true && URGENCY_ALLOWED[request.kind]) {
+  if (timeCritical) {
     return { allowed: true, optOut: await optOutForm(ports, request) };
   }
 
   const timeZone = await ports.parentTimeZone(request.parentUserId);
+  const phone = ports.parentPhone ? await ports.parentPhone(request.parentUserId) : null;
   if (
-    isWithinQuietHours(
-      request.now,
-      timeZone,
-      PROACTIVE_QUIET_HOURS.start,
-      PROACTIVE_QUIET_HOURS.end,
-    )
+    isWithinQuietHours(request.now, timeZone, quietStartForPhone(phone), PROACTIVE_QUIET_HOURS.end)
   ) {
     return { allowed: false, reason: 'quiet_hours' };
   }
@@ -742,6 +758,31 @@ export function buildOutboundGatePorts(database: Database): OutboundGatePorts {
       // here — and a missing parent is a caller bug, not a state to paper over.
       if (!row) throw new Error(`buildOutboundGatePorts: no users row for ${parentUserId}`);
       return row.timezone;
+    },
+    parentPhone: async (parentUserId) => {
+      const [row] = await database
+        .select({ phoneE164Encrypted: schema.parentChannels.phoneE164Encrypted })
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.userId, parentUserId))
+        .limit(1);
+      if (!row) return null;
+      try {
+        return decryptString(row.phoneE164Encrypted);
+      } catch (err) {
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'outbound gate: phone unreadable — Florida/Oklahoma clamp not applied',
+        );
+        return null;
+      }
+    },
+    linePaused: async () => {
+      const [row] = await database
+        .select({ paused: schema.linqLineHealth.paused })
+        .from(schema.linqLineHealth)
+        .where(eq(schema.linqLineHealth.paused, true))
+        .limit(1);
+      return row !== undefined;
     },
   };
 }

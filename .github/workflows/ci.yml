@@ -236,6 +236,9 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Proactive decider eval (cached-only)
+        run: pnpm --filter @hale/worker eval:proactive-decider
+
       - name: Coaching plan composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-plan
 

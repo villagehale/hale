@@ -664,6 +664,7 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
     expect(holdStatus('frequency_cap')).toBe('suppressed_cap');
     expect(holdStatus('not_enrolled')).toBe('suppressed_consent');
     expect(holdStatus('no_watch_consent')).toBe('suppressed_consent');
+    expect(holdStatus('line_health')).toBe('suppressed_pref');
   });
 
   /**

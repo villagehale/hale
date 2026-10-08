@@ -15,6 +15,7 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { cadenceSkipsNumericCaps } from '~/lib/channel/proactive/flag';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { formatDayHeading } from '~/lib/format/datetime';
@@ -122,6 +123,8 @@ export const EMAIL_ALERT_OUTCOMES = [
   'gate_refused:no_watch_consent',
   'gate_refused:frequency_cap',
   'gate_refused:quiet_hours',
+  'gate_refused:line_health',
+  'queued',
   'classifier_failed',
   'no_send_target',
   'send_failed',
@@ -351,6 +354,24 @@ export async function alertParentForEmail(
   }
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
+  if (verdict.allowed && cadenceSkipsNumericCaps()) {
+    const { routeProactiveDelivery } = await import('~/lib/channel/proactive/queue');
+    const routed = await routeProactiveDelivery(
+      database,
+      {
+        familyId,
+        kind: 'email_alert',
+        what: extraction.event?.title ?? 'email',
+        why: extraction.kind,
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey,
+      },
+      'candidate',
+    );
+    if (routed === 'queued') return { alert: 'queued', booking: null, going: null };
+  }
   if (!verdict.allowed) {
     // A RECEIPT, not a claim. Unlike a nudge, a held email alert is not deferred: the
     // Gmail cursor advanced past this message the moment the sweep read it, so nothing

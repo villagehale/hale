@@ -29,9 +29,9 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { readDueBookings } from '~/lib/integrations/booking';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
@@ -383,7 +383,13 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
     daycareAsked: 0,
     composeDeferred: 0,
     refusedAtSend: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: {
+      not_enrolled: 0,
+      no_watch_consent: 0,
+      frequency_cap: 0,
+      quiet_hours: 0,
+      line_health: 0,
+    },
     skipped: {
       opted_out: 0,
       already_claimed: 0,

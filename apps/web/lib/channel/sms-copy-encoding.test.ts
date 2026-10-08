@@ -135,12 +135,6 @@ const SMS_COPY_SOURCES = [
   'lib/channel/connect/text-connect.ts',
   'lib/channel/inbound-copy.ts',
   'lib/channel/founder/copy.ts',
-  // VIL-360's one sentence. It is measured to two characters of headroom on its generic
-  // path, so a curly apostrophe here would not merely cost a segment - it would double
-  // the bill on the one message this feature ever sends a household.
-  'lib/channel/nudge/weekday-care-copy.ts',
-  // VIL-365. The locked empty-Saturday ask, EN and the GSM-7 ASCII FR twin.
-  'lib/channel/nudge/empty-saturday-copy.ts',
   'lib/health/copy.ts',
   'lib/registration/sequence/copy.ts',
   'lib/party/copy.ts',

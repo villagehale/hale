@@ -16,6 +16,7 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { cadenceSkipsNumericCaps } from '~/lib/channel/proactive/flag';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
@@ -130,6 +131,8 @@ export const CALENDAR_ALERT_OUTCOMES = [
   'gate_refused:no_watch_consent',
   'gate_refused:frequency_cap',
   'gate_refused:quiet_hours',
+  'gate_refused:line_health',
+  'cadence_queued',
   'no_send_target',
   'send_failed',
   'alert_failed',
@@ -208,6 +211,7 @@ export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
 const HELD_OUTCOMES = new Set<CalendarAlertOutcome>([
   'gate_refused:quiet_hours',
   'gate_refused:frequency_cap',
+  'gate_refused:line_health',
   'over_sweep_cap',
 ]);
 
@@ -526,6 +530,25 @@ async function sendOffer(
       'calendar alert: held by the outbound gate',
     );
     return `gate_refused:${verdict.reason}`;
+  }
+
+  if (cadenceSkipsNumericCaps()) {
+    const { routeProactiveDelivery } = await import('~/lib/channel/proactive/queue');
+    const routed = await routeProactiveDelivery(
+      database,
+      {
+        familyId,
+        kind: 'calendar_alert',
+        what: 'calendar change',
+        why: offer.dedupeKey,
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: offer.dedupeKey,
+      },
+      'candidate',
+    );
+    if (routed === 'queued') return 'cadence_queued';
   }
 
   const message = offer.render();

@@ -13,14 +13,8 @@ import {
 } from '~/lib/channel/intake/radar-decide';
 import type { SaturdayPlans } from '~/lib/channel/nudge/saturday-plans';
 import { childCanAttend, parseClockLabel } from '~/lib/channel/nudge/saturday-window';
-import {
-  type WeekdayFinderAsk,
-  printableWeekdayName,
-  renderWeekdayFinderAsk,
-  weekdayVerifiedBreakAsk,
-} from '~/lib/channel/nudge/weekday-care-copy';
-import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
+import { type WeekdayFinderAsk, printableWeekdayName } from '~/lib/channel/nudge/weekday-care-ask';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
 import { safeHttpUrl } from '~/lib/format/http-url';
@@ -167,8 +161,8 @@ export interface WeekdayDropInNudge {
 }
 
 /**
- * The weekday finder ask. Age and stage choose the sentence. They do not decide
- * whether the family is asked.
+ * The weekday finder ask. Age and stage choose the prompt. They do not decide
+ * whether the family is asked. The writer speaks; a missing model sends nothing.
  *
  * A verified break is its own anchor (the date on the event). Every other prompt
  * still rests on a weekend-options send Hale actually delivered. Neither path
@@ -182,9 +176,9 @@ export interface WeekdayCareAsk {
 /**
  * VIL-365 · one grounded nearby option, asked rather than listed.
  *
- * The SMS is the locked sentence. `candidateId` is the civic session that made
- * the ask honest ("actually running") and is never rendered or audited. A yes
- * does not deliver that candidate; the coach's next search does.
+ * The writer names `title` and the sender appends `url`. There is no locked
+ * sentence. `candidateId` is the civic session that made the day worth a text
+ * and is never rendered. A yes does not deliver that candidate.
  */
 export interface EmptySaturdayNudge {
   kind: 'empty_saturday';
@@ -670,8 +664,7 @@ function breakAskFits(label: string): boolean {
   if (label.length === 0 || label.length > 40 || label.includes('?') || label.includes('\n')) {
     return false;
   }
-  const sentence = weekdayVerifiedBreakAsk(label);
-  return smsSegments(`${sentence}\n\n${OPT_OUT_LINE}`) === 1;
+  return true;
 }
 
 /**
@@ -776,7 +769,7 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
     childId: roster.child.id,
     name,
   };
-  if (smsSegments(`${renderWeekdayFinderAsk(ask)}\n\n${OPT_OUT_LINE}`) > 1) {
+  if (name.length > 24) {
     return {
       nudge: { kind: 'weekday_care', ask: { prompt: 'after_school_household' } },
       skips: [...skips, 'name_not_printable'],
