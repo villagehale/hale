@@ -124,6 +124,7 @@ import {
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
 import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
+import { modelProse, nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
 import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
@@ -966,7 +967,7 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
   const watchForOpening = agent.defineTool({
     name: 'watch_for_opening',
     description:
-      "Start watching a FULL class for a spot to open, on a course page the parent has sent you. `url` is that page's address, exactly as they pasted it - never one you composed, and never a search or listing page: it has to be the page for the one class. `label` is how the parent will recognise the class months later, in a few words and in their own terms ('Tuesday preschool swim'): no name, no age, no question mark. Pass `instant: true` only when they say they want it even in the middle of the night; the default holds an overnight opening until the morning. This reads the page RIGHT NOW and only arms if it is genuinely full with registration open - anything else throws a sentence telling you what is true instead, and you say that. Once armed, Hale re-reads the page about every ten minutes and texts them itself when a spot shows up, so say you are watching it and stop. Do not call this without a link from the parent: ask them for the link from the course page.",
+      "Start watching a FULL class for a spot to open, on a course page the parent has sent you. `url` is that page's address, exactly as they pasted it - never one you composed, and never a search or listing page: it has to be the page for the one class. `label` is how the parent will recognise the class months later, in a few words and in their own terms ('Tuesday preschool swim'): no name, no age, no question mark. Pass `instant: true` only when they say they want it even in the middle of the night; the default holds an overnight opening until the morning. This reads the page RIGHT NOW and only arms if it is genuinely full with registration open - anything else throws a sentence telling you what is true instead, and you say that. Once armed, Hale re-reads the page about every ten minutes and texts them itself when a spot shows up, so say you are watching it and stop. Do not call this without a link from the parent: ask for the link from the course page as a question with a question mark. A statement that you need the link is not an ask.",
     inputSchema: z.object({
       url: z.string().min(1).max(512),
       label: z.string().min(1).max(40),
@@ -1593,8 +1594,15 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   ]
     .filter(Boolean)
     .join(' ');
-  const authored =
-    appended && reply.endsWith(appended) ? reply.slice(0, -appended.length).trim() : reply;
+  // The nearby clause and the activity URL are appended the same way the offer is:
+  // after the fit, by the runtime. A correct two-sentence answer plus that tail is
+  // not four sentences. The question count above still sees the whole reply.
+  const tail = {
+    appended,
+    nearbyClause: fixture.nearby?.clause ?? '',
+    links: activityLinksFor(fixture, calls),
+  };
+  const authored = modelProse(reply, tail);
   const sentenceCount = sentences(authored).length;
   if (sentenceCount > MAX_SENTENCES) {
     failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
@@ -1615,10 +1623,7 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   // the runtime de-duplicates that copy against the appended one, so charging it here
   // would fail a turn for a sentence that is only ever sent once.
   const composedPlain = plainText(String(composed ?? reply));
-  const composedAuthored =
-    appended && composedPlain.toLowerCase().endsWith(appended.toLowerCase())
-      ? composedPlain.slice(0, -appended.length).trim()
-      : composedPlain;
+  const composedAuthored = modelProse(composedPlain, { ...tail, ignoreCase: true });
   const composedSegments = smsSegments(composedAuthored);
   if (composedSegments > MAX_REPLY_SEGMENTS) {
     failures.push(
@@ -2269,7 +2274,8 @@ async function main() {
               // `undefined`, not `null`, on every turn without one — JSON.stringify
               // drops undefined, so every judge verdict already committed stays valid.
               nearbyCountAppended:
-                fixture.nearby && reply !== null && reply.endsWith(fixture.nearby.clause)
+                fixture.nearby &&
+                nearbyCountWasAppended(reply, fixture.nearby.clause, activityLinksFor(fixture, calls))
                   ? `${fixture.nearby.clause} - composed by Hale from what other households answered and appended by the runtime; the model neither wrote this sentence nor saw it`
                   : undefined,
               // What THIS text's Village read returned, split the way the
