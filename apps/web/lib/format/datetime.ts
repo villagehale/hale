@@ -183,6 +183,23 @@ export function foundStamp(iso: string | Date, timeZone: string, now: Date = new
   return `found ${days} days ago`;
 }
 
+/**
+ * The wall clock a decider should read, already in the parent's zone.
+ * "Thursday 6:00 PM America/Toronto". The model must not convert UTC itself.
+ */
+export function formatSnapshotLocalNow(now: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone,
+  }).formatToParts(now);
+  const pick = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${pick('weekday')} ${pick('hour')}:${pick('minute')} ${pick('dayPeriod').toUpperCase()} ${timeZone}`;
+}
+
 export function formatLongDate(date: Date, timeZone: string): LongDateParts {
   const parts = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',

@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { decideForFamily, parseDeciderDecision } from './decide';
-import type { FamilySnapshot } from './snapshot';
+import { type FamilySnapshot, formatSnapshotLocalNow } from './snapshot';
+
+const NOW = new Date('2026-10-08T14:00:00.000Z');
 
 const SNAPSHOT: FamilySnapshot = {
   timeZone: 'America/Toronto',
-  now: '2026-10-08T14:00:00.000Z',
+  now: NOW.toISOString(),
+  localNow: formatSnapshotLocalNow(NOW, 'America/Toronto'),
   household: { areaCoarse: null, childAgesYears: [] },
   calendar: [],
   freeWindows: [],

@@ -26,7 +26,30 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'proactive-decider.md');
+const DATETIME_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'format', 'datetime.ts');
 const MAX_TOKENS = 500;
+const THURSDAY_EVENING = 'Thursday 6:00 PM America/Toronto';
+
+function assertThursdayEveningSend(formatSnapshotLocalNow) {
+  for (const id of ['empty-weekend', 'weekend-and-deadline']) {
+    const fixture = PROACTIVE_DECIDER_FIXTURES.find((item) => item.id === id);
+    if (!fixture) throw new Error(`missing decider fixture ${id}`);
+    const localNow = formatSnapshotLocalNow(
+      new Date(fixture.snapshot.now),
+      fixture.snapshot.timeZone,
+    );
+    if (localNow !== THURSDAY_EVENING) {
+      throw new Error(`${id} localNow is ${localNow}, expected ${THURSDAY_EVENING}`);
+    }
+    if (fixture.expect.action !== 'send_now') {
+      throw new Error(`${id} at ${THURSDAY_EVENING} must expect send_now`);
+    }
+    const weekend = fixture.snapshot.candidates.some((item) =>
+      /saturday|fanous/i.test(`${item.what} ${item.why}`),
+    );
+    if (!weekend) throw new Error(`${id} has no weekend find`);
+  }
+}
 
 function firstJsonObject(text) {
   const start = text.indexOf('{');
@@ -107,14 +130,20 @@ function grade(fixture, decision) {
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
   const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const { formatSnapshotLocalNow } = await tsImport(DATETIME_SRC, import.meta.url);
+  assertThursdayEveningSend(formatSnapshotLocalNow);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
   const calls = PROACTIVE_DECIDER_FIXTURES.map((fixture) => {
-    const system = `${skill.instructions}\n\n## Context\n\n${JSON.stringify(fixture.snapshot)}`;
-    const userMessage = JSON.stringify(fixture.snapshot);
+    const snapshot = {
+      ...fixture.snapshot,
+      localNow: formatSnapshotLocalNow(new Date(fixture.snapshot.now), fixture.snapshot.timeZone),
+    };
+    const system = `${skill.instructions}\n\n## Context\n\n${JSON.stringify(snapshot)}`;
+    const userMessage = JSON.stringify(snapshot);
     const tag = evalRunTag(`proactive-decider:${fixture.id}`);
     const key = cacheKey(tag, JSON.stringify({ model, system, userMessage }));
     return { fixture, system, userMessage, tag, key };

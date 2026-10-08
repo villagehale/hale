@@ -13,12 +13,13 @@ import { decideForFamily } from './decide';
 import { proactiveCadence } from './flag';
 import { type OpenCandidate, planHourlyReview } from './hold';
 import { CADENCE_FACT_KEY, cadenceFactValue, readCadenceFact } from './preference';
-import type {
-  FamilySnapshot,
-  LoadedFamilyContext,
-  PriorDecision,
-  RecentSend,
-  SnapshotCandidate,
+import {
+  type FamilySnapshot,
+  type LoadedFamilyContext,
+  type PriorDecision,
+  type RecentSend,
+  type SnapshotCandidate,
+  formatSnapshotLocalNow,
 } from './snapshot';
 import { loadFamilyContext, unansweredStreak } from './snapshot';
 import { volumeIsUnusual } from './volume';
@@ -409,6 +410,7 @@ async function snapshotFor(
   return {
     timeZone: context.timeZone,
     now: now.toISOString(),
+    localNow: formatSnapshotLocalNow(now, context.timeZone),
     household: context.household,
     calendar: context.calendar,
     freeWindows: context.freeWindows,

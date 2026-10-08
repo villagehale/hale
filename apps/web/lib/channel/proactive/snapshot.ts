@@ -1,6 +1,6 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNull, lt, ne } from 'drizzle-orm';
-import { dayKeyOf } from '~/lib/format/datetime';
+import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
 
 /**
  * VIL-226 · the family state the decider reads. Calendar, mail, watches, and
@@ -68,7 +68,10 @@ export interface HouseholdContext {
 
 export interface FamilySnapshot {
   timeZone: string;
+  /** UTC instant, for the audit trail. Decisions about evening read `localNow`. */
   now: string;
+  /** Wall clock plus timezone name. "Thursday 6:00 PM America/Toronto". */
+  localNow: string;
   household: HouseholdContext;
   calendar: CalendarEntry[];
   freeWindows: FreeWindow[];
@@ -98,6 +101,8 @@ function clock(minutes: number): string {
  * Waking hours over the given days, minus real busy blocks. An all-day block
  * removes the day. A morning block leaves the afternoon.
  */
+export { formatSnapshotLocalNow };
+
 export function freeWindowsForDays(
   days: readonly string[],
   blocks: readonly BusyBlock[],

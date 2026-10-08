@@ -146,6 +146,9 @@ export const PROACTIVE_DECIDER_FIXTURES = [
   },
   {
     id: 'empty-weekend',
+    // Same clock as weekend-and-deadline: Thursday 6:00 PM America/Toronto,
+    // before quiet hours. Saturday afternoon fits, so this is send_now.
+    // Holding until Friday evening is the miss.
     expect: { action: 'send_now', includes: ['sat-find'] },
     snapshot: {
       timeZone: 'America/Toronto',
