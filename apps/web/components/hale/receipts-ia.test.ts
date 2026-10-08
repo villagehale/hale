@@ -286,7 +286,7 @@ describe('the family editor moved up a level (Instinct refresh)', () => {
     for (const editor of ['FamilyChildren', 'PortalIntents', 'AddCoParentCard']) {
       expect(portal).toContain(editor);
     }
-    expect(portal).toContain('Founding family');
+    expect(portal).not.toContain('Founding family');
     expect(portal).not.toMatch(/foundingNumber|Founding family · #/);
     expect(portal).toContain('PostalEditor');
     expect(portal).not.toContain('FamilyLocation');

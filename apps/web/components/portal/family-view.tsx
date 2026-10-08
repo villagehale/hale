@@ -28,7 +28,6 @@ export function PortalFamily({
   return (
     <>
       <PortalHeading title="Family" lede="Who Hale helps, and who can see it." />
-      <p className={styles.founding}>Founding family</p>
       <div className={styles.grid}>
         <div className={styles.col}>
           <section className={styles.card}>

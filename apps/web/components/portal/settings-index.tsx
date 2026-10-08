@@ -1,4 +1,4 @@
-import { ChevronRight, Mail, MessageCircle, Shield, Sparkles } from 'lucide-react';
+import { ChevronRight, Mail, MessageCircle, Phone, Shield, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { signOutAction } from '~/lib/auth-actions';
@@ -32,7 +32,7 @@ export function SettingsIndex({
       <SettingsHashRedirect />
       <PortalHeading title="Settings" />
       <div className={styles.one}>
-        <section className={`${styles.card} ${styles.span}`}>
+        <section className={styles.card}>
           <Row
             basePath={basePath}
             href="/settings/connections"
@@ -62,12 +62,12 @@ export function SettingsIndex({
             meta="Export, consents, delete"
           />
         </section>
-        <section className={`${styles.card} ${styles.span}`}>
+        <section className={styles.card}>
           <span className={styles.tag}>You</span>
           <NameEditor name={name} />
           <div className={styles.row}>
             <span className={styles.tile}>
-              <MessageCircle aria-hidden="true" />
+              <Phone aria-hidden="true" />
             </span>
             <span>
               <h3>Mobile number</h3>

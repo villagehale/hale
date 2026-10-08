@@ -48,6 +48,7 @@ export function PostalEditor({ location }: { location: FamilyLocationView }) {
                 name="postalCode"
                 type="text"
                 autoComplete="postal-code"
+                placeholder="A1A 1A1"
                 value={postalCode}
                 data-hale-pii
                 onChange={(event) => {

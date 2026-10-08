@@ -264,6 +264,17 @@
   text-align: center;
 }
 
+/* Phone door. Narrower than the connect card, and left-aligned like the mockup. */
+.card.door {
+  max-width: 440px;
+}
+
+.card.door .act {
+  align-items: stretch;
+  text-align: left;
+  padding: 28px;
+}
+
 .info {
   padding: var(--s7);
   background: rgb(247 244 236 / 0.9);
@@ -875,6 +886,10 @@
 :global(.dark) .card {
   background: rgb(16 31 63 / 0.86);
   box-shadow: inset 0 1px 1px var(--glass-hi), var(--glass-shadow);
+}
+
+:global(.dark) .card.door {
+  background: #17294a;
 }
 
 :global(.dark) .pill::before,

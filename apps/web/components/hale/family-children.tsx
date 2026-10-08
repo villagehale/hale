@@ -249,7 +249,7 @@ export function FamilyChildren({
       ) : fill ? (
         <button
           type="button"
-          className={portal.secondary}
+          className={`${portal.secondary} ${portal.addKid}`}
           onClick={() => {
             setEditingId(null);
             setAdding(true);

@@ -63,7 +63,7 @@ export function MessagesBoard({
             </button>
           ))}
         </div>
-        <ExportDataButton idleLabel="Export" />
+        <ExportDataButton idleLabel="Export" className={styles.export} showIcon />
       </div>
       <div className={styles.one}>
         <section className={`${styles.card} ${styles.span}`}>

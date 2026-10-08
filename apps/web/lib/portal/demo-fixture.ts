@@ -22,10 +22,10 @@ export const demoMembers: FamilyMembersView = {
 
 export const demoBasics: FamilyBasicsView = {
   location: {
-    country: 'CA',
-    province: 'ON',
-    city: 'Toronto',
-    postalCode: 'M5V 2T6',
+    country: null,
+    province: null,
+    city: null,
+    postalCode: null,
   },
   planTier: 'free',
   intents: ['activities', 'health'],

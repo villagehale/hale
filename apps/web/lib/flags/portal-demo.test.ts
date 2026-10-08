@@ -42,4 +42,15 @@ describe('the demo tree', () => {
     expect(demoMaskedPhone).toBe('••• ••• 4821');
     expect(demoMaskedPhone).not.toContain('416555');
   });
+
+  it('seeds no city and no postal code', () => {
+    const fixture = readFileSync(
+      fileURLToPath(new URL('../portal/demo-fixture.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(fixture).not.toMatch(/Toronto|M5V/);
+    expect(fixture).toContain('city: null');
+    expect(fixture).toContain('postalCode: null');
+    expect(fixture).toContain('province: null');
+  });
 });

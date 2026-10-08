@@ -1,5 +1,6 @@
 'use client';
 
+import { Download } from 'lucide-react';
 import { useState } from 'react';
 
 type State = 'idle' | 'pending' | 'done' | 'error';
@@ -19,7 +20,11 @@ const LABEL: Record<State, string> = {
  * this only saves what the server returns. Honest states: pending in flight,
  * "downloaded" on success, the error surfaced — never a silent failure.
  */
-export function ExportDataButton({ idleLabel = LABEL.idle }: { idleLabel?: string } = {}) {
+export function ExportDataButton({
+  idleLabel = LABEL.idle,
+  className = 'btn-secondary',
+  showIcon = false,
+}: { idleLabel?: string; className?: string; showIcon?: boolean } = {}) {
   const [state, setState] = useState<State>('idle');
 
   async function download() {
@@ -48,11 +53,12 @@ export function ExportDataButton({ idleLabel = LABEL.idle }: { idleLabel?: strin
   return (
     <button
       type="button"
-      className="btn-secondary"
+      className={className}
       onClick={download}
       disabled={state === 'pending'}
       aria-live="polite"
     >
+      {showIcon && state === 'idle' ? <Download aria-hidden="true" /> : null}
       {state === 'idle' ? idleLabel : LABEL[state]}
     </button>
   );

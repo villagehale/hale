@@ -12,6 +12,7 @@ import {
   CLAIM_RATE_LIMIT,
   claimFailureStep,
 } from '~/lib/auth/claim-phone-copy';
+import { formatClaimPhone } from '~/lib/auth/claim-phone-format';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
 
 /**
@@ -137,10 +138,10 @@ export function ClaimByPhoneForm({ callbackUrl = '' }: { callbackUrl?: string })
       ? 'Codes work for 10 minutes or three tries. Send a fresh one to keep going.'
       : step === 'code'
         ? 'If this number has a Hale account, a code is on its way.'
-        : "Use the number you text Hale from. We'll text you a code.";
+        : 'Use the number you text Hale from. We’ll text you a code.';
 
   return (
-    <section className={stage.card}>
+    <section className={`${stage.card} ${stage.door}`}>
       <div className={stage.act}>
         <div className={styles.stack}>
           <p className={styles.eyebrow}>Sign in</p>
@@ -161,7 +162,7 @@ export function ClaimByPhoneForm({ callbackUrl = '' }: { callbackUrl?: string })
                   className={styles.input}
                   placeholder="(555) 555-1234"
                   value={phone}
-                  onChange={(e) => setPhone(e.currentTarget.value)}
+                  onChange={(e) => setPhone(formatClaimPhone(e.currentTarget.value))}
                 />
               </div>
               {error ? (
