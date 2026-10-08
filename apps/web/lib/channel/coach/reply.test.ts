@@ -174,7 +174,9 @@ describe('toSmsReply', () => {
    * signal to ask for a shorter rewrite — not a stump, and not a sentence this
    * function invented. */
   it('refuses a body with no complete sentence inside the budget', () => {
-    expect(() => toSmsReply('x'.repeat(400), { children: [], now: NOW })).toThrow(ReplyNeedsShorter);
+    expect(() => toSmsReply('x'.repeat(400), { children: [], now: NOW })).toThrow(
+      ReplyNeedsShorter,
+    );
   });
 
   it('refuses to emit an empty body', () => {
@@ -516,5 +518,20 @@ describe('the nearby count', () => {
     // The control: the answer itself WAS trimmed, so the clause survived a real trim
     // rather than a message that happened to fit.
     expect(reply.length).toBeLessThan(long.length + NEARBY.clause.length);
+  });
+});
+
+describe('activity links', () => {
+  it('appends the page for the activity the reply named, and not one it did not', () => {
+    const reply = toSmsReply('Fanous lantern craft is on Saturday afternoon at North York.', {
+      children: [],
+      now: NOW,
+      activityLinks: [
+        { title: 'Fanous lantern craft', url: 'https://tpl.example/lantern' },
+        { title: 'Robotics workshops', url: 'https://tpl.example/robotics' },
+      ],
+    });
+    expect(reply).toContain('https://tpl.example/lantern');
+    expect(reply).not.toContain('https://tpl.example/robotics');
   });
 });

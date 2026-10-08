@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { safeHttpUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
@@ -165,6 +166,8 @@ export interface ActivityPick {
    * (coach-channel-sms.md), so a link here would be an invitation to break that. */
   sourceName: string;
   source: ActivitySource;
+  /** The page the pick was read off, when that page is an absolute http(s) URL. */
+  url?: string;
 }
 
 /**
@@ -253,6 +256,7 @@ const composeSchema = z.object({
       z.object({
         name: z.string().nullish(),
         age_fit: z.string().nullish(),
+        source_url: z.string().nullish(),
         when: z.string().nullish(),
         price: z.string().nullish(),
         source_name: z.string().nullish(),
@@ -275,6 +279,7 @@ const composeJsonSchema: Anthropic.Tool.InputSchema = {
           when: { type: 'string' },
           price: { type: 'string' },
           source_name: { type: 'string' },
+          source_url: { type: 'string' },
         },
         // `when` and `price` are OMITTED from required for the reason ActivityPick states:
         // a required field a page never published is a field the model can only satisfy by
@@ -364,6 +369,7 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
     if (name === '' || ageFit === '' || sourceName === '') continue;
     const when = field(item.when);
     const price = field(item.price);
+    const url = safeHttpUrl(field(item.source_url));
     const pick: ActivityPick = {
       name,
       ageFit,
@@ -374,6 +380,7 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
       // was verified by us, which is what makes the two sourcing tiers a property of the
       // data rather than a request in a prompt.
       source: 'web',
+      ...(url === null ? {} : { url }),
     };
     if (
       namesRetiredRecPortal(

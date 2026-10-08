@@ -1,7 +1,8 @@
-import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
+import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
+import { type NamedActivityLink, activityLinkSuffix } from './activity-links';
 
 /**
  * VIL-221 · C2 — everything that happens to the model's answer between the loop
@@ -70,6 +71,11 @@ export interface SmsReplyArgs {
    * thing the message exists to deliver.
    */
   referral?: string;
+  /**
+   * Pages for activities this turn offered. Appended only when the reply names the
+   * activity. The model does not write the URL.
+   */
+  activityLinks?: readonly NamedActivityLink[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about ONE of the activities this turn offered, and
    * the offered titles it must not be confused with.
@@ -316,7 +322,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // and is the one piece of outbound text a parent forwards to somebody outside the
   // family, so the age-derived teen floor (rule #1) has to cover it too.
   const suffix = redactTeenNames(
-    [args.planOffer, args.referral]
+    [args.planOffer, args.referral, activityLinkSuffix(redacted, args.activityLinks)]
       .map((part) => part?.trim() ?? '')
       .filter((part) => part !== '')
       .join(' '),
@@ -365,10 +371,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
  * altogether (see the caller). A count is the least important thing in any message that
  * also carries a promise or a link.
  */
-function nearbyClause(
-  fittedBody: string,
-  nearby: SmsReplyArgs['nearby'],
-): string | null {
+function nearbyClause(fittedBody: string, nearby: SmsReplyArgs['nearby']): string | null {
   if (!nearby) return null;
   const haystack = [fittedBody.toLowerCase()];
   if (!namesInFull(haystack[0] as string, nearby.title)) return null;

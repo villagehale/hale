@@ -39,6 +39,9 @@ export const familyEvents = pgTable(
     /** Event start INSTANT; the composer reads its family-local day via dayKeyIn. */
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
     endsAt: timestamp('ends_at', { withTimezone: true }),
+    /** Google's transparency when this row was mirrored. Null on a parent-authored
+     * occasion and on every row written before the column existed. */
+    transparency: text('transparency'),
     location: text('location'),
     source: familyEventSourceEnum('source').notNull(),
     /** Privacy-sensitive (health) — set by the calendar_add executor from the week_plan

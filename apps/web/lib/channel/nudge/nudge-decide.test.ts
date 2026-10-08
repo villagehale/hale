@@ -2,13 +2,10 @@ import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { WeekdayCareFact } from '~/lib/care/weekday';
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
-import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import type { HealthChild } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
-import { renderEmptySaturdayAsk } from './empty-saturday-copy';
 import {
   REGISTRATION_HORIZON_DAYS,
   decideNudge,
@@ -1064,28 +1061,83 @@ describe('decideNudge — an empty Saturday', () => {
     });
   }
 
-  it('asks the locked sentence when Saturday is open and one civic session is dated that day', () => {
+  it('names the civic session that is actually running that Saturday', () => {
     const decision = decideAll({
       saturdayPlans: OPEN_SATURDAY,
       children: [child({ id: 'maya' })],
-      candidates: [civicSaturday()],
+      candidates: [civicSaturday({ sourceUrl: 'https://tpl.example/earlyon' })],
     });
     expect(decision.nudge).toMatchObject({
       kind: 'empty_saturday',
       kidName: 'Maya',
       saturday: SATURDAY,
       candidateId: 'sat-1',
+      title: 'EarlyON Saturday',
+      venueName: 'Armour Heights',
+      url: 'https://tpl.example/earlyon',
     });
-    if (decision.nudge?.kind !== 'empty_saturday') throw new Error('expected empty saturday');
-    const body = renderEmptySaturdayAsk(decision.nudge.kidName);
-    expect(body).toBe(
-      "This Saturday looks open for Maya. Want one nearby find that's actually running?",
-    );
-    expect(body.toLowerCase()).not.toContain('weather');
-    expect(body.toLowerCase()).not.toContain('forecast');
-    expect((body.match(/\?/g) ?? []).length).toBe(1);
-    expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBe(1);
-    expect(body).not.toContain('EarlyON');
+  });
+
+  it('keeps an afternoon session when the morning is already booked', () => {
+    const decision = decideAll({
+      children: [child({ id: 'maya' })],
+      saturdayPlans: {
+        householdBusy: false,
+        busyChildIds: new Set(['maya']),
+        commitments: [
+          {
+            childId: 'maya',
+            startMinute: 10 * 60,
+            endMinute: 12 * 60 + 30,
+            allDay: false,
+            transparency: null,
+            status: 'confirmed',
+          },
+        ],
+      },
+      candidates: [
+        civicSaturday({ whenLabel: '2:00 p.m.', sourceUrl: 'https://tpl.example/craft' }),
+      ],
+    });
+    expect(decision.nudge).toMatchObject({
+      kind: 'empty_saturday',
+      title: 'EarlyON Saturday',
+      whenLabel: '2:00 p.m.',
+      url: 'https://tpl.example/craft',
+    });
+  });
+
+  it('treats a real all-day commitment as the whole Saturday and ignores a transparent one', () => {
+    const allDay = {
+      childId: null,
+      startMinute: 0,
+      endMinute: 24 * 60,
+      allDay: true,
+      transparency: null,
+      status: 'confirmed' as const,
+    };
+    expect(
+      decideAll({
+        children: [child({ id: 'maya' })],
+        saturdayPlans: {
+          householdBusy: true,
+          busyChildIds: new Set<string>(),
+          commitments: [allDay],
+        },
+        candidates: [civicSaturday({ whenLabel: '2:00 p.m.' })],
+      }).skips.saturday_occupied,
+    ).toBe(1);
+    expect(
+      decideAll({
+        children: [child({ id: 'maya' })],
+        saturdayPlans: {
+          householdBusy: false,
+          busyChildIds: new Set<string>(),
+          commitments: [{ ...allDay, transparency: 'transparent' as const }],
+        },
+        candidates: [civicSaturday({ whenLabel: '2:00 p.m.' })],
+      }).nudge?.kind,
+    ).toBe('empty_saturday');
   });
 
   it('lets a weather swap win, and does not invent weather of its own', () => {

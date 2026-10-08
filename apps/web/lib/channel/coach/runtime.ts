@@ -440,6 +440,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               : {
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
+                  activityLinks: [
+                    ...offeredThisTurn.read().flatMap((item) =>
+                      item.url ? [{ title: item.title, url: item.url }] : [],
+                    ),
+                    ...offeredThisTurn.links(),
+                  ],
                   nearby: nearby ?? undefined,
                   onTrimmed: (overBy: number) => {
                     trimmedOverBy = overBy;
@@ -559,6 +565,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         // a placement should carry what placed it, and the process already holds the row.
         // Never shown to the model, which is the whole point.
         villageTool: searchVillageTool(database, offered.record),
+        recordActivityLinks: offered.recordLinks,
         offeredThisTurn: offered.read,
         // The second activity source. Same key, same fail-closed resolver shape as the
         // loop's — a turn that could reach Anthropic for the loop and not for the search

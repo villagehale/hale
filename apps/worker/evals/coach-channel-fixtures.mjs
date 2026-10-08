@@ -1095,4 +1095,69 @@ export const COACH_CHANNEL_FIXTURES = [
       forbidden: [...HEDGES, 'families near you'],
     },
   },
+  {
+    id: 'weekend-saved-find-school-age',
+    text: 'anything fun for the kids this weekend?',
+    note: 'A school-age ask with a dated Saturday find already on the radar. The find is the answer. The live web does not ride along, and a canned baby storytime is not a substitute.',
+    village: {
+      candidates: [
+        {
+          title: 'Fanous lantern craft',
+          kind: 'drop_in',
+          summary: 'Free drop-in for ages 6-12.',
+          venue: 'North York Central Library',
+          when: 'Sat, Aug 8, 2:00 p.m.',
+        },
+      ],
+      inVerification: 0,
+      standingOption: null,
+    },
+    expect: {
+      mustCall: ['search_village', 'lookup_week'],
+      mustNotCall: ['find_activities'],
+      mustNotDraft: true,
+      mustMention: ['lantern'],
+      forbidden: [...HEDGES, 'baby time', 'toddler time'],
+    },
+  },
+  {
+    id: 'weekend-empty-live-search',
+    text: 'anything fun for the kids this weekend?',
+    note: 'Saved finds are empty and there is no standing place. The live web search has to run in this turn. A canned storytime is not an answer.',
+    village: {
+      candidates: [],
+      inVerification: 0,
+      standingOption: null,
+    },
+    expect: {
+      mustCall: ['search_village', 'find_activities', 'lookup_week'],
+      mustNotDraft: true,
+      forbidden: [...HEDGES, 'baby time', 'toddler time', 'high park'],
+    },
+  },
+  {
+    id: 'saturday-morning-block-afternoon-find',
+    text: 'anything fun for the kids this weekend?',
+    note: 'Saturday already has soccer in the morning. An afternoon library craft still fits. The day is not full, and the craft is named.',
+    village: {
+      candidates: [
+        {
+          title: 'Fanous lantern craft',
+          kind: 'drop_in',
+          summary: 'Free drop-in for ages 6-12, Saturday afternoon.',
+          venue: 'North York Central Library',
+          when: 'Sat, Aug 8, 2:00 p.m.',
+        },
+      ],
+      inVerification: 0,
+      standingOption: null,
+    },
+    expect: {
+      mustCall: ['search_village', 'lookup_week'],
+      mustNotCall: ['find_activities'],
+      mustNotDraft: true,
+      mustMention: ['lantern', 'soccer'],
+      forbidden: [...HEDGES, 'saturday is full', 'nothing on'],
+    },
+  },
 ];

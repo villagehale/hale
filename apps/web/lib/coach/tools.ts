@@ -1,11 +1,13 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { ageInMonths, companionForChild, deriveStage } from '@hale/types';
+import { companionForChild, deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { selectByActivityQuery } from '~/lib/coach/activity-query';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
-import { dayKeyOf, formatCalendarDayLabel } from '~/lib/format/datetime';
+import { formatCalendarDayLabel } from '~/lib/format/datetime';
+import { safeHttpUrl } from '~/lib/format/http-url';
 import { commitClassifiedMemory, modelClassificationShape } from '~/lib/memory/classify-write';
 import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
 import { forgetFamilyFact } from '~/lib/memory/forget';
@@ -24,7 +26,6 @@ import {
 } from '~/lib/reviews/aggregate';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { toVillageCandidateView } from '~/lib/village/mappers';
-import { type StandingOption, selectStandingOption } from '~/lib/village/standing-option';
 import { visibleCandidates } from '~/lib/village/visibility';
 import { buildConnectorTools } from './connector-tools';
 import { spokenFind } from './spoken-find';
@@ -97,42 +98,6 @@ const memoryFactType = z.enum([
   'voice',
 ]);
 
-/**
- * The standing venue for this family, read at the moment the Village run turns up
- * nothing nameable.
- *
- * Only reached when `candidates` is empty, so the two extra reads never touch the common
- * path — and, more importantly, so a real dated find is never competing with a place.
- *
- * The month is resolved in the FAMILY's zone rather than the server's: the season gate
- * decides whether a splash pad is open, and a family in Toronto on the 1st of September
- * must not be answered out of a UTC calendar.
- */
-async function standingOptionForFamily(
-  database: Database,
-  familyId: string,
-  now: Date,
-  timeZone: string,
-): Promise<StandingOption | null> {
-  const [family] = await database
-    .select({ areaCoarse: schema.families.areaCoarse })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId))
-    .limit(1);
-
-  const children = await database
-    .select({ dateOfBirth: schema.children.dateOfBirth })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  const ages = children.map((child) => ageInMonths(child.dateOfBirth, now));
-
-  return selectStandingOption({
-    postal: family?.areaCoarse ?? null,
-    youngestAgeMonths: ages.length === 0 ? null : Math.min(...ages),
-    month: Number(dayKeyOf(now, timeZone).slice(5, 7)),
-  });
-}
-
 /** One activity Hale may actually put in front of a parent. An offer a parent cannot
  * turn up to is not an offer: the title and the day are always present.
  *
@@ -149,6 +114,8 @@ interface OfferableActivity {
   summary: string;
   venue?: string;
   when: string;
+  /** The row's own page, only when it is an absolute http(s) URL. */
+  url?: string;
 }
 
 /**
@@ -168,6 +135,8 @@ export interface OfferedCandidate {
   candidateId: string;
   placeId: string | null;
   civicVenueId: string | null;
+  /** Same page the model was shown, so the reply can carry it without the model writing it. */
+  url?: string;
 }
 
 /** One row as both halves see it: what the model is shown, and what the process keeps
@@ -281,15 +250,14 @@ export function searchVillageTool(
         )
         .limit(MEMORY_RESULT_LIMIT);
 
-      const needle = input.query?.toLowerCase();
-      const views = visibleCandidates(currentRunRows, now, timeZone)
-        .map((row) => toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)))
-        .filter(
-          (c) =>
-            !needle ||
-            c.title.toLowerCase().includes(needle) ||
-            c.summary.toLowerCase().includes(needle),
-        );
+      const views = selectByActivityQuery(
+        visibleCandidates(currentRunRows, now, timeZone).map((row) =>
+          toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)),
+        ),
+        input.query,
+        now,
+        timeZone,
+      );
 
       const rowsById = new Map(currentRunRows.map((row) => [row.id, row]));
       const offerable: OfferableEntry[] = [];
@@ -303,13 +271,17 @@ export function searchVillageTool(
         }
         const row = rowsById.get(view.id);
         const spoken = spokenFind(view.title, venue);
+        const url = safeHttpUrl(view.sourceUrl);
+        const whenLabel = row?.whenLabel?.trim() ?? '';
+        const day = formatCalendarDayLabel(view.eventDate, now);
         offerable.push({
           candidate: {
             title: spoken.title,
             kind: view.kind,
             summary: view.summary,
             ...(spoken.venue === null ? {} : { venue: spoken.venue }),
-            when: formatCalendarDayLabel(view.eventDate, now),
+            when: whenLabel === '' ? day : `${day}, ${whenLabel}`,
+            ...(url === null ? {} : { url }),
           },
           offer: row
             ? {
@@ -320,6 +292,7 @@ export function searchVillageTool(
                 candidateId: row.id,
                 placeId: row.placeId,
                 civicVenueId: row.civicVenueId,
+                ...(url === null ? {} : { url }),
               }
             : null,
         });
@@ -342,17 +315,12 @@ export function searchVillageTool(
       // not be nameable at all (rule #1).
       onOffered?.(offered);
 
-      // Nothing this family could turn up to. `inVerification` is deliberately NOT part
-      // of the condition: a parent asking about tomorrow is empty-handed the moment
-      // there is no name to give them, and two finds still being checked change nothing
-      // about their tomorrow. The forward line and the standing venue are both true at
-      // once, and the skill sends both.
-      const standingOption =
-        candidates.length === 0
-          ? await standingOptionForFamily(database, ctx.familyId, now, timeZone)
-          : null;
-
-      return { candidates, inVerification, standingOption };
+      // No canned standing place. A fixed Baby/Toddler storytime was something the
+      // coach could "hand over", so the live web search never ran — and it was the
+      // wrong age. An empty candidate list is the signal the skill already treats as
+      // "call find_activities this turn". The field stays on the result so a turn that
+      // still receives one (an eval fixture) can name it; production does not fill it.
+      return { candidates, inVerification, standingOption: null };
     },
   });
 }

@@ -224,12 +224,12 @@ describe('search_village — offers only what it can name in full', () => {
 });
 
 /**
- * The empty-handed case (founder, live gate: "what can we do tomorrow" answered with
- * nothing). A Village run with no nameable find is not the same as there being nowhere
- * to go, and the standing option is what closes that gap — a verified place in the
- * family's own town, attached ONLY when there is no candidate competing with it.
+ * The empty-handed case. A canned standing place (Baby Time / Toddler Time, EarlyON)
+ * used to fill this gap, and the coach treated it as something it could hand over, so
+ * the live web search never ran. Production now leaves `standingOption` null. An eval
+ * fixture may still inject one; this tool does not.
  */
-describe('search_village — the standing option when nothing is offerable', () => {
+describe('search_village — no canned standing place', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -237,7 +237,7 @@ describe('search_village — the standing option when nothing is offerable', () 
   const toddler = { id: 'kid-tot', dateOfBirth: '2024-03-04' }; // 2 at NOW
   const toronto = [{ areaCoarse: 'M4K 1A1' }];
 
-  it('offers a verified standing venue, with no date and no URL, when nothing checked out', async () => {
+  it('does not fill an empty run with a canned venue', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
 
@@ -248,15 +248,50 @@ describe('search_village — the standing option when nothing is offerable', () 
     );
 
     expect(result.candidates).toEqual([]);
-    // The forward line and the standing venue are both true at once — one find is still
-    // being checked AND there is somewhere to go today.
     expect(result.inVerification).toBe(1);
-    expect(result.standingOption).toEqual({
-      name: 'EarlyON Child and Family Centres (city-wide network)',
-      area: 'across Toronto — locator map by address',
-      what: 'Free drop-in play + parent support, ages 0-6; many school- and community-based sites incl. Indigenous-led, Francophone, 2SLGBTQ+ programs',
-      cadence: 'most sites run weekday sessions; contact centre / check toronto.ca locator',
+    expect(result.standingOption).toBeNull();
+  });
+
+  it('puts a real page on the offer and keeps a time word from hiding a dated find', async () => {
+    const october = new Date('2026-10-08T18:00:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(october);
+
+    const lantern = candidate({
+      id: 'lantern',
+      title: 'Fanous Lantern Craft',
+      venueName: 'North York Central Library',
+      eventDate: '2026-10-10',
+      whenLabel: '2:00 p.m.',
+      sourceUrl: 'https://tpl.bibliocommons.com/events/lantern',
+      summary: 'Ages 6-12',
+      discoveredAt: october,
     });
+    const result = await search([lantern]);
+
+    expect(result.standingOption).toBeNull();
+    expect(result.candidates[0]).toMatchObject({
+      title: 'Fanous Lantern Craft',
+      when: 'Sat, Oct 10, 2:00 p.m.',
+      url: 'https://tpl.bibliocommons.com/events/lantern',
+    });
+
+    const missed = (await invokeTool(
+      toolByName(
+        fakeDb([
+          {
+            ...lantern,
+            whenLabel: null,
+            sourceUrl: null,
+          },
+        ]),
+        'search_village',
+      ),
+      { query: 'weekend' },
+      { familyId: FAMILY_ID, actor: 'user-1' },
+      guardDeps,
+    )) as VillageToolResult;
+    expect(missed.candidates.map((item) => item.title)).toEqual(['Fanous Lantern Craft']);
   });
 
   it('stays out of the way when there is a real dated find to offer', async () => {
