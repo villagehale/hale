@@ -1,76 +1,35 @@
-'use client';
-
-import type { PlanTier } from '@hale/types';
-import { useState } from 'react';
-import { useAnalytics } from '~/lib/analytics/posthog-provider';
-import { planName } from './format';
+import { Bell, Star } from 'lucide-react';
 import styles from './portal.module.css';
 
-const PLANS: {
-  tier: PlanTier;
-  price: string;
-  body: string;
-}[] = [
-  {
-    tier: 'free',
-    price: '$0',
-    body: 'Everything to get started, free for every family.',
-  },
-  {
-    tier: 'plus',
-    price: '$19 CAD/mo',
-    body: 'More of the year in view, as each part ships.',
-  },
-  {
-    tier: 'family',
-    price: '$39 CAD/mo',
-    body: 'The most help Hale offers, as each part ships.',
-  },
-];
-
-/** The stored tier is "Your plan". Plus and Max are not offered for purchase. */
-export function PlanCards({ tier }: { tier: PlanTier }) {
-  const capture = useAnalytics();
-  const [noted, setNoted] = useState(false);
-
-  function tell() {
-    capture('plan_notify_requested', { tier: tier === 'free' ? 'plus' : 'family' });
-    setNoted(true);
-  }
-
+/**
+ * Every family sees this until Hale starts charging. No tiers, prices, or
+ * founding ordinal — `families.founding_number` is not read here.
+ */
+export function FoundingPlan() {
   return (
-    <section className={`${styles.card} ${styles.span}`}>
-      <div className={styles.plans}>
-        {PLANS.map((plan) => {
-          const current = plan.tier === tier;
-          const comingSoon = plan.tier !== 'free' && !current;
-          return (
-            <div
-              key={plan.tier}
-              className={current ? `${styles.plan} ${styles.current}` : styles.plan}
-            >
-              <h3>
-                {planName(plan.tier)} <span className={styles.price}>{plan.price}</span>
-              </h3>
-              {current ? (
-                <span className={`${styles.state} ${styles.ok}`}>Your plan</span>
-              ) : comingSoon ? (
-                <span className={styles.state}>Coming soon</span>
-              ) : null}
-              <p className={styles.text}>{plan.body}</p>
-            </div>
-          );
-        })}
+    <section className={`${styles.card} ${styles.span} ${styles['fp-card']}`}>
+      <div className={styles['fp-head']}>
+        <span className={styles['fp-seal']} aria-hidden="true">
+          <Star
+            className={styles['fp-star']}
+            aria-hidden="true"
+            fill="currentColor"
+            strokeWidth={0}
+          />
+        </span>
+        <span className={styles['fp-badge']}>Founding family</span>
       </div>
-      <p className={styles.meta}>Only Free is available today.</p>
-      <button
-        type="button"
-        className={`${styles.primary} ${styles.block}`}
-        aria-pressed={noted}
-        onClick={tell}
-      >
-        Tell me when they open
-      </button>
+      <h2 className={styles['fp-title']}>Everything Hale does is free for you.</h2>
+      <p className={styles['fp-body']}>
+        Every feature, including new ones as they ship. There’s no plan to pick and nothing to pay.
+      </p>
+      <div className={styles['fp-rule']} />
+      <div className={styles['fp-note']}>
+        <span className={styles['fp-bell']} aria-hidden="true">
+          <Bell strokeWidth={1.75} />
+        </span>
+        <p>If that ever changes, you’ll hear from Hale well before it does.</p>
+      </div>
     </section>
   );
 }

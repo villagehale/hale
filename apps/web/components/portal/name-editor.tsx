@@ -55,7 +55,7 @@ export function NameEditor({ name }: { name: string | null }) {
         {state === 'saved' ? <p className={styles.meta}>saved.</p> : null}
         {state === 'error' ? (
           <p className={styles.note} role="alert">
-            couldn’t save just now — please try again.
+            couldn’t save that just now — try again.
           </p>
         ) : null}
       </span>

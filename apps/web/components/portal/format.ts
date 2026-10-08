@@ -1,5 +1,3 @@
-import type { PlanTier } from '@hale/types';
-
 /** "9:30 PM" from a stored 'HH:MM:SS' quiet-hours value. */
 export function clockLabel(value: string): string {
   const [hourText, minuteText] = value.split(':');
@@ -12,13 +10,6 @@ export function clockLabel(value: string): string {
     minute: '2-digit',
     timeZone: 'UTC',
   }).format(date);
-}
-
-/** The plan page's three names. The stored `family` tier is Max. */
-export function planName(tier: PlanTier): 'Free' | 'Plus' | 'Max' {
-  if (tier === 'plus') return 'Plus';
-  if (tier === 'family') return 'Max';
-  return 'Free';
 }
 
 export function shortDate(value: Date): string {

@@ -1,7 +1,6 @@
 import { SettingsIndex } from '~/components/portal/settings-index';
 import { authConfigured } from '~/lib/auth-config';
 import { loadSmsChannel } from '~/lib/channels/sms-consent';
-import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { loadViewerProfile } from '~/lib/family';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
@@ -14,9 +13,8 @@ function on(connections: { provider: string; status: string }[], provider: strin
 export default async function SettingsPage() {
   if (!receiptsIaEnabled()) return LegacySettingsPage();
 
-  const [profile, basics, connections, smsChannel] = await Promise.all([
+  const [profile, connections, smsChannel] = await Promise.all([
     loadViewerProfile(),
-    loadFamilyBasics(),
     loadFamilyConnectors(),
     loadSmsChannel(),
   ]);
@@ -29,7 +27,6 @@ export default async function SettingsPage() {
     <SettingsIndex
       gmailOn={on(connections, 'gmail')}
       calendarOn={on(connections, 'gcal')}
-      planTier={basics.planTier}
       name={profile?.name ?? null}
       maskedPhone={masked}
       canSignOut={authConfigured()}

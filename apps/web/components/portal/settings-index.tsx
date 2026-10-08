@@ -1,9 +1,7 @@
-import type { PlanTier } from '@hale/types';
 import { ChevronRight, Mail, MessageCircle, Shield, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { signOutAction } from '~/lib/auth-actions';
-import { planName } from './format';
 import { PortalHeading } from './heading';
 import { NameEditor } from './name-editor';
 import styles from './portal.module.css';
@@ -12,14 +10,12 @@ import { SettingsHashRedirect } from './settings-hash';
 export function SettingsIndex({
   gmailOn,
   calendarOn,
-  planTier,
   name,
   maskedPhone,
   canSignOut,
 }: {
   gmailOn: boolean;
   calendarOn: boolean;
-  planTier: PlanTier;
   name: string | null;
   maskedPhone: string | null;
   canSignOut: boolean;
@@ -47,7 +43,7 @@ export function SettingsIndex({
             href="/settings/plan"
             icon={<Sparkles aria-hidden="true" />}
             title="Plan"
-            meta={planName(planTier)}
+            meta="Founding family"
           />
           <Row
             href="/settings/privacy"

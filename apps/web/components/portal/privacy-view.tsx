@@ -33,7 +33,7 @@ export function PrivacyView({
           <PromiseRow
             icon={<ShieldOff aria-hidden="true" />}
             title="Never used to train AI"
-            meta="Not by Hale, and not by the AI it uses."
+            meta="Not by Hale."
           />
           <p className={styles.text}>
             <a href={PRIVACY_URL}>Read the privacy policy</a>

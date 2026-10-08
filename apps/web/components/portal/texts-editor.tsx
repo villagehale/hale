@@ -6,7 +6,7 @@ import {
   CHILD_NAME_RELATION,
   type ChildNameLevel,
   type LoopPrefsView,
-} from '~/lib/loop/prefs';
+} from '~/lib/loop/prefs-types';
 import { setLoopPrefAction } from '~/lib/settings/loop-prefs-actions';
 import { clockLabel } from './format';
 import styles from './portal.module.css';
@@ -42,7 +42,7 @@ export function TextsEditor({
     const outcome = await setLoopPrefAction({ field, value });
     if (outcome.status !== 'updated') {
       setView({ ...view, [field]: previous });
-      setNote('couldn’t save just now — please try again.');
+      setNote("Couldn't save that just now — please try again.");
     }
   }
 
@@ -54,7 +54,7 @@ export function TextsEditor({
     const outcome = await setLoopPrefAction({ field, value });
     if (outcome.status !== 'updated') {
       setView({ ...view, [field]: previous });
-      setNote('couldn’t save just now — please try again.');
+      setNote("Couldn't save that just now — please try again.");
     }
   }
 
@@ -65,7 +65,7 @@ export function TextsEditor({
     const outcome = await setLoopPrefAction({ field: 'childNameLevel', value });
     if (outcome.status !== 'updated') {
       setView({ ...view, childNameLevel: previous });
-      setNote('couldn’t save just now — please try again.');
+      setNote("Couldn't save that just now — please try again.");
     }
   }
 

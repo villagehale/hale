@@ -8,7 +8,7 @@ import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
 import type { FamilyConnectorView } from '~/lib/integrations/load';
 import type { LoadLoopPrefsResult } from '~/lib/settings/loop-prefs';
-import { clockLabel, planName } from './format';
+import { clockLabel } from './format';
 import type { ThreadItem } from './messages-board';
 import styles from './portal.module.css';
 
@@ -120,7 +120,7 @@ export function PortalHome({
               href="/settings/plan"
               icon={<Sparkles aria-hidden="true" />}
               title="Plan"
-              meta={planName(basics.planTier)}
+              meta="Founding family"
             />
             <SetupRow
               href="/settings/privacy"
