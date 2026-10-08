@@ -84,10 +84,9 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   });
 
   /**
-   * VIL-365 · a parent who asks for activities already gave Hale enough. The ages
-   * are in context and the tools attach the town from the postal area, so the
-   * skill says to look before asking which, and `find_activities` says the same
-   * when the radar came back empty.
+   * VIL-365 · a bare activity ask searches before it asks. "What's going on" and
+   * "who's around" call both search tools in the same turn. A named place, or
+   * that nearby question again, is answered as the place — not restarted.
    */
   it('tells the coach to search before asking when a parent wants activities', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
@@ -99,6 +98,12 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
 
     expect(skill.instructions).toContain('Search in this turn, before any question');
     expect(skill.instructions).toContain('not an unresolved target');
+    expect(skill.instructions).toContain('Anything going on Saturday');
+    expect(skill.instructions).toContain("who's around this weekend");
+    expect(skill.instructions).toContain('Call `search_village` and `find_activities` both');
+    expect(skill.instructions).toContain('not them asking that nearby question again');
     expect(find.description).toContain('do not stop to ask which child');
+    expect(find.description).toContain('even when the radar already has a find');
+    expect(find.description).toContain('do not open it with a narrowing question');
   });
 });
