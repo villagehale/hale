@@ -5,6 +5,7 @@ import {
   MAX_NUDGE_SEGMENTS,
   NUDGE_OPT_OUT,
   type VoicedNudge,
+  composeNudgeMessage,
   nudgeFactSlots,
   nudgeVoiceContext,
   nudgeVoiceStrings,
@@ -116,7 +117,11 @@ describe('nudgeFactSlots', () => {
       expect.arrayContaining(['Richmond Hill', 'Fall 2026', 'Aug 5, 10:30 a.m.', 'Maya', 'Leo']),
     );
     expect(nudgeFactSlots(SWAP)).toEqual(
-      expect.arrayContaining(['Library story time', 'Riverdale Library', 'the weekend forecast is wet']),
+      expect.arrayContaining([
+        'Library story time',
+        'Riverdale Library',
+        'the weekend forecast is wet',
+      ]),
     );
   });
 
@@ -170,9 +175,9 @@ describe('usableNudgeMessage', () => {
   });
 
   it('rejects a message that invents a link', () => {
-    expect(usableNudgeMessage('Register at https://richmondhill.example.ca now.', REGISTRATION)).toBe(
-      false,
-    );
+    expect(
+      usableNudgeMessage('Register at https://richmondhill.example.ca now.', REGISTRATION),
+    ).toBe(false);
   });
 
   it('rejects a message that writes the opt-out line the shell appends', () => {
@@ -198,7 +203,10 @@ describe('renderNudgeDeterministically', () => {
   });
 
   it('hedges an approximate age fit rather than asserting the band', () => {
-    const message = renderNudgeDeterministically({ ...REGISTRATION, ageApproximate: true } as Nudge);
+    const message = renderNudgeDeterministically({
+      ...REGISTRATION,
+      ageApproximate: true,
+    } as Nudge);
     expect(message.toLowerCase()).toContain('if');
   });
 
@@ -269,5 +277,24 @@ describe('renderNudgeDeterministically', () => {
 describe('nudgeVoiceStrings', () => {
   it('exposes the one user-facing string for the lint', () => {
     expect(nudgeVoiceStrings({ message: 'hello' })).toEqual(['hello']);
+  });
+});
+
+describe('composeNudgeMessage — empty Saturday', () => {
+  it('does not fall back to the fixed sentence when there is no model', async () => {
+    const message = await composeNudgeMessage(
+      {
+        kind: 'empty_saturday',
+        kidName: 'Maya',
+        saturday: '2026-10-10',
+        candidateId: 'sat-1',
+        title: 'Fanous Lantern Craft',
+        venueName: 'North York Central Library',
+        whenLabel: '2:00 p.m.',
+        url: 'https://tpl.example/lantern',
+      },
+      { familyId: 'fam-1', database: {} as never, client: null },
+    );
+    expect(message).toBeNull();
   });
 });

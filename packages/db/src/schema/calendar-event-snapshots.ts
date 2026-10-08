@@ -44,6 +44,9 @@ export const calendarEventSnapshots = pgTable(
     startAt: timestamp('start_at', { withTimezone: true }),
     endAt: timestamp('end_at', { withTimezone: true }),
     allDay: boolean('all_day').notNull().default(false),
+    /** Google's transparency: `opaque` (busy) or `transparent` (free). Null when the
+     * feed did not say. An all-day row with null is still a commitment. */
+    transparency: text('transparency'),
     /** Google's `updated` (or the etag the sync fell back to) at the last sighting. */
     updatedStamp: text('updated_stamp').notNull(),
     /** `confirmed` | `tentative` | `cancelled`, as the alert path narrows it. */

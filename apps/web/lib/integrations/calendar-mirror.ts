@@ -50,6 +50,7 @@ export interface CalendarMirrorCandidate {
   startsAt: Date;
   endsAt: Date | null;
   location: string | null;
+  transparency?: 'opaque' | 'transparent' | null;
 }
 
 export type CalendarMirrorClass =
@@ -158,9 +159,17 @@ export function classifyCalendarMirrorItem(
   const title = cleanText(readString(item.summary) ?? '', TITLE_MAX) ?? GENERIC_TITLE;
   const location = cleanText(readString(item.location) ?? '', LOCATION_MAX);
 
+  const transparency = readString(item.transparency);
   return {
     kind: 'eligible',
-    candidate: { eventId, title, startsAt, endsAt, location },
+    candidate: {
+      eventId,
+      title,
+      startsAt,
+      endsAt,
+      location,
+      ...(transparency === 'transparent' || transparency === 'opaque' ? { transparency } : {}),
+    },
   };
 }
 
@@ -241,6 +250,7 @@ export async function reconcileCalendarMirrors(
       startsAt: schema.familyEvents.startsAt,
       endsAt: schema.familyEvents.endsAt,
       location: schema.familyEvents.location,
+      transparency: schema.familyEvents.transparency,
       deletedAt: schema.familyEvents.deletedAt,
     })
     .from(schema.familyEvents)
@@ -277,6 +287,7 @@ export async function reconcileCalendarMirrors(
           startsAt: candidate.startsAt,
           endsAt: candidate.endsAt,
           location: candidate.location,
+          transparency: candidate.transparency ?? null,
           source: 'parent',
           createdBy: input.userId,
           googleEventId: candidate.eventId,
@@ -304,6 +315,7 @@ export async function reconcileCalendarMirrors(
       existing.title !== candidate.title ||
       (existing.location ?? null) !== candidate.location ||
       (existing.endsAt?.getTime() ?? null) !== (candidate.endsAt?.getTime() ?? null) ||
+      (existing.transparency ?? null) !== (candidate.transparency ?? null) ||
       existing.deletedAt !== null;
     if (!changed) continue;
     await database
@@ -313,6 +325,7 @@ export async function reconcileCalendarMirrors(
         startsAt: candidate.startsAt,
         endsAt: candidate.endsAt,
         location: candidate.location,
+        transparency: candidate.transparency ?? null,
         deletedAt: null,
         createdBy: input.userId,
       })

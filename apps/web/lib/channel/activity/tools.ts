@@ -50,6 +50,8 @@ export interface ActivityToolArgs {
    * has taken the reply — a turn that fails in between promised nobody anything.
    */
   onPromise(promise: ActivityPromise): void;
+  /** Pages the turn may append after the reply names the pick. */
+  onLinks?(links: readonly { title: string; url: string }[]): void;
 }
 
 /** What a search came back with, in the shape the model reads. `found: false` carries the
@@ -149,6 +151,10 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       if (result.picks.some((pick) => pick.when === null || pick.price === null)) {
         args.onPromise({ subject: deidentified.query.subject, childId });
       }
+      const linked = result.picks.flatMap((pick) =>
+        pick.url ? [{ title: pick.name, url: pick.url }] : [],
+      );
+      if (linked.length > 0) args.onLinks?.(linked);
       return { found: true as const, picks: result.picks };
     },
   });

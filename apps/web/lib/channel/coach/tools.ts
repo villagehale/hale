@@ -197,6 +197,8 @@ export interface ChannelCoachToolArgs {
    * the truth about a dentist the parent named themselves.
    */
   offeredThisTurn?: () => readonly OfferedCandidate[];
+  /** Live-web pages this turn found, appended when the reply names the pick. */
+  recordActivityLinks?: (links: readonly { title: string; url: string }[]) => void;
   /**
    * The live web-search lane and the family facts phase 0 needs, or null in a test that
    * is not exercising them. The two travel together on purpose: a finder with no reader
@@ -376,19 +378,33 @@ function refuseMismatchedWeekday(
  * rather than two arrays, because two would be two answers to "what did Hale offer this
  * turn" and the first divergence is a count attached to the wrong activity.
  */
+export interface NamedLink {
+  title: string;
+  url: string;
+}
+
 export interface TurnOfferLedger {
   record(offers: readonly OfferedCandidate[]): void;
   read(): readonly OfferedCandidate[];
+  recordLinks(links: readonly NamedLink[]): void;
+  links(): readonly NamedLink[];
 }
 
 export function createTurnOfferLedger(): TurnOfferLedger {
   const offered: OfferedCandidate[] = [];
+  const linked: NamedLink[] = [];
   return {
     record(offers) {
       offered.push(...offers);
     },
     read() {
       return offered;
+    },
+    recordLinks(links) {
+      linked.push(...links);
+    },
+    links() {
+      return linked;
     },
   };
 }
@@ -717,6 +733,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         reader: args.activity.reader,
         finder: args.activity.finder,
         onPromise,
+        onLinks: args.recordActivityLinks,
       }),
     );
   }
