@@ -8,6 +8,7 @@ import {
 } from '~/lib/channel/coach/tools';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { voiceSourceLine } from '~/lib/channel/intent/line';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
@@ -23,9 +24,9 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { nightlyOccasion } from '~/lib/channel/variant';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { dayKeyIn } from '~/lib/plan/spine';
@@ -449,6 +450,18 @@ async function runForFamily(
       if (speech.name) spoken = groupAddressedLine(speech.name, message);
     }
   }
+
+  const voiced = await voiceSourceLine({
+    flow: decision.kind === 'step_down' ? 'checkin_step_down' : 'checkin_ask',
+    locked: spoken,
+    language: 'en',
+    pendingAsk: decision.kind === 'step_down' ? null : 'how the day went',
+  });
+  if (!voiced) {
+    console.error({ familyId: family.familyId }, 'evening check-in: line unsent');
+    return;
+  }
+  spoken = voiced;
 
   const delivered = await deliverFamilyOutbound(database, {
     familyId: family.familyId,

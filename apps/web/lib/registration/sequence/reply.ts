@@ -175,7 +175,14 @@ export type SequenceReplyOutcome =
 
 export async function handleSequenceReply(
   database: Database,
-  input: { familyId: string; parentUserId: string; body: string; now: Date },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    now: Date;
+    /** Set by the intent router. Skips the word list. */
+    directed?: CheckInIntent | null;
+  },
   deps: SequenceReplyDeps,
 ): Promise<SequenceReplyOutcome> {
   const sequence = await deps.loadAwaitingSequence(database, input.familyId, input.now);
@@ -186,7 +193,7 @@ export async function handleSequenceReply(
     return { status: 'ignored', reason: 'no_open_window' };
   }
 
-  const intent = matchCheckInReply(input.body);
+  const intent = input.directed === undefined ? matchCheckInReply(input.body) : input.directed;
   if (intent === null) {
     if (sequence.reaskedAt !== null) return { status: 'ignored', reason: 'reask_spent' };
     await deps.recordReask(database, sequence.sequenceId, input.now);

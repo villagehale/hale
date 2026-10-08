@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import { acceptCoParentInvite } from '~/lib/channel/coparent/accept';
 import {
   CO_PARENT_ANSWER_PROMPT_BY_LANGUAGE,
@@ -16,8 +15,9 @@ import {
 } from '~/lib/channel/coparent/copy';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
+import { voiceSourceLine } from '~/lib/channel/intent/line';
+import { directedJoin, directedPolarity } from '~/lib/channel/intent/polarity';
 import { JOIN_ACCEPTED_ACK } from '~/lib/channel/join/copy';
-import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { type JoinOutcome, handleJoinRequest } from '~/lib/channel/join/route';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -486,7 +486,11 @@ async function handleCaregiverInviteReply(
     now,
   });
 
-  const answer = readAffirmative(inbound.body);
+  const answer = await directedPolarity(inbound.body, {
+    id: invite.id,
+    kind: 'caregiver_invite',
+    description: 'Whether they accept the caregiver invite',
+  });
 
   if (answer === 'yes') {
     const { caregiverUserId } = await acceptInvite(database, {
@@ -518,9 +522,18 @@ async function handleCaregiverInviteReply(
     return { status: 'caregiver_declined' };
   }
 
+  const prompt =
+    (await voiceSourceLine({
+      flow: 'caregiver_answer_prompt',
+      locked: CAREGIVER_ANSWER_PROMPT,
+      language: replyLanguage(inbound.body),
+      pendingAsk: 'whether they accept',
+      facts: { complianceStop: true, stopLine: 'Reply STOP if you would rather not.' },
+    })) ?? '';
+  if (!prompt) return { status: 'caregiver_prompted' };
   await reply(database, deps, {
     to: args.phoneE164,
-    body: CAREGIVER_ANSWER_PROMPT,
+    body: prompt,
     familyId: invite.familyId,
     parentUserId: invite.invitedByUserId,
     lane: 'caregiver',
@@ -564,7 +577,11 @@ async function handleCoParentInviteReply(
     now,
   });
 
-  const answer = readAffirmative(inbound.body);
+  const answer = await directedPolarity(inbound.body, {
+    id: invite.id,
+    kind: 'co_parent_invite',
+    description: 'Whether they accept the co-parent invite',
+  });
 
   if (answer === 'yes') {
     // Both read BEFORE the transaction, while the inviting parent is still the only
@@ -716,13 +733,17 @@ export async function handleKnownNumberInbound(
   // being added is not somebody Hale may text. It is answered with a link the parent
   // forwards themselves, and only ever to a PARENT: a co_parent seat is the whole family
   // surface, so the ability to hand one out belongs to nobody else in the household.
-  if (role && isParentRole(role) && looksLikeJoinRequest(inbound.body)) {
+  if (role && isParentRole(role) && (await directedJoin(inbound.body))) {
     return handleJoinRequest(database, { owner, phoneE164: parentPhoneE164, inbound, now }, deps);
   }
 
   const pending = await loadPendingAssent(database, owner.userId, now);
   if (pending) {
-    const answer = readAffirmative(inbound.body);
+    const answer = await directedPolarity(inbound.body, {
+      id: pending.id,
+      kind: 'scope_confirm',
+      description: 'Whether to text this person',
+    });
     const claimable =
       pending.role !== 'co_parent' ||
       (await coParentAssentIsSoleQuestion(database, owner, now, deps));
@@ -973,6 +994,10 @@ async function sendInvite(
     channelMessageId,
     now,
   });
+  if (!body) {
+    console.error({ familyId: owner.familyId }, 'caregiver invite: line unsent');
+    return { status: 'caregiver_invite_sent' };
+  }
 
   await reply(database, deps, {
     to: pending.phoneE164,
@@ -1099,12 +1124,17 @@ async function startFromCommand(
       language,
       now,
     });
-    return opened.status === 'refused'
-      ? answer(CO_PARENT_REFUSAL_COPY[opened.reason][language], {
-          status: 'co_parent_add_refused',
-          reason: opened.reason,
-        })
-      : answer(opened.reply, { status: 'co_parent_invite_started' });
+    if (opened.status === 'refused') {
+      return answer(CO_PARENT_REFUSAL_COPY[opened.reason][language], {
+        status: 'co_parent_add_refused',
+        reason: opened.reason,
+      });
+    }
+    if (!opened.reply) {
+      console.error({ familyId: owner.familyId }, 'co-parent scope: line unsent');
+      return { status: 'co_parent_invite_started' };
+    }
+    return answer(opened.reply, { status: 'co_parent_invite_started' });
   }
 
   const started = await startCaregiverInvite(database, {
@@ -1135,6 +1165,10 @@ async function startFromCommand(
       status: 'caregiver_add_refused',
       reason: 'previously_declined',
     });
+  }
+  if (!started.reply) {
+    console.error({ familyId: owner.familyId }, 'caregiver scope: line unsent');
+    return { status: 'caregiver_invite_started' };
   }
   return answer(started.reply, { status: 'caregiver_invite_started' });
 }

@@ -15,6 +15,7 @@ import {
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { latestCoparentGroupMode } from '~/lib/channel/intake/session';
+import { voiceSourceLine } from '~/lib/channel/intent/line';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
@@ -223,9 +224,26 @@ export async function deliverCoParentNumberInvite(
   }
   if (!name) return held(CO_PARENT_REFUSAL_COPY.referrer_unnamed[language]);
 
+  const inviteLocked = coParentInviteBody(name, language);
+  const inviteBody =
+    (await voiceSourceLine({
+      flow: 'coparent_invite',
+      locked: inviteLocked,
+      language,
+      pendingAsk: 'whether they accept',
+      facts: {
+        complianceStop: true,
+        stopLine: language === 'fr' ? 'Répondez ARRET à tout moment.' : 'Reply STOP anytime.',
+        inviterName: name,
+      },
+    })) ?? '';
+  if (!inviteBody) {
+    console.error({ familyId: input.familyId }, 'co-parent invite: line unsent');
+    return { status: 'unreached', reply: '', templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY };
+  }
   const sms = await input.sendSms({
     to: parsed.phoneE164,
-    body: coParentInviteBody(name, language),
+    body: inviteBody,
   });
   await ledgerSmsInvite(database, {
     familyId: input.familyId,

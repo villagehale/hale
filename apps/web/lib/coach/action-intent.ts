@@ -1,4 +1,6 @@
 import type { ActionType } from '@hale/types';
+import { aiIntentRouterEnabled } from '~/lib/channel/intent/flag';
+import type { ParentIntentReading } from '~/lib/channel/intent/types';
 
 /**
  * Inline gated actions — the Hale thesis. When an Ask Hale answer IMPLIES a real
@@ -98,12 +100,30 @@ export const ACTION_INTENT_KINDS: readonly ActionIntentKind[] = INTENT_RULES.map
  * surfaces at most one chip per answer). Returns [] when nothing matches — the
  * common case for an ordinary answer, where no action chip should appear.
  */
-export function detectActionIntents(answer: string): ActionIntent[] {
+export function detectActionIntents(
+  answer: string,
+  reading?: ParentIntentReading | null,
+): ActionIntent[] {
+  if (aiIntentRouterEnabled()) return intentsFromReading(reading ?? null);
   return INTENT_RULES.filter((rule) => rule.patterns.some((p) => p.test(answer))).map((rule) => ({
     kind: rule.kind,
     label: rule.label,
     actionType: rule.actionType,
   }));
+}
+
+const CHIP_INTENTS = new Set<ParentIntentReading['intent']>([
+  'find_activities',
+  'book_checkup',
+  'set_reminder',
+]);
+
+/** Chips from a structured reading. A miss is no chip. The regex lists do not run. */
+export function intentsFromReading(reading: ParentIntentReading | null): ActionIntent[] {
+  if (!reading || reading.confidence === 'low' || !CHIP_INTENTS.has(reading.intent)) return [];
+  const rule = INTENT_RULES.find((item) => item.kind === reading.intent);
+  if (!rule) return [];
+  return [{ kind: rule.kind, label: rule.label, actionType: rule.actionType }];
 }
 
 const KIND_BY_VALUE = new Map<string, IntentRule>(INTENT_RULES.map((r) => [r.kind, r]));
@@ -187,30 +207,27 @@ const INPUT_ACTION_RULES: readonly IntentRule[] = [
 ];
 
 /** episode → the phrasings that name a logged observation, imperative or reported. */
-const QUICK_LOG_EPISODE_RULES: readonly { episode: QuickLogEpisode; patterns: readonly RegExp[] }[] =
-  [
-    {
-      episode: 'feed',
-      patterns: [/\b(?:had|took|gave|log(?:ged)?)\s+(?:a\s+)?(?:feed|bottle|nurse|nursing)\b/i],
-    },
-    {
-      episode: 'nap',
-      patterns: [/\b(?:had|took|went\s+down\s+for|log(?:ged)?)\s+(?:a\s+)?nap\b/i, /\bnapped\b/i],
-    },
-    {
-      episode: 'diaper',
-      patterns: [
-        /\bdiaper\b/i,
-        /\bnappy\b/i,
-        /\b(?:pooped|poop|soiled)\b/i,
-        /\bpee(?:d|ing)?\b/i,
-      ],
-    },
-    {
-      episode: 'milestone',
-      patterns: [/\bhit\s+a\s+milestone\b/i, /\b(?:reached|log(?:ged)?)\s+(?:a\s+)?milestone\b/i],
-    },
-  ];
+const QUICK_LOG_EPISODE_RULES: readonly {
+  episode: QuickLogEpisode;
+  patterns: readonly RegExp[];
+}[] = [
+  {
+    episode: 'feed',
+    patterns: [/\b(?:had|took|gave|log(?:ged)?)\s+(?:a\s+)?(?:feed|bottle|nurse|nursing)\b/i],
+  },
+  {
+    episode: 'nap',
+    patterns: [/\b(?:had|took|went\s+down\s+for|log(?:ged)?)\s+(?:a\s+)?nap\b/i, /\bnapped\b/i],
+  },
+  {
+    episode: 'diaper',
+    patterns: [/\bdiaper\b/i, /\bnappy\b/i, /\b(?:pooped|poop|soiled)\b/i, /\bpee(?:d|ing)?\b/i],
+  },
+  {
+    episode: 'milestone',
+    patterns: [/\bhit\s+a\s+milestone\b/i, /\b(?:reached|log(?:ged)?)\s+(?:a\s+)?milestone\b/i],
+  },
+];
 
 /** Author-a-plan phrasings: the parent writes their OWN private plan. Distinct
  * from add_to_plan (which pins Hale's suggestion to the routine via the approval
@@ -264,7 +281,10 @@ function parsePlan(question: string): PlanLogParse {
 
   const rawTitle =
     question.match(PLAN_TITLE_NOUN_RE)?.[1] ?? question.match(PLAN_TITLE_VERB_RE)?.[1];
-  const title = rawTitle?.replace(PLAN_CHILD_RE, '').replace(/\s{2,}/g, ' ').trim();
+  const title = rawTitle
+    ?.replace(PLAN_CHILD_RE, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
   if (title) parsed.title = title;
   return parsed;
 }
@@ -275,6 +295,7 @@ function parsePlan(question: string): PlanLogParse {
  * (the first matching episode wins), and at most one create_plan.
  */
 export function detectInputIntents(question: string): InputIntent[] {
+  if (aiIntentRouterEnabled()) return [];
   const intents: InputIntent[] = [];
 
   for (const rule of INPUT_ACTION_RULES) {
