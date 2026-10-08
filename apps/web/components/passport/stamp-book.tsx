@@ -148,22 +148,46 @@ function StampSheet({
     const returnTo = document.querySelector<HTMLElement>(
       `[data-stamp-id="${CSS.escape(stamp.id)}"]`,
     );
-    if (!dialog.open) dialog.showModal();
+    const shell = dialog.parentElement;
+    const frozen: HTMLElement[] = [];
+    if (shell) {
+      for (const child of shell.children) {
+        if (!(child instanceof HTMLElement) || child === dialog) continue;
+        if (child.classList.contains('pp-sheet-dim')) continue;
+        if (child.hasAttribute('inert')) continue;
+        child.setAttribute('inert', '');
+        frozen.push(child);
+      }
+    }
     closeRef.current?.focus();
-    const dismiss = () => onCloseRef.current();
-    const onCancel = (event: Event) => {
-      event.preventDefault();
-      dismiss();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const nodes = [
+        ...dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ];
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (!first || !last) return;
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    const onClick = (event: MouseEvent) => {
-      if (event.target === dialog) dismiss();
-    };
-    dialog.addEventListener('cancel', onCancel);
-    dialog.addEventListener('click', onClick);
+    document.addEventListener('keydown', onKey);
     return () => {
-      dialog.removeEventListener('cancel', onCancel);
-      dialog.removeEventListener('click', onClick);
-      if (dialog.open) dialog.close();
+      document.removeEventListener('keydown', onKey);
+      for (const el of frozen) el.removeAttribute('inert');
       returnTo?.focus();
     };
   }, [host, stamp.id]);
@@ -175,158 +199,176 @@ function StampSheet({
   };
   const statusText = status === 'preview' ? 'Preview — nothing was saved.' : status ? 'Saved.' : '';
   const sheet = (
-    <dialog
-      ref={dialogRef}
-      className="pp-sheet"
-      aria-labelledby={titleId}
-      data-testid="stamp-sheet"
-    >
+    <>
       <button
-        ref={closeRef}
-        className="pp-sheet-x"
+        className="pp-sheet-dim"
         type="button"
-        aria-label="Close"
+        aria-label="Close stamp"
+        tabIndex={-1}
         onClick={onClose}
+      />
+      <dialog
+        ref={dialogRef}
+        open
+        className="pp-sheet"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        data-testid="stamp-sheet"
       >
-        <CloseIcon />
-      </button>
-      <div className="pp-sheet-body">
-        <form
-          id={formId}
-          onSubmit={async (event) => {
-            event.preventDefault();
-            const result = await saveStampAction(fields(new FormData(event.currentTarget)));
-            setStatus(result.status);
-          }}
+        <button
+          ref={closeRef}
+          className="pp-sheet-x"
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
         >
-          <div className="pp-grab" />
-          <div className="pp-top">
-            <StampMark
-              id={stamp.id}
-              slot="sheet"
-              icon={stamp.icon}
-              kind={stamp.kind}
-              inferred={stamp.inferred}
-              top={stamp.top}
-              bottom={stamp.face}
-            />
-            <div>
-              {stamp.inferred ? <div className="pp-check">Inferred · not stamped</div> : null}
-              <h2 id={titleId}>
-                {stamp.activity}
-                {stamp.level ? `, ${stamp.level}` : ''}
-              </h2>
-              <p className="pp-meta">
-                {kid.name}
-                {(stamp.cadence ?? stamp.whenLabel) ? ` · ${stamp.cadence ?? stamp.whenLabel}` : ''}
-              </p>
-            </div>
-          </div>
-          <div className="pp-src">
-            <MailIcon />
-            <div>
-              <b>{glueMonthDay(stamp.sourceLabel)}</b>
-              {stamp.sourceDetail ? <span>{glueMonthDay(stamp.sourceDetail)}</span> : null}
-              {stamp.emailUrl ? (
-                <a href={stamp.emailUrl} target="_blank" rel="noreferrer">
-                  Open the email
-                </a>
-              ) : null}
-            </div>
-          </div>
-          <div className="pp-fields">
-            <label>
-              Activity
-              <input className="pp-in" name="activity" defaultValue={stamp.activity} />
-            </label>
-            <label>
-              Level or group
-              <input className="pp-in" name="level" defaultValue={stamp.level ?? ''} />
-            </label>
-            <div className="pp-field">
-              Kid
-              <div className="pp-kids">
-                {kids.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={childId === item.id ? 'on' : ''}
-                    onClick={() => setChildId(item.id)}
-                  >
-                    {item.name}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className={childId === 'both' ? 'on' : ''}
-                  onClick={() => setChildId('both')}
-                >
-                  Both
-                </button>
+          <CloseIcon />
+        </button>
+        <div className="pp-sheet-body">
+          <form
+            id={formId}
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const result = await saveStampAction(fields(new FormData(event.currentTarget)));
+              setStatus(result.status);
+            }}
+          >
+            <div className="pp-grab" />
+            <div className="pp-top">
+              <StampMark
+                id={stamp.id}
+                slot="sheet"
+                icon={stamp.icon}
+                kind={stamp.kind}
+                inferred={stamp.inferred}
+                top={stamp.top}
+                bottom={stamp.face}
+              />
+              <div>
+                {stamp.inferred ? <div className="pp-check">Inferred · not stamped</div> : null}
+                <h2 id={titleId}>
+                  {stamp.activity}
+                  {stamp.level ? `, ${stamp.level}` : ''}
+                </h2>
+                <p className="pp-meta">
+                  {kid.name}
+                  {(stamp.cadence ?? stamp.whenLabel)
+                    ? ` · ${stamp.cadence ?? stamp.whenLabel}`
+                    : ''}
+                </p>
               </div>
             </div>
-            <label>
-              When
-              <input
-                className="pp-in"
-                name="when"
-                defaultValue={stamp.whenLabel ?? stamp.progress ?? ''}
-              />
-            </label>
-          </div>
-        </form>
-        <form className="pp-share-row" action={shareStampAction}>
-          <input type="hidden" name="stampId" value={stamp.id} />
-          <input type="hidden" name="childId" value={kid.id} />
-          <input type="hidden" name="shared" value={stamp.shared ? 'false' : 'true'} />
-          <div>
-            <b>Share with your group</b>
-            <span>
-              {stamp.shared
-                ? 'On. Your group can see this stamp.'
-                : 'Off. Nobody sees this unless you turn it on.'}
-            </span>
-          </div>
-          <button
-            className={stamp.shared ? 'pp-tog on' : 'pp-tog'}
-            type="submit"
-            aria-pressed={stamp.shared}
-            aria-label="Share with your group"
-          />
-        </form>
-      </div>
-      <div className="pp-sheet-foot">
-        <button
-          className="pp-primary"
-          type="button"
-          onClick={async () => {
-            const form = fields(new FormData());
-            form.set('activity', stamp.activity);
-            form.set('level', stamp.level ?? '');
-            form.set('when', stamp.whenLabel ?? '');
-            const result = await confirmStampAction(form);
-            setStatus(result.status);
-          }}
-        >
-          Confirm stamp
-        </button>
-        <div className="pp-two">
-          <button type="submit" form={formId}>
-            Save changes
-          </button>
-          <form action={removeStampAction}>
+            <div className="pp-src">
+              <MailIcon />
+              <div>
+                <b>{glueMonthDay(stamp.sourceLabel)}</b>
+                {stamp.sourceDetail ? <span>{glueMonthDay(stamp.sourceDetail)}</span> : null}
+                {stamp.emailUrl ? (
+                  <a href={stamp.emailUrl} target="_blank" rel="noreferrer">
+                    Open the email
+                  </a>
+                ) : null}
+              </div>
+            </div>
+            <div className="pp-fields">
+              <label>
+                Activity
+                <input className="pp-in" name="activity" defaultValue={stamp.activity} />
+              </label>
+              <label>
+                Level or group
+                <input className="pp-in" name="level" defaultValue={stamp.level ?? ''} />
+              </label>
+              <div className="pp-field">
+                Kid
+                <div className="pp-kids">
+                  {kids.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={childId === item.id ? 'on' : ''}
+                      onClick={() => setChildId(item.id)}
+                    >
+                      {item.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={childId === 'both' ? 'on' : ''}
+                    onClick={() => setChildId('both')}
+                  >
+                    Both
+                  </button>
+                </div>
+              </div>
+              <label>
+                When
+                <input
+                  className="pp-in"
+                  name="when"
+                  defaultValue={stamp.whenLabel ?? stamp.progress ?? ''}
+                />
+              </label>
+            </div>
+          </form>
+          <form className="pp-share-row" action={shareStampAction}>
             <input type="hidden" name="stampId" value={stamp.id} />
             <input type="hidden" name="childId" value={kid.id} />
-            <button className="pp-del" type="submit">
-              Not {kid.name}’s
-            </button>
+            <input type="hidden" name="shared" value={stamp.shared ? 'false' : 'true'} />
+            <div>
+              <b>Share with your group</b>
+              <span>
+                {stamp.shared
+                  ? 'On. Your group can see this stamp.'
+                  : 'Off. Nobody sees this unless you turn it on.'}
+              </span>
+            </div>
+            <button
+              className={stamp.shared ? 'pp-tog on' : 'pp-tog'}
+              type="submit"
+              aria-pressed={stamp.shared}
+              aria-label="Share with your group"
+            />
           </form>
         </div>
-        <div className="pp-status" data-testid="stamp-status" aria-live="polite" aria-atomic="true">
-          {statusText}
+        <div className="pp-sheet-foot">
+          <button
+            className="pp-primary"
+            type="button"
+            onClick={async () => {
+              const form = fields(new FormData());
+              form.set('activity', stamp.activity);
+              form.set('level', stamp.level ?? '');
+              form.set('when', stamp.whenLabel ?? '');
+              const result = await confirmStampAction(form);
+              setStatus(result.status);
+            }}
+          >
+            Confirm stamp
+          </button>
+          <div className="pp-two">
+            <button type="submit" form={formId}>
+              Save changes
+            </button>
+            <form action={removeStampAction}>
+              <input type="hidden" name="stampId" value={stamp.id} />
+              <input type="hidden" name="childId" value={kid.id} />
+              <button className="pp-del" type="submit">
+                Not {kid.name}’s
+              </button>
+            </form>
+          </div>
+          <div
+            className="pp-status"
+            data-testid="stamp-status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {statusText}
+          </div>
         </div>
-      </div>
-    </dialog>
+      </dialog>
+    </>
   );
   // Portal into the passport shell so the sheet inherits its colour tokens.
   // The shell is position:fixed without a filter, so the sheet still covers the viewport.
