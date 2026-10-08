@@ -160,6 +160,25 @@ function StampSheet({
       }
     }
     closeRef.current?.focus();
+    const scrollY = window.scrollY;
+    const root = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = root.style.overflow;
+    const prevBody = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+    };
+    root.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -188,6 +207,14 @@ function StampSheet({
     return () => {
       document.removeEventListener('keydown', onKey);
       for (const el of frozen) el.removeAttribute('inert');
+      root.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBody.overflow;
+      body.style.position = prevBody.position;
+      body.style.top = prevBody.top;
+      body.style.left = prevBody.left;
+      body.style.right = prevBody.right;
+      body.style.width = prevBody.width;
+      window.scrollTo(0, scrollY);
       returnTo?.focus();
     };
   }, [host, stamp.id]);

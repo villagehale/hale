@@ -1119,6 +1119,11 @@ dialog.pp-sheet button.pp-sheet-x:focus-visible {
   .pp-who {
     order: 5;
   }
+
+  .pp-who .pp-add {
+    display: inline-block;
+    margin-top: 12px;
+  }
 }
 
 @media (min-width: 801px) {
