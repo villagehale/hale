@@ -51,11 +51,9 @@ export async function LegacyFamilyPage() {
   return (
     <div>
       {/* The page title + subtitle live in the shell top bar (§3.2). */}
-      {basics.foundingNumber !== null ? (
-        <p className="rise rise-1 mb-8 inline-flex items-center rounded-full bg-apricot-tint px-4 py-1.5 font-display text-sm font-semibold text-spruce">
-          Founding family · #{basics.foundingNumber}
-        </p>
-      ) : null}
+      <p className="rise rise-1 mb-8 inline-flex items-center rounded-full bg-apricot-tint px-4 py-1.5 font-display text-sm font-semibold text-spruce">
+        Founding family
+      </p>
 
       {/* ── Members ────────────────────────────────────────────────────── */}
       <section className="rise rise-2 mb-8">

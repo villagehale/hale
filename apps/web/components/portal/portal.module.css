@@ -80,6 +80,7 @@
   min-width: 0;
   min-height: 100vh;
   min-height: 100svh;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
 }
 
 .shore,
@@ -372,6 +373,18 @@
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
+/* `.shell a` and `.shell button` set `color: inherit`, which beats a single
+   class. A primary link was inheriting the page colour onto its own fill. */
+.shell a.primary,
+.shell button.primary {
+  color: var(--cream);
+}
+
+.shell a.secondary,
+.shell button.secondary {
+  color: var(--navy);
+}
+
 .primary svg,
 .secondary svg {
   width: 16px;
@@ -532,6 +545,40 @@
   box-shadow: 0 1px 3px rgb(12 26 54 / 0.12);
 }
 
+.founding {
+  margin-top: var(--s4);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.intents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: var(--s4);
+}
+
+.shell button.intent {
+  padding: 8px 14px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line);
+  background: var(--wash);
+  color: var(--navy);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.shell button.intentOn {
+  background: #f7f4ec;
+  color: #17294a;
+  border-color: #17294a;
+}
+
 .fp-head {
   display: flex;
   align-items: center;
@@ -649,7 +696,9 @@
 .tabbar {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  position: sticky;
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
   z-index: 20;
   padding: 6px 10px calc(8px + env(safe-area-inset-bottom));
@@ -826,6 +875,7 @@
 
   .content {
     overflow: visible;
+    padding-bottom: 0;
   }
 
   .side {

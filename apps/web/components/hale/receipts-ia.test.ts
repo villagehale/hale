@@ -283,9 +283,11 @@ describe('the family editor moved up a level (Instinct refresh)', () => {
     const legacy = app('(authed)/family/legacy-family.tsx');
     expect(page).toContain('PortalFamily');
     expect(page).toContain('LegacyFamilyPage');
-    for (const editor of ['FamilyChildren', 'FamilyIntents', 'AddCoParentCard']) {
+    for (const editor of ['FamilyChildren', 'PortalIntents', 'AddCoParentCard']) {
       expect(portal).toContain(editor);
     }
+    expect(portal).toContain('Founding family');
+    expect(portal).not.toMatch(/foundingNumber|Founding family · #/);
     expect(portal).toContain('PostalEditor');
     expect(portal).not.toContain('FamilyLocation');
     for (const editor of ['FamilyChildren', 'FamilyLocation', 'FamilyIntents', 'AddCoParentCard']) {

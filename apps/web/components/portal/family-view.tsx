@@ -1,12 +1,12 @@
 import { deriveStage } from '@hale/types';
 import { AddCoParentCard } from '~/components/hale/add-coparent-card';
 import { FamilyChildren } from '~/components/hale/family-children';
-import { FamilyIntents } from '~/components/hale/family-intents';
 import { TeenAccessGrants } from '~/components/hale/teen-access-grants';
 import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
 import type { FamilyMembersView } from '~/lib/dashboard/family-members';
 import type { TeenAccessGrantSummary } from '~/lib/teen-access';
 import { PortalHeading } from './heading';
+import { PortalIntents } from './portal-intents';
 import styles from './portal.module.css';
 import { PostalEditor } from './postal-editor';
 
@@ -28,6 +28,7 @@ export function PortalFamily({
   return (
     <>
       <PortalHeading title="Family" lede="Who Hale helps, and who can see it." />
+      <p className={styles.founding}>Founding family</p>
       <div className={styles.grid}>
         <div className={styles.col}>
           <section className={styles.card}>
@@ -41,10 +42,10 @@ export function PortalFamily({
           </section>
           <section className={styles.card}>
             <span className={styles.tag}>What you want help with</span>
-            <FamilyIntents intents={basics.intents} legend="What you want help with" />
             <p className={styles.text}>
               Hale uses these to pick what to text you. Change them by text anytime.
             </p>
+            <PortalIntents intents={basics.intents} />
           </section>
         </div>
         <div className={styles.col}>

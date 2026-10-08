@@ -27,7 +27,7 @@ export function PostalEditor({ location }: { location: FamilyLocationView }) {
   }
 
   return (
-    <div className={`${styles.row} ${styles.tight}`}>
+    <div className={styles.row}>
       <span className={styles.tile}>
         <MapPin aria-hidden="true" />
       </span>

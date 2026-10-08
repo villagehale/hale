@@ -89,7 +89,9 @@ export function PortalHome({
                   ),
                 )}
               </div>
-            ) : null}
+            ) : (
+              <p className={styles.text}>Nothing here yet. Text Hale and it shows up here.</p>
+            )}
             <Link href="/messages" className={`${styles.primary} ${styles.block}`}>
               See all messages
             </Link>
