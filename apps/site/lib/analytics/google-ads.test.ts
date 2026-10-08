@@ -61,6 +61,16 @@ describe('Google Ads snippet', () => {
     expect([...client.matchAll(/googletagmanager/g)]).toHaveLength(0);
     expect(client).toContain('GOOGLE_ADS_GTAG_SRC');
   });
+
+  it('clears _gcl_au on the current host and the parent domain', async () => {
+    const { googleClickCookieClears } = await import('./google-ads-client.js');
+    expect(googleClickCookieClears('www.villagehale.com', '_gcl_au')).toEqual([
+      '_gcl_au=; Max-Age=0; path=/',
+      '_gcl_au=; Max-Age=0; path=/; domain=www.villagehale.com',
+      '_gcl_au=; Max-Age=0; path=/; domain=villagehale.com',
+      '_gcl_au=; Max-Age=0; path=/; domain=.villagehale.com',
+    ]);
+  });
 });
 
 describe('the privacy policy still matches that posture', () => {

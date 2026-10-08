@@ -9,15 +9,11 @@ import AboutPage from '../app/[locale]/about/page.js';
 import ActivitiesHub from '../app/[locale]/activities/page.js';
 import AnswerRoute from '../app/[locale]/answers/[slug]/page.js';
 import AnswersIndexPage from '../app/[locale]/answers/page.js';
-import BramptonSwimPage from '../app/[locale]/brampton-swim-registration/page.js';
 import ContactPage from '../app/[locale]/contact/page.js';
 import FaqPage from '../app/[locale]/faq/page.js';
 import LandingPage from '../app/[locale]/page.js';
 import PricingPage from '../app/[locale]/pricing/page.js';
 import TextPage from '../app/[locale]/text/page.js';
-import TorontoFallPage from '../app/[locale]/toronto-fall-recreation-registration/page.js';
-import TorontoSwimPage from '../app/[locale]/toronto-swim-registration/page.js';
-import YmcaSwimPage from '../app/[locale]/ymca-gta-swim-registration/page.js';
 import { allAnswers } from '../lib/answers/index.js';
 
 /**
@@ -60,10 +56,6 @@ const PAGES: Record<string, () => unknown> = {
   '/answers/[slug]': () =>
     AnswerRoute({ params: Promise.resolve({ slug: firstAnswer.slug, ...EN }) }),
   '/activities': () => ActivitiesHub({ params: Promise.resolve(EN) }),
-  '/toronto-fall-recreation-registration': () => TorontoFallPage({ params: Promise.resolve(EN) }),
-  '/toronto-swim-registration': () => TorontoSwimPage({ params: Promise.resolve(EN) }),
-  '/brampton-swim-registration': () => BramptonSwimPage({ params: Promise.resolve(EN) }),
-  '/ymca-gta-swim-registration': () => YmcaSwimPage({ params: Promise.resolve(EN) }),
   // The chooser wears the same bar and foot as every other page. Its own
   // column stays the conversion door; chrome is not a second shell.
   '/text': () =>

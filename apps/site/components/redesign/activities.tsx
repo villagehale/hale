@@ -287,7 +287,7 @@ export function RedesignActivities({
                   </div>
                   <p className="hs-close-terms">
                     {t(
-                      'Free to start. You text first; standard message rates apply, reply STOP any time.',
+                      'Free. You text first; standard message rates apply, reply STOP any time.',
                     )}
                   </p>
                 </div>

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { updateGalleryFocus } from './chat-gallery';
+import { swipePassesCommit, updateGalleryFocus } from './chat-gallery';
 
 it('blends outgoing and incoming cards during travel, using untransformed snap geometry', () => {
   const cards = [0, 1, 2].map((index) => ({
@@ -19,4 +19,14 @@ it('blends outgoing and incoming cards during travel, using untransformed snap g
   expect(paint()).toEqual({ nearest: 1, distance: 0 });
   expect(cards.map((card) => card.style.opacity)).toEqual(['0.25', '1', '0.25']);
   expect(second.style.transform).toBe('translate3d(0, 0px, 0) scale(1)');
+});
+
+it('does not advance a 50px swipe, and does once the swipe passes 30% or the snap midpoint', () => {
+  const cardWidth = 342;
+  const stride = 390;
+  expect(swipePassesCommit(50, cardWidth, stride)).toBe(false);
+  expect(swipePassesCommit(cardWidth * 0.3, cardWidth, stride)).toBe(false);
+  expect(swipePassesCommit(cardWidth * 0.3 + 1, cardWidth, stride)).toBe(true);
+  expect(swipePassesCommit(40, 400, 80)).toBe(false);
+  expect(swipePassesCommit(41, 400, 80)).toBe(true);
 });

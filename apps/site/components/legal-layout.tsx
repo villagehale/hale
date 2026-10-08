@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { LegalToc } from '~/components/legal-toc';
 import { shoreSrc } from '~/components/redesign/assets';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -70,16 +71,7 @@ export function LegalLayout({
         <div className="hs-page">
           <section className="hs lg hs-wash-a">
             <div className="hs-wrap hs-grid lg-wrap">
-              <nav className="lg-toc" aria-label={t('onThisPage')}>
-                <p className="hs-eyebrow">{t('onThisPage')}</p>
-                <ol>
-                  {sections.map((section) => (
-                    <li key={section.id}>
-                      <a href={`#${section.id}`}>{section.title}</a>
-                    </li>
-                  ))}
-                </ol>
-              </nav>
+              <LegalToc label={t('onThisPage')} sections={sections} />
               <article className="hs-glass lg-doc">
                 <div className="legal-intro">{intro}</div>
                 <p>

@@ -56,7 +56,7 @@ export function RedesignAnswers({
     <h2>{t("A question about your own child?")}</h2>
     <p className="hs-close-sub">{t("Text Hale. It answers with your child’s age in mind, in a line or two.")}</p>
     <div className="hs-close-cta"><TextDoor className="btn btn-hero" placement="answers" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor></div>
-    <p className="hs-close-terms">{t("Free to start. You text first; standard message rates apply, reply STOP any time.")}</p>
+    <p className="hs-close-terms">{t("Free. You text first; standard message rates apply, reply STOP any time.")}</p>
    </div>
   </div>
  </div>

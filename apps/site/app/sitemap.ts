@@ -1,7 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { publishedAnswers } from '~/lib/answers/index';
 import { SITE_URL } from '~/lib/app-url';
-import { REGISTRATION_GUIDES } from '~/lib/registration/index';
 
 // Static marketing routes. Add new public pages here as they ship.
 // /milestones is NOT here: it is retired (permanent redirect to /), and a retired
@@ -16,16 +15,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: path === '' ? 1 : 0.7,
     }),
   );
-
-  // City-registration landings are English-first municipal calendars. They rot in
-  // about six weeks, so they carry weekly change frequency and their own
-  // dateModified rather than the sitemap-build clock.
-  const registrationRoutes: MetadataRoute.Sitemap = REGISTRATION_GUIDES.map((guide) => ({
-    url: `${SITE_URL}${guide.path}`,
-    lastModified: new Date(guide.updated),
-    changeFrequency: 'weekly' as const,
-    priority: 0.7,
-  }));
 
   // Answer pages enter the sitemap only once a human reviews them and flips
   // `published` — the review-before-index gate. Drafts are excluded here and
@@ -59,5 +48,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ];
 
-  return [...staticRoutes, ...registrationRoutes, ...answerRoutes, ...activityRoutes];
+  return [...staticRoutes, ...answerRoutes, ...activityRoutes];
 }

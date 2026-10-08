@@ -93,14 +93,15 @@ describe('sitemap', () => {
     }
   });
 
-  it('lists the four city-registration landings', () => {
+  it('does not advertise the retired city-registration guides', () => {
     for (const path of [
       '/toronto-fall-recreation-registration',
       '/toronto-swim-registration',
       '/brampton-swim-registration',
       '/ymca-gta-swim-registration',
     ]) {
-      expect(urls).toContain(`${SITE_URL}${path}`);
+      expect(urls).not.toContain(`${SITE_URL}${path}`);
+      expect(urls.filter((url) => url.includes(path))).toEqual([]);
     }
   });
 

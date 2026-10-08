@@ -1,18 +1,16 @@
-import type { Metadata } from 'next';
-import { RegistrationGuidePage, registrationMetadata } from '~/components/registration-page';
+import { permanentRedirect } from 'next/navigation';
+import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
-import { TORONTO_FALL } from '~/lib/registration/index';
 
-interface PageProps {
+/**
+ * Retired. The dated city registration guides are gone; the activities hub is
+ * the page that remains. Each old URL keeps the reader in their language.
+ */
+export default async function TorontoFallRecreationRegistrationPage({
+  params,
+}: {
   params: Promise<{ locale: Locale }>;
-}
-
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+}): Promise<never> {
   const { locale } = await params;
-  return registrationMetadata(TORONTO_FALL, locale);
-}
-
-export default async function TorontoFallRecreationRegistrationPage({ params }: PageProps) {
-  const { locale } = await params;
-  return <RegistrationGuidePage locale={locale} guide={TORONTO_FALL} />;
+  permanentRedirect(localeHref(locale, '/activities'));
 }

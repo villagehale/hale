@@ -65,7 +65,6 @@ function PricingCards({ locale }: { locale: Locale }) {
   return (
     <section id="pricing" className="rd">
       <p>Only Free is available today.</p>
-      <p>Founding families keep their rate.</p>
       <p>Founding families get every feature free until paid plans start.</p>
       <ol>
         {cards.map((card, i) => (

@@ -1,18 +1,13 @@
-import type { Metadata } from 'next';
-import { RegistrationGuidePage, registrationMetadata } from '~/components/registration-page';
+import { permanentRedirect } from 'next/navigation';
+import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
-import { YMCA_GTA } from '~/lib/registration/index';
 
-interface PageProps {
+/** Retired. See the Toronto fall guide: these URLs 308 to the activities hub. */
+export default async function YmcaGtaSwimRegistrationPage({
+  params,
+}: {
   params: Promise<{ locale: Locale }>;
-}
-
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+}): Promise<never> {
   const { locale } = await params;
-  return registrationMetadata(YMCA_GTA, locale);
-}
-
-export default async function YmcaGtaSwimRegistrationPage({ params }: PageProps) {
-  const { locale } = await params;
-  return <RegistrationGuidePage locale={locale} guide={YMCA_GTA} />;
+  permanentRedirect(localeHref(locale, '/activities'));
 }

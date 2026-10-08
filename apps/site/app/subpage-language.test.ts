@@ -8,15 +8,11 @@ import AboutPage from './[locale]/about/page.js';
 import ActivitiesHub from './[locale]/activities/page.js';
 import AnswerRoute from './[locale]/answers/[slug]/page.js';
 import AnswersIndexPage from './[locale]/answers/page.js';
-import BramptonSwimPage from './[locale]/brampton-swim-registration/page.js';
 import ContactPage from './[locale]/contact/page.js';
 import FaqPage from './[locale]/faq/page.js';
 import PricingPage from './[locale]/pricing/page.js';
 import PrivacyPage from './[locale]/privacy/page.js';
 import TermsPage from './[locale]/terms/page.js';
-import TorontoFallPage from './[locale]/toronto-fall-recreation-registration/page.js';
-import TorontoSwimPage from './[locale]/toronto-swim-registration/page.js';
-import YmcaSwimPage from './[locale]/ymca-gta-swim-registration/page.js';
 
 /**
  * The subpage design language (2026-08) — the five devices that carried the
@@ -66,10 +62,6 @@ const pages = {
 const slugHtml = await renderAsync(
   AnswerRoute({ params: Promise.resolve({ slug: 'introducing-peanuts-to-baby', ...EN }) }),
 );
-const torontoFallHtml = await renderAsync(TorontoFallPage({ params: Promise.resolve(EN) }));
-const torontoSwimHtml = await renderAsync(TorontoSwimPage({ params: Promise.resolve(EN) }));
-const bramptonSwimHtml = await renderAsync(BramptonSwimPage({ params: Promise.resolve(EN) }));
-const ymcaSwimHtml = await renderAsync(YmcaSwimPage({ params: Promise.resolve(EN) }));
 const privacyHtml = await renderAsync(PrivacyPage({ params: Promise.resolve(EN) }));
 const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 
@@ -86,26 +78,6 @@ const REDESIGN_H1: [name: string, html: string, headline: string][] = [
 
 const PULLED_UP: [name: string, html: string, headline: string][] = [
   ['/answers/[slug]', slugHtml, 'When and how do I introduce peanuts to my baby?'],
-  [
-    '/toronto-fall-recreation-registration',
-    torontoFallHtml,
-    'Toronto fall recreation registration 2026: the mornings, and what is left',
-  ],
-  [
-    '/toronto-swim-registration',
-    torontoSwimHtml,
-    'Toronto swim registration 2026: it is not a separate day',
-  ],
-  [
-    '/brampton-swim-registration',
-    bramptonSwimHtml,
-    'Brampton swim registration: non-residents open Monday, Sept 21',
-  ],
-  [
-    '/ymca-gta-swim-registration',
-    ymcaSwimHtml,
-    'YMCA Greater Toronto swim: listings still take spots to Oct 10',
-  ],
 ];
 
 describe('the redesign headlines', () => {

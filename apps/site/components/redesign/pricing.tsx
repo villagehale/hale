@@ -70,7 +70,7 @@ export function RedesignPricing({
    </li>
   </ol>
   <p className="hs-meta hs-foot-note">{t("Only Free is available today.")}</p>
-  <div className="hs-glass sp-card sp-founding" style={{ marginTop: "var(--s7)" }}><div className="sp-person"><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 16.5s-6-3.6-6-8.1A3.4 3.4 0 0 1 10 6.3a3.4 3.4 0 0 1 6 2.1c0 4.5-6 8.1-6 8.1z" /></svg></span><div><h3 className="hs-h3">{t("Founding families keep their rate.")}</h3><p className="hs-p">{t("Founding families get every feature free until paid plans start.")}</p></div></div></div>
+  <div className="hs-glass sp-card sp-founding" style={{ marginTop: "var(--s7)" }}><div className="sp-person"><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 16.5s-6-3.6-6-8.1A3.4 3.4 0 0 1 10 6.3a3.4 3.4 0 0 1 6 2.1c0 4.5-6 8.1-6 8.1z" /></svg></span><div><p className="hs-p">{t("Founding families get every feature free until paid plans start.")}</p></div></div></div>
  </div>
 </section><section className="hs hs-wash-d">
  <div className="hs-wrap hs-grid">
@@ -87,7 +87,7 @@ export function RedesignPricing({
     <h2>{t("Founding families join free.")}</h2>
     <p className="hs-close-sub">{t("Founding families get everything free until paid plans start.")}</p>
     <div className="hs-close-cta"><TextDoor className="btn btn-hero" placement="pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor></div>
-    <p className="hs-close-terms">{t("Free to start. You text first; standard message rates apply, reply STOP any time.")}</p>
+    <p className="hs-close-terms">{t("Free. You text first; standard message rates apply, reply STOP any time.")}</p>
    </div>
   </div>
  </div>

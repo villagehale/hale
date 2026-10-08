@@ -66,12 +66,34 @@ export function denyGoogleAds(): void {
   w.gtag('consent', 'update', DENIED);
 }
 
+/**
+ * Expire one `_gcl_*` cookie on the host that set it and on the parent domain.
+ * `_gcl_au` is often written as `Domain=.villagehale.com`, which a host-only
+ * clear leaves in place.
+ */
+export function googleClickCookieClears(hostname: string, name: string): string[] {
+  const clears = [`${name}=; Max-Age=0; path=/`];
+  if (hostname) {
+    clears.push(`${name}=; Max-Age=0; path=/; domain=${hostname}`);
+    const labels = hostname.split('.').filter(Boolean);
+    if (labels.length >= 3) {
+      const parent = labels.slice(1).join('.');
+      clears.push(`${name}=; Max-Age=0; path=/; domain=${parent}`);
+      clears.push(`${name}=; Max-Age=0; path=/; domain=.${parent}`);
+    }
+  }
+  return clears;
+}
+
 /** Drops Google's first-party click cookies when consent is withdrawn. */
 export function clearGoogleClickCookies(): void {
   if (typeof document === 'undefined') return;
+  const host = typeof location === 'undefined' ? '' : location.hostname;
   for (const part of document.cookie.split(';')) {
     const name = part.split('=')[0]?.trim() ?? '';
     if (!name.startsWith('_gcl_')) continue;
-    document.cookie = `${name}=; Max-Age=0; path=/`;
+    for (const directive of googleClickCookieClears(host, name)) {
+      document.cookie = directive;
+    }
   }
 }

@@ -20,6 +20,16 @@ export function updateGalleryFocus(node: HTMLDivElement, lift: number) {
   return { nearest: positions.findIndex((position) => position.distance === distance), distance };
 }
 
+/**
+ * A small drag used to commit the next card. Commit once the swipe crosses the
+ * snap midpoint or about 30% of the card, whichever comes first.
+ */
+export function swipePassesCommit(delta: number, cardWidth: number, stride: number): boolean {
+  if (!(cardWidth > 0) || !(stride > 0)) return false;
+  const limit = Math.min(stride / 2, cardWidth * 0.3);
+  return Math.abs(delta) > limit;
+}
+
 const GALLERY_LABELS = {
   carousel: 'Family group chat examples',
   instructions: 'Swipe or use arrow keys to change the group chat example',
@@ -124,9 +134,12 @@ export function ChatGallery({
           const node = event.currentTarget;
           if (!inFlight.current) {
             const card = node.children.item(current.current) as HTMLElement;
+            const first = node.children.item(0) as HTMLElement | null;
+            const second = node.children.item(1) as HTMLElement | null;
+            const stride = first && second ? second.offsetLeft - first.offsetLeft : card.offsetWidth;
             const delta =
               node.scrollLeft - (card.offsetLeft - (node.clientWidth - card.offsetWidth) / 2);
-            if (Math.abs(delta) > 2) {
+            if (swipePassesCommit(delta, card.offsetWidth, stride)) {
               inFlight.current = true;
               setScrolling(true);
               setActive(Math.max(0, Math.min(count - 1, current.current + Math.sign(delta))));

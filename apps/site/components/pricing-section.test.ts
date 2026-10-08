@@ -210,7 +210,7 @@ describe('PricingSection (landing pricing)', () => {
   });
 
   it('carries the founding-families note for every family until paid plans start', () => {
-    expect(html).toContain('Founding families keep their rate.');
+    expect(html).not.toMatch(/keep\s+their\s+rate/);
     expect(html).toContain('Founding families get every feature free until paid plans start.');
     expect(html).not.toMatch(/first\s+100/);
     expect(html).not.toMatch(/founding\s+badge/);

@@ -1,214 +1,54 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { REGISTRATION_GUIDES } from '~/lib/registration/index.js';
-import { INTAKE_PREFILL, buildSmsHrefForBody } from '~/lib/text-entry.js';
+import { describe, expect, it } from 'vitest';
+import { localeHref } from '~/i18n/navigation.js';
+import { routing } from '~/i18n/routing.js';
+import { SITE_URL } from '~/lib/app-url.js';
 import ActivitiesHub from './[locale]/activities/page.js';
-import BramptonPage, {
-  generateMetadata as bramptonMeta,
-} from './[locale]/brampton-swim-registration/page.js';
-import TorontoFallPage, {
-  generateMetadata as torontoFallMeta,
-} from './[locale]/toronto-fall-recreation-registration/page.js';
-import TorontoSwimPage, {
-  generateMetadata as torontoSwimMeta,
-} from './[locale]/toronto-swim-registration/page.js';
-import YmcaPage, {
-  generateMetadata as ymcaMeta,
-} from './[locale]/ymca-gta-swim-registration/page.js';
+import BramptonPage from './[locale]/brampton-swim-registration/page.js';
+import TorontoFallPage from './[locale]/toronto-fall-recreation-registration/page.js';
+import TorontoSwimPage from './[locale]/toronto-swim-registration/page.js';
+import YmcaPage from './[locale]/ymca-gta-swim-registration/page.js';
+import sitemap from './sitemap.js';
 
-const EN = () => ({ params: Promise.resolve({ locale: 'en' as const }) });
-const LIVE_NUMBER = '+16475551234';
+/**
+ * The four dated city registration guides are retired. Each URL 308s to that
+ * locale's activities hub, and nothing on the site still links to them.
+ */
 
-const PAGES = [
-  {
-    slug: 'toronto-fall-recreation-registration',
-    Page: TorontoFallPage,
-    meta: torontoFallMeta,
-  },
-  {
-    slug: 'toronto-swim-registration',
-    Page: TorontoSwimPage,
-    meta: torontoSwimMeta,
-  },
-  {
-    slug: 'brampton-swim-registration',
-    Page: BramptonPage,
-    meta: bramptonMeta,
-  },
-  {
-    slug: 'ymca-gta-swim-registration',
-    Page: YmcaPage,
-    meta: ymcaMeta,
-  },
+const GUIDES = [
+  { slug: 'toronto-fall-recreation-registration', Page: TorontoFallPage },
+  { slug: 'toronto-swim-registration', Page: TorontoSwimPage },
+  { slug: 'brampton-swim-registration', Page: BramptonPage },
+  { slug: 'ymca-gta-swim-registration', Page: YmcaPage },
 ] as const;
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
-
-async function render(
-  Page: (typeof PAGES)[number]['Page'],
-  locale: 'en' | 'fr' | 'zh' = 'en',
-): Promise<string> {
-  return renderToStaticMarkup(await Page({ params: Promise.resolve({ locale }) }));
-}
-
-describe('city registration routes — landing chrome, not a blog', () => {
-  it('renders all four English routes with About’s chrome and devices', async () => {
-    for (const { slug, Page } of PAGES) {
-      const html = await render(Page);
-      const guide = REGISTRATION_GUIDES.find((g) => g.slug === slug);
-      if (!guide) throw new Error(slug);
-
-      expect(html).toContain('id="main"');
-      expect(html).toContain('v4-nav v4-glass');
-      expect(html).toContain('cta-band');
-      expect(html).toContain('btn-on-navy');
-      expect(html).toContain('band-cream grain');
-      expect(html).toContain('glass-panel numbered-card');
-      expect(html).toContain('pull-word');
-      expect(html).toContain('v4-display');
-      expect(html).toContain('disclosure');
-      expect(html).toContain(
-        guide.h1
-          .map((s) => s.text)
-          .join(' ')
-          .split(' ')[0] ?? '',
-      );
-      expect(html).toContain('application/ld+json');
-      expect(html).toContain('"@type":"FAQPage"');
-      expect(html).toContain('"@type":"Article"');
+describe('dated city registration guides redirect to the activities hub', () => {
+  it.each(routing.locales)('308s every guide for %s', async (locale) => {
+    const dest = localeHref(locale, '/activities');
+    for (const { slug, Page } of GUIDES) {
+      try {
+        await Page({ params: Promise.resolve({ locale }) });
+        throw new Error(`expected a redirect for ${slug}`);
+      } catch (error) {
+        const digest = String((error as { digest?: unknown }).digest);
+        expect(digest, `${locale}/${slug}`).toBe(`NEXT_REDIRECT;replace;${dest};308;`);
+      }
     }
   });
 
-  it('puts the dates table and an official URL in the cream band', async () => {
-    for (const { slug, Page } of PAGES) {
-      const html = await render(Page);
-      const guide = REGISTRATION_GUIDES.find((g) => g.slug === slug);
-      if (!guide) throw new Error(slug);
-      expect(html).toContain('<table');
-      expect(html).toContain('tabular');
-      expect(html).toContain(guide.officialUrls[0]?.href);
-      expect(html).toContain(guide.dateRows[0]?.when);
+  it('keeps the guides out of the sitemap and off the activities hub', async () => {
+    const urls = sitemap().map((entry) => entry.url);
+    expect(urls).toContain(`${SITE_URL}/activities`);
+    for (const { slug } of GUIDES) {
+      expect(urls.filter((url) => url.includes(slug))).toEqual([]);
     }
-  });
-
-  it('keeps its own composer deep links in the body, arms the desktop paths — the ad funnel never detours', async () => {
-    // Until the 2026-08 ad-week audit this pinned the ABSENCE of the copy chip;
-    // two high-intent desktop researchers then clicked dead sms: links, so the
-    // pin now points the other way (rule #11 applied to the funnel): the chip
-    // and the QR of the same URI are REQUIRED beside the band CTA. What stays
-    // forbidden is the detour: the header pill may open the /text chooser like
-    // everywhere else (F14), but the BODY's money CTAs stay direct `sms:` deep
-    // links — zero added hops for the ad click (the spec's accepted call).
-    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
-    for (const { Page } of PAGES) {
-      const html = await render(Page);
-      const body = html
-        .replace(/<header[\s\S]*?<\/header>/, '')
-        .replace(/<footer[\s\S]*?<\/footer>/, '');
-      expect(body).toContain('href="sms:');
-      expect(body).toContain('data-cta="cta_text_click"');
-      expect(body).toContain('data-cta-channel="sms"');
-      expect(body).toContain('data-cta="copy_number_click"');
-      expect(body).toContain('aria-label="QR code — scan to text Hale"');
-      // The QR block must stay a DESKTOP affordance: hidden on phones (where the
-      // sms: CTA works) and flex from sm: up. CSS-hiding it everywhere would pass
-      // the presence pins above while re-opening the desktop dead-end.
-      expect(body).toMatch(
-        /class="[^"]*\bhidden\b[^"]*\bsm:flex\b[^"]*"[^>]*>(?:(?!<\/div>).)*aria-label="QR code/s,
-      );
-      expect(body).toContain('On a laptop?');
-      // No in-body hop to the chooser — /text belongs to the chrome pill alone.
-      expect(body).not.toContain('href="/text"');
-    }
-  });
-
-  it('offers the composer where the reading happens — a dates-band CTA per guide', async () => {
-    // 34 real-parent ad clicks produced 1 CTA click while the only in-body CTA
-    // sat below ~8 sections; the dates table is what the ad promised, so the
-    // door is beside it, on its own placement so the two doors stay separable.
-    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
-    for (const { slug, Page } of PAGES) {
-      const html = await render(Page);
-      const guide = REGISTRATION_GUIDES.find((g) => g.slug === slug);
-      if (!guide) throw new Error(slug);
-      expect(html).toContain(`data-cta-placement="${guide.placement}_dates"`);
-      expect(html).toContain(`data-cta-placement="${guide.placement}"`);
-    }
-  });
-
-  it('prefills Brampton Text Hale with the locked hello — no dummy family, not a swim question', async () => {
-    // Founder lock 2026-09-01 /text expectations: every composer body is
-    // 'Hi Hale' — codes ride only in /text's ?s= links, never in a page body.
-    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
-    const html = await render(BramptonPage);
-    const locked = buildSmsHrefForBody(LIVE_NUMBER, INTAKE_PREFILL);
-    expect(html).toContain(locked.replaceAll('&', '&amp;'));
-    const body = html
-      .replace(/<header[\s\S]*?<\/header>/, '')
-      .replace(/<footer[\s\S]*?<\/footer>/, '');
-    expect(body).not.toContain('L3R');
-    expect(html).not.toMatch(/body=When%20does%20swim/);
-  });
-
-  it('does not print Hale’s number as readable text on the page body', async () => {
-    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
-    for (const { Page } of PAGES) {
-      const html = await render(Page);
-      const body = html
-        .replace(/<header[\s\S]*?<\/header>/, '')
-        .replace(/<footer[\s\S]*?<\/footer>/, '');
-      expect(body).not.toContain('(647)');
-      expect(body).not.toContain('647-555');
-      expect(body).not.toContain('+1 (647)');
-    }
-  });
-
-  it('never inbound-links /answers from the page body, and never ships the held-back city URLs', async () => {
-    for (const { Page } of PAGES) {
-      const html = await render(Page);
-      const body = html.replace(/<footer[\s\S]*?<\/footer>/, '');
-      expect(body).not.toContain('href="/answers');
-      expect(html).not.toContain('/york-region-swim-registration');
-      expect(html).not.toContain('/vaughan-recreation-registration');
-      expect(html).not.toContain('/vaughan-swim-registration');
-      expect(html).not.toContain('/mississauga-swim-registration');
-    }
-  });
-
-  it('cross-links Toronto fall-rec and Toronto swim once each', async () => {
-    const fall = await render(TorontoFallPage);
-    const swim = await render(TorontoSwimPage);
-    expect(fall).toContain('href="/toronto-swim-registration"');
-    expect(swim).toContain('href="/toronto-fall-recreation-registration"');
-    expect([...fall.matchAll(/href="\/toronto-swim-registration"/g)]).toHaveLength(1);
-    expect([...swim.matchAll(/href="\/toronto-fall-recreation-registration"/g)]).toHaveLength(1);
-  });
-
-  it('emits a canonical without claiming FR/ZH translations that do not exist', async () => {
-    for (const { slug, meta } of PAGES) {
-      const metadata = await meta(EN());
-      expect(metadata.alternates?.canonical).toBe(`/${slug}`);
-      expect(metadata.alternates?.languages).toBeUndefined();
-      expect(metadata.title).toBeTruthy();
-      expect(metadata.description).toBeTruthy();
-    }
-  });
-
-  it('keeps dated registration URLs off the activities hub, and no city-guide links', async () => {
-    for (const locale of ['en', 'fr'] as const) {
+    for (const locale of routing.locales) {
       const html = renderToStaticMarkup(
         await ActivitiesHub({ params: Promise.resolve({ locale }) }),
       );
-      const prefix = locale === 'en' ? '' : `/${locale}`;
-      expect(html).not.toContain(`${prefix}/activities/toronto`);
-      expect(html).not.toContain(`${prefix}/activities/montreal`);
-      expect(html).not.toContain('By city');
-      expect(html).not.toContain('Par ville');
-      expect(html).not.toContain('toronto-fall-recreation-registration');
-      expect(html).not.toContain('toronto-swim-registration');
-      expect(html).not.toContain('brampton-swim-registration');
+      for (const { slug } of GUIDES) {
+        expect(html).not.toContain(slug);
+      }
     }
   });
 });

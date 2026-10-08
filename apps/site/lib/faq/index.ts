@@ -84,7 +84,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'Is it free?',
     answer:
-      'Yes. Free stays free. Families who join now get every feature free until paid plans start.',
+      'Yes. Hale is free, with unlimited chat. Families who join now get every feature free until paid plans start.',
   },
   {
     question: 'What happens to our data?',
