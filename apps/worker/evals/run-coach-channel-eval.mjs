@@ -357,6 +357,13 @@ function sentences(body) {
     .filter((part) => part.trim().length > 0);
 }
 
+/** Two GSM-7 segments, mirroring replyCharacterRoom in reply.ts. */
+function replyCharacterRoom(suffix) {
+  const tail = String(suffix ?? '').trim();
+  const reserved = tail === '' ? 0 : tail.length + 1;
+  return 306 - reserved;
+}
+
 function fitToBudget(body, max, suffix = '') {
   const withSuffix = (text) => (suffix === '' ? text : `${text} ${suffix}`);
   if (smsSegments(withSuffix(body)) <= max) return body;
@@ -365,11 +372,8 @@ function fitToBudget(body, max, suffix = '') {
     const candidate = parts.slice(0, count).join(' ');
     if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
-  const words = (parts[0] ?? body).split(' ');
-  for (let count = words.length - 1; count >= 1; count -= 1) {
-    const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
-  }
+  // No complete sentence fits. The caller asks for one shorter rewrite. A
+  // mid-sentence "..." is not a sentence, and it is not sent.
   return null;
 }
 
@@ -510,6 +514,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby) {
     return clause === null ? fittedAlone : `${fittedAlone} ${clause}`;
   }
   const fitted = fitToBudget(dropDuplicateOffer(redacted, suffix), MAX_REPLY_SEGMENTS, suffix);
+  if (fitted === null) return null;
   return `${fitted} ${suffix}`;
 }
 
@@ -773,7 +778,7 @@ function buildFixtureTools(agent, calls, village, spots) {
   const findActivities = agent.defineTool({
     name: 'find_activities',
     description:
-      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no age, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly; any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. A checked find is the answer, handed over with no question after it. The age band and the town are attached from their record.",
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no age, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly; any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the town are attached from their record.",
     inputSchema: z.object({
       subject: z.string().min(1),
       window: z.string().optional(),
@@ -1801,6 +1806,9 @@ async function main() {
   const subjectLatencies = [];
 
   const skill = await agent.loadSkill(SKILL_PATH);
+  const shortenSkill = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-shorten.md'),
+  );
   const model =
     process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
   // Sonnet, not the Haiku the other evals judge with. Scoring a two-sentence text
@@ -1939,14 +1947,49 @@ async function main() {
       }
       truncatedRetries = run.truncatedRetries;
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
+      const offerSentence = calls.find((call) => call.tool === 'offer_full_plan')?.offer;
+      const referralBlock = forward ? `${forward} ${FIXTURE_REFERRAL_LINK}` : undefined;
       composed = run.answer;
-      reply = toSmsReply(
-        run.answer,
-        children,
-        calls.find((call) => call.tool === 'offer_full_plan')?.offer,
-        forward ? `${forward} ${FIXTURE_REFERRAL_LINK}` : undefined,
-        fixture.nearby,
-      );
+      reply = toSmsReply(run.answer, children, offerSentence, referralBlock, fixture.nearby);
+      // One shorter rewrite when no complete sentence fit. The same cached client
+      // keys it: a different system prompt is a different entry, and only a turn
+      // that actually overflowed writes one. The composed gate then grades the
+      // rewrite, which is the text that can be sent.
+      if (reply === null && plainText(run.answer) !== '') {
+        const suffix = redactTeenNames(
+          [offerSentence, referralBlock]
+            .map((part) => part?.trim() ?? '')
+            .filter((part) => part !== '')
+            .join(' '),
+          children,
+          NOW,
+        );
+        const lane = agent.withoutThinking(agent.pickLane(shortenSkill.meta.task));
+        if (!lane) throw new Error('coach-channel-shorten has no thinking-off lane');
+        const response = await client.messages.create({
+          ...agent.laneRequestFields(lane),
+          max_tokens: 200,
+          system: shortenSkill.instructions,
+          messages: [
+            {
+              role: 'user',
+              content: JSON.stringify({
+                ceiling: replyCharacterRoom(suffix),
+                text: plainText(run.answer),
+              }),
+            },
+          ],
+        });
+        const shorter = (response.content ?? [])
+          .filter((block) => block.type === 'text')
+          .map((block) => block.text)
+          .join('')
+          .trim();
+        if (shorter) {
+          composed = shorter;
+          reply = toSmsReply(shorter, children, offerSentence, referralBlock, fixture.nearby);
+        }
+      }
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.
       toolResults = auditLog.map((entry) => entry.after);

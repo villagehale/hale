@@ -85,9 +85,11 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
 
   /**
    * VIL-365 · a bare activity ask, and a what's-going-on ask, search the village
-   * before any question. A checked find is the answer and the turn stops. The
+   * before any question. A day or a place also reads the family's own week, and
+   * that day comes first. A checked find follows it and the turn stops. The
    * live web is only when the radar has nothing to hand over. A full class with
-   * no link still asks for the page, and does not promise a text.
+   * no link still asks for the page. Coaching is one sentence under 200
+   * characters, and the skill never narrates what it has verified.
    */
   it('tells the coach to search before asking when a parent wants activities', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
@@ -102,11 +104,24 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).toContain('Anything going on Saturday');
     expect(skill.instructions).toContain("who's around this weekend");
     expect(skill.instructions).toContain('The live web only when');
+    expect(skill.instructions).toContain('Their own day comes first');
+    expect(skill.instructions).toContain('Under 200 characters');
+    expect(skill.instructions).not.toContain("what I've got verified");
     expect(skill.instructions).toContain('not them asking that nearby question again');
     expect(skill.instructions).toContain('Do not search instead of asking');
     expect(skill.instructions).toContain('Do not add a question offering to look again');
     expect(find.description).toContain('do not stop to ask which child');
     expect(find.description).toContain('do not call this beside a checked find');
+    expect(find.description).toContain('their own week comes first');
     expect(find.description).not.toContain('even when the radar already has a find');
+  });
+
+  it('loads the shorten skill as a tool-less rewrite, not a canned reply', async () => {
+    const skill = await loadCronSkill('coach-channel-shorten');
+
+    expect(skill.meta.task).toBe('converse');
+    expect(skill.meta.tools).toEqual([]);
+    expect(skill.instructions).toContain('ceiling');
+    expect(skill.instructions).toContain('Do not cut a sentence in half');
   });
 });

@@ -61,7 +61,8 @@ import {
   loadRegistrationWindows,
   productionRegistrationContextPorts,
 } from './registration-context';
-import { type ReplyChild, toSmsReply } from './reply';
+import { type ReplyChild, ReplyNeedsShorter, redactTeenNames, replyCharacterRoom, toSmsReply } from './reply';
+import { shortenOverBudgetReply } from './shorten';
 import {
   type TurnOfferLedger,
   buildChannelCoachTools,
@@ -431,7 +432,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               new GmailDraftNoticeUnsent(),
             );
           }
-          const reply = toSmsReply(spoken, {
+          const smsArgs = {
             children,
             now,
             ...(noticeReady
@@ -444,7 +445,54 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                     trimmedOverBy = overBy;
                   },
                 }),
-          });
+          };
+          // A first sentence that does not fit is not trimmed. One rewrite, from the
+          // shorten skill, then the same fit. A second miss fails the turn: the router
+          // owns the honesty line, and this path never substitutes a fixed sentence.
+          let reply: string;
+          try {
+            reply = toSmsReply(spoken, smsArgs);
+          } catch (err) {
+            if (!(err instanceof ReplyNeedsShorter)) throw err;
+            const suffix = noticeReady
+              ? ''
+              : redactTeenNames(
+                  [offer?.sentence, share ? referralBlock(share) : undefined]
+                    .map((part) => part?.trim() ?? '')
+                    .filter((part) => part !== '')
+                    .join(' '),
+                  children,
+                  now,
+                );
+            let shorter: string | null;
+            try {
+              shorter = await shortenOverBudgetReply(
+                ports.client(),
+                spoken,
+                replyCharacterRoom(suffix),
+              );
+            } catch (cause) {
+              await ports.recordRun(record('failed'));
+              throw failed('channel coach: shorter rewrite failed', cause);
+            }
+            if (!shorter) {
+              await ports.recordRun(record('failed'));
+              throw failed('channel coach: shorter rewrite was empty');
+            }
+            try {
+              reply = toSmsReply(shorter, smsArgs);
+            } catch (again) {
+              await ports.recordRun(record('failed'));
+              throw failed(
+                again instanceof ReplyNeedsShorter
+                  ? 'channel coach: shorter rewrite still had no complete sentence inside the segment budget'
+                  : again instanceof Error
+                    ? again.message
+                    : 'channel coach: shorter rewrite could not be sent',
+                again,
+              );
+            }
+          }
           if (trimmedOverBy !== null) {
             await captureAgentError({
               lane: 'reply_budget',
