@@ -10,15 +10,15 @@ import { getTranslator, isoToDate } from '~/i18n/server';
 /**
  * The long-form shell for /terms and /privacy on the marketing domain
  * (VIL-250 · M14 · B-legal): the brand line, a reading column, an in-page table
- * of contents that becomes a sticky sidebar on desktop, the not-legal-advice
- * note, and the cross-link to the other policy. Pages own only their copy.
+ * of contents that becomes a sticky sidebar on desktop, and the cross-link
+ * to the other policy. Pages own only their copy.
  *
  * The redesign wears the same site header and footer as every other page.
  * The policy itself stays a document: shore title, sticky contents, frosted
  * panel, and no closing band.
  *
  * The shell chrome (the "Legal" eyebrow, the last-updated line, the
- * not-legal-advice note, the table-of-contents heading, the cross-link lead-in)
+ * table-of-contents heading, the cross-link lead-in)
  * is localized; the policy title, sections, and body are supplied by the page and
  * remain in English until a professional legal translation lands.
  */
@@ -74,9 +74,6 @@ export function LegalLayout({
               <LegalToc label={t('onThisPage')} sections={sections} />
               <article className="hs-glass lg-doc">
                 <div className="legal-intro">{intro}</div>
-                <p>
-                  <em>{t('disclaimer')}</em>
-                </p>
                 {children}
                 <p>
                   {t('seeAlsoPre')}{' '}

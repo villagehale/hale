@@ -135,11 +135,23 @@ describe('legal pages (long-form shell)', () => {
     }
   });
 
-  it('says plainly that the document is not legal advice', () => {
-    for (const html of [termsHtml, privacyHtml]) {
-      expect(html).toContain('is not legal advice');
-      // The review-before-relying sentence is gone from the public pages.
-      const phrase = (parts: readonly string[]) => parts.join('');
+  it('does not carry a good-faith notice on either policy', async () => {
+    const fr = { params: Promise.resolve({ locale: 'fr' as const }) };
+    const zh = { params: Promise.resolve({ locale: 'zh' as const }) };
+    const pages = [
+      termsHtml,
+      privacyHtml,
+      renderToStaticMarkup(await TermsPage(fr)),
+      renderToStaticMarkup(await PrivacyPage(fr)),
+      renderToStaticMarkup(await TermsPage(zh)),
+      renderToStaticMarkup(await PrivacyPage(zh)),
+    ];
+    const phrase = (parts: readonly string[]) => parts.join('');
+    for (const html of pages) {
+      expect(html).not.toContain(phrase(['not legal ', 'advice']));
+      expect(html).not.toContain(phrase(['bonne ', 'foi']));
+      expect(html).not.toContain(phrase(['avis ', 'juridique']));
+      expect(html).not.toContain(phrase(['不构成法律', '建议']));
       expect(html).not.toContain(phrase(['qual', 'ified ', 'law', 'yer']));
       expect(html).not.toContain(phrase(['avo', 'cat']));
       expect(html).not.toContain(phrase(['\u5f8b', '\u5e08']));

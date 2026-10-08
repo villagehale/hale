@@ -465,7 +465,6 @@
   "Legal": {
     "eyebrow": "Legal",
     "lastUpdated": "Last updated {date, date, long}",
-    "disclaimer": "This document is provided in good faith but is not legal advice.",
     "onThisPage": "On this page",
     "seeAlsoPre": "See also our"
   },
