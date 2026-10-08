@@ -1,12 +1,27 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useState } from 'react';
 import {
   clearGoogleClickCookies,
   denyGoogleAds,
   installGoogleAds,
 } from '~/lib/analytics/google-ads-client';
 import { CONSENT_OPEN_EVENT, readConsent, writeConsent } from '~/lib/site/consent';
+
+/** Keeps the last ZH clause on one line so a single character is not stranded. */
+const ZH_UNBROKEN = '什么都不会加载。';
+
+function ConsentSentence({ text }: { text: string }): ReactNode {
+  const at = text.indexOf(ZH_UNBROKEN);
+  if (at === -1) return text;
+  return (
+    <>
+      {text.slice(0, at)}
+      <span className="consent-nowrap">{ZH_UNBROKEN}</span>
+      {text.slice(at + ZH_UNBROKEN.length)}
+    </>
+  );
+}
 
 export function ConsentBanner({
   privacyHref,
@@ -65,14 +80,20 @@ export function ConsentBanner({
         {regionLabel}
       </h2>
       <p className="consent-text">
-        {text}{' '}
-        <a href={privacyHref}>{privacyLabel}</a>
+        <ConsentSentence text={text} />
+        <span className="consent-inline">
+          {' '}
+          <a href={privacyHref}>{privacyLabel}</a>
+        </span>
       </p>
       <div className="consent-actions">
-        <button type="button" onClick={reject}>
+        <a className="consent-policy" href={privacyHref}>
+          {privacyLabel}
+        </a>
+        <button type="button" className="is-reject" onClick={reject}>
           {rejectLabel}
         </button>
-        <button type="button" onClick={accept}>
+        <button type="button" className="is-accept" onClick={accept}>
           {acceptLabel}
         </button>
       </div>
