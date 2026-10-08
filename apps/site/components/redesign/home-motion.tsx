@@ -15,7 +15,7 @@ export function HomeMotion() {
     const reduced = matchMedia('(prefers-reduced-motion: reduce)');
     let observer: IntersectionObserver | undefined;
     let scenes = new Map<Element, Animation[]>();
-    let holdTimer: number | undefined;
+    let holdTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
     let holdUntil = 0;
     let holdRemaining = HERO_HOLD_MS;
     let holding = false;
