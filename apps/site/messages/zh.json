@@ -2,10 +2,11 @@
   "Common": {
     "textHale": "给 Hale 发短信",
     "emailHale": "给 Hale 发邮件",
-    "skipToContent": "跳至正文"
+    "skipToContent": "跳至正文",
+    "notFoundTitle": "找不到这个页面 · Hale"
   },
   "HomeMeta": {
-    "title": "Hale · 孩子这一年的规划",
+    "title": "孩子这一年，交给 Hale",
     "description": "孩子这一年，交给 Hale。Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。不用装应用，不用注册账号。",
     "ogDescription": "孩子这一年，交给 Hale。Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。不用装应用，不用注册账号。",
     "twitterDescription": "孩子这一年，交给 Hale。值得和孩子一起做的事。"

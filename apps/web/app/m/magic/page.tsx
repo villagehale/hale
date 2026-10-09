@@ -1,4 +1,7 @@
+import type { Metadata } from 'next';
 import { AuthShell } from '~/components/hale/auth-shell';
+
+export const metadata: Metadata = { title: { absolute: 'Open Hale' } };
 
 export const dynamic = 'force-dynamic';
 

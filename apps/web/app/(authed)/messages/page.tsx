@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { MessagesMasterDetail } from '~/components/hale/messages-master-detail';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { loadMessages } from '~/lib/messages/queries';
+
+export const metadata: Metadata = { title: 'Messages' };
 
 /**
  * Messages — the record of the action lifecycle a parent should see. Flag-on is

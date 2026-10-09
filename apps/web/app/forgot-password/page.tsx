@@ -1,7 +1,10 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ForgotPasswordForm } from '~/components/hale/forgot-password-form';
 import { credentialsConfigured } from '~/lib/auth-config';
+
+export const metadata: Metadata = { title: 'Reset password' };
 
 // AUTH_SECRET is runtime-only (see /sign-up), so evaluate configuredness at request
 // time rather than caching a build-time "not configured" fallback.
@@ -12,8 +15,8 @@ export default function ForgotPasswordPage() {
     return (
       <AuthShell heading="Reset your password">
         <p className="meta">
-          Password reset isn&rsquo;t available in this preview — email sign-in isn&rsquo;t configured
-          here.
+          Password reset isn&rsquo;t available in this preview — email sign-in isn&rsquo;t
+          configured here.
         </p>
       </AuthShell>
     );

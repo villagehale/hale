@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { PrivacyNote } from '~/components/hale/privacy-note';
@@ -9,6 +10,8 @@ import { loadCuratedResources } from '~/lib/village/curated-resources';
 import { loadVillageFeed } from '~/lib/village/feed';
 import { loadSavedVillageCandidates } from '~/lib/village/queries';
 import { seasonFromParam } from '~/lib/village/season-selector-ui';
+
+export const metadata: Metadata = { title: 'Village' };
 
 // The Village AI search Server Action (searchVillageAction) runs under this segment
 // and kicks a FRESH discovery run in after() — a bounded Anthropic call that takes far

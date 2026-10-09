@@ -6,6 +6,7 @@ import {
   connectPreviewEnabled,
   connectedStatus,
   isConnectPreviewState,
+  withHaleSuffix,
 } from '~/lib/channel/connect/connect-page-copy';
 import { haleTextsHref } from '~/lib/channel/connect/hale-texts-href';
 
@@ -24,13 +25,18 @@ interface PageProps {
 
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
   const { provider, status, lang, fresh } = await searchParams;
+  // `who` stays out of the title. The aria label is the card's accessible name
+  // and is not the tab title.
   const notice = connectedStatus(status, provider, {
     language: lang === 'fr' ? 'fr' : 'en',
     freshLink: fresh === 'sent',
   });
+  const socialTitle = withHaleSuffix(notice.tabTitle);
   return {
-    title: notice.aria,
+    title: notice.tabTitle,
     robots: { index: false, follow: false },
+    openGraph: { title: socialTitle },
+    twitter: { title: socialTitle },
   };
 }
 

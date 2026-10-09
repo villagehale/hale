@@ -1,16 +1,13 @@
 import { ArrowRight } from 'lucide-react';
+import type { Metadata } from 'next';
 import { AddPlan } from '~/components/hale/add-plan';
 import { scopeChildren } from '~/components/hale/child-scope-core';
-import {
-  AuthoredPlanCard,
-  DaySpineRow,
-  PlanItemCard,
-} from '~/components/hale/plan-cards';
+import { AuthoredPlanCard, DaySpineRow, PlanItemCard } from '~/components/hale/plan-cards';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import {
   WeekPlanCard,
-  WeekPlanToday,
   type WeekPlanKid,
+  WeekPlanToday,
   itemNeedsOk,
 } from '~/components/hale/week-plan-card';
 import { Card } from '~/components/ui/card';
@@ -26,6 +23,8 @@ import { loadAuthoredPlans } from '~/lib/plan/authored';
 import { buildPlanSpine, dayKeyIn, weekWindow } from '~/lib/plan/spine';
 import { planChildItems } from '~/lib/plan/week';
 import { loadVillage } from '~/lib/village/queries';
+
+export const metadata: Metadata = { title: 'Week' };
 
 /** A clean, minimal section label (Notion/Linear register) — small, muted,
  * spaced above its content. Replaces the editorial label-rail gutters. */
@@ -59,10 +58,7 @@ export default async function PlanPage() {
   const hasAuthored = spineHasDated || spine.undated.length > 0;
 
   const hasPlan =
-    childItems.length > 0 ||
-    addedActivities.length > 0 ||
-    hasAuthored ||
-    spine.settled.length > 0;
+    childItems.length > 0 || addedActivities.length > 0 || hasAuthored || spine.settled.length > 0;
 
   const kids = scopeChildren(children);
 
@@ -160,9 +156,7 @@ export default async function PlanPage() {
               const kindLabel = villageKindLabel(candidate.kind);
               return (
                 <Card key={candidate.id} href="/village">
-                  {kindLabel ? (
-                    <span className="eyebrow text-ink">{kindLabel}</span>
-                  ) : null}
+                  {kindLabel ? <span className="eyebrow text-ink">{kindLabel}</span> : null}
                   <p className="text-lg text-ink leading-relaxed mt-3">{candidate.title}</p>
                   <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
                     open in village

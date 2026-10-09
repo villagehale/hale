@@ -1,7 +1,10 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ResetPasswordForm } from '~/components/hale/reset-password-form';
 import { credentialsConfigured } from '~/lib/auth-config';
+
+export const metadata: Metadata = { title: 'New password' };
 
 export const dynamic = 'force-dynamic';
 

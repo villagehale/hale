@@ -37,14 +37,18 @@ describe('activityShareMeta', () => {
 
   it('uses the (public, capped) activity title as the share title (not the generic tagline)', () => {
     const meta = activityShareMeta(card);
-    expect(meta.title).toBe('Riverdale Saturday swim drop-in · Hale');
-    expect(String(meta.title).toLowerCase()).not.toContain(GENERIC_TAGLINE);
+    expect(meta.title).toEqual({ absolute: 'Riverdale Saturday swim drop-in · Hale' });
+    expect(JSON.stringify(meta.title).toLowerCase()).not.toContain(GENERIC_TAGLINE);
     expect(String(meta.description)).toContain('M4L');
+    expect(String(meta.description)).not.toContain('family assistant');
+    expect(String(meta.description)).toBe(
+      'A genuinely good local thing for families near M4L — shared from Hale.',
+    );
   });
 
   it('sets openGraph (article, en_CA) and a summary_large_image twitter card', () => {
     const meta = activityShareMeta(card);
-    expect(meta.openGraph?.title).toBe(meta.title);
+    expect(meta.openGraph?.title).toBe('Riverdale Saturday swim drop-in · Hale');
     expect(meta.openGraph?.description).toBe(meta.description);
     expect((meta.openGraph as { locale?: string }).locale).toBe('en_CA');
     expect((meta.openGraph as { siteName?: string }).siteName).toBe('Hale');
@@ -58,8 +62,8 @@ describe('activityShareMeta', () => {
 
   it('falls back to sane branded copy for a null (revoked/child-attributed) card', () => {
     const meta = activityShareMeta(null);
-    expect(meta.title).toBe('a local pick · Hale');
-    expect(String(meta.title)).not.toContain('undefined');
+    expect(meta.title).toEqual({ absolute: 'A local pick · Hale' });
+    expect(JSON.stringify(meta.title)).not.toContain('undefined');
     expect((meta.twitter as { card?: string })?.card).toBe('summary_large_image');
   });
 });
@@ -68,7 +72,14 @@ describe('share-meta — PII safety (rule #1)', () => {
   it('never emits a full name or street: only coarse area + safe fields are ever inputs', () => {
     const activityMeta = activityShareMeta({
       areaCoarse: AREA,
-      activity: { title: 'Family swim', kind: 'drop_in', summary: '', sourceUrl: null, coverageNote: null, endorsementCount: 2 },
+      activity: {
+        title: 'Family swim',
+        kind: 'drop_in',
+        summary: '',
+        sourceUrl: null,
+        coverageNote: null,
+        endorsementCount: 2,
+      },
     });
 
     const text = metaText(activityMeta);

@@ -21,7 +21,8 @@ import type { PublicActivityCard } from './public-activity.js';
 /** Shared openGraph/twitter scaffold so every share card is Meadow-consistent. */
 function shareMetadata(title: string, description: string): Metadata {
   return {
-    title,
+    // Absolute, so the portal "%s · Hale" template does not suffix these twice.
+    title: { absolute: title },
     description,
     openGraph: {
       type: 'article',
@@ -46,12 +47,12 @@ function nearArea(area: string | null): string {
 export function activityShareMeta(card: PublicActivityCard | null): Metadata {
   if (!card) {
     return shareMetadata(
-      'a local pick · Hale',
+      'A local pick · Hale',
       'A genuinely good local thing for families, gathered by Hale.',
     );
   }
 
   const title = `${card.activity.title} · Hale`;
-  const description = `A genuinely good local thing for families${nearArea(card.areaCoarse)} — shared from Hale, the family assistant you text.`;
+  const description = `A genuinely good local thing for families${nearArea(card.areaCoarse)} — shared from Hale.`;
   return shareMetadata(title, description);
 }

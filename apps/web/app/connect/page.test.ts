@@ -77,7 +77,10 @@ describe('/connect — the texted redeem page', () => {
     );
     expect(gmail.title).toBe('Connect Gmail');
     expect(gmail.description).toBe('So Hale can flag daycare and school notices for you.');
-    expect(calendar.openGraph?.title).toBe(calendar.title);
+    // Document titles stay bare (the layout template suffixes them). Previews
+    // are not templated, so they carry the full string.
+    expect(calendar.openGraph?.title).toBe('Connect your calendar · Hale');
+    expect(gmail.openGraph?.title).toBe('Connect Gmail · Hale');
     expect(gmail.openGraph?.description).toBe(gmail.description);
     expect(JSON.stringify(calendar)).not.toContain('secret-token');
     expect(JSON.stringify(gmail)).not.toContain('secret-token');

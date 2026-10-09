@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { signIn } from '~/auth';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ClaimByPhoneForm } from '~/components/hale/claim-by-phone-form';
@@ -10,6 +11,8 @@ import { haleTextsNumber } from '~/lib/channel/connect/hale-texts-href';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
 import { parsePortalSourceCode } from '~/lib/text-hale-target';
+
+export const metadata: Metadata = { title: 'Sign in' };
 
 // AUTH_SECRET is a runtime-only secret, so evaluate configuredness at request time
 // rather than caching a build-time "not configured" fallback.

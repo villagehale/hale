@@ -8,6 +8,7 @@ import { allAnswers, getAnswer } from '~/lib/answers/index';
 import { answerJsonLd } from '~/lib/answers/structured-data';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
+import { notFoundMetadata } from '~/lib/site/not-found-copy';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -22,7 +23,9 @@ export function generateStaticParams(): { slug: string }[] {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { locale, slug } = await params;
   const page = getAnswer(slug);
-  if (!page) return {};
+  // An unknown slug is a 404. Returning {} would leave the homepage title on
+  // the tab; the not-found title is the same string the 404 page emits.
+  if (!page) return notFoundMetadata(locale);
 
   const canonical = `/answers/${page.slug}`;
   const title = `${page.title} · Hale`;

@@ -2,13 +2,14 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { portalDemoEnabled } from '~/lib/flags/portal-demo';
+import { DEMO_TITLE } from '~/lib/portal/document-title';
 
 // VERCEL_ENV is a runtime fact. A production build must not bake the demo in.
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
-  title: 'Hale · preview',
+  title: DEMO_TITLE,
 };
 
 /**

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ApprovalCard, ReversibleCard } from '~/components/hale/approval-card';
 import { ApprovalsHeader } from '~/components/hale/approvals-header';
@@ -8,6 +9,8 @@ import {
   loadPendingApprovals,
   loadResolvedActions,
 } from '~/lib/dashboard/queries';
+
+export const metadata: Metadata = { title: 'Approvals' };
 
 /**
  * The Approvals surface — the parent-facing queue of drafts the inbound pipeline
@@ -42,9 +45,9 @@ export default async function ApprovalsPage() {
       ) : null}
 
       {/* The other half of consent: something Hale already did that can still be taken
-        * back. Only calendar placements inside the 24h window appear (HistoryView.
-        * undoable, derived from the same gate the server enforces), so this section is
-        * empty almost always and never offers a control the reversal would refuse. */}
+       * back. Only calendar placements inside the 24h window appear (HistoryView.
+       * undoable, derived from the same gate the server enforces), so this section is
+       * empty almost always and never offers a control the reversal would refuse. */}
       {reversible.length > 0 ? (
         <div className="rise rise-3 mt-8">
           <h2 className="text-ink">Still reversible</h2>
@@ -69,7 +72,7 @@ export default async function ApprovalsPage() {
       ) : null}
 
       {/* The nav's Home stop; the Trail left the nav (Instinct refresh), so the full
-        * record hangs off this foot link — always, not only when something is pending. */}
+       * record hangs off this foot link — always, not only when something is pending. */}
       <div className="rise rise-3 mt-8">
         <Link href={HISTORY_NAV.href} className="link inline-block">
           The full record →

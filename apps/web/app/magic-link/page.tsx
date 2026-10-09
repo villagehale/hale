@@ -1,8 +1,11 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { MagicLinkRedeem } from '~/components/hale/magic-link-redeem';
 import { credentialsConfigured } from '~/lib/auth-config';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
+
+export const metadata: Metadata = { title: 'Sign in' };
 
 export const dynamic = 'force-dynamic';
 

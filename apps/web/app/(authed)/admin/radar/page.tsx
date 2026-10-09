@@ -1,18 +1,21 @@
+import type { Metadata } from 'next';
 import nextDynamic from 'next/dynamic';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
 import { RadarTimeline } from '~/components/admin/radar-timeline';
 import { cachedRadar, cachedWatchedSpots } from '~/lib/admin/cached';
 import { supabaseTableUrl } from '~/lib/admin/links';
 import {
-  freshnessTone,
-  minutesAgo,
   STALE_POLL_MINUTES,
   STALE_VERIFY_DAYS,
+  freshnessTone,
+  minutesAgo,
 } from '~/lib/admin/panel-state';
 
 const DataTable = nextDynamic(() =>
   import('~/components/admin/data-table').then((m) => m.DataTable),
 );
+
+export const metadata: Metadata = { title: 'Radar' };
 
 /** Radar — "Is the flagship's data fresh, and what opens next?" */
 

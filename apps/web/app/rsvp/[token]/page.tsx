@@ -47,7 +47,7 @@ async function load(token: string): Promise<PartyCard | null> {
  * service that nobody in this exchange chose.
  */
 export const metadata: Metadata = {
-  title: "You're invited · Hale",
+  title: "You're invited",
   description: 'An invitation. Open it to RSVP.',
   robots: { index: false, follow: false },
 };

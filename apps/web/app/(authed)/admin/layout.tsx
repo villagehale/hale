@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { AdminTabs } from '~/components/admin/admin-tabs';
 import { WindowDial, WindowDialProvider } from '~/components/admin/window-dial';
 import { resolveAdminGate } from '~/lib/admin/gate';
+import { ADMIN_TITLE } from '~/lib/portal/document-title';
 import './admin.css';
 
 // The gate reads the live session + env allowlist on every request — never
@@ -10,7 +11,7 @@ import './admin.css';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Hale / admin',
+  title: ADMIN_TITLE,
   robots: { index: false, follow: false },
 };
 

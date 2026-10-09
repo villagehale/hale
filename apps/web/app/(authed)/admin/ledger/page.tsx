@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import nextDynamic from 'next/dynamic';
 import { AuditMixClient } from '~/components/admin/bar-list-client';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
@@ -11,6 +12,8 @@ const DataTable = nextDynamic(() =>
 const BarsChart = nextDynamic(() =>
   import('~/components/admin/bars-chart').then((m) => m.BarsChart),
 );
+
+export const metadata: Metadata = { title: 'Ledger' };
 
 /** Ledger — "What has Hale actually done, on the record?" */
 

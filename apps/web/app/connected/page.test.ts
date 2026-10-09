@@ -65,17 +65,17 @@ describe('/connected — the done page', () => {
   it('uses the locked French sentence when the family is French', async () => {
     const html = await render({ provider: 'gcal', status: 'own_link', who: 'Sam', lang: 'fr' });
 
-    expect(html).toContain('Ce lien est pour Sam. Le tien est deja connecte.');
-    expect(html).toContain('Deja connecte');
+    expect(html).toContain('Ce lien est pour Sam. Le tien est déjà connecté.');
+    expect(html).toContain('Déjà connecté');
   });
 
   it('uses the locked French fallback when the link owner has no name', async () => {
     const html = await render({ provider: 'gcal', status: 'own_link', lang: 'fr' });
 
     expect(html).toContain(
-      'Ce lien est pour le parent a qui il a ete envoye. Le tien est deja connecte.',
+      'Ce lien est pour le parent à qui il a été envoyé. Le tien est déjà connecté.',
     );
-    expect(html).toContain('Deja connecte');
+    expect(html).toContain('Déjà connecté');
   });
 
   it('names no second sentence when the English link owner has no name', async () => {

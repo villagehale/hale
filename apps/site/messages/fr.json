@@ -2,10 +2,11 @@
   "Common": {
     "textHale": "Texte Hale",
     "emailHale": "Écrire à Hale",
-    "skipToContent": "Aller au contenu"
+    "skipToContent": "Aller au contenu",
+    "notFoundTitle": "Page introuvable · Hale"
   },
   "HomeMeta": {
-    "title": "Hale · un planificateur pour l’année de tes enfants",
+    "title": "Hale · L’année de tes enfants, sans casse-tête.",
     "description": "L’année de tes enfants, sans casse-tête. Hale trouve ce qui se passe, surveille les places et revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
     "ogDescription": "L’année de tes enfants, sans casse-tête. Hale trouve ce qui se passe, surveille les places, puis revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
     "twitterDescription": "L’année de tes enfants, sans casse-tête. Ce qui vaut la peine avec les enfants."

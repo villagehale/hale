@@ -1,7 +1,10 @@
+import type { Metadata } from 'next';
 import { PortalHeading } from '~/components/portal/heading';
 import { FoundingPlan } from '~/components/portal/plan-cards';
 import styles from '~/components/portal/portal.module.css';
 import { DEMO_BASE } from '~/lib/portal/demo-fixture';
+
+export const metadata: Metadata = { title: 'Plan' };
 
 export default function DemoPlanPage() {
   return (

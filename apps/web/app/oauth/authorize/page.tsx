@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { auth } from '~/auth';
@@ -11,6 +12,8 @@ import {
 import { mcpOriginFromHeaders } from '~/lib/mcp/http';
 import { readMcpOauthClient } from '~/lib/mcp/oauth-store';
 import { MCP_SCOPE_COPY } from '~/lib/mcp/scope-copy';
+
+export const metadata: Metadata = { title: 'Allow access' };
 
 export const dynamic = 'force-dynamic';
 

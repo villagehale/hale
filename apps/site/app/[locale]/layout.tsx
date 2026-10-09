@@ -4,15 +4,13 @@ import { hasLocale } from 'next-intl';
 import localFont from 'next/font/local';
 import { notFound } from 'next/navigation';
 import { ConsentBanner } from '~/components/consent-banner';
-import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
-import { SITE_URL } from '~/lib/app-url';
 import { MESSAGES_NO_FLASH_SCRIPT } from '~/lib/chooser';
 import { CONSENT_NO_FLASH_SCRIPT } from '~/lib/site/consent';
-import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
+import { homeMetadata } from '~/lib/site/home-meta';
 import { NO_FLASH_SCRIPT, THEME_COLOR } from '~/lib/site/theme';
 import '../globals.css';
 import '../redesign.css';
@@ -65,7 +63,9 @@ const instrumentSerif = localFont({
 const jetbrainsMono = localFont({
   // Only the 400 weight renders (the footer pronunciation); the site's other
   // mono spots resolve to the serif accent.
-  src: [{ path: '../fonts/jetbrains-mono-latin-wght-normal.woff2', weight: '400', style: 'normal' }],
+  src: [
+    { path: '../fonts/jetbrains-mono-latin-wght-normal.woff2', weight: '400', style: 'normal' },
+  ],
   variable: '--font-mono',
   display: 'swap',
 });
@@ -74,38 +74,15 @@ export function generateStaticParams(): { locale: Locale }[] {
   return routing.locales.map((locale) => ({ locale }));
 }
 
-// The homepage's positioning (D21): link previews and search snippets must
-// describe the page a visitor actually lands on, in the language they land in.
+// No title template on this layout. Page titles are already full
+// "… · Hale" strings, and a template would suffix them twice.
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ locale: Locale }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = getTranslator(locale, 'HomeMeta');
-  // The town count is a derived number, never a hand-written one: a 22nd
-  // municipality must not leave the search snippet claiming 21 (municipalities.ts
-  // derives it from the list for the same reason the page does).
-  const counted = { count: MUNICIPALITY_COUNT };
-  return {
-    metadataBase: new URL(SITE_URL),
-    title: t('title'),
-    description: t('description', counted),
-    alternates: buildAlternates(locale, '/'),
-    openGraph: {
-      type: 'website',
-      siteName: 'Hale',
-      url: localeHref(locale, '/'),
-      title: t('title'),
-      description: t('ogDescription', counted),
-      locale: ogLocale(locale),
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: t('title'),
-      description: t('twitterDescription'),
-    },
-  };
+  return homeMetadata(locale);
 }
 
 export const viewport: Viewport = {

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import nextDynamic from 'next/dynamic';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
 import { cachedDbErrors, cachedErrorClasses, cachedTextingTrends } from '~/lib/admin/cached';
@@ -10,6 +11,8 @@ const ErrorClassList = nextDynamic(() =>
 const DeliveryHealthChart = nextDynamic(() =>
   import('~/components/admin/trend-chart').then((m) => m.DeliveryHealthChart),
 );
+
+export const metadata: Metadata = { title: 'Operations' };
 
 /** Operations — "What's failing, how often, and is it new?" Classes are the
  * landing; the raw rows are the drill-down. */

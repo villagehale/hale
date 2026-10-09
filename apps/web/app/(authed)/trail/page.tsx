@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { ExportDataButton } from '~/components/hale/export-data-button';
 import { TrailTimeline } from '~/components/hale/trail-timeline';
 import { loadTrail } from '~/lib/dashboard/queries';
+
+export const metadata: Metadata = { title: 'History' };
 
 export default async function TrailPage() {
   const entries = await loadTrail();
@@ -40,8 +43,8 @@ export default async function TrailPage() {
             nothing on the record yet.
           </p>
           <p className="meta text-ink-2 max-w-xl mx-auto">
-            text Hale — the trail fills from your thread, and every action, by Hale or by you,
-            lands here in an unbroken, exportable line.
+            text Hale — the trail fills from your thread, and every action, by Hale or by you, lands
+            here in an unbroken, exportable line.
           </p>
         </section>
       ) : (

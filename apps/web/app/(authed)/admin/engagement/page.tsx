@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import nextDynamic from 'next/dynamic';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
 import { cachedGrowth, cachedTextingByHour, cachedTextingTrends } from '~/lib/admin/cached';
@@ -14,6 +15,8 @@ const BarsChart = nextDynamic(() =>
 const TextingHeatmap = nextDynamic(() =>
   import('~/components/admin/texting-heatmap').then((m) => m.TextingHeatmap),
 );
+
+export const metadata: Metadata = { title: 'Engagement' };
 
 /** Engagement — "Are families using Hale, and when?" */
 

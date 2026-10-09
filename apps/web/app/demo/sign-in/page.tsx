@@ -1,7 +1,10 @@
+import type { Metadata } from 'next';
 import { ClaimByPhoneForm } from '~/components/hale/claim-by-phone-form';
 import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import { DEMO_BASE, demoSmsHref } from '~/lib/portal/demo-fixture';
 import { parsePortalSourceCode } from '~/lib/text-hale-target';
+
+export const metadata: Metadata = { title: 'Sign in' };
 
 /** The phone door, rendered with no auth secret. Sending a code still needs the claim pipeline. */
 export default async function DemoSignInPage({

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { RedesignAnswers } from '~/components/redesign/answers';
-import { buildAlternates } from '~/i18n/metadata';
+import { buildAlternates, socialMetadata } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { publishedAnswers } from '~/lib/answers/index';
@@ -16,10 +16,13 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { locale } = await params;
   const t = getTranslator(locale, 'Answers');
+  const title = t('metaTitle');
+  const description = t('metaDescription');
   return {
-    title: t('metaTitle'),
-    description: t('metaDescription'),
+    title,
+    description,
     alternates: buildAlternates(locale, '/answers'),
+    ...socialMetadata(locale, '/answers', title, description),
     robots: publishedAnswers.length > 0 ? undefined : { index: false, follow: true },
   };
 }
