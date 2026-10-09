@@ -28,6 +28,13 @@ const AA = 4.5;
 const darkBlock = css.slice(css.indexOf(':global(.dark) .stage {'));
 
 describe('connect dark tokens', () => {
+  it('defines the light focus ring on the stage', () => {
+    const light = css.slice(css.indexOf('.stage {'), css.indexOf('color-scheme: light;'));
+    expect(light).toContain('--focus: #2a6f9e');
+    expect(css).toContain('.stage :focus-visible');
+    expect(css).not.toContain(':global(.dark) .stage :focus-visible');
+  });
+
   it('hangs the approved night palette off .dark', () => {
     expect(darkBlock).toContain('--page: #0c1a36');
     expect(darkBlock).toContain('--band: #101f3f');
