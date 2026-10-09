@@ -135,6 +135,10 @@
     "file": "intake-voice.md",
     "sha256": "c5fdc928d94454b2b82d2dfd8fe7f6836aab9833cf816818a892b76b4d4c416b"
   },
+  "interest-passport-voice.md": {
+    "file": "interest-passport-voice.md",
+    "sha256": "2d3a751c0e6ac252aaea2c12c4f4d0eabad3e9bc645d557271524d06d229106a"
+  },
   "intro-voice.md": {
     "file": "intro-voice.md",
     "sha256": "bc6fe6af049867f0e7c0e99c0a546d64a429c61c002e5c86ccf15f3561b63cf5"

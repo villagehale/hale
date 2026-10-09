@@ -1,20 +1,16 @@
 import type { Metadata } from 'next';
-import { CopyNumberButton } from '~/components/copy-number';
-import { CtaBand } from '~/components/cta-band';
-import { LandingCta } from '~/components/landing-cta';
-import { PricingSection } from '~/components/pricing-section';
-import { SiteFooter } from '~/components/site-footer';
-import { SiteHeader } from '~/components/site-header';
-import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
+import { RedesignPricing } from '~/components/redesign/pricing';
 import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { chromeCta } from '~/lib/site/chrome-cta';
+import { intakePrefill } from '~/lib/intake-prefill';
+import { pageSource } from '~/lib/page-source';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<{ s?: string | string[] }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -38,65 +34,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function PricingPage({ params }: PageProps) {
+export default async function PricingPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
-  const t = getTranslator(locale, 'Pricing');
-  // Texting Hale is the one front door: /onboarding was deleted in F14.
-  const cta = chromeCta(locale);
-  const copy = getTranslator(locale, 'CopyNumber');
-  const number = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   return (
-    <main id="main" tabIndex={-1} className="relative">
-      <SiteHeader locale={locale} />
-
-      <section className="shell pt-10 sm:pt-16 pb-8 lg:pb-10">
-        <div className="max-w-2xl">
-          <span className="eyebrow">{t('eyebrow')}</span>
-          <WordsPullUp className="mt-4" segments={t.raw('headline') as HeadlineSegment[]} />
-          <p className="meta reading-measure mt-6 text-lg" style={{ lineHeight: 1.6 }}>
-            {t('lede')}
-          </p>
-        </div>
-      </section>
-
-      <PricingSection locale={locale} />
-
-      <CtaBand>
-        <p
-          className="mx-auto max-w-2xl font-display"
-          style={{
-            fontSize: 'clamp(1.4rem, 2.6vw, 2rem)',
-            lineHeight: 1.3,
-            letterSpacing: 'var(--tracking-display)',
-            fontWeight: 600,
-          }}
-        >
-          {t('cta')}
-        </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <LandingCta
-            event="cta_text_click"
-            channel="sms"
-            placement="pricing_band"
-            href={cta.href}
-            className="btn-on-navy"
-          >
-            {cta.label}
-          </LandingCta>
-          {number ? (
-            <CopyNumberButton
-              number={number}
-              placement="pricing_band"
-              className="btn-on-navy-quiet"
-              label={copy('label')}
-              copiedLabel={copy('copied')}
-              ariaLabel={copy('aria')}
-            />
-          ) : null}
-        </div>
-      </CtaBand>
-
-      <SiteFooter locale={locale} />
-    </main>
+    <RedesignPricing
+      locale={locale}
+      smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+      prefill={intakePrefill(locale)}
+      source={await pageSource(searchParams)}
+    />
   );
 }

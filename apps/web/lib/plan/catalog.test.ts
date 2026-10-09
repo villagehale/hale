@@ -37,7 +37,7 @@ describe('buildPlanCatalog', () => {
     expect(free?.isFree).toBe(true);
     expect(free?.monthlyPrice).toBe('Free');
     expect(plus?.isFree).toBe(false);
-    expect(plus?.monthlyPrice).toBe('$9 CAD/mo');
-    expect(plus?.annualPrice).toBe('$79 CAD/yr');
+    expect(plus?.monthlyPrice).toBe('$19 CAD/mo');
+    expect(plus?.annualPrice).toBe('$159 CAD/yr');
   });
 });

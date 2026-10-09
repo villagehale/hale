@@ -1,4 +1,5 @@
 import { Calendar, FolderOpen, Mail } from 'lucide-react';
+import { CALENDAR_EVENTS_SCOPE, GMAIL_COMPOSE_SCOPE } from '~/lib/integrations/google-write-flag';
 import type { FamilyConnectorView } from '~/lib/integrations/load';
 import { describeScope } from '~/lib/integrations/scope-copy';
 import { describeSyncError } from '~/lib/integrations/sync-error';
@@ -29,7 +30,7 @@ const SOURCES = [
     provider: 'gmail',
     label: 'Gmail',
     icon: Mail,
-    blurb: 'Confirmations, forms, and benefit letters — read-only.',
+    blurb: 'Daycare and school notices.',
   },
   {
     provider: 'gdrive',
@@ -86,13 +87,39 @@ function ScopeChips({ scopes }: { scopes: string[] }) {
   );
 }
 
-export function ConnectionSources({ connections }: { connections: FamilyConnectorView[] }) {
+const WRITE_SCOPES = new Set<string>([CALENDAR_EVENTS_SCOPE, GMAIL_COMPOSE_SCOPE]);
+
+/** Settings → Connections intro. The default sentence is the design string. */
+export function connectionSourcesLead(input: {
+  writeArmed: boolean;
+  grantedWrite: boolean;
+}): string {
+  if (input.grantedWrite) {
+    return 'Some connections can draft mail or change events. Disconnect any time, here or by telling Hale in your texts.';
+  }
+  if (input.writeArmed) {
+    return 'Each connection reads one service, and can draft mail or change events if you allow it. Disconnect any time, here or by telling Hale in your texts.';
+  }
+  return 'Each connection reads one service. Disconnect any time, here or by telling Hale in your texts.';
+}
+
+export function ConnectionSources({
+  connections,
+  writeArmed = false,
+}: {
+  connections: FamilyConnectorView[];
+  writeArmed?: boolean;
+}) {
+  const grantedWrite = connections.some(
+    (connection) =>
+      connection.ownedByViewer &&
+      connection.status !== 'revoked' &&
+      connection.scopes.some((scope) => WRITE_SCOPES.has(scope)),
+  );
   return (
     <div className="flex flex-col gap-y-5">
       <p className="text-spruce leading-relaxed max-w-md">
-        Hale never reaches outside your family until you connect a source. Each grant is read-only
-        and scoped to one service, and what it feeds only becomes drafts you approve — nothing acts
-        on its own.
+        {connectionSourcesLead({ writeArmed, grantedWrite })}
       </p>
       <SettingsCard>
         {SOURCES.map((source) => {

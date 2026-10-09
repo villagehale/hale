@@ -10,7 +10,7 @@ import { safeInternalRedirect } from '~/lib/auth/redirect';
  * Server action for the /magic-link redeem page. Mirrors resetPasswordAction: it
  * calls signIn with the token and lets Auth.js run the magic-link provider's
  * authorize (validate + atomic single-use consume + find-or-create). On success
- * signIn throws the redirect to /home; the (authed) layout then routes a no-family
+ * signIn throws the redirect to the safe return path; the (authed) layout then routes a no-family
  * user on to /onboarding, so "existing family → /home, none → /onboarding" is the
  * one existing gate, not a second copy here.
  *
@@ -34,8 +34,9 @@ export async function redeemMagicLinkAction(
     return { status: 'error', message: 'Sign-in is not available right now.' };
   }
 
+  const redirectTo = safeInternalRedirect(callbackUrl);
   try {
-    await signIn('magic-link', { token, redirectTo: safeInternalRedirect(callbackUrl) });
+    await signIn('magic-link', { token, redirectTo });
   } catch (err) {
     if (err instanceof AuthError && err.type === 'CredentialsSignin') {
       return { status: 'error', message: GENERIC_ERROR };
@@ -44,6 +45,6 @@ export async function redeemMagicLinkAction(
   }
 
   // signIn redirects on success, so this is unreachable on the happy path; here
-  // only to satisfy the action's return type.
-  redirect('/home');
+  // only to satisfy the action's return type. Same target, so the two cannot disagree.
+  redirect(redirectTo);
 }

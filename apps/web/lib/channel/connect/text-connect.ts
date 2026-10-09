@@ -8,7 +8,8 @@ import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
  * seconds apart — a promise written twice is a promise that will drift.
  *
  * GSM-7 throughout (scanned by sms-copy-encoding.test.ts): the receipts below go out
- * over the carrier, and the page copy shares their clauses.
+ * over the carrier. Page sentences live in connect-page-copy.ts so this file can
+ * stay straight quotes.
  *
  * The TEXT receipts have a French twin (Sloane, 2026-09-24), chosen from the
  * family's primary language — the redirect itself carries no sentence. The done
@@ -43,19 +44,7 @@ const PROVIDER_NOUN: Record<TextConnectProvider, string> = {
 };
 
 /**
- * What the connection is for, said once so the page and the text cannot disagree.
- *
- * A kids-year payoff, not a life-assistant watch. Calendar keeps what is on for
- * the kids and when it moves. Gmail lets daycare and school notices into that
- * year. Neither promises to text about whatever else lands.
- */
-const YEAR_PAYOFF: Record<TextConnectProvider, string> = {
-  gcal: "what's on for the kids, and when it moves, stays in the year",
-  gmail: 'daycare and school notices get into the year',
-};
-
-/**
- * The one trust line on a connect card. Same sentence for both connectors:
+ * The one trust line on a texted connect link. Same sentence for both connectors:
  * Hale never sees the password, and disconnecting is something the parent can
  * do. It is not a phrase to text back.
  */
@@ -99,15 +88,21 @@ export interface ConnectorLinkCard {
 /** Preview and page copy for one texted connect link. A link with no connector
  * has no card to promise. The token never enters this copy. */
 export function connectorLinkCard(provider: TextConnectProvider | null): ConnectorLinkCard {
-  if (!provider) {
+  if (provider === 'gmail') {
     return {
-      title: 'Connect - Hale',
-      description: 'I never see your password. You can disconnect any time.',
+      title: CONNECTOR_CARD_TITLE.gmail,
+      description: 'So Hale can flag daycare and school notices for you.',
+    };
+  }
+  if (provider === 'gcal') {
+    return {
+      title: CONNECTOR_CARD_TITLE.gcal,
+      description: 'So Hale can catch class invites and trip dates for the kids.',
     };
   }
   return {
-    title: CONNECTOR_CARD_TITLE[provider],
-    description: CONNECTOR_TRUST_LINE[provider],
+    title: 'Connect',
+    description: 'One tap signs you in and opens your connected apps.',
   };
 }
 
@@ -149,80 +144,4 @@ export function connectorConnectedText(
   provider: TextConnectProvider,
 ): string {
   return CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE[language][provider];
-}
-
-/** What the done page says, per outcome. The heading is the state in two words; the body
- * is the whole sentence, so a parent reading only one of them still knows where they are. */
-export interface ConnectedNotice {
-  heading: string;
-  body: string;
-}
-
-/**
- * The done page's words for a (status, provider) pair straight off the query string.
- *
- * FAIL CLOSED on anything it does not recognise, including `status=ok` for a provider
- * with no words: a page that congratulated a parent on a connection nobody can name
- * would be the one lie this flow cannot afford. A failure does not tell the parent
- * which words to text. When the callback actually sent a fresh link, `freshLink`
- * says so; otherwise the page does not pretend a text left.
- */
-export function connectedNotice(
-  status: string | undefined,
-  provider: string | undefined,
-  options?: { name?: string; language?: 'en' | 'fr'; freshLink?: boolean },
-): ConnectedNotice {
-  const connected = asTextConnectProvider(provider);
-  if (status === 'ok' && connected) {
-    return {
-      heading: 'Connected',
-      body: `${PROVIDER_NOUN[connected]} is connected. You can close this - ${YEAR_PAYOFF[connected]}.`,
-    };
-  }
-  if (status === 'denied') {
-    return {
-      heading: 'Nothing changed',
-      body: failureNotice('No changes made.', options?.freshLink),
-    };
-  }
-  if (status === 'own_link') {
-    const named = options?.name?.trim();
-    if (options?.language === 'fr' && named) {
-      return {
-        heading: 'Deja connecte',
-        body: `Ce lien est pour ${named}. Le tien est deja connecte.`,
-      };
-    }
-    if (options?.language === 'fr') {
-      return {
-        heading: 'Deja connecte',
-        body: 'Ce lien est pour le parent a qui il a ete envoye. Le tien est deja connecte.',
-      };
-    }
-    if (named) {
-      return {
-        heading: 'Already connected',
-        body: `This link is for ${named}. Yours is already connected.`,
-      };
-    }
-    return {
-      heading: 'Already connected',
-      body: 'This link is for the parent it was sent to. Yours is already connected.',
-    };
-  }
-  if (status === 'invalid') {
-    return {
-      heading: 'Link expired',
-      body: failureNotice('That link has expired.', options?.freshLink),
-    };
-  }
-  return {
-    heading: 'Not connected',
-    body: failureNotice("That didn't go through.", options?.freshLink),
-  };
-}
-
-/** The failure sentence. A fresh link is named only when one was actually texted. */
-function failureNotice(lead: string, freshLink: boolean | undefined): string {
-  return freshLink ? `${lead} A fresh link is in your texts.` : lead;
 }

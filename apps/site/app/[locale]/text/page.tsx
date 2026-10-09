@@ -1,35 +1,20 @@
 import type { Metadata } from 'next';
-import { headers } from 'next/headers';
-import { SiteFooter } from '~/components/site-footer';
-import { SiteHeader } from '~/components/site-header';
-import { TextEntry } from '~/components/text-entry';
+import { RedesignText } from '~/components/redesign/text';
 import { buildAlternates } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { platformFromUa } from '~/lib/chooser';
-import { firstTouchLadderEnabled, firstTouchLocationCardEnabled } from '~/lib/first-touch-flag';
+import { intakePrefill } from '~/lib/intake-prefill';
 import { parseSourceCode, readSmsNumber } from '~/lib/text-entry';
 
 /**
- * villagehale.com/text — the QR cards' landing surface (VIL-240 · M5), and the
- * destination of the site's "Text Hale" CTAs. One tap into Messages when the
- * number is live. Still noindex and absent from
- * the sitemap: it is a handoff, not a page to rank.
+ * villagehale.com/text — the QR cards' landing surface, and the destination of
+ * the site's "Text Hale" CTAs. Still noindex and absent from the sitemap: it is
+ * a handoff, not a page to rank.
  *
- * The shell is the same one About and Pricing wear: sticky SiteHeader (turtle
- * tile + Hale wordmark) and SiteFooter. The column under it stays the
- * conversion door — headline, the exchange, one Text CTA — not a second
- * marketing scroll.
- */
-
-/**
- * Explicitly dynamic: the chooser orders channels by the request's user-agent
- * and threads `?s=` into the composer bodies, so it must render per request.
- * Without this the route prerenders a static `unknown`-platform fallback (the
- * headers() try/catch below swallows the dynamic bailout during build), and
- * whether a CDN serves that fallback becomes a caching-layer accident. Baked-in
- * `unknown` for everyone = no Messages button on an iPhone — the exact
- * silently-dead-in-prod shape the UA feature must never have.
+ * Dynamic because the number, the composer prefill, and a `?s=` on this URL
+ * are request-time. The QR is painted on the server, so the code has to be in
+ * the body before first paint. The redesign does not read the user-agent;
+ * every locale renders the same door.
  */
 export const dynamic = 'force-dynamic';
 
@@ -43,8 +28,6 @@ export async function generateMetadata({
   return {
     title: t('metaTitle'),
     description: t('metaDescription'),
-    // Overrides the layout's site-wide canonical, which would otherwise point this
-    // page at the homepage.
     alternates: buildAlternates(locale, '/text'),
     robots: { index: false, follow: false },
   };
@@ -55,36 +38,18 @@ export default async function TextEntryPage({
   searchParams,
 }: {
   params: Promise<{ locale: Locale }>;
-  searchParams: Promise<{ s?: string | string[] }>;
+  searchParams?: Promise<{ s?: string | string[] }>;
 }) {
   const { locale } = await params;
-  const { s } = await searchParams;
-
-  // Ordering hint only — the matrix never gates a live mobile channel on it.
-  // try/catch because the render-walk tests (cta-wiring, site-chrome) call this
-  // page outside request scope, where `headers()` throws; a chooser that cannot
-  // read the UA is the `unknown` row, whose QR-first layout works everywhere.
-  let ua: string | null = null;
-  try {
-    ua = (await headers()).get('user-agent');
-  } catch {
-    ua = null;
-  }
-
+  // Same validator the header pill's first-touch reader uses. Absent, repeated,
+  // or not a source code → null, and the door stays the bare hello.
+  const source = parseSourceCode((await searchParams)?.s);
   return (
-    <main id="main" tabIndex={-1} className="relative">
-      <SiteHeader locale={locale} />
-      <TextEntry
-        source={parseSourceCode(s)}
-        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
-        platform={platformFromUa(ua)}
-        locale={locale}
-        firstTouchLadder={firstTouchLadderEnabled()}
-        firstTouchLocationCard={firstTouchLocationCardEnabled()}
-      />
-      {/* The column already links the policy on the Canada line. Omitting the
-          footer's copy leaves the rendered page with exactly one privacy link. */}
-      <SiteFooter locale={locale} omitPrivacyLink />
-    </main>
+    <RedesignText
+      locale={locale}
+      smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+      prefill={intakePrefill(locale)}
+      source={source}
+    />
   );
 }

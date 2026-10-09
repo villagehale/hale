@@ -1,16 +1,21 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { encode } from 'uqr';
 import { describe, expect, it, vi } from 'vitest';
 import { SiteFooter } from '~/components/site-footer.js';
 import { SiteHeader } from '~/components/site-header.js';
 import { localeHref } from '~/i18n/navigation.js';
 import type { Locale } from '~/i18n/routing.js';
+import { intakePrefill } from '~/lib/intake-prefill.js';
+import { primaryTextTarget } from '~/lib/primary-cta.js';
+import { chromeCta } from '~/lib/site/chrome-cta.js';
+import { buildSmsBody, buildSmsHref } from '~/lib/text-entry.js';
 import sitemap from '../../sitemap.js';
 import TextPage, { generateMetadata } from './page.js';
 
 const meta = () => generateMetadata({ params: Promise.resolve({ locale: 'en' as const }) });
 
-/** Locked Hale #1, the same bytes as the SMS hello and Text.greeting (en and zh). */
+/** Locked Hale #1, the old SMS hello. The live page must not render it. */
 const LOCKED_PREVIEW_EN =
   'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
 
@@ -18,8 +23,8 @@ const LOCKED_PREVIEW_EN =
  * /text is the chooser (F14): the QR cards' destination AND the header pill's —
  * but still a handoff, not a page to rank. No sitemap row, noindex, and no
  * footer link; while the number is dark nothing points at it at all. These are
- * the structural guards; the page's own behaviour lives in
- * components/text-entry.test.ts.
+ * the structural guards. The locked greeting below is a negative pin: the live
+ * page must not render that old hello.
  */
 
 describe('/text (unlisted entry surface)', () => {
@@ -84,12 +89,13 @@ describe('/text (unlisted entry surface)', () => {
       expect(header).toContain('class="v4-nav v4-glass"');
       expect(header).toContain('hale-logo');
       expect(header).toContain('viewBox="0 0 905.840370 590.701960"');
-      // The column under the bar is still the conversion door. EN and ZH send
-      // the English hello; FR sends Sloane's ASCII line. The Hale reply is
-      // pinned below to the locked preview bytes — that bubble does not move.
+      // The column is the conversion door. Each locale shows the message the
+      // parent will send, and Hale's design reply — not the retired preview.
       if (locale === 'fr') {
         expect(html).toContain('Salut Hale, qu&#x27;est-ce qui se passe?');
         expect(html).not.toContain('qu\u2019est-ce qui se passe ?');
+      } else if (locale === 'zh') {
+        expect(html).toContain('嘿 Hale，最近怎么样？');
       } else {
         expect(html).toContain('Hey Hale, what&#x27;s going on?');
       }
@@ -112,12 +118,15 @@ describe('/text (unlisted entry surface)', () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    // Locked Hale #1. Em dashes and curly apostrophes are not HTML-escaped.
-    expect(en).toContain(LOCKED_PREVIEW_EN);
-    expect(zh).toContain(LOCKED_PREVIEW_EN);
-    // French twin. ASCII apostrophes are the only characters React escapes.
+    expect(en).toContain(
+      'Hey, it&#x27;s Hale. I find what&#x27;s on for kids near you. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.',
+    );
+    expect(en).not.toContain(LOCKED_PREVIEW_EN);
+    expect(zh).toContain('嘿，我是 Hale。我帮你找附近孩子能参加的。');
+    expect(zh).not.toContain(LOCKED_PREVIEW_EN);
+    expect(zh).not.toContain('已报名');
     expect(fr).toContain(
-      'Bonjour, je suis Hale. J&#x27;aide a planifier l&#x27;annee de vos enfants - ce qui se passe près d&#x27;eux, les matins d&#x27;inscription, et comment ca s&#x27;est passé. Le nom et l&#x27;age de vos enfants, et votre code postal - et je verrai ce qui arrive.',
+      'Salut, c’est Hale. Je trouve ce qui se passe pour les enfants près de chez toi.',
     );
     vi.unstubAllEnvs();
   });
@@ -136,6 +145,157 @@ describe('/text (unlisted entry surface)', () => {
       'Hey, it&#x27;s Hale. I find what&#x27;s on for kids near you. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.',
     );
     expect(html).not.toContain(LOCKED_PREVIEW_EN);
+    vi.unstubAllEnvs();
+  });
+});
+
+/** The number the suite stubs. Chrome and the page both read it from the env. */
+const LIVE_NUMBER = '+16475551234';
+
+/** The two tags the bug drops: a co-parent join link, and a per-family referral. */
+const JOIN_CODE = 'join-abc123';
+const REFERRAL_CODE = 'friend-0123456789ab';
+
+const LOCALES = ['en', 'fr', 'zh'] as const satisfies readonly Locale[];
+
+function smsHrefs(html: string): string[] {
+  return [...html.matchAll(/href="(sms:[^"]*)"/g)].map((match) =>
+    (match[1] ?? '').replaceAll('&amp;', '&'),
+  );
+}
+
+/** The path `QrCode` draws for a payload — the same `uqr` options, so a mismatch
+ * means the SVG encodes a different sms: URI. */
+function qrPathFor(value: string): string {
+  const { data } = encode(value, { ecc: 'M', border: 2 });
+  let path = '';
+  for (const [y, row] of data.entries()) {
+    for (const [x, dark] of row.entries()) {
+      if (dark) path += `M${x} ${y}h1v1h-1z`;
+    }
+  }
+  return path;
+}
+
+function qrPath(html: string): string {
+  const found = /aria-label="QR code — scan to text Hale"[\s\S]*?<path d="([^"]*)"/.exec(html);
+  if (!found?.[1]) throw new Error('no QR path rendered');
+  return found[1];
+}
+
+/** The decoded composer body, iOS (`&body=`) and cross (`?&body=`) both. */
+function bodyOf(href: string): string {
+  const raw = href.includes('?')
+    ? href.slice(href.indexOf('?') + 1).replace(/^&/, '')
+    : href.slice(href.indexOf('&') + 1);
+  const value = new URLSearchParams(raw).get('body');
+  if (value === null) throw new Error(`missing body in ${href}`);
+  return value;
+}
+
+/** What the header pill would put in the body for this code — `buildSmsBody`. */
+function headerPillBody(locale: Locale, source: string | null): string {
+  const prefill = intakePrefill(locale);
+  return bodyOf(
+    primaryTextTarget({
+      platform: 'apple',
+      smsNumber: LIVE_NUMBER,
+      prefill,
+      source,
+      textPath: localeHref(locale, '/text'),
+    }).href,
+  );
+}
+
+async function renderText(locale: Locale, s?: string | string[]): Promise<string> {
+  return renderToStaticMarkup(
+    await TextPage({
+      params: Promise.resolve({ locale }),
+      searchParams: Promise.resolve(s === undefined ? {} : { s }),
+    }),
+  );
+}
+
+describe('/text composer carries the ?s= code', () => {
+  it('puts the join code and a referral code on the QR and every /text door, in en, fr, and zh', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    for (const locale of LOCALES) {
+      for (const code of [JOIN_CODE, REFERRAL_CODE]) {
+        const html = await renderText(locale, code);
+        const prefill = intakePrefill(locale);
+        const expected = buildSmsHref(LIVE_NUMBER, code, prefill, 'cross');
+        const where = `${locale} ?s=${code}`;
+        // First paint is /text, never an sms: anchor. The QR is the composer.
+        expect(smsHrefs(html), where).toEqual([]);
+        const door = `${localeHref(locale, '/text')}?s=${code}`;
+        // Header pill, hero, and closing. Each must carry the code for no-JS.
+        expect(html.split(`href="${door}"`).length - 1, where).toBeGreaterThanOrEqual(3);
+        const pill = headerPillBody(locale, code);
+        expect(pill, where).toBe(buildSmsBody(code, prefill));
+        expect(bodyOf(expected), where).toBe(pill);
+        expect(expected, where).toContain(`(via%20${code})`);
+        expect(qrPath(html), where).toBe(qrPathFor(expected));
+        // The preview bubble stays the bare hello. The token rides in the QR.
+        expect(html, where).not.toContain(`(via ${code})`);
+      }
+    }
+    vi.unstubAllEnvs();
+  });
+
+  it('leaves the QR exactly as the chrome CTA when no ?s= is present, in en, fr, and zh', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    for (const locale of LOCALES) {
+      const html = await renderText(locale);
+      const prefill = intakePrefill(locale);
+      const expected = buildSmsHref(LIVE_NUMBER, null, prefill, 'cross');
+      // The no-code QR is the shared chrome CTA, byte for byte. The buttons
+      // are /text until a capable device upgrades them.
+      expect(expected, locale).toBe(chromeCta(locale).href);
+      expect(smsHrefs(html), locale).toEqual([]);
+      expect(html, locale).toContain(`href="${localeHref(locale, '/text')}"`);
+      expect(bodyOf(expected), locale).toBe(headerPillBody(locale, null));
+      expect(bodyOf(expected), locale).toBe(prefill);
+      expect(qrPath(html), locale).toBe(qrPathFor(expected));
+      expect(html, locale).not.toContain('via%20');
+      expect(html, locale).not.toContain('(via ');
+    }
+    vi.unstubAllEnvs();
+  });
+
+  it('drops a ?s= that is not a source code, same as leaving the param off', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    const bare = await renderText('en');
+    const rejected: Array<string | string[]> = [
+      'JOIN-ABC',
+      'join-',
+      ['join-abc123', REFERRAL_CODE],
+    ];
+    for (const bad of rejected) {
+      const html = await renderText('en', bad);
+      expect(smsHrefs(html), String(bad)).toEqual(smsHrefs(bare));
+      expect(qrPath(html), String(bad)).toBe(qrPath(bare));
+      expect(html, String(bad)).not.toContain('?s=');
+    }
+    vi.unstubAllEnvs();
+  });
+
+  it('lifts the QR, the number, copy, and save-contact into the hero on desktop', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    const html = await renderText('en');
+    const qrAt = html.indexOf('aria-label="QR code — scan to text Hale"');
+    const numberAt = html.indexOf('(647) 555-1234');
+    const copyAt = html.indexOf('Copy number');
+    const saveAt = html.indexOf('Save to contacts');
+    const belowAt = html.indexOf('Two ways to start');
+    expect(qrAt).toBeGreaterThan(-1);
+    expect(numberAt).toBeGreaterThan(qrAt);
+    expect(copyAt).toBeGreaterThan(numberAt);
+    expect(saveAt).toBeGreaterThan(copyAt);
+    expect(belowAt).toBeGreaterThan(saveAt);
+    expect(html.match(/QR code — scan to text Hale/g)).toHaveLength(1);
+    expect(html).toContain('sp-qr-lead');
+    expect(html).toContain('hs-desktop-only');
+    expect(html).toContain('sp-sms-door');
     vi.unstubAllEnvs();
   });
 });

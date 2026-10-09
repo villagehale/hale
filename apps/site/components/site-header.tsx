@@ -12,21 +12,32 @@ import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
  * The marketing header — the v4 liquid-glass nav pill, on every subpage.
  *
  * One design, whole site: this is the same floating glass pill the landing wears
- * over its shore hero (components/landing/v4/landing-v4.tsx), so a reader
- * crossing from / to /pricing never changes products. Every page, landing
+ * over its shore hero, so a reader crossing from / to /pricing never changes
+ * products. Every page, landing
  * included, renders THIS component, sticky.
  *
  * The theme control does NOT live here — v4 moved it to the footer switch, which
  * every page ends in. The bar carries the three pages that introduce the product,
  * a quiet sign-in link for the parent who already has an account (the app is the
  * receipts surface, so the link whispers rather than sells), and ONE primary
- * pill: Text Hale. On a phone it opens the messaging app with the locked
- * prefill; on a desktop the first paint (and the no-JS href) is /text, where
+ * pill: Text Hale. First paint and no-JS go to /text, carrying `?s=` when this
+ * page validated one. After hydration, iPhone, iPad, Mac, and Android open
+ * Messages with the locked prefill; Windows and Linux stay on /text, where
  * the QR and the number already live. No number provisioned → email, which
  * works everywhere. Every internal link carries the locale prefix.
  */
 
-export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale }) {
+export function SiteHeader({
+  locale = routing.defaultLocale,
+  chrome,
+  source = null,
+}: {
+  locale?: Locale;
+  /** Legal pages ask for a more opaque bar so body text does not show through. */
+  chrome?: 'legal';
+  /** A `?s=` code this page already validated. The no-JS pill carries it. */
+  source?: string | null;
+}) {
   const t = getTranslator(locale, 'Header');
   const common = getTranslator(locale, 'Common');
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
@@ -44,6 +55,7 @@ export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale
       className="v4-btn-solid"
       smsNumber={smsNumber}
       prefill={intakePrefill(locale)}
+      source={source}
     >
       {common('textHale')}
     </ChooserLink>
@@ -54,7 +66,13 @@ export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale
   );
 
   return (
-    <header className="sticky top-0 z-50 px-4 sm:px-6">
+    <header
+      className={
+        chrome === 'legal'
+          ? 'legal-chrome sticky top-0 z-50 px-4 sm:px-6'
+          : 'sticky top-0 z-50 px-4 sm:px-6'
+      }
+    >
       <nav className="v4-nav v4-glass" aria-label="Primary">
         <a
           href={localeHref(locale, '/')}

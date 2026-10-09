@@ -1,16 +1,23 @@
 import { SOURCE_CODE_PARAM } from '~/lib/analytics/source-code';
-import type { Platform } from '~/lib/chooser';
+import { type Platform, messagesCapable } from '~/lib/chooser';
 import { buildSmsBody, buildSmsHrefForBody, smsUriFormForPlatform } from '~/lib/text-entry';
 
 /**
- * Where the site's primary "Text Hale" doors go (header, hero, closing).
+ * Where the site's primary "Text Hale" doors go (header, hero, closing, and
+ * every other door that says Text Hale).
  *
- * A phone opens the messaging app with the locked prefill — iOS `sms:&body=`,
- * Android `sms:?body=`. Every desktop, including macOS, keeps the existing
- * /text page: that page already shows the QR and the number, and an `sms:`
- * link is a dead click on Windows and Linux. No number provisioned is the
- * same door — the caller degrades to email before it gets here, and a missing
- * number must not become a broken `sms:` href.
+ * iPhone, iPad, Mac, and Android open the messaging app with the locked
+ * prefill — Apple `sms:&body=`, Android `sms:?body=`. The body is
+ * {@link buildSmsBody}, so a `?s=` code still rides as `(via <code>)`.
+ * Windows, Linux, and an unknown client stay on /text (carrying `?s=` when
+ * there is one): an `sms:` link is a dead click there, and that page already
+ * shows the QR and the number. No number provisioned is the same door — the
+ * caller degrades to email before it gets here, and a missing number must not
+ * become a broken `sms:` href.
+ *
+ * Server render passes `unknown`, so the HTML (no-JS, and the first paint) is
+ * always the /text link. The client upgrades to `sms:` only after it has read
+ * the user agent.
  */
 export function primaryTextTarget(input: {
   platform: Platform;
@@ -20,8 +27,7 @@ export function primaryTextTarget(input: {
   /** Locale-prefixed path of the /text page, e.g. `/text` or `/fr/text`. */
   textPath: string;
 }): { href: string; composer: boolean } {
-  const phone = input.platform === 'apple' || input.platform === 'android';
-  if (!phone || input.smsNumber === '') {
+  if (!messagesCapable(input.platform) || input.smsNumber === '') {
     const href = input.source
       ? `${input.textPath}?${SOURCE_CODE_PARAM}=${input.source}`
       : input.textPath;

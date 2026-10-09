@@ -3,16 +3,21 @@ import type { Metadata, Viewport } from 'next';
 import { hasLocale } from 'next-intl';
 import localFont from 'next/font/local';
 import { notFound } from 'next/navigation';
+import { ConsentBanner } from '~/components/consent-banner';
 import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { GoogleAdsTag } from '~/lib/analytics/google-ads-tag';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { SITE_URL } from '~/lib/app-url';
+import { MESSAGES_NO_FLASH_SCRIPT } from '~/lib/chooser';
+import { CONSENT_NO_FLASH_SCRIPT } from '~/lib/site/consent';
 import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { NO_FLASH_SCRIPT, THEME_COLOR } from '~/lib/site/theme';
 import '../globals.css';
+import '../redesign.css';
+import '../redesign-dark.css';
+import '../consent.css';
 
 // Self-hosted variable fonts (app/fonts/, Fontsource-packaged, OFL). next/font/google
 // fetched these from fonts.gstatic.com AT BUILD TIME, and a Google CDN outage failed
@@ -125,6 +130,8 @@ export default async function RootLayout({
   const { locale } = await params;
   if (!hasLocale(routing.locales, locale)) notFound();
   const t = getTranslator(locale, 'Common');
+  const consent = getTranslator(locale, 'Consent');
+  const footer = getTranslator(locale, 'Footer');
 
   return (
     <html
@@ -136,12 +143,23 @@ export default async function RootLayout({
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the pre-paint theme
             script must run before hydration, or the page flashes the wrong theme. */}
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
-        <GoogleAdsTag />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the messages hint must run before paint, or a Windows desktop flashes a composer button that then disappears. */}
+        <script dangerouslySetInnerHTML={{ __html: MESSAGES_NO_FLASH_SCRIPT }} />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: consent must be known before paint so a returning visitor never sees the banner flash. */}
+        <script dangerouslySetInnerHTML={{ __html: CONSENT_NO_FLASH_SCRIPT }} />
       </head>
       <body>
         <a href="#main" className="skip-link">
           {t('skipToContent')}
         </a>
+        <ConsentBanner
+          privacyHref={localeHref(locale, '/privacy')}
+          text={consent('text')}
+          privacyLabel={footer('linkPrivacy')}
+          rejectLabel={consent('reject')}
+          acceptLabel={consent('accept')}
+          regionLabel={consent('region')}
+        />
         <PostHogProvider locale={locale}>{children}</PostHogProvider>
         <SpeedInsights />
       </body>

@@ -1,7 +1,7 @@
-import { cache } from 'react';
 import { type Database, schema } from '@hale/db';
 import type { UnitSystem } from '@hale/types';
 import { eq } from 'drizzle-orm';
+import { cache } from 'react';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
@@ -36,27 +36,25 @@ import { db as defaultDb } from '~/lib/db';
 // wrapper below so all default-db callers hit the same cache entry (db() is a
 // process singleton). Outside a request (tests) cache() is a pass-through, so
 // behaviour is unchanged.
-const resolveCurrentFamilyId = cache(
-  async (database: Database): Promise<string | null> => {
-    if (!authConfigured()) {
-      // Fail closed in production (rule #1): never surface a family to an
-      // unauthenticated request if auth is missing in prod. The first-family
-      // dev-preview fallback is for local screenshots/demo only.
-      if (process.env.NODE_ENV === 'production') {
-        return null;
-      }
-      return firstFamilyForDevPreview(database);
-    }
-
-    const session = await auth();
-    const externalAuthId = session?.user?.id;
-    if (!externalAuthId) {
+const resolveCurrentFamilyId = cache(async (database: Database): Promise<string | null> => {
+  if (!authConfigured()) {
+    // Fail closed in production (rule #1): never surface a family to an
+    // unauthenticated request if auth is missing in prod. The first-family
+    // dev-preview fallback is for local screenshots/demo only.
+    if (process.env.NODE_ENV === 'production') {
       return null;
     }
+    return firstFamilyForDevPreview(database);
+  }
 
-    return resolveFamilyForUser(externalAuthId, database);
-  },
-);
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  if (!externalAuthId) {
+    return null;
+  }
+
+  return resolveFamilyForUser(externalAuthId, database);
+});
 
 export function currentFamilyId(database: Database = defaultDb()): Promise<string | null> {
   return resolveCurrentFamilyId(database);
@@ -92,14 +90,20 @@ export function currentUserId(database: Database = defaultDb()): Promise<string 
  * then a fallback to the stored `users.name` — so an email/password parent whose
  * token carries no name still gets their name. Null when unauthed / no name on file.
  */
-export async function loadViewerName(database: Database = defaultDb()): Promise<string | null> {
+export async function loadViewerName(database?: Database): Promise<string | null> {
+  // The database argument used to be a default parameter (`= defaultDb()`). That
+  // evaluates before the body, so a credential-less preview threw "DATABASE_URL is
+  // not set" on every authed page even though this function returns null when auth
+  // is off. Resolve the pool only after those early exits, and only when a URL exists.
   if (!authConfigured()) return null;
   const session = await auth();
   const sessionName = session?.user?.name?.trim();
   if (sessionName) return sessionName;
-  const userId = await currentUserId(database);
+  if (!database && !process.env.DATABASE_URL) return null;
+  const pool = database ?? defaultDb();
+  const userId = await currentUserId(pool);
   if (!userId) return null;
-  const [row] = await database
+  const [row] = await pool
     .select({ name: schema.users.name })
     .from(schema.users)
     .where(eq(schema.users.id, userId))

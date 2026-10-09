@@ -148,7 +148,12 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // page nobody rendered can pass as "all clear".
     expect(pageFiles.length).toBeGreaterThanOrEqual(14);
     expect(rendered.length + redirected.length).toBe(pageFiles.length);
-    expect([...redirected].sort()).toEqual(['/milestones', '/milestones/[age]']);
+    expect([...redirected].sort()).toEqual([
+      '/activities/[city]',
+      '/for-centres',
+      '/milestones',
+      '/milestones/[age]',
+    ]);
   });
 
   it('fires cta_text_click from every composer link, on every page', () => {
@@ -167,7 +172,9 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // breakdown says which door produced it.
     const unnamed = smsAnchors.filter((anchor) => !/data-cta-placement="[^"]+"/.test(anchor.tag));
     expect(unnamed.map((anchor) => `${anchor.route} — ${anchor.tag}`)).toEqual([]);
-    expect(placements.size).toBeGreaterThanOrEqual(10);
+    // Composer links are client-only. This walk is the first paint, so the
+    // placement floor lives on the chooser doors below.
+    expect(placements.size).toBe(0);
   });
 
   it('leaves no bare composer anchor in a branch the render never reaches', () => {
@@ -183,23 +190,12 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
    * without these they would pass just as happily if the walk rendered nothing, the
    * number never got stubbed, or either regex stopped matching JSX.
    */
-  it('really is reading rendered anchors — the known-wired CTAs are all present', () => {
-    // The F14 chooser moved the header/hero/closing doors off `sms:` (they are
-    // cta_message_click navigations to /text now, asserted below), and the walk
-    // sees /text as an unknown platform, whose layout leads with the QR rather
-    // than an sms: button — so the composer anchors left are the subpage bands,
-    // the pricing tiers, and the city guides' in-body doors.
-    expect(smsAnchors.length).toBeGreaterThanOrEqual(15);
-    for (const placement of ['faq', 'about', 'pricing_tier', 'answers', 'activities']) {
-      expect(placements, `the walk must reach the ${placement} CTA`).toContain(placement);
-    }
-    // The city pages' in-body door (2026-08 ad week): the dates table is what
-    // the ad promised, so each guide offers the composer right under it, on its
-    // own `_dates` placement, separable from the closing band's.
-    expect(placements).toContain('toronto_swim_dates');
-    expect(smsAnchors.every((anchor) => anchor.tag.includes(`href="sms:${LIVE_NUMBER}`))).toBe(
-      true,
-    );
+  it('really is reading rendered anchors — server HTML never ships a composer link', () => {
+    // Every Text Hale door paints /text. The client upgrades to sms: on iPhone,
+    // iPad, Mac, and Android, so a Windows first paint cannot dead-click. The
+    // walk is that first paint: an sms: anchor here is a regression.
+    expect(smsAnchors).toEqual([]);
+    expect(placements.size).toBe(0);
   });
 
   it('really is reading source anchors — the email fallbacks it must NOT flag are found', () => {
@@ -207,7 +203,7 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // is provisioned the CTA degrades to `mailto:`, which is not a conversion and is not
     // wired. Finding those proves an empty result above means "none left", not "regex
     // matches nothing".
-    expect(rawAnchors('CONTACT_EMAIL').length).toBeGreaterThanOrEqual(3);
+    expect(rawAnchors('CONTACT_EMAIL').length).toBeGreaterThanOrEqual(1);
     expect(sourceFiles.length).toBeGreaterThanOrEqual(20);
   });
 });
@@ -226,10 +222,10 @@ describe('the desktop path is wired the same way', () => {
     // are gone by design (the chooser owns the clipboard path, placement
     // text_entry) — a chip reappearing there would be a Stanley-grammar break,
     // not a coverage win.
-    expect(copyChips.length).toBeGreaterThanOrEqual(10);
-    for (const placement of ['text_entry', 'faq', 'about', 'pricing_band', 'toronto_swim_dates']) {
-      expect(chipPlacements, `the walk must reach the ${placement} chip`).toContain(placement);
-    }
+    // /for-centres and the dated city guides took their chips with them. The
+    // floor is the chooser chip that remains.
+    expect(copyChips.length).toBeGreaterThanOrEqual(1);
+    expect(chipPlacements, 'the walk must reach the text_entry chip').toContain('text_entry');
     expect(chipPlacements).not.toContain('hero');
     expect(chipPlacements).not.toContain('closing');
   });
@@ -242,7 +238,9 @@ describe('every composer anchor names its channel', () => {
   it('stamps data-cta-channel="sms" on every sms: anchor', () => {
     const unstamped = smsAnchors.filter((anchor) => !anchor.tag.includes('data-cta-channel="sms"'));
     expect(unstamped.map((anchor) => `${anchor.route} — ${anchor.tag}`)).toEqual([]);
-    // Positive control shared with the suite: smsAnchors is non-empty above.
+    // The server walk has no sms: anchors (the upgrade is client-only). The
+    // assertion above stays so a composer link that sneaks into HTML must be stamped.
+    expect(smsAnchors).toEqual([]);
   });
 
   it('renders no wa.me anchor — WhatsApp is not a door', () => {
@@ -284,7 +282,17 @@ describe('the chooser doors are wired the same way', () => {
     const chooserPlacements = new Set(
       chooserAnchors.map((anchor) => /data-cta-placement="([^"]*)"/.exec(anchor.tag)?.[1] ?? ''),
     );
-    for (const placement of ['header', 'hero', 'closing']) {
+    for (const placement of [
+      'header',
+      'hero',
+      'closing',
+      'faq',
+      'about',
+      'pricing_tier',
+      'answers',
+      'activities',
+      'text',
+    ]) {
       expect(chooserPlacements, `the walk must reach the ${placement} chooser door`).toContain(
         placement,
       );
@@ -292,21 +300,13 @@ describe('the chooser doors are wired the same way', () => {
   });
 });
 
-describe('the money pages report engagement, not just clicks', () => {
-  it('mounts the scroll tracker on the city guides, named per page', () => {
+describe('the homepage reports engagement, not just clicks', () => {
+  it('mounts the scroll tracker with no page name, so absent still means the landing', () => {
     // LandingScrollAnalytics renders NOTHING, so no walk over markup can see a
     // page that quietly stopped mounting it — source is the only surface the
-    // wiring exists on. The city guides stamp a coarse `page` (the guide's
-    // placement) on their `landing_scroll`; the homepage mounts it bare, since
-    // its historical rows carry no `page` and absent must keep meaning "the
-    // landing".
-    const registration = code(
-      readFileSync(join(SITE_ROOT, 'components/registration-page.tsx'), 'utf8'),
-    );
-    expect(registration).toContain('<LandingScrollAnalytics page={guide.placement} />');
-    const landing = code(
-      readFileSync(join(SITE_ROOT, 'components/landing/v4/landing-v4.tsx'), 'utf8'),
-    );
+    // wiring exists on. The homepage mounts it bare: its historical rows carry
+    // no `page`, and absent must keep meaning "the landing".
+    const landing = code(readFileSync(join(SITE_ROOT, 'components/redesign/home.tsx'), 'utf8'));
     expect(landing).toContain('<LandingScrollAnalytics />');
   });
 });

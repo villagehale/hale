@@ -1,0 +1,23 @@
+/** Stamp icons, 24px stroke grid. Static paths, not user content. */
+export const STAMP_ICONS: Record<string, string> = {
+  soccer: `<circle cx="12" cy="12" r="9"/><path d="M12 7.5l3.2 2.3-1.2 3.8h-4L8.8 9.8z"/><path d="M12 7.5V3M15.2 9.8l4.3-1.4M14 13.6l2.6 3.7M10 13.6l-2.6 3.7M8.8 9.8L4.5 8.4"/>`,
+  swimming: `<circle cx="16.5" cy="6.5" r="2"/><path d="M4 11l4.5-2.5 3 3 3-2"/><path d="M2 16c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5M2 20c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"/>`,
+  skating: `<path d="M6 3h5v8l6 2a3 3 0 012 3v1H5V3z"/><path d="M3 20.5h17a2 2 0 002-2M7 17v3.5M17 17v3.5"/><path d="M8 6h3M8 9h3"/>`,
+  zoo: `<path d="M7 4c0 2 1 4 1 4M17 4c0 2-1 4-1 4"/><path d="M8 8c-2 1-3 3-3 6 0 4 3 6 7 6s7-2 7-6c0-3-1-5-3-6-1-.6-2.5-1-4-1s-3 .4-4 1z"/><circle cx="9.5" cy="12.5" r=".6"/><circle cx="14.5" cy="12.5" r=".6"/><path d="M10.5 16c1 .8 2 .8 3 0M12 14.5v1.5"/>`,
+  karate: `<path d="M7 3l5 5 5-5M7 3L4 6v15h16V6l-3-3"/><path d="M12 8v13M4 13h16"/><path d="M10 13l-2 6M14 13l2 6"/>`,
+  aquarium: `<path d="M3 12c3-5 9-6 13-2l5-3v10l-5-3c-4 4-10 3-13-2z"/><circle cx="7.5" cy="11" r=".7"/><path d="M11 9.5c1 1.5 1 3.5 0 5"/><circle cx="18" cy="4" r="1"/><circle cx="20.5" cy="2.5" r=".6"/>`,
+  ballet: `<path d="M5 9c0-2 3-2 4 0l1.5 9c0 2-4 2.5-5 .5z"/><path d="M14 9c0-2 3-2 4 0l1.5 9c0 2-4 2.5-5 .5z"/><path d="M7 9C6 6 4 4 2 4M16 9c1-3 3-5 5-5"/>`,
+  farm: `<path d="M3 21V10l9-6 9 6v11z"/><path d="M8 21v-7h8v7M8 14l8 7M16 14l-8 7M10 10h4"/>`,
+  hockey: `<path d="M14 2l-6 16a2 2 0 01-2 1.5H3"/><path d="M3 19.5h3"/><ellipse cx="17" cy="19" rx="4" ry="1.6"/><path d="M13 19v1.2c0 .9 1.8 1.6 4 1.6s4-.7 4-1.6V19"/>`,
+  basketball: `<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5.6 5.6c3 3 3 9.8 0 12.8M18.4 5.6c-3 3-3 9.8 0 12.8"/>`,
+  taekwondo: `<circle cx="8" cy="4.5" r="2"/><path d="M8 7v6l-3 8M8 10l-4 2M8 13l3.5-1.5L21 8"/><path d="M8 10h3"/>`,
+  dance: `<circle cx="13" cy="4" r="2"/><path d="M13 6.5l-1 6 3 3.5 1 5M12 12.5L8 15l-3 4M12.5 8.5L18 6M12.5 8.5L7 10"/>`,
+  'figure-skating': `<circle cx="11" cy="3.5" r="2"/><path d="M11 6l1 6-3 3M12 12l5-1 5-3M11 7.5l-5 3M11 7.5l4-1.5"/><path d="M6 18h6l1.5 1M9 15v3"/>`,
+  golf: `<path d="M7 21V3l9 3.5L7 10"/><circle cx="16" cy="17.5" r="2.5"/><path d="M3 21h18"/>`,
+  mma: `<path d="M6 10V6a3 3 0 013-3h5a4 4 0 014 4v5a5 5 0 01-5 5H9a3 3 0 01-3-3z"/><path d="M6 10h7M9 3v7M12.5 3.2V10"/><path d="M8 17v4h7v-4"/>`,
+  gymnastics: `<circle cx="12" cy="4" r="2"/><path d="M12 6.5V14M12 9l-6-4M12 9l6-4M12 14l-4 7M12 14l4 7"/><path d="M3 21h18"/>`,
+  baseball: `<circle cx="12" cy="12" r="9"/><path d="M7 4.5c2.5 4 2.5 11 0 15M17 4.5c-2.5 4-2.5 11 0 15"/><path d="M8.3 8h-2M8.8 12H6.5M8.3 16h-2M15.7 8h2M15.2 12h2.3M15.7 16h2"/>`,
+  skiing: `<circle cx="15" cy="3.5" r="2"/><path d="M14.5 6l-4 4 3.5 2.5-2 5M10.5 10L7 12M14.5 6l3 3 3-1"/><path d="M3 15l18 6M5 21l15-15"/>`,
+  museum: `<path d="M3 9l9-6 9 6z"/><path d="M5 9v9M9.7 9v9M14.3 9v9M19 9v9M3 21h18M4 18h16"/>`,
+  'christmas-market': `<path d="M12 2l3 5h-2l4 5h-2.5l4.5 6H5l4.5-6H7l4-5H9z"/><path d="M12 18v3M9 21h6"/><circle cx="10" cy="11" r=".6"/><circle cx="14" cy="14" r=".6"/>`,
+};

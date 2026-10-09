@@ -1,35 +1,28 @@
 'use client';
 
 import { useActionState } from 'react';
+import { FallbackCard, LandingCard, StatusCard } from '~/components/hale/connect/connect-cards';
 import {
   type ChannelLinkRedeemState,
   redeemChannelLinkAction,
 } from '~/lib/auth/channel-link-actions';
-import {
-  type TextConnectProvider,
-  textConnectButtonLabel,
-} from '~/lib/channel/connect/text-connect';
+import { landingCopy, redeemErrorStatus } from '~/lib/channel/connect/connect-page-copy';
+import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
 
 /**
- * Redeems a texted sign-in link on a TAP, never on load — the one deliberate
- * difference from MagicLinkRedeem's auto-submit. An SMS link gets prefetched by
- * carrier scanners and Apple's link previews, which run no JS but do follow
- * redirects. The tap signs the parent in and does not spend the token; Google
- * consent does. The button is also the interstitial that keeps a Google consent
- * screen from erupting straight out of a text message. The token is bound into the
- * action, never rendered in an input.
- *
- * When the link named a connector, the button says which one and this tap is the LAST
- * one: redemption forwards straight into Google's consent. The label is the whole
- * warning the interstitial owes — a parent about to meet a Google permissions screen
- * should have read the word Google first.
+ * Redeems a texted sign-in link on a TAP, never on load. Carrier scanners follow
+ * the URL and run no JS. The token is bound into the action, never rendered.
+ * A named connector goes to Google; anything else continues to Settings, and
+ * that button is not the Google mark.
  */
 export function ChannelLinkRedeem({
   token,
   provider,
+  smsHref,
 }: {
   token: string;
   provider: TextConnectProvider | null;
+  smsHref: string | null;
 }) {
   const action = redeemChannelLinkAction.bind(null, token, provider);
   const [state, formAction, pending] = useActionState<ChannelLinkRedeemState, FormData>(action, {
@@ -37,23 +30,20 @@ export function ChannelLinkRedeem({
   });
 
   if (state.status === 'error') {
+    const copy = redeemErrorStatus(state.message, provider);
     return (
-      <p className="field-error" role="alert">
-        {state.message}
-      </p>
+      <StatusCard
+        copy={copy}
+        smsHref={smsHref}
+        formAction={copy.retry ? formAction : undefined}
+        pending={pending}
+      />
     );
   }
 
-  return (
-    <form action={formAction} className="flex w-full flex-col gap-4">
-      <p className="meta">
-        {provider
-          ? 'One tap signs you in and takes you to Google to approve it.'
-          : 'One tap signs you in and opens your connected apps.'}
-      </p>
-      <button type="submit" className="btn-primary self-start" disabled={pending}>
-        {pending ? 'Signing you in…' : provider ? textConnectButtonLabel(provider) : 'Continue'}
-      </button>
-    </form>
-  );
+  if (!provider) {
+    return <FallbackCard formAction={formAction} pending={pending} />;
+  }
+
+  return <LandingCard copy={landingCopy(provider)} formAction={formAction} pending={pending} />;
 }

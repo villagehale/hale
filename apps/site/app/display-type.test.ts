@@ -41,7 +41,10 @@ import { Wordmark } from '~/components/wordmark.js';
  */
 
 const CSS = readFileSync(fileURLToPath(new URL('./globals.css', import.meta.url)), 'utf8');
-const LAYOUT = readFileSync(fileURLToPath(new URL('./[locale]/layout.tsx', import.meta.url)), 'utf8');
+const LAYOUT = readFileSync(
+  fileURLToPath(new URL('./[locale]/layout.tsx', import.meta.url)),
+  'utf8',
+);
 const root = postcss.parse(CSS);
 
 /** Split a selector LIST on its top-level commas only. `:where(a, b) c` is one
@@ -310,7 +313,9 @@ describe('headings use the system display stack, not a loaded display webfont', 
     expect(LAYOUT).not.toContain('fraunces.variable');
     expect(LAYOUT).not.toMatch(/from 'next\/font\/google'/);
     expect(LAYOUT).not.toMatch(/https?:\/\/fonts\./);
-    expect(CSS).not.toMatch(/https?:\/\/fonts\.|url\([^)]*tripfix|font-family:[^;]*(Helvetica Now|ABC Marist)/i);
+    expect(CSS).not.toMatch(
+      /https?:\/\/fonts\.|url\([^)]*tripfix|font-family:[^;]*(Helvetica Now|ABC Marist)/i,
+    );
     const shipped = readdirSync(fileURLToPath(new URL('./fonts', import.meta.url)));
     expect(shipped).toContain('fraunces-latin-opsz-wght-normal.woff2');
     expect(shipped).toContain('fraunces-OFL.txt');
@@ -438,7 +443,12 @@ describe('headings use the system display stack, not a loaded display webfont', 
     // or lighten a weight and the failure names the element the rung sinks under.
     const headingWeight = Number(only(FRAUNCES_HEADING_SELECTORS[0] as string, 'font-weight'));
     const heroWeight = Number(only(FRAUNCES_HERO_SELECTORS[0] as string, 'font-weight'));
-    const rungs: { label: string; size: string; weight: number; floor: keyof typeof SUB_ELEMENT }[] = [
+    const rungs: {
+      label: string;
+      size: string;
+      weight: number;
+      floor: keyof typeof SUB_ELEMENT;
+    }[] = [
       {
         label: 'landing hero',
         size: only(FRAUNCES_HERO_SELECTORS[0] as string, 'font-size'),
@@ -457,7 +467,12 @@ describe('headings use the system display stack, not a loaded display webfont', 
         weight: headingWeight,
         floor: 'aboutCardH3',
       },
-      { label: 'landing H2', size: only('.v4-h2', 'font-size'), weight: headingWeight, floor: 'landingCardH3' },
+      {
+        label: 'landing H2',
+        size: only('.v4-h2', 'font-size'),
+        weight: headingWeight,
+        floor: 'landingCardH3',
+      },
       {
         label: 'how-it-works H2',
         size: only('.v4-h2-wide', 'font-size'),
@@ -505,12 +520,13 @@ describe('headings use the system display stack, not a loaded display webfont', 
     const h2Stem = size * stemPerEm(opszOf(size), 450);
     expect(h2Stem / floorPx('pricingCardH3', 1440)).toBeGreaterThan(1);
     // It has to be IN the display system for that to mean anything — as a bare
-    // sans h2 it is the uncontained inversion #512 was choosing between.
+    // sans heading it is the uncontained inversion #512 was choosing between.
+    // The live pricing page's headline is the subpage display heading.
     const pricing = readFileSync(
-      fileURLToPath(new URL('../components/pricing-section.tsx', import.meta.url)),
+      fileURLToPath(new URL('../components/redesign/pricing.tsx', import.meta.url)),
       'utf8',
     );
-    expect(pricing).toContain('<h2 className="v4-display mt-3">');
+    expect(pricing).toContain('className="sp-h1"');
   });
 
   it('tightens the tracking as the size grows, and never past the hero', () => {
@@ -519,7 +535,9 @@ describe('headings use the system display stack, not a loaded display webfont', 
     // so display tracking is negative again — but the hero is the largest thing
     // on the site and therefore the tightest, and no smaller rung may out-tighten
     // it.
-    const hero = Number(only(FRAUNCES_HERO_SELECTORS[0] as string, 'letter-spacing').replace('em', ''));
+    const hero = Number(
+      only(FRAUNCES_HERO_SELECTORS[0] as string, 'letter-spacing').replace('em', ''),
+    );
     expect(hero).toBeLessThan(0);
     for (const selector of FRAUNCES_HEADING_SELECTORS) {
       const em = Number(only(selector, 'letter-spacing').replace('em', ''));
@@ -680,7 +698,13 @@ describe('the wordmark is drawn art, not set type', () => {
   });
 
   it('leaves .wordmark a BOX — every type declaration went with the type', () => {
-    for (const prop of ['font-family', 'font-weight', 'font-synthesis-weight', 'font-size', 'letter-spacing']) {
+    for (const prop of [
+      'font-family',
+      'font-weight',
+      'font-synthesis-weight',
+      'font-size',
+      'letter-spacing',
+    ]) {
       expect(declarations('.wordmark', prop), `.wordmark still sets ${prop}`).toEqual([]);
     }
     expect(only('.wordmark', 'height')).toBe('1.32rem');
@@ -696,19 +720,18 @@ describe('the wordmark is drawn art, not set type', () => {
   });
 
   it('draws every "Hale" with the one component — no typed mark left anywhere', () => {
-    const components = [
-      'site-header',
-      'site-footer',
-      'legal-layout',
-      'text-entry',
-      'landing/v4/landing-v4',
-    ].map((name) => readFileSync(fileURLToPath(new URL(`../components/${name}.tsx`, import.meta.url)), 'utf8'));
+    const components = ['site-header', 'site-footer', 'legal-layout'].map((name) =>
+      readFileSync(fileURLToPath(new URL(`../components/${name}.tsx`, import.meta.url)), 'utf8'),
+    );
     const drawn = components.flatMap((source) => [...source.matchAll(/<Wordmark\b/g)]);
-    // /text no longer draws its own mark. The shared header (site-header) is
-    // the lockup on that page, same turtle tile and wordmark as the landing.
-    expect(drawn).toHaveLength(4);
+    // /text and the legal pages no longer draw their own mark. The shared
+    // header and footer are the lockup.
+    expect(drawn).toHaveLength(2);
     for (const source of components) {
-      expect([...source.matchAll(/<span[^>]*>\s*Hale\s*<\/span>/g)], 'a typed mark survives').toEqual([]);
+      expect(
+        [...source.matchAll(/<span[^>]*>\s*Hale\s*<\/span>/g)],
+        'a typed mark survives',
+      ).toEqual([]);
     }
   });
 
@@ -727,7 +750,8 @@ describe('the accent is neither slant nor colour', () => {
     root.walkDecls('font-style', (decl) => {
       if (decl.value.trim() !== 'italic') return;
       const selector = (decl.parent as postcss.Rule | undefined)?.selector ?? '';
-      if (/\.(v4-|legal-title|accent|v3-accent|pull-word|wordmark)/.test(selector)) italicised.push(selector);
+      if (/\.(v4-|legal-title|accent|v3-accent|pull-word|wordmark)/.test(selector))
+        italicised.push(selector);
     });
     expect(italicised).toEqual([]);
     // Positive control: the scan does see the one italic the site keeps — <em>
@@ -800,18 +824,6 @@ describe('the pronunciation line is quieter than the labels that share its style
     expect(declarations('.v4-pronounce', 'color')).toEqual([]);
     expect(declarations('.v4-pronounce', 'opacity')).toEqual([]);
   });
-
-  it('quiets the pronunciation only — every other eyebrow keeps its size', () => {
-    // The class exists so the reduction lands on the one line the founder named.
-    // A change to .v4-eyebrow itself would have shrunk the seven section labels
-    // that carry the page's structure.
-    const landing = readFileSync(
-      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
-      'utf8',
-    );
-    expect([...landing.matchAll(/v4-pronounce/g)]).toHaveLength(1);
-    expect([...landing.matchAll(/className="v4-eyebrow/g)].length).toBeGreaterThanOrEqual(5);
-  });
 });
 
 describe('type set over the shore art carries its own veil, in both bands', () => {
@@ -829,12 +841,6 @@ describe('type set over the shore art carries its own veil, in both bands', () =
       declarations('.v4-hero-top .v4-hero-body::before', 'background'),
       'the veil must not be re-scoped to the hero',
     ).toEqual([]);
-    // Positive control: both bands really do wear that class over the art.
-    const landing = readFileSync(
-      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
-      'utf8',
-    );
-    expect([...landing.matchAll(/className="v4-hero-body/g)]).toHaveLength(2);
   });
 
   it('fades the trailing edge of every phone card rail, so the cut reads as a carousel', () => {

@@ -1,8 +1,9 @@
-import type { PropsWithChildren } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import type { PropsWithChildren } from 'react';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
+import { PRIVACY_URL } from '~/lib/legal-links';
 
 /**
  * The shared sign-in / sign-up frame: a centered split card floating on a
@@ -58,7 +59,10 @@ export function AuthShell({
           {subtitle ? <p className="auth-subtitle">{subtitle}</p> : null}
           {children}
           <p className="meta">
-            Your family&rsquo;s data stays in Canada. Nothing is shared until you say so.
+            Never sold.{' '}
+            <a href={PRIVACY_URL} className="underline underline-offset-2">
+              Privacy policy
+            </a>
           </p>
           {/* The one brand moment in the receipts room: the name, said out loud. The
               marketing site closes every page on this line; the app earns it once, at

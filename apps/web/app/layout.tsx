@@ -41,10 +41,14 @@ const fraunces = localFont({
 // `.tabular` keeps `font-variant-numeric` for the column alignment that role actually
 // needed (DESIGN.md § Type).
 
+const PORTAL_DESCRIPTION =
+  'Sign in to Hale to see your family, your messages with Hale, and your settings.';
+
 export const metadata: Metadata = {
   title: 'Hale · the family assistant you text',
-  description:
-    "Hale is the family assistant you text — it takes the family admin off your plate, catches registration day before spots fill, and never acts without your say-so. This is the receipts room: approvals, history, settings. Your family's data stays in Canada.",
+  description: PORTAL_DESCRIPTION,
+  openGraph: { description: PORTAL_DESCRIPTION },
+  twitter: { description: PORTAL_DESCRIPTION },
 };
 
 export const viewport: Viewport = {
@@ -65,7 +69,7 @@ export const viewport: Viewport = {
 // browser re-applies the stage's old offset on reload AFTER React mounts, undoing
 // the scroll reset — so we disable it here, before any restoration can happen.
 // Kept inline because it must execute before hydration.
-const NO_FLASH_SCRIPT = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var p=localStorage.getItem(k);if(p!=='light'&&p!=='dark'&&p!=='system')p='system';var dark=p==='dark'||(p==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);if('scrollRestoration' in history){history.scrollRestoration='manual';}}catch(e){}})();`;
+const NO_FLASH_SCRIPT = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var p=localStorage.getItem(k);if(p!=='light'&&p!=='dark'&&p!=='system')p='system';document.documentElement.dataset.themePref=p;var dark=p==='dark'||(p==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);if('scrollRestoration' in history){history.scrollRestoration='manual';}}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -74,7 +78,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: pre-paint theme script must run before hydration to avoid a flash of the wrong theme */}
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         <PostHogProvider>{children}</PostHogProvider>
       </body>
     </html>

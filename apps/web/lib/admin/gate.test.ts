@@ -126,6 +126,18 @@ describe('resolveAdminGate', () => {
     expect(console.warn).toHaveBeenCalledTimes(1);
   });
 
+  it('does not open the database when the allowlist is unset and no URL is configured', async () => {
+    const previous = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = undefined;
+    process.env.ADMIN_PHONES = '';
+    try {
+      const { resolveAdminGate } = await import('./gate');
+      await expect(resolveAdminGate()).resolves.toEqual({ status: 'not_configured' });
+    } finally {
+      process.env.DATABASE_URL = previous;
+    }
+  });
+
   it('fails CLOSED when ADMIN_PHONES holds only garbage entries', async () => {
     process.env.ADMIN_PHONES = 'not-a-number, 123';
     expect(await gate()).toEqual({ status: 'not_configured' });

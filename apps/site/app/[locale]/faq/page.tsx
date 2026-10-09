@@ -1,21 +1,18 @@
 import type { Metadata } from 'next';
-import { CopyNumberButton } from '~/components/copy-number';
-import { CtaBand } from '~/components/cta-band';
-import { LandingCta } from '~/components/landing-cta';
-import { ProductFaqAccordion } from '~/components/product-faq-accordion';
-import { SiteFooter } from '~/components/site-footer';
-import { SiteHeader } from '~/components/site-header';
-import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
+import { RedesignFaq } from '~/components/redesign/faq';
+import { tx } from '~/components/redesign/tx';
 import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
-import { type Locale, routing } from '~/i18n/routing';
+import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { FAQ, type FaqItem, faqJsonLd } from '~/lib/faq/index';
-import { chromeCta } from '~/lib/site/chrome-cta';
+import { FAQ, faqJsonLd } from '~/lib/faq/index';
+import { intakePrefill } from '~/lib/intake-prefill';
+import { pageSource } from '~/lib/page-source';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<{ s?: string | string[] }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -39,73 +36,26 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-/** English is the canonical FAQ (lib/faq, with its own JSON-LD + tests); other
- * locales read the translated list from messages. */
-function faqItems(locale: Locale): readonly FaqItem[] {
-  if (locale === routing.defaultLocale) return FAQ;
-  return getTranslator(locale, 'Faq').raw('items') as FaqItem[];
-}
-
-export default async function FaqPage({ params }: PageProps) {
+export default async function FaqPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
-  const t = getTranslator(locale, 'Faq');
-  const items = faqItems(locale);
-  const cta = chromeCta(locale);
-  const copy = getTranslator(locale, 'CopyNumber');
-  const number = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
-
+  const source = await pageSource(searchParams);
+  const items = FAQ.map((item) => ({
+    question: tx(locale, item.question),
+    answer: tx(locale, item.answer),
+  }));
   return (
-    <main id="main" tabIndex={-1} className="relative">
+    <>
       <script
         type="application/ld+json"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input).
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(items, locale)) }}
       />
-      <SiteHeader locale={locale} />
-
-      <section className="shell pt-10 sm:pt-16 pb-16 lg:pb-24">
-        <div className="max-w-2xl">
-          <span className="eyebrow">{t('eyebrow')}</span>
-          <WordsPullUp className="mt-3" segments={t.raw('headline') as HeadlineSegment[]} />
-          <p className="meta reading-measure mt-6 text-lg" style={{ lineHeight: 1.6 }}>
-            {t('lede')}
-          </p>
-        </div>
-
-        <div className="mt-14 max-w-3xl">
-          <ProductFaqAccordion items={items} />
-        </div>
-      </section>
-
-      <CtaBand>
-        <h2 className="mx-auto max-w-2xl font-display text-2xl">{t('ctaHeading')}</h2>
-        <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
-          {t('ctaSub')}
-        </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <LandingCta
-            event="cta_text_click"
-            channel="sms"
-            placement="faq"
-            href={cta.href}
-            className="btn-on-navy"
-          >
-            {cta.label}
-          </LandingCta>
-          {number ? (
-            <CopyNumberButton
-              number={number}
-              placement="faq"
-              className="btn-on-navy-quiet"
-              label={copy('label')}
-              copiedLabel={copy('copied')}
-              ariaLabel={copy('aria')}
-            />
-          ) : null}
-        </div>
-      </CtaBand>
-
-      <SiteFooter locale={locale} />
-    </main>
+      <RedesignFaq
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+        source={source}
+      />
+    </>
   );
 }

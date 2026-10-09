@@ -49,14 +49,12 @@ export function adminAllowlistHashes(raw: string | undefined = process.env.ADMIN
   return hashes;
 }
 
-export async function resolveAdminGate(database: Database = defaultDb()): Promise<AdminGate> {
+export async function resolveAdminGate(database?: Database): Promise<AdminGate> {
   const hashes = adminAllowlistHashes();
   if (hashes.length === 0) {
     if (!absenceLogged) {
       absenceLogged = true;
-      console.warn(
-        'admin: ADMIN_PHONES is not set — /admin is closed for everyone (fail-closed)',
-      );
+      console.warn('admin: ADMIN_PHONES is not set — /admin is closed for everyone (fail-closed)');
     }
     return { status: 'not_configured' };
   }
@@ -68,7 +66,11 @@ export async function resolveAdminGate(database: Database = defaultDb()): Promis
   const externalAuthId = session?.user?.id;
   if (!externalAuthId) return { status: 'unauthenticated' };
 
-  const users = await database
+  // Same as loadViewerName: a default `= defaultDb()` argument runs before these
+  // exits and throws on a preview with no DATABASE_URL. The pool is only needed
+  // once a session actually has to be checked against the allowlist.
+  const pool = database ?? defaultDb();
+  const users = await pool
     .select({ id: schema.users.id, externalAuthId: schema.users.externalAuthId })
     .from(schema.users)
     .where(eq(schema.users.externalAuthId, externalAuthId))
@@ -76,7 +78,7 @@ export async function resolveAdminGate(database: Database = defaultDb()): Promis
   const user = users.find((row) => row.externalAuthId === externalAuthId);
   if (!user) return { status: 'not_admin' };
 
-  const channels = await database
+  const channels = await pool
     .select({
       userId: schema.parentChannels.userId,
       kind: schema.parentChannels.kind,

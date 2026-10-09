@@ -3,7 +3,9 @@ import { NextResponse } from 'next/server';
 import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
 import { ADMIN_PROBE_HEADER, isAdminPath, isProtectedPath } from '~/lib/auth/protected-routes';
+import { RETURN_PATH_HEADER, signInHref } from '~/lib/auth/redirect';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
+import { PASSPORT_DEMO_HEADER, passportDemoBypassesAuth } from '~/lib/passport/demo';
 import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
 
 // The middleware runs on the Edge runtime, so it builds `auth` from the Edge-safe
@@ -38,25 +40,17 @@ export default auth((req) => {
   }
 
   if (!isProtectedPath(pathname)) {
-    return NextResponse.next();
+    // API routes stay a plain next() — nothing here is a page deep link, and
+    // the cookie-auth tests assert those requests are not header-rewritten.
+    if (pathname === '/api' || pathname.startsWith('/api/')) {
+      return NextResponse.next();
+    }
+    return stampReturnPath(req);
   }
 
-  // VIL-244 · M9 (D4/D20): under the receipts-room IA the daily feed is DEMOTED and the
-  // landing surface is APPROVALS — the receipts room itself. It used to forward to the
-  // week view, but #455 demoted `/plan` out of the nav too, so the landing was a surface
-  // the sidebar no longer lists: reachable, but incoherent as the first thing a parent
-  // sees. Approvals is the one stop that is both the nav's first entry and the room the
-  // whole IA is named for. The forward lives HERE rather than in the page, because a
-  // page-level `redirect()` under a streaming `force-dynamic` layout resolves as a
-  // mid-stream client navigation (200 + a soft push), not a redirect the browser or a
-  // link-checker can see. The route itself is untouched — deleting it is a later PR.
-  //
-  // Every post-auth target elsewhere stays `/home` on purpose: this line is the single
-  // flag-conditional hinge, so with the flag OFF `/home` remains the real daily feed and
-  // the real landing. Retargeting those call sites would break the flag-off path.
-  if (receiptsIaEnabled() && (pathname === '/home' || pathname.startsWith('/home/'))) {
-    return NextResponse.redirect(new URL('/family', req.nextUrl), 302);
-  }
+  // The receipts portal's landing IS /home (the parent home). It used to 302 to
+  // /family under F14_RECEIPTS_IA; that forward is gone so the home page can render.
+  // Flag-off /home is still the daily feed — the page branches, the URL does not.
 
   // Under the same reframe the family EDITOR moved up a level: /family is the editor
   // now, so /family/members has nothing of its own left to show. A real 308 beside the
@@ -80,28 +74,56 @@ export default auth((req) => {
   }
 
   if (!authConfigured()) {
-    if (process.env.NODE_ENV === 'production') {
-      return NextResponse.redirect(new URL('/sign-in', req.nextUrl));
+    if (process.env.NODE_ENV === 'production' && !passportDemoBypassesAuth(pathname)) {
+      return redirectToSignIn(req);
     }
-    return NextResponse.next();
+    return nextWithHeaders(req, pathname);
   }
 
   if (!req.auth) {
-    return NextResponse.redirect(new URL('/sign-in', req.nextUrl));
+    if (!passportDemoBypassesAuth(pathname)) {
+      return redirectToSignIn(req);
+    }
   }
 
-  // The authed /admin probe: mark the request so the (authed) layout — which
-  // sits ABOVE the group's loading.tsx Suspense boundary — can 404 a signed-in
-  // non-admin BEFORE the streaming shell flushes a 200. Every other request has
-  // any client-sent copy STRIPPED, so only the middleware can speak this header.
+  return nextWithHeaders(req, pathname);
+});
+
+/** Signed-out gate: /sign-in?callbackUrl=<path+query>, or bare /sign-in when the path is unsafe. */
+function redirectToSignIn(req: { nextUrl: URL }) {
+  const returnTo = `${req.nextUrl.pathname}${req.nextUrl.search}`;
+  return NextResponse.redirect(new URL(signInHref(returnTo), req.nextUrl));
+}
+
+function stampReturnPath(req: { headers: Headers; nextUrl: URL }) {
   const requestHeaders = new Headers(req.headers);
+  requestHeaders.set(RETURN_PATH_HEADER, `${req.nextUrl.pathname}${req.nextUrl.search}`);
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
+/**
+ * Forwards the request with the admin and passport-demo headers rewritten.
+ * A client-sent copy of either header is removed first. The passport demo
+ * header is set only for the fixture family routes, and only when the preview
+ * demo is on — production never reaches that branch. The return-path header
+ * is overwritten here too, so a client cannot supply the value the layout reads.
+ */
+function nextWithHeaders(req: { headers: Headers; nextUrl: URL }, pathname: string) {
+  const requestHeaders = new Headers(req.headers);
+  // Overwrite any client-sent copy. The layout trusts this header for the
+  // signed-out return path, so only the middleware may write it.
+  requestHeaders.set(RETURN_PATH_HEADER, `${req.nextUrl.pathname}${req.nextUrl.search}`);
   if (isAdminPath(pathname)) {
     requestHeaders.set(ADMIN_PROBE_HEADER, '1');
   } else {
     requestHeaders.delete(ADMIN_PROBE_HEADER);
   }
+  requestHeaders.delete(PASSPORT_DEMO_HEADER);
+  if (passportDemoBypassesAuth(pathname)) {
+    requestHeaders.set(PASSPORT_DEMO_HEADER, '1');
+  }
   return NextResponse.next({ request: { headers: requestHeaders } });
-});
+}
 
 export const config = {
   matcher: ['/((?!_next|.*\\..*).*)'],

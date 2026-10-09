@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { portalOwnsHeading } from '../portal/owns-heading';
 import { DRILL_HEROES, ROOT_ROUTES } from './hero-map';
 
 /**
@@ -59,7 +60,7 @@ function graphSources(route: string): { file: string; src: string; entry: boolea
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
     out.push({ file, src, entry: file === entry });
-    for (const m of src.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
+    for (const m of src.matchAll(/(?:from\s+|import\(\s*)['"]([^'"]+)['"]/g)) {
       const dep = resolveLocal(m[1] ?? '', file);
       if (dep) stack.push(dep);
     }
@@ -85,6 +86,38 @@ function enclosingComponent(src: string, upToIndex: number): string | null {
 // an aside, not a competing page hero.
 const PANEL_HEADER_COMPONENTS = new Set(['AskSessionRail', 'HaleContextRail']);
 
+/**
+ * Receipts portal routes render their own single title (the home greeting, or
+ * PortalHeading). PortalShell skips FallbackHero on those paths via
+ * portalOwnsHeading, so the page heading is the only h1 — not a duplicate of
+ * the old PageHero. Any other heading in the graph is still a violation.
+ */
+const PORTAL_TITLE_COMPONENTS = new Set(['PortalHome', 'PortalHeading']);
+
+describe('portal routes own their single heading', () => {
+  it('claims home, messages, family, and settings, and leaves demoted routes to the shell', () => {
+    expect(portalOwnsHeading('/home')).toBe(true);
+    expect(portalOwnsHeading('/messages')).toBe(true);
+    expect(portalOwnsHeading('/family/members')).toBe(true);
+    expect(portalOwnsHeading('/settings/plan')).toBe(true);
+    expect(portalOwnsHeading('/demo/portal/home')).toBe(true);
+    expect(portalOwnsHeading('/demo/portal/settings/plan')).toBe(true);
+    expect(portalOwnsHeading('/demo/portal/family')).toBe(true);
+    expect(portalOwnsHeading('/approvals')).toBe(false);
+    expect(portalOwnsHeading('/plan')).toBe(false);
+    expect(portalOwnsHeading('/trail')).toBe(false);
+    expect(portalOwnsHeading('/village')).toBe(false);
+  });
+
+  it('the shell skips its fallback title when the page already has one', () => {
+    const src = readFileSync(join(webRoot, 'components/portal/shell.tsx'), 'utf8');
+    expect(src).toContain('if (portalOwnsHeading(pathname)) return null;');
+  });
+});
+
+// The interest passport paints its own title on Family while the flag is on.
+const REPLACEMENT_TITLE_COMPONENTS = new Set(['PassportHomeScreen', 'PassportKidScreen']);
+
 describe('the app shell owns the single hero — no authed surface emits its own (§3.2)', () => {
   for (const route of [...ROOT_ROUTES, ...Object.keys(DRILL_HEROES)]) {
     it(`${route} render graph emits no own <h1> or <header>`, () => {
@@ -97,6 +130,10 @@ describe('the app shell owns the single hero — no authed surface emits its own
           if (m[1] === 'header' && owner !== null && PANEL_HEADER_COMPONENTS.has(owner)) {
             continue;
           }
+          if (m[1] === 'h1' && owner !== null && PORTAL_TITLE_COMPONENTS.has(owner)) {
+            continue;
+          }
+          if (owner !== null && REPLACEMENT_TITLE_COMPONENTS.has(owner)) continue;
           // Entry page markup is always live; a nested component's heading only counts
           // when that component is actually rendered somewhere in this route's graph.
           if (entry || owner === null || graphText.includes(`<${owner}`)) {

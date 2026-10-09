@@ -12,7 +12,7 @@ A review of our two public legal documents and the data practices behind them:
 - **Terms of Service:** https://app.villagehale.com/terms
 - **Privacy Policy:** https://app.villagehale.com/privacy
 
-We drafted these in good faith (clearly marked "not legal advice"). We need them validated and corrected before public launch.
+We drafted these for review. We need them validated and corrected before public launch.
 
 ## 3. What we collect
 - **Account:** name + email (via Google sign-in), language, timezone.

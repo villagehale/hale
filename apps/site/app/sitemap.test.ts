@@ -37,7 +37,7 @@ describe('sitemap', () => {
     expect(urls).toContain(SITE_URL);
     expect(urls).toContain(`${SITE_URL}/about`);
     expect(urls).toContain(`${SITE_URL}/contact`);
-    expect(urls).toContain(`${SITE_URL}/for-centres`);
+    expect(urls).not.toContain(`${SITE_URL}/for-centres`);
     expect(urls).toContain(`${SITE_URL}/pricing`);
   });
 
@@ -79,7 +79,12 @@ describe('sitemap', () => {
     expect(urls.filter((u) => u.startsWith(`${SITE_URL}/milestones`))).toEqual([]);
     // Positive controls through the identical prefix filter.
     expect(urls.filter((u) => u.startsWith(`${SITE_URL}/answers`)).length).toBeGreaterThan(0);
-    expect(urls.filter((u) => u.startsWith(`${SITE_URL}/activities`)).length).toBeGreaterThan(0);
+    expect(urls.filter((u) => u === `${SITE_URL}/activities`)).toEqual([`${SITE_URL}/activities`]);
+  });
+
+  it('advertises the activities hub and no retired city guide', () => {
+    expect(urls).toContain(`${SITE_URL}/activities`);
+    expect(urls.filter((u) => /\/activities\/[^/]+/.test(u))).toEqual([]);
   });
 
   it('still carries no checkpoint slug anywhere in the sitemap', () => {
@@ -88,14 +93,15 @@ describe('sitemap', () => {
     }
   });
 
-  it('lists the four city-registration landings', () => {
+  it('does not advertise the retired city-registration guides', () => {
     for (const path of [
       '/toronto-fall-recreation-registration',
       '/toronto-swim-registration',
       '/brampton-swim-registration',
       '/ymca-gta-swim-registration',
     ]) {
-      expect(urls).toContain(`${SITE_URL}${path}`);
+      expect(urls).not.toContain(`${SITE_URL}${path}`);
+      expect(urls.filter((url) => url.includes(path))).toEqual([]);
     }
   });
 

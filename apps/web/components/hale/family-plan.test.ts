@@ -39,10 +39,10 @@ describe('FamilyPlanView (settings plan section)', () => {
 
   it('lists the SMS free bullets, not Village or Companion', () => {
     const html = render();
-    expect(html).toContain('Text Hale');
-    expect(html).toContain('Rec dates watched');
-    expect(html).toContain('Answers');
-    expect(html).toContain('Founding rate');
+    expect(html).toContain('Unlimited chat');
+    expect(html).toContain('Live find');
+    expect(html).toContain('A text when a spot opens');
+    expect(html).toContain('Group chats and your co-parent');
     expect(html).not.toContain('Your village feed');
     expect(html).not.toContain('Companion:');
   });
@@ -50,14 +50,14 @@ describe('FamilyPlanView (settings plan section)', () => {
   it('shows the confirmed monthly prices in the monthly period', () => {
     const html = render({ period: 'monthly' });
     expect(html).toContain('Free');
-    expect(html).toContain('$9 CAD/mo');
     expect(html).toContain('$19 CAD/mo');
+    expect(html).toContain('$39 CAD/mo');
   });
 
   it('shows the confirmed annual prices in the annual period', () => {
     const html = render({ period: 'annual' });
-    expect(html).toContain('$79 CAD/yr');
     expect(html).toContain('$159 CAD/yr');
+    expect(html).toContain('$329 CAD/yr');
   });
 
   it('offers a monthly and an annual billing period', () => {

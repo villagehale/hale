@@ -6,20 +6,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SiteFooter } from '~/components/site-footer.js';
 import { SiteHeader } from '~/components/site-header.js';
 import AboutPage from '../app/[locale]/about/page.js';
-import ActivityCityRoute from '../app/[locale]/activities/[city]/page.js';
 import ActivitiesHub from '../app/[locale]/activities/page.js';
 import AnswerRoute from '../app/[locale]/answers/[slug]/page.js';
 import AnswersIndexPage from '../app/[locale]/answers/page.js';
-import BramptonSwimPage from '../app/[locale]/brampton-swim-registration/page.js';
 import ContactPage from '../app/[locale]/contact/page.js';
 import FaqPage from '../app/[locale]/faq/page.js';
 import LandingPage from '../app/[locale]/page.js';
 import PricingPage from '../app/[locale]/pricing/page.js';
 import TextPage from '../app/[locale]/text/page.js';
-import TorontoFallPage from '../app/[locale]/toronto-fall-recreation-registration/page.js';
-import TorontoSwimPage from '../app/[locale]/toronto-swim-registration/page.js';
-import YmcaSwimPage from '../app/[locale]/ymca-gta-swim-registration/page.js';
-import { allCities } from '../lib/activities/index.js';
 import { allAnswers } from '../lib/answers/index.js';
 
 /**
@@ -40,9 +34,8 @@ import { allAnswers } from '../lib/answers/index.js';
 
 const NUMBER = '+16475551234';
 
-const firstCity = allCities[0];
 const firstAnswer = allAnswers[0];
-if (!firstCity || !firstAnswer) throw new Error('the dynamic routes have no content to render');
+if (!firstAnswer) throw new Error('the dynamic routes have no content to render');
 
 async function renderPage(page: () => unknown): Promise<string> {
   vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
@@ -63,12 +56,6 @@ const PAGES: Record<string, () => unknown> = {
   '/answers/[slug]': () =>
     AnswerRoute({ params: Promise.resolve({ slug: firstAnswer.slug, ...EN }) }),
   '/activities': () => ActivitiesHub({ params: Promise.resolve(EN) }),
-  '/activities/[city]': () =>
-    ActivityCityRoute({ params: Promise.resolve({ city: firstCity.slug, ...EN }) }),
-  '/toronto-fall-recreation-registration': () => TorontoFallPage({ params: Promise.resolve(EN) }),
-  '/toronto-swim-registration': () => TorontoSwimPage({ params: Promise.resolve(EN) }),
-  '/brampton-swim-registration': () => BramptonSwimPage({ params: Promise.resolve(EN) }),
-  '/ymca-gta-swim-registration': () => YmcaSwimPage({ params: Promise.resolve(EN) }),
   // The chooser wears the same bar and foot as every other page. Its own
   // column stays the conversion door; chrome is not a second shell.
   '/text': () =>
@@ -112,7 +99,12 @@ describe('one header, one footer, every page', () => {
     // amount, so the shore still starts at the top of the viewport and the glass
     // pill floats over it.
     const landing = await renderPage(PAGES['/'] as () => unknown);
-    expect(landing).toContain('v4-hero v4-hero-top');
+    expect(landing).toContain('class="stage"');
+    const redesign = readFileSync(
+      fileURLToPath(new URL('../app/redesign.css', import.meta.url)),
+      'utf8',
+    );
+    expect(redesign).toContain('margin-top: calc(-1 * var(--nav-h));');
     const css = readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8');
     expect(css).toContain('margin-top: calc(-1 * var(--nav-h));');
     expect(css).toContain('padding-top: var(--nav-h);');
@@ -222,10 +214,7 @@ describe('the header carries the two doors, weighted correctly', () => {
     expect(pill).toContain('href="/text"');
     expect(pill).toContain('data-cta="cta_message_click"');
     expect(pill).toContain('data-cta-placement="header"');
-    // "Text Hale", not "Message Hale": the landing's promise is three texts and
-    // a number you text, and the bar that rides over it says the same verb. The
-    // chooser page keeps "Message Hale" — that label names a composer, not the
-    // act (components/text-entry.test.ts).
+    // "Text Hale", not "Message Hale": the bar says the same verb as the page.
     expect(header).toContain('>Text Hale</a>');
     expect(header).not.toContain('Message Hale');
     // First paint is /text on every device, including a phone: the composer
@@ -260,7 +249,10 @@ describe('the footer says what the site is', () => {
     const footer = renderToStaticMarkup(createElement(SiteFooter));
     expect(footer).toContain('/HAH-leh/');
     expect(footer).toContain('Hawaiian for home');
-    expect(footer).toContain('Village Hale Technologies Inc., Georgetown, Ontario');
+    expect(footer).toContain('Village Hale Technologies Inc.');
+    expect(footer).not.toContain('Georgetown');
+    expect(footer).not.toContain('Your data stays in Canada');
+    expect(footer).not.toContain('for-centres');
     expect(footer).toContain('href="/privacy"');
     expect(footer).toContain('href="/terms"');
     // Legal lives in the bottom bar only — a column would duplicate it.

@@ -1361,6 +1361,13 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 :root[data-theme="dark"] .theme-icon-light { display: none; }
 :root[data-theme="dark"] .theme-icon-dark { display: block; }
 
+/* The logo tile is navy on navy in dark. A faint cream ring lifts it, the same
+   hairline the redesign puts on .brand img / .hs-close-brand img. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo-tile { box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22); }
+}
+:root[data-theme="dark"] .logo-tile { box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22); }
+
 /* The bar's icon buttons — the theme cycle and the hamburger. 44px square, the
  * touch target, with the glyph sized well inside it. */
 .chrome-icon-btn {
@@ -1458,9 +1465,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * shortcut. Every headline wearing this is the first thing on its page, so "in
  * view" is settled before the reader can scroll; and a CSS animation runs with
  * no JavaScript at all, where an IntersectionObserver reveal leaves the page's
- * <h1> at opacity 0 for a reader whose JS never arrives. The one primitive we
- * already ship with that flaw (FadeInUp) is trusted with a CTA band, never with
- * a heading.
+ * <h1> at opacity 0 for a reader whose JS never arrives. A heading never uses
+ * that kind of reveal.
  *
  * --w is the word's index, set inline by components/words-pull-up.tsx. */
 .pull-word {
@@ -1814,6 +1820,18 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     mask-composite: exclude;
     pointer-events: none;
   }
+
+  /* Legal pages scroll a long document under the bar. The shared glass (0.72)
+     lets body text show through; these pages ask for a nearly solid fill.
+     Scoped to .legal-chrome so the landing hero glass stays as it is. */
+  .legal-chrome .v4-glass { background: rgb(253 252 250 / 0.94); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .legal-chrome .v4-glass {
+      background: rgb(12 26 54 / 0.96);
+    }
+  }
+  :root[data-theme="dark"] .legal-chrome .v4-glass { background: rgb(12 26 54 / 0.96); }
+  :root[data-theme="light"] .legal-chrome .v4-glass { background: rgb(253 252 250 / 0.94); }
 
   /* ── Hero ─────────────────────────────────────────────────────────────── */
   .v4-hero {

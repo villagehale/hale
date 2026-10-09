@@ -8,9 +8,9 @@ import { PRIVACY_URL } from '~/lib/legal-links';
 export function PrivacyNote() {
   return (
     <span className="meta">
-      Built to Canada&rsquo;s privacy laws — your family&rsquo;s data stays yours.{' '}
+      Never sold.{' '}
       <a href={PRIVACY_URL} className="link">
-        How Hale protects it
+        Privacy policy
       </a>
     </span>
   );

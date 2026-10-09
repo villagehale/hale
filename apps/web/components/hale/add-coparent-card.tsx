@@ -1,14 +1,12 @@
 'use client';
 
-import { Copy, UserPlus } from 'lucide-react';
+import { Copy, Plus, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { mintCoParentJoinLink, revokeCoParentJoinLinks } from '~/app/(authed)/family/join-actions';
+import portal from '~/components/portal/portal.module.css';
 import { Button } from '~/components/ui/button';
 import { Modal } from '~/components/ui/modal';
-import {
-  mintCoParentJoinLink,
-  revokeCoParentJoinLinks,
-} from '~/app/(authed)/family/join-actions';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 
 /** The honest quota line — the single-use + 7-day TTL the join rail actually enforces. */
@@ -35,9 +33,21 @@ type MintState =
  */
 export function AddCoParentCard({
   openInvite,
+  title = 'Add your co-parent',
+  description = 'They get everything you get — full access, free.',
+  actionLabel = 'Create link',
+  plain = false,
+  appearance = 'panel',
 }: {
   /** The family's outstanding link, if one is out — status only, never the code. */
   openInvite: { expiresAt: string } | null;
+  title?: string;
+  description?: string;
+  actionLabel?: string;
+  /** Drop the oat panel so the card can sit inside another surface. */
+  plain?: boolean;
+  /** Portal row: plus tile, copy, and an Invite pill. The panel is the legacy card. */
+  appearance?: 'panel' | 'row';
 }) {
   const router = useRouter();
   const capture = useAnalytics();
@@ -89,37 +99,8 @@ export function AddCoParentCard({
     router.refresh();
   }
 
-  return (
-    <div className="panel-oat px-6 py-5 max-w-md">
-      <p className="font-medium text-spruce">Add your co-parent</p>
-      <p className="meta mt-1 leading-relaxed">
-        They get everything you get — full access, free.
-      </p>
-
-      {openInvite ? (
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <p className="meta text-slate-green">
-            A link is out — expires {formatDate(openInvite.expiresAt)}.
-          </p>
-          <Button variant="secondary" onClick={revoke} disabled={revoking} aria-live="polite">
-            {revoking ? 'Revoking…' : 'Revoke'}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={createLink}
-            disabled={mint.kind === 'minting' || revoking}
-          >
-            {mint.kind === 'minting' ? 'Creating…' : 'Create a new link'}
-          </Button>
-        </div>
-      ) : (
-        <div className="mt-4">
-          <Button icon={UserPlus} onClick={createLink} disabled={mint.kind === 'minting'}>
-            {mint.kind === 'minting' ? 'Creating…' : 'Create link'}
-          </Button>
-        </div>
-      )}
-
+  const notes = (
+    <>
       {mint.kind === 'unavailable' ? (
         <output className="meta text-slate-green mt-3 block">
           Your link will be ready once your family is set up.
@@ -135,7 +116,6 @@ export function AddCoParentCard({
           {note}
         </p>
       ) : null}
-
       {mint.kind === 'ready' ? (
         <Modal title="Your co-parent link" onClose={closeModal}>
           <div className="space-y-4">
@@ -160,6 +140,83 @@ export function AddCoParentCard({
           </div>
         </Modal>
       ) : null}
+    </>
+  );
+
+  if (appearance === 'row') {
+    const inviteLabel = mint.kind === 'minting' ? 'Creating…' : actionLabel;
+    return (
+      <>
+        <div className={portal.row}>
+          <span className={portal.tile}>
+            <Plus aria-hidden="true" />
+          </span>
+          <span>
+            <h3>{title}</h3>
+            <p className={portal.meta}>{description}</p>
+            {openInvite ? (
+              <p className={portal.meta}>
+                A link is out — expires {formatDate(openInvite.expiresAt)}.
+              </p>
+            ) : null}
+          </span>
+          <span className={portal.end}>
+            {openInvite ? (
+              <button
+                type="button"
+                className={portal.secondary}
+                onClick={revoke}
+                disabled={revoking}
+                aria-live="polite"
+              >
+                {revoking ? 'Revoking…' : 'Revoke'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={portal.secondary}
+                onClick={createLink}
+                disabled={mint.kind === 'minting'}
+              >
+                {inviteLabel}
+              </button>
+            )}
+          </span>
+        </div>
+        {notes}
+      </>
+    );
+  }
+
+  return (
+    <div className={plain ? undefined : 'panel-oat px-6 py-5 max-w-md'}>
+      <p className="font-medium text-spruce">{title}</p>
+      <p className="meta mt-1 leading-relaxed">{description}</p>
+
+      {openInvite ? (
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <p className="meta text-slate-green">
+            A link is out — expires {formatDate(openInvite.expiresAt)}.
+          </p>
+          <Button variant="secondary" onClick={revoke} disabled={revoking} aria-live="polite">
+            {revoking ? 'Revoking…' : 'Revoke'}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={createLink}
+            disabled={mint.kind === 'minting' || revoking}
+          >
+            {mint.kind === 'minting' ? 'Creating…' : 'Create a new link'}
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-4">
+          <Button icon={UserPlus} onClick={createLink} disabled={mint.kind === 'minting'}>
+            {mint.kind === 'minting' ? 'Creating…' : actionLabel}
+          </Button>
+        </div>
+      )}
+      {notes}
     </div>
   );
 }

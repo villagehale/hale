@@ -472,6 +472,15 @@ export const AUDIT_VERBS = [
   'workstream_followup_unsent',
   'workstream_followup_deferred',
   'workstream_followup_gave_up',
+  // ── interest passport (VIL-106) ─────────────────────────────────────────
+  'interest_stamp_inferred',
+  'interest_stamp_confirmed',
+  'interest_stamp_edited',
+  'interest_stamp_removed',
+  'interest_stamp_undone',
+  'interest_stamp_shared',
+  'interest_stamp_progress',
+  'interest_family_share_set',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -1624,6 +1633,39 @@ const VERBS: Record<AuditVerb, Verb> = {
   workstream_followup_gave_up: {
     sentence: 'stopped a check-back after it could not be sent',
     family: 'problem',
+  },
+  // ── interest passport (VIL-106) ─────────────────────────────────────────
+  interest_stamp_inferred: {
+    sentence: 'noticed a possible stamp from something it saw',
+    family: 'note',
+  },
+  interest_stamp_confirmed: {
+    sentence: 'confirmed a stamp on a passport',
+    family: 'done',
+  },
+  interest_stamp_edited: {
+    sentence: 'updated a stamp on a passport',
+    family: 'done',
+  },
+  interest_stamp_removed: {
+    sentence: 'removed a stamp from a passport',
+    family: 'done',
+  },
+  interest_stamp_undone: {
+    sentence: 'put a stamp back on a passport',
+    family: 'done',
+  },
+  interest_stamp_shared: {
+    sentence: 'changed who can see a stamp',
+    family: 'done',
+  },
+  interest_stamp_progress: {
+    sentence: 'updated how far along a session is',
+    family: 'note',
+  },
+  interest_family_share_set: {
+    sentence: 'changed whether the group can see stamps',
+    family: 'done',
   },
 };
 

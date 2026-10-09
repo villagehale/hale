@@ -1,8 +1,14 @@
 import type { Metadata } from 'next';
-import { AuthShell } from '~/components/hale/auth-shell';
-import { connectedNotice } from '~/lib/channel/connect/text-connect';
+import { StatusCard } from '~/components/hale/connect/connect-cards';
+import { ConnectPreview } from '~/components/hale/connect/connect-preview';
+import { ConnectStage } from '~/components/hale/connect/connect-stage';
+import {
+  connectPreviewEnabled,
+  connectedStatus,
+  isConnectPreviewState,
+} from '~/lib/channel/connect/connect-page-copy';
+import { haleTextsHref } from '~/lib/channel/connect/hale-texts-href';
 
-// The query is per-request, so keep it out of the static cache.
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
@@ -12,37 +18,46 @@ interface PageProps {
     who?: string;
     lang?: string;
     fresh?: string;
+    preview?: string;
   }>;
 }
 
-export const metadata: Metadata = {
-  title: 'Connected · Hale',
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+  const { provider, status, lang, fresh } = await searchParams;
+  const notice = connectedStatus(status, provider, {
+    language: lang === 'fr' ? 'fr' : 'en',
+    freshLink: fresh === 'sent',
+  });
+  return {
+    title: notice.aria,
+    robots: { index: false, follow: false },
+  };
+}
 
 /**
  * GET /connected — the end of a connect the parent started in a text thread.
  *
- * ITS WHOLE JOB IS TO BE CLOSEABLE. No auth, no DB read, no PII, and deliberately no way
- * onward: the callback already verified the signed state and stored the connection, the
- * receipt is a text arriving on the same phone, and a link to Settings here would put
- * the portal back in the path the founder asked to take it out of.
- *
- * The query carries a provider slug and a status word and nothing else; both are
- * allowlisted in connect/text-connect.ts, which also owns the words — the page and the
- * text say the same thing about the same connection because they read the same module.
+ * Closeable. No auth, no DB read, no way onward into Settings: the callback
+ * already stored the connection, and the receipt is a text on the same phone.
+ * The query carries a provider slug and a status word. `who` is rendered as
+ * text and never written into metadata.
  */
 export default async function ConnectedPage({ searchParams }: PageProps) {
-  const { provider, status, who, lang, fresh } = await searchParams;
-  const notice = connectedNotice(status, provider, {
+  const { provider, status, who, lang, fresh, preview } = await searchParams;
+
+  if (connectPreviewEnabled() && isConnectPreviewState(preview)) {
+    return <ConnectPreview state={preview} />;
+  }
+
+  const notice = connectedStatus(status, provider, {
     name: who,
     language: lang === 'fr' ? 'fr' : 'en',
     freshLink: fresh === 'sent',
   });
 
   return (
-    <AuthShell heading={notice.heading}>
-      <p className="meta">{notice.body}</p>
-    </AuthShell>
+    <ConnectStage>
+      <StatusCard copy={notice} smsHref={haleTextsHref()} />
+    </ConnectStage>
   );
 }

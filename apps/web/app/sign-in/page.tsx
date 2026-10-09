@@ -1,19 +1,22 @@
 import { signIn } from '~/auth';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ClaimByPhoneForm } from '~/components/hale/claim-by-phone-form';
+import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import { GoogleGlyph } from '~/components/hale/google-glyph';
 import { MagicLinkRequestForm } from '~/components/hale/magic-link-request-form';
 import { credentialsConfigured, googleConfigured } from '~/lib/auth-config';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
+import { haleTextsNumber } from '~/lib/channel/connect/hale-texts-href';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
+import { parsePortalSourceCode } from '~/lib/text-hale-target';
 
 // AUTH_SECRET is a runtime-only secret, so evaluate configuredness at request time
 // rather than caching a build-time "not configured" fallback.
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  searchParams: Promise<{ callbackUrl?: string }>;
+  searchParams: Promise<{ callbackUrl?: string; s?: string | string[] }>;
 }
 
 /**
@@ -35,7 +38,7 @@ interface PageProps {
  * reader, reversible by unsetting it.
  */
 export default async function SignInPage({ searchParams }: PageProps) {
-  const { callbackUrl } = await searchParams;
+  const { callbackUrl, s } = await searchParams;
   // Only honor app-internal redirect targets — never an off-site (incl.
   // protocol-relative) URL.
   const redirectTo = safeInternalRedirect(callbackUrl);
@@ -47,9 +50,13 @@ export default async function SignInPage({ searchParams }: PageProps) {
 
   if (phoneOnly) {
     return (
-      <AuthShell heading="Welcome back" subtitle="Sign in with the number you text me on.">
-        <ClaimByPhoneForm callbackUrl={redirectTo} />
-      </AuthShell>
+      <ConnectStage>
+        <ClaimByPhoneForm
+          callbackUrl={redirectTo}
+          smsNumber={haleTextsNumber()}
+          source={parsePortalSourceCode(s)}
+        />
+      </ConnectStage>
     );
   }
 

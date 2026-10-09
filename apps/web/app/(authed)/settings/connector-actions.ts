@@ -33,7 +33,7 @@ export async function disconnectConnectorAction(
       return {
         status: 'success',
         message:
-          'Disconnected — Hale deleted its keys. Google still lists the grant until you remove Hale at myaccount.google.com/permissions.',
+          'Disconnected. Hale deleted its keys. Google still lists Hale until you remove it at myaccount.google.com/permissions.',
       };
     case 'not_found':
       return {
