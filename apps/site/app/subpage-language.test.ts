@@ -76,10 +76,6 @@ const REDESIGN_H1: [name: string, html: string, headline: string][] = [
   ['/activities', pages['/activities'], 'Things to do with your kids, near you.'],
 ];
 
-const PULLED_UP: [name: string, html: string, headline: string][] = [
-  ['/answers/[slug]', slugHtml, 'When and how do I introduce peanuts to my baby?'],
-];
-
 describe('the redesign headlines', () => {
   it.each(REDESIGN_H1)('reads as its whole sentence on %s', (_name, html, headline) => {
     expect(rawText(heading(html)).replace(/\u00a0/g, ' ')).toBe(headline);
@@ -88,48 +84,17 @@ describe('the redesign headlines', () => {
   });
 });
 
-describe('the pulled-up headline', () => {
-  it.each(PULLED_UP)('reads as its whole sentence on %s', (_name, html, headline) => {
-    const h1 = heading(html);
-    expect(h1).toContain('pull-word');
-    expect(rawText(h1)).toBe(headline);
-
-    // …and the spaces are BETWEEN the word boxes, not inside them. A browser
-    // trims trailing whitespace at the end of an inline-block, so a space moved
-    // one level in renders as "WhyHaleisanumber" while every text-based
-    // assertion above still passes. Position is the only thing that catches it.
-    const words = [...h1.matchAll(/class="pull-word/g)].length;
-    expect(words).toBe(headline.split(' ').length);
-    expect([...h1.matchAll(/<\/span> <span class="pull-word/g)]).toHaveLength(words - 1);
-  });
-
-  it.each(PULLED_UP)('gives %s exactly one accent segment', (_name, html) => {
-    const h1 = heading(html);
-    // The accent word is the v4 device — amber at the heading's own weight,
-    // upright — the same one the v4 landing hero wears (`v4-accent`).
-    const accented = [...h1.matchAll(/class="pull-word v4-accent"/g)];
-    expect(accented.length).toBeGreaterThan(0);
-    // One RUN of accented words, not two — the device is a single segment per
-    // headline, and two would read as a mistake rather than an emphasis.
-    const runs = h1
-      .split(/class="pull-word"/)
-      .filter((part) => part.includes('pull-word v4-accent'));
-    expect(runs).toHaveLength(1);
-  });
-
-  it.each(PULLED_UP)('sets %s in the v4 display serif', (_name, html) => {
-    // The re-skin in one pin: every subpage headline wears the site's display
-    // rule (.v4-display), the same one the v4 landing hero wears, rather than the
-    // old sans display. The class rides on the heading tag WordsPullUp emits.
-    expect(html).toMatch(/<h1[^>]*class="v4-display[^"]*"/);
-  });
-
-  it('staggers by word index, from zero, across the whole headline', () => {
+describe('the guide headline', () => {
+  it('is the question in plain navy, inside the redesign, with no accent word', () => {
     const h1 = heading(slugHtml);
-    const indices = [...h1.matchAll(/--w:\s*(\d+)/g)].map((m) => Number(m[1]));
-    expect(indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    // The beat runs across the style change rather than restarting at the accent.
-    expect(h1.indexOf('--w:3')).toBeLessThan(h1.indexOf('--w:4'));
+    expect(rawText(h1)).toBe('When and how do I introduce peanuts to my baby?');
+    expect(h1).not.toContain('pull-word');
+    expect(h1).not.toContain('v4-accent');
+    expect(slugHtml).toContain('class="rd"');
+    expect(slugHtml).toContain('gd-h1');
+    expect(slugHtml).not.toContain('panel-apricot-tint');
+    expect(slugHtml).not.toContain('class="night');
+    expect(slugHtml).not.toContain('WordsPullUp');
   });
 
   it('holds every word still under prefers-reduced-motion', () => {

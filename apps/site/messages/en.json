@@ -440,6 +440,11 @@
     ],
     "lede": "Practical guides for the questions parents actually search — each one grounded in trusted parenting-health frameworks and honest about its limits. General guidance, never a replacement for your provider.",
     "empty": "Our first parenting guides are in review. In the meantime, the fastest way to get guidance for your own child — with their age and your family in mind — is to ask Hale.",
+    "countHeading": "{n} questions parents search.",
+    "filterLabel": "Filter guides by stage",
+    "filterStatus": "Showing {n} of {total} guides",
+    "filterEmpty": "No guides for this stage yet.",
+    "filterSeeAll": "See all stages",
     "ctaHeading": "Have a question about your own child?",
     "stageLabels": {
       "newborn": "Newborn · 0–11 months",
@@ -450,6 +455,7 @@
   },
   "AnswerArticle": {
     "breadcrumb": "Parenting guides",
+    "shortAnswer": "The short answer",
     "guidanceNote": "General guidance, last reviewed {date, date, long} — not medical advice.",
     "keyTakeaways": "Key takeaways",
     "parentsAlsoAsk": "Parents also ask",
