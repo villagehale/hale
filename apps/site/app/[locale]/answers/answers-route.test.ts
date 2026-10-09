@@ -171,9 +171,18 @@ describe('answers/[slug] route', () => {
           expect(html, page.slug).toContain(escapeText(paragraph));
         }
       }
+      const rows = html.match(/<details\b[^>]*>/g) ?? [];
+      expect(rows, page.slug).toHaveLength(page.faqs.length);
+      const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1] ?? '');
+      expect(new Set(ids).size, page.slug).toBe(ids.length);
       for (const faq of page.faqs) {
         expect(html, page.slug).toContain(escapeText(faq.question));
         expect(html, page.slug).toContain(escapeText(faq.answer));
+      }
+      for (const tag of rows) {
+        expect(tag, page.slug).toContain('class="hs-qa hs-acc"');
+        expect(tag, page.slug).not.toMatch(/\sopen(?:=|\s|>)/);
+        expect(tag, page.slug).not.toContain('name=');
       }
       const script = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
       expect(script, page.slug).toBeDefined();

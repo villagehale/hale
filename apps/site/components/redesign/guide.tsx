@@ -9,6 +9,8 @@ import { guideStageFilter, headingSlug } from '~/lib/answers/guide-stage';
 import { getAnswer } from '~/lib/answers/index';
 import type { AnswerPage } from '~/lib/answers/types';
 import { shoreSrc } from './assets';
+import { FaqDeepLink } from './faq-deeplink';
+import { FaqItem } from './faq-item';
 import { GuideCard } from './guide-card';
 import { ShoreClose } from './shore-close';
 import { tx } from './tx';
@@ -103,6 +105,7 @@ export function RedesignGuide({
     <>
       <SiteHeader locale={locale} />
       <div className="rd">
+        <FaqDeepLink />
         <div className="stage sp-stage sp-legal gd-stage">
           <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
           <span className="shore-drift sky" aria-hidden="true" />
@@ -173,10 +176,9 @@ export function RedesignGuide({
                     <h2>{article('parentsAlsoAsk')}</h2>
                     <div className="gd-qas">
                       {page.faqs.map((faq) => (
-                        <div key={faq.question} className="hs-qa">
-                          <h3 className="hs-h3">{faq.question}</h3>
-                          <p className="hs-p">{faq.answer}</p>
-                        </div>
+                        <FaqItem key={faq.question} id={headingSlug(faq.question)} question={faq.question}>
+                          {faq.answer}
+                        </FaqItem>
                       ))}
                     </div>
                   </section>
