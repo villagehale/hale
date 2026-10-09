@@ -274,3 +274,122 @@ it('plays a desktop chat once at the same threshold, and reduced motion stays on
   expect(target.animate).toHaveBeenCalledTimes(1);
   expect(animation.cancel).toHaveBeenCalled();
 });
+
+it('plays a year card once on the gallery clock, pauses off-screen, and keeps the end frame', () => {
+  const animations: ReturnType<typeof makeClip>[] = [];
+  function makeClip() {
+    const animation = {
+      currentTime: 0,
+      playState: 'paused',
+      pause: vi.fn(() => {
+        animation.playState = 'paused';
+      }),
+      play: vi.fn(() => {
+        animation.playState = 'running';
+      }),
+      cancel: vi.fn(),
+      finish: vi.fn(() => {
+        animation.playState = 'finished';
+      }),
+      onfinish: null as null | (() => void),
+    };
+    return animation;
+  }
+  const animate = vi.fn(() => {
+    const animation = makeClip();
+    animations.push(animation);
+    return animation;
+  });
+  const typing = { animate, children: Array.from({ length: 3 }, () => ({ animate })) };
+  const bubble = { animate };
+  const hale = {
+    dataset: { motionStep: '0.4' },
+    querySelector: (selector: string) =>
+      selector === '.im-b' ? bubble : selector === '[data-motion-typing]' ? typing : null,
+    animate,
+  };
+  const event = {
+    dataset: { motionStep: '1.4' },
+    querySelector: () => null,
+    animate,
+  };
+  const card = {
+    querySelectorAll: () => [hale, event],
+    getAttribute: () => 'chat',
+    closest: () => null,
+  };
+  hooks.root = {
+    querySelectorAll: () => [card],
+    querySelector: () => null,
+  };
+  let notify: (entries: object[]) => void = () => {};
+  class Observer {
+    constructor(callback: typeof notify) {
+      notify = callback;
+    }
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  }
+  let change = () => {};
+  const preference = {
+    matches: false,
+    addEventListener: (_: string, listener: () => void) => {
+      change = listener;
+    },
+    removeEventListener: vi.fn(),
+  };
+  vi.stubGlobal('window', { IntersectionObserver: Observer });
+  vi.stubGlobal('IntersectionObserver', Observer);
+  vi.stubGlobal('matchMedia', () => preference);
+  vi.stubGlobal('document', {
+    hidden: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
+  vi.stubGlobal('getComputedStyle', () => ({
+    getPropertyValue: (name: string) =>
+      ({
+        '--oct-motion-enter-ms': '400',
+        '--oct-motion-step-ms': '1000',
+        '--oct-chat-step-ms': '1200',
+        '--oct-motion-distance': '8px',
+        '--ease-breathe': 'cubic-bezier(0.4, 0, 0.2, 1)',
+      })[name],
+  }));
+
+  HomeMotion();
+  expect(animations.every((clip) => clip.playState === 'paused')).toBe(true);
+  expect(animations.some((clip) => clip.finish.mock.calls.length > 0)).toBe(false);
+  expect(bubble.animate).toHaveBeenCalledWith(
+    expect.any(Array),
+    expect.objectContaining({ duration: 400, delay: 480 }),
+  );
+  expect(event.animate).toHaveBeenCalledWith(
+    expect.any(Array),
+    expect.objectContaining({ duration: 400, delay: 1680 }),
+  );
+  expect(typing.animate).toHaveBeenCalledWith(
+    expect.any(Array),
+    expect.objectContaining({ delay: 0, duration: 480, fill: 'both' }),
+  );
+
+  notify([{ target: card, isIntersecting: true, intersectionRatio: 0.25 }]);
+  expect(animations[0]?.play).not.toHaveBeenCalled();
+  notify([{ target: card, isIntersecting: true, intersectionRatio: 0.8 }]);
+  expect(animations.every((clip) => clip.playState === 'running')).toBe(true);
+  notify([{ target: card, isIntersecting: false, intersectionRatio: 0 }]);
+  expect(animations.every((clip) => clip.playState === 'paused')).toBe(true);
+  notify([{ target: card, isIntersecting: true, intersectionRatio: 0.8 }]);
+  expect(animations.every((clip) => clip.playState === 'running')).toBe(true);
+  for (const clip of animations) clip.playState = 'finished';
+  const plays = animations[0]?.play.mock.calls.length ?? 0;
+  notify([{ target: card, isIntersecting: true, intersectionRatio: 0.8 }]);
+  expect(animations[0]?.play).toHaveBeenCalledTimes(plays);
+
+  const created = animate.mock.calls.length;
+  preference.matches = true;
+  change();
+  expect(animate).toHaveBeenCalledTimes(created);
+  expect(animations.every((clip) => clip.cancel.mock.calls.length === 1)).toBe(true);
+});

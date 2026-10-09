@@ -249,11 +249,11 @@ export function RedesignHome({
     <p className="hs-when">{t("When a class fills")}</p>
     <h3 className="hs-h3">{t("Watches for a spot")}</h3>
     <p className="hs-p">{t("If the class you wanted is full, Hale keeps an eye on it and texts you when a place opens.")}</p>
-    <div className="hs-art"><div className="im-screen">
+    <div className="hs-art"><div className="im-screen" data-motion-scene="chat">
      <HaleHead />
      <div className="im-thread">
       <OneStamp today={t("Today")} time={t("9:41 AM")} />
-      <div className="im-run"><div className="im-b in tail">{t("A spot just opened")} {t("in Swimmer 3, Saturdays 9:30. Here’s the")} <span className="im-link">{t("sign-up page")}</span>.</div></div>
+      <div className="im-run" data-motion-step="0.4"><TypingBubble /><div className="im-b in tail">{t("A spot just opened")} {t("in Swimmer 3, Saturdays 9:30. Here’s the")} <span className="im-link">{t("sign-up page")}</span>.</div></div>
      </div>
     </div></div>
    </div>
@@ -261,16 +261,16 @@ export function RedesignHome({
     <p className="hs-when">{t("Before sign-ups")}</p>
     <h3 className="hs-h3">{t("Reminds you before it opens")}</h3>
     <p className="hs-p">{t("A heads-up the week before, the link the night before. You register, and you’re ready when it opens.")}</p>
-    <div className="hs-art">
+    <div className="hs-art"><div data-motion-scene="chat">
      <div className="im-screen">
       <HaleHead />
       <div className="im-thread">
        <OneStamp today={t("Today")} time={t("9:41 AM")} />
-       <div className="im-run"><div className="im-b in tail">{t("Tomorrow: fall programs at the rec centre open 7:00 a.m. for Mia. Sign in tonight and have the page open.")}</div></div>
+       <div className="im-run" data-motion-step="0.4"><TypingBubble /><div className="im-b in tail">{t("Tomorrow: fall programs at the rec centre open 7:00 a.m. for Mia. Sign in tonight and have the page open.")}</div></div>
       </div>
      </div>
-     <div className="im-event"><div className="hs-rem-date"><span className="hs-rem-cal"><i>{t("Tue")}</i><b>7</b></span><div><div className="hs-rem-t">{t("Fall programs open")}</div><div className="hs-wm">{t("Tomorrow · 7:00 a.m.")}</div></div></div></div>
-    </div>
+     <div className="im-event" data-motion-step="1.4"><div className="hs-rem-date"><span className="hs-rem-cal"><i>{t("Tue")}</i><b>7</b></span><div><div className="hs-rem-t">{t("Fall programs open")}</div><div className="hs-wm">{t("Tomorrow · 7:00 a.m.")}</div></div></div></div>
+    </div></div>
    </div>
    <div className="hs-beat hs-glass">
     <p className="hs-when">{t("After the first class")}</p>
