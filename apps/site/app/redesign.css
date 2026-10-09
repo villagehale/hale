@@ -1230,7 +1230,9 @@
 .rd .hs-acc-ic svg { width: 16px; height: 16px; }
 .rd .hs-acc-ic .v { transform-origin: 8px 8px; transition: transform .28s cubic-bezier(.2,.7,.2,1); }
 .rd .hs-acc[open] .hs-acc-ic .v { transform: rotate(90deg); }
-.rd .hs-acc > summary:hover .hs-acc-ic { color: var(--navy); background: var(--wash); }
+@media (hover: hover) {
+  .rd .hs-acc > summary:hover .hs-acc-ic { color: var(--navy); background: var(--wash); }
+}
 .rd .hs-acc > summary:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
 .rd .hs-acc-body { padding: 0 calc(24px + var(--s4)) var(--s5) 0; }
 .rd .hs-acc-body .hs-p { margin-top: 0; }
