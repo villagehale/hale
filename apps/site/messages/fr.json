@@ -413,10 +413,10 @@
     "lede": "Des guides pratiques pour les questions que les parents recherchent vraiment — chacun fondé sur des cadres de référence fiables en santé parentale et honnête quant à ses limites. Des conseils généraux, jamais un remplacement de votre professionnel de la santé.",
     "empty": "Nos premiers guides parentaux sont en révision. Entre-temps, le moyen le plus rapide d’obtenir des conseils pour votre propre enfant — en tenant compte de son âge et de votre famille — c’est de poser votre question à Hale.",
     "countHeading": "{n} questions que les parents cherchent.",
-    "filterLabel": "Filter guides by stage",
-    "filterStatus": "Showing {n} of {total} guides",
-    "filterEmpty": "No guides for this stage yet.",
-    "filterSeeAll": "See all stages",
+    "filterLabel": "Filtrer les guides par étape",
+    "filterStatus": "{n} guides sur {total} affichés",
+    "filterEmpty": "Pas encore de guide pour cette étape.",
+    "filterSeeAll": "Voir toutes les étapes",
     "ctaHeading": "Vous avez une question sur votre propre enfant?",
     "stageLabels": {
       "newborn": "Nouveau-né · 0–11 mois",
@@ -427,7 +427,7 @@
   },
   "AnswerArticle": {
     "breadcrumb": "Guides parentaux",
-    "shortAnswer": "The short answer",
+    "shortAnswer": "En bref",
     "guidanceNote": "Conseils généraux, dernière révision le {date, date, long} — pas un avis médical.",
     "keyTakeaways": "Points clés",
     "parentsAlsoAsk": "Les parents demandent aussi",

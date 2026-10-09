@@ -186,8 +186,9 @@ describe('answers/[slug] route', () => {
     if (!page) throw new Error('fixture missing');
     const fr = await render(SLUG, 'fr');
     const zh = await render(SLUG, 'zh');
+    expect(fr).toContain('En bref');
+    expect(zh).toContain('简短回答');
     for (const html of [fr, zh]) {
-      expect(html).toContain('The short answer');
       expect(html).toContain(escapeText(page.answer));
       expect(html).toContain(escapeText(page.question));
       expect(html).toContain('gd-h1');

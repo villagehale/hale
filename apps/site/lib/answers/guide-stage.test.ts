@@ -45,12 +45,24 @@ describe('guide stage filter', () => {
     expect(stageStatusSeparator('en')).toBe(': ');
     expect(stageStatusSeparator('fr')).toBe(' : ');
     expect(stageStatusSeparator('zh')).toBe('：');
-    expect(filterStatusLine(template, 5, 15, 'Nouveau-né', stageStatusSeparator('fr'))).toBe(
-      'Showing 5 of 15 guides : Nouveau-né',
-    );
-    expect(filterStatusLine(template, 5, 15, '新生儿', stageStatusSeparator('zh'))).toBe(
-      'Showing 5 of 15 guides：新生儿',
-    );
+    expect(
+      filterStatusLine(
+        '{n} guides sur {total} affichés',
+        5,
+        15,
+        'Nouveau-né',
+        stageStatusSeparator('fr'),
+      ),
+    ).toBe('5 guides sur 15 affichés : Nouveau-né');
+    expect(
+      filterStatusLine(
+        '显示 {n} 篇，共 {total} 篇指南',
+        5,
+        15,
+        '新生儿',
+        stageStatusSeparator('zh'),
+      ),
+    ).toBe('显示 5 篇，共 15 篇指南：新生儿');
   });
 });
 

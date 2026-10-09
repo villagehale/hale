@@ -388,10 +388,10 @@
     "lede": "为家长们真正会搜的问题准备的实用指南——每一篇都立足于可信的育儿健康框架，并对自己的局限诚实以告。这是通用指导，绝不替代你的医护人员。",
     "empty": "我们最早的一批育儿指南正在审阅中。在此期间，要为你自己的孩子拿到指导——把他们的年龄和你家的情况都考虑进去——最快的方式就是直接问 Hale。",
     "countHeading": "家长常搜的 {n} 个问题。",
-    "filterLabel": "Filter guides by stage",
-    "filterStatus": "Showing {n} of {total} guides",
-    "filterEmpty": "No guides for this stage yet.",
-    "filterSeeAll": "See all stages",
+    "filterLabel": "按阶段筛选指南",
+    "filterStatus": "显示 {n} 篇，共 {total} 篇指南",
+    "filterEmpty": "这个阶段暂时还没有指南。",
+    "filterSeeAll": "查看所有阶段",
     "ctaHeading": "对你自己的孩子有疑问吗？",
     "stageLabels": {
       "newborn": "新生儿 · 0–11 个月",
@@ -402,7 +402,7 @@
   },
   "AnswerArticle": {
     "breadcrumb": "育儿指南",
-    "shortAnswer": "The short answer",
+    "shortAnswer": "简短回答",
     "guidanceNote": "通用指导，最后审阅于 {date, date, long}——非医疗建议。",
     "keyTakeaways": "要点速览",
     "parentsAlsoAsk": "家长还会问",

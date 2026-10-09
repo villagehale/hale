@@ -58,18 +58,19 @@ describe('/answers stage filter without JavaScript', () => {
     expect(html).not.toContain('No guides for this stage yet.');
   });
 
-  it('keeps the French and Chinese index chrome, and the new filter strings in English', async () => {
+  it('keeps the French and Chinese index chrome in the cleared copy', async () => {
     const fr = await render('fr');
     const zh = await render('zh');
     expect(fr).toContain('15 questions que les parents cherchent.');
     expect(fr).toContain('Toutes les étapes');
     expect(fr).toContain('Nouveau-né');
-    expect(fr).toContain('aria-label="Filter guides by stage"');
-    expect(fr).toContain('Showing 15 of 15 guides');
+    expect(fr).toContain('aria-label="Filtrer les guides par étape"');
+    expect(fr).toContain('15 guides sur 15 affichés');
     expect(zh).toContain('家长常搜的 15 个问题。');
     expect(zh).toContain('所有阶段');
     expect(zh).toContain('新生儿');
-    expect(zh).toContain('Showing 15 of 15 guides');
+    expect(zh).toContain('aria-label="按阶段筛选指南"');
+    expect(zh).toContain('显示 15 篇，共 15 篇指南');
   });
 });
 
