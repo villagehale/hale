@@ -29,19 +29,20 @@ describe('/faq — canonical product FAQ', () => {
   });
 
   /**
-   * Every answer is openable from the server-rendered markup alone. The React
-   * accordion this replaced held the open index in useState, so with its
-   * JavaScript unarrived exactly one item was readable and the other six could
-   * not be opened at all — on the page whose whole job is answering the question
-   * a parent came with. A native <details> has no such state.
+   * Every answer is in the server HTML, inside a native <details> that starts
+   * closed. With JavaScript off the row still opens, and a crawler still sees
+   * the full list. Nothing carries `open` or `name`.
    */
-  it('prints every question in the server HTML, so it is readable with JavaScript off', () => {
-    // The redesign answers are open in the markup. A closed <details> accordion
-    // is gone: a reader, a crawler, and find-in-page all see the full list.
+  it('prints every question in the server HTML, collapsed, so it is readable with JavaScript off', () => {
     for (const item of FAQ) {
       expect(html).toContain(item.question);
     }
-    expect(html).not.toContain('<details');
+    const details = html.match(/<details\b[^>]*>/g) ?? [];
+    expect(details).toHaveLength(FAQ.length);
+    for (const tag of details) {
+      expect(tag).not.toMatch(/\sopen(?:=|\s|>)/);
+      expect(tag).not.toContain('name=');
+    }
   });
 
   it('locks the share description in English, French, and Chinese', () => {

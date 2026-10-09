@@ -1210,6 +1210,48 @@
 @media (min-width: 641px) { .rd .hs-mobile-only { display: none; } }
 @media (max-width: 640px) { .rd .hs-desktop-only { display: none !important; } }
 
+/* ===== Hale FAQ accordion =====
+   Native <details>. Reuses .hs-qa hairlines and .hs-h3/.hs-p type unchanged.
+   Sits after the second .hs-qa block (the file repeats the home rules; the later one wins). */
+/* biome-ignore lint/correctness/noUnknownProperty: interpolate-size opts the height animation into keyword sizes */
+.rd details.hs-acc { padding: 0; interpolate-size: allow-keywords; }
+.rd .hs-acc:last-of-type { border-bottom: 1px solid var(--rule); }
+.rd .hs-acc > summary {
+  list-style: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  display: grid; grid-template-columns: minmax(0, 1fr) 24px; column-gap: var(--s4); align-items: start;
+  min-height: 44px; margin-inline: calc(-1 * var(--s2)); padding: var(--s5) var(--s2); border-radius: var(--r-sm);
+  transition: padding-bottom .28s cubic-bezier(.2,.7,.2,1);
+}
+.rd .hs-acc > summary::-webkit-details-marker { display: none; }
+.rd .hs-acc > summary::marker { content: ""; }
+.rd .hs-acc[open] > summary { padding-bottom: var(--s2); }
+.rd .hs-acc > summary .hs-h3 { margin: 0; }
+.rd .hs-acc-ic { width: 24px; height: 24px; margin-top: -0.5px; display: grid; place-items: center; border-radius: var(--r-full); color: var(--ink-64); transition: color .15s, background .15s; }
+.rd .hs-acc-ic svg { width: 16px; height: 16px; }
+.rd .hs-acc-ic .v { transform-origin: 8px 8px; transition: transform .28s cubic-bezier(.2,.7,.2,1); }
+.rd .hs-acc[open] .hs-acc-ic .v { transform: rotate(90deg); }
+.rd .hs-acc > summary:hover .hs-acc-ic { color: var(--navy); background: var(--wash); }
+.rd .hs-acc > summary:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
+.rd .hs-acc-body { padding: 0 calc(24px + var(--s4)) var(--s5) 0; }
+.rd .hs-acc-body .hs-p { margin-top: 0; }
+.rd .hs-acc::details-content { block-size: 0; overflow-y: clip; transition: block-size .28s cubic-bezier(.2,.7,.2,1), content-visibility .28s allow-discrete; }
+.rd .hs-acc[open]::details-content { block-size: auto; }
+.rd .hs-acc:target > summary, .rd .hs-acc.is-target > summary { scroll-margin-top: 96px; }
+.rd .hs-acc { scroll-margin-top: 96px; }
+@media (max-width: 640px) {
+  .rd .hs-acc > summary { padding-block: 20px; }
+  .rd .hs-acc[open] > summary { padding-bottom: var(--s2); }
+  .rd .hs-acc-body { padding-bottom: 20px; padding-right: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rd .hs-acc::details-content, .rd .hs-acc > summary, .rd .hs-acc-ic .v { transition: none; }
+}
+@media print {
+  /* block-size/content-visibility alone leave a closed row shut in current Chrome.
+     display: contents lets the answer join the row, so every answer prints open. */
+  .rd .hs-acc::details-content { display: contents; block-size: auto; content-visibility: visible; }
+}
+
 /* ═════════════ Subpages (subpages/*.html): the homepage system, nothing new ═════════════
    Hero band  = the home hero's own shore stack (.shore-art/.shore-drift/.shore-scrim + the
                 .hero::before glow), shorter, with the page title on it.

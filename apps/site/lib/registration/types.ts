@@ -55,7 +55,8 @@ export interface RegistrationGuide {
   rulesHeading: HeadlineSegment[];
   ruleCards: RuleCard[];
   sections: GuideSection[];
-  faqs: FaqItem[];
+  /** Question and answer only. These guides are not the marketing accordion, so they don't carry its slug id. */
+  faqs: Array<Pick<FaqItem, 'question' | 'answer'>>;
   ctaHeading: string;
   ctaSub: string;
   footerNote: string;

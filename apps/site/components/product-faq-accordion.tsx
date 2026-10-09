@@ -19,7 +19,11 @@ import type { FaqItem } from '~/lib/faq';
  * attribute — for the same reason, so it is never briefly wrong.
  */
 
-export function ProductFaqAccordion({ items }: { items: readonly FaqItem[] }) {
+export function ProductFaqAccordion({
+  items,
+}: {
+  items: readonly Pick<FaqItem, 'question' | 'answer'>[];
+}) {
   return (
     <div className="flex flex-col">
       {items.map((item, i) => (

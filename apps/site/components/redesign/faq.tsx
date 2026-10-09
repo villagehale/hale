@@ -2,6 +2,8 @@ import type { Locale } from '~/i18n/routing';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { logoSrc, shoreSrc } from './assets';
+import { FaqDeepLink } from './faq-deeplink';
+import { FaqItem } from './faq-item';
 import { TextDoor } from './text-door';
 import { localeHref } from '~/i18n/navigation';
 import { FAQ } from '~/lib/faq/index';
@@ -32,7 +34,7 @@ export function RedesignFaq({
     <>
       <SiteHeader locale={locale} />
       <div className="rd">
-        
+        <FaqDeepLink />
 <div className="stage sp-stage">
 <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
 <span className="shore-drift sky" aria-hidden="true" />
@@ -59,18 +61,15 @@ export function RedesignFaq({
     <div className="sp-faq-group" id={group.id} key={group.id}>
       <span className="sp-tag">{t(group.label)}</span>
       {FAQ.slice(group.from, group.to).map((item) => (
-        <div className="hs-qa" key={item.question}>
-          <h3 className="hs-h3">{t(item.question)}</h3>
-          <p className="hs-p">
-            {item.question === "What happens to our data?" ? (
-              <Phrase locale={locale} sentence={item.answer} phrase="privacy policy" href={localeHref(locale, "/privacy")} />
-            ) : item.question === "Is Hale a person?" ? (
-              <Phrase locale={locale} sentence={item.answer} phrase="aloha@villagehale.com" href="mailto:aloha@villagehale.com" />
-            ) : (
-              t(item.answer)
-            )}
-          </p>
-        </div>
+        <FaqItem id={item.id} key={item.id} question={t(item.question)}>
+          {item.question === "What happens to our data?" ? (
+            <Phrase locale={locale} sentence={item.answer} phrase="privacy policy" href={localeHref(locale, "/privacy")} />
+          ) : item.question === "Is Hale a person?" ? (
+            <Phrase locale={locale} sentence={item.answer} phrase="aloha@villagehale.com" href="mailto:aloha@villagehale.com" />
+          ) : (
+            t(item.answer)
+          )}
+        </FaqItem>
       ))}
       {group.id === "cost" ? (
         <p className="hs-p"><a className="hs-link" href={localeHref(locale, "/pricing")}>{t("See Plus and Max pricing.")}</a></p>
@@ -78,7 +77,7 @@ export function RedesignFaq({
     </div>
   ))}</div>
  </div>
-</section><section className="hs hs-close-sec" id="start">
+</section><section className="hs hs-close-sec" id="ask">
  <div className="hs-wrap">
   <div className="hs-close-card">
    <img className="hs-close-art" src={shoreSrc} alt="" aria-hidden="true" />

@@ -1,4 +1,6 @@
 import type { Locale } from '~/i18n/routing';
+import { FaqDeepLink } from './faq-deeplink';
+import { FaqItem } from './faq-item';
 import { closeHeading, keepCardTail, tx } from './tx';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -21,7 +23,7 @@ export function RedesignPricing({
     <>
       <SiteHeader locale={locale} />
       <div className="rd">
-        
+        <FaqDeepLink />
 <div className="stage sp-stage">
 <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
 <span className="shore-drift sky" aria-hidden="true" />
@@ -74,7 +76,7 @@ export function RedesignPricing({
 </section><section className="hs hs-wash-d">
  <div className="hs-wrap hs-grid">
   <div className="hs-faq-l"><p className="hs-eyebrow">{t("About pricing")}</p><h2 className="hs-h2">{t("Fair questions.")}</h2></div>
-  <div className="hs-faq-r"><div className="hs-qa"><h3 className="hs-h3">{t("When do Plus and Max open?")}</h3><p className="hs-p">{t("When the parts they add are ready. Until then, everything Hale does is free.")}</p></div><div className="hs-qa"><h3 className="hs-h3">{t("What’s the difference between Plus and Max?")}</h3><p className="hs-p">{t("Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.")}</p></div></div>
+  <div className="hs-faq-r"><FaqItem id="when-do-plus-and-max-open" question={t("When do Plus and Max open?")}>{t("When the parts they add are ready. Until then, everything Hale does is free.")}</FaqItem><FaqItem id="whats-the-difference-between-plus-and-max" question={t("What’s the difference between Plus and Max?")}>{t("Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.")}</FaqItem></div>
  </div>
 </section><section className="hs hs-close-sec" id="start">
  <div className="hs-wrap">
