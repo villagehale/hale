@@ -1600,14 +1600,6 @@ body:has(.rd) footer > .shell { max-width: calc(1200px + 48px); padding-inline: 
 .rd .gd-qas {
   margin-top: var(--s4);
 }
-.rd .gd-qas .hs-qa:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-.rd .gd-qas .hs-qa:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
 .rd .lg-doc p.hs-eyebrow {
   margin: 0;
   font-family: var(--font-ui);
@@ -1619,7 +1611,7 @@ body:has(.rd) footer > .shell { max-width: calc(1200px + 48px); padding-inline: 
   color: rgb(23 41 74 / 0.72);
 }
 .rd .lg-doc .gd-qas .hs-p {
-  margin-top: var(--s2);
+  margin-top: 0;
   font-size: 17px;
   color: var(--slate);
 }

@@ -9,6 +9,7 @@ import { guideStageFilter, headingSlug } from '~/lib/answers/guide-stage';
 import { getAnswer } from '~/lib/answers/index';
 import type { AnswerPage } from '~/lib/answers/types';
 import { shoreSrc } from './assets';
+import { FaqItem } from './faq-item';
 import { GuideCard } from './guide-card';
 import { ShoreClose } from './shore-close';
 import { tx } from './tx';
@@ -173,10 +174,9 @@ export function RedesignGuide({
                     <h2>{article('parentsAlsoAsk')}</h2>
                     <div className="gd-qas">
                       {page.faqs.map((faq) => (
-                        <div key={faq.question} className="hs-qa">
-                          <h3 className="hs-h3">{faq.question}</h3>
-                          <p className="hs-p">{faq.answer}</p>
-                        </div>
+                        <FaqItem key={faq.question} id={headingSlug(faq.question)} question={faq.question}>
+                          {faq.answer}
+                        </FaqItem>
                       ))}
                     </div>
                   </section>
