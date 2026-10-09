@@ -87,7 +87,7 @@ export const FAQ: readonly FaqItem[] = [
     id: 'how-often-will-hale-text-me',
     question: 'How often will Hale text me?',
     answer:
-      'Only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class. Reply LESS for fewer, or STOP to end it.',
+      'Only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class. Tell Hale to text less, or reply STOP to end it.',
   },
   {
     id: 'will-hale-tell-me-if-a-class-is-any-good',
