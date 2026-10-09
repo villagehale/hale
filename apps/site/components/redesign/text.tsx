@@ -4,6 +4,8 @@ import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { logoSrc, shoreSrc } from './assets';
 import { HomeMotion } from './home-motion';
+import { HaleHead, OneStamp } from './imessage-ui';
+import { TypingBubble } from './phone-chat';
 import { TextDoor } from './text-door';
 import { localeHref } from '~/i18n/navigation';
 import { CopyNumberButton } from '~/components/copy-number';
@@ -51,9 +53,21 @@ export function RedesignText({
    </div>
    <div className="sp-aside"><div className="hs-glass sp-panel sp-preview" data-motion-scene="chat">
     <p className="sp-preview-label r">{t("What you’ll send")}</p>
-    <div className="hs-mini"><div data-motion-step="0.3"><div className="hs-msg out">{t("Hey Hale, what's going on?")}</div></div></div>
-    <p className="sp-preview-label" style={{ marginTop: "var(--s4)" }}>{t("What you’ll get back")}</p>
-    <div className="hs-mini"><div data-motion-step="1.2"><span className="chat-typing" data-motion-typing aria-hidden="true"><span /><span /><span /></span><div className="hs-msg in">{t("Hey, it's Hale. I find what's on for kids near you. What's your postal code? I'll show you what's on this week.")}</div></div></div>
+    <div className="im-screen">
+     <HaleHead />
+     <div className="im-thread">
+      <OneStamp today={t("Today")} time={t("9:41 AM")} />
+      <div className="im-run out" data-motion-step="0.3"><div className="im-b out tail">{t("Hey Hale, what's going on?")}</div><div className="im-status">{t("Delivered")}</div></div>
+     </div>
+    </div>
+    <p className="sp-preview-label">{t("What you’ll get back")}</p>
+    <div className="im-screen">
+     <HaleHead />
+     <div className="im-thread">
+      <OneStamp today={t("Today")} time={t("9:41 AM")} />
+      <div className="im-run" data-motion-step="1.2"><TypingBubble /><div className="im-b in tail">{t("Hey, it's Hale. I find what's on for kids near you. What's your postal code? I'll show you what's on this week.")}</div></div>
+     </div>
+    </div>
    </div></div>
   </div>
  </main>
