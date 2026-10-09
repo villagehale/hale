@@ -934,8 +934,10 @@
    padding-top — .stage's padding-top is the sticky-header clearance and stays.
    Scoped to the /text hero, the only .sp-hero that contains .sp-qr-lead. */
 @media (min-width: 1024px) and (max-height: 800px) {
-  .rd .sp-hero:has(.sp-qr-lead) { padding-top: var(--s2); }
-  .rd .sp-qr-lead { margin-top: var(--s2); }
+  .rd .sp-hero:has(.sp-qr-lead){padding-top:var(--s5)}
+  .rd .sp-qr-lead{margin-top:var(--s4)}
+  html[data-hale-messages="no"] .rd .sp-hero:has(.sp-qr-lead){padding-top:var(--s7)}
+  html[data-hale-messages="no"] .rd .sp-qr-lead{margin-top:var(--s5)}
 }
 /* iPad and other touch devices that already open Messages: the laptop QR is
    the desktop path. Phones already hide it with .hs-desktop-only. */
