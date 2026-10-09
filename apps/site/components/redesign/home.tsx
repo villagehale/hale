@@ -310,14 +310,12 @@ export function RedesignHome({
     <div className="hs-wrow"><div className="hs-wday">{t("Mon")}<b>9</b></div><div><div className="hs-wt">{t("Swim, Swimmer 3")}</div><div className="hs-wm">{t("Mia · 4:30 PM")}</div></div><span className="hs-driver"><i>A</i>{t("Alex driving")}</span></div><div className="hs-wrow"><div className="hs-wday">{t("Tue")}<b>10</b></div><div><div className="hs-wt">{t("Soccer")}</div><div className="hs-wm">{t("Noah, Lily · 5:30 PM")}</div></div><span className="hs-driver"><i>T</i>{t("Tom driving")}</span></div><div className="hs-wrow"><div className="hs-wday">{t("Thu")}<b>12</b></div><div><div className="hs-wt">{t("Soccer")}</div><div className="hs-wm">{t("Noah, Lily · 5:30 PM")}</div></div><span className="hs-driver"><i>M</i>{t("Mei driving")}</span></div><div className="hs-wrow"><div className="hs-wday">{t("Sat")}<b>14</b></div><div><div className="hs-wt">{t("Leo & Aria’s party")}</div><div className="hs-wm">{t("Climbing gym · 2:00 PM")}</div></div><span className="hs-driver open">{t("Who’s driving?")}</span></div>
    </div>
    <div className="hs-card hs-memory">
-    <div data-motion-scene="chat">
-     <div className="im-screen">
-      <HaleHead />
-      <div className="im-thread">
-       <OneStamp today={t("Today")} time={t("9:41 AM")} />
-       <div className="im-run out" data-motion-step="0.4"><div className="im-b out tail">{t("What do you know about us?")}</div></div>
-       <div className="im-run" data-motion-step="1.4"><TypingBubble /><div className="im-b in tail">{t("Mia is 6 and loves swimming and drawing. Theo is 3. Thursdays I think are soccer, tell me if that changed.")}</div></div>
-      </div>
+    <div className="im-screen" data-motion-scene="chat">
+     <HaleHead />
+     <div className="im-thread">
+      <OneStamp today={t("Today")} time={t("9:41 AM")} />
+      <div className="im-run out" data-motion-step="0.4"><div className="im-b out tail">{t("What do you know about us?")}</div></div>
+      <div className="im-run" data-motion-step="1.4"><TypingBubble /><div className="im-b in tail">{t("Mia is 6 and loves swimming and drawing. Theo is 3. Thursdays I think are soccer, tell me if that changed.")}</div></div>
      </div>
     </div>
    </div>
