@@ -89,6 +89,11 @@ describe('404 tab titles', () => {
     for (const locale of ['en', 'fr', 'zh'] as const) {
       expect(notFoundTitle(locale)).toBe(NOT_FOUND_TITLES[locale]);
       expect(notFoundMetadata(locale).title).toBe(NOT_FOUND_TITLES[locale]);
+      expect(notFoundMetadata(locale).openGraph?.title, locale).toBe(NOT_FOUND_TITLES[locale]);
+      expect(
+        (notFoundMetadata(locale).twitter as { title?: string } | undefined)?.title,
+        locale,
+      ).toBe(NOT_FOUND_TITLES[locale]);
       const html = renderToStaticMarkup(createElement(NotFoundView, { locale }));
       expect(inlineTitles(html), locale).toEqual([]);
       expect(html).toContain(notFoundHeading(locale));
@@ -97,11 +102,21 @@ describe('404 tab titles', () => {
       headerLocale.value = locale;
       const fromHeader = await notFoundMetadataFn();
       expect(fromHeader.title, locale).toBe(NOT_FOUND_TITLES[locale]);
+      expect(fromHeader.openGraph?.title, locale).toBe(NOT_FOUND_TITLES[locale]);
+      expect((fromHeader.twitter as { title?: string } | undefined)?.title, locale).toBe(
+        NOT_FOUND_TITLES[locale],
+      );
+      expect(fromHeader.openGraph?.title, locale).not.toBe(HOME_TITLES[locale]);
 
       const fromCatchAll = await catchAllMetadata({
         params: Promise.resolve({ locale }),
       });
       expect(fromCatchAll.title, locale).toBe(NOT_FOUND_TITLES[locale]);
+      expect(fromCatchAll.openGraph?.title, locale).toBe(NOT_FOUND_TITLES[locale]);
+      expect((fromCatchAll.twitter as { title?: string } | undefined)?.title, locale).toBe(
+        NOT_FOUND_TITLES[locale],
+      );
+      expect(fromCatchAll.openGraph?.title, locale).not.toBe(HOME_TITLES[locale]);
     }
   });
 
@@ -111,6 +126,11 @@ describe('404 tab titles', () => {
         params: Promise.resolve({ locale, slug: 'not-a-real-guide' }),
       });
       expect(meta.title, locale).toBe(NOT_FOUND_TITLES[locale]);
+      expect(meta.openGraph?.title, locale).toBe(NOT_FOUND_TITLES[locale]);
+      expect((meta.twitter as { title?: string } | undefined)?.title, locale).toBe(
+        NOT_FOUND_TITLES[locale],
+      );
+      expect(meta.openGraph?.title, locale).not.toBe(HOME_TITLES[locale]);
       expect(typeof meta.title).toBe('string');
     }
   });

@@ -24,5 +24,12 @@ export function notFoundHeading(locale: Locale): string {
 }
 
 export function notFoundMetadata(locale: Locale): Metadata {
-  return { title: notFoundTitle(locale) };
+  const title = notFoundTitle(locale);
+  // openGraph and twitter replace the parent objects; they are not deep-merged.
+  // A title-only export would leave the homepage preview on the 404.
+  return {
+    title,
+    openGraph: { title },
+    twitter: { title },
+  };
 }
