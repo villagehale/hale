@@ -45,8 +45,10 @@ export function authorizeSignup(input: {
   utterance: string;
   offer: SignupOffer;
   busy: readonly BusyInterval[];
+  /** The intent resolver already decided this is an authorization. */
+  alreadyAuthorized?: boolean;
 }): AuthorizationDecision {
-  if (!isExplicitSignupUtterance(input.utterance)) {
+  if (!input.alreadyAuthorized && !isExplicitSignupUtterance(input.utterance)) {
     return { ok: false, reason: 'not_authorized' };
   }
   const stated = statedSession(input.utterance, input.offer.sessions);

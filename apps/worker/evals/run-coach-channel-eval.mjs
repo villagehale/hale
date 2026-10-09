@@ -1351,10 +1351,8 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
     failures.push('never asks the clarifying question the ambiguity requires');
   }
 
-  // `mustMention: ['yes']` is not a style preference: YES is the literal word C1's
-  // fast-path matches (router/fast-path.ts YES_PHRASES). A reply that drafts a change
-  // and then asks the parent to "confirm" has left them holding a word the router will
-  // hand straight to the model instead of to the approvals spine.
+  // A confirmation is a normal question (`mustAsk`), not a keyword the parent
+  // has to recite. `mustMention` checks facts the reply has to carry.
   for (const token of expect.mustMention ?? []) {
     if (!lower.includes(token.toLowerCase())) {
       failures.push(`never says ${JSON.stringify(token)}`);

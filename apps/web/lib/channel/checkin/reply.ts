@@ -1,7 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
+import { voiceSourceLine } from '~/lib/channel/intent/line';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { nightlyOccasion } from '~/lib/channel/variant';
 import {
   type CheckInCadence,
   askStillStanding,
@@ -9,7 +11,6 @@ import {
   readCheckInState,
   recordCheckInAnswer,
 } from './cadence';
-import { nightlyOccasion } from '~/lib/channel/variant';
 import {
   CHECK_IN_ACK_TEMPLATE_KEY,
   CHECK_IN_ASK_TEMPLATE_KEY,
@@ -50,7 +51,14 @@ export const CADENCE_WORDS: Record<string, CheckInCadence> = {
 
 /** The cadence this message asks for, or null if it is not one of the words. */
 export function readCadenceWord(body: string): CheckInCadence | null {
-  return CADENCE_WORDS[body.trim().toLowerCase().replace(/[.!]+$/, '')] ?? null;
+  return (
+    CADENCE_WORDS[
+      body
+        .trim()
+        .toLowerCase()
+        .replace(/[.!]+$/, '')
+    ] ?? null
+  );
 }
 
 export type CheckInReplyStatus =
@@ -110,7 +118,16 @@ export async function handleEveningCheckInReply(
       await recordCheckInAnswer(tx, { familyId: input.familyId, cadence: null, now: input.now });
       await auditAnswer(tx, input, { stored: false });
     });
-    return { status: 'not_stored_sensitive', reply: CHECK_IN_NOT_KEPT_ACK[language] };
+    const kept = CHECK_IN_NOT_KEPT_ACK[language];
+    return {
+      status: 'not_stored_sensitive',
+      reply:
+        (await voiceSourceLine({
+          flow: 'checkin_not_kept',
+          locked: kept,
+          language,
+        })) ?? '',
+    };
   }
 
   await database.transaction(async (tx) => {
@@ -125,9 +142,20 @@ export async function handleEveningCheckInReply(
     await recordCheckInAnswer(tx, { familyId: input.familyId, cadence: null, now: input.now });
     await auditAnswer(tx, input, { stored: true });
   });
+  const noted = checkInNotedAck(
+    language,
+    input.familyId,
+    nightlyOccasion(input.now, input.timeZone),
+  );
   return {
     status: 'note_stored',
-    reply: checkInNotedAck(language, input.familyId, nightlyOccasion(input.now, input.timeZone)),
+    reply:
+      (await voiceSourceLine({
+        flow: 'checkin_noted',
+        locked: noted,
+        language,
+        pendingAsk: null,
+      })) ?? '',
   };
 }
 
@@ -178,7 +206,17 @@ export async function applyCheckInCadence(
       after: { cadence },
     } as never);
   });
-  return { status: CADENCE_STATUS[cadence], reply: CADENCE_ACK[cadence][language] };
+  const locked = CADENCE_ACK[cadence][language];
+  return {
+    status: CADENCE_STATUS[cadence],
+    reply:
+      (await voiceSourceLine({
+        flow: 'checkin_cadence',
+        locked,
+        language,
+        facts: { cadence },
+      })) ?? '',
+  };
 }
 
 /** Rule #6, and NOTHING the parent wrote: the row says an answer arrived and whether it

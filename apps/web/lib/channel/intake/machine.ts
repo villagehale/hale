@@ -35,6 +35,8 @@ import {
   safeGivenName,
 } from '~/lib/channel/identity/parent-call-name';
 import { type ParentRoleGuess, storeParentRole } from '~/lib/channel/identity/parent-role';
+import { aiIntentRouterEnabled } from '~/lib/channel/intent/flag';
+import { voiceSourceLine } from '~/lib/channel/intent/line';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
@@ -4769,6 +4771,20 @@ async function helpBody(
   language: ReplyLanguage,
   parentWords: string,
 ): Promise<string | null> {
+  if (aiIntentRouterEnabled()) {
+    const locked = HELP_REPLY_BY_LANGUAGE[language];
+    return voiceSourceLine({
+      flow: 'help',
+      locked,
+      language,
+      facts: {
+        complianceStop: true,
+        stopLine:
+          language === 'fr' ? 'Répondez ARRET pour vous désabonner.' : 'Reply STOP to unsubscribe.',
+        parentWords,
+      },
+    });
+  }
   if (!onboardingFriendVoiceEnabled()) return HELP_REPLY_BY_LANGUAGE[language];
   const given = session?.firstTouch?.given ?? null;
   const children = session?.collected.children ?? [];

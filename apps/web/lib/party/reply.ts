@@ -182,11 +182,7 @@ export async function handlePartyCreate(
   return {
     status: 'recorded',
     familyEventId,
-    reply: partyRecorded(
-      partyWhen(party.startsAt, input.timeZone),
-      party.title,
-      party.location,
-    ),
+    reply: partyRecorded(partyWhen(party.startsAt, input.timeZone), party.title, party.location),
   };
 }
 
@@ -214,9 +210,25 @@ export interface PartyReplyDeps {
 
 export async function handlePartyReply(
   database: Database,
-  input: { familyId: string; parentUserId: string; body: string; now: Date },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    now: Date;
+    /**
+     * Set by the intent router. When present, the word lists below do not run.
+     * Null means the reading named a party and did not name which act.
+     */
+    directed?: 'link' | 'tally' | 'cancel' | null;
+  },
   deps: PartyReplyDeps,
 ): Promise<PartyReplyOutcome> {
+  if (input.directed !== undefined) {
+    if (input.directed === 'link') return mintLink(database, input, deps);
+    if (input.directed === 'tally') return tally(database, input, deps);
+    if (input.directed === 'cancel') return cancel(database, input, deps);
+    return { status: 'ignored', reason: 'not_a_party_reply' };
+  }
   // Matched first, then looked up. Unlike M7 — where "in" means nothing without the
   // window — every phrase here is self-describing, so an ordinary message costs no
   // query at all.
@@ -316,10 +328,7 @@ export async function loadPendingPartyOffer(
       inviteId: schema.partyInvites.id,
     })
     .from(schema.familyEvents)
-    .leftJoin(
-      schema.partyInvites,
-      eq(schema.partyInvites.familyEventId, schema.familyEvents.id),
-    )
+    .leftJoin(schema.partyInvites, eq(schema.partyInvites.familyEventId, schema.familyEvents.id))
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),

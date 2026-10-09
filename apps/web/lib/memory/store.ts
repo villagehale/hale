@@ -11,6 +11,7 @@ import { forgetFamilyFact } from './forget';
 import {
   type MemoryKindEnv,
   type MemoryKindLanguage,
+  type MemoryParentIntent,
   type MemoryRecallItem,
   type MemorySource,
   type PromotionSignal,
@@ -466,6 +467,8 @@ export async function handleParentMemory(
     sendGroup?: (chatId: string, body: string) => Promise<unknown>;
     /** Injected model. Absent: the locked sentence, and the model is not called. */
     replyClient?: AgentClient | null;
+    /** The intent resolver already classified this. Skips the phrase list. */
+    directed?: MemoryParentIntent | null;
   },
 ): Promise<ParentMemoryResult> {
   const env = input.env ?? process.env;
@@ -479,7 +482,8 @@ export async function handleParentMemory(
   };
   if (!familyMemoryKindsEnabled(env)) return idle;
 
-  const intent = parseMemoryParentIntent(input.body);
+  const intent =
+    input.directed === undefined ? parseMemoryParentIntent(input.body) : input.directed;
   if (!intent) return { ...idle, outcome: 'not_memory' };
 
   const door = await familyDoor(database, input.familyId);

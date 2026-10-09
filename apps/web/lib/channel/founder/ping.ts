@@ -1,13 +1,14 @@
 import { type Database, schema } from '@hale/db';
-import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
+import { posterLocation } from '~/lib/channel/intake/copy';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { voiceSourceLine } from '~/lib/channel/intent/line';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { readSendRefusal, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { familyHasSyntheticProbeChannel } from '~/lib/channels/sms-consent-core';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { posterLocation } from '~/lib/channel/intake/copy';
-import { FOUNDER_PING_TEMPLATE_KEY, founderPing } from './copy';
+import { familyHasSyntheticProbeChannel } from '~/lib/channels/sms-consent-core';
+import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { type FounderChannel, resolveFounderChannel } from './channel';
+import { FOUNDER_PING_TEMPLATE_KEY, founderPing } from './copy';
 
 /**
  * THE PING — a family arrives from one of the founder's own posters, and he is told, in
@@ -165,7 +166,18 @@ export async function offerFounderWelcome(
   const dedupeKey = founderPingDedupeKey(input.newFamilyId);
   if (await ports.dedupeActive(dedupeKey, database)) return { status: 'already_pinged' };
 
-  const body = founderPing(location);
+  const locked = founderPing(location);
+  const body = await voiceSourceLine({
+    flow: 'founder_ping',
+    locked,
+    language: 'en',
+    pendingAsk: 'whether to send the welcome note',
+    facts: { location },
+  });
+  if (!body) {
+    console.error({ newFamilyId: input.newFamilyId }, 'founder welcome: line unsent');
+    return { status: 'not_pinged', reason: 'send_failed' };
+  }
   let providerMessageId: string;
   let carried: 'sms' | 'imessage' = 'sms';
   let chatId: string | null = null;

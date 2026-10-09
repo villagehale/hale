@@ -31,6 +31,8 @@ export interface SignupRunInput {
   /** True when this turn is already inside a thread the parent opened. */
   existingThread: boolean;
   now: Date;
+  /** The intent resolver already read this as an authorization. Skips the phrase list. */
+  resolverAuthorized?: boolean;
 }
 
 export interface SignupRunDeps {
@@ -75,7 +77,7 @@ export async function runAuthorizedSignup(
   deps: SignupRunDeps = {},
 ): Promise<SignupRunResult> {
   if (!authorizedSignupEnabled()) return { ...UNCLAIMED, outcome: 'flag_off' };
-  if (!isExplicitSignupUtterance(input.body)) return UNCLAIMED;
+  if (!input.resolverAuthorized && !isExplicitSignupUtterance(input.body)) return UNCLAIMED;
 
   const offer = await loadPendingOffer(database, input.familyId);
   const door = await reportDoor(database, input);
@@ -110,6 +112,7 @@ export async function runAuthorizedSignup(
     utterance: input.body,
     offer,
     busy: await loadBusy(database, input.familyId),
+    alreadyAuthorized: input.resolverAuthorized,
   });
   if (!decision.ok) {
     await markFromPending(database, input, offer.id, null);

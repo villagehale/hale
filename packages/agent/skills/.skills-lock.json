@@ -41,7 +41,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "86c425e7c5615b6ec71537d54d373a2deaffcc0bf1a9e59eb1fa53730a086594"
+    "sha256": "423501f785b2fee6628e34b7fad84662119d98fe6625072d08af66b3a4d70239"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -166,6 +166,14 @@
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
     "sha256": "2f6c6bb234225bd759fce4a10ca19a42e00ef7bc84251106e26233fdf6b2f80a"
+  },
+  "parent-intent.md": {
+    "file": "parent-intent.md",
+    "sha256": "7c5aa7e223d79e16f8eb1e3faf385effb50f585e1ab16a765ea170fcd4bd982c"
+  },
+  "parent-line.md": {
+    "file": "parent-line.md",
+    "sha256": "485c967dae00187935dce2c7f64c58f24c21750eee2debc02c689fa51cc5d9b7"
   },
   "parse-civic-hours.md": {
     "file": "parse-civic-hours.md",
