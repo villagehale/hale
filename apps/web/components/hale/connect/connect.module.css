@@ -66,12 +66,12 @@
 }
 
 /* Reset connect-local controls. Buttons that already carry the app's own
-   classes (flag-off sign-in, the consent form) keep those paints. :where
-   holds this at the same specificity as a plain `.stage button`, so `.btn`
-   and `.gsi` still win. */
+   classes (flag-off sign-in) keep those paints. The door pill (`.btn`) is
+   excluded so this reset cannot strip it. :where holds the rest at the same
+   specificity as a plain `.stage button`. */
 .stage
   button:where(
-    :not(:global(.btn-primary)):not(:global(.btn-secondary)):not(:global(.btn-ghost)):not(
+    :not(.btn):not(:global(.btn-primary)):not(:global(.btn-secondary)):not(:global(.btn-ghost)):not(
         :global(.auth-submit)
       ):not(:global(.auth-google))
   ) {
@@ -611,9 +611,11 @@
   line-height: 1.65;
   white-space: nowrap;
   padding: 11.2px 22.4px;
+  border: 0;
   border-radius: var(--r-full);
   background: var(--navy);
   color: var(--cream);
+  cursor: pointer;
   box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.8), 0 18px 50px -34px rgb(12 26 54 / 0.55);
 }
 

@@ -61,7 +61,7 @@ export function OauthConsentScreen({
         </div>
 
         <fieldset className="flex flex-col gap-y-3">
-          <legend className="eyebrow mb-1 text-spruce">requested access</legend>
+          <legend className={door.eyebrow}>requested access</legend>
           {scopes.map((scope) => {
             const copy = MCP_SCOPE_COPY[scope];
             return (
@@ -99,11 +99,16 @@ export function OauthConsentScreen({
         <input type="hidden" name="code_challenge_method" value={hidden.codeChallengeMethod} />
         {hidden.state ? <input type="hidden" name="state" value={hidden.state} /> : null}
 
-        <div className="flex flex-wrap gap-3">
-          <button type="submit" name="decision" value="approve" className="btn-primary">
+        <div className="flex flex-col">
+          <button
+            type="submit"
+            name="decision"
+            value="approve"
+            className={`${stage.btn} ${door.full}`}
+          >
             Allow selected access
           </button>
-          <button type="submit" name="decision" value="deny" className="btn-secondary">
+          <button type="submit" name="decision" value="deny" className={door.cancel}>
             Cancel
           </button>
         </div>

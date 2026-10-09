@@ -127,7 +127,20 @@ describe('door spacing', () => {
 
     const door = source('../../../components/hale/oauth-door.tsx');
     expect(door).toContain('${stage.btn} ${door.full} ${door.returnHome}');
+    const approve = door.slice(door.indexOf('value="approve"'), door.indexOf('Allow selected access'));
+    expect(approve).toContain('`${stage.btn} ${door.full}`');
+    expect(approve).not.toContain('returnHome');
+    expect(door).toContain('door.eyebrow');
+    expect(door).toContain('door.cancel');
+    expect(door).toContain('flex flex-col');
     expect(door).toContain('Return to Hale');
-    expect(door).not.toContain('btn-secondary self-start');
+    expect(door).not.toContain('btn-primary');
+    expect(door).not.toContain('btn-secondary');
+    expect(css).toContain('color: #a8432f;');
+    expect(css).toContain('color: #e58c78;');
+    expect(css).toContain('.stack button.cancel');
+
+    const stage = source('../../../components/hale/connect/connect.module.css');
+    expect(stage).toContain(':not(.btn)');
   });
 });
