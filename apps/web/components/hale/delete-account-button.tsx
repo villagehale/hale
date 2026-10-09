@@ -31,7 +31,14 @@ export type DeleteAccountRole = 'primary_parent' | 'co_parent' | 'scoped' | 'amb
  * departure tally's sentence on a co-parent 202, the 409 asking which household, and
  * the error surfaced rather than swallowed.
  */
-export function DeleteAccountButton({ role }: { role: DeleteAccountRole }) {
+export function DeleteAccountButton({
+  role,
+  idleLabel,
+}: {
+  role: DeleteAccountRole;
+  /** Idle label for a family erasure. Co-parent departure keeps its own words. */
+  idleLabel?: string;
+}) {
   const [state, setState] = useState<State>('idle');
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
   const leaving = role === 'co_parent';
@@ -176,7 +183,7 @@ export function DeleteAccountButton({ role }: { role: DeleteAccountRole }) {
 
   return (
     <button type="button" className="link text-berry" onClick={() => setState('confirming')}>
-      {leaving ? 'leave this family' : 'delete my account'}
+      {leaving ? 'leave this family' : (idleLabel ?? 'delete my account')}
     </button>
   );
 }

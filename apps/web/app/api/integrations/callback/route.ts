@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
    * provider on the link, then say so on the page only when the text actually left.
    */
   async function textFailure(
-    status: 'denied' | 'invalid' | 'error',
+    status: 'denied' | 'partial' | 'invalid' | 'error',
     provider: TextConnectProvider,
     who: { familyId: string; userId: string },
   ) {
@@ -205,13 +205,19 @@ export async function GET(req: NextRequest) {
     const grantedOk =
       expected.every((sc) => scopes.includes(sc)) && scopes.every((sc) => allowed.has(sc));
     if (!grantedOk) {
+      // A required box left unticked, with nothing broader than we asked, is
+      // partial: nothing is stored, and a text connect still gets a fresh link.
+      // A scope outside the allowed set stays denied.
+      const missingRequired = expected.some((sc) => !scopes.includes(sc));
+      const broader = scopes.some((sc) => !allowed.has(sc));
+      const grantStatus = missingRequired && !broader ? 'partial' : 'denied';
       if (surface === 'text' && textProvider) {
-        return textFailure('denied', textProvider, {
+        return textFailure(grantStatus, textProvider, {
           familyId: bound.familyId,
           userId: bound.userId,
         });
       }
-      return back('denied', surface, bound.provider);
+      return back(grantStatus, surface, bound.provider);
     }
     let providerMetadata: Record<string, unknown> | undefined;
     if (scopes.includes(GOOGLE_PROFILE_SCOPE) && tokens.accessToken) {

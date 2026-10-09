@@ -32,10 +32,15 @@ export function DismissButton({
   actionId,
   label,
   labelledBy,
+  idleLabel = LABEL.idle,
+  className = 'btn-secondary',
 }: {
   actionId: string;
   label?: string;
   labelledBy?: string;
+  /** Visible idle label. Defaults to the approvals-queue wording. */
+  idleLabel?: string;
+  className?: string;
 }) {
   const [state, setState] = useState<State>('idle');
   const selfId = useId();
@@ -57,11 +62,7 @@ export function DismissButton({
           dismiss{label ? ' this draft' : ''}
           {label ? <span data-hale-pii> — {label}</span> : null}?
         </span>
-        <button
-          type="button"
-          className="link meta text-apricot-deep"
-          onClick={dismiss}
-        >
+        <button type="button" className="link meta text-apricot-deep" onClick={dismiss}>
           yes, dismiss
         </button>
         <button type="button" className="link meta" onClick={() => setState('idle')}>
@@ -75,7 +76,7 @@ export function DismissButton({
     <button
       type="button"
       id={selfId}
-      className="btn-secondary"
+      className={className}
       onClick={() => setState('confirming')}
       disabled={state === 'pending' || state === 'dismissed'}
       aria-live="polite"
@@ -83,7 +84,7 @@ export function DismissButton({
       // node joins the accessible name by reference (see the component note).
       aria-labelledby={labelledBy ? `${selfId} ${labelledBy}` : undefined}
     >
-      {LABEL[state]}
+      {state === 'idle' ? idleLabel : LABEL[state]}
     </button>
   );
 }

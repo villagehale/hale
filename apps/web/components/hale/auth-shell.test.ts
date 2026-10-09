@@ -47,9 +47,12 @@ describe('AuthShell — the split-card auth frame', () => {
     expect(html).toContain('FORM_SLOT');
   });
 
-  it('carries a warm data-residency trust line (Canada, nothing shared unasked)', () => {
-    expect(html).toContain('stays in Canada');
-    expect(html).toContain('Nothing is shared until you say so');
+  it('carries the never-sold line and a privacy link', () => {
+    expect(html).toContain('Never sold.');
+    expect(html).toContain('Privacy policy');
+    expect(html).toContain('https://www.villagehale.com/privacy');
+    expect(html).not.toContain('stays in Canada');
+    expect(html).not.toContain('Nothing is shared until you say so');
   });
 
   it('keeps the theme toggle in the frame', () => {

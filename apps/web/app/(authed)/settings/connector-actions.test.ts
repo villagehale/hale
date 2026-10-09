@@ -36,7 +36,10 @@ describe('disconnectConnectorAction', () => {
     revokeMock.mockResolvedValue({ status: 'revoked' });
     const state = await disconnectConnectorAction({ status: 'idle' }, form('gcal'));
     expect(state.status).toBe('success');
-    expect(state).toMatchObject({ message: expect.stringContaining('Google') });
+    expect(state).toMatchObject({
+      message:
+        'Disconnected. Hale deleted its keys. Google still lists Hale until you remove it at myaccount.google.com/permissions.',
+    });
     expect(revokeMock).toHaveBeenCalledWith('gcal');
     expect(revalidatePath).toHaveBeenCalledWith('/settings');
   });

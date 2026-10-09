@@ -1,0 +1,1312 @@
+/* Parent portal. Shore, frosted sidebar, glass cards. Faces stay local so the
+   app's Fraunces ladder is untouched. `.dark` (localStorage `hale-theme`) retints
+   this shell; a missing preference does not follow the OS. */
+@font-face {
+  font-family: "Portal Source Serif 4";
+  src: url("../hale/connect/fonts/source-serif-4-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+.shell {
+  --navy: #17294a;
+  --page: #fdfcfa;
+  --card: #ffffff;
+  --cream: #f7f4ec;
+  --amber: #b26b1f;
+  --amber-tint: #fef0c7;
+  --ink-78: rgb(23 41 74 / 0.78);
+  --ink-64: rgb(23 41 74 / 0.64);
+  --ink-48: rgb(23 41 74 / 0.48);
+  --line: rgb(23 41 74 / 0.1);
+  --hair: rgb(23 41 74 / 0.06);
+  --wash: rgb(23 41 74 / 0.04);
+  --slate: #5c6b87;
+  --meta: #647290;
+  --rule: #e4e7ee;
+  --font-display: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-body: "Portal Source Serif 4", Georgia, serif;
+  --font-ui: var(--font-sans), "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-ios: -apple-system, "SF Pro Text", Inter, "Helvetica Neue", Arial, sans-serif;
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --r-md: 14px;
+  --r-lg: 16px;
+  --r-full: 9999px;
+
+  position: relative;
+  isolation: isolate;
+  display: block;
+  min-height: 100vh;
+  min-height: 100svh;
+  background: var(--page);
+  color: var(--navy);
+  color-scheme: light;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell button,
+.shell input {
+  font: inherit;
+  color: inherit;
+}
+
+.shell button {
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.side {
+  display: none;
+}
+
+.content {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding-bottom: calc(128px + env(safe-area-inset-bottom));
+}
+
+.shore,
+.scrim {
+  position: absolute;
+  inset: 0;
+  height: 380px;
+  bottom: auto;
+  pointer-events: none;
+}
+
+.shore {
+  z-index: -2;
+  width: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+}
+
+.drift {
+  position: absolute;
+  z-index: -2;
+  left: -1100px;
+  right: 0;
+  top: 0;
+  height: 200px;
+  pointer-events: none;
+  background-repeat: repeat-x;
+  background-size: 1100px 100%;
+  background-image: radial-gradient(30% 44% at 22% 38%, rgb(255 255 255 / 0.95) 0%, transparent 70%),
+    radial-gradient(20% 30% at 58% 18%, rgb(255 255 255 / 0.7) 0%, transparent 70%),
+    radial-gradient(24% 34% at 84% 46%, rgb(255 255 255 / 0.6) 0%, transparent 70%);
+  mix-blend-mode: soft-light;
+  opacity: 0.6;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+  animation: drift 120s linear infinite;
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(1100px, 0, 0);
+  }
+}
+
+.scrim {
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    rgb(253 252 250 / 0.35) 0%,
+    rgb(253 252 250 / 0.62) 45%,
+    var(--page) 100%
+  );
+}
+
+.main {
+  position: relative;
+  max-width: 960px;
+  margin: 0;
+  padding: var(--s6) var(--s4) var(--s6);
+}
+
+.fallback {
+  margin-bottom: var(--s6);
+}
+
+.h1 {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 450;
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  color: var(--navy);
+  text-wrap: balance;
+}
+
+.lede {
+  margin-top: var(--s3);
+  max-width: 600px;
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--navy);
+  opacity: 0.9;
+  text-wrap: pretty;
+}
+
+.lede a,
+.foot a,
+.text a {
+  border-bottom: 1px solid rgb(23 41 74 / 0.3);
+}
+
+.crumb {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-78);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--s3);
+}
+
+.crumb svg {
+  width: 14px;
+  height: 14px;
+}
+
+.grid {
+  margin-top: var(--s5);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s4);
+  align-items: start;
+}
+
+.col,
+.one {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  min-width: 0;
+}
+
+.one {
+  margin-top: var(--s5);
+}
+
+.card {
+  padding: var(--s4) var(--s4) var(--s5);
+  background: rgb(255 255 255 / 0.66);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  border-radius: var(--r-lg);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.85), 0 1px 2px rgb(12 26 54 / 0.04), 0 8px 28px
+    rgb(12 26 54 / 0.06);
+}
+
+.card h2 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--navy);
+}
+
+.card h2 + .text {
+  margin-top: 4px;
+}
+
+.card h3 {
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--navy);
+}
+
+.tag {
+  display: block;
+  margin-bottom: var(--s3);
+  font-family: var(--font-ui);
+  font-size: 11.52px;
+  font-weight: 600;
+  line-height: 1.65;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgb(23 41 74 / 0.72);
+}
+
+.text {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--slate);
+  text-wrap: pretty;
+}
+
+.meta {
+  margin-top: 1px;
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--meta);
+  text-wrap: pretty;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  column-gap: var(--s3);
+  align-items: center;
+  padding: var(--s4) 0;
+  border-top: 1px solid var(--line);
+}
+
+.row:first-of-type,
+.tag + .row {
+  border-top: 0;
+  padding-top: var(--s1);
+}
+
+.row:last-child {
+  padding-bottom: 0;
+}
+
+.tight {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.kidRow {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto;
+  column-gap: var(--s3);
+  align-items: center;
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.kidRow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.kidName {
+  min-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--navy);
+}
+
+.chipset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 var(--s3);
+}
+
+.chipStatic {
+  padding: 4px 12px;
+  border-radius: var(--r-full);
+  background: var(--wash);
+  border: 1px solid var(--hair);
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--navy);
+}
+
+.tile {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.tile svg {
+  width: 18px;
+  height: 18px;
+  color: var(--navy);
+}
+
+.end {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-self: end;
+}
+
+.go {
+  width: 16px;
+  height: 16px;
+  color: var(--ink-48);
+}
+
+.state {
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  font-weight: 600;
+  color: var(--ink-78);
+  white-space: nowrap;
+}
+
+.ok::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2e7d4f;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: 8px 18px;
+  border-radius: var(--r-full);
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  font-weight: 600;
+  line-height: 1.65;
+  white-space: nowrap;
+}
+
+.primary {
+  background: var(--navy);
+  color: var(--cream);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.8), 0 18px 50px -34px rgb(12 26 54 / 0.55);
+}
+
+.secondary {
+  background: var(--card);
+  color: var(--navy);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* `.shell a` and `.shell button` set `color: inherit`, which beats a single
+   class. A primary link was inheriting the page colour onto its own fill. */
+.shell a.primary,
+.shell button.primary,
+.shell a.secondary,
+.shell button.secondary {
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  font-weight: 600;
+  line-height: 1.65;
+}
+
+.shell a.primary,
+.shell button.primary {
+  color: var(--cream);
+  background: var(--navy);
+}
+
+.shell a.secondary,
+.shell button.secondary {
+  color: var(--navy);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.addKid {
+  align-self: flex-start;
+}
+
+.signoutForm {
+  margin-top: auto;
+}
+
+.shell button.signout,
+.shell a.signout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 44px;
+  margin-top: 0;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: none;
+  box-shadow: none;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: rgb(23 41 74 / 0.72);
+  text-align: left;
+}
+
+.primary svg,
+.secondary svg {
+  width: 16px;
+  height: 16px;
+}
+
+.block {
+  margin-top: var(--s4);
+}
+
+.ask {
+  display: grid;
+  gap: var(--s3);
+}
+
+.acts {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--font-ios);
+}
+
+.bubble {
+  max-width: 86%;
+  padding: 8px 12px 9px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.36;
+  letter-spacing: -0.006em;
+  overflow-wrap: break-word;
+  white-space: pre-line;
+}
+
+.in {
+  align-self: flex-start;
+  background: #e9e9eb;
+  color: #000;
+}
+
+.out {
+  align-self: flex-end;
+  max-width: 78%;
+  margin: 4px 0;
+  background: #0a84ff;
+  color: #fff;
+}
+
+.did {
+  align-self: flex-start;
+  margin: 6px 0 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: var(--r-full);
+  background: var(--amber-tint);
+  font-family: var(--font-ui);
+  font-size: 12.8px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--navy);
+}
+
+.did svg {
+  width: 14px;
+  height: 14px;
+  color: var(--amber);
+  flex: none;
+}
+
+.time,
+.day {
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+
+.time {
+  align-self: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-64);
+  margin: 6px 0 2px;
+}
+
+.day {
+  font-size: 12.8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-64);
+  margin: var(--s5) 0 var(--s2);
+}
+
+.day:first-child {
+  margin-top: 0;
+}
+
+.filter {
+  margin-top: var(--s5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.seg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--r-full);
+  background: var(--wash);
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.seg button,
+.seg span {
+  padding: 6px 12px;
+  border-radius: var(--r-full);
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  font-weight: 600;
+  color: var(--ink-78);
+}
+
+/* `.shell button` resets background and colour, so the selected filter has to
+   be at least that specific. Same frosted white pill as the selected nav. */
+.shell button.segOn {
+  background: rgb(255 255 255 / 0.92);
+  color: #17294a;
+  /* Hairline so the white pill clears 3:1 against the pale light-mode track. */
+  box-shadow: inset 0 0 0 1px #6e7d99, 0 1px 3px rgb(12 26 54 / 0.12);
+}
+
+.shell button.export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--r-full);
+  background: var(--card);
+  color: var(--navy);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.shell button.export svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.chips {
+  margin-top: var(--s3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chips span,
+.chip {
+  padding: 4px 12px;
+  border-radius: var(--r-full);
+  background: var(--wash);
+  border: 1px solid var(--hair);
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  font-weight: 500;
+  color: var(--navy);
+}
+
+.chipOn {
+  background: var(--card);
+  box-shadow: 0 1px 3px rgb(12 26 54 / 0.12);
+}
+
+.intents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: var(--s4);
+}
+
+.shell button.intent {
+  padding: 8px 14px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line);
+  background: var(--wash);
+  color: var(--navy);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.shell button.intentOn {
+  background: #f7f4ec;
+  color: #17294a;
+  border-color: #17294a;
+}
+
+.fp-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.fp-seal {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #17294a;
+  color: #f7f4ec;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.fp-star {
+  width: 22px;
+  height: 22px;
+}
+
+.fp-badge {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #17294a;
+}
+
+.card.fp-card h2.fp-title {
+  margin: 22px 0 0;
+  font-family: var(--font-display);
+  font-weight: 450;
+  font-size: 25px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--navy);
+}
+
+.fp-body,
+.fp-note p {
+  margin: 10px 0 0;
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--slate);
+}
+
+.fp-rule {
+  height: 1px;
+  margin: 20px 0 16px;
+  background: var(--line);
+}
+
+.fp-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fp-note p {
+  margin: 0;
+}
+
+.fp-bell {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--wash);
+  border: 1px solid var(--hair);
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--navy);
+}
+
+.fp-bell svg {
+  width: 18px;
+  height: 18px;
+}
+
+.danger {
+  border-color: rgb(179 38 30 / 0.22);
+}
+
+.danger h2 {
+  color: #8c1d18;
+}
+
+.danger .secondary {
+  color: #8c1d18;
+  box-shadow: inset 0 0 0 1px rgb(179 38 30 / 0.35);
+  margin-top: var(--s4);
+}
+
+.foot {
+  max-width: 960px;
+  margin: 0;
+  padding: 0 var(--s4) var(--s6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  font-weight: 500;
+  color: var(--ink-64);
+}
+
+.foot a {
+  color: var(--ink-78);
+}
+
+.tabbar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: 6px 10px calc(8px + env(safe-area-inset-bottom));
+  gap: 4px;
+  background: rgb(253 252 250 / 0.92);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  border-top: 1px solid rgb(255 255 255 / 0.7);
+  box-shadow: 0 -1px 0 rgb(23 41 74 / 0.06), 0 -8px 24px rgb(12 26 54 / 0.05);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 0;
+  border-radius: 14px;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-78);
+}
+
+.tab svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* `.shell a` is more specific than `.tabOn`, so the ink color has to be
+   scoped or dark mode inherits cream onto the white pill. */
+.shell .tabOn {
+  color: #17294a;
+  background: rgb(255 255 255 / 0.85);
+  box-shadow: 0 1px 2px rgb(12 26 54 / 0.06), 0 4px 12px rgb(12 26 54 / 0.08);
+}
+
+.shell .tabOn svg {
+  color: #17294a;
+}
+
+.mobileOut {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--s2);
+}
+
+.tog {
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  background: rgb(23 41 74 / 0.18);
+  position: relative;
+  flex: none;
+}
+
+.tog::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+}
+
+.togOn {
+  background: var(--navy);
+}
+
+.togOn::after {
+  left: 21px;
+}
+
+.preview {
+  margin-top: var(--s4);
+}
+
+.previewLabel {
+  margin-bottom: var(--s2);
+  font-family: var(--font-ui);
+  font-size: 12.8px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--meta);
+}
+
+.quietEdit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+
+.quietEdit label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quietEdit input {
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.note {
+  margin-top: var(--s3);
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  color: #8c1d18;
+}
+
+.disclosure {
+  display: block;
+}
+
+.disclosure > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.reveal {
+  padding-bottom: var(--s3);
+}
+
+.shell :focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drift {
+    animation: none;
+  }
+}
+
+@media (min-width: 641px) {
+  .shell {
+    display: grid;
+    grid-template-columns: 248px minmax(0, 1fr);
+  }
+
+  .shell::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 420px;
+    z-index: -1;
+    background: linear-gradient(
+        180deg,
+        rgb(253 252 250 / 0.3),
+        rgb(253 252 250 / 0.6) 50%,
+        var(--page)
+      ), url("/connect/hale-shore-hero.webp") center 30% / cover;
+  }
+
+  .shore,
+  .scrim,
+  .drift {
+    display: none;
+  }
+
+  .content {
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .side {
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100svh;
+    z-index: 10;
+    padding: 28px 20px 24px;
+    background: rgb(247 244 236 / 0.96);
+    backdrop-filter: blur(18px) saturate(1.02);
+    -webkit-backdrop-filter: blur(18px) saturate(1.02);
+    border-right: 0;
+    box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.6), 1px 0 0 rgb(23 41 74 / 0.05);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 12px;
+  }
+
+  .logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 30%;
+    object-fit: cover;
+  }
+
+  .wordmark {
+    height: 22px;
+    width: auto;
+    color: var(--navy);
+  }
+
+  .sidenav {
+    margin-top: 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .navLink,
+  .signout {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 44px;
+    padding: 0 12px;
+    border-radius: 12px;
+    font-family: var(--font-ui);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink-78);
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+
+  .navLink svg,
+  .signout svg {
+    width: 20px;
+    height: 20px;
+    flex: none;
+  }
+
+  .navLink:hover,
+  .signout:hover {
+    background: rgb(255 255 255 / 0.28);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.5);
+    color: var(--ink-78);
+  }
+
+  .shell .navOn,
+  .shell .navOn:hover {
+    background: rgb(255 255 255 / 0.85);
+    backdrop-filter: blur(14px) saturate(1.15);
+    -webkit-backdrop-filter: blur(14px) saturate(1.15);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(12 26 54 / 0.06), 0 6px 16px
+      rgb(12 26 54 / 0.08);
+    color: #17294a;
+    font-weight: 650;
+  }
+
+  .shell .navOn svg {
+    color: #17294a;
+  }
+
+  .signout {
+    margin-top: auto;
+    font-weight: 500;
+    color: var(--ink-64);
+  }
+
+  .main,
+  .foot {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding-left: 64px;
+    padding-right: 64px;
+    box-sizing: border-box;
+  }
+
+  .main {
+    padding-top: 64px;
+  }
+
+  .h1 {
+    font-size: 44px;
+  }
+
+  .lede {
+    font-size: 18px;
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: var(--s5);
+    margin-top: var(--s6);
+  }
+
+  .col {
+    gap: var(--s5);
+  }
+
+  .one {
+    max-width: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s5);
+    align-items: stretch;
+  }
+
+  .one > :only-child,
+  .span {
+    grid-column: 1 / -1;
+  }
+
+  .card {
+    padding: var(--s5);
+  }
+
+  .card h2 {
+    font-size: 22px;
+  }
+
+  .card.fp-card h2.fp-title {
+    font-size: 30px;
+  }
+
+  .row {
+    column-gap: var(--s4);
+  }
+
+  .bubble {
+    max-width: min(78%, 560px);
+  }
+
+  .out {
+    max-width: min(70%, 480px);
+  }
+
+  .foot {
+    flex-direction: row;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--s2) var(--s5);
+    padding-bottom: var(--s7);
+  }
+
+  .tabbar,
+  .mobileOut {
+    display: none;
+  }
+
+  .seg button,
+  .seg span {
+    padding: 6px 14px;
+  }
+}
+
+/* Dark. The pre-paint script sets `.dark` from `hale-theme`. Selected nav stays
+   a frosted white pill with ink text — never a navy fill. */
+:global(.dark) .shell {
+  --page: #0c1a36;
+  --card: #17294a;
+  --navy: #f7f4ec;
+  --cream: #0c1a36;
+  --amber: #e2a75a;
+  --amber-tint: rgb(226 167 90 / 0.1);
+  --ink-78: rgb(247 244 236 / 0.78);
+  --ink-64: rgb(247 244 236 / 0.64);
+  --ink-48: rgb(247 244 236 / 0.48);
+  --line: rgb(247 244 236 / 0.12);
+  --hair: rgb(247 244 236 / 0.08);
+  --wash: rgb(247 244 236 / 0.05);
+  --slate: #b7c4dc;
+  --meta: #9eadc9;
+  --rule: #26375c;
+  color: var(--navy);
+  color-scheme: dark;
+}
+
+:global(.dark) .shore {
+  filter: saturate(0.8) brightness(0.72) hue-rotate(-8deg);
+}
+
+:global(.dark) .scrim {
+  background: linear-gradient(
+    180deg,
+    rgb(12 26 54 / 0.4) 0%,
+    rgb(12 26 54 / 0.72) 45%,
+    #0c1a36 100%
+  );
+}
+
+/* Desktop dark paints the photo and the fade as one filtered layer, so
+   brightness() darkens the terminal stop below the page and leaves a hard
+   line at 420px. The photo stays filtered; the scrim does not, and it ends
+   on solid #0c1a36. */
+@media (min-width: 641px) {
+  :global(.dark) .shell::before {
+    z-index: -2;
+    filter: saturate(0.8) brightness(0.72) hue-rotate(-8deg);
+    background: url("/connect/hale-shore-hero.webp") center 30% / cover;
+  }
+
+  :global(.dark) .shell::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 420px;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      rgb(12 26 54 / 0.4) 0%,
+      rgb(12 26 54 / 0.72) 50%,
+      #0c1a36 88%,
+      #0c1a36 100%
+    );
+  }
+}
+
+:global(.dark) .side {
+  background: rgb(16 31 63 / 0.94);
+  box-shadow: inset -1px 0 0 rgb(247 244 236 / 0.08), 1px 0 0 rgb(0 0 0 / 0.35);
+}
+
+:global(.dark) .card {
+  background: rgb(23 41 74 / 0.88);
+  border-color: rgb(247 244 236 / 0.14);
+  box-shadow: inset 0 1px 0 rgb(247 244 236 / 0.08), 0 8px 28px rgb(0 0 0 / 0.35);
+}
+
+:global(.dark) .fp-seal {
+  box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22);
+}
+
+:global(.dark) .fp-badge {
+  color: #f7f4ec;
+}
+
+:global(.dark) .logo {
+  box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22);
+}
+
+:global(.dark) .tabbar {
+  background: rgb(12 26 54 / 0.92);
+  border-top-color: rgb(247 244 236 / 0.1);
+  box-shadow: 0 -1px 0 rgb(0 0 0 / 0.35);
+}
+
+:global(.dark) .shell .tabOn,
+:global(.dark) .shell .navOn,
+:global(.dark) .shell .navOn:hover {
+  color: #17294a;
+  background: rgb(255 255 255 / 0.92);
+}
+
+:global(.dark) .shell .tabOn svg,
+:global(.dark) .shell .navOn svg {
+  color: #17294a;
+}
+
+:global(.dark) .shell button.segOn {
+  box-shadow: 0 1px 3px rgb(12 26 54 / 0.12);
+}
+
+:global(.dark) .shell button.signout,
+:global(.dark) .shell a.signout {
+  color: rgb(247 244 236 / 0.86);
+}
+
+:global(.dark) .tile,
+:global(.dark) .fp-bell {
+  background: rgb(247 244 236 / 0.06);
+}
+
+:global(.dark) .in {
+  background: #262628;
+  color: #ffffff;
+}
+
+:global(.dark) .did {
+  background: rgb(226 167 90 / 0.1);
+  box-shadow: inset 0 0 0 1px rgb(226 167 90 / 0.55);
+}
+
+:global(.dark) .tag {
+  color: rgb(247 244 236 / 0.74);
+}
+
+:global(.dark) .lede {
+  color: var(--slate);
+  opacity: 1;
+}
+
+:global(.dark) .lede a,
+:global(.dark) .foot a,
+:global(.dark) .text a {
+  border-bottom-color: rgb(247 244 236 / 0.34);
+}
+
+:global(.dark) .shell :focus-visible {
+  outline-color: #9fd0ea;
+}

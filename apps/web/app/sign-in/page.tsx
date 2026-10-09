@@ -1,6 +1,7 @@
 import { signIn } from '~/auth';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ClaimByPhoneForm } from '~/components/hale/claim-by-phone-form';
+import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import { GoogleGlyph } from '~/components/hale/google-glyph';
 import { MagicLinkRequestForm } from '~/components/hale/magic-link-request-form';
 import { credentialsConfigured, googleConfigured } from '~/lib/auth-config';
@@ -47,9 +48,9 @@ export default async function SignInPage({ searchParams }: PageProps) {
 
   if (phoneOnly) {
     return (
-      <AuthShell heading="Welcome back" subtitle="Sign in with the number you text me on.">
+      <ConnectStage>
         <ClaimByPhoneForm callbackUrl={redirectTo} />
-      </AuthShell>
+      </ConnectStage>
     );
   }
 

@@ -336,8 +336,22 @@ describe('GET /api/integrations/callback — the text surface', () => {
 
     const res = await callCallback(await textState('gcal'));
 
-    expect(location(res)).toBe('https://app.example.com/connected?provider=gcal&status=denied');
+    expect(location(res)).toBe('https://app.example.com/connected?provider=gcal&status=partial');
     expect(noticeMock).not.toHaveBeenCalled();
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps a broader-than-allowed text grant on denied, and stores nothing', async () => {
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.send',
+    });
+
+    const res = await callCallback(await textState('gcal'));
+
+    expect(location(res)).toBe('https://app.example.com/connected?provider=gcal&status=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
   });
 
   it('binds the completer to the minter exactly as the web leg does', async () => {
@@ -446,10 +460,10 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     return signConnectState({ familyId: FAMILY, userId: MINTER, provider: 'gcal' });
   }
 
-  it('rejects a grant MISSING the connector scope (granular-consent deselect) — denied, nothing stored', async () => {
+  it('rejects a grant MISSING the connector scope (granular-consent deselect) — partial, nothing stored', async () => {
     exchangeMock.mockResolvedValue({ accessToken: 'ya29.x', scope: '' });
     const res = await callCallback(await minterState());
-    expect(location(res)).toContain('connect=denied');
+    expect(location(res)).toContain('connect=partial');
     expect(saveConnectionMock).not.toHaveBeenCalled();
   });
 

@@ -20,7 +20,11 @@ vi.mock('~/lib/auth/channel-signin', () => ({
   },
 }));
 
-async function render(searchParams: { t?: string; to?: string }): Promise<string> {
+async function render(searchParams: {
+  t?: string;
+  to?: string;
+  preview?: string;
+}): Promise<string> {
   const { default: ConnectPage } = await import('./page');
   return renderToStaticMarkup(await ConnectPage({ searchParams: Promise.resolve(searchParams) }));
 }
@@ -29,13 +33,20 @@ describe('/connect — the texted redeem page', () => {
   it('names the connector on the button when the link asks for Calendar', async () => {
     const html = await render({ t: 'tok', to: 'gcal' });
 
-    expect(html).toContain('Connect your calendar');
-    expect(html).toContain('I never see your password. You can disconnect any time.');
+    expect(html).toContain('Connect');
+    expect(html).toContain('your calendar');
+    expect(html).toContain('So Hale can catch class invites and trip dates for');
+    expect(html).toContain('the kids.');
+    expect(html).toContain('What Hale reads');
+    expect(html).toContain('What Hale never does');
+    expect(html).toContain('box for Google Calendar');
     expect(html).toContain('Tap Advanced, then continue.');
     expect(html).toContain('unverified app');
     expect(html).not.toContain('connect my calendar');
-    expect(html).toContain('Connect Google Calendar');
-    expect(html).not.toContain('Continue');
+    expect(html).not.toContain('Connect Google Calendar');
+    expect(html).toContain('Continue with Google');
+    expect(html).toContain('Never sold.');
+    expect(html).toContain('https://www.villagehale.com/privacy');
     expect(html).not.toContain('tok');
   });
 
@@ -43,8 +54,11 @@ describe('/connect — the texted redeem page', () => {
     const html = await render({ t: 'tok', to: 'gmail' });
 
     expect(html).toContain('Connect Gmail');
-    expect(html).toContain('You can disconnect any time.');
+    expect(html).toContain('So Hale can flag daycare and school notices');
+    expect(html).toContain('for you.');
+    expect(html).toContain('box for Gmail');
     expect(html).toContain('Tap Advanced, then continue.');
+    expect(html).toContain('Continue with Google');
     expect(html).not.toContain('tok');
   });
 
@@ -58,9 +72,11 @@ describe('/connect — the texted redeem page', () => {
     });
 
     expect(calendar.title).toBe('Connect your calendar');
-    expect(calendar.description).toBe('I never see your password. You can disconnect any time.');
+    expect(calendar.description).toBe(
+      'So Hale can catch class invites and trip dates for the kids.',
+    );
     expect(gmail.title).toBe('Connect Gmail');
-    expect(gmail.description).toBe('I never see your password. You can disconnect any time.');
+    expect(gmail.description).toBe('So Hale can flag daycare and school notices for you.');
     expect(calendar.openGraph?.title).toBe(calendar.title);
     expect(gmail.openGraph?.description).toBe(gmail.description);
     expect(JSON.stringify(calendar)).not.toContain('secret-token');
@@ -73,7 +89,9 @@ describe('/connect — the texted redeem page', () => {
     for (const to of ['gdrive', '../evil', 'GCAL ']) {
       const html = await render({ t: 'tok', to });
       expect(html).toContain('Continue');
+      expect(html).not.toContain('Continue with Google');
       expect(html).not.toContain('Connect Google Calendar');
+      expect(html).toContain('One tap signs you in and opens your connected apps.');
     }
   });
 
@@ -95,8 +113,18 @@ describe('/connect — the texted redeem page', () => {
   it('keeps the calm dead end for a link with no token', async () => {
     const html = await render({ to: 'gcal' });
 
-    expect(html).toContain('missing or incomplete');
+    expect(html).toContain('This link is incomplete');
+    expect(html).toContain('This link is missing');
+    expect(html).toContain('or incomplete.');
     expect(html).not.toContain('connect my calendar');
     expect(html).not.toContain('Connect Google Calendar');
+  });
+
+  it('ignores a force-state outside development', async () => {
+    const html = await render({ t: 'tok', to: 'gmail', preview: 'denied' });
+
+    expect(html).toContain('Connect Gmail');
+    expect(html).not.toContain('Nothing changed');
+    expect(html).not.toContain('Concept');
   });
 });

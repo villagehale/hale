@@ -1,26 +1,37 @@
 import type { Metadata } from 'next';
-import { AuthShell } from '~/components/hale/auth-shell';
 import { ChannelLinkRedeem } from '~/components/hale/channel-link-redeem';
+import { StatusCard } from '~/components/hale/connect/connect-cards';
+import { ConnectPreview } from '~/components/hale/connect/connect-preview';
+import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import { authConfigured } from '~/lib/auth-config';
 import {
-  asTextConnectProvider,
-  connectorLinkCard,
-  googleUnverifiedAppLine,
-} from '~/lib/channel/connect/text-connect';
+  MISSING_DESCRIPTION,
+  MISSING_TITLE,
+  connectPageMeta,
+  connectPreviewEnabled,
+  isConnectPreviewState,
+  missingLink,
+} from '~/lib/channel/connect/connect-page-copy';
+import { haleTextsHref } from '~/lib/channel/connect/hale-texts-href';
+import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  searchParams: Promise<{ t?: string; to?: string }>;
+  searchParams: Promise<{ t?: string; to?: string; preview?: string }>;
 }
 
 /**
- * The link unfurls as its own card. Title is the ask, description is the one
- * trust line. The token stays out of every tag a preview crawler stores.
+ * The link unfurls as its own card. Title is the ask, description is the lede.
+ * The token stays out of every tag a preview crawler stores.
  */
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
-  const { to } = await searchParams;
-  const card = connectorLinkCard(asTextConnectProvider(to));
+  const { t, to } = await searchParams;
+  const provider = asTextConnectProvider(to);
+  const card =
+    !authConfigured() || !t
+      ? { title: MISSING_TITLE, description: MISSING_DESCRIPTION }
+      : connectPageMeta(provider);
   return {
     title: card.title,
     description: card.description,
@@ -41,35 +52,36 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
 }
 
 /**
- * Redeem landing for the texted connect link (/connect?t=…&to=gcal). Rendering this
- * page never consumes the token, so a carrier link-scanner's GET costs the parent
- * nothing. The Redeem tap signs them in and leaves the token usable until Google
- * consent succeeds. A missing token cannot name a parent, so nothing is minted.
+ * Redeem landing for the texted connect link (/connect?t=…&to=gcal). Rendering
+ * this page never consumes the token. The Redeem tap signs them in and leaves
+ * the token usable until Google consent succeeds.
  *
- * `to` names which connector the link was texted for, so the one tap it already asks for
- * is also the last one: the redemption forwards straight into Google's consent instead
- * of into Settings. It is read through the allowlist, never used as a path — an
- * unrecognised value is not an error a parent has to read, just the flow as it was.
+ * `to` is read through the allowlist. An unrecognised value is not an error —
+ * the next step is Settings, so the button is a plain Continue, not Google's.
+ *
+ * `preview` forces a design state only when NODE_ENV is development. Vercel
+ * preview and `next start` are production and ignore it.
  */
 export default async function ConnectPage({ searchParams }: PageProps) {
-  const { t, to } = await searchParams;
+  const { t, to, preview } = await searchParams;
+
+  if (connectPreviewEnabled() && isConnectPreviewState(preview)) {
+    return <ConnectPreview state={preview} />;
+  }
+
+  const smsHref = haleTextsHref();
 
   if (!authConfigured() || !t) {
     return (
-      <AuthShell heading="Connect your apps">
-        <p className="meta">This link is missing or incomplete.</p>
-      </AuthShell>
+      <ConnectStage>
+        <StatusCard copy={missingLink()} smsHref={smsHref} />
+      </ConnectStage>
     );
   }
 
-  const provider = asTextConnectProvider(to);
-  const card = connectorLinkCard(provider);
-
   return (
-    <AuthShell heading={card.title}>
-      <p className="meta">{card.description}</p>
-      {provider ? <p className="meta">{googleUnverifiedAppLine('en')}</p> : null}
-      <ChannelLinkRedeem token={t} provider={provider} />
-    </AuthShell>
+    <ConnectStage>
+      <ChannelLinkRedeem token={t} provider={asTextConnectProvider(to)} smsHref={smsHref} />
+    </ConnectStage>
   );
 }

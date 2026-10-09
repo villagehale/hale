@@ -1,15 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import type { WeekPlan } from '@hale/db';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { WeekPlan } from '@hale/db';
 import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { ApprovalCard } from './approval-card';
 import { brandHref } from './nav';
 import { TrailTimeline } from './trail-timeline';
-import { WeekPlanCard, WeekPlanToday, type WeekPlanKid } from './week-plan-card';
+import { WeekPlanCard, type WeekPlanKid, WeekPlanToday } from './week-plan-card';
 
 /**
  * VIL-244 · M9 — the receipts-room reframe (D4/D20), behind F14_RECEIPTS_IA.
@@ -239,24 +239,18 @@ describe('the demoted daily feed', () => {
   );
   const page = app('(authed)/home/page.tsx');
 
-  // The forward target moved /plan → /approvals: #455 demoted the week view out of the
-  // nav, so it could no longer be the surface a parent lands on. Approvals is the
-  // receipts room the IA is named for and the nav's first stop.
-  it('forwards /home to the receipts room as a real 302, and no longer to the week view', () => {
+  it('leaves /home as the portal landing, and no longer forwards it to the week view', () => {
     expect(middleware).toContain('receiptsIaEnabled()');
-    // Positive control first: if this passes, `middleware` really is the source text,
-    // so the absence check below cannot pass vacuously on an empty/misread file.
-    expect(middleware).toContain("NextResponse.redirect(new URL('/family', req.nextUrl), 302)");
+    expect(middleware).not.toContain("pathname === '/home'");
     expect(middleware).not.toContain("new URL('/plan'");
   });
 
-  it('forwards the sub-paths too, so no bookmark under /home escapes the demotion', () => {
-    expect(middleware).toContain("pathname === '/home' || pathname.startsWith('/home/')");
-  });
-
-  it('leaves the feed page itself intact — its removal is a later PR, and flag-off must still render it', () => {
-    expect(page).toContain('HomeChildPanels');
-    expect(page).not.toContain('receiptsIaEnabled');
+  it('leaves the daily feed intact for flag-off, and the page branches to the portal when the flag is on', () => {
+    const legacy = app('(authed)/home/legacy-home.tsx');
+    expect(legacy).toContain('HomeChildPanels');
+    expect(page).toContain('receiptsIaEnabled');
+    expect(page).toContain('LegacyHomePage');
+    expect(page).toContain('PortalHome');
   });
 });
 
@@ -282,10 +276,23 @@ describe('the family editor moved up a level (Instinct refresh)', () => {
 
   it('/family renders the editor content the members page used to own', () => {
     const page = app('(authed)/family/page.tsx');
-    for (const editor of ['FamilyChildren', 'FamilyLocation', 'FamilyIntents', 'AddCoParentCard']) {
-      expect(page).toContain(editor);
+    const portal = readFileSync(
+      fileURLToPath(new URL('../portal/family-view.tsx', import.meta.url)),
+      'utf8',
+    );
+    const legacy = app('(authed)/family/legacy-family.tsx');
+    expect(page).toContain('PortalFamily');
+    expect(page).toContain('LegacyFamilyPage');
+    for (const editor of ['FamilyChildren', 'PortalIntents', 'AddCoParentCard']) {
+      expect(portal).toContain(editor);
     }
-    // The hub's tiles died with the hub — /family is the people page, not a switchboard.
+    expect(portal).not.toContain('Founding family');
+    expect(portal).not.toMatch(/foundingNumber|Founding family · #/);
+    expect(portal).toContain('PostalEditor');
+    expect(portal).not.toContain('FamilyLocation');
+    for (const editor of ['FamilyChildren', 'FamilyLocation', 'FamilyIntents', 'AddCoParentCard']) {
+      expect(legacy).toContain(editor);
+    }
     expect(page).not.toContain('FamilyHubCard');
   });
 });
@@ -315,20 +322,21 @@ describe('sign-in under the flag', () => {
 });
 
 describe('the brand mark follows the demotion (VIL-256)', () => {
-  it('lands on the receipts room under the reframe, so a logo click costs no 302 hop', () => {
-    expect(brandHref(true)).toBe('/family');
+  it('lands on /home under the reframe, so a logo click costs no 302 hop', () => {
+    expect(brandHref(true)).toBe('/home');
   });
 
   it('still lands on the daily feed with the flag off', () => {
     expect(brandHref(false)).toBe('/home');
   });
 
-  it('is the SAME target the middleware forwards /home to, so the two can’t diverge', () => {
+  it('matches the middleware, which no longer forwards /home away', () => {
     const middleware = readFileSync(
       fileURLToPath(new URL('../../middleware.ts', import.meta.url)),
       'utf8',
     );
-    expect(middleware).toContain(`NextResponse.redirect(new URL('${brandHref(true)}'`);
+    expect(middleware).not.toContain(`new URL('${brandHref(true)}'`);
+    expect(middleware).not.toContain("pathname === '/home'");
   });
 });
 
