@@ -25,19 +25,52 @@ export function threadPinDelta(
   return endBottom - (threadBottom - paddingBottom);
 }
 
+/** Playback only follows new lines downward, so a typing handoff cannot jump the thread up. */
+export function downwardPin(delta: number): number {
+  return delta > 1 ? delta : 0;
+}
+
+/** A clip sought backward: the card restarted. */
+export function playbackRewound(previous: number, current: number): boolean {
+  return current < previous;
+}
+
+/** True when any playing clip jumped backward since the last sample. */
+export function rewindClips(
+  previous: ReadonlyMap<Animation, number>,
+  current: ReadonlyMap<Animation, number>,
+): boolean {
+  for (const [clip, time] of current) {
+    const before = previous.get(clip);
+    if (before !== undefined && playbackRewound(before, time)) return true;
+  }
+  return false;
+}
+
 function visibleEnds(thread: HTMLElement): { opacity: number; bottom: number }[] {
   const nodes: { opacity: number; bottom: number }[] = [];
+  // The typing chip is absolutely positioned in its row. Follow the chip:
+  // the row still reserves the unrevealed bubble at full height.
   for (const node of thread.querySelectorAll<HTMLElement>(
     '.hs-stamp, .hs-who, .hs-msg, .hs-did, .chat-typing',
   )) {
-    const typing = node.classList.contains('chat-typing');
-    const box = typing ? (node.closest('.hs-row') ?? node) : node;
     nodes.push({
       opacity: Number.parseFloat(getComputedStyle(node).opacity),
-      bottom: box.getBoundingClientRect().bottom,
+      bottom: node.getBoundingClientRect().bottom,
     });
   }
   return nodes;
+}
+
+function clipTimes(thread: HTMLElement): Map<Animation, number> {
+  const times = new Map<Animation, number>();
+  for (const node of [thread, ...thread.querySelectorAll<HTMLElement>('*')]) {
+    for (const clip of node.getAnimations?.() ?? []) {
+      const time = clip.currentTime;
+      if (typeof time === 'number') times.set(clip, time);
+    }
+  }
+  return times;
 }
 
 function running(thread: HTMLElement): boolean {
@@ -51,8 +84,8 @@ function pinThread(thread: HTMLElement) {
   const end = lastVisibleBottom(visibleEnds(thread));
   if (end === null) return;
   const pad = Number.parseFloat(getComputedStyle(thread).paddingBottom) || 0;
-  const delta = threadPinDelta(end, thread.getBoundingClientRect().bottom, pad);
-  if (Math.abs(delta) > 1) thread.scrollTop += delta;
+  const delta = downwardPin(threadPinDelta(end, thread.getBoundingClientRect().bottom, pad));
+  if (delta !== 0) thread.scrollTop += delta;
 }
 
 /** CSS handset: thin even bezel, Dynamic Island, titanium edge. */
@@ -68,8 +101,20 @@ export function PhoneChat({ children }: { children: ReactNode }) {
     let timer = 0;
     let watching = false;
     let lastTop = thread.scrollTop;
+    let times = clipTimes(thread);
 
+    const resetThread = () => {
+      stuck = true;
+      pinning = true;
+      lastTop = 0;
+      thread.scrollTop = 0;
+      lastTop = thread.scrollTop;
+      pinning = false;
+    };
     const pin = () => {
+      const next = clipTimes(thread);
+      if (rewindClips(times, next)) resetThread();
+      times = next;
       if (!stuck) return;
       pinning = true;
       pinThread(thread);
@@ -105,6 +150,15 @@ export function PhoneChat({ children }: { children: ReactNode }) {
     });
     io.observe(phone);
     thread.addEventListener('scroll', onScroll, { passive: true });
+    const gallery = phone.closest('[data-chat-gallery]');
+    const onGallery = () => {
+      if (phone.closest('.gallery-slide')?.getAttribute('data-gallery-active') !== 'true') return;
+      // The replay seek lands in an earlier listener. Sample after it so the
+      // next frame does not treat the same rewind as a second reset.
+      times = clipTimes(thread);
+      resetThread();
+    };
+    gallery?.addEventListener('hale:gallerychange', onGallery);
     pin();
     const initial = requestAnimationFrame(pin);
     const resize = new ResizeObserver(() => {
@@ -119,6 +173,7 @@ export function PhoneChat({ children }: { children: ReactNode }) {
       io.disconnect();
       resize.disconnect();
       thread.removeEventListener('scroll', onScroll);
+      gallery?.removeEventListener('hale:gallerychange', onGallery);
     };
   }, []);
 

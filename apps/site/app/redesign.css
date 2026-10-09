@@ -1544,10 +1544,11 @@
 .rd .hs-rem,
 .rd .hs-memory { color-scheme: inherit; }
 /* iPhone body 71.5×146.6. Width only — height follows the ratio.
-   min(78vw, 320px, (100svh - 240px) / 2.05) keeps the handset and the
-   gallery controls on a 390×844 screen. */
+   max(256px, min(78vw, 320px, (100svh - 240px) / 2.05)) keeps the handset
+   and the gallery controls on a 390×844 screen. The 256px floor stops a
+   short viewport from shrinking the body until the island hits the status icons. */
 .rd .gallery-phone {
-  --gallery-phone-w: min(78vw, 320px, calc((100svh - 240px) / 2.05));
+  --gallery-phone-w: max(256px, min(78vw, 320px, calc((100svh - 240px) / 2.05)));
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1577,10 +1578,10 @@
 .rd .gallery-phone-island {
   position: absolute;
   z-index: 4;
-  top: calc(var(--gallery-phone-w) * 0.032);
+  top: 11px;
   left: 50%;
   width: 31%;
-  height: calc(var(--gallery-phone-w) * 0.082);
+  height: 28px;
   transform: translateX(-50%);
   border-radius: var(--r-full);
   background: #000;
@@ -1636,6 +1637,8 @@
   overflow-y: auto;
   scrollbar-width: none;
   overflow-anchor: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
 }
 /* Free space sits above the bubbles, so a short thread rests on the home
    indicator and a long one scrolls instead of clipping the top. */
