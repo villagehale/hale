@@ -2,6 +2,7 @@ import { ChevronRight, Mail, MessageCircle, Phone, Shield, Sparkles } from 'luci
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { signOutAction } from '~/lib/auth-actions';
+import { AppearanceCard } from './appearance';
 import { PortalHeading } from './heading';
 import { NameEditor } from './name-editor';
 import { portalHref } from './portal-href';
@@ -77,6 +78,7 @@ export function SettingsIndex({
             </span>
           </div>
         </section>
+        <AppearanceCard />
         {signOutTo ? (
           <div className={styles.mobileOut}>
             <Link href={portalHref('', signOutTo)} className={styles.secondary}>

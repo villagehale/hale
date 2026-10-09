@@ -31,6 +31,7 @@ const SURFACES = [
   'components/portal/home-view.tsx',
   'components/portal/family-view.tsx',
   'components/portal/settings-index.tsx',
+  'components/portal/appearance.tsx',
   'components/portal/connections-view.tsx',
   'components/portal/texts-editor.tsx',
   'components/portal/plan-cards.tsx',
