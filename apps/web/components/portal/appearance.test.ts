@@ -272,7 +272,11 @@ function installPortalCss(): void {
     .replaceAll(/\/\*[\s\S]*?\*\//g, ' ')
     .replaceAll(/:global\(([^)]+)\)/g, ' ');
   const names = [
-    ...new Set([...localSource.matchAll(/\.([_a-zA-Z][\w-]*)/g)].map((m) => m[1])),
+    ...new Set(
+      [...localSource.matchAll(/\.([_a-zA-Z][\w-]*)/g)].flatMap((match) =>
+        match[1] ? [match[1]] : [],
+      ),
+    ),
   ].sort((a, b) => b.length - a.length);
   let css = source.replaceAll(/:global\(([^)]+)\)/g, '$1');
   const map = styles as unknown as Record<string, string>;
@@ -280,7 +284,7 @@ function installPortalCss(): void {
     css = css.replaceAll(`.${name}`, `.__cls${index}__`);
   });
   names.forEach((name, index) => {
-    css = css.replaceAll(`.__cls${index}__`, `.${map[name]}`);
+    css = css.replaceAll(`.__cls${index}__`, `.${map[name] ?? name}`);
   });
   const tag = document.createElement('style');
   tag.dataset.portal = 'true';
@@ -288,9 +292,15 @@ function installPortalCss(): void {
   document.head.appendChild(tag);
 }
 
+function portalClass(name: 'shell' | 'segOn'): string {
+  const value = styles[name];
+  if (!value) throw new Error(`missing portal class ${name}`);
+  return value;
+}
+
 function paint(markup: string): HTMLElement {
   const host = document.createElement('div');
-  host.className = styles.shell;
+  host.className = portalClass('shell');
   host.innerHTML = markup;
   document.body.appendChild(host);
   return host;
@@ -345,7 +355,7 @@ describe('the stored option is selected before hydration', () => {
     expect(tone(side, 'system').shadow).toBe('none');
 
     const filter = document.createElement('button');
-    filter.className = styles.segOn;
+    filter.className = portalClass('segOn');
     host.appendChild(filter);
     expect(getComputedStyle(filter).boxShadow).toBe(DARK_SHADOW);
   });
@@ -363,7 +373,7 @@ describe('the stored option is selected before hydration', () => {
     const container = await mount(
       createElement(
         'div',
-        { className: styles.shell },
+        { className: portalClass('shell') },
         createElement(AppearanceControl, { variant: 'card' }),
       ),
     );
