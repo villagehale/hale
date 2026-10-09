@@ -4,6 +4,8 @@ import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { logoSrc, shoreSrc } from './assets';
 import { ChatGallery } from './chat-gallery';
+import { FaqDeepLink } from './faq-deeplink';
+import { FaqItem } from './faq-item';
 import { groupChatSlides } from './group-chats';
 import { HomeMotion } from './home-motion';
 import { TextDoor } from './text-door';
@@ -27,7 +29,7 @@ export function RedesignHome({
       <SiteHeader locale={locale} />
       <LandingScrollAnalytics />
       <div className="rd">
-        
+        <FaqDeepLink />
 
 <div className="stage">
 <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
@@ -327,7 +329,10 @@ export function RedesignHome({
    <a className="hs-more hs-desktop-only" href={localeHref(locale, "/faq")}><span>{t("All questions")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a>
   </div>
   <div className="hs-faq-r">
-   <div className="hs-qa"><h3 className="hs-h3">{t("Does Hale book or register for me?")}</h3><p className="hs-p">{t("Not yet. Hale finds the class, watches for spots and texts you the link before sign-ups open. You register yourself. Signing up for you is coming later, and only when you say yes.")}</p></div><div className="hs-qa"><h3 className="hs-h3">{t("Is it free?")}</h3><p className="hs-p">{t("Yes. Hale is free, with unlimited chat. Families who join now get every feature free until paid plans start.")}</p></div><div className="hs-qa"><h3 className="hs-h3">{t("Do I need an app?")}</h3><p className="hs-p">{t("No. Hale works in iMessage and regular texts. Add it to a group chat, or text it on its own.")}</p></div><div className="hs-qa"><h3 className="hs-h3">{t("What about our privacy?")}</h3><p className="hs-p"><Phrase locale={locale} sentence="Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details." phrase="privacy policy" href={localeHref(locale, "/privacy")} /></p></div>
+   <FaqItem id="does-hale-book-or-register-for-me" question={t("Does Hale book or register for me?")}>{t("Not yet. Hale finds the class, watches for spots and texts you the link before sign-ups open. You register yourself. Signing up for you is coming later, and only when you say yes.")}</FaqItem>
+   <FaqItem id="is-it-free" question={t("Is it free?")}>{t("Yes. Hale is free, with unlimited chat. Families who join now get every feature free until paid plans start.")}</FaqItem>
+   <FaqItem id="do-i-need-an-app" question={t("Do I need an app?")}>{t("No. Hale works in iMessage and regular texts. Add it to a group chat, or text it on its own.")}</FaqItem>
+   <FaqItem id="what-about-our-privacy" question={t("What about our privacy?")}><Phrase locale={locale} sentence="Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details." phrase="privacy policy" href={localeHref(locale, "/privacy")} /></FaqItem>
    <a className="hs-more hs-mobile-only" href={localeHref(locale, "/faq")}><span>{t("All questions")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a>
   </div>
  </div>

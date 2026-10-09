@@ -18,7 +18,37 @@ describe('product FAQ', () => {
     for (const q of entities) {
       expect(q['@type']).toBe('Question');
       expect((q.acceptedAnswer as { '@type': string })['@type']).toBe('Answer');
+      expect(Object.keys(q).sort()).toEqual(['@type', 'acceptedAnswer', 'name']);
     }
+  });
+
+  it('keeps the anchor slug out of FAQPage JSON-LD', () => {
+    const serialized = JSON.stringify(faqJsonLd());
+    for (const item of FAQ) {
+      expect(serialized).not.toContain(item.id);
+    }
+  });
+
+  it('gives every question a unique English slug', () => {
+    expect(FAQ.map((item) => item.id)).toEqual([
+      'what-is-hale',
+      'how-do-i-start',
+      'do-i-need-an-app-or-an-account',
+      'can-hale-join-our-group-chat',
+      'what-does-hale-do-in-a-group',
+      'what-do-other-parents-in-the-group-see',
+      'is-my-co-parent-free',
+      'does-hale-book-or-register-for-me',
+      'what-does-hale-find',
+      'can-i-ask-it-other-things',
+      'how-often-will-hale-text-me',
+      'will-hale-tell-me-if-a-class-is-any-good',
+      'is-it-free',
+      'what-happens-to-our-data',
+      'is-hale-a-person',
+      'is-hale-official',
+    ]);
+    expect(new Set(FAQ.map((item) => item.id)).size).toBe(FAQ.length);
   });
 });
 
