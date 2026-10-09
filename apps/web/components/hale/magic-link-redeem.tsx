@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { useActionState, useEffect, useRef } from 'react';
+import stage from '~/components/hale/connect/connect.module.css';
+import door from '~/components/portal/signin.module.css';
 import { type MagicLinkRedeemState, redeemMagicLinkAction } from '~/lib/auth/magic-link-actions';
 
 /**
@@ -28,11 +30,11 @@ export function MagicLinkRedeem({ token, redirectTo }: { token: string; redirect
 
   if (state.status === 'error') {
     return (
-      <div className="flex w-full flex-col gap-4">
+      <div className={door.stack}>
         <p className="field-error" role="alert">
           {state.message}
         </p>
-        <Link href="/sign-in" className="btn-primary self-start">
+        <Link href="/sign-in" className={`${stage.btn} ${door.full}`}>
           Request a new link
         </Link>
       </div>
@@ -40,8 +42,8 @@ export function MagicLinkRedeem({ token, redirectTo }: { token: string; redirect
   }
 
   return (
-    <form ref={formRef} action={formAction} className="flex w-full flex-col gap-4">
-      <p className="meta" aria-live="polite">
+    <form ref={formRef} action={formAction}>
+      <p className={stage.lede} aria-live="polite">
         Signing you in&hellip;
       </p>
     </form>

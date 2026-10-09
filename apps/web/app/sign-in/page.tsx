@@ -5,6 +5,7 @@ import { ClaimByPhoneForm } from '~/components/hale/claim-by-phone-form';
 import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import { GoogleGlyph } from '~/components/hale/google-glyph';
 import { MagicLinkRequestForm } from '~/components/hale/magic-link-request-form';
+import door from '~/components/portal/signin.module.css';
 import { credentialsConfigured, googleConfigured } from '~/lib/auth-config';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
 import { haleTextsNumber } from '~/lib/channel/connect/hale-texts-href';
@@ -104,9 +105,9 @@ export default async function SignInPage({ searchParams }: PageProps) {
       {/* The join funnel left the app with /onboarding (F14): joining starts on the
           marketing site, which explains that Hale is a number you text. A plain
           anchor, like every other off-app link here — it leaves the router's world. */}
-      <a href={MARKETING_SITE_URL} className="btn-ghost self-start">
-        New here? Join the village &rarr;
-      </a>
+      <p className={door.new}>
+        <a href={MARKETING_SITE_URL}>New here? Join the village &rarr;</a>
+      </p>
     </AuthShell>
   );
 }

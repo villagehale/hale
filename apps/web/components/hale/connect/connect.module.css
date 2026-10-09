@@ -65,7 +65,16 @@
   text-decoration: none;
 }
 
-.stage button {
+/* Reset connect-local controls. Buttons that already carry the app's own
+   classes (flag-off sign-in, the consent form) keep those paints. :where
+   holds this at the same specificity as a plain `.stage button`, so `.btn`
+   and `.gsi` still win. */
+.stage
+  button:where(
+    :not(:global(.btn-primary)):not(:global(.btn-secondary)):not(:global(.btn-ghost)):not(
+        :global(.auth-submit)
+      ):not(:global(.auth-google))
+  ) {
   font: inherit;
   border: 0;
   background: none;

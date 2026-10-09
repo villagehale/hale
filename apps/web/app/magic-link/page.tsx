@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AuthShell } from '~/components/hale/auth-shell';
+import stage from '~/components/hale/connect/connect.module.css';
 import { MagicLinkRedeem } from '~/components/hale/magic-link-redeem';
+import door from '~/components/portal/signin.module.css';
 import { credentialsConfigured } from '~/lib/auth-config';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
 
@@ -37,7 +39,7 @@ export default async function MagicLinkPage({ searchParams }: PageProps) {
         <p className="meta">
           This sign-in link is missing or incomplete. Request a fresh one and try again.
         </p>
-        <Link href="/sign-in" className="btn-primary self-start">
+        <Link href="/sign-in" className={`${stage.btn} ${door.full}`}>
           Request a new link
         </Link>
       </AuthShell>

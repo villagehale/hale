@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AuthShell } from '~/components/hale/auth-shell';
+import stage from '~/components/hale/connect/connect.module.css';
 import { ResetPasswordForm } from '~/components/hale/reset-password-form';
+import door from '~/components/portal/signin.module.css';
 import { credentialsConfigured } from '~/lib/auth-config';
 
 export const metadata: Metadata = { title: 'New password' };
@@ -35,7 +37,7 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
         <p className="meta">
           This reset link is missing or incomplete. Request a fresh one and try again.
         </p>
-        <Link href="/forgot-password" className="btn-primary self-start">
+        <Link href="/forgot-password" className={`${stage.btn} ${door.full}`}>
           Request a new link
         </Link>
       </AuthShell>
@@ -45,9 +47,9 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
   return (
     <AuthShell heading="Choose a new password">
       <ResetPasswordForm token={token} />
-      <Link href="/forgot-password" className="btn-ghost self-start">
-        Need a new link? Start over &rarr;
-      </Link>
+      <p className={door.new}>
+        <Link href="/forgot-password">Need a new link? Start over &rarr;</Link>
+      </p>
     </AuthShell>
   );
 }

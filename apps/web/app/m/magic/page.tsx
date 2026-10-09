@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { AuthShell } from '~/components/hale/auth-shell';
+import stage from '~/components/hale/connect/connect.module.css';
+import door from '~/components/portal/signin.module.css';
 
 export const metadata: Metadata = { title: { absolute: 'Open Hale' } };
 
@@ -35,7 +37,7 @@ export default async function MobileMagicPage({ searchParams }: PageProps) {
 
   return (
     <AuthShell heading="Open Hale">
-      <a href={appUrl} className="btn-primary self-start">
+      <a href={appUrl} className={`${stage.btn} ${door.full}`}>
         Open the Hale app
       </a>
       <p className="meta">

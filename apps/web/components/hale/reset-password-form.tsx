@@ -2,6 +2,8 @@
 
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
+import stage from '~/components/hale/connect/connect.module.css';
+import door from '~/components/portal/signin.module.css';
 import { type ResetPasswordState, resetPasswordAction } from '~/lib/auth/auth-actions';
 import { MIN_PASSWORD_LENGTH } from '~/lib/auth/constants';
 
@@ -18,11 +20,9 @@ export function ResetPasswordForm({ token }: { token: string }) {
   });
 
   return (
-    <form action={formAction} className="flex w-full flex-col gap-4">
-      <div className="field-group">
-        <label htmlFor="reset-password" className="field-label">
-          New password
-        </label>
+    <form action={formAction}>
+      <div className={door.field}>
+        <label htmlFor="reset-password">New password</label>
         <input
           id="reset-password"
           name="password"
@@ -30,7 +30,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
           autoComplete="new-password"
           required
           minLength={MIN_PASSWORD_LENGTH}
-          className="field"
+          className={door.input}
         />
         <p className="field-hint">At least {MIN_PASSWORD_LENGTH} characters.</p>
       </div>
@@ -47,7 +47,12 @@ export function ResetPasswordForm({ token }: { token: string }) {
 function Submit() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className="btn-primary" disabled={pending} aria-live="polite">
+    <button
+      type="submit"
+      className={`${stage.btn} ${door.full}`}
+      disabled={pending}
+      aria-live="polite"
+    >
       {pending ? 'Saving…' : 'Set new password'}
     </button>
   );

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ForgotPasswordForm } from '~/components/hale/forgot-password-form';
+import door from '~/components/portal/signin.module.css';
 import { credentialsConfigured } from '~/lib/auth-config';
 
 export const metadata: Metadata = { title: 'Reset password' };
@@ -25,9 +26,9 @@ export default function ForgotPasswordPage() {
   return (
     <AuthShell heading="Reset your password">
       <ForgotPasswordForm />
-      <Link href="/sign-in" className="btn-ghost self-start">
-        Remembered it? Back to sign in &rarr;
-      </Link>
+      <p className={door.new}>
+        <Link href="/sign-in">Remembered it? Back to sign in &rarr;</Link>
+      </p>
     </AuthShell>
   );
 }
