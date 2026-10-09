@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
 import { ADMIN_PROBE_HEADER, isAdminPath, isProtectedPath } from '~/lib/auth/protected-routes';
+import { RETURN_PATH_HEADER, signInHref } from '~/lib/auth/redirect';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { PASSPORT_DEMO_HEADER, passportDemoBypassesAuth } from '~/lib/passport/demo';
 import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
@@ -39,7 +40,12 @@ export default auth((req) => {
   }
 
   if (!isProtectedPath(pathname)) {
-    return NextResponse.next();
+    // API routes stay a plain next() — nothing here is a page deep link, and
+    // the cookie-auth tests assert those requests are not header-rewritten.
+    if (pathname === '/api' || pathname.startsWith('/api/')) {
+      return NextResponse.next();
+    }
+    return stampReturnPath(req);
   }
 
   // The receipts portal's landing IS /home (the parent home). It used to 302 to
@@ -69,28 +75,44 @@ export default auth((req) => {
 
   if (!authConfigured()) {
     if (process.env.NODE_ENV === 'production' && !passportDemoBypassesAuth(pathname)) {
-      return NextResponse.redirect(new URL('/sign-in', req.nextUrl));
+      return redirectToSignIn(req);
     }
     return nextWithHeaders(req, pathname);
   }
 
   if (!req.auth) {
     if (!passportDemoBypassesAuth(pathname)) {
-      return NextResponse.redirect(new URL('/sign-in', req.nextUrl));
+      return redirectToSignIn(req);
     }
   }
 
   return nextWithHeaders(req, pathname);
 });
 
+/** Signed-out gate: /sign-in?callbackUrl=<path+query>, or bare /sign-in when the path is unsafe. */
+function redirectToSignIn(req: { nextUrl: URL }) {
+  const returnTo = `${req.nextUrl.pathname}${req.nextUrl.search}`;
+  return NextResponse.redirect(new URL(signInHref(returnTo), req.nextUrl));
+}
+
+function stampReturnPath(req: { headers: Headers; nextUrl: URL }) {
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set(RETURN_PATH_HEADER, `${req.nextUrl.pathname}${req.nextUrl.search}`);
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
 /**
  * Forwards the request with the admin and passport-demo headers rewritten.
  * A client-sent copy of either header is removed first. The passport demo
  * header is set only for the fixture family routes, and only when the preview
- * demo is on — production never reaches that branch.
+ * demo is on — production never reaches that branch. The return-path header
+ * is overwritten here too, so a client cannot supply the value the layout reads.
  */
 function nextWithHeaders(req: { headers: Headers; nextUrl: URL }, pathname: string) {
   const requestHeaders = new Headers(req.headers);
+  // Overwrite any client-sent copy. The layout trusts this header for the
+  // signed-out return path, so only the middleware may write it.
+  requestHeaders.set(RETURN_PATH_HEADER, `${req.nextUrl.pathname}${req.nextUrl.search}`);
   if (isAdminPath(pathname)) {
     requestHeaders.set(ADMIN_PROBE_HEADER, '1');
   } else {
