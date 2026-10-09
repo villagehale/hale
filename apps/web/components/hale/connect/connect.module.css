@@ -31,6 +31,7 @@
   --slate: #5c6b87;
   --meta: #647290;
   --rule: #e4e7ee;
+  --focus: #2a6f9e;
   --font-display: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
   --font-body: "Connect Source Serif 4", Georgia, serif;
   --font-ui: var(--font-sans), "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -406,6 +407,12 @@
   letter-spacing: 0.25px;
   color: #1f1f1f;
   white-space: nowrap;
+}
+
+/* Google's light hover: an 8% ink wash over the white fill. The dark pill
+   restates its own stroke later, so this wash does not follow the page. */
+.stage .gsi:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px #747775, inset 0 0 0 40px rgba(31, 31, 31, 0.08);
 }
 
 .stage .gsi .g {
@@ -811,9 +818,12 @@
   }
 }
 
-/* Dark. `.dark` is the class the pre-paint script sets from `hale-theme`.
-   A missing or corrupt value is `system`, so the OS decides. These tokens
-   are the connect sheet's own; they do not retint the rest of the app. */
+/* Dark. The root layout's pre-paint script reads `hale-theme`, writes
+   `data-theme-pref`, and toggles `.dark` before first paint. A missing or
+   corrupt value is `system`, so Auto follows the OS. These rules follow
+   `.dark` only — there is no prefers-color-scheme override — so a stored
+   Light or Dark choice wins here the same way it does in the rest of the
+   portal. The tokens are the connect sheet's own; they do not retint the app. */
 :global(.dark) .stage {
   --page: #0c1a36;
   --band: #101f3f;
@@ -961,7 +971,16 @@
   color: #e3e3e3;
 }
 
-:global(.dark) .stage :focus-visible {
+:global(.dark) .stage .gsi:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px #8e918f;
+}
+
+.stage :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
+}
+
+.stage .gsi:focus-visible,
+.stage .btn:focus-visible {
+  border-radius: 9999px;
 }

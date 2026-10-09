@@ -28,6 +28,13 @@ const AA = 4.5;
 const darkBlock = css.slice(css.indexOf(':global(.dark) .stage {'));
 
 describe('connect dark tokens', () => {
+  it('defines the light focus ring on the stage', () => {
+    const light = css.slice(css.indexOf('.stage {'), css.indexOf('color-scheme: light;'));
+    expect(light).toContain('--focus: #2a6f9e');
+    expect(css).toContain('.stage :focus-visible');
+    expect(css).not.toContain(':global(.dark) .stage :focus-visible');
+  });
+
   it('hangs the approved night palette off .dark', () => {
     expect(darkBlock).toContain('--page: #0c1a36');
     expect(darkBlock).toContain('--band: #101f3f');
@@ -58,6 +65,18 @@ describe('connect dark tokens', () => {
     expect(dark).toContain('box-shadow: inset 0 0 0 1px #8e918f');
     expect(dark).toContain('color: #e3e3e3');
     expect(dark).not.toContain('#747775');
+  });
+
+  it('follows the shared hale-theme script and does not override it', () => {
+    expect(css).not.toMatch(/@media\s*\(\s*prefers-color-scheme/);
+    expect(css).toContain(':global(.dark) .stage {');
+    for (const file of ['../../../app/connect/page.tsx', '../../../app/connected/page.tsx']) {
+      const source = readFileSync(join(__dirname, file), 'utf8');
+      expect(source).not.toContain('hale-theme');
+      expect(source).not.toContain('themePref');
+      expect(source).not.toContain('matchMedia');
+      expect(source).not.toContain('<script');
+    }
   });
 
   it('dims the shore and uses the night iMessage bubble', () => {
