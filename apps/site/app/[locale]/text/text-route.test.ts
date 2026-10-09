@@ -217,7 +217,7 @@ async function renderText(locale: Locale, s?: string | string[]): Promise<string
 }
 
 describe('/text composer carries the ?s= code', () => {
-  it('puts the join code and a referral code on every sms: href and the QR, in en, fr, and zh', async () => {
+  it('puts the join code and a referral code on the QR and every /text door, in en, fr, and zh', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     for (const locale of LOCALES) {
       for (const code of [JOIN_CODE, REFERRAL_CODE]) {
@@ -225,32 +225,34 @@ describe('/text composer carries the ?s= code', () => {
         const prefill = intakePrefill(locale);
         const expected = buildSmsHref(LIVE_NUMBER, code, prefill, 'cross');
         const where = `${locale} ?s=${code}`;
-        const hrefs = smsHrefs(html);
-        // Hero and closing. A third sms: link on this page has to carry it too.
-        expect(hrefs, where).toEqual([expected, expected]);
+        // First paint is /text, never an sms: anchor. The QR is the composer.
+        expect(smsHrefs(html), where).toEqual([]);
+        const door = `${localeHref(locale, '/text')}?s=${code}`;
+        // Header pill, hero, and closing. Each must carry the code for no-JS.
+        expect(html.split(`href="${door}"`).length - 1, where).toBeGreaterThanOrEqual(3);
         const pill = headerPillBody(locale, code);
         expect(pill, where).toBe(buildSmsBody(code, prefill));
-        for (const href of hrefs) {
-          expect(bodyOf(href), where).toBe(pill);
-          expect(href, where).toContain(`(via%20${code})`);
-        }
+        expect(bodyOf(expected), where).toBe(pill);
+        expect(expected, where).toContain(`(via%20${code})`);
         expect(qrPath(html), where).toBe(qrPathFor(expected));
-        // The preview bubble stays the bare hello. The token rides in the link.
+        // The preview bubble stays the bare hello. The token rides in the QR.
         expect(html, where).not.toContain(`(via ${code})`);
       }
     }
     vi.unstubAllEnvs();
   });
 
-  it('leaves the composer exactly as the chrome CTA when no ?s= is present, in en, fr, and zh', async () => {
+  it('leaves the QR exactly as the chrome CTA when no ?s= is present, in en, fr, and zh', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     for (const locale of LOCALES) {
       const html = await renderText(locale);
       const prefill = intakePrefill(locale);
       const expected = buildSmsHref(LIVE_NUMBER, null, prefill, 'cross');
-      // The no-code door is the shared chrome CTA, byte for byte.
+      // The no-code QR is the shared chrome CTA, byte for byte. The buttons
+      // are /text until a capable device upgrades them.
       expect(expected, locale).toBe(chromeCta(locale).href);
-      expect(smsHrefs(html), locale).toEqual([expected, expected]);
+      expect(smsHrefs(html), locale).toEqual([]);
+      expect(html, locale).toContain(`href="${localeHref(locale, '/text')}"`);
       expect(bodyOf(expected), locale).toBe(headerPillBody(locale, null));
       expect(bodyOf(expected), locale).toBe(prefill);
       expect(qrPath(html), locale).toBe(qrPathFor(expected));
@@ -263,12 +265,37 @@ describe('/text composer carries the ?s= code', () => {
   it('drops a ?s= that is not a source code, same as leaving the param off', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     const bare = await renderText('en');
-    const rejected: Array<string | string[]> = ['JOIN-ABC', 'join-', ['join-abc123', REFERRAL_CODE]];
+    const rejected: Array<string | string[]> = [
+      'JOIN-ABC',
+      'join-',
+      ['join-abc123', REFERRAL_CODE],
+    ];
     for (const bad of rejected) {
       const html = await renderText('en', bad);
       expect(smsHrefs(html), String(bad)).toEqual(smsHrefs(bare));
       expect(qrPath(html), String(bad)).toBe(qrPath(bare));
+      expect(html, String(bad)).not.toContain('?s=');
     }
+    vi.unstubAllEnvs();
+  });
+
+  it('lifts the QR, the number, copy, and save-contact into the hero on desktop', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    const html = await renderText('en');
+    const qrAt = html.indexOf('aria-label="QR code — scan to text Hale"');
+    const numberAt = html.indexOf('(647) 555-1234');
+    const copyAt = html.indexOf('Copy number');
+    const saveAt = html.indexOf('Save to contacts');
+    const belowAt = html.indexOf('Two ways to start');
+    expect(qrAt).toBeGreaterThan(-1);
+    expect(numberAt).toBeGreaterThan(qrAt);
+    expect(copyAt).toBeGreaterThan(numberAt);
+    expect(saveAt).toBeGreaterThan(copyAt);
+    expect(belowAt).toBeGreaterThan(saveAt);
+    expect(html.match(/QR code — scan to text Hale/g)).toHaveLength(1);
+    expect(html).toContain('sp-qr-lead');
+    expect(html).toContain('hs-desktop-only');
+    expect(html).toContain('sp-sms-door');
     vi.unstubAllEnvs();
   });
 });

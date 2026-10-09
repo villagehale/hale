@@ -12,17 +12,20 @@ export function RedesignActivities({
   locale,
   smsNumber,
   prefill,
+  source = null,
 }: {
   locale: Locale;
   smsNumber: string;
   prefill: string;
+  /** A `?s=` code the page already validated. */
+  source?: string | null;
 }) {
   const t = (s: string) => tx(locale, s);
   const mode = 'sms' as const;
 
   return (
     <>
-      <SiteHeader locale={locale} />
+      <SiteHeader locale={locale} source={source} />
       <div className="rd">
         <div className="stage sp-stage">
           <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
@@ -267,7 +270,7 @@ export function RedesignActivities({
                       locale={locale}
                       smsNumber={smsNumber}
                       prefill={prefill}
-                      mode={mode}
+                      mode={mode} source={source}
                     >
                       <svg
                         width="16"

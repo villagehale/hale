@@ -5,12 +5,14 @@ import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { intakePrefill } from '~/lib/intake-prefill';
 import { FAQ, faqJsonLd } from '~/lib/faq/index';
+import { intakePrefill } from '~/lib/intake-prefill';
+import { pageSource } from '~/lib/page-source';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<{ s?: string | string[] }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -34,8 +36,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function FaqPage({ params }: PageProps) {
+export default async function FaqPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
+  const source = await pageSource(searchParams);
   const items = FAQ.map((item) => ({
     question: tx(locale, item.question),
     answer: tx(locale, item.answer),
@@ -51,6 +54,7 @@ export default async function FaqPage({ params }: PageProps) {
         locale={locale}
         smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
         prefill={intakePrefill(locale)}
+        source={source}
       />
     </>
   );

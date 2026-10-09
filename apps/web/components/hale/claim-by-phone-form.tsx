@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import stage from '~/components/hale/connect/connect.module.css';
+import { DeviceTextLink } from '~/components/hale/device-text-link';
 import styles from '~/components/portal/signin.module.css';
 import { claimByPhoneAction } from '~/lib/auth/claim-phone-actions';
 import {
@@ -13,7 +14,7 @@ import {
   claimFailureStep,
 } from '~/lib/auth/claim-phone-copy';
 import { formatClaimPhone } from '~/lib/auth/claim-phone-format';
-import { MARKETING_SITE_URL } from '~/lib/legal-links';
+import { PORTAL_INTAKE_PREFILL } from '~/lib/text-hale-target';
 
 /**
  * Sign in with the number Hale already texts (F14). Two steps in one glass card:
@@ -31,7 +32,17 @@ import { MARKETING_SITE_URL } from '~/lib/legal-links';
  * This flow assumes a signed-OUT visitor. Linking a phone to an existing
  * account is a separate, consent-bearing decision and is not offered here.
  */
-export function ClaimByPhoneForm({ callbackUrl = '' }: { callbackUrl?: string }) {
+export function ClaimByPhoneForm({
+  callbackUrl = '',
+  smsNumber = '',
+  source = null,
+}: {
+  callbackUrl?: string;
+  /** Hale's public line. Empty keeps the new-user link on /text. */
+  smsNumber?: string;
+  /** A validated `?s=` from this page. The no-JS link carries it. */
+  source?: string | null;
+}) {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'phone' | 'code' | 'expired'>('phone');
@@ -178,7 +189,14 @@ export function ClaimByPhoneForm({ callbackUrl = '' }: { callbackUrl?: string })
                 {busy ? 'Text me a code' : 'Text me a code'}
               </button>
               <p className={styles.new}>
-                New to Hale? <a href={`${MARKETING_SITE_URL}/text`}>Text Hale to start</a>
+                New to Hale?{' '}
+                <DeviceTextLink
+                  smsNumber={smsNumber}
+                  prefill={PORTAL_INTAKE_PREFILL}
+                  source={source}
+                >
+                  Text Hale to start
+                </DeviceTextLink>
               </p>
             </form>
           ) : null}

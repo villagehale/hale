@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
+import { PORTAL_INTAKE_PREFILL } from '~/lib/text-hale-target';
 
 /**
- * The primary door's client upgrade. Server markup is /text (pinned in
- * site-chrome and landing tests). This file is the hydration: a phone's user
- * agent retargets the anchor at the composer, a desktop leaves it on /text.
+ * The portal "Text Hale" door's client upgrade. Server markup is the marketing
+ * /text page. This file is the hydration: a phone's user agent retargets the
+ * anchor at the composer, a non-Apple desktop leaves it on /text.
  *
  * useState is a one-slot store and useEffect runs inline, then the component
- * is called again so the second render reads what the effect stored. That is
- * the hydration this suite can see without a DOM.
+ * is called again so the second render reads what the effect stored.
  */
 
 let slot: unknown;
@@ -31,11 +31,7 @@ vi.mock('react', async (importOriginal) => {
   };
 });
 
-vi.mock('~/lib/analytics/posthog-provider', () => ({
-  useAnalytics: () => vi.fn(),
-}));
-
-const { ChooserLink } = await import('./chooser-link.js');
+const { DeviceTextLink } = await import('./device-text-link.js');
 
 const IPHONE =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
@@ -47,79 +43,77 @@ const MAC =
 const WINDOWS =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
+const NUMBER = '+16475551234';
+const TEXT = 'https://www.villagehale.com/text';
+
 function renderPair(
   ua: string,
   search = '',
   source: string | null = null,
-): { serverHref: string; href: string; cta: string } {
+  prefill: string | null = PORTAL_INTAKE_PREFILL,
+): { serverHref: string; href: string } {
   slot = undefined;
   vi.stubGlobal('navigator', { userAgent: ua });
-  vi.stubGlobal('window', {
-    location: { search },
-    sessionStorage: { getItem: () => null, setItem: () => {} },
-  });
+  vi.stubGlobal('window', { location: { search } });
   const props = {
-    locale: 'en' as const,
-    placement: 'hero',
-    smsNumber: '+16475551234',
-    prefill: "Hey Hale, what's going on?",
+    smsNumber: NUMBER,
+    prefill,
     source,
-    children: 'Text Hale',
+    children: 'Text Hale to start',
   };
-  const server = ChooserLink(props);
-  const element = ChooserLink(props);
+  const server = DeviceTextLink(props);
+  const element = DeviceTextLink(props);
   vi.unstubAllGlobals();
   return {
     serverHref: server.props.href as string,
     href: element.props.href as string,
-    cta: element.props['data-cta'] as string,
   };
 }
 
-describe('ChooserLink hydrates the primary door', () => {
+describe('DeviceTextLink hydrates the portal door', () => {
   it('paints /text first, then retargets an iPhone at the iOS composer', () => {
     const link = renderPair(IPHONE);
-    expect(link.serverHref).toBe('/text');
-    expect(link.cta).toBe('cta_text_click');
-    expect(link.href).toBe('sms:+16475551234&body=Hey%20Hale%2C%20what%27s%20going%20on%3F');
+    expect(link.serverHref).toBe(TEXT);
+    expect(link.href).toBe(`sms:${NUMBER}&body=Hey%20Hale%2C%20what%27s%20going%20on%3F`);
   });
 
-  it('treats an iPad as Apple Messages, &body= and the referral suffix', () => {
+  it('treats an iPad as Apple Messages, with the referral suffix from the URL', () => {
     const link = renderPair(IPAD, '?s=ab12');
-    expect(link.serverHref).toBe('/text');
-    expect(link.cta).toBe('cta_text_click');
+    expect(link.serverHref).toBe(TEXT);
     expect(link.href).toBe(
-      'sms:+16475551234&body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20ab12)',
+      `sms:${NUMBER}&body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20ab12)`,
     );
   });
 
   it('retargets Android at ?body=', () => {
     const link = renderPair(ANDROID);
-    expect(link.serverHref).toBe('/text');
-    expect(link.cta).toBe('cta_text_click');
-    expect(link.href).toBe('sms:+16475551234?body=Hey%20Hale%2C%20what%27s%20going%20on%3F');
+    expect(link.href).toBe(`sms:${NUMBER}?body=Hey%20Hale%2C%20what%27s%20going%20on%3F`);
   });
 
-  it('retargets a Mac at the same &body= form, keeping (via <code>)', () => {
+  it('retargets a Mac at &body=, keeping the server-validated (via <code>)', () => {
     const link = renderPair(MAC, '', 'friend-0123456789ab');
-    expect(link.serverHref).toBe('/text?s=friend-0123456789ab');
-    expect(link.cta).toBe('cta_text_click');
+    expect(link.serverHref).toBe(`${TEXT}?s=friend-0123456789ab`);
     expect(link.href).toBe(
-      'sms:+16475551234&body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20friend-0123456789ab)',
+      `sms:${NUMBER}&body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20friend-0123456789ab)`,
     );
   });
 
   it('leaves a non-Apple desktop on /text, carrying ?s=', () => {
     const link = renderPair(WINDOWS, '?s=earlyon-richmondhill');
-    expect(link.serverHref).toBe('/text');
-    expect(link.cta).toBe('cta_message_click');
-    expect(link.href).toBe('/text?s=earlyon-richmondhill');
+    expect(link.serverHref).toBe(TEXT);
+    expect(link.href).toBe(`${TEXT}?s=earlyon-richmondhill`);
   });
 
   it('keeps a rejected ?s= off both the server link and the composer', () => {
     const link = renderPair(IPHONE, '?s=JOIN-ABC');
-    expect(link.serverHref).toBe('/text');
-    expect(link.href).toBe('sms:+16475551234&body=Hey%20Hale%2C%20what%27s%20going%20on%3F');
+    expect(link.serverHref).toBe(TEXT);
+    expect(link.href).toBe(`sms:${NUMBER}&body=Hey%20Hale%2C%20what%27s%20going%20on%3F`);
     expect(link.href).not.toContain('via');
+  });
+
+  it('opens the existing thread with no body on the portal home button', () => {
+    const link = renderPair(IPHONE, '', null, null);
+    expect(link.serverHref).toBe(TEXT);
+    expect(link.href).toBe(`sms:${NUMBER}`);
   });
 });

@@ -310,7 +310,10 @@ describe('sign-in under the flag', () => {
    */
   it('shows the phone path alone, with no ordering left to choose', () => {
     expect(src).toContain('const phoneOnly = receiptsIaEnabled();');
-    expect(src).toContain('<ClaimByPhoneForm callbackUrl={redirectTo} />');
+    expect(src).toContain('<ClaimByPhoneForm');
+    expect(src).toContain('callbackUrl={redirectTo}');
+    expect(src).toContain('smsNumber={haleTextsNumber()}');
+    expect(src).toContain('source={parsePortalSourceCode(s)}');
     expect(src).not.toContain('linkFirst');
   });
 

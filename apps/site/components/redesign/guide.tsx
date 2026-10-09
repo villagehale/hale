@@ -79,11 +79,14 @@ export function RedesignGuide({
   page,
   smsNumber,
   prefill,
+  source = null,
 }: {
   locale: Locale;
   page: AnswerPage;
   smsNumber: string;
   prefill: string;
+  /** A `?s=` code the page already validated. */
+  source?: string | null;
 }) {
   const t = (s: string) => tx(locale, s);
   const article = getTranslator(locale, 'AnswerArticle');
@@ -103,7 +106,7 @@ export function RedesignGuide({
 
   return (
     <>
-      <SiteHeader locale={locale} />
+      <SiteHeader locale={locale} source={source} />
       <div className="rd">
         <FaqDeepLink />
         <div className="stage sp-stage sp-legal gd-stage">
@@ -259,6 +262,7 @@ export function RedesignGuide({
             locale={locale}
             smsNumber={smsNumber}
             prefill={prefill}
+            source={source}
             placement="answer_detail"
             heading={t('A question about your own child?')}
             sub={t('Text Hale. It answers with your child’s age in mind, in a line or two.')}

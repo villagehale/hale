@@ -20,8 +20,9 @@ import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
  * every page ends in. The bar carries the three pages that introduce the product,
  * a quiet sign-in link for the parent who already has an account (the app is the
  * receipts surface, so the link whispers rather than sells), and ONE primary
- * pill: Text Hale. On a phone it opens the messaging app with the locked
- * prefill; on a desktop the first paint (and the no-JS href) is /text, where
+ * pill: Text Hale. First paint and no-JS go to /text, carrying `?s=` when this
+ * page validated one. After hydration, iPhone, iPad, Mac, and Android open
+ * Messages with the locked prefill; Windows and Linux stay on /text, where
  * the QR and the number already live. No number provisioned → email, which
  * works everywhere. Every internal link carries the locale prefix.
  */
@@ -29,10 +30,13 @@ import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
 export function SiteHeader({
   locale = routing.defaultLocale,
   chrome,
+  source = null,
 }: {
   locale?: Locale;
   /** Legal pages ask for a more opaque bar so body text does not show through. */
   chrome?: 'legal';
+  /** A `?s=` code this page already validated. The no-JS pill carries it. */
+  source?: string | null;
 }) {
   const t = getTranslator(locale, 'Header');
   const common = getTranslator(locale, 'Common');
@@ -51,6 +55,7 @@ export function SiteHeader({
       className="v4-btn-solid"
       smsNumber={smsNumber}
       prefill={intakePrefill(locale)}
+      source={source}
     >
       {common('textHale')}
     </ChooserLink>

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { previewIdFor } from '~/components/hale/approval-card';
 import { ApproveButton } from '~/components/hale/approve-button';
+import { DeviceTextLink } from '~/components/hale/device-text-link';
 import { DismissButton } from '~/components/hale/dismiss-button';
 import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
@@ -148,11 +149,15 @@ export function PortalHome({
               Ask, forward a flyer or change a reminder there. This page is for settings and
               history.
             </p>
-            {smsHref ? (
-              <a href={smsHref} className={`${styles.primary} ${styles.block}`}>
+            {smsHref?.startsWith('sms:') ? (
+              <DeviceTextLink
+                smsNumber={smsHref.slice('sms:'.length).split(/[?&]/)[0] ?? ''}
+                prefill={null}
+                className={`${styles.primary} ${styles.block}`}
+              >
                 <MessageCircle aria-hidden="true" />
                 Text Hale
-              </a>
+              </DeviceTextLink>
             ) : null}
           </section>
         </div>

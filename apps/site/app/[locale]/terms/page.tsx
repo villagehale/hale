@@ -3,6 +3,7 @@ import { LegalLayout, type LegalSection, LegalSectionBlock } from '~/components/
 import { buildAlternates } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
+import { pageSource } from '~/lib/page-source';
 
 /**
  * villagehale.com/terms — the canonical home for the Terms of Service
@@ -97,11 +98,18 @@ const SECTIONS: LegalSection[] = [
   { id: 'contact', title: 'How to reach us' },
 ];
 
-export default async function TermsPage({ params }: { params: Promise<{ locale: Locale }> }) {
+export default async function TermsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<{ s?: string | string[] }>;
+}) {
   const { locale } = await params;
   return (
     <LegalLayout
       locale={locale}
+      source={await pageSource(searchParams)}
       title="Terms of Service"
       lastUpdatedIso="2026-10-07"
       intro={

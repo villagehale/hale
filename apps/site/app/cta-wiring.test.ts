@@ -172,7 +172,9 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // breakdown says which door produced it.
     const unnamed = smsAnchors.filter((anchor) => !/data-cta-placement="[^"]+"/.test(anchor.tag));
     expect(unnamed.map((anchor) => `${anchor.route} — ${anchor.tag}`)).toEqual([]);
-    expect(placements.size).toBeGreaterThanOrEqual(5);
+    // Composer links are client-only. This walk is the first paint, so the
+    // placement floor lives on the chooser doors below.
+    expect(placements.size).toBe(0);
   });
 
   it('leaves no bare composer anchor in a branch the render never reaches', () => {
@@ -188,19 +190,12 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
    * without these they would pass just as happily if the walk rendered nothing, the
    * number never got stubbed, or either regex stopped matching JSX.
    */
-  it('really is reading rendered anchors — the known-wired CTAs are all present', () => {
-    // The F14 chooser moved the header/hero/closing doors off `sms:` (they are
-    // cta_message_click navigations to /text now, asserted below), and the walk
-    // sees /text as an unknown platform, whose layout leads with the QR rather
-    // than an sms: button — so the composer anchors left are the subpage bands
-    // and the pricing tiers. The dated city guides 308 and no longer render doors.
-    expect(smsAnchors.length).toBeGreaterThanOrEqual(10);
-    for (const placement of ['faq', 'about', 'pricing_tier', 'answers', 'activities']) {
-      expect(placements, `the walk must reach the ${placement} CTA`).toContain(placement);
-    }
-    expect(smsAnchors.every((anchor) => anchor.tag.includes(`href="sms:${LIVE_NUMBER}`))).toBe(
-      true,
-    );
+  it('really is reading rendered anchors — server HTML never ships a composer link', () => {
+    // Every Text Hale door paints /text. The client upgrades to sms: on iPhone,
+    // iPad, Mac, and Android, so a Windows first paint cannot dead-click. The
+    // walk is that first paint: an sms: anchor here is a regression.
+    expect(smsAnchors).toEqual([]);
+    expect(placements.size).toBe(0);
   });
 
   it('really is reading source anchors — the email fallbacks it must NOT flag are found', () => {
@@ -243,7 +238,9 @@ describe('every composer anchor names its channel', () => {
   it('stamps data-cta-channel="sms" on every sms: anchor', () => {
     const unstamped = smsAnchors.filter((anchor) => !anchor.tag.includes('data-cta-channel="sms"'));
     expect(unstamped.map((anchor) => `${anchor.route} — ${anchor.tag}`)).toEqual([]);
-    // Positive control shared with the suite: smsAnchors is non-empty above.
+    // The server walk has no sms: anchors (the upgrade is client-only). The
+    // assertion above stays so a composer link that sneaks into HTML must be stamped.
+    expect(smsAnchors).toEqual([]);
   });
 
   it('renders no wa.me anchor — WhatsApp is not a door', () => {
@@ -285,7 +282,17 @@ describe('the chooser doors are wired the same way', () => {
     const chooserPlacements = new Set(
       chooserAnchors.map((anchor) => /data-cta-placement="([^"]*)"/.exec(anchor.tag)?.[1] ?? ''),
     );
-    for (const placement of ['header', 'hero', 'closing']) {
+    for (const placement of [
+      'header',
+      'hero',
+      'closing',
+      'faq',
+      'about',
+      'pricing_tier',
+      'answers',
+      'activities',
+      'text',
+    ]) {
       expect(chooserPlacements, `the walk must reach the ${placement} chooser door`).toContain(
         placement,
       );
