@@ -14,6 +14,7 @@ import { resolveAdminGate } from '~/lib/admin/gate';
 import { IdentifyUser } from '~/lib/analytics/posthog-provider';
 import { authConfigured } from '~/lib/auth-config';
 import { ADMIN_PROBE_HEADER } from '~/lib/auth/protected-routes';
+import { RETURN_PATH_HEADER, signInHref } from '~/lib/auth/redirect';
 import { loadSmsChannel } from '~/lib/channels/sms-consent';
 import { loadNotifications } from '~/lib/dashboard/notifications';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
@@ -41,9 +42,10 @@ export default async function AuthedLayout({ children }: { children: React.React
   // Preview demo of the Mia/Leo passport. The middleware is the only writer of
   // this header, and only on /family and the two fixture kids. No session, no
   // database, no real family under the page.
-  // headers() runs only when the demo gate is already true. The family gate
-  // redirects (or reaches its first loader) before any request-scope read when
-  // the demo is off, which is every production and local request.
+  // headers() for the demo runs only when that gate is already true. A signed-out
+  // request reads headers only to recover the return path the middleware stamped,
+  // then redirects before any family read. The no-family arm below still redirects
+  // with no return path, so it cannot loop back onto the page that bounced it.
   if (interestPassportDemo()) {
     const demoHeaders = await headers();
     if (demoHeaders.get(PASSPORT_DEMO_HEADER) === '1') {
@@ -67,7 +69,8 @@ export default async function AuthedLayout({ children }: { children: React.React
   const authEnabled = authConfigured();
   const session = authEnabled ? await auth() : null;
   if (authEnabled && !session?.user?.id) {
-    redirect('/sign-in');
+    const gateHeaders = await headers();
+    redirect(signInHref(gateHeaders.get(RETURN_PATH_HEADER)));
   }
 
   // A signed-in user with no family has no app to be shown — provisioning is what

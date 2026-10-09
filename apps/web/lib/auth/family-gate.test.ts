@@ -14,12 +14,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * be silently swallowed by the render.
  */
 
-const { auth, resolveFamilyForUser, redirect } = vi.hoisted(() => ({
+const { auth, resolveFamilyForUser, redirect, headers } = vi.hoisted(() => ({
   auth: vi.fn(),
   resolveFamilyForUser: vi.fn(),
   redirect: vi.fn((target: string) => {
     throw new Error(`REDIRECT:${target}`);
   }),
+  headers: vi.fn(async () => new Headers()),
 }));
 
 vi.mock('~/lib/auth-config', () => ({ authConfigured: () => true }));
@@ -27,6 +28,7 @@ vi.mock('~/auth', () => ({ auth }));
 vi.mock('~/lib/family', () => ({ resolveFamilyForUser, loadViewerName: vi.fn(async () => null) }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('next/navigation', () => ({ redirect }));
+vi.mock('next/headers', () => ({ headers }));
 vi.mock('next/server', () => ({ after: vi.fn() }));
 
 // Sentinel: a passed gate reaches the layout's Promise.all — the first loader throws
@@ -40,6 +42,7 @@ vi.mock('~/lib/dashboard/notifications', () => ({ loadNotifications: async () =>
 vi.mock('~/lib/village/switcher', () => ({ loadAreaSwitcher: async () => ({}) }));
 
 import AuthedLayout from '~/app/(authed)/layout';
+import { RETURN_PATH_HEADER } from '~/lib/auth/redirect';
 
 const run = () =>
   (AuthedLayout as unknown as (p: { children: unknown }) => Promise<unknown>)({ children: null });
@@ -51,6 +54,7 @@ beforeEach(() => {
   redirect.mockImplementation((target: string) => {
     throw new Error(`REDIRECT:${target}`);
   });
+  headers.mockResolvedValue(new Headers());
 });
 
 describe('authed layout — the post-auth family gate', () => {
@@ -80,5 +84,22 @@ describe('authed layout — the post-auth family gate', () => {
     await expect(run()).rejects.toThrow('REDIRECT:/sign-in');
     expect(redirect).toHaveBeenCalledWith('/sign-in');
     expect(resolveFamilyForUser).not.toHaveBeenCalled();
+  });
+
+  it('sends a signed-out /messages visit back to /messages after sign-in', async () => {
+    auth.mockResolvedValue(null);
+    headers.mockResolvedValue(new Headers({ [RETURN_PATH_HEADER]: '/messages' }));
+
+    await expect(run()).rejects.toThrow('REDIRECT:/sign-in?callbackUrl=%2Fmessages');
+    expect(redirect).toHaveBeenCalledWith('/sign-in?callbackUrl=%2Fmessages');
+    expect(resolveFamilyForUser).not.toHaveBeenCalled();
+  });
+
+  it('does not carry an off-site return path into the sign-in redirect', async () => {
+    auth.mockResolvedValue(null);
+    headers.mockResolvedValue(new Headers({ [RETURN_PATH_HEADER]: 'https://evil.com' }));
+
+    await expect(run()).rejects.toThrow('REDIRECT:/sign-in');
+    expect(redirect).toHaveBeenCalledWith('/sign-in');
   });
 });

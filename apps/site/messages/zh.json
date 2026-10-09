@@ -428,31 +428,6 @@
     "orMessages": "或者用「信息」",
     "orWhatsapp": "或者用 WhatsApp"
   },
-  "Registration": {
-    "updated": "Updated {date, date, long}",
-    "when": "When",
-    "what": "What opens",
-    "questionsEyebrow": "Questions parents type",
-    "questionsHeadline": [
-      {
-        "text": "The questions that"
-      },
-      {
-        "text": "show up at 6:58 a.m.",
-        "accent": true
-      }
-    ],
-    "officialEyebrow": "Official register",
-    "officialHeadline": [
-      {
-        "text": "Confirm on the"
-      },
-      {
-        "text": "official page",
-        "accent": true
-      }
-    ]
-  },
   "Jsonld": {
     "orgDescription": "Hale 是孩子这一年的规划——帮你看看附近有什么、盯着报名，再回来问问怎么样。",
     "appDescription": "孩子这一年，交给 Hale。孩子这一年的规划：Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。"

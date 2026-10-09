@@ -93,5 +93,32 @@ describe('middleware cookie / session auth (no Bearer bridge)', () => {
     expect(redirectSpy).toHaveBeenCalledTimes(1);
     const target = redirectSpy.mock.calls[0]?.[0] as URL;
     expect(target.pathname).toBe('/sign-in');
+    expect(target.search).toBe('?callbackUrl=%2Fhome');
+  });
+
+  it('sends a signed-out /messages deep link to /sign-in?callbackUrl=%2Fmessages', async () => {
+    const middleware = await loadMiddleware();
+    const { NextResponse } = await import('next/server');
+    const redirectSpy = vi.spyOn(NextResponse, 'redirect');
+
+    await middleware(fakeReq({ pathname: '/messages', auth: null }));
+
+    expect(redirectSpy).toHaveBeenCalledTimes(1);
+    const target = redirectSpy.mock.calls[0]?.[0] as URL;
+    expect(target.pathname).toBe('/sign-in');
+    expect(target.search).toBe('?callbackUrl=%2Fmessages');
+    expect(target.searchParams.get('callbackUrl')).toBe('/messages');
+  });
+
+  it('keeps the deep link query on the return param', async () => {
+    const middleware = await loadMiddleware();
+    const { NextResponse } = await import('next/server');
+    const redirectSpy = vi.spyOn(NextResponse, 'redirect');
+
+    await middleware(fakeReq({ pathname: '/family/kid?stamp=swim', auth: null }));
+
+    const target = redirectSpy.mock.calls[0]?.[0] as URL;
+    expect(target.pathname).toBe('/sign-in');
+    expect(target.searchParams.get('callbackUrl')).toBe('/family/kid?stamp=swim');
   });
 });
