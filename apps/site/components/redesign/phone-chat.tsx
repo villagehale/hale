@@ -1,7 +1,7 @@
 'use client';
 
-import { ChevronLeft, Video } from 'lucide-react';
 import { type ReactNode, useEffect, useRef } from 'react';
+import { ImCompose } from './imessage-ui';
 
 const VISIBLE_OPACITY = 0.05;
 
@@ -49,10 +49,10 @@ export function rewindClips(
 
 function visibleEnds(thread: HTMLElement): { opacity: number; bottom: number }[] {
   const nodes: { opacity: number; bottom: number }[] = [];
-  // The typing chip is absolutely positioned in its row. Follow the chip:
-  // the row still reserves the unrevealed bubble at full height.
+  // The typing balloon is absolutely positioned over its bubble. Follow the
+  // balloon: the bubble stays in flow at full height.
   for (const node of thread.querySelectorAll<HTMLElement>(
-    '.hs-stamp, .hs-who, .hs-msg, .hs-did, .chat-typing',
+    '.im-stamp, .im-who, .im-b, .im-status, .im-typing',
   )) {
     nodes.push({
       opacity: Number.parseFloat(getComputedStyle(node).opacity),
@@ -93,7 +93,7 @@ export function PhoneChat({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const phone = ref.current;
-    const thread = phone?.querySelector<HTMLElement>('.hs-thread');
+    const thread = phone?.querySelector<HTMLElement>('.im-phone-thread');
     if (!phone || !thread) return;
     let stuck = true;
     let pinning = false;
@@ -204,10 +204,7 @@ export function PhoneChat({ children }: { children: ReactNode }) {
           </svg>
         </div>
         {children}
-        <div className="gallery-phone-nav" aria-hidden="true">
-          <ChevronLeft />
-          <Video />
-        </div>
+        <ImCompose />
         <div className="gallery-phone-home" aria-hidden="true">
           <i />
         </div>
@@ -218,10 +215,10 @@ export function PhoneChat({ children }: { children: ReactNode }) {
 
 export function TypingBubble() {
   return (
-    <span className="chat-typing" data-motion-typing aria-hidden="true">
-      <span />
-      <span />
-      <span />
+    <span className="im-typing" data-motion-typing aria-hidden="true">
+      <i />
+      <i />
+      <i />
     </span>
   );
 }

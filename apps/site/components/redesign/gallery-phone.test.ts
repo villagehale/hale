@@ -24,8 +24,8 @@ it('sizes the gallery handset from the viewport at iPhone proportions, with no f
   expect(rule).not.toMatch(/(^|\s)height:/);
 });
 
-it('lets the gallery thread scroll from the bottom so the last line is not clipped', () => {
-  const rule = css.match(/\.rd \.gallery-phone \.hs-thread \{[^}]*\}/)?.[0] ?? '';
+it('starts a short gallery thread under the header and still scrolls when playback overflows', () => {
+  const rule = css.match(/\.rd \.gallery-phone \.im-phone-thread \{[^}]*\}/)?.[0] ?? '';
   expect(rule).toContain('min-height: 0');
   expect(rule).toContain('overflow-y: auto');
   expect(rule).toContain('mask-image: linear-gradient(to bottom, transparent 0, #000 16px);');
@@ -33,8 +33,9 @@ it('lets the gallery thread scroll from the bottom so the last line is not clipp
     '-webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);',
   );
   expect(rule).not.toContain('justify-content');
-  expect(css).toContain('.rd .gallery-phone .hs-thread::before {');
-  expect(css).toContain('flex: 1 0 0;');
+  expect(css).toContain('justify-content: flex-start');
+  expect(css).not.toContain('.rd .gallery-phone .hs-thread::before');
+  expect(css).not.toContain('flex: 1 0 0;');
   expect(css).toContain(
     '.rd .hs-chats { margin-top: var(--s7); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));',
   );
@@ -76,7 +77,7 @@ it('pins a typing chip to itself, not the row that still holds the hidden bubble
     source.indexOf('function visibleEnds'),
     source.indexOf('function clipTimes'),
   );
-  expect(body).toContain('.chat-typing');
+  expect(body).toContain('.im-typing');
   expect(body).not.toContain('closest');
   expect(body).toContain('node.getBoundingClientRect().bottom');
 });

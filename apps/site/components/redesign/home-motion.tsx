@@ -143,7 +143,7 @@ export function HomeMotion() {
           scene,
           [...scene.querySelectorAll<HTMLElement>('[data-motion-step]')].flatMap((target) => {
             const delay = Number(target.dataset.motionStep) * (isChat(scene) ? chatStep : step);
-            const bubble = target.querySelector<HTMLElement>(isChat(scene) ? '.hs-msg' : '.msg');
+            const bubble = target.querySelector<HTMLElement>('.im-b');
             const animations = [
               (bubble ?? target).animate(
                 [
@@ -153,11 +153,26 @@ export function HomeMotion() {
                 { duration, delay, easing, fill: 'both' },
               ),
             ];
-            const avatar =
-              bubble && target.querySelector<HTMLElement>(isChat(scene) ? '.hs-pic' : '.pic');
+            const avatar = bubble && target.querySelector<HTMLElement>('.im-pic');
             if (avatar)
               animations.push(
                 avatar.animate([{ opacity: 0 }, { opacity: 1 }], { duration, delay, fill: 'both' }),
+              );
+            const name = bubble && target.querySelector<HTMLElement>('.im-who');
+            if (name)
+              animations.push(
+                name.animate([{ opacity: 0 }, { opacity: 1 }], { duration, delay, fill: 'both' }),
+              );
+            const status = bubble && target.querySelector<HTMLElement>('.im-status');
+            if (status)
+              animations.push(
+                status.animate(
+                  [
+                    { opacity: 0, transform: `translateY(${distance}) scale(0.96)` },
+                    { opacity: 1, transform: 'translateY(0) scale(1)' },
+                  ],
+                  { duration, delay, easing, fill: 'both' },
+                ),
               );
             const typing = target.querySelector<HTMLElement>('[data-motion-typing]');
             if (typing) {

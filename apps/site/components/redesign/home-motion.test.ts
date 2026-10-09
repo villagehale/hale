@@ -58,7 +58,7 @@ it('plays only the centered chat, replays on selection, and respects visibility 
   const chatTarget = {
     ...target,
     querySelector: (selector: string) =>
-      selector === '[data-motion-typing]' ? typing : selector === '.hs-msg' ? target : null,
+      selector === '[data-motion-typing]' ? typing : selector === '.im-b' ? target : null,
   };
   const hero = { querySelectorAll: () => [target], getAttribute: () => 'hero' };
   const beat = { querySelectorAll: () => [target], getAttribute: () => 'beat' };
