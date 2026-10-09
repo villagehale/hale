@@ -21,8 +21,15 @@ afterEach(() => {
 
 const SLUG = 'introducing-peanuts-to-baby';
 
-async function render(slug: string, locale: 'en' | 'fr' | 'zh' = 'en'): Promise<string> {
-  const element = await AnswerPageRoute({ params: Promise.resolve({ slug, locale }) });
+async function render(
+  slug: string,
+  locale: 'en' | 'fr' | 'zh' = 'en',
+  searchParams?: { s?: string },
+): Promise<string> {
+  const element = await AnswerPageRoute({
+    params: Promise.resolve({ slug, locale }),
+    ...(searchParams ? { searchParams: Promise.resolve(searchParams) } : {}),
+  });
   return renderToStaticMarkup(element);
 }
 
@@ -118,9 +125,11 @@ describe('answers/[slug] route', () => {
       vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', number);
       const html = await render(SLUG);
       const { href, label } = chromeCta();
-      // The sms href carries a `&`, which the renderer escapes in the attribute.
-      expect(html).toContain(href.replace(/&/g, '&amp;'));
+      // A live number paints /text (the client upgrades to sms:). No number is mailto.
+      const door = href.startsWith('sms:') ? 'href="/text"' : href;
+      expect(html).toContain(door);
       expect(html).toContain(label);
+      if (href.startsWith('sms:')) expect(html).not.toContain('href="sms:');
     }
   });
 
@@ -128,8 +137,17 @@ describe('answers/[slug] route', () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     const html = await render(SLUG);
     expect(chromeCta().href).toMatch(/^sms:/);
-    expect(html).toContain(`sms:${LIVE_NUMBER}`);
+    expect(html).toContain('href="/text"');
+    expect(html).not.toContain('href="sms:');
     expect(html).not.toContain('/onboarding');
+  });
+
+  it('carries a validated ?s= code onto the guide door', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    const html = await render(SLUG, 'en', { s: 'ab12' });
+    expect(html).toContain('data-cta-placement="answer_detail"');
+    expect(html).toContain('href="/text?s=ab12"');
+    expect(html).not.toContain('href="sms:');
   });
 
   it('noindexes every unpublished (unreviewed) page (review-before-index gate)', async () => {

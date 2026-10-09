@@ -10,6 +10,7 @@ import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { SITE_URL } from '~/lib/app-url';
+import { MESSAGES_NO_FLASH_SCRIPT } from '~/lib/chooser';
 import { CONSENT_NO_FLASH_SCRIPT } from '~/lib/site/consent';
 import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { NO_FLASH_SCRIPT, THEME_COLOR } from '~/lib/site/theme';
@@ -142,6 +143,8 @@ export default async function RootLayout({
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the pre-paint theme
             script must run before hydration, or the page flashes the wrong theme. */}
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the messages hint must run before paint, or a Windows desktop flashes a composer button that then disappears. */}
+        <script dangerouslySetInnerHTML={{ __html: MESSAGES_NO_FLASH_SCRIPT }} />
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: consent must be known before paint so a returning visitor never sees the banner flash. */}
         <script dangerouslySetInnerHTML={{ __html: CONSENT_NO_FLASH_SCRIPT }} />
       </head>

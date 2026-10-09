@@ -322,7 +322,7 @@ describe('the pages keep the doors they had', () => {
 
   it('keeps every page’s conversion CTA on the shared front door', () => {
     for (const [name, html] of Object.entries(pages)) {
-      expect(html, `${name} must offer the chrome's CTA`).toMatch(/mailto:|sms:/);
+      expect(html, `${name} must offer the chrome's CTA`).toMatch(/mailto:|sms:|href="\/text/);
     }
   });
 });

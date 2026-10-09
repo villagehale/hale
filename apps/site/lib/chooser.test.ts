@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type Platform, channelOrder, platformFromUa, qrLeads } from './chooser.js';
+import {
+  MESSAGES_NO_FLASH_SCRIPT,
+  type Platform,
+  channelOrder,
+  messagesCapable,
+  platformFromUa,
+  qrLeads,
+} from './chooser.js';
 
 /**
  * The channel matrix, pinned exhaustively: every platform × liveness cell from
@@ -65,6 +72,33 @@ describe('channelOrder — SMS when the link works, otherwise the QR', () => {
     ] as const) {
       expect(channelOrder(platform, DARK)).toEqual([]);
     }
+  });
+});
+
+describe('messagesCapable — sms: only where a composer actually opens', () => {
+  it('is true for iPhone, iPad, Mac, and Android, and false otherwise', () => {
+    expect(messagesCapable('apple')).toBe(true);
+    expect(messagesCapable('android')).toBe(true);
+    expect(messagesCapable('desktop-mac')).toBe(true);
+    expect(messagesCapable('desktop-other')).toBe(false);
+    expect(messagesCapable('unknown')).toBe(false);
+  });
+
+  it('agrees with the pre-paint script for every probe, including an empty UA', () => {
+    const samples = [
+      ...Object.values(UAS),
+      'Mozilla/5.0 (iPad; CPU OS 16_6 like Mac OS X) AppleWebKit/605.1.15',
+      '',
+      'curl/8.6.0',
+      'Mozilla/5.0 (X11; Linux x86_64) Firefox/127.0',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
+    ];
+    for (const ua of samples) {
+      const scriptYes = /iPhone|iPad|Android|Macintosh/.test(ua);
+      expect(scriptYes, ua).toBe(messagesCapable(platformFromUa(ua)));
+    }
+    expect(MESSAGES_NO_FLASH_SCRIPT).toContain('data-hale-messages');
+    expect(MESSAGES_NO_FLASH_SCRIPT).toContain('iPhone|iPad|Android|Macintosh');
   });
 });
 

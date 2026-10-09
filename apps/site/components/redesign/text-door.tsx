@@ -6,8 +6,11 @@ import { chromeCta } from '~/lib/site/chrome-cta';
 
 /**
  * A "Text Hale" control in the redesign.
- * Homepage doors navigate to /text (the chooser). Subpage doors open the
- * composer, the same way the rest of the site's bands do.
+ *
+ * With a live number, the server-rendered href is /text (carrying `?s=` when
+ * the page validated one). The client upgrades that same anchor to `sms:` on
+ * iPhone, iPad, Mac, and Android. With no number, the door is the chrome
+ * email fallback — a /text page with nothing to text is not a door.
  */
 export function TextDoor({
   className,
@@ -15,8 +18,8 @@ export function TextDoor({
   locale,
   smsNumber,
   prefill,
-  mode,
-  href,
+  mode: _mode,
+  source = null,
   children,
 }: {
   className?: string;
@@ -24,37 +27,35 @@ export function TextDoor({
   locale: Locale;
   smsNumber: string;
   prefill: string;
+  /** Kept so existing call sites stay source-compatible. Both modes share the door. */
   mode: 'chooser' | 'sms';
-  /**
-   * Composer href for a door that must carry a `?s=` body token. Omitted, the
-   * shared chrome CTA is used — the no-code door every other page already has.
-   */
-  href?: string;
+  /** A `?s=` code the page already validated. */
+  source?: string | null;
   children: ReactNode;
 }) {
-  if (mode === 'chooser') {
+  if (smsNumber === '') {
+    const cta = chromeCta(locale);
     return (
-      <ChooserLink
-        locale={locale}
+      <LandingCta
+        event="cta_text_click"
         placement={placement}
+        href={cta.href}
         className={className}
-        smsNumber={smsNumber}
-        prefill={prefill}
       >
         {children}
-      </ChooserLink>
+      </LandingCta>
     );
   }
-  const cta = chromeCta(locale);
   return (
-    <LandingCta
-      event="cta_text_click"
+    <ChooserLink
+      locale={locale}
       placement={placement}
-      channel="sms"
-      href={href ?? cta.href}
       className={className}
+      smsNumber={smsNumber}
+      prefill={prefill}
+      source={source}
     >
       {children}
-    </LandingCta>
+    </ChooserLink>
   );
 }

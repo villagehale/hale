@@ -5,10 +5,11 @@ import { INTAKE_PREFILL } from './text-entry.js';
 /**
  * VIL-385 part 1 — the primary Text Hale door.
  *
- * A phone opens the messaging app with the locked prefill, in the form that
- * OS reads. Desktop stays on /text (the page that already shows the QR and
- * the number). The body is whatever the caller passes: EN is INTAKE_PREFILL,
- * FR is INTAKE_PREFILL_FR, handed in so this module stays copy-free.
+ * iPhone, iPad, Mac, and Android open the messaging app with the locked
+ * prefill, in the form that OS reads. Windows, Linux, and unknown stay on
+ * /text (the page that already shows the QR and the number). The body is
+ * whatever the caller passes: EN is INTAKE_PREFILL, FR is INTAKE_PREFILL_FR,
+ * handed in so this module stays copy-free.
  */
 
 const NUMBER = '+16475551234';
@@ -65,8 +66,24 @@ describe('primaryTextTarget', () => {
     expect(target.href).not.toContain("'");
   });
 
-  it('keeps every desktop on /text, including the Mac where Messages.app exists', () => {
-    for (const platform of ['desktop-mac', 'desktop-other', 'unknown'] as const) {
+  it('opens Messages on a Mac, the same &body= form an iPhone reads', () => {
+    const target = primaryTextTarget({
+      platform: 'desktop-mac',
+      smsNumber: NUMBER,
+      prefill: INTAKE_PREFILL,
+      source: 'ab12',
+      textPath: '/text',
+    });
+    expect(target.composer).toBe(true);
+    expect(target.href).toBe(
+      `sms:${NUMBER}&body=Hey%20Hale%2C%20what%27s%20going%20on%3F%20(via%20ab12)`,
+    );
+    expect(target.href).not.toContain('?');
+    expect(bodyOf(target.href)).toBe(`${INTAKE_PREFILL} (via ab12)`);
+  });
+
+  it('keeps a non-Apple desktop and an unknown client on /text', () => {
+    for (const platform of ['desktop-other', 'unknown'] as const) {
       const target = primaryTextTarget({
         platform,
         smsNumber: NUMBER,

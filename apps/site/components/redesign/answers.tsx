@@ -19,10 +19,13 @@ export function RedesignAnswers({
   locale,
   smsNumber,
   prefill,
+  source = null,
 }: {
   locale: Locale;
   smsNumber: string;
   prefill: string;
+  /** A `?s=` code the page already validated. */
+  source?: string | null;
 }) {
   const t = (s: string) => tx(locale, s);
   const copy = getTranslator(locale, 'Answers');
@@ -36,7 +39,7 @@ export function RedesignAnswers({
 
   return (
     <>
-      <SiteHeader locale={locale} />
+      <SiteHeader locale={locale} source={source} />
       <div className="rd">
         <div className="stage sp-stage">
           <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
@@ -107,6 +110,7 @@ export function RedesignAnswers({
             locale={locale}
             smsNumber={smsNumber}
             prefill={prefill}
+            source={source}
             placement="answers"
             heading={t('A question about your own child?')}
             sub={t('Text Hale. It answers with your child’s age in mind, in a line or two.')}

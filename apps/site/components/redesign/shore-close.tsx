@@ -15,6 +15,7 @@ export function ShoreClose({
   sub,
   cta,
   terms,
+  source = null,
 }: {
   locale: Locale;
   smsNumber: string;
@@ -24,6 +25,8 @@ export function ShoreClose({
   sub: string;
   cta: string;
   terms: string;
+  /** A `?s=` code the page already validated. */
+  source?: string | null;
 }) {
   return (
     <section className="hs hs-close-sec" id="start">
@@ -55,6 +58,7 @@ export function ShoreClose({
                 smsNumber={smsNumber}
                 prefill={prefill}
                 mode="sms"
+                source={source}
               >
                 <svg
                   width="16"

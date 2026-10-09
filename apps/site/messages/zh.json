@@ -139,31 +139,6 @@
     "lede": "整个核心功能——每个阶段、每个孩子——都是免费的。随着每一部分上线，Plus 和 Max 会让更多的一年有人陪你盯着。",
     "cta": "等你准备好了，再让 Hale 慢慢长成其余的样子。"
   },
-  "PricingSection": {
-    "eyebrow": "三种分量的帮忙",
-    "headline": "整个核心功能都是免费的。付费只为多规划这一年，绝不为「替你盯着」设一道收费墙。",
-    "lede": "Hale 今天所做的一切——替你找到、替你盯着、给出方案、回答问题——都是免费的，每个阶段、每个孩子。付费档位只有在还有更多的一年可以和你一起规划时才会开放。现在就开始的家庭，会永远保留他们的创始价。另一半永远免费。",
-    "foundingTitle": "创始家庭，免费加入。",
-    "foundingNote": "创始家庭在付费方案开始前，每项功能都免费。",
-    "annualNote": "按年计费——大约免三个月",
-    "footnote": "目前只有免费档可用。",
-    "comingSoon": "即将推出",
-    "tierLines": {
-      "free": "给 Hale 发短信，报名日期有人盯着，有问必答，享受创始价。",
-      "plus": "一整年，更多事由它来做。",
-      "family": "Hale 能做的，到这里最多。"
-    },
-    "tierNames": {
-      "free": "免费",
-      "plus": "Plus",
-      "family": "Max"
-    },
-    "paidFeatures": {
-      "plus": ["免费档里的全部", "一年的记忆，一季一季", "你点头后代你报名"],
-      "family": ["Plus 里的全部", "搜索和盯名额，额度最高", "优先支持", "一整季的报名，一次办完"]
-    },
-    "freeFeatures": ["给 Hale 发短信", "报名日期有人盯着", "有问必答", "创始价", "周末空着的时候提你一句"]
-  },
   "Contact": {
     "metaTitle": "联系我们 · Hale",
     "metaDescription": "联系 Hale 背后的团队。任何事都可以发邮件到 aloha@villagehale.com；隐私和数据相关请求发到 privacy@villagehale.com。",

@@ -7,10 +7,12 @@ import type { Locale } from '~/i18n/routing';
 import { allAnswers, getAnswer } from '~/lib/answers/index';
 import { answerJsonLd } from '~/lib/answers/structured-data';
 import { intakePrefill } from '~/lib/intake-prefill';
+import { pageSource } from '~/lib/page-source';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale; slug: string }>;
+  searchParams?: Promise<{ s?: string | string[] }>;
 }
 
 export function generateStaticParams(): { slug: string }[] {
@@ -47,7 +49,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function AnswerRoute({ params }: PageProps) {
+export default async function AnswerRoute({ params, searchParams }: PageProps) {
   const { locale, slug } = await params;
   const page = getAnswer(slug);
   if (!page) notFound();
@@ -64,6 +66,7 @@ export default async function AnswerRoute({ params }: PageProps) {
         page={page}
         smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
         prefill={intakePrefill(locale)}
+        source={await pageSource(searchParams)}
       />
     </>
   );

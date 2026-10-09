@@ -59,3 +59,20 @@ export function channelOrder(platform: Platform, live: { sms: boolean }): Channe
 export function qrLeads(platform: Platform): boolean {
   return platform === 'desktop-other' || platform === 'unknown';
 }
+
+/**
+ * True where an `sms:` link opens a composer: iPhone, iPad, Mac (Messages.app),
+ * and Android. Windows, Linux, and an unknown client do not — the link there is
+ * `/text`, where the QR and the number live.
+ */
+export function messagesCapable(platform: Platform): boolean {
+  return channelOrder(platform, { sms: true }).length > 0;
+}
+
+/**
+ * Pre-paint hint for the /text page. Same probes as {@link platformFromUa}, so
+ * a wide non-Apple desktop can hide the composer button before the first frame
+ * (no layout shift) while a no-JS client, which never runs this, keeps the
+ * `/text` link. `yes` is iPhone, iPad, Mac, and Android.
+ */
+export const MESSAGES_NO_FLASH_SCRIPT = `(function(){try{var ua=navigator.userAgent||"";var yes=/iPhone|iPad|Android|Macintosh/.test(ua);document.documentElement.setAttribute("data-hale-messages",yes?"yes":"no");}catch(e){}})();`;

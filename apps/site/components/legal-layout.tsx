@@ -37,6 +37,7 @@ export function LegalLayout({
   children,
   crossLinkHref,
   crossLinkLabel,
+  source = null,
 }: {
   locale: Locale;
   title: string;
@@ -46,12 +47,14 @@ export function LegalLayout({
   children: ReactNode;
   crossLinkHref: string;
   crossLinkLabel: string;
+  /** A `?s=` code this page already validated. The header pill carries it. */
+  source?: string | null;
 }) {
   const t = getTranslator(locale, 'Legal');
 
   return (
     <>
-      <SiteHeader locale={locale} chrome="legal" />
+      <SiteHeader locale={locale} chrome="legal" source={source} />
       <div className="rd">
         <div className="stage sp-stage sp-legal">
           <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />

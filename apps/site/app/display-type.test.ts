@@ -520,12 +520,13 @@ describe('headings use the system display stack, not a loaded display webfont', 
     const h2Stem = size * stemPerEm(opszOf(size), 450);
     expect(h2Stem / floorPx('pricingCardH3', 1440)).toBeGreaterThan(1);
     // It has to be IN the display system for that to mean anything — as a bare
-    // sans h2 it is the uncontained inversion #512 was choosing between.
+    // sans heading it is the uncontained inversion #512 was choosing between.
+    // The live pricing page's headline is the subpage display heading.
     const pricing = readFileSync(
-      fileURLToPath(new URL('../components/pricing-section.tsx', import.meta.url)),
+      fileURLToPath(new URL('../components/redesign/pricing.tsx', import.meta.url)),
       'utf8',
     );
-    expect(pricing).toContain('<h2 className="v4-display mt-3">');
+    expect(pricing).toContain('className="sp-h1"');
   });
 
   it('tightens the tracking as the size grows, and never past the hero', () => {

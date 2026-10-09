@@ -149,46 +149,6 @@
     "lede": "The whole core — every stage, every child — is free. Plus and Family add more of the year watched with you, as each part ships.",
     "cta": "Start free today — and let Hale grow into the rest when you’re ready."
   },
-  "PricingSection": {
-    "eyebrow": "Three sizes of help",
-    "headline": "The whole core is free. Paid plans add more of the year, never a paywall on the watching.",
-    "lede": "Everything Hale does today — the finding, the watching, the plans, the answers — is free, for every stage and every child. Paid plans open when there is more of the year to plan with you. Families who start now keep their founding rate for good. A co-parent is always free.",
-    "foundingTitle": "Founding families join free.",
-    "foundingNote": "Founding families get every feature free until paid plans start.",
-    "annualNote": "billed yearly — about three months free",
-    "footnote": "Only Free is available today.",
-    "comingSoon": "Coming soon",
-    "tierLines": {
-      "free": "Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.",
-      "plus": "More done for you, all year.",
-      "family": "The most Hale can do."
-    },
-    "tierNames": {
-      "free": "Free",
-      "plus": "Plus",
-      "family": "Max"
-    },
-    "paidFeatures": {
-      "plus": [
-        "Everything in Free",
-        "Year memory, season to season",
-        "Sign-ups done for you, when you say yes"
-      ],
-      "family": [
-        "Everything in Plus",
-        "The highest limits on searches and spot watches",
-        "Priority support",
-        "Sign-ups for a whole season in one go"
-      ]
-    },
-    "freeFeatures": [
-      "Unlimited chat",
-      "Live find",
-      "A text when a spot opens",
-      "Group chats and your co-parent",
-      "A nudge when a weekend’s empty"
-    ]
-  },
   "Contact": {
     "metaTitle": "Contact · Hale",
     "metaDescription": "Reach the team behind Hale. Email aloha@villagehale.com for anything; privacy@villagehale.com for privacy and data requests.",

@@ -149,46 +149,6 @@
     "lede": "Tout l’essentiel — chaque étape, chaque enfant — est gratuit. Plus et Max ajoutent davantage de l’année suivie avec vous, à mesure que chaque partie arrive.",
     "cta": "Commencez gratuitement aujourd’hui — et laissez Hale grandir vers le reste quand vous serez prêt."
   },
-  "PricingSection": {
-    "eyebrow": "Trois tailles d’aide",
-    "headline": "Tout l’essentiel est gratuit. Les forfaits payants ajoutent davantage de l’année, jamais un péage sur la surveillance.",
-    "lede": "Tout ce que Hale fait aujourd’hui — la recherche, la surveillance, les plans, les réponses — est gratuit, à chaque étape et pour chaque enfant. Les forfaits payants n’ouvriront que lorsqu’il y aura davantage de l’année à planifier avec vous. Les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Un coparent est toujours gratuit.",
-    "foundingTitle": "Les familles fondatrices adhèrent gratuitement.",
-    "foundingNote": "Les familles fondatrices ont chaque fonction gratuite jusqu’à ce que les forfaits payants commencent.",
-    "annualNote": "facturé à l’année — environ trois mois gratuits",
-    "footnote": "Seul Gratuit est disponible aujourd’hui.",
-    "comingSoon": "Bientôt disponible",
-    "tierLines": {
-      "free": "Trouvez ce qu’il y a et ouvrez l’année. Les matins que vous surveillez déjà restent gratuits.",
-      "plus": "Plus de choses faites pour toi, toute l’année.",
-      "family": "Le maximum de ce que Hale peut faire."
-    },
-    "tierNames": {
-      "free": "Gratuit",
-      "plus": "Plus",
-      "family": "Max"
-    },
-    "paidFeatures": {
-      "plus": [
-        "Tout ce qu’il y a dans Gratuit",
-        "La mémoire de l’année, saison après saison",
-        "Inscriptions faites pour toi, quand tu dis oui"
-      ],
-      "family": [
-        "Tout ce qu’il y a dans Plus",
-        "Les limites les plus hautes pour les recherches et la surveillance des places",
-        "Soutien prioritaire",
-        "Les inscriptions de toute une saison, d’un coup"
-      ]
-    },
-    "freeFeatures": [
-      "Textez Hale",
-      "Dates d’inscription surveillées",
-      "Réponses",
-      "Tarif fondateur",
-      "Un petit coup de pouce quand la fin de semaine est vide"
-    ]
-  },
   "Contact": {
     "metaTitle": "Contact · Hale",
     "metaDescription": "Joignez l’équipe derrière Hale. Écrivez à aloha@villagehale.com pour tout; privacy@villagehale.com pour la confidentialité et les demandes de données.",

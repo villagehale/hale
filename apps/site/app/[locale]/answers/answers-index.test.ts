@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GUIDE_STAGE_FILTERS } from '~/lib/answers/guide-stage.js';
 import { publishedAnswers } from '~/lib/answers/index.js';
 import AnswersIndexPage from './page.js';
@@ -9,6 +9,10 @@ import AnswersIndexPage from './page.js';
  * not run effects, so this is the progressive-enhancement tree: every card,
  * All stages pressed, and the counts taken from the published corpus.
  */
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 async function render(locale: 'en' | 'fr' | 'zh'): Promise<string> {
   const element = await AnswersIndexPage({ params: Promise.resolve({ locale }) });
@@ -71,6 +75,18 @@ describe('/answers stage filter without JavaScript', () => {
     expect(zh).toContain('新生儿');
     expect(zh).toContain('aria-label="按阶段筛选指南"');
     expect(zh).toContain('显示 15 篇，共 15 篇指南');
+  });
+
+  it('carries a validated ?s= code onto the answers door', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+    const element = await AnswersIndexPage({
+      params: Promise.resolve({ locale: 'en' }),
+      searchParams: Promise.resolve({ s: 'ab12' }),
+    });
+    const html = renderToStaticMarkup(element);
+    expect(html).toContain('data-cta-placement="answers"');
+    expect(html).toContain('href="/text?s=ab12"');
+    expect(html).not.toContain('href="sms:');
   });
 });
 
