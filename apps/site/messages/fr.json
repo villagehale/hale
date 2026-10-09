@@ -453,31 +453,6 @@
     "orMessages": "Ou utiliser Messages",
     "orWhatsapp": "Ou utiliser WhatsApp"
   },
-  "Registration": {
-    "updated": "Updated {date, date, long}",
-    "when": "When",
-    "what": "What opens",
-    "questionsEyebrow": "Questions parents type",
-    "questionsHeadline": [
-      {
-        "text": "The questions that"
-      },
-      {
-        "text": "show up at 6:58 a.m.",
-        "accent": true
-      }
-    ],
-    "officialEyebrow": "Official register",
-    "officialHeadline": [
-      {
-        "text": "Confirm on the"
-      },
-      {
-        "text": "official page",
-        "accent": true
-      }
-    ]
-  },
   "Jsonld": {
     "orgDescription": "Hale est un planificateur pour l’année de tes enfants — il trouve ce qui se passe, surveille les inscriptions et revient prendre des nouvelles.",
     "appDescription": "L’année de tes enfants, sans casse-tête. Un planificateur pour l’année de tes enfants : Hale trouve ce qui se passe, surveille les places et revient demander comment ça s’est passé."

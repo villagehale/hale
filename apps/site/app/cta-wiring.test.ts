@@ -150,13 +150,9 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     expect(rendered.length + redirected.length).toBe(pageFiles.length);
     expect([...redirected].sort()).toEqual([
       '/activities/[city]',
-      '/brampton-swim-registration',
       '/for-centres',
       '/milestones',
       '/milestones/[age]',
-      '/toronto-fall-recreation-registration',
-      '/toronto-swim-registration',
-      '/ymca-gta-swim-registration',
     ]);
   });
 
@@ -297,18 +293,12 @@ describe('the chooser doors are wired the same way', () => {
   });
 });
 
-describe('the money pages report engagement, not just clicks', () => {
-  it('mounts the scroll tracker on the city guides, named per page', () => {
+describe('the homepage reports engagement, not just clicks', () => {
+  it('mounts the scroll tracker with no page name, so absent still means the landing', () => {
     // LandingScrollAnalytics renders NOTHING, so no walk over markup can see a
     // page that quietly stopped mounting it — source is the only surface the
-    // wiring exists on. The city guides stamp a coarse `page` (the guide's
-    // placement) on their `landing_scroll`; the homepage mounts it bare, since
-    // its historical rows carry no `page` and absent must keep meaning "the
-    // landing".
-    const registration = code(
-      readFileSync(join(SITE_ROOT, 'components/registration-page.tsx'), 'utf8'),
-    );
-    expect(registration).toContain('<LandingScrollAnalytics page={guide.placement} />');
+    // wiring exists on. The homepage mounts it bare: its historical rows carry
+    // no `page`, and absent must keep meaning "the landing".
     const landing = code(readFileSync(join(SITE_ROOT, 'components/redesign/home.tsx'), 'utf8'));
     expect(landing).toContain('<LandingScrollAnalytics />');
   });

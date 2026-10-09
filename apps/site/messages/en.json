@@ -481,31 +481,6 @@
     "orMessages": "Or use Messages",
     "orWhatsapp": "Or use WhatsApp"
   },
-  "Registration": {
-    "updated": "Updated {date, date, long}",
-    "when": "When",
-    "what": "What opens",
-    "questionsEyebrow": "Questions parents type",
-    "questionsHeadline": [
-      {
-        "text": "The questions that"
-      },
-      {
-        "text": "show up at 6:58 a.m.",
-        "accent": true
-      }
-    ],
-    "officialEyebrow": "Official register",
-    "officialHeadline": [
-      {
-        "text": "Confirm on the"
-      },
-      {
-        "text": "official page",
-        "accent": true
-      }
-    ]
-  },
   "Jsonld": {
     "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches for spots, and comes back to ask how it went.",
     "appDescription": "Your kids’ year, handled. A planner for your kids’ year: Hale finds what’s on, watches for spots, and comes back to ask how it went."
