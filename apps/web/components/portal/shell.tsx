@@ -9,6 +9,7 @@ import { type RootHero, type RootRoute, resolveHero } from '~/components/hale/he
 import { navWithAdmin, primaryNav } from '~/components/hale/nav';
 import { signOutAction } from '~/lib/auth-actions';
 import { PRIVACY_URL } from '~/lib/legal-links';
+import { AppearanceControl } from './appearance';
 import { portalOwnsHeading } from './owns-heading';
 import { portalHref } from './portal-href';
 import styles from './portal.module.css';
@@ -73,21 +74,24 @@ export function PortalShell({
             );
           })}
         </nav>
-        {signOutTo ? (
-          <div className={styles.signoutForm}>
-            <Link href={portalHref('', signOutTo)} className={styles.signout}>
-              <SignOutIcon />
-              <span>Sign out</span>
-            </Link>
-          </div>
-        ) : canSignOut ? (
-          <form action={signOutAction} className={styles.signoutForm}>
-            <button type="submit" className={styles.signout}>
-              <SignOutIcon />
-              <span>Sign out</span>
-            </button>
-          </form>
-        ) : null}
+        <div className={styles.sideFoot}>
+          <AppearanceControl variant="side" />
+          {signOutTo ? (
+            <div className={styles.signoutForm}>
+              <Link href={portalHref('', signOutTo)} className={styles.signout}>
+                <SignOutIcon />
+                <span>Sign out</span>
+              </Link>
+            </div>
+          ) : canSignOut ? (
+            <form action={signOutAction} className={styles.signoutForm}>
+              <button type="submit" className={styles.signout}>
+                <SignOutIcon />
+                <span>Sign out</span>
+              </button>
+            </form>
+          ) : null}
+        </div>
       </aside>
       <div className={styles.content}>
         <img

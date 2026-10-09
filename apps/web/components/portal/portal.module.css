@@ -1,6 +1,7 @@
 /* Parent portal. Shore, frosted sidebar, glass cards. Faces stay local so the
    app's Fraunces ladder is untouched. `.dark` (localStorage `hale-theme`) retints
-   this shell; a missing preference does not follow the OS. */
+   this shell. A missing preference follows the device (`prefers-color-scheme`),
+   the same way the pre-paint script does. */
 @font-face {
   font-family: "Portal Source Serif 4";
   src: url("../hale/connect/fonts/source-serif-4-latin-wght-normal.woff2") format("woff2");
@@ -1309,4 +1310,138 @@
 
 :global(.dark) .shell :focus-visible {
   outline-color: #9fd0ea;
+}
+
+/* Appearance: Light / Dark / Auto. Text segmented control. The selected option
+   is the Messages filter pill (`.segOn`) — frosted white, navy ink, and the
+   light-mode hairline — so this does not invent a second thumb. */
+.look {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-full);
+  background: rgb(23 41 74 / 0.06);
+  box-shadow: inset 0 0 0 1px rgb(23 41 74 / 0.05);
+}
+
+.shell button.lookOpt {
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--r-full);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink-78);
+  transition: background 0.15s, box-shadow 0.15s, color 0.15s;
+}
+
+.shell button.lookOpt:hover {
+  color: var(--navy);
+}
+
+/* `.lookOpt` is as specific as `.segOn` and comes later, so the selected label
+   has to be restated or a hover (and dark mode's cream `--navy`) paints over
+   the white pill. The fill and hairline stay on `.segOn`. */
+.shell button.lookOpt.segOn,
+.shell button.lookOpt.segOn:hover {
+  color: #17294a;
+}
+
+.lookSide {
+  margin: 0 0 var(--s2);
+}
+
+.shell .lookSide button.lookOpt {
+  height: 32px;
+  font-size: 13.6px;
+}
+
+.lookNote {
+  margin-top: var(--s3);
+}
+
+/* The server render always marks Auto. Until data-ready, the head script's
+   html[data-theme-pref] owns the pill, and Auto's .segOn is painted idle.
+   Scoped under .look so the Messages filter's .segOn is left alone. */
+.shell .look:not([data-ready]) button.lookOpt.segOn,
+.shell .look:not([data-ready]) button.lookOpt.segOn:hover {
+  background: none;
+  color: var(--ink-78);
+  box-shadow: none;
+}
+
+:global(html[data-theme-pref="light"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="light"],
+:global(html[data-theme-pref="light"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="light"]:hover,
+:global(html[data-theme-pref="dark"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="dark"],
+:global(html[data-theme-pref="dark"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="dark"]:hover,
+:global(html[data-theme-pref="system"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="system"],
+:global(html[data-theme-pref="system"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="system"]:hover {
+  background: rgb(255 255 255 / 0.92);
+  color: #17294a;
+  box-shadow: inset 0 0 0 1px #6e7d99, 0 1px 3px rgb(12 26 54 / 0.12);
+}
+
+:global(html.dark[data-theme-pref="light"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="light"],
+:global(html.dark[data-theme-pref="light"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="light"]:hover,
+:global(html.dark[data-theme-pref="dark"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="dark"],
+:global(html.dark[data-theme-pref="dark"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="dark"]:hover,
+:global(html.dark[data-theme-pref="system"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="system"],
+:global(html.dark[data-theme-pref="system"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="system"]:hover {
+  box-shadow: 0 1px 3px rgb(12 26 54 / 0.12);
+}
+
+:global(.dark) .look {
+  background: rgb(247 244 236 / 0.07);
+  box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.08);
+}
+
+@media (min-width: 641px) {
+  .sideFoot {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sideFoot .signoutForm,
+  .sideFoot .signout {
+    margin-top: 0;
+  }
 }
