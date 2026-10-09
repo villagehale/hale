@@ -1071,18 +1071,10 @@
     color: #17294a;
   }
 
-  .side > form {
+  .signout {
     margin-top: auto;
-  }
-
-  .shell .signout {
-    margin-top: 0;
-    width: 100%;
-    font-family: var(--font-ui);
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--ink-78);
-    text-align: left;
+    font-weight: 500;
+    color: var(--ink-64);
   }
 
   .main,
