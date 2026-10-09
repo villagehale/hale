@@ -16,6 +16,7 @@ export function TextDoor({
   smsNumber,
   prefill,
   mode,
+  href,
   children,
 }: {
   className?: string;
@@ -24,6 +25,11 @@ export function TextDoor({
   smsNumber: string;
   prefill: string;
   mode: 'chooser' | 'sms';
+  /**
+   * Composer href for a door that must carry a `?s=` body token. Omitted, the
+   * shared chrome CTA is used — the no-code door every other page already has.
+   */
+  href?: string;
   children: ReactNode;
 }) {
   if (mode === 'chooser') {
@@ -45,7 +51,7 @@ export function TextDoor({
       event="cta_text_click"
       placement={placement}
       channel="sms"
-      href={cta.href}
+      href={href ?? cta.href}
       className={className}
     >
       {children}
