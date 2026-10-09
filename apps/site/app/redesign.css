@@ -1543,23 +1543,25 @@
 .rd .hs-notif,
 .rd .hs-rem,
 .rd .hs-memory { color-scheme: inherit; }
+/* iPhone body 71.5×146.6. Width only — height follows the ratio.
+   max(256px, min(78vw, 320px, (100svh - 240px) / 2.05)) keeps the handset
+   and the gallery controls on a 390×844 screen. The 256px floor stops a
+   short viewport from shrinking the body until the island hits the status icons. */
 .rd .gallery-phone {
+  --gallery-phone-w: max(256px, min(78vw, 320px, calc((100svh - 240px) / 2.05)));
   position: relative;
   display: flex;
   flex-direction: column;
-  width: 100%;
-  aspect-ratio: 71.5 / 149.6;
+  width: var(--gallery-phone-w);
+  max-width: 100%;
+  min-height: 0;
+  aspect-ratio: 71.5 / 146.6;
+  margin-inline: auto;
   padding: 3px;
-  border-radius: calc(var(--gallery-card) * 0.155);
+  border-radius: calc(var(--gallery-phone-w) * 0.155);
   background: var(--phone-metal);
   box-shadow: var(--phone-metal-shadow);
   flex: none;
-}
-@media (max-width: 640px) {
-  .rd .gallery-phone {
-    aspect-ratio: auto;
-    height: min(560px, calc(100svh - var(--nav-h) - 140px));
-  }
 }
 .rd .gallery-phone-screen {
   position: relative;
@@ -1568,7 +1570,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  border-radius: calc(var(--gallery-card) * 0.155 - 3px);
+  border-radius: calc(var(--gallery-phone-w) * 0.155 - 3px);
   background: var(--ios-screen);
   color: var(--ios-ink);
   font-family: var(--font-ios);
@@ -1628,7 +1630,24 @@
   color: var(--ios-ink);
   color-scheme: inherit;
 }
-.rd .gallery-phone .hs-thread { flex: 1; justify-content: flex-end; }
+.rd .gallery-phone .hs-thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  overflow-anchor: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+}
+/* Free space sits above the bubbles, so a short thread rests on the home
+   indicator and a long one scrolls instead of clipping the top. */
+.rd .gallery-phone .hs-thread::before {
+  content: "";
+  flex: 1 0 0;
+  min-height: 0;
+}
+.rd .gallery-phone .hs-thread::-webkit-scrollbar { display: none; }
 .rd .gallery-phone .hs-chat-head {
   flex-direction: column;
   gap: var(--s2);
