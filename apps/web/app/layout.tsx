@@ -41,10 +41,14 @@ const fraunces = localFont({
 // `.tabular` keeps `font-variant-numeric` for the column alignment that role actually
 // needed (DESIGN.md § Type).
 
+const PORTAL_DESCRIPTION =
+  'Sign in to Hale to see your family, your messages with Hale, and your settings.';
+
 export const metadata: Metadata = {
   title: 'Hale · the family assistant you text',
-  description:
-    'Hale is the family assistant you text — it takes the family admin off your plate, catches registration day before spots fill, and never acts without your say-so. This is the receipts room: approvals, history, settings.',
+  description: PORTAL_DESCRIPTION,
+  openGraph: { description: PORTAL_DESCRIPTION },
+  twitter: { description: PORTAL_DESCRIPTION },
 };
 
 export const viewport: Viewport = {
