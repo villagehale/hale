@@ -241,6 +241,11 @@
   margin-top: 16px;
 }
 
+/* `.stage .btn` sets 32px. This wins for Return to Hale only. */
+.returnHome {
+  margin-top: 24px !important;
+}
+
 /* Dark door. Hardcoded navy in this file was drawing on the navy card. */
 :global(.dark) .eyebrow,
 :global(.dark) .field label,

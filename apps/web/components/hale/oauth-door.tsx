@@ -14,7 +14,7 @@ export function ConnectionUnavailable({ detail }: { detail: string }) {
       <div className="panel-oat px-5 py-4">
         <p className="text-spruce leading-relaxed">{detail}</p>
       </div>
-      <a href="/home" className={`${stage.btn} ${door.full} auth-return`}>
+      <a href="/home" className={`${stage.btn} ${door.full} ${door.returnHome}`}>
         Return to Hale
       </a>
     </AuthShell>

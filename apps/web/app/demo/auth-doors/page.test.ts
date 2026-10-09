@@ -122,12 +122,11 @@ describe('door spacing', () => {
     expect(css).toContain('.stack > .stack > :global(.field-error):first-child');
     expect(css).toContain('margin-top: 16px;');
     expect(css).toContain('.stack :global(.panel-oat)');
-    const stageCss = source('../../../components/hale/connect/connect.module.css');
-    expect(stageCss).toContain('.stage a:global(.auth-return)');
-    expect(stageCss).toContain('margin-top: 24px;');
+    expect(css).toContain('.returnHome');
+    expect(css).toContain('margin-top: 24px !important;');
 
     const door = source('../../../components/hale/oauth-door.tsx');
-    expect(door).toContain('${stage.btn} ${door.full} auth-return');
+    expect(door).toContain('${stage.btn} ${door.full} ${door.returnHome}');
     expect(door).toContain('Return to Hale');
     expect(door).not.toContain('btn-secondary self-start');
   });
