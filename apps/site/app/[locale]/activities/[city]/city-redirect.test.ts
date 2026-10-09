@@ -10,8 +10,7 @@ import ActivityCityRedirect, { RETIRED_CITY_SLUGS } from './page.js';
 
 /**
  * /activities/<city> is retired. The URL 308s to that locale's activities hub.
- * Registration guides (Toronto fall, Toronto swim, Brampton swim, YMCA) are
- * their own routes and stay.
+ * The dated registration guides are separate paths and 308 the same way.
  */
 
 describe('/activities/[city] redirects to the hub', () => {

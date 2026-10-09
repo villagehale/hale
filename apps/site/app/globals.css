@@ -1465,9 +1465,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * shortcut. Every headline wearing this is the first thing on its page, so "in
  * view" is settled before the reader can scroll; and a CSS animation runs with
  * no JavaScript at all, where an IntersectionObserver reveal leaves the page's
- * <h1> at opacity 0 for a reader whose JS never arrives. The one primitive we
- * already ship with that flaw (FadeInUp) is trusted with a CTA band, never with
- * a heading.
+ * <h1> at opacity 0 for a reader whose JS never arrives. A heading never uses
+ * that kind of reveal.
  *
  * --w is the word's index, set inline by components/words-pull-up.tsx. */
 .pull-word {
