@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { allAnswers, getAnswer } from '~/lib/answers/index.js';
+import { allAnswers, getAnswer, publishedAnswers } from '~/lib/answers/index.js';
+import { answerJsonLd } from '~/lib/answers/structured-data.js';
 import { chromeCta } from '~/lib/site/chrome-cta.js';
 import AnswerPageRoute, { generateMetadata, generateStaticParams } from './[slug]/page.js';
 
@@ -19,9 +21,42 @@ afterEach(() => {
 
 const SLUG = 'introducing-peanuts-to-baby';
 
-async function render(slug: string): Promise<string> {
-  const element = await AnswerPageRoute({ params: Promise.resolve({ slug, locale: 'en' as const }) });
+async function render(slug: string, locale: 'en' | 'fr' | 'zh' = 'en'): Promise<string> {
+  const element = await AnswerPageRoute({ params: Promise.resolve({ slug, locale }) });
   return renderToStaticMarkup(element);
+}
+
+/** The published guide body, frozen so a restyle cannot rewrite the copy. */
+function publishedGuideCopyDigest(): string {
+  const copy = publishedAnswers.map((page) => ({
+    slug: page.slug,
+    question: page.question,
+    title: page.title,
+    description: page.description,
+    stage: page.stage,
+    answer: page.answer,
+    keyTakeaways: page.keyTakeaways,
+    sections: page.sections,
+    faqs: page.faqs,
+    citations: page.citations.map((citation) => ({
+      framework: citation.framework,
+      reference: citation.reference,
+      excerpt: citation.excerpt ?? null,
+    })),
+    related: page.related,
+    updated: page.updated,
+  }));
+  return createHash('sha256').update(JSON.stringify(copy)).digest('hex');
+}
+
+/** React's text escaping, so a word-for-word check survives apostrophes and ampersands. */
+function escapeText(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
 }
 
 describe('answers/[slug] route', () => {
@@ -116,5 +151,54 @@ describe('answers/[slug] route', () => {
     });
     expect(meta.robots).toBeUndefined();
     expect(meta.alternates?.canonical).toBe(`/answers/${published}`);
+  });
+
+  it('keeps every published guide’s words, and the FAQPage graph, byte for byte', async () => {
+    expect(publishedGuideCopyDigest()).toBe(
+      '85ff788f168417f9630d3ead347333c2f1ad31a2565ea1ea25cc194b6ff399c6',
+    );
+    for (const page of publishedAnswers) {
+      const html = await render(page.slug);
+      expect(html, page.slug).toContain(escapeText(page.question));
+      expect(html, page.slug).toContain(escapeText(page.answer));
+      expect(html, page.slug).toContain(escapeText(page.description));
+      for (const takeaway of page.keyTakeaways) {
+        expect(html, page.slug).toContain(escapeText(takeaway));
+      }
+      for (const section of page.sections) {
+        expect(html, page.slug).toContain(escapeText(section.heading));
+        for (const paragraph of section.body) {
+          expect(html, page.slug).toContain(escapeText(paragraph));
+        }
+      }
+      for (const faq of page.faqs) {
+        expect(html, page.slug).toContain(escapeText(faq.question));
+        expect(html, page.slug).toContain(escapeText(faq.answer));
+      }
+      const script = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      expect(script, page.slug).toBeDefined();
+      expect(JSON.parse(script ?? '{}')).toEqual(answerJsonLd(page));
+    }
+  });
+
+  it('uses the new guide chrome in French and Chinese without translating the body', async () => {
+    const page = getAnswer(SLUG);
+    if (!page) throw new Error('fixture missing');
+    const fr = await render(SLUG, 'fr');
+    const zh = await render(SLUG, 'zh');
+    for (const html of [fr, zh]) {
+      expect(html).toContain('The short answer');
+      expect(html).toContain(escapeText(page.answer));
+      expect(html).toContain(escapeText(page.question));
+      expect(html).toContain('gd-h1');
+      expect(html).toContain('gd-safety');
+      expect(html).toContain('data-cta-placement="answer_detail"');
+    }
+    expect(fr).toContain('Sur cette page');
+    expect(fr).toContain('Points clés');
+    expect(fr).toContain('Guides parentaux');
+    expect(zh).toContain('本页内容');
+    expect(zh).toContain('要点速览');
+    expect(zh).toContain('育儿指南');
   });
 });

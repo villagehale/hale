@@ -412,6 +412,11 @@
     ],
     "lede": "Des guides pratiques pour les questions que les parents recherchent vraiment — chacun fondé sur des cadres de référence fiables en santé parentale et honnête quant à ses limites. Des conseils généraux, jamais un remplacement de votre professionnel de la santé.",
     "empty": "Nos premiers guides parentaux sont en révision. Entre-temps, le moyen le plus rapide d’obtenir des conseils pour votre propre enfant — en tenant compte de son âge et de votre famille — c’est de poser votre question à Hale.",
+    "countHeading": "{n} questions que les parents cherchent.",
+    "filterLabel": "Filter guides by stage",
+    "filterStatus": "Showing {n} of {total} guides",
+    "filterEmpty": "No guides for this stage yet.",
+    "filterSeeAll": "See all stages",
     "ctaHeading": "Vous avez une question sur votre propre enfant?",
     "stageLabels": {
       "newborn": "Nouveau-né · 0–11 mois",
@@ -422,6 +427,7 @@
   },
   "AnswerArticle": {
     "breadcrumb": "Guides parentaux",
+    "shortAnswer": "The short answer",
     "guidanceNote": "Conseils généraux, dernière révision le {date, date, long} — pas un avis médical.",
     "keyTakeaways": "Points clés",
     "parentsAlsoAsk": "Les parents demandent aussi",
@@ -461,7 +467,6 @@
     "0–11 months": "0–11 mois",
     "10:00 AM": "10 h",
     "13+ years": "13 ans et +",
-    "15 questions parents search.": "15 questions que les parents cherchent.",
     "1–3 years": "1–3 ans",
     "4–12 years": "4–12 ans",
     "5:30 PM": "17 h 30",

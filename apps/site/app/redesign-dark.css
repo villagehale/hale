@@ -143,3 +143,69 @@
   :root:not([data-theme="light"]):not(.light) .rd .ev.new .tag { color: #f0c98a; }
   :root:not([data-theme="light"]):not(.light) .rd .ev.new .tag::before { background: #f0c98a; }
 }
+
+/* Guide template and stage chips. Tokens cover the rest; these are the literal colours. */
+:root[data-theme="dark"] .rd .gd-stagerow,
+:root.dark .rd .gd-stagerow {
+  background: rgb(12 26 54 / 0.55);
+  box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.14);
+}
+:root[data-theme="dark"] .rd .gd-crumb,
+:root[data-theme="dark"] .rd .gd-take h2.hs-eyebrow,
+:root[data-theme="dark"] .rd .lg-doc p.hs-eyebrow,
+:root.dark .rd .gd-crumb,
+:root.dark .rd .gd-take h2.hs-eyebrow,
+:root.dark .rd .lg-doc p.hs-eyebrow {
+  color: rgb(247 244 236 / 0.8);
+}
+:root[data-theme="dark"] .rd .gd-take,
+:root.dark .rd .gd-take {
+  background: rgb(247 244 236 / 0.05);
+  box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.1);
+}
+:root[data-theme="dark"] .rd .gd-safety,
+:root.dark .rd .gd-safety {
+  background: rgb(247 244 236 / 0.04);
+  box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.12);
+}
+:root[data-theme="dark"] .rd button.sp-chip[aria-pressed="true"],
+:root.dark .rd button.sp-chip[aria-pressed="true"] {
+  background: var(--navy);
+  color: var(--cream);
+  box-shadow: none;
+}
+@media (hover: hover) {
+  :root[data-theme="dark"] .rd button.sp-chip:hover:not([aria-pressed="true"]),
+  :root.dark .rd button.sp-chip:hover:not([aria-pressed="true"]) {
+    box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.3);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(.light) .rd .gd-stagerow {
+    background: rgb(12 26 54 / 0.55);
+    box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.14);
+  }
+  :root:not([data-theme="light"]):not(.light) .rd .gd-crumb,
+  :root:not([data-theme="light"]):not(.light) .rd .gd-take h2.hs-eyebrow,
+  :root:not([data-theme="light"]):not(.light) .rd .lg-doc p.hs-eyebrow {
+    color: rgb(247 244 236 / 0.8);
+  }
+  :root:not([data-theme="light"]):not(.light) .rd .gd-take {
+    background: rgb(247 244 236 / 0.05);
+    box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.1);
+  }
+  :root:not([data-theme="light"]):not(.light) .rd .gd-safety {
+    background: rgb(247 244 236 / 0.04);
+    box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.12);
+  }
+  :root:not([data-theme="light"]):not(.light) .rd button.sp-chip[aria-pressed="true"] {
+    background: var(--navy);
+    color: var(--cream);
+    box-shadow: none;
+  }
+}
+@media (hover: hover) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(.light) .rd button.sp-chip:hover:not([aria-pressed="true"]) {
+    box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.3);
+  }
+}

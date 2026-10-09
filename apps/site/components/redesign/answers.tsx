@@ -1,10 +1,15 @@
-import type { Locale } from '~/i18n/routing';
-import { tx } from './tx';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
-import { logoSrc, shoreSrc } from './assets';
-import { TextDoor } from './text-door';
 import { localeHref } from '~/i18n/navigation';
+import type { Locale } from '~/i18n/routing';
+import { getMessages, getTranslator } from '~/i18n/server';
+import { GUIDE_STAGE_FILTERS, guideStageFilter } from '~/lib/answers/guide-stage';
+import { publishedAnswers } from '~/lib/answers/index';
+import { shoreSrc } from './assets';
+import { GuideCard } from './guide-card';
+import { GuideFilter } from './guide-filter';
+import { ShoreClose } from './shore-close';
+import { tx } from './tx';
 
 export function RedesignAnswers({
   locale,
@@ -16,55 +21,94 @@ export function RedesignAnswers({
   prefill: string;
 }) {
   const t = (s: string) => tx(locale, s);
-  const mode = 'sms' as const;
-  
+  const copy = getTranslator(locale, 'Answers');
+  const messages = getMessages(locale).Answers;
+  const total = publishedAnswers.length;
+  const stages = GUIDE_STAGE_FILTERS.map((item) => ({
+    param: item.param,
+    label: t(item.label),
+    count: publishedAnswers.filter((page) => page.stage === item.stage).length,
+  }));
+
   return (
     <>
       <SiteHeader locale={locale} />
       <div className="rd">
-        
-<div className="stage sp-stage">
-<img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
-<span className="shore-drift sky" aria-hidden="true" />
-<span className="shore-drift sea" aria-hidden="true" />
-<span className="shore-scrim" aria-hidden="true" />
-
-<main id="main" className="sp-hero">
-  <div className="sp-grid">
-   <div className="sp-copy">
-    <p className="hs-eyebrow">{t("Parenting guides")}</p>
-    <h1 className="sp-h1">{t("Calm, cited guidance for every stage.")}</h1>
-    <p className="sp-lede">{t("Practical guides to the questions parents search, grounded in trusted parenting-health frameworks and honest about their limits.")}</p>
-    
-   </div>
-   
-  </div>
- </main>
-</div>
-<div className="hs-page">
-<section className="hs hs-wash-a">
- <div className="hs-wrap">
-<div className="hs-head"><p className="hs-eyebrow">{t("Guides")}</p><h2 className="hs-h2">{t("15 questions parents search.")}</h2><p className="hs-lede">{t("General guidance, never a replacement for your provider.")}</p></div><div className="sp-filter"><span className="sp-chip on">{t("All stages")}</span><span className="sp-chip">{t("Newborn")}</span><span className="sp-chip">{t("Toddler")}</span><span className="sp-chip">{t("School age")}</span><span className="sp-chip">{t("Teenager")}</span></div><div className="sp-cards"><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Newborn")}</span><span className="sp-num">{t("0–11 months")}</span></div><h3 className="hs-h3">{t("Why does my newborn want to feed constantly in the evening?")}</h3><p className="hs-p">{t("Bunched evening feeds — cluster feeding — are a normal newborn pattern, not a sign of low supply. What it is, why it happens, and when to check with your provider.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/newborn-cluster-feeding")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Newborn")}</span><span className="sp-num">{t("0–11 months")}</span></div><h3 className="hs-h3">{t("Why does my newborn only sleep in short stretches?")}</h3><p className="hs-p">{t("Short, fragmented newborn sleep is developmentally normal, not a problem to fix. What to expect in the first months and what actually helps.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/newborn-sleep-fragmented")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Newborn")}</span><span className="sp-num">{t("0–11 months")}</span></div><h3 className="hs-h3">{t("What are the safe sleep basics for a newborn?")}</h3><p className="hs-p">{t("The widely recommended safe-sleep basics for babies — back to sleep, a bare crib, and room-sharing — with the Canadian guidance behind them.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/newborn-safe-sleep-basics")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Newborn")}</span><span className="sp-num">{t("0–11 months")}</span></div><h3 className="hs-h3">{t("When and how do I introduce peanuts to my baby?")}</h3><p className="hs-p">{t("Current guidance encourages introducing common allergens like peanut early, around six months, once a baby is ready for solids. What that looks like and when to talk to your provider first.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/introducing-peanuts-to-baby")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Newborn")}</span><span className="sp-num">{t("0–11 months")}</span></div><h3 className="hs-h3">{t("When is my baby ready to start solid foods?")}</h3><p className="hs-p">{t("Solids usually start around six months, once a baby can sit up without support, has good head and neck control, and shows interest in food. The readiness signs and Canadian guidance.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/starting-solids-when-ready")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Toddler")}</span><span className="sp-num">{t("1–3 years")}</span></div><h3 className="hs-h3">{t("How do I handle my toddler’s tantrums?")}</h3><p className="hs-p">{t("Tantrums are a normal part of toddler development, not misbehaviour to punish away. A calm, connection-first approach grounded in Markham, Lansbury, and Siegel.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/toddler-tantrums-how-to-handle")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Toddler")}</span><span className="sp-num">{t("1–3 years")}</span></div><h3 className="hs-h3">{t("What should I do when my toddler bites?")}</h3><p className="hs-p">{t("Biting is common in toddlers and usually about frustration, teething, or limited language — not aggression. A calm, consistent response grounded in Lansbury and Markham.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/toddler-biting-what-to-do")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Toddler")}</span><span className="sp-num">{t("1–3 years")}</span></div><h3 className="hs-h3">{t("How do I ease my toddler’s separation anxiety at daycare drop-off?")}</h3><p className="hs-p">{t("Separation anxiety at drop-off is a normal sign of healthy attachment. A short, warm, consistent goodbye routine — and what the research-backed frameworks suggest.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/toddler-separation-anxiety-daycare")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Toddler")}</span><span className="sp-num">{t("1–3 years")}</span></div><h3 className="hs-h3">{t("How do I know my toddler is ready to potty train?")}</h3><p className="hs-p">{t("Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/potty-training-readiness-signs")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Toddler")}</span><span className="sp-num">{t("1–3 years")}</span></div><h3 className="hs-h3">{t("How much screen time is okay for a toddler?")}</h3><p className="hs-p">{t("Canadian guidance recommends little to no screen time under two, and no more than an hour a day for ages two to five. The numbers and the reasoning.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/toddler-screen-time-guidelines")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("School age")}</span><span className="sp-num">{t("4–12 years")}</span></div><h3 className="hs-h3">{t("How do I stop the nightly homework battles with my child?")}</h3><p className="hs-p">{t("Nightly homework standoffs usually come from a power struggle, not laziness. Shifting from enforcer to supporter, grounded in Siegel and Markham.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/child-homework-battles")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("School age")}</span><span className="sp-num">{t("4–12 years")}</span></div><h3 className="hs-h3">{t("How do I handle constant fighting between my kids?")}</h3><p className="hs-p">{t("Sibling conflict is normal and even useful for learning to negotiate. How to step back from refereeing and coach conflict-resolution skills, grounded in Markham and Siegel.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/child-sibling-fighting")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("School age")}</span><span className="sp-num">{t("4–12 years")}</span></div><h3 className="hs-h3">{t("How do I set screen time limits for my school-age child?")}</h3><p className="hs-p">{t("For school-age children, guidance shifts from fixed hour-caps to a family plan that protects sleep, activity, and family time. What that looks like in practice.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/child-managing-screen-time")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Teenager")}</span><span className="sp-num">{t("13+ years")}</span></div><h3 className="hs-h3">{t("What are warning signs of a mental health problem in my teenager?")}</h3><p className="hs-p">{t("Some moodiness is normal in adolescence, but certain changes warrant a professional conversation. The warning signs, and how to open the door without pushing your teen away.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/teen-mental-health-warning-signs")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article><article className="hs-card sp-card sp-guide"><div className="sp-card-top"><span className="sp-tag">{t("Teenager")}</span><span className="sp-num">{t("13+ years")}</span></div><h3 className="hs-h3">{t("How do I set boundaries with my teenager without pushing them away?")}</h3><p className="hs-p">{t("Teens need both autonomy and limits. How to hold clear boundaries while keeping the relationship open, grounded in Siegel’s work on the adolescent brain.")}</p><div className="sp-guide-more"><a className="sp-link" href={localeHref(locale, "/answers/teen-setting-boundaries-autonomy")}><span>{t("Read the guide")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a></div></article></div>
- </div>
-</section><section className="hs hs-close-sec" id="start">
- <div className="hs-wrap">
-  <div className="hs-close-card">
-   <img className="hs-close-art" src={shoreSrc} alt="" aria-hidden="true" />
-   <span className="hs-close-scrim" aria-hidden="true" />
-   <div className="hs-close-body">
-    <span className="hs-close-brand"><img src={logoSrc} alt="" /><svg className="wordmark" viewBox="0 0 905.840370 590.701960" fill="currentColor" aria-hidden="true"><g transform="translate(-13.212024,604.064051) scale(0.100000,-0.100000)"><path d="M2672 5952 c-69 -25 -121 -68 -151 -125 -26 -52 -40 -165 -86 -722 -44 -533 -105 -1601 -105 -1847 0 -53 -4 -99 -9 -102 -5 -3 -143 -31 -307 -61 -165 -31 -414 -78 -555 -105 -141 -28 -264 -50 -274 -50 -15 0 -16 13 -11 158 4 86 11 290 16 452 24 677 99 1773 136 1985 19 104 12 142 -35 217 -42 67 -104 100 -196 106 -132 8 -228 -45 -285 -158 -37 -73 -43 -101 -74 -335 -69 -519 -118 -1161 -146 -1920 -7 -165 -15 -376 -18 -470 l-7 -170 -85 -16 c-142 -27 -207 -66 -253 -154 -51 -99 -13 -253 79 -314 65 -43 126 -49 229 -25 20 5 20 0 22 -623 2 -622 14 -1033 35 -1168 31 -205 122 -298 293 -299 101 -1 160 20 210 76 89 98 103 181 86 524 -7 142 -16 563 -18 935 -5 655 -5 677 13 683 56 17 989 200 1082 212 l52 7 0 -544 c0 -797 25 -1307 72 -1458 16 -51 31 -75 72 -116 67 -67 129 -89 230 -83 120 8 248 86 281 172 18 48 18 80 -8 301 -30 251 -39 486 -44 1156 l-6 677 29 6 c16 3 58 10 93 15 158 25 240 120 229 265 -13 152 -127 249 -273 231 l-55 -7 0 74 c0 111 28 699 45 963 18 267 31 440 76 1026 32 415 33 428 16 482 -23 73 -47 101 -115 133 -77 36 -202 43 -280 16z M6328 5839 c-47 -14 -113 -71 -139 -120 -19 -39 -39 -125 -78 -349 -204 -1162 -289 -2937 -185 -3875 70 -640 252 -925 589 -925 284 0 540 290 438 495 -38 75 -92 108 -178 109 -49 1 -69 -4 -108 -27 -27 -16 -50 -27 -52 -25 -31 36 -67 176 -94 373 -36 254 -45 451 -44 925 1 833 37 1267 203 2410 36 251 90 700 90 753 0 126 -56 209 -162 242 -64 20 -229 28 -280 14z M4447 3885 c-145 -55 -294 -167 -430 -322 -413 -469 -744 -1199 -807 -1778 -21 -197 -4 -444 41 -593 56 -181 168 -325 300 -386 91 -42 157 -56 258 -56 145 0 311 59 441 158 158 119 327 336 454 582 l63 122 7 -78 c31 -340 118 -571 257 -678 95 -74 250 -97 381 -56 68 21 214 104 261 148 162 151 33 448 -181 418 -23 -3 -57 -13 -74 -22 -30 -15 -32 -15 -45 2 -25 34 -53 171 -73 359 -18 167 -23 659 -10 875 20 301 16 328 -50 403 -92 105 -308 109 -413 9 -45 -42 -69 -100 -79 -186 -8 -76 -10 -80 -53 -120 -46 -43 -95 -133 -95 -177 0 -34 -75 -236 -163 -439 -200 -463 -387 -729 -527 -747 -36 -5 -43 -2 -74 31 -119 126 -62 599 129 1066 168 411 423 825 594 964 34 27 120 72 125 64 1 -1 11 -25 21 -53 47 -131 206 -196 362 -150 59 18 135 81 164 136 45 90 31 226 -31 302 -68 81 -166 113 -296 94 l-72 -10 -44 36 c-76 62 -144 90 -228 94 -48 2 -88 -2 -113 -12z M8179 3729 c-392 -58 -837 -524 -1049 -1099 -43 -116 -97 -325 -115 -444 -8 -54 -22 -119 -31 -143 -16 -40 -16 -59 -5 -201 37 -445 135 -724 329 -932 149 -161 337 -240 571 -240 372 0 785 232 1056 593 94 125 175 280 182 350 15 143 -71 246 -203 247 -91 0 -133 -26 -229 -146 -258 -320 -544 -506 -758 -492 -89 6 -137 29 -200 97 -82 88 -142 249 -154 416 l-5 80 63 24 c109 41 299 136 416 209 160 100 253 173 369 287 161 159 258 302 323 476 117 310 87 584 -83 753 -124 124 -314 190 -477 165z m89 -522 c31 -25 46 -73 46 -148 -1 -248 -189 -472 -557 -664 -68 -36 -129 -65 -136 -65 -15 0 -9 24 39 171 94 286 261 547 423 663 87 62 145 75 185 43z" /></g></svg></span>
-    <h2>{t("A question about your own child?")}</h2>
-    <p className="hs-close-sub">{t("Text Hale. It answers with your child’s age in mind, in a line or two.")}</p>
-    <div className="hs-close-cta"><TextDoor className="btn btn-hero" placement="answers" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor></div>
-    <p className="hs-close-terms">{t("Free. You text first; standard message rates apply, reply STOP any time.")}</p>
-   </div>
-  </div>
- </div>
-</section>
-
-</div>
-
-
+        <div className="stage sp-stage">
+          <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
+          <span className="shore-drift sky" aria-hidden="true" />
+          <span className="shore-drift sea" aria-hidden="true" />
+          <span className="shore-scrim" aria-hidden="true" />
+          <main id="main" className="sp-hero">
+            <div className="sp-grid">
+              <div className="sp-copy">
+                <p className="hs-eyebrow">{t('Parenting guides')}</p>
+                <h1 className="sp-h1">{t('Calm, cited guidance for every stage.')}</h1>
+                <p className="sp-lede">
+                  {t(
+                    'Practical guides to the questions parents search, grounded in trusted parenting-health frameworks and honest about their limits.',
+                  )}
+                </p>
+              </div>
+            </div>
+          </main>
+        </div>
+        <div className="hs-page">
+          <section className="hs hs-wash-a">
+            <div className="hs-wrap">
+              <div className="hs-head">
+                <p className="hs-eyebrow">{t('Guides')}</p>
+                <h2 className="hs-h2">{copy('countHeading', { n: total })}</h2>
+                <p className="hs-lede">
+                  {t('General guidance, never a replacement for your provider.')}
+                </p>
+              </div>
+              {total === 0 ? (
+                <div className="sp-cards">
+                  <article className="hs-card sp-card">
+                    <p className="hs-p">{copy('empty')}</p>
+                  </article>
+                </div>
+              ) : (
+                <GuideFilter
+                  groupLabel={messages.filterLabel}
+                  allLabel={t('All stages')}
+                  total={total}
+                  stages={stages}
+                  statusTemplate={messages.filterStatus}
+                  emptyHeading={messages.filterEmpty}
+                  seeAllLabel={messages.filterSeeAll}
+                >
+                  {publishedAnswers.map((page) => {
+                    const stage = guideStageFilter(page.stage);
+                    return (
+                      <GuideCard
+                        key={page.slug}
+                        stageParam={stage?.param ?? page.stage}
+                        stageLabel={stage ? t(stage.label) : page.stage}
+                        rangeLabel={stage ? t(stage.range) : ''}
+                        question={t(page.question)}
+                        description={t(page.description)}
+                        href={localeHref(locale, `/answers/${page.slug}`)}
+                        readLabel={t('Read the guide')}
+                      />
+                    );
+                  })}
+                </GuideFilter>
+              )}
+            </div>
+          </section>
+          <ShoreClose
+            locale={locale}
+            smsNumber={smsNumber}
+            prefill={prefill}
+            placement="answers"
+            heading={t('A question about your own child?')}
+            sub={t('Text Hale. It answers with your child’s age in mind, in a line or two.')}
+            cta={t('Text Hale')}
+            terms={t('Free. You text first; standard message rates apply, reply STOP any time.')}
+          />
+        </div>
       </div>
       <SiteFooter locale={locale} />
     </>
