@@ -33,8 +33,9 @@ export async function claimByPhoneAction(
     return { status: 'error', message: 'Sign-in is not available right now.' };
   }
 
+  const redirectTo = safeInternalRedirect(callbackUrl);
   try {
-    await signIn('claim-phone', { phone, code, redirectTo: safeInternalRedirect(callbackUrl) });
+    await signIn('claim-phone', { phone, code, redirectTo });
   } catch (err) {
     if (err instanceof AuthError && err.type === 'CredentialsSignin') {
       return { status: 'error', message: GENERIC_ERROR };
@@ -43,6 +44,6 @@ export async function claimByPhoneAction(
   }
 
   // signIn redirects on success, so this is unreachable on the happy path; here only
-  // to satisfy the action's return type.
-  redirect('/home');
+  // to satisfy the action's return type. Same target, so the two cannot disagree.
+  redirect(redirectTo);
 }
