@@ -92,12 +92,13 @@ function installWindow(search: string): {
 }
 
 /** Render, run the effect the render scheduled, then render the state it stored. */
-function paint(): ReactElement {
-  GuideFilter(props());
+function paint(overrides: { statusSeparator?: string } = {}): ReactElement {
+  const filterProps = { ...props(), ...overrides };
+  GuideFilter(filterProps);
   const effect = effects.pop();
   effects.length = 0;
   effect?.();
-  return GuideFilter(props()) as ReactElement;
+  return GuideFilter(filterProps) as ReactElement;
 }
 
 function walk(node: ReactNode, visit: (el: ReactElement) => void) {
@@ -216,6 +217,19 @@ describe('GuideFilter hydrates from ?stage=', () => {
     const all = buttons(selected).find((button) => button['data-stage'] === 'all');
     all?.onClick?.();
     expect(replaceState).toHaveBeenCalledWith(null, '', '/answers?utm=1#list');
+    vi.unstubAllGlobals();
+  });
+
+  it('joins the stage name with the locale separator', () => {
+    slot = undefined;
+    effects.length = 0;
+    installWindow('?stage=newborn');
+    const french = renderToStaticMarkup(paint({ statusSeparator: ' : ' }));
+    expect(french).toContain('Showing 2 of 4 guides : Newborn');
+    slot = undefined;
+    effects.length = 0;
+    const chinese = renderToStaticMarkup(paint({ statusSeparator: '：' }));
+    expect(chinese).toContain('Showing 2 of 4 guides：Newborn');
     vi.unstubAllGlobals();
   });
 

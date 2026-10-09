@@ -5,6 +5,7 @@ import {
   headingSlug,
   hrefWithStage,
   nextFilterStage,
+  stageStatusSeparator,
 } from './guide-stage.js';
 import { publishedAnswers } from './index.js';
 
@@ -41,6 +42,15 @@ describe('guide stage filter', () => {
     expect(filterStatusLine(template, 15, 15, null)).toBe('Showing 15 of 15 guides');
     expect(filterStatusLine(template, 5, 15, 'Newborn')).toBe('Showing 5 of 15 guides: Newborn');
     expect(filterStatusLine(template, 0, 15, 'Toddler')).toBe('Showing 0 of 15 guides: Toddler');
+    expect(stageStatusSeparator('en')).toBe(': ');
+    expect(stageStatusSeparator('fr')).toBe(' : ');
+    expect(stageStatusSeparator('zh')).toBe('：');
+    expect(filterStatusLine(template, 5, 15, 'Nouveau-né', stageStatusSeparator('fr'))).toBe(
+      'Showing 5 of 15 guides : Nouveau-né',
+    );
+    expect(filterStatusLine(template, 5, 15, '新生儿', stageStatusSeparator('zh'))).toBe(
+      'Showing 5 of 15 guides：新生儿',
+    );
   });
 });
 

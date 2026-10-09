@@ -3,7 +3,11 @@ import { SiteHeader } from '~/components/site-header';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getMessages, getTranslator } from '~/i18n/server';
-import { GUIDE_STAGE_FILTERS, guideStageFilter } from '~/lib/answers/guide-stage';
+import {
+  GUIDE_STAGE_FILTERS,
+  guideStageFilter,
+  stageStatusSeparator,
+} from '~/lib/answers/guide-stage';
 import { publishedAnswers } from '~/lib/answers/index';
 import { shoreSrc } from './assets';
 import { GuideCard } from './guide-card';
@@ -76,6 +80,7 @@ export function RedesignAnswers({
                   total={total}
                   stages={stages}
                   statusTemplate={messages.filterStatus}
+                  statusSeparator={stageStatusSeparator(locale)}
                   emptyHeading={messages.filterEmpty}
                   seeAllLabel={messages.filterSeeAll}
                 >

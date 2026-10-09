@@ -1540,7 +1540,7 @@ body:has(.rd) footer > .shell { max-width: calc(1200px + 48px); padding-inline: 
   position: relative;
 }
 .rd .gd-doc > section {
-  scroll-margin-top: 112px;
+  scroll-margin-top: var(--s5);
 }
 .rd .gd-doc .gd-answer {
   margin-top: 0;
@@ -1657,6 +1657,7 @@ body:has(.rd) footer > .shell { max-width: calc(1200px + 48px); padding-inline: 
   margin-top: 4px;
 }
 .rd .gd-src-name {
+  display: block;
   font-family: var(--font-ui);
   font-size: 15.2px;
   font-weight: 600;

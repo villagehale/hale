@@ -37,6 +37,7 @@ export function GuideFilter({
   total,
   stages,
   statusTemplate,
+  statusSeparator = ': ',
   emptyHeading,
   seeAllLabel,
   children,
@@ -47,6 +48,8 @@ export function GuideFilter({
   stages: readonly GuideFilterStage[];
   /** "Showing {n} of {total} guides" — placeholders filled as the chip changes. */
   statusTemplate: string;
+  /** Joins the count to the stage name. French spaces the colon; Chinese uses ：. */
+  statusSeparator?: string;
   emptyHeading: string;
   seeAllLabel: string;
   children: ReactNode;
@@ -130,7 +133,13 @@ export function GuideFilter({
         role="status"
         aria-live="polite"
       >
-        {filterStatusLine(statusTemplate, shown, total, selected ? selected.label : null)}
+        {filterStatusLine(
+          statusTemplate,
+          shown,
+          total,
+          selected ? selected.label : null,
+          statusSeparator,
+        )}
       </p>
       <div className="sp-cards">
         {cards}

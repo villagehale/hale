@@ -54,15 +54,26 @@ export function fillCount(template: string, values: Record<string, number | stri
   );
 }
 
+/**
+ * The screen-reader join between the count and the stage name.
+ * French spaces the colon; Chinese uses the fullwidth colon.
+ */
+export function stageStatusSeparator(locale: string): string {
+  if (locale === 'fr') return ' : ';
+  if (locale === 'zh') return '：';
+  return ': ';
+}
+
 /** "Showing n of total guides", plus the stage name when a chip is selected. */
 export function filterStatusLine(
   template: string,
   shown: number,
   total: number,
   stageLabel: string | null,
+  separator = ': ',
 ): string {
   const line = fillCount(template, { n: shown, total });
-  return stageLabel ? `${line}: ${stageLabel}` : line;
+  return stageLabel ? `${line}${separator}${stageLabel}` : line;
 }
 
 /** Anchor id for a guide section heading. Stable, unique within one page. */
