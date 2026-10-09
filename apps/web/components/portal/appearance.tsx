@@ -44,6 +44,7 @@ function writePreference(preference: ThemePreference): void {
 function apply(preference: ThemePreference): void {
   const dark = resolveTheme(preference, window.matchMedia(DARK_QUERY).matches) === 'dark';
   document.documentElement.classList.toggle('dark', dark);
+  document.documentElement.dataset.themePref = preference;
 }
 
 function publish(preference: ThemePreference): void {
@@ -58,11 +59,16 @@ function publish(preference: ThemePreference): void {
  */
 export function AppearanceControl({ variant }: { variant: 'side' | 'card' }) {
   const [pref, setPref] = useState<ThemePreference>('system');
+  // Absent until the stored choice is in state. The head script has already set
+  // html[data-theme-pref], and CSS paints that option until this flips — in the
+  // same commit as setPref, so Auto's .segOn never gets a frame of its own.
+  const [ready, setReady] = useState(false);
   const buttons = useRef(new Map<ThemePreference, HTMLButtonElement>());
 
   useEffect(() => {
     const stored = readPreference();
     setPref(stored);
+    setReady(true);
     apply(stored);
     const onChoice = (next: ThemePreference) => setPref(next);
     listeners.add(onChoice);
@@ -89,6 +95,7 @@ export function AppearanceControl({ variant }: { variant: 'side' | 'card' }) {
 
   function choose(next: ThemePreference) {
     writePreference(next);
+    document.documentElement.dataset.themePref = next;
     publish(next);
   }
 
@@ -119,6 +126,7 @@ export function AppearanceControl({ variant }: { variant: 'side' | 'card' }) {
       role="radiogroup"
       aria-label="Appearance"
       className={variant === 'side' ? `${styles.look} ${styles.lookSide}` : styles.look}
+      data-ready={ready ? '' : undefined}
       onKeyDown={onKeyDown}
     >
       {OPTIONS.map(({ value, label }) => {
@@ -138,6 +146,7 @@ export function AppearanceControl({ variant }: { variant: 'side' | 'card' }) {
             aria-checked={selected}
             tabIndex={selected ? 0 : -1}
             title={value === 'system' ? 'Auto: match this device' : label}
+            data-pref={value}
             className={selected ? `${styles.lookOpt} ${styles.segOn}` : styles.lookOpt}
             onClick={() => choose(value)}
           >

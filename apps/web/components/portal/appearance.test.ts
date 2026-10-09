@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { THEME_STORAGE_KEY } from '~/lib/theme';
 import { AppearanceCard, AppearanceControl } from './appearance';
+import styles from './portal.module.css';
 
 vi.mock('~/auth', () => ({ signIn: vi.fn() }));
 vi.mock('~/lib/auth/claim-phone-actions', () => ({ claimByPhoneAction: vi.fn() }));
@@ -84,6 +85,7 @@ beforeEach(() => {
   installMatchMedia();
   localStorage.clear();
   document.documentElement.classList.remove('dark');
+  delete document.documentElement.dataset.themePref;
 });
 
 afterEach(() => {
@@ -121,6 +123,7 @@ describe('Appearance control', () => {
 
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(document.documentElement.dataset.themePref).toBe('dark');
     expect(options(first, 'Dark')[0]?.getAttribute('aria-checked')).toBe('true');
 
     act(() => {
@@ -228,22 +231,156 @@ describe('the pre-paint script', () => {
     expect(script).toContain("if(p!=='light'&&p!=='dark'&&p!=='system')p='system'");
     expect(script).toContain("window.matchMedia('(prefers-color-scheme: dark)')");
     expect(script).toContain("document.documentElement.classList.toggle('dark',dark)");
+    expect(script).toContain('document.documentElement.dataset.themePref=p');
     expect(script).toContain(JSON.stringify(THEME_STORAGE_KEY));
 
     localStorage.clear();
     prefersDark = true;
     document.documentElement.classList.remove('dark');
+    delete document.documentElement.dataset.themePref;
     runHeadScript(script);
     expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(document.documentElement.dataset.themePref).toBe('system');
 
     localStorage.setItem(THEME_STORAGE_KEY, 'light');
     runHeadScript(script);
     expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(document.documentElement.dataset.themePref).toBe('light');
+
+    localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+    runHeadScript(script);
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(document.documentElement.dataset.themePref).toBe('dark');
 
     localStorage.setItem(THEME_STORAGE_KEY, 'nope');
     prefersDark = false;
     runHeadScript(script);
     expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(document.documentElement.dataset.themePref).toBe('system');
+  });
+});
+
+const INK = '#17294a';
+const DARK_SHADOW = '0 1px 3px rgb(12 26 54 / 0.12)';
+
+/** happy-dom does not load Vite's CSS module. Replay the real stylesheet with
+ *  the same class names the component renders, so the first frame is measured.
+ *  `.dark` stays global — it is not a module class. */
+function installPortalCss(): void {
+  const source = read('./portal.module.css');
+  const localSource = source
+    .replaceAll(/\/\*[\s\S]*?\*\//g, ' ')
+    .replaceAll(/:global\(([^)]+)\)/g, ' ');
+  const names = [
+    ...new Set([...localSource.matchAll(/\.([_a-zA-Z][\w-]*)/g)].map((m) => m[1])),
+  ].sort((a, b) => b.length - a.length);
+  let css = source.replaceAll(/:global\(([^)]+)\)/g, '$1');
+  const map = styles as unknown as Record<string, string>;
+  names.forEach((name, index) => {
+    css = css.replaceAll(`.${name}`, `.__cls${index}__`);
+  });
+  names.forEach((name, index) => {
+    css = css.replaceAll(`.__cls${index}__`, `.${map[name]}`);
+  });
+  const tag = document.createElement('style');
+  tag.dataset.portal = 'true';
+  tag.textContent = css;
+  document.head.appendChild(tag);
+}
+
+function paint(markup: string): HTMLElement {
+  const host = document.createElement('div');
+  host.className = styles.shell;
+  host.innerHTML = markup;
+  document.body.appendChild(host);
+  return host;
+}
+
+function tone(root: ParentNode, pref: string): { color: string; shadow: string } {
+  const button = root.querySelector<HTMLElement>(`[data-pref="${pref}"]`);
+  if (!button) throw new Error(`missing option ${pref}`);
+  const style = getComputedStyle(button);
+  return { color: style.color, shadow: style.boxShadow };
+}
+
+describe('the stored option is selected before hydration', () => {
+  beforeEach(() => {
+    installPortalCss();
+  });
+
+  afterEach(() => {
+    document.head.querySelector('[data-portal]')?.remove();
+  });
+
+  it('paints Dark from the first frame, in the sidebar and the card, and Auto stays idle', () => {
+    const css = read('./portal.module.css');
+    expect(css).toMatch(
+      /:global\(html\[data-theme-pref="dark"\]\)\s+\.shell\s+\.look:not\(\[data-ready\]\)\s+button\.lookOpt\[data-pref="dark"\]/,
+    );
+    expect(css).toContain('.shell .look:not([data-ready]) button.lookOpt.segOn');
+    expect(css).toContain('background: rgb(255 255 255 / 0.92)');
+    expect(css).toContain('color: #17294a');
+    expect(css).not.toMatch(/\.shell button\.segOn:not\(\[data-ready\]\)/);
+
+    localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+    runHeadScript(noFlashSource().script);
+
+    const markup = renderToStaticMarkup(createElement(AppearanceControl, { variant: 'card' }));
+    expect(markup).toContain('data-pref="light"');
+    expect(markup).toContain('data-pref="dark"');
+    expect(markup).toContain('data-pref="system"');
+    expect(markup).not.toContain('data-ready');
+
+    const host = paint(markup);
+    expect(host.querySelector('[role="radiogroup"]')?.hasAttribute('data-ready')).toBe(false);
+
+    const selected = { color: INK, shadow: DARK_SHADOW };
+    expect(tone(host, 'dark')).toEqual(selected);
+    expect(tone(host, 'system').shadow).toBe('none');
+    expect(tone(host, 'system').color).not.toBe(INK);
+    expect(tone(host, 'light').shadow).toBe('');
+
+    const side = paint(renderToStaticMarkup(createElement(AppearanceControl, { variant: 'side' })));
+    expect(tone(side, 'dark')).toEqual(selected);
+    expect(tone(side, 'system').shadow).toBe('none');
+
+    const filter = document.createElement('button');
+    filter.className = styles.segOn;
+    host.appendChild(filter);
+    expect(getComputedStyle(filter).boxShadow).toBe(DARK_SHADOW);
+  });
+
+  it('keeps that same Dark pill once the control is ready, and choose() updates the preference', async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+    document.documentElement.dataset.themePref = 'dark';
+    document.documentElement.classList.add('dark');
+
+    const before = paint(
+      renderToStaticMarkup(createElement(AppearanceControl, { variant: 'card' })),
+    );
+    const first = tone(before, 'dark');
+
+    const container = await mount(
+      createElement(
+        'div',
+        { className: styles.shell },
+        createElement(AppearanceControl, { variant: 'card' }),
+      ),
+    );
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(group?.hasAttribute('data-ready')).toBe(true);
+    expect(options(container, 'Dark')[0]?.getAttribute('aria-checked')).toBe('true');
+    expect(tone(container, 'dark')).toEqual(first);
+    expect(tone(container, 'system').shadow).toBe('');
+
+    await act(async () => {
+      options(container, 'Light')[0]?.click();
+    });
+    expect(document.documentElement.dataset.themePref).toBe('light');
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(tone(container, 'light').color).toBe(INK);
+    expect(tone(container, 'light').shadow).toContain('inset');
+    expect(tone(container, 'dark').shadow).toBe('');
   });
 });
 

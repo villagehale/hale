@@ -1362,6 +1362,72 @@
   margin-top: var(--s3);
 }
 
+/* The server render always marks Auto. Until data-ready, the head script's
+   html[data-theme-pref] owns the pill, and Auto's .segOn is painted idle.
+   Scoped under .look so the Messages filter's .segOn is left alone. */
+.shell .look:not([data-ready]) button.lookOpt.segOn,
+.shell .look:not([data-ready]) button.lookOpt.segOn:hover {
+  background: none;
+  color: var(--ink-78);
+  box-shadow: none;
+}
+
+:global(html[data-theme-pref="light"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="light"],
+:global(html[data-theme-pref="light"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="light"]:hover,
+:global(html[data-theme-pref="dark"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="dark"],
+:global(html[data-theme-pref="dark"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="dark"]:hover,
+:global(html[data-theme-pref="system"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="system"],
+:global(html[data-theme-pref="system"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="system"]:hover {
+  background: rgb(255 255 255 / 0.92);
+  color: #17294a;
+  box-shadow: inset 0 0 0 1px #6e7d99, 0 1px 3px rgb(12 26 54 / 0.12);
+}
+
+:global(html.dark[data-theme-pref="light"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="light"],
+:global(html.dark[data-theme-pref="light"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="light"]:hover,
+:global(html.dark[data-theme-pref="dark"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="dark"],
+:global(html.dark[data-theme-pref="dark"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="dark"]:hover,
+:global(html.dark[data-theme-pref="system"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="system"],
+:global(html.dark[data-theme-pref="system"])
+  .shell
+  .look:not([data-ready])
+  button.lookOpt[data-pref="system"]:hover {
+  box-shadow: 0 1px 3px rgb(12 26 54 / 0.12);
+}
+
 :global(.dark) .look {
   background: rgb(247 244 236 / 0.07);
   box-shadow: inset 0 0 0 1px rgb(247 244 236 / 0.08);
