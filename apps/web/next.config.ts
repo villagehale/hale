@@ -30,6 +30,14 @@ const config: NextConfig = {
       // segments — the bare route is the one every old link actually uses.
       { source: '/onboarding', destination: MARKETING_SITE_URL, permanent: true },
       { source: '/onboarding/:path*', destination: MARKETING_SITE_URL, permanent: true },
+      // Barton, and links already in the wild, use /signin (no hyphen). That path
+      // 404s; /sign-in is the door. Permanent (308) and kept, same as the forwards
+      // above. Both spellings are listed. The destination carries no query of its
+      // own, so Next appends the request's query string (?foo=bar stays ?foo=bar).
+      // With trailingSlash left off, Next also 308s /signin/ to /signin before this
+      // rule; the explicit slash source is the same forward if that hop is skipped.
+      { source: '/signin', destination: '/sign-in', permanent: true },
+      { source: '/signin/', destination: '/sign-in', permanent: true },
     ];
   },
   transpilePackages: [

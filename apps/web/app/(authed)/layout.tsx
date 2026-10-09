@@ -22,6 +22,7 @@ import { loadViewerName, resolveFamilyForUser } from '~/lib/family';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { homeGreeting } from '~/lib/home/greeting';
 import { markFamilyActiveToday } from '~/lib/metrics/activity';
+import { PASSPORT_DEMO_HEADER, interestPassportDemo } from '~/lib/passport/demo';
 import { SHELL_COLLAPSED_KEY } from '~/lib/shell';
 import { loadAreaSwitcher } from '~/lib/village/switcher';
 
@@ -37,6 +38,32 @@ const NO_FLASH_COLLAPSE = `(function(){try{document.documentElement.dataset.shel
 )})==='1'?'1':'0';}catch(e){}})();`;
 
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
+  // Preview demo of the Mia/Leo passport. The middleware is the only writer of
+  // this header, and only on /family and the two fixture kids. No session, no
+  // database, no real family under the page.
+  // headers() runs only when the demo gate is already true. The family gate
+  // redirects (or reaches its first loader) before any request-scope read when
+  // the demo is off, which is every production and local request.
+  if (interestPassportDemo()) {
+    const demoHeaders = await headers();
+    if (demoHeaders.get(PASSPORT_DEMO_HEADER) === '1') {
+      return (
+        <>
+          <a href="#main-content" className="skip-link">
+            Skip to content
+          </a>
+          <PortalShell
+            showAdmin={false}
+            canSignOut
+            roots={buildRootHeroes({ greeting: 'Hi', childName: null })}
+          >
+            {children}
+          </PortalShell>
+        </>
+      );
+    }
+  }
+
   const authEnabled = authConfigured();
   const session = authEnabled ? await auth() : null;
   if (authEnabled && !session?.user?.id) {

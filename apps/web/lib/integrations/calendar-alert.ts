@@ -430,6 +430,14 @@ export async function alertParentForCalendarChanges(
   }
 
   await writeSnapshots(database, integrationId, writes, now);
+  const { syncPassportFromCalendarChanges } = await import('~/lib/passport/ingest');
+  await syncPassportFromCalendarChanges(database, {
+    familyId,
+    integrationId,
+    parentUserId,
+    changes,
+    now,
+  });
   return { changes: changeOutcomes, reoffers: reofferOutcomes };
 }
 
@@ -472,6 +480,14 @@ async function rememberOnly(
     if (span !== null) remember(writes, { change, span }, null);
   }
   await writeSnapshots(database, integrationId, writes, now);
+  const { syncPassportFromCalendarChanges } = await import('~/lib/passport/ingest');
+  await syncPassportFromCalendarChanges(database, {
+    familyId: input.familyId,
+    integrationId,
+    parentUserId,
+    changes,
+    now,
+  });
 }
 
 async function sendOffer(

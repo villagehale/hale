@@ -115,6 +115,9 @@ describe('portal routes own their single heading', () => {
   });
 });
 
+// The interest passport paints its own title on Family while the flag is on.
+const REPLACEMENT_TITLE_COMPONENTS = new Set(['PassportHomeScreen', 'PassportKidScreen']);
+
 describe('the app shell owns the single hero — no authed surface emits its own (§3.2)', () => {
   for (const route of [...ROOT_ROUTES, ...Object.keys(DRILL_HEROES)]) {
     it(`${route} render graph emits no own <h1> or <header>`, () => {
@@ -130,6 +133,7 @@ describe('the app shell owns the single hero — no authed surface emits its own
           if (m[1] === 'h1' && owner !== null && PORTAL_TITLE_COMPONENTS.has(owner)) {
             continue;
           }
+          if (owner !== null && REPLACEMENT_TITLE_COMPONENTS.has(owner)) continue;
           // Entry page markup is always live; a nested component's heading only counts
           // when that component is actually rendered somewhere in this route's graph.
           if (entry || owner === null || graphText.includes(`<${owner}`)) {

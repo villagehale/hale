@@ -75,3 +75,4 @@ export * from './group-decision-sync.js';
 export * from './social-watchlist.js';
 export * from './optional-ask-ledger.js';
 export * from './workstreams.js';
+export * from './kid-interests.js';

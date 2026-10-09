@@ -1282,7 +1282,7 @@ body {
  * its own full-height surface); the Village board opts UP to a wider column
  * (.village-wide) so its 330|1fr|300 map board keeps a real centrepiece map (§4.5),
  * the same "wide surface opts out" pattern the coach chat uses. */
-.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.village-wide):not([data-surface='admin']) {
+.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.village-wide):not([data-surface='admin']):not(.pp-portal) {
   max-width: 58rem;
   margin-inline: auto;
 }

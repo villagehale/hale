@@ -18,6 +18,7 @@ import {
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { formatDayHeading } from '~/lib/format/datetime';
+import { attachPassportToEmailAlert } from '~/lib/passport/ingest';
 import type {
   CorrelatedEventRef,
   ExtractedEvent,
@@ -397,6 +398,20 @@ export async function alertParentForEmail(
     timeZone: input.timeZone,
     now,
   });
+  const passport = await attachPassportToEmailAlert(database, {
+    body: message,
+    sending: true,
+    familyId,
+    parentUserId,
+    integrationId,
+    messageId,
+    subject: input.envelope.subject,
+    title: extraction.event.title,
+    kind: extraction.kind,
+    teenAttributed: extraction.teenAttributed,
+    childRef: extraction.event.childRef,
+    now,
+  });
   // The same pure decision the sentence above just made. Two calls of one function rather
   // than a flag threaded between them: the CTA and the row it promises cannot disagree.
   const offer = emailAlertOfferDraft({
@@ -451,7 +466,7 @@ export async function alertParentForEmail(
   try {
     const sent = await sendResolvingNewChat(ports.transport, {
       to,
-      body: withOptOut(message, verdict.optOut),
+      body: withOptOut(passport.body, verdict.optOut),
     });
     providerMessageId = sent.providerMessageId;
     if (sent.transport === 'imessage') {
@@ -518,10 +533,11 @@ export async function alertParentForEmail(
     draft,
     message,
   });
+  await passport.afterSend();
 
   // The composed sentence. The opt-out line is not appended, so this is also the wire
   // body. The coach re-reads this row next turn (channel/thread.ts).
-  await ports.threadMessage(database, { familyId, parentUserId, body: message });
+  await ports.threadMessage(database, { familyId, parentUserId, body: passport.body });
 
   await database.insert(schema.auditLog).values({
     familyId,
@@ -1001,6 +1017,21 @@ async function recordBackfillEnvelope(
     // No sentence went out, so the audit's `offered` flag is false.
     message: '',
   });
+  const passport = await attachPassportToEmailAlert(database, {
+    body: '',
+    sending: false,
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    integrationId: input.integrationId,
+    messageId: input.envelope.messageId,
+    subject: input.envelope.subject,
+    title: extraction.event.title,
+    kind: extraction.kind,
+    teenAttributed: extraction.teenAttributed,
+    childRef: extraction.event.childRef,
+    now: input.now,
+  });
+  await passport.afterSend();
   return quiet(booking);
 }
 

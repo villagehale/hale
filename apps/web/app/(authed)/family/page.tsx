@@ -1,14 +1,21 @@
 import { deriveStage } from '@hale/types';
+import { PassportHomeScreen } from '~/components/passport/passport-screens';
 import { PortalFamily } from '~/components/portal/family-view';
 import { loadOpenJoinInviteForFamily } from '~/lib/channel/join/invites';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
+import { interestPassportEnabled } from '~/lib/passport/flag';
+import { readPassportModel } from '~/lib/passport/read';
 import { listTeenAccessGrants } from '~/lib/teen-access';
 import { LegacyFamilyPage } from './legacy-family';
 
 export default async function FamilyPage() {
+  if (interestPassportEnabled()) {
+    const model = await readPassportModel();
+    return <PassportHomeScreen model={model} />;
+  }
   if (!receiptsIaEnabled()) return LegacyFamilyPage();
 
   const database = db();
