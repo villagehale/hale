@@ -1,10 +1,15 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { encode } from 'uqr';
 import { describe, expect, it, vi } from 'vitest';
 import { SiteFooter } from '~/components/site-footer.js';
 import { SiteHeader } from '~/components/site-header.js';
 import { localeHref } from '~/i18n/navigation.js';
 import type { Locale } from '~/i18n/routing.js';
+import { intakePrefill } from '~/lib/intake-prefill.js';
+import { primaryTextTarget } from '~/lib/primary-cta.js';
+import { chromeCta } from '~/lib/site/chrome-cta.js';
+import { buildSmsBody, buildSmsHref } from '~/lib/text-entry.js';
 import sitemap from '../../sitemap.js';
 import TextPage, { generateMetadata } from './page.js';
 
@@ -140,6 +145,130 @@ describe('/text (unlisted entry surface)', () => {
       'Hey, it&#x27;s Hale. I find what&#x27;s on for kids near you. What&#x27;s your postal code? I&#x27;ll show you what&#x27;s on this week.',
     );
     expect(html).not.toContain(LOCKED_PREVIEW_EN);
+    vi.unstubAllEnvs();
+  });
+});
+
+/** The number the suite stubs. Chrome and the page both read it from the env. */
+const LIVE_NUMBER = '+16475551234';
+
+/** The two tags the bug drops: a co-parent join link, and a per-family referral. */
+const JOIN_CODE = 'join-abc123';
+const REFERRAL_CODE = 'friend-0123456789ab';
+
+const LOCALES = ['en', 'fr', 'zh'] as const satisfies readonly Locale[];
+
+function smsHrefs(html: string): string[] {
+  return [...html.matchAll(/href="(sms:[^"]*)"/g)].map((match) =>
+    (match[1] ?? '').replaceAll('&amp;', '&'),
+  );
+}
+
+/** The path `QrCode` draws for a payload — the same `uqr` options, so a mismatch
+ * means the SVG encodes a different sms: URI. */
+function qrPathFor(value: string): string {
+  const { data } = encode(value, { ecc: 'M', border: 2 });
+  let path = '';
+  for (const [y, row] of data.entries()) {
+    for (const [x, dark] of row.entries()) {
+      if (dark) path += `M${x} ${y}h1v1h-1z`;
+    }
+  }
+  return path;
+}
+
+function qrPath(html: string): string {
+  const found = /aria-label="QR code — scan to text Hale"[\s\S]*?<path d="([^"]*)"/.exec(html);
+  if (!found?.[1]) throw new Error('no QR path rendered');
+  return found[1];
+}
+
+/** The decoded composer body, iOS (`&body=`) and cross (`?&body=`) both. */
+function bodyOf(href: string): string {
+  const raw = href.includes('?')
+    ? href.slice(href.indexOf('?') + 1).replace(/^&/, '')
+    : href.slice(href.indexOf('&') + 1);
+  const value = new URLSearchParams(raw).get('body');
+  if (value === null) throw new Error(`missing body in ${href}`);
+  return value;
+}
+
+/** What the header pill would put in the body for this code — `buildSmsBody`. */
+function headerPillBody(locale: Locale, source: string | null): string {
+  const prefill = intakePrefill(locale);
+  return bodyOf(
+    primaryTextTarget({
+      platform: 'apple',
+      smsNumber: LIVE_NUMBER,
+      prefill,
+      source,
+      textPath: localeHref(locale, '/text'),
+    }).href,
+  );
+}
+
+async function renderText(locale: Locale, s?: string | string[]): Promise<string> {
+  return renderToStaticMarkup(
+    await TextPage({
+      params: Promise.resolve({ locale }),
+      searchParams: Promise.resolve(s === undefined ? {} : { s }),
+    }),
+  );
+}
+
+describe('/text composer carries the ?s= code', () => {
+  it('puts the join code and a referral code on every sms: href and the QR, in en, fr, and zh', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    for (const locale of LOCALES) {
+      for (const code of [JOIN_CODE, REFERRAL_CODE]) {
+        const html = await renderText(locale, code);
+        const prefill = intakePrefill(locale);
+        const expected = buildSmsHref(LIVE_NUMBER, code, prefill, 'cross');
+        const where = `${locale} ?s=${code}`;
+        const hrefs = smsHrefs(html);
+        // Hero and closing. A third sms: link on this page has to carry it too.
+        expect(hrefs, where).toEqual([expected, expected]);
+        const pill = headerPillBody(locale, code);
+        expect(pill, where).toBe(buildSmsBody(code, prefill));
+        for (const href of hrefs) {
+          expect(bodyOf(href), where).toBe(pill);
+          expect(href, where).toContain(`(via%20${code})`);
+        }
+        expect(qrPath(html), where).toBe(qrPathFor(expected));
+        // The preview bubble stays the bare hello. The token rides in the link.
+        expect(html, where).not.toContain(`(via ${code})`);
+      }
+    }
+    vi.unstubAllEnvs();
+  });
+
+  it('leaves the composer exactly as the chrome CTA when no ?s= is present, in en, fr, and zh', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    for (const locale of LOCALES) {
+      const html = await renderText(locale);
+      const prefill = intakePrefill(locale);
+      const expected = buildSmsHref(LIVE_NUMBER, null, prefill, 'cross');
+      // The no-code door is the shared chrome CTA, byte for byte.
+      expect(expected, locale).toBe(chromeCta(locale).href);
+      expect(smsHrefs(html), locale).toEqual([expected, expected]);
+      expect(bodyOf(expected), locale).toBe(headerPillBody(locale, null));
+      expect(bodyOf(expected), locale).toBe(prefill);
+      expect(qrPath(html), locale).toBe(qrPathFor(expected));
+      expect(html, locale).not.toContain('via%20');
+      expect(html, locale).not.toContain('(via ');
+    }
+    vi.unstubAllEnvs();
+  });
+
+  it('drops a ?s= that is not a source code, same as leaving the param off', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    const bare = await renderText('en');
+    const rejected: Array<string | string[]> = ['JOIN-ABC', 'join-', ['join-abc123', REFERRAL_CODE]];
+    for (const bad of rejected) {
+      const html = await renderText('en', bad);
+      expect(smsHrefs(html), String(bad)).toEqual(smsHrefs(bare));
+      expect(qrPath(html), String(bad)).toBe(qrPath(bare));
+    }
     vi.unstubAllEnvs();
   });
 });
