@@ -56,6 +56,8 @@ export interface LandingCopy {
 
 export interface StatusCopy {
   aria: string;
+  /** Bare tab title. The portal template adds " · Hale". Aria stays the card label. */
+  tabTitle: string;
   icon: 'mail' | 'calendar' | 'x' | 'check' | 'clock' | 'info' | 'link' | 'people';
   paired?: boolean;
   amber?: boolean;
@@ -136,26 +138,36 @@ export const FOOTER_PRIVACY = 'Privacy policy';
 export const PRONUNCIATION = 'Hale /HAH-leh/ — Hawaiian for home.';
 
 export function connectPageMeta(provider: TextConnectProvider | null): {
-  title: string;
+  tabTitle: string;
   description: string;
 } {
   if (provider === 'gmail') {
     return {
-      title: 'Connect Gmail',
+      tabTitle: 'Connect Gmail',
       description: 'So Hale can flag daycare and school notices for you.',
     };
   }
   if (provider === 'gcal') {
     return {
-      title: 'Connect your calendar',
+      tabTitle: 'Connect your calendar',
       description: 'So Hale can catch class invites and trip dates for the kids.',
     };
   }
-  return { title: 'Connect', description: FALLBACK_LEDE };
+  return { tabTitle: 'Connect', description: FALLBACK_LEDE };
 }
 
+/** Visible heading and aria for a link with no token. The tab title is shorter. */
 export const MISSING_TITLE = 'This link is incomplete';
 export const MISSING_DESCRIPTION = 'This link is missing or incomplete.';
+export const LINK_INCOMPLETE_TAB = 'Link incomplete';
+
+/**
+ * openGraph and twitter titles are not run through the root title template,
+ * so they take the suffix the template would have added to the document title.
+ */
+export function withHaleSuffix(tabTitle: string): string {
+  return `${tabTitle} · Hale`;
+}
 
 function freshLine(sentence: string, fresh: boolean | undefined): CopyPart[] {
   if (!fresh) return [sentence];
@@ -166,6 +178,7 @@ function success(provider: TextConnectProvider): StatusCopy {
   if (provider === 'gmail') {
     return {
       aria: 'Connected',
+      tabTitle: 'Gmail connected',
       icon: 'mail',
       paired: true,
       amber: true,
@@ -180,6 +193,7 @@ function success(provider: TextConnectProvider): StatusCopy {
   }
   return {
     aria: 'Connected',
+    tabTitle: 'Calendar connected',
     icon: 'calendar',
     paired: true,
     amber: true,
@@ -199,6 +213,7 @@ function success(provider: TextConnectProvider): StatusCopy {
 function denied(provider: TextConnectProvider | null, fresh: boolean | undefined): StatusCopy {
   return {
     aria: 'Nothing changed',
+    tabTitle: 'Nothing changed',
     icon: 'x',
     heading: ['Nothing changed'],
     lede: freshLine('No changes made.', fresh),
@@ -225,6 +240,7 @@ function partial(provider: TextConnectProvider, fresh: boolean | undefined): Sta
     : ['Hale needs that one box to connect, so nothing changed.'];
   return {
     aria: `The box for ${box} wasn’t ticked`,
+    tabTitle: provider === 'gmail' ? 'Gmail box not ticked' : 'Calendar box not ticked',
     icon: 'check',
     heading: [`The box for ${box} wasn’t ticked`],
     lede,
@@ -245,6 +261,7 @@ function expired(fresh: boolean | undefined): StatusCopy {
     : ['That link has expired.'];
   return {
     aria: 'Link expired',
+    tabTitle: 'Link expired',
     icon: 'clock',
     heading: ['Link expired'],
     lede,
@@ -256,6 +273,7 @@ function expired(fresh: boolean | undefined): StatusCopy {
 function broken(fresh: boolean | undefined, lede?: string): StatusCopy {
   return {
     aria: 'Not connected',
+    tabTitle: 'Not connected',
     icon: 'info',
     heading: ['Not connected'],
     lede: lede ? [lede] : freshLine('That didn’t go through.', fresh),
@@ -266,6 +284,7 @@ function broken(fresh: boolean | undefined, lede?: string): StatusCopy {
 export function missingLink(): StatusCopy {
   return {
     aria: MISSING_TITLE,
+    tabTitle: LINK_INCOMPLETE_TAB,
     icon: 'link',
     heading: [MISSING_TITLE],
     lede: ['This link is missing ', { nw: 'or incomplete.' }],
@@ -280,6 +299,7 @@ export function missingLink(): StatusCopy {
 function retry(): StatusCopy {
   return {
     aria: 'That didn’t open',
+    tabTitle: 'That didn’t open',
     icon: 'link',
     heading: ['That didn’t open'],
     lede: ['This link did not open.', { br: true }, 'Tap it again in ', { nw: 'a moment.' }],
@@ -291,23 +311,26 @@ function already(options?: { name?: string; language?: 'en' | 'fr' }): StatusCop
   const named = options?.name?.trim();
   if (options?.language === 'fr' && named) {
     return {
-      aria: 'Deja connecte',
+      aria: 'Déjà connecté',
+      tabTitle: 'Déjà connecté',
       icon: 'people',
-      heading: ['Deja connecte'],
-      lede: [`Ce lien est pour ${named}. Le tien est deja connecte.`],
+      heading: ['Déjà connecté'],
+      lede: [`Ce lien est pour ${named}. Le tien est déjà connecté.`],
     };
   }
   if (options?.language === 'fr') {
     return {
-      aria: 'Deja connecte',
+      aria: 'Déjà connecté',
+      tabTitle: 'Déjà connecté',
       icon: 'people',
-      heading: ['Deja connecte'],
-      lede: ['Ce lien est pour le parent a qui il a ete envoye. Le tien est deja connecte.'],
+      heading: ['Déjà connecté'],
+      lede: ['Ce lien est pour le parent à qui il a été envoyé. Le tien est déjà connecté.'],
     };
   }
   if (named) {
     return {
       aria: 'Already connected',
+      tabTitle: 'Already connected',
       icon: 'people',
       heading: ['Already connected'],
       lede: [
@@ -319,6 +342,7 @@ function already(options?: { name?: string; language?: 'en' | 'fr' }): StatusCop
   }
   return {
     aria: 'Already connected',
+    tabTitle: 'Already connected',
     icon: 'people',
     heading: ['Already connected'],
     lede: [

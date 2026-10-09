@@ -1,12 +1,15 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { auth } from '~/auth';
-import { authConfigured } from '~/lib/auth-config';
 import { InviteAcceptButton } from '~/components/hale/invite-accept-button';
+import { authConfigured } from '~/lib/auth-config';
 import { loadInvite } from '~/lib/invites/queries';
 
 interface PageProps {
   params: Promise<{ token: string }>;
 }
+
+export const metadata: Metadata = { title: 'Invitation' };
 
 // authConfigured()/auth() read runtime secrets and the live session — never bake
 // them at build time.
@@ -60,17 +63,14 @@ export default async function InvitePage({ params }: PageProps) {
             session?.user?.id ? (
               <InviteAcceptButton token={invite.token} />
             ) : (
-              <Link
-                href={`/sign-in?callbackUrl=/invite/${invite.token}`}
-                className="btn-primary"
-              >
+              <Link href={`/sign-in?callbackUrl=/invite/${invite.token}`} className="btn-primary">
                 sign in to accept
               </Link>
             )
           ) : (
             <p className="meta">
-              accepting an invite isn&rsquo;t available in this preview — Google OAuth
-              isn&rsquo;t configured here.
+              accepting an invite isn&rsquo;t available in this preview — Google OAuth isn&rsquo;t
+              configured here.
             </p>
           )}
         </div>

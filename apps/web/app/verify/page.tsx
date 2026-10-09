@@ -1,12 +1,15 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
-import { VerifyConfirm } from '~/components/hale/verify-confirm';
-import { authConfigured } from '~/lib/auth-config';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
+import { VerifyConfirm } from '~/components/hale/verify-confirm';
+import { authConfigured } from '~/lib/auth-config';
 
 // The token must never be redeemed at render time (a GET) — only when the user
 // submits the confirm button — so this page can't be statically cached with a
 // stale outcome, and a prefetch of the render can't spend the token.
+export const metadata: Metadata = { title: 'Confirm your email' };
+
 export const dynamic = 'force-dynamic';
 
 interface PageProps {

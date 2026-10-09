@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { PortalHome } from '~/components/portal/home-view';
 import { buildThreadItems, zoneDayKeys } from '~/components/portal/thread';
 import { haleTextsHref } from '~/lib/channel/connect/hale-texts-href';
@@ -13,6 +14,8 @@ import { loadFamilyConnectors } from '~/lib/integrations/load';
 import { loadMessages } from '~/lib/messages/queries';
 import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
 import { LegacyHomePage } from './legacy-home';
+
+export const metadata: Metadata = { title: 'Home' };
 
 export default async function HomePage() {
   if (!receiptsIaEnabled()) return LegacyHomePage();

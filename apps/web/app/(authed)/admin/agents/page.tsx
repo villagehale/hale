@@ -1,6 +1,7 @@
+import type { Metadata } from 'next';
 import nextDynamic from 'next/dynamic';
-import { SpendClient } from '~/components/admin/spend-client';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
+import { SpendClient } from '~/components/admin/spend-client';
 import { cachedAgentSpend, cachedLangfuseDaily } from '~/lib/admin/cached';
 import { ANTHROPIC_USAGE_URL, langfuseHomeUrl } from '~/lib/admin/links';
 import { serviceStateLine } from '~/lib/admin/panel-state';
@@ -8,6 +9,8 @@ import { serviceStateLine } from '~/lib/admin/panel-state';
 const AgentLeaderboard = nextDynamic(() =>
   import('~/components/admin/agent-leaderboard').then((m) => m.AgentLeaderboard),
 );
+
+export const metadata: Metadata = { title: 'Agents' };
 
 /** Agents — "What does the fleet cost, and how is it performing?" */
 

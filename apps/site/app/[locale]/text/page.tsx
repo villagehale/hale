@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { RedesignText } from '~/components/redesign/text';
-import { buildAlternates } from '~/i18n/metadata';
+import { buildAlternates, socialMetadata } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { intakePrefill } from '~/lib/intake-prefill';
@@ -25,10 +25,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = getTranslator(locale, 'Text');
+  const title = t('metaTitle');
+  const description = t('metaDescription');
   return {
-    title: t('metaTitle'),
-    description: t('metaDescription'),
+    title,
+    description,
     alternates: buildAlternates(locale, '/text'),
+    ...socialMetadata(locale, '/text', title, description),
     robots: { index: false, follow: false },
   };
 }

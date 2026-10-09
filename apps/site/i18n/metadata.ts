@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import { type Locale, routing } from './routing';
 import { localeHref } from './navigation';
+import { type Locale, routing } from './routing';
 
 /**
  * Per-page hreflang alternates for `generateMetadata`. Emits one `<link
@@ -18,6 +18,30 @@ export function buildAlternates(locale: Locale, path: string): NonNullable<Metad
   return {
     canonical: localeHref(locale, path),
     languages,
+  };
+}
+
+/**
+ * Link-preview titles for a page that would otherwise inherit the homepage's.
+ * Same shape pricing, FAQ, and activities already emit. A title template is
+ * deliberately not used: every metaTitle is already a full "… · Hale" string.
+ */
+export function socialMetadata(
+  locale: Locale,
+  path: string,
+  title: string,
+  description: string,
+): Pick<Metadata, 'openGraph' | 'twitter'> {
+  return {
+    openGraph: {
+      type: 'website',
+      title,
+      description,
+      url: localeHref(locale, path),
+      siteName: 'Hale',
+      locale: ogLocale(locale),
+    },
+    twitter: { card: 'summary_large_image', title, description },
   };
 }
 

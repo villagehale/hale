@@ -1,4 +1,5 @@
 import { deriveStage } from '@hale/types';
+import type { Metadata } from 'next';
 import { PassportHomeScreen } from '~/components/passport/passport-screens';
 import { PortalFamily } from '~/components/portal/family-view';
 import { loadOpenJoinInviteForFamily } from '~/lib/channel/join/invites';
@@ -10,6 +11,8 @@ import { interestPassportEnabled } from '~/lib/passport/flag';
 import { readPassportModel } from '~/lib/passport/read';
 import { listTeenAccessGrants } from '~/lib/teen-access';
 import { LegacyFamilyPage } from './legacy-family';
+
+export const metadata: Metadata = { title: 'Family' };
 
 export default async function FamilyPage() {
   if (interestPassportEnabled()) {

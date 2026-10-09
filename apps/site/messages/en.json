@@ -2,10 +2,11 @@
   "Common": {
     "textHale": "Text Hale",
     "emailHale": "Email Hale",
-    "skipToContent": "Skip to content"
+    "skipToContent": "Skip to content",
+    "notFoundTitle": "Page not found · Hale"
   },
   "HomeMeta": {
-    "title": "Hale · a planner for your kids’ year",
+    "title": "Hale · Your kids’ year, handled.",
     "description": "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.",
     "ogDescription": "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.",
     "twitterDescription": "Your kids’ year, handled. Add Hale to the group chats you already have."

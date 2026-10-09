@@ -5,12 +5,13 @@ import { ConnectPreview } from '~/components/hale/connect/connect-preview';
 import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import { authConfigured } from '~/lib/auth-config';
 import {
+  LINK_INCOMPLETE_TAB,
   MISSING_DESCRIPTION,
-  MISSING_TITLE,
   connectPageMeta,
   connectPreviewEnabled,
   isConnectPreviewState,
   missingLink,
+  withHaleSuffix,
 } from '~/lib/channel/connect/connect-page-copy';
 import { haleTextsHref } from '~/lib/channel/connect/hale-texts-href';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
@@ -30,14 +31,17 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
   const provider = asTextConnectProvider(to);
   const card =
     !authConfigured() || !t
-      ? { title: MISSING_TITLE, description: MISSING_DESCRIPTION }
+      ? { tabTitle: LINK_INCOMPLETE_TAB, description: MISSING_DESCRIPTION }
       : connectPageMeta(provider);
+  // The document title is bare so the root template can suffix it once.
+  // openGraph and twitter titles are not templated, so they take the full string.
+  const socialTitle = withHaleSuffix(card.tabTitle);
   return {
-    title: card.title,
+    title: card.tabTitle,
     description: card.description,
     robots: { index: false, follow: false },
     openGraph: {
-      title: card.title,
+      title: socialTitle,
       description: card.description,
       siteName: 'Hale',
       locale: 'en_CA',
@@ -45,7 +49,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
     },
     twitter: {
       card: 'summary',
-      title: card.title,
+      title: socialTitle,
       description: card.description,
     },
   };

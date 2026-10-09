@@ -63,6 +63,11 @@ function isRedirect(error: unknown): boolean {
   return String((error as { digest?: unknown })?.digest ?? '').startsWith('NEXT_REDIRECT');
 }
 
+/** True for the throw `notFound()` uses. The catch-all 404 has no anchors. */
+function isNotFound(error: unknown): boolean {
+  return String((error as { digest?: unknown })?.digest ?? '').endsWith(';404');
+}
+
 const pageFiles = readdirSync(LOCALE_ROOT, { recursive: true, encoding: 'utf8' })
   .filter((entry) => /(^|[\\/])page\.tsx$/.test(entry))
   .sort();
@@ -70,6 +75,7 @@ const pageFiles = readdirSync(LOCALE_ROOT, { recursive: true, encoding: 'utf8' }
 vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
 const rendered: { route: string; html: string }[] = [];
 const redirected: string[] = [];
+const missing: string[] = [];
 for (const pageFile of pageFiles) {
   const route = routeOf(pageFile);
   const { default: Page } = await import(pathToFileURL(join(LOCALE_ROOT, pageFile)).href);
@@ -85,8 +91,16 @@ for (const pageFile of pageFiles) {
     });
   } catch (error) {
     // A retired route redirects instead of rendering — it has no anchors to check.
-    if (!isRedirect(error)) throw error;
-    redirected.push(route);
+    // The unknown-path catch-all calls notFound(); it has no anchors either.
+    if (isRedirect(error)) {
+      redirected.push(route);
+      continue;
+    }
+    if (isNotFound(error)) {
+      missing.push(route);
+      continue;
+    }
+    throw error;
   }
 }
 vi.unstubAllEnvs();
@@ -147,13 +161,14 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // halves are asserted so neither a page that quietly stopped rendering nor a new
     // page nobody rendered can pass as "all clear".
     expect(pageFiles.length).toBeGreaterThanOrEqual(14);
-    expect(rendered.length + redirected.length).toBe(pageFiles.length);
+    expect(rendered.length + redirected.length + missing.length).toBe(pageFiles.length);
     expect([...redirected].sort()).toEqual([
       '/activities/[city]',
       '/for-centres',
       '/milestones',
       '/milestones/[age]',
     ]);
+    expect(missing).toEqual(['/[...rest]']);
   });
 
   it('fires cta_text_click from every composer link, on every page', () => {

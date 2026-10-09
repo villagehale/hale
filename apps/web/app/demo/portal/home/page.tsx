@@ -1,5 +1,8 @@
+import type { Metadata } from 'next';
 import { PortalHome } from '~/components/portal/home-view';
 import { DEMO_BASE, demoBasics, demoLoop, demoSmsHref } from '~/lib/portal/demo-fixture';
+
+export const metadata: Metadata = { title: 'Home' };
 
 export default function DemoHomePage() {
   return (

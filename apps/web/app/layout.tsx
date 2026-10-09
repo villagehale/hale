@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
+import { PORTAL_TITLE } from '~/lib/portal/document-title';
 import { THEME_STORAGE_KEY } from '~/lib/theme';
 import './globals.css';
 
@@ -45,7 +46,7 @@ const PORTAL_DESCRIPTION =
   'Sign in to Hale to see your family, your messages with Hale, and your settings.';
 
 export const metadata: Metadata = {
-  title: 'Hale · the family assistant you text',
+  title: PORTAL_TITLE,
   description: PORTAL_DESCRIPTION,
   openGraph: { description: PORTAL_DESCRIPTION },
   twitter: { description: PORTAL_DESCRIPTION },

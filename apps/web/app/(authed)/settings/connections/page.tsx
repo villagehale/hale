@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { ConnectionsView } from '~/components/portal/connections-view';
 import { loadSmsChannel } from '~/lib/channels/sms-consent';
@@ -7,6 +8,8 @@ import { currentFamilyId, currentUserId } from '~/lib/family';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
 import { listMcpConnectionsForUser } from '~/lib/mcp/oauth-store';
+
+export const metadata: Metadata = { title: 'Connections' };
 
 function monthDay(value: Date | undefined, timeZone: string): string | null {
   if (!value) return null;

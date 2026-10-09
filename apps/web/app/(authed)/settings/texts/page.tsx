@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { PortalHeading } from '~/components/portal/heading';
 import { TextsEditor } from '~/components/portal/texts-editor';
@@ -5,6 +6,8 @@ import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { DEFAULT_LOOP_PREFS } from '~/lib/loop/prefs';
 import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
+
+export const metadata: Metadata = { title: 'Texts' };
 
 export default async function TextsPage() {
   if (!receiptsIaEnabled()) redirect('/settings#notif');
