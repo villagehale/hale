@@ -9,6 +9,7 @@ import { guideStageFilter, headingSlug } from '~/lib/answers/guide-stage';
 import { getAnswer } from '~/lib/answers/index';
 import type { AnswerPage } from '~/lib/answers/types';
 import { shoreSrc } from './assets';
+import { FaqDeepLink } from './faq-deeplink';
 import { FaqItem } from './faq-item';
 import { GuideCard } from './guide-card';
 import { ShoreClose } from './shore-close';
@@ -104,6 +105,7 @@ export function RedesignGuide({
     <>
       <SiteHeader locale={locale} />
       <div className="rd">
+        <FaqDeepLink />
         <div className="stage sp-stage sp-legal gd-stage">
           <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
           <span className="shore-drift sky" aria-hidden="true" />

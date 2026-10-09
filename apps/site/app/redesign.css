@@ -760,7 +760,8 @@
 .rd .hs-acc > summary::-webkit-details-marker { display: none; }
 .rd .hs-acc > summary::marker { content: ""; }
 .rd .hs-acc[open] > summary { padding-bottom: var(--s2); }
-.rd .hs-acc > summary .hs-h3 { margin: 0; }
+/* Size lives here, not on .hs-h3: .lg-doc h3 is more specific and would drift guide rows off /faq. */
+.rd .hs-acc > summary .hs-h3 { margin: 0; font-size: 18.4px; line-height: 1.25; }
 .rd .hs-acc-ic { width: 24px; height: 24px; margin-top: -0.5px; display: grid; place-items: center; border-radius: var(--r-full); color: var(--ink-64); transition: color .15s, background .15s; }
 .rd .hs-acc-ic svg { width: 16px; height: 16px; }
 .rd .hs-acc-ic .v { transform-origin: 8px 8px; transition: transform .28s cubic-bezier(.2,.7,.2,1); }
@@ -779,6 +780,7 @@
   .rd .hs-acc > summary { padding-block: 20px; }
   .rd .hs-acc[open] > summary { padding-bottom: var(--s2); }
   .rd .hs-acc-body { padding-bottom: 20px; padding-right: 0; }
+  .rd .hs-acc > summary .hs-h3 { font-size: 17.28px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rd .hs-acc::details-content, .rd .hs-acc > summary, .rd .hs-acc-ic .v { transition: none; }
@@ -1600,6 +1602,7 @@ body:has(.rd) footer > .shell { max-width: calc(1200px + 48px); padding-inline: 
 .rd .gd-qas {
   margin-top: var(--s4);
 }
+.rd .gd-qas .hs-acc:last-of-type { border-bottom: 0; }
 .rd .lg-doc p.hs-eyebrow {
   margin: 0;
   font-family: var(--font-ui);
