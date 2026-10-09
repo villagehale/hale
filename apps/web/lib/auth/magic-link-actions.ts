@@ -4,7 +4,8 @@ import { AuthError } from 'next-auth';
 import { redirect } from 'next/navigation';
 import { signIn } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
-import { safeInternalRedirect } from '~/lib/auth/redirect';
+import { MAGIC_LINK_INVALID } from './door-messages';
+import { safeInternalRedirect } from './redirect';
 
 /**
  * Server action for the /magic-link redeem page. Mirrors resetPasswordAction: it
@@ -22,7 +23,7 @@ import { safeInternalRedirect } from '~/lib/auth/redirect';
 
 export type MagicLinkRedeemState = { status: 'idle' } | { status: 'error'; message: string };
 
-const GENERIC_ERROR = 'This sign-in link is invalid or has expired. Request a new one.';
+const GENERIC_ERROR = MAGIC_LINK_INVALID;
 
 export async function redeemMagicLinkAction(
   token: string,

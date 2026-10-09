@@ -28,7 +28,7 @@ export default async function MagicLinkPage({ searchParams }: PageProps) {
   if (!credentialsConfigured()) {
     return (
       <AuthShell heading="Sign in to Hale">
-        <p className="meta">Magic-link sign-in isn&rsquo;t available in this preview.</p>
+        <p className={stage.lede}>Magic-link sign-in isn&rsquo;t available in this preview.</p>
       </AuthShell>
     );
   }
@@ -36,7 +36,7 @@ export default async function MagicLinkPage({ searchParams }: PageProps) {
   if (!token) {
     return (
       <AuthShell heading="Sign in to Hale">
-        <p className="meta">
+        <p className={stage.lede}>
           This sign-in link is missing or incomplete. Request a fresh one and try again.
         </p>
         <Link href="/sign-in" className={`${stage.btn} ${door.full}`}>

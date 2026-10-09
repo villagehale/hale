@@ -11,11 +11,14 @@ import { type ResetRequestState, requestPasswordResetAction } from '~/lib/auth/a
  * "if that email has an account…" message — the form never reveals whether the
  * address is registered (anti-enumeration lives in the action, rule #1).
  */
-export function ForgotPasswordForm() {
-  const [state, formAction] = useActionState<ResetRequestState, FormData>(
-    requestPasswordResetAction,
-    { status: 'idle' },
-  );
+export function ForgotPasswordForm({
+  action = requestPasswordResetAction,
+  initialState = { status: 'idle' },
+}: {
+  action?: (prev: ResetRequestState, formData: FormData) => Promise<ResetRequestState>;
+  initialState?: ResetRequestState;
+} = {}) {
+  const [state, formAction] = useActionState<ResetRequestState, FormData>(action, initialState);
 
   if (state.status === 'sent') {
     return (

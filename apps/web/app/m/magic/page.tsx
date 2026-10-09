@@ -28,7 +28,9 @@ export default async function MobileMagicPage({ searchParams }: PageProps) {
   if (!token) {
     return (
       <AuthShell heading="Open Hale">
-        <p className="meta">This sign-in link is missing or incomplete. Request a fresh one.</p>
+        <p className={stage.lede}>
+          This sign-in link is missing or incomplete. Request a fresh one.
+        </p>
       </AuthShell>
     );
   }

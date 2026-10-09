@@ -13,11 +13,17 @@ import { MIN_PASSWORD_LENGTH } from '~/lib/auth/constants';
  * success the action signs the user in and redirects, so no success state renders
  * here — only the generic invalid-token / weak-password error does.
  */
-export function ResetPasswordForm({ token }: { token: string }) {
-  const action = resetPasswordAction.bind(null, token);
-  const [state, formAction] = useActionState<ResetPasswordState, FormData>(action, {
-    status: 'idle',
-  });
+export function ResetPasswordForm({
+  token,
+  action,
+  initialState = { status: 'idle' },
+}: {
+  token: string;
+  action?: (prev: ResetPasswordState, formData: FormData) => Promise<ResetPasswordState>;
+  initialState?: ResetPasswordState;
+}) {
+  const bound = action ?? resetPasswordAction.bind(null, token);
+  const [state, formAction] = useActionState<ResetPasswordState, FormData>(bound, initialState);
 
   return (
     <form action={formAction}>

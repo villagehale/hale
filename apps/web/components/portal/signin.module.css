@@ -223,6 +223,24 @@
   text-align: left;
 }
 
+/* Notes under a door button stay .meta. Lines under the heading use .lede. */
+.stack > :global(.meta) {
+  margin-top: 12px;
+}
+
+/* Global .field-error colours stay. 16px when the error is the first line under the heading. */
+.stack :global(.field-error) {
+  margin-top: 12px;
+}
+
+.stack > .stack > :global(.field-error):first-child {
+  margin-top: 16px;
+}
+
+.stack :global(.panel-oat) {
+  margin-top: 16px;
+}
+
 /* Dark door. Hardcoded navy in this file was drawing on the navy card. */
 :global(.dark) .eyebrow,
 :global(.dark) .field label,

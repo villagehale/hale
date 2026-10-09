@@ -622,6 +622,11 @@
   height: 16px;
 }
 
+/* `.stage .btn` is 32px. This anchor is the oauth door's return link, at 24px. */
+.stage a:global(.auth-return) {
+  margin-top: 24px;
+}
+
 .stage .secondary {
   display: inline-flex;
   align-items: center;

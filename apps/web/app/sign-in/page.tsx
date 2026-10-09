@@ -3,6 +3,7 @@ import { signIn } from '~/auth';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ClaimByPhoneForm } from '~/components/hale/claim-by-phone-form';
 import { ConnectStage } from '~/components/hale/connect/connect-stage';
+import stage from '~/components/hale/connect/connect.module.css';
 import { GoogleGlyph } from '~/components/hale/google-glyph';
 import { MagicLinkRequestForm } from '~/components/hale/magic-link-request-form';
 import door from '~/components/portal/signin.module.css';
@@ -67,7 +68,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
   if (!google && !magicLink) {
     return (
       <AuthShell heading="Welcome back">
-        <p className="meta">Sign-in isn&rsquo;t available in this preview yet.</p>
+        <p className={stage.lede}>Sign-in isn&rsquo;t available in this preview yet.</p>
       </AuthShell>
     );
   }

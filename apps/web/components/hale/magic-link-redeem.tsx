@@ -13,20 +13,29 @@ import { type MagicLinkRedeemState, redeemMagicLinkAction } from '~/lib/auth/mag
  * spend the single-use token before the human clicks. On success the action signs
  * the user in and redirects, so only the invalid/expired error renders here.
  */
-export function MagicLinkRedeem({ token, redirectTo }: { token: string; redirectTo: string }) {
-  const action = redeemMagicLinkAction.bind(null, token, redirectTo);
-  const [state, formAction] = useActionState<MagicLinkRedeemState, FormData>(action, {
-    status: 'idle',
-  });
+export function MagicLinkRedeem({
+  token,
+  redirectTo,
+  action,
+  initialState = { status: 'idle' },
+  submitOnMount = true,
+}: {
+  token: string;
+  redirectTo: string;
+  action?: (prev: MagicLinkRedeemState, formData: FormData) => Promise<MagicLinkRedeemState>;
+  initialState?: MagicLinkRedeemState;
+  submitOnMount?: boolean;
+}) {
+  const bound = action ?? redeemMagicLinkAction.bind(null, token, redirectTo);
+  const [state, formAction] = useActionState<MagicLinkRedeemState, FormData>(bound, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const submitted = useRef(false);
 
   useEffect(() => {
-    if (!submitted.current) {
-      submitted.current = true;
-      formRef.current?.requestSubmit();
-    }
-  }, []);
+    if (!submitOnMount || submitted.current) return;
+    submitted.current = true;
+    formRef.current?.requestSubmit();
+  }, [submitOnMount]);
 
   if (state.status === 'error') {
     return (

@@ -26,7 +26,7 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
   if (!credentialsConfigured()) {
     return (
       <AuthShell heading="Choose a new password">
-        <p className="meta">Password reset isn&rsquo;t available in this preview.</p>
+        <p className={stage.lede}>Password reset isn&rsquo;t available in this preview.</p>
       </AuthShell>
     );
   }
@@ -34,7 +34,7 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
   if (!token) {
     return (
       <AuthShell heading="Choose a new password">
-        <p className="meta">
+        <p className={stage.lede}>
           This reset link is missing or incomplete. Request a fresh one and try again.
         </p>
         <Link href="/forgot-password" className={`${stage.btn} ${door.full}`}>
