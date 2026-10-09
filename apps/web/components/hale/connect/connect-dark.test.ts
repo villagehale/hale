@@ -60,6 +60,18 @@ describe('connect dark tokens', () => {
     expect(dark).not.toContain('#747775');
   });
 
+  it('follows the shared hale-theme script and does not override it', () => {
+    expect(css).not.toMatch(/@media\s*\(\s*prefers-color-scheme/);
+    expect(css).toContain(':global(.dark) .stage {');
+    for (const file of ['../../../app/connect/page.tsx', '../../../app/connected/page.tsx']) {
+      const source = readFileSync(join(__dirname, file), 'utf8');
+      expect(source).not.toContain('hale-theme');
+      expect(source).not.toContain('themePref');
+      expect(source).not.toContain('matchMedia');
+      expect(source).not.toContain('<script');
+    }
+  });
+
   it('dims the shore and uses the night iMessage bubble', () => {
     expect(darkBlock).toContain('saturate(0.8) brightness(0.72) hue-rotate(-8deg)');
     expect(darkBlock).toContain('opacity: 0.22');

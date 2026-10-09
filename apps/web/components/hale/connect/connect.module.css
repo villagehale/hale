@@ -811,9 +811,12 @@
   }
 }
 
-/* Dark. `.dark` is the class the pre-paint script sets from `hale-theme`.
-   A missing or corrupt value is `system`, so the OS decides. These tokens
-   are the connect sheet's own; they do not retint the rest of the app. */
+/* Dark. The root layout's pre-paint script reads `hale-theme`, writes
+   `data-theme-pref`, and toggles `.dark` before first paint. A missing or
+   corrupt value is `system`, so Auto follows the OS. These rules follow
+   `.dark` only — there is no prefers-color-scheme override — so a stored
+   Light or Dark choice wins here the same way it does in the rest of the
+   portal. The tokens are the connect sheet's own; they do not retint the app. */
 :global(.dark) .stage {
   --page: #0c1a36;
   --band: #101f3f;
