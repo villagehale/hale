@@ -241,7 +241,7 @@ export function RedesignHome({
      <HaleHead />
      <div className="im-thread">
       <OneStamp today={t("Today")} time={t("9:41 AM")} />
-      <div className="im-run" data-motion-step="0.4"><TypingBubble /><div className="im-b in tail">{t("Here’s what’s on near you this week:\n1. Parent & tot swim (ages 2–4), Sat 9:15 a.m.\n2. Library storytime (ages 2–5), Tue 10:30 a.m.\n3. Little movers (ages 2–5), winter times not posted yet")}</div></div>
+      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("Here’s what’s on near you this week:\n1. Parent & tot swim (ages 2–4), Sat 9:15 a.m.\n2. Library storytime (ages 2–5), Tue 10:30 a.m.\n3. Little movers (ages 2–5), winter times not posted yet")}</div></div>
      </div>
     </div></div>
    </div>
@@ -253,7 +253,7 @@ export function RedesignHome({
      <HaleHead />
      <div className="im-thread">
       <OneStamp today={t("Today")} time={t("9:41 AM")} />
-      <div className="im-run" data-motion-step="0.4"><TypingBubble /><div className="im-b in tail">{t("A spot just opened")} {t("in Swimmer 3, Saturdays 9:30. Here’s the")} <span className="im-link">{t("sign-up page")}</span>.</div></div>
+      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("A spot just opened")} {t("in Swimmer 3, Saturdays 9:30. Here’s the")} <span className="im-link">{t("sign-up page")}</span>.</div></div>
      </div>
     </div></div>
    </div>
@@ -266,7 +266,7 @@ export function RedesignHome({
       <HaleHead />
       <div className="im-thread">
        <OneStamp today={t("Today")} time={t("9:41 AM")} />
-       <div className="im-run" data-motion-step="0.4"><TypingBubble /><div className="im-b in tail">{t("Tomorrow: fall programs at the rec centre open 7:00 a.m. for Mia. Sign in tonight and have the page open.")}</div></div>
+       <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("Tomorrow: fall programs at the rec centre open 7:00 a.m. for Mia. Sign in tonight and have the page open.")}</div></div>
       </div>
      </div>
      <div className="im-event" data-motion-step="1.4"><div className="hs-rem-date"><span className="hs-rem-cal"><i>{t("Tue")}</i><b>7</b></span><div><div className="hs-rem-t">{t("Fall programs open")}</div><div className="hs-wm">{t("Tomorrow · 7:00 a.m.")}</div></div></div></div>

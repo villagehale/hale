@@ -528,6 +528,10 @@
 
 /* ── 2. The loop across the year ── */
 .rd .hs-beats { margin-top: var(--s7); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: auto auto auto 1fr; column-gap: var(--gutter); }
+/* 641–1023: two by two. Four-across leaves each screen about 112px wide and splits words. */
+@media (min-width: 641px) and (max-width: 1023.98px) {
+  .rd .hs-beats { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto auto 1fr auto auto auto 1fr; row-gap: var(--s6); }
+}
 .rd .hs-beat { display: grid; grid-template-rows: subgrid; grid-row: span 4; row-gap: 0; padding: var(--s5); }
 .rd .hs-when { position: relative; display: flex; align-items: center; gap: 8px; font-family: var(--font-ui); font-size: 11.52px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; line-height: 1.4; color: rgb(23 41 74 / 0.72); }
 .rd .hs-when::before { content: ""; flex: none; width: 11px; height: 11px; border-radius: 50%; background: var(--page); border: 2px solid var(--navy); box-sizing: border-box; }
@@ -709,7 +713,7 @@
   .rd .hs-beat .hs-p { max-width: 32ch; }
   .rd .hs-art { width: 100%; text-align: left; }
 
-  .rd .hs-logi-r { margin-top: var(--s7); }
+  .rd .hs-logi-r { margin-top: var(--s7); align-self: stretch; }
   .rd .hs-list { text-align: left; gap: var(--s5); margin-top: var(--s6); }
   .rd .hs-week { padding: var(--s4); }
   .rd .hs-wrow { grid-template-columns: 40px 1fr; row-gap: 6px; }

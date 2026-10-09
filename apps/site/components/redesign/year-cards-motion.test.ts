@@ -56,18 +56,18 @@ it('gives each of the five feature cards one gallery chat scene and types Hale b
   const [finds, watches, reminds, asks] = cards;
   if (!finds || !watches || !reminds || !asks) throw new Error('four year cards');
 
-  expect(steps(finds)).toEqual(['0.4']);
+  expect(steps(finds)).toEqual(['0.6']);
   expect(finds.match(/data-motion-typing/g)).toHaveLength(1);
   expect(finds).toContain('class="im-screen" data-motion-scene="chat"');
   expect(finds).not.toContain('im-run out');
 
-  expect(steps(watches)).toEqual(['0.4']);
+  expect(steps(watches)).toEqual(['0.6']);
   expect(watches.match(/data-motion-typing/g)).toHaveLength(1);
   expect(watches).toContain('class="im-screen" data-motion-scene="chat"');
   expect(watches).toContain('class="im-link"');
   expect(watches).toContain('sign-up page');
 
-  expect(steps(reminds)).toEqual(['0.4', '1.4']);
+  expect(steps(reminds)).toEqual(['0.6', '1.4']);
   expect(reminds.match(/data-motion-typing/g)).toHaveLength(1);
   expect(reminds).toContain('data-motion-scene="chat"');
   expect(reminds).toContain('</div></div><div class="im-event" data-motion-step="1.4">');
@@ -109,4 +109,8 @@ it('keeps the year-card sentences and leaves HomeMotion as the only player', () 
   const typing = css.match(/\.rd \.im-run > \.im-typing \{[^}]*\}/)?.[0] ?? '';
   expect(typing).toContain('position: absolute');
   expect(css).toContain('@media (prefers-reduced-motion: reduce) {\n  .rd .im-typing { display: none; }\n}');
+  expect(css).toContain('.rd .hs-logi-r { margin-top: var(--s7); align-self: stretch; }');
+  expect(css).toContain(
+    '@media (min-width: 641px) and (max-width: 1023.98px) {\n  .rd .hs-beats { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto auto 1fr auto auto auto 1fr; row-gap: var(--s6); }\n}',
+  );
 });
