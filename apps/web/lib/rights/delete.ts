@@ -4,6 +4,13 @@ import { type CoParentDeparted, departCoParent } from '../channel/coparent/depar
 import { removeDocument } from '../docs/storage.js';
 import { type OrphanSweepSummary, runOrphanUserSweep } from './orphan-users.js';
 
+export {
+  MESSAGE_RETENTION_BATCH,
+  MESSAGE_RETENTION_DAYS,
+  type MessageRetentionSummary,
+  sweepMessageRetention,
+} from './message-retention.js';
+
 /**
  * PIPEDA / Law 25 right-to-erasure, REVERSIBLE BY GRACE. A confirm-gated request
  * does NOT hard-delete: it STAMPS families.scheduled_deletion_at at now + a grace
