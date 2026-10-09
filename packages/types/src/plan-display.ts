@@ -11,9 +11,9 @@ import type { PlanTier } from './entitlements.js';
  * (Canada-first) — `formatPlanPrice` renders them with an explicit CAD label.
  * Annual is the better value: at these prices it saves about THREE months versus
  * paying monthly (Plus $228 → $159; Max $468 → $329). Every surface that states
- * the discount says "about three months free" — and apps/site's
- * pricing-section.test.ts derives the claim from these numbers, so a reprice
- * that makes the sentence untrue fails there before it ships.
+ * the discount says "about three months free" — and plan-display.test.ts
+ * derives the claim from these numbers, so a reprice that makes the sentence
+ * untrue fails there before it ships.
  * The `family` enum key is displayed as "Max". The key itself does not change.
  */
 export interface PlanDisplay {

@@ -51,6 +51,25 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
     }
   });
 
+  it('saves about three months on annual, the sentence the pricing pages state', () => {
+    // "about three months free" is derived from these prices. A reprice that
+    // saves less than three months, or a whole month more, makes the sentence
+    // untrue.
+    const CLAIMED_MONTHS = 3;
+    const paid = PLAN_TIERS_ORDERED.filter((tier) => PLAN_DISPLAY[tier].monthlyPriceCad > 0);
+    expect(paid.length).toBeGreaterThan(0);
+    for (const tier of paid) {
+      const plan = PLAN_DISPLAY[tier];
+      const saved = (plan.monthlyPriceCad * 12 - plan.annualPriceCad) / plan.monthlyPriceCad;
+      expect(saved, `${tier} saves less than the page claims`).toBeGreaterThanOrEqual(
+        CLAIMED_MONTHS,
+      );
+      expect(saved, `${tier} saves a whole month more than the page claims`).toBeLessThan(
+        CLAIMED_MONTHS + 1,
+      );
+    }
+  });
+
   it('every tier lists features', () => {
     for (const tier of PLAN_TIERS_ORDERED) {
       expect(PLAN_DISPLAY[tier].features.length).toBeGreaterThan(0);
@@ -59,7 +78,7 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
 
   it('sells Free as SMS — the PR 549 free-card bullets, verbatim', () => {
     // VIL-318: Free is the number you text, not Village or Companion.
-    // Casing matches apps/site PricingSection.freeFeatures (PR 549).
+    // Casing matches the Free card the marketing site used to ship (PR 549).
     expect(PLAN_DISPLAY.free.features).toEqual([
       'Unlimited chat',
       'Live find',
