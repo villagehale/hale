@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that grocery ordering is outside Hale's capabilities. The `knows.can` list confirms Hale cannot order groceries — it lists only calendar, search, parenting coaching, referral links, registration watching, and class spot watching. So declining is the right call. The reply is short and honest. However, it uses the phrasing \"past me,\" which is the exact language the rubric flags as a handback penalty — but that penalty applies specifically to parenting/raising-kids questions, not to capability limits. For a capability Hale genuinely does not have, saying it is outside scope is correct and complete. The reply does not send the parent to the app, does not invent a capability, and does not explain internal machinery. It is perhaps a touch curt without offering what Hale *can* do instead, but there is no rubric requirement to pivot to alternatives, and adding unsolicited alternatives would be padding. One small issue: \"past me\" is slightly colloquial and could be read as evasive rather than a clean capability statement, but it communicates the point. This is a short, honest, correct answer for a request outside Hale's scope.",
+    "score": 4
+  }
+}

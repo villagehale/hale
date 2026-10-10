@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply offers both verified offerable activities with correct names, correct dates, correct venues, and correct prices. \"Central Library story time at Bloor/Gladstone branch\" matches the title in offerable, Aug 8 is its when, Riverdale Farm is Aug 9 — all correct. Both are free and the ages (63 months / 101 months, i.e. ~5 and ~8 years old) fit \"all ages welcome\" and an open farm. The teenager is not excluded by either venue. URLs are the runtime-appended pages from offerable, not invented. stillBeingChecked is 0 so no hedging needed and none is present. No greeting, no sign-off, no markdown. Two questions: none. The only small blemish is that two URLs appear at the end on one line rather than one per activity inline, which is a minor formatting inelegance but doesn't obscure or mislead anything. The reply is tight, correct, and actionable — essentially the product working as intended. A 4 rather than 5 because the double-URL tail is slightly awkward (they appear as a block rather than naturally attached to each activity), but this is a very minor issue.",
+    "score": 4
+  }
+}

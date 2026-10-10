@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly anchors to the existing schedule (Cedarvale Park on Saturday), which is good recall. It then offers Riverdale Farm from `offerable` with the correct date (Sun, Aug 9) and the correct URL — both are right. The title \"Riverdale Farm\" matches the offerable entry exactly. The age fit is fine (free outdoor farm, all ages). No invented details, no app referral, no greeting or sign-off. The webFind (Tiny Tumblers, walking to 3 years) is correctly ignored since neither Milo (63 months, ~5yrs) nor Ada (101 months, ~8.5yrs) are in that age range, and the teenager is out too. The standing question is a park nearby, and the reply does address it usefully. One small issue: the parent asked about a park, and Riverdale Farm is accurately described as \"free and outdoor\" but it's a farm, not exactly a \"park to play\" — however it is the best match from offerable and the reply doesn't overclaim it as a playground. The phrase \"Nothing new turned up that's a dedicated park for Milo and Ada's ages\" is slightly clunky and self-explanatory (explaining what the search didn't find), but it's honest and brief. Overall the reply is accurate, grounded, and actionable with no significant failures.",
+    "score": 4
+  }
+}

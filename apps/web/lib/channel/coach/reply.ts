@@ -1,7 +1,8 @@
-import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
+import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
+import { type NamedActivityLink, activityLinkSuffix } from './activity-links';
 
 /**
  * VIL-221 · C2 — everything that happens to the model's answer between the loop
@@ -70,6 +71,11 @@ export interface SmsReplyArgs {
    * thing the message exists to deliver.
    */
   referral?: string;
+  /**
+   * Pages for activities this turn offered. Appended only when the reply names the
+   * activity. The model does not write the URL.
+   */
+  activityLinks?: readonly NamedActivityLink[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about ONE of the activities this turn offered, and
    * the offered titles it must not be confused with.
@@ -145,12 +151,13 @@ function escapeRegExp(value: string): string {
 
 /** Characters a model reaches for that cost more than twice what their ASCII twin does. */
 const GSM7_SUBSTITUTIONS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/[‘’‛]/g, "'"],
+  [/[‘’‛\u201a\u201e\u2032\u2033\u00b4]/g, "'"],
   [/[“”]/g, '"'],
-  [/[–—―]/g, '-'],
+  [/[–—―\u2010\u2011\u2012\u2212]/g, '-'],
   [/…/g, '...'],
   [/[\u00a0\u2007\u202f\u2009]/g, ' '],
   [/[•·]/g, ''],
+  [/\u200b|\u200c|\u200d|\u2060|\ufeff|\u00ad/g, ''],
 ];
 
 /**
@@ -204,12 +211,39 @@ function sentences(text: string): string[] {
 }
 
 /**
+ * The answer had no complete sentence that fits with the protected suffix.
+ *
+ * The caller asks the model for one shorter rewrite. This error carries no body: the
+ * text can be what the parent just typed (rule #1), and a thrown message is a log line.
+ */
+export class ReplyNeedsShorter extends Error {
+  constructor() {
+    super('channel coach: model answer had no complete sentence inside the segment budget');
+    this.name = 'ReplyNeedsShorter';
+  }
+}
+
+/**
+ * How many characters the answer itself may be, once a protected suffix is reserved.
+ *
+ * Two GSM-7 segments are 306 units. The suffix is joined with one space, and it is
+ * measured in characters because every suffix this path appends is plain ASCII.
+ */
+export function replyCharacterRoom(suffix: string): number {
+  const tail = suffix.trim();
+  const reserved = tail === '' ? 0 : tail.length + 1;
+  return smsUnitsBudget('plain ascii', MAX_REPLY_SEGMENTS) - reserved;
+}
+
+/**
  * Bring a body inside the segment budget by dropping whole sentences from the end.
  *
  * Sentence-first because a body cut mid-clause reads as a bug, and because the FIRST
  * sentence is where the skill puts the answer — so the part that survives is the part
- * that mattered. Only when a single sentence is itself over budget does it fall back to
- * a word-boundary trim, which is still never mid-word.
+ * that mattered. When that first sentence is itself over budget, this throws
+ * {@link ReplyNeedsShorter} rather than cutting it. A word-boundary trim used to append
+ * "..." and send the stump; that stump is not a sentence, and a capitalised fragment of
+ * it has been graded as a name Hale invented.
  *
  * It used to append "More in the app: <url>" to whatever survived, which meant the
  * app-point fired precisely when the answer was too long to send — the message where
@@ -229,36 +263,30 @@ function fitToBudget(
   const whole = withSuffix(body);
   if (smsSegments(whole) <= max) return body;
 
-  // Named rather than dropped in silence, like the siren below and for the same reason:
-  // what goes over the side here is work this turn already paid for. On 2026-08-21 the
-  // flagship question — "what's on Sept-Dec near me" — composed a verified Sep 1 opening
-  // plus two finds from a ~50s live web search, and the entire second paragraph was cut
-  // from a message that opened "Two things worth flagging here". Nothing downstream could
-  // tell that reply from one that fit, so it took a human reading a graded bench run to
-  // see it. A count makes the next one countable. The BODY never reaches the log — it can
-  // carry back what the parent typed (rule #1).
-  const overBy = smsUnits(whole) - smsUnitsBudget(whole, max);
-  console.warn(
-    `channel coach: model answer ran ${overBy} units past the ${max}-segment budget; sending the prefix that fits`,
-  );
-  onTrimmed?.(overBy);
-
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
     const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) {
+      // Named rather than dropped in silence, like the siren below and for the same
+      // reason: what goes over the side here is work this turn already paid for. On
+      // 2026-08-21 the flagship question — "what's on Sept-Dec near me" — composed a
+      // verified Sep 1 opening plus two finds from a ~50s live web search, and the
+      // entire second paragraph was cut from a message that opened "Two things worth
+      // flagging here". Nothing downstream could tell that reply from one that fit, so
+      // it took a human reading a graded bench run to see it. A count makes the next
+      // one countable. The BODY never reaches the log — it can carry back what the
+      // parent typed (rule #1). Only a prefix that is actually sent is counted; a body
+      // with no complete sentence inside the budget is a rewrite, not a trim.
+      const overBy = smsUnits(whole) - smsUnitsBudget(whole, max);
+      console.warn(
+        `channel coach: model answer ran ${overBy} units past the ${max}-segment budget; sending the prefix that fits`,
+      );
+      onTrimmed?.(overBy);
+      return candidate;
+    }
   }
 
-  const words = (parts[0] ?? body).split(' ');
-  for (let count = words.length - 1; count >= 1; count -= 1) {
-    const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
-  }
-
-  // Not even the first word fits: a model returning one unbroken 300-character token,
-  // which is a failed turn and not a long answer. Throwing hands it to the router's
-  // honesty template, the same place an empty body goes (rule #8 — no invented body).
-  throw new Error('channel coach: model answer had no prefix inside the segment budget');
+  throw new ReplyNeedsShorter();
 }
 
 /**
@@ -294,7 +322,10 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // Redacted with the answer, not after it: the referral line is composed by the model
   // and is the one piece of outbound text a parent forwards to somebody outside the
   // family, so the age-derived teen floor (rule #1) has to cover it too.
-  const suffix = redactTeenNames(
+  const link = activityLinkSuffix(redacted, args.activityLinks);
+  // A plan offer or a referral still crowds the count out. An activity URL does not:
+  // the count is about that find, and the URL is that find's page, so both go out.
+  const protectedTail = redactTeenNames(
     [args.planOffer, args.referral]
       .map((part) => part?.trim() ?? '')
       .filter((part) => part !== '')
@@ -302,18 +333,34 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     args.children,
     args.now,
   );
-  if (suffix === '') {
-    // MEASURED WITH THE BODY, like the two above it: a clause appended to an answer
-    // already at the ceiling is how a two-segment reply quietly becomes three, and the
-    // count is the one part of this message nobody is paying attention to. Room is
-    // reserved only when the answer as composed names the target, and the clause is
-    // dropped anyway if the trim took the name away with it.
-    const reserved = nearbyClause(redacted, args.nearby) ?? '';
-    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS, reserved, args.onTrimmed);
-    const nearby = nearbyClause(fittedAlone, args.nearby);
-    return nearby === null ? fittedAlone : `${fittedAlone} ${nearby}`;
+  if (protectedTail === '') {
+    // MEASURED WITH THE BODY: a clause or a URL appended to an answer already at the
+    // ceiling is how a two-segment reply quietly becomes three. Room is reserved only
+    // when the answer as composed names the target, and the count is dropped anyway
+    // if the trim took the name away with it. The URL stays at the end.
+    const answer = dropDuplicateOffer(redacted, link);
+    const reserved = [nearbyClause(answer, args.nearby) ?? '', link]
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .join(' ');
+    const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, reserved, args.onTrimmed);
+    const nearby = nearbyClause(fitted, args.nearby);
+    const tail = [nearby ?? '', link]
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .join(' ');
+    if (tail === '') return fitted;
+    if (fitted === '') return tail;
+    return `${fitted} ${tail}`;
   }
 
+  const suffix = redactTeenNames(
+    [protectedTail, link]
+      .filter((part) => part.trim() !== '')
+      .join(' '),
+    args.children,
+    args.now,
+  );
   // The tools told the model to hand these in rather than write them into the answer;
   // this is the backstop for when it does both, because the visible cost is the same
   // sentence arriving twice.
@@ -321,9 +368,9 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // Nothing but the suffix left: the model answered with it and nothing else, so it IS
   // the reply. Joining an empty answer to it would send a leading space.
   if (answer === '') return suffix;
-  // PRECEDENCE, and it is deliberate rather than an omission: when this turn also made
-  // a promise or handed over a link, the nearby count is dropped. A count is the least
-  // important thing in any message that also carries one of those.
+  // PRECEDENCE: a plan offer or a referral drops the nearby count. A count is the least
+  // important thing in a message that also carries a promise. The activity URL still
+  // rides along — it is the find, not a second ask.
   const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix, args.onTrimmed);
   return `${fitted} ${suffix}`;
 }
@@ -342,12 +389,10 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
  *
  * PRECEDENCE: a turn that also registered a plan offer or a referral drops this
  * altogether (see the caller). A count is the least important thing in any message that
- * also carries a promise or a link.
+ * also carries a promise. An activity URL does not drop it — the count is about that
+ * find, and the page is how the parent opens it.
  */
-function nearbyClause(
-  fittedBody: string,
-  nearby: SmsReplyArgs['nearby'],
-): string | null {
+function nearbyClause(fittedBody: string, nearby: SmsReplyArgs['nearby']): string | null {
   if (!nearby) return null;
   const haystack = [fittedBody.toLowerCase()];
   if (!namesInFull(haystack[0] as string, nearby.title)) return null;

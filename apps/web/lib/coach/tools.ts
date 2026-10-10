@@ -1,11 +1,13 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { ageInMonths, companionForChild, deriveStage } from '@hale/types';
+import { companionForChild, deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { selectByActivityQuery } from '~/lib/coach/activity-query';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
-import { dayKeyOf, formatCalendarDayLabel } from '~/lib/format/datetime';
+import { formatCalendarDayLabel } from '~/lib/format/datetime';
+import { safeHttpUrl } from '~/lib/format/http-url';
 import { commitClassifiedMemory, modelClassificationShape } from '~/lib/memory/classify-write';
 import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
 import { forgetFamilyFact } from '~/lib/memory/forget';
@@ -24,9 +26,9 @@ import {
 } from '~/lib/reviews/aggregate';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { toVillageCandidateView } from '~/lib/village/mappers';
-import { type StandingOption, selectStandingOption } from '~/lib/village/standing-option';
 import { visibleCandidates } from '~/lib/village/visibility';
 import { buildConnectorTools } from './connector-tools';
+import { spokenFind } from './spoken-find';
 
 /**
  * The Ask Hale agent's tools — every one family-scoped (rule #1: a handler reads
@@ -96,44 +98,11 @@ const memoryFactType = z.enum([
   'voice',
 ]);
 
-/**
- * The standing venue for this family, read at the moment the Village run turns up
- * nothing nameable.
+/** One activity Hale may actually put in front of a parent. An offer a parent cannot
+ * turn up to is not an offer: the title and the day are always present.
  *
- * Only reached when `candidates` is empty, so the two extra reads never touch the common
- * path — and, more importantly, so a real dated find is never competing with a place.
- *
- * The month is resolved in the FAMILY's zone rather than the server's: the season gate
- * decides whether a splash pad is open, and a family in Toronto on the 1st of September
- * must not be answered out of a UTC calendar.
- */
-async function standingOptionForFamily(
-  database: Database,
-  familyId: string,
-  now: Date,
-  timeZone: string,
-): Promise<StandingOption | null> {
-  const [family] = await database
-    .select({ areaCoarse: schema.families.areaCoarse })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId))
-    .limit(1);
-
-  const children = await database
-    .select({ dateOfBirth: schema.children.dateOfBirth })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  const ages = children.map((child) => ageInMonths(child.dateOfBirth, now));
-
-  return selectStandingOption({
-    postal: family?.areaCoarse ?? null,
-    youngestAgeMonths: ages.length === 0 ? null : Math.min(...ages),
-    month: Number(dayKeyOf(now, timeZone).slice(5, 7)),
-  });
-}
-
-/** One activity Hale may actually put in front of a parent. Every field is non-null
- * by construction — an offer a parent cannot turn up to is not an offer.
+ * `venue` is omitted when the title already names that place. Handing both is what
+ * makes a reply say "Riverdale Farm visit at Riverdale Farm".
  *
  * NO ID, AND THAT IS LOAD-BEARING. Provenance travels beside the offer, never through
  * it: an id the model can see is an id the model can invent, reword or attach to the
@@ -143,8 +112,10 @@ interface OfferableActivity {
   title: string;
   kind: string;
   summary: string;
-  venue: string;
+  venue?: string;
   when: string;
+  /** The row's own page, only when it is an absolute http(s) URL. */
+  url?: string;
 }
 
 /**
@@ -164,6 +135,8 @@ export interface OfferedCandidate {
   candidateId: string;
   placeId: string | null;
   civicVenueId: string | null;
+  /** Same page the model was shown, so the reply can carry it without the model writing it. */
+  url?: string;
 }
 
 /** One row as both halves see it: what the model is shown, and what the process keeps
@@ -250,7 +223,7 @@ export function searchVillageTool(
   return defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
     inputSchema: z.object({ query: z.string().optional() }),
     // Invented values only — examples are compiled into a cached grammar that sits
     // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
@@ -277,15 +250,14 @@ export function searchVillageTool(
         )
         .limit(MEMORY_RESULT_LIMIT);
 
-      const needle = input.query?.toLowerCase();
-      const views = visibleCandidates(currentRunRows, now, timeZone)
-        .map((row) => toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)))
-        .filter(
-          (c) =>
-            !needle ||
-            c.title.toLowerCase().includes(needle) ||
-            c.summary.toLowerCase().includes(needle),
-        );
+      const views = selectByActivityQuery(
+        visibleCandidates(currentRunRows, now, timeZone).map((row) =>
+          toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)),
+        ),
+        input.query,
+        now,
+        timeZone,
+      );
 
       const rowsById = new Map(currentRunRows.map((row) => [row.id, row]));
       const offerable: OfferableEntry[] = [];
@@ -298,21 +270,29 @@ export function searchVillageTool(
           continue;
         }
         const row = rowsById.get(view.id);
+        const spoken = spokenFind(view.title, venue);
+        const url = safeHttpUrl(view.sourceUrl);
+        const whenLabel = row?.whenLabel?.trim() ?? '';
+        const day = formatCalendarDayLabel(view.eventDate, now);
         offerable.push({
           candidate: {
-            title: view.title,
+            title: spoken.title,
             kind: view.kind,
             summary: view.summary,
-            venue,
-            when: formatCalendarDayLabel(view.eventDate, now),
+            ...(spoken.venue === null ? {} : { venue: spoken.venue }),
+            when: whenLabel === '' ? day : `${day}, ${whenLabel}`,
+            ...(url === null ? {} : { url }),
           },
           offer: row
             ? {
-                title: view.title,
+                // The title the model was handed, so a later exact match is that
+                // string and not the stored column it was cleaned from.
+                title: spoken.title,
                 venue,
                 candidateId: row.id,
                 placeId: row.placeId,
                 civicVenueId: row.civicVenueId,
+                ...(url === null ? {} : { url }),
               }
             : null,
         });
@@ -335,17 +315,12 @@ export function searchVillageTool(
       // not be nameable at all (rule #1).
       onOffered?.(offered);
 
-      // Nothing this family could turn up to. `inVerification` is deliberately NOT part
-      // of the condition: a parent asking about tomorrow is empty-handed the moment
-      // there is no name to give them, and two finds still being checked change nothing
-      // about their tomorrow. The forward line and the standing venue are both true at
-      // once, and the skill sends both.
-      const standingOption =
-        candidates.length === 0
-          ? await standingOptionForFamily(database, ctx.familyId, now, timeZone)
-          : null;
-
-      return { candidates, inVerification, standingOption };
+      // No canned standing place. A fixed Baby/Toddler storytime was something the
+      // coach could "hand over", so the live web search never ran — and it was the
+      // wrong age. An empty candidate list is the signal the skill already treats as
+      // "call find_activities this turn". The field stays on the result so a turn that
+      // still receives one (an eval fixture) can name it; production does not fill it.
+      return { candidates, inVerification, standingOption: null };
     },
   });
 }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the offerable activity with its exact title \"Fanous lantern craft,\" gives the right venue, day, time, and notes it's free drop-in. The URL matches the one in `knows.offerable`, so it's recall not invention. It also helpfully notes the existing soccer practice on Saturday, which is relevant context for the weekend question. The age range 6-12 fits Milo (63 months = ~5.25 years — actually just under 6, so borderline) and Ada (101 months = ~8.4 years, fits). Milo is 63 months which is 5 years 3 months — technically under the 6-12 range stated. This is a mild issue but not a clear mis-age since it's close and Hale is relaying what the program states. The reply has no greeting, no sign-off, no markdown, no app referral. It's clean and direct. The one small concern is Milo at 63 months (~5.25 years) being just under the 6-12 age range for the craft — Hale offered it without flagging this. However, the teenager (redacted) is not in range (too old), Ada fits perfectly, and Milo is borderline. This is a minor blemish rather than a clear failure. Overall the reply does the job well with just this small age-fit nuance.",
+    "score": 4
+  }
+}

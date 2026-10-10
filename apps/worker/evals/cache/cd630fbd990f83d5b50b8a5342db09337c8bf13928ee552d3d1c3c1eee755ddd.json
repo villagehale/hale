@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam pasted a course-page link in their message, which is exactly the trigger for `watch_for_opening`. The reply correctly states it is watching the Tuesday preschool swim and will text when a spot opens. The link was in the parent's own message, the capability is listed in `knows.can`, and no URL is invented by Hale (Hale is using the parent's pasted link, not writing one out). The reply is short, accurate, and does the job. No greeting, no sign-off, no markdown, no machinery explained, no redirect to the app. One small blemish: \"genuinely full\" is a slight filler phrase that adds nothing — the parent already said it was full, so confirming that costs a few characters without adding value, but it is harmless. Otherwise this is exactly the correct shape.",
+    "score": 4
+  }
+}

@@ -1500,7 +1500,7 @@ describe('the call-name line after a find', () => {
 });
 
 describe('runNudgeCron — empty Saturday', () => {
-  it('sends the locked ask once, through the nudge gate, and not a second text', async () => {
+  it('does not send the fixed Saturday sentence when nothing can write one', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({
       saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
@@ -1510,28 +1510,21 @@ describe('runNudgeCron — empty Saturday', () => {
           title: 'EarlyON Saturday',
           source: 'civic_registry',
           eventDate: SATURDAY,
+          sourceUrl: 'https://tpl.example/earlyon',
         }),
       ],
     });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
-    expect(result).toMatchObject({ sent: 1, quiet: 0 });
-    expect(h.transport.bodies()).toEqual([
-      "This Saturday looks open for Maya. Want one nearby find that's actually running?",
-    ]);
-    const ledger = h.writes.filter((w) => w.table === schema.channelMessages);
-    expect(ledger[0]?.payload).toMatchObject({
-      templateKey: 'proactive_nudge:empty_saturday',
-      dedupeKey: 'nudge:fam-1:empty_saturday:2026-08-01:user-1',
-      category: 'nudge',
-    });
+    expect(result).toMatchObject({ sent: 0, quiet: 1 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.transport.bodies().join(' ')).not.toContain('looks open');
     const audit = h.writes.find((w) => w.table === schema.auditLog);
     expect(audit?.payload).toMatchObject({
-      actionTaken: 'proactive_nudge_sent',
-      after: { kind: 'empty_saturday' },
+      actionTaken: 'proactive_nudge_skipped',
+      after: { reason: 'saturday_unvoiced', kind: 'empty_saturday' },
     });
     expect(JSON.stringify(audit?.payload)).not.toContain('sat-1');
-    expect(h.transport.bodies()).toHaveLength(1);
   });
 
   it('holds the ask when the parent is not enrolled', async () => {

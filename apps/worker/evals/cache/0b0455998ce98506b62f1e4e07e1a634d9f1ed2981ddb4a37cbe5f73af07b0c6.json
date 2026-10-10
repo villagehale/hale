@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the exact registration window from `knows.registrationWindows` (Sep 1, 7:00 a.m. for residents), correctly states that Hale is already watching it (`watching: true`), and correctly says it will text before it opens — which matches the described ladder of alerts. No invented details, no app redirect, no markdown, no greeting or sign-off, one clean sentence. This is the product working exactly as designed.",
+    "score": 5
+  }
+}

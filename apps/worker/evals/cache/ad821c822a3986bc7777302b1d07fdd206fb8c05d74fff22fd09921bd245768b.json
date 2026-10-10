@@ -1,0 +1,58 @@
+{
+  "response": {
+    "id": "msg_011Cfoz9Cu2CEBBazX9XVFg4",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EqoECscCCBIYAipANpr3Tg6ZSAz6C96itYKi3V8PsGmLHugNAUV1cvhwHtcg3dN0/48mjfSFTflGASBk2kYXKvRAK9lG7hJLtHakOjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmaAREKD2NsYXVkZS1zb25uZXQtNagBpoGc1gbCAT0IBRAAGg8BRGgCONYDTzcFo2EEJq0gAjIEEnHPJToEvgDgN0IE+a6pmUoENYOdilALWgTZBeFWYAJoAXAB2gFgChZwcmVmaXhfYmVmb3JlX2Jsb2NrX3YxEiDcwNqKeVPdrjM0jdZUikkvVFGlZFX7YpQWLao0hhkrtiIAMiDCwBPIapyS4i+Wbz2GF3aPi3pEyQKtzAl7+h4JivtOH0gDEgyAtWQvfFVpfeF+KwkaDAK/r0l6GUDAgF4tCSIwDCyT14Vdz0dsGclFGzZnX9k4Ff5atZJyGq5MN7+/txUnvjGUTTji6AO7prYWIh2VKo8BdPtuDAl/MayCVc+MkVo+9Z+Od04iyMBvKgj62kycRLHd0f1PL9CZx4XBka4EMU0S2vC52LWEa0DvtEKm+htZu6aGx/zAti5W55qeWIg66+kPGMJe3OxrhuHPK2CP8oDJudRRqoLy1QpNehRR4iNJd6BujcBkKPZpBmcPE64fx0aeTxXdAuai44zlxtM/h5MYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Uj3AXazpDZFiNebVqUkKh1",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01U6SYbq9kzu42BPwrxyUETQ",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-milo",
+          "offer": "Want the full plan for getting him to stay in his own bed?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 388,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19497,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 250,
+      "output_tokens_details": {
+        "thinking_tokens": 54
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2903
+}

@@ -1,7 +1,8 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq, gte, inArray, lt, ne } from 'drizzle-orm';
 import { upcomingWeekend } from '~/lib/channel/intake/radar-decide';
-import { dayKeyOf } from '~/lib/format/datetime';
+import { dayKeyOf, formatTime } from '~/lib/format/datetime';
+import { type DayCommitment, isRealCommitment } from './saturday-window';
 
 /**
  * What this household already has on the coming Saturday, or the word that says
@@ -10,14 +11,19 @@ import { dayKeyOf } from '~/lib/format/datetime';
  * `'unread'` is a named absence (rule #11): the empty-Saturday leg does not run
  * and emits no skip, so a caller that has not loaded plans cannot be mistaken for
  * a household whose Saturday is open. Production always loads the real plans.
+ *
+ * `commitments` is the timed read. When it is present, a morning block does not
+ * mark the afternoon busy. `householdBusy` and `busyChildIds` stay for callers
+ * that have not loaded times: any family-wide row, or any row at all for a child.
  */
 export type SaturdayPlans =
   | 'unread'
   | {
-      /** A family-wide event, or anything on a connected calendar. Do not claim the day is open. */
+      /** A family-wide all-day commitment, or — when `commitments` is absent — any family-wide row. */
       householdBusy: boolean;
-      /** Child-attributed family_events. A teen's row does not mark a sibling busy. */
+      /** Child-attributed rows. A teen's row does not mark a sibling busy. */
       busyChildIds: ReadonlySet<string>;
+      commitments?: readonly DayCommitment[];
     };
 
 export function saturdayPlansFromRows(
@@ -32,12 +38,66 @@ export function saturdayPlansFromRows(
   return { householdBusy, busyChildIds };
 }
 
+const ALL_DAY_MS = 20 * 3_600_000;
+
+function minutesOf(date: Date, timeZone: string): number {
+  const [hour, minute] = formatTime(date, timeZone).split(':');
+  return Number(hour) * 60 + Number(minute);
+}
+
+function transparencyOf(value: string | null): DayCommitment['transparency'] {
+  if (value === 'opaque' || value === 'transparent') return value;
+  return null;
+}
+
+function statusOf(value: string | null): DayCommitment['status'] {
+  if (value === 'confirmed' || value === 'tentative' || value === 'cancelled' || value === 'free') {
+    return value;
+  }
+  return 'confirmed';
+}
+
+function timedCommitment(input: {
+  childId: string | null;
+  startsAt: Date;
+  endsAt: Date | null;
+  allDay: boolean;
+  transparency: string | null;
+  status: string | null;
+  timeZone: string;
+}): DayCommitment {
+  const long =
+    input.endsAt !== null && input.endsAt.getTime() - input.startsAt.getTime() >= ALL_DAY_MS;
+  return {
+    childId: input.childId,
+    startMinute: minutesOf(input.startsAt, input.timeZone),
+    endMinute: input.endsAt === null ? null : minutesOf(input.endsAt, input.timeZone),
+    allDay: input.allDay || long,
+    transparency: transparencyOf(input.transparency),
+    status: statusOf(input.status),
+  };
+}
+
+/** Coarse flags derived from the timed read, so an all-day household entry still blocks. */
+export function saturdayPlansFromCommitments(
+  commitments: readonly DayCommitment[],
+): Exclude<SaturdayPlans, 'unread'> {
+  const busyChildIds = new Set<string>();
+  let householdBusy = false;
+  for (const commitment of commitments) {
+    if (!isRealCommitment(commitment)) continue;
+    if (commitment.childId) busyChildIds.add(commitment.childId);
+    if (commitment.childId === null && commitment.allDay) householdBusy = true;
+  }
+  return { householdBusy, busyChildIds, commitments };
+}
+
 /**
  * Live family_events (every source, including placements, not deleted) plus
  * non-cancelled Google and Apple snapshots. `listFamilyEventsInWindow` excludes
  * placements, which is why this query does not use it.
  *
- * Named door (teen-access-outbound.test.ts). The select is child id and start time
+ * Named door (teen-access-outbound.test.ts). The select is child id and times
  * only. A title or a location here would put a 13+ child's calendar words on an
  * outbound path that has no viewer.
  *
@@ -51,7 +111,7 @@ export async function loadSaturdayPlans(
   timeZone: string,
 ): Promise<Exclude<SaturdayPlans, 'unread'>> {
   const saturday = upcomingWeekend(now, timeZone).find((slot) => slot.day === 'saturday');
-  if (!saturday) return { householdBusy: false, busyChildIds: new Set() };
+  if (!saturday) return { householdBusy: false, busyChildIds: new Set(), commitments: [] };
 
   const noon = new Date(`${saturday.date}T12:00:00.000Z`);
   const from = new Date(noon.getTime() - 36 * 3_600_000);
@@ -61,6 +121,8 @@ export async function loadSaturdayPlans(
     .select({
       childId: schema.familyEvents.childId,
       startsAt: schema.familyEvents.startsAt,
+      endsAt: schema.familyEvents.endsAt,
+      transparency: schema.familyEvents.transparency,
     })
     .from(schema.familyEvents)
     .where(
@@ -73,7 +135,13 @@ export async function loadSaturdayPlans(
     );
 
   const snapshots = await database
-    .select({ startAt: schema.calendarEventSnapshots.startAt })
+    .select({
+      startAt: schema.calendarEventSnapshots.startAt,
+      endAt: schema.calendarEventSnapshots.endAt,
+      allDay: schema.calendarEventSnapshots.allDay,
+      status: schema.calendarEventSnapshots.status,
+      transparency: schema.calendarEventSnapshots.transparency,
+    })
     .from(schema.calendarEventSnapshots)
     .innerJoin(
       schema.integrations,
@@ -89,15 +157,35 @@ export async function loadSaturdayPlans(
       ),
     );
 
-  const rows: { childId: string | null }[] = [];
+  const commitments: DayCommitment[] = [];
   for (const event of events) {
     if (dayKeyOf(event.startsAt, timeZone) !== saturday.date) continue;
-    rows.push({ childId: event.childId });
+    commitments.push(
+      timedCommitment({
+        childId: event.childId,
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        allDay: false,
+        transparency: event.transparency,
+        status: 'confirmed',
+        timeZone,
+      }),
+    );
   }
   for (const snapshot of snapshots) {
     if (snapshot.startAt === null) continue;
     if (dayKeyOf(snapshot.startAt, timeZone) !== saturday.date) continue;
-    rows.push({ childId: null });
+    commitments.push(
+      timedCommitment({
+        childId: null,
+        startsAt: snapshot.startAt,
+        endsAt: snapshot.endAt,
+        allDay: snapshot.allDay,
+        transparency: snapshot.transparency,
+        status: snapshot.status,
+        timeZone,
+      }),
+    );
   }
-  return saturdayPlansFromRows(rows);
+  return saturdayPlansFromCommitments(commitments);
 }

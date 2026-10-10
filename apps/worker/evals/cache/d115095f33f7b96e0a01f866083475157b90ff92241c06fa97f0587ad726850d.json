@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The week shows exactly one Thursday swim lesson (Thu 5:15pm, East pool). The parent's text names one event and one destination: Thursday swim → Friday 5:15. This is unambiguous — one matching event, one clear instruction. The correct handling is to draft the move and ask for confirmation in a plain sentence. That is exactly what happened: a `calendar_move` was drafted and the reply asks \"Move swim to Friday 5:15pm instead of Thursday?\" — a clean confirmation question, no keyword demanded, no app mention, no machinery exposed, no greeting or sign-off. The reply is correct and minimal. It does the job in the shape the product requires.",
+    "score": 5
+  }
+}

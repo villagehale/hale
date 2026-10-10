@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the exact registration window from `knows.registrationWindows` (Sep 1, 7:00 a.m., residents-first), correctly states Hale is already watching it (watching: true), and correctly promises to text before it opens — which is exactly what the watching feature does. It does not invent anything, does not send the parent to the app, does not ask for unnecessary confirmation, and is appropriately brief. One minor blemish: \"Halton Hills fall registration\" is slightly imprecise compared to the full program name \"Fall 2026 recreation programs,\" but this is a trivial shortening that doesn't mislead. The reply does the job cleanly and stops.",
+    "score": 5
+  }
+}

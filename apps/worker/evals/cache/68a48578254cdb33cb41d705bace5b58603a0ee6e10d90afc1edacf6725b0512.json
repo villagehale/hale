@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to order groceries. This is genuinely outside Hale's capabilities (which are clearly enumerated in `knows.can` — calendar, schedule search, parenting coaching, referral link, registration watching, and class spot watching). Groceries are not in scope. The reply \"Ordering groceries is past me.\" is honest, concise, and correct. It does not hand the parent back to an app, does not invent a capability, does not refer them somewhere useless, and does not explain internal machinery. It is a plain, accurate one-liner. The only minor question is whether Hale should offer something it CAN do, but the rubric does not require that and the reply is not scored down for omitting it. This is the product working correctly — short, exact, honest.",
+    "score": 5
+  }
+}

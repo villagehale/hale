@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week (Monday swim at West pool, Thursday swim at East pool), so ambiguity is real and Hale must ask which one before drafting anything. The reply correctly identifies both events with their times and locations and asks which to cancel — exactly the right handling. No draft is made, no change is claimed, no app mention, no greeting, no sign-off, one question. Clean and correct.",
+    "score": 5
+  }
+}

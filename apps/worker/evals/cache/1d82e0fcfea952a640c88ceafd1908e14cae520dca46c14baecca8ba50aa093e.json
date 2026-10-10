@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week — Monday 4:30pm swim lesson at West pool and Thursday 5:15pm swim lesson at East pool. This is a genuine ambiguity (more than one event matches), so asking which one is the correct handling. The reply names both events clearly and asks which to cancel — exactly right. No greeting, no sign-off, no markdown, one question, concise. This is the product working correctly.",
+    "score": 5
+  }
+}

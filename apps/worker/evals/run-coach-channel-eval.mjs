@@ -123,6 +123,9 @@ import {
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
+import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
+import { modelProse, nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
+import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
   JUDGE_MIN,
@@ -304,12 +307,13 @@ function smsSegments(text) {
 // definition, which is the thing the fix exists to remove.
 
 const GSM7_SUBSTITUTIONS = [
-  [/[‘’‛]/g, "'"],
+  [/[‘’‛\u201a\u201e\u2032\u2033\u00b4]/g, "'"],
   [/[“”]/g, '"'],
-  [/[–—―]/g, '-'],
+  [/[–—―\u2010\u2011\u2012\u2212]/g, '-'],
   [/…/g, '...'],
   [/[\u00a0\u2007\u202f\u2009]/g, ' '],
   [/[•·]/g, ''],
+  [/\u200b|\u200c|\u200d|\u2060|\ufeff|\u00ad/g, ''],
 ];
 
 function plainText(text) {
@@ -357,6 +361,13 @@ function sentences(body) {
     .filter((part) => part.trim().length > 0);
 }
 
+/** Two GSM-7 segments, mirroring replyCharacterRoom in reply.ts. */
+function replyCharacterRoom(suffix) {
+  const tail = String(suffix ?? '').trim();
+  const reserved = tail === '' ? 0 : tail.length + 1;
+  return 306 - reserved;
+}
+
 function fitToBudget(body, max, suffix = '') {
   const withSuffix = (text) => (suffix === '' ? text : `${text} ${suffix}`);
   if (smsSegments(withSuffix(body)) <= max) return body;
@@ -365,11 +376,8 @@ function fitToBudget(body, max, suffix = '') {
     const candidate = parts.slice(0, count).join(' ');
     if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
-  const words = (parts[0] ?? body).split(' ');
-  for (let count = words.length - 1; count >= 1; count -= 1) {
-    const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
-  }
+  // No complete sentence fits. The caller asks for one shorter rewrite. A
+  // mid-sentence "..." is not a sentence, and it is not sent.
   return null;
 }
 
@@ -381,6 +389,9 @@ function fitToBudget(body, max, suffix = '') {
  * what keeps "no preset bodies" true without giving the trim a chance to eat the half
  * that names the magic word.
  */
+/** Mirrors KEYWORD_INSTRUCTION in apps/web/lib/channel/plan/offer.ts. */
+const KEYWORD_INSTRUCTION = /\b(reply|say|text)\s+(yes|no)\b/i;
+
 function offerViolations(sentence) {
   const violations = [];
   const text = String(sentence).trim();
@@ -391,7 +402,11 @@ function offerViolations(sentence) {
   const questions = (text.match(/\?/g) ?? []).length;
   if (questions !== 1)
     violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
-  if (!/\byes\b/i.test(text)) violations.push('The offer never says YES.');
+  if (KEYWORD_INSTRUCTION.test(text)) {
+    violations.push(
+      'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
+    );
+  }
   if (smsEncoding(text) !== 'gsm7') violations.push('The offer is not plain ASCII.');
   if (smsSegments(text) > 1) violations.push('The offer is longer than one SMS segment.');
   return violations;
@@ -468,7 +483,12 @@ const FIXTURE_WEB_PICK = {
   sourceName: "the venue's own program page",
   when: 'Saturday mornings this fall',
   price: null,
+  url: 'https://www.haltonhills.ca/en/recreation/tiny-tumblers.aspx',
 };
+
+function webPickFor(fixture) {
+  return fixture.webPick ?? FIXTURE_WEB_PICK;
+}
 
 /**
  * THE COURSE PAGE THE WATCH FIXTURES PASTE, and the two saved pages behind it.
@@ -486,13 +506,17 @@ const FIXTURE_WEB_PICK = {
  */
 const spotPage = (name) => readFileSync(join(SPOTS_FIXTURES, `${name}.html`), 'utf8');
 
-function toSmsReply(raw, children, planOffer, referral, nearby) {
+function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
   const redacted = redactTeenNames(flattened, children, NOW);
-  // The protected tail, mirroring reply.ts: both halves are appended after the fit, and
-  // the referral block is redacted with the answer because a parent forwards it OUT.
-  const suffix = redactTeenNames(
+  // The protected tail, mirroring reply.ts: the offer, the referral block, and any
+  // activity URL the reply named. The referral block is redacted with the answer
+  // because a parent forwards it OUT.
+  const link = activityLinkSuffix(redacted, activityLinks);
+  // A plan offer or a referral still crowds the count out. An activity URL does not:
+  // the count is about that find, and the URL is that find's page.
+  const protectedTail = redactTeenNames(
     [planOffer, referral]
       .map((part) => part?.trim() ?? '')
       .filter((part) => part !== '')
@@ -500,16 +524,34 @@ function toSmsReply(raw, children, planOffer, referral, nearby) {
     children,
     NOW,
   );
-  if (!suffix) {
-    // Measured WITH the body, mirroring reply.ts: the count is protected from the trim,
-    // not from the budget, and room is reserved only when the answer as composed names
-    // its subject.
-    const reserved = nearbyClause(redacted, nearby) ?? '';
-    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS, reserved);
-    const clause = fittedAlone === null ? null : nearbyClause(fittedAlone, nearby);
-    return clause === null ? fittedAlone : `${fittedAlone} ${clause}`;
+  if (!protectedTail) {
+    const answer = dropDuplicateOffer(redacted, link);
+    const reserved = [nearbyClause(answer, nearby) ?? '', link]
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .join(' ');
+    const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, reserved);
+    if (fitted === null) return null;
+    const clause = nearbyClause(fitted, nearby);
+    const tail = [clause ?? '', link]
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .join(' ');
+    if (tail === '') return fitted;
+    if (fitted === '') return tail;
+    return `${fitted} ${tail}`;
   }
-  const fitted = fitToBudget(dropDuplicateOffer(redacted, suffix), MAX_REPLY_SEGMENTS, suffix);
+  const suffix = redactTeenNames(
+    [protectedTail, link]
+      .filter((part) => part.trim() !== '')
+      .join(' '),
+    children,
+    NOW,
+  );
+  const answer = dropDuplicateOffer(redacted, suffix);
+  if (answer === '') return suffix;
+  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix);
+  if (fitted === null) return null;
   return `${fitted} ${suffix}`;
 }
 
@@ -525,6 +567,33 @@ function toSmsReply(raw, children, planOffer, referral, nearby) {
  * show is whether the model's own answer ever names the offer in full, which is the
  * condition this gate makes load-bearing.
  */
+/**
+ * The REAL suffix and the REAL "does this reply name this find" check, assigned in
+ * `main` from activity-links.ts. That file has no `~/` import, so tsx can load it.
+ * A hand copy is how "lantern craft" dropped the Fanous page in the eval while the
+ * product check was supposed to be the same function.
+ */
+let activityLinkSuffix = () => '';
+let replyNamesActivity = () => false;
+
+function activityLinksFor(fixture, calls) {
+  const links = [];
+  for (const candidate of villageFor(fixture).candidates ?? []) {
+    if (candidate.url) {
+      links.push({
+        title: candidate.title,
+        url: candidate.url,
+        ...(candidate.venue ? { venue: candidate.venue } : {}),
+      });
+    }
+  }
+  if (calls.some((call) => call.tool === 'find_activities')) {
+    const pick = webPickFor(fixture);
+    if (pick.url) links.push({ title: pick.name, url: pick.url });
+  }
+  return links;
+}
+
 function nearbyClause(fittedBody, nearby) {
   if (!nearby) return null;
   const haystack = [fittedBody.toLowerCase()];
@@ -650,7 +719,7 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-function buildFixtureTools(agent, calls, village, spots) {
+function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
   let draftsThisTurn = 0;
 
   const claimDraftBudget = () => {
@@ -738,7 +807,7 @@ function buildFixtureTools(agent, calls, village, spots) {
   const proposeAdd = agent.defineTool({
     name: 'propose_calendar_add',
     description:
-      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. When the thread already names exactly one class, with its day and time, call this in the same turn; do not ask whether to add it first. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
     inputSchema: passthrough(),
     touchesChildContent: true,
     handler: async (input) => {
@@ -757,10 +826,11 @@ function buildFixtureTools(agent, calls, village, spots) {
   const searchVillage = agent.defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
     inputSchema: passthrough(),
     handler: async () => {
       record('search_village');
+      toolOutputs.push(village);
       return village;
     },
   });
@@ -773,7 +843,7 @@ function buildFixtureTools(agent, calls, village, spots) {
   const findActivities = agent.defineTool({
     name: 'find_activities',
     description:
-      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no age, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly; any other reason means the search itself could not run.",
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly; any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the town are attached from their record.",
     inputSchema: z.object({
       subject: z.string().min(1),
       window: z.string().optional(),
@@ -785,7 +855,9 @@ function buildFixtureTools(agent, calls, village, spots) {
     ],
     handler: async () => {
       record('find_activities');
-      return { found: true, source: 'web', picks: [FIXTURE_WEB_PICK] };
+      const result = { found: true, source: 'web', picks: [webPick] };
+      toolOutputs.push(result);
+      return result;
     },
   });
 
@@ -802,8 +874,10 @@ function buildFixtureTools(agent, calls, village, spots) {
     }),
     inputExamples: [{ subject: 'toddler gymnastics this fall' }],
     handler: async (input) => {
-      record('promise_activity_followup');
-      return { registered: true, subject: input.subject, dueWithinHours: 24 };
+      record('promise_activity_followup', { subject: input.subject });
+      const result = { registered: true, subject: input.subject, dueWithinHours: 24 };
+      toolOutputs.push(result);
+      return result;
     },
   });
 
@@ -828,17 +902,17 @@ function buildFixtureTools(agent, calls, village, spots) {
     // model has to fill. Omitting them here made this replica a different tool from the
     // one that ships, which is exactly what a replicated fixture must not be.
     inputExamples: [
-      { topic: 'sleep', offer: "Want the full plan? Reply YES and I'll send it." },
+      { topic: 'sleep', offer: 'Want me to send the full plan?' },
       {
         topic: 'solids',
-        childId: 'child_0000000000example',
-        offer: 'Want the whole first-foods plan? Say YES and it is yours.',
+        childId: '00000000-0000-4000-8000-000000000000',
+        offer: 'Should I send the whole first-foods plan?',
       },
     ],
     monetary: false,
     touchesChildContent: true,
     description:
-      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters, and it must say YES, because that is the word the parent replies with. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
+      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters. Ask like a person ("Want me to send it?"). Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     handler: async (input) => {
       // The gate IS the recompose loop: a refused offer throws a sentence the model
       // reads mid-turn and answers by calling again. Replicated from
@@ -893,7 +967,7 @@ function buildFixtureTools(agent, calls, village, spots) {
   const watchForOpening = agent.defineTool({
     name: 'watch_for_opening',
     description:
-      "Start watching a FULL class for a spot to open, on a course page the parent has sent you. `url` is that page's address, exactly as they pasted it - never one you composed, and never a search or listing page: it has to be the page for the one class. `label` is how the parent will recognise the class months later, in a few words and in their own terms ('Tuesday preschool swim'): no name, no age, no question mark. Pass `instant: true` only when they say they want it even in the middle of the night; the default holds an overnight opening until the morning. This reads the page RIGHT NOW and only arms if it is genuinely full with registration open - anything else throws a sentence telling you what is true instead, and you say that. Once armed, Hale re-reads the page about every ten minutes and texts them itself when a spot shows up, so say you are watching it and stop. Do not call this without a link from the parent: ask them for the link from the course page.",
+      "Start watching a FULL class for a spot to open, on a course page the parent has sent you. `url` is that page's address, exactly as they pasted it - never one you composed, and never a search or listing page: it has to be the page for the one class. `label` is how the parent will recognise the class months later, in a few words and in their own terms ('Tuesday preschool swim'): no name, no age, no question mark. Pass `instant: true` only when they say they want it even in the middle of the night; the default holds an overnight opening until the morning. This reads the page RIGHT NOW and only arms if it is genuinely full with registration open - anything else throws a sentence telling you what is true instead, and you say that. Once armed, Hale re-reads the page about every ten minutes and texts them itself when a spot shows up, so say you are watching it and stop. Do not call this without a link from the parent: ask for the link from the course page as a question with a question mark. A statement that you need the link is not an ask.",
     inputSchema: z.object({
       url: z.string().min(1).max(512),
       label: z.string().min(1).max(40),
@@ -1187,9 +1261,29 @@ function longMonth(abbr) {
   return LONG_MONTHS.get(abbr) ?? abbr;
 }
 
-/** What `search_village` returns for one text: its own village, or the corpus default. */
+/** What `search_village` returns for one text: its own village, or the corpus default.
+ * Titles are the spoken form from `spokenFind` (apps/web/lib/coach/spoken-find.ts),
+ * assigned in `main` before any fixture runs. A title that already names its venue
+ * does not also carry that venue, which is what made "Riverdale Farm visit at
+ * Riverdale Farm" the thing the model quoted. */
+let spokenFind = (title, venue) => ({ title, venue: venue?.trim() ? venue : null });
+
+function presentCandidate(candidate) {
+  const spoken = spokenFind(candidate.title, candidate.venue ?? '');
+  // Build the object without `delete`. The key has to be absent, not undefined:
+  // JSON.stringify drops both, but the key order and the missing property are what
+  // the recorded requests hashed. Omitting `venue` here matches that JSON.
+  const { venue: _venue, ...rest } = candidate;
+  if (spoken.venue === null) return { ...rest, title: spoken.title };
+  return { ...candidate, title: spoken.title, venue: spoken.venue };
+}
+
+function presentVillage(village) {
+  return { ...village, candidates: (village.candidates ?? []).map(presentCandidate) };
+}
+
 function villageFor(fixture) {
-  return fixture.village ?? FIXTURE_VILLAGE;
+  return presentVillage(fixture.village ?? FIXTURE_VILLAGE);
 }
 
 /**
@@ -1265,7 +1359,7 @@ function groundedHay(fixture, toolResults) {
  */
 const HEALTH_LINE_NUMBERS = new Set(['811', '911']);
 
-function fabrications(reply, hay) {
+function fabrications(reply, hay, allowedUrls) {
   const offenders = [];
   const lower = reply.toLowerCase();
 
@@ -1282,7 +1376,12 @@ function fabrications(reply, hay) {
   // far more often than it does not.
   for (const url of reply.match(/https?:\/\/\S+/g) ?? []) {
     const bare = url.replace(/[.,;:!?)\]]+$/, '').toLowerCase();
-    if (!hay.includes(bare)) offenders.push(`link "${bare}" was never given`);
+    // A URL the tool returned is recall, including one the runtime appended after the
+    // model spoke. Anything else in the hay (the parent's own paste, the referral
+    // link on a turn that shared one) stays grounded. A URL in neither was invented.
+    if (!hay.includes(bare) && !(allowedUrls?.has(bare) ?? false)) {
+      offenders.push(`link "${bare}" was never given`);
+    }
   }
   for (const [full, abbr] of DAY_NAMES) {
     if ((lower.includes(full) || new RegExp(`\\b${abbr}\\b`).test(lower)) && !hay.includes(abbr)) {
@@ -1301,6 +1400,38 @@ function fabrications(reply, hay) {
     }
   }
   return [...new Set(offenders)];
+}
+
+function calendarDate(iso) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: FIXTURE_TIMEZONE,
+  }).format(new Date(iso));
+}
+
+function dateSourcesFor(fixture, calls) {
+  const sources = [];
+  for (const candidate of villageFor(fixture).candidates ?? []) {
+    sources.push(dateSource(candidate.title, candidate.when ?? ''));
+  }
+  if (calls.some((call) => call.tool === 'find_activities')) {
+    const pick = webPickFor(fixture);
+    sources.push(dateSource(pick.name, pick.when ?? ''));
+  }
+  for (const event of FIXTURE_EVENTS) {
+    if (isPrivate(event)) continue;
+    sources.push(dateSource(`${event.title} ${event.location ?? ''}`, calendarDate(event.startsAt)));
+  }
+  for (const window of fixture.registrationWindows ?? []) {
+    sources.push(
+      dateSource(
+        `${window.town} registration ${window.programs}`,
+        `${window.opensFor} ${window.generalOpens ?? ''}`,
+      ),
+    );
+  }
+  return sources.filter((source) => source.words.length > 0);
 }
 
 // ── grading ────────────────────────────────────────────────────────────────
@@ -1351,10 +1482,12 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
     failures.push('never asks the clarifying question the ambiguity requires');
   }
 
-  // `mustMention: ['yes']` is not a style preference: YES is the literal word C1's
-  // fast-path matches (router/fast-path.ts YES_PHRASES). A reply that drafts a change
-  // and then asks the parent to "confirm" has left them holding a word the router will
-  // hand straight to the model instead of to the approvals spine.
+  // A drafted change is confirmed in an ordinary sentence. The parent answers in
+  // their own words (affirmative.ts reads yes, sure, oui, sounds good). Telling
+  // them which keyword to send is the failure, not the confirmation.
+  if (/\b(yes to confirm|reply yes)\b/i.test(lower)) {
+    failures.push('asks the parent to reply with a keyword');
+  }
   for (const token of expect.mustMention ?? []) {
     if (!lower.includes(token.toLowerCase())) {
       failures.push(`never says ${JSON.stringify(token)}`);
@@ -1362,7 +1495,8 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   }
   // Corpus-wide: a spoken promise must be a registered one. "I'll send/text/come
   // back" without promise_activity_followup recorded this turn is the unbacked
-  // promise the Aug-20 incident banned. (Plan offers carry their own YES flow.)
+  // promise the Aug-20 incident banned. (A plan offer is its own question, gated
+  // by offerViolations, and is not this promise.)
   //
   // A WATCHED REGISTRATION WINDOW is the second thing that can back one, added 2026-08-21
   // when the coach was first handed the radar. "I'll text you the week before" on a turn
@@ -1390,6 +1524,17 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
     }
   }
 
+  // A reply that names an activity the tools handed over has to carry that activity's
+  // URL. The runtime appends it when the reply refers to the find, including a
+  // shortened title ("lantern craft", "Riverdale Library … story time").
+  const links = activityLinksFor(fixture, calls);
+  for (const link of links) {
+    if (!replyNamesActivity(reply, link, links)) continue;
+    if (!lower.includes(link.url.toLowerCase())) {
+      failures.push(`names "${link.title}" without its link`);
+    }
+  }
+
   // Answered in the parent's own language. Deterministic rather than left to the judge
   // for the reason the other voice properties are: the corpus-mean gate scored the
   // English-reply-to-a-French-text at 2/5 and passed the run anyway (2026-08-13 audit),
@@ -1401,11 +1546,9 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   }
 
   // A draft that happened must be described as PENDING. "Moved" / "cancelled" /
-  // "done" would tell a parent something happened that has not (rule #4).
-  if (
-    drafts.length > 0 &&
-    /\b(i (?:have )?(?:moved|cancelled|canceled)|all set|done)\b/i.test(reply)
-  ) {
+  // "done" / "that one went through" would tell a parent something happened that
+  // has not (rule #4). The sentence has to ask them to confirm.
+  if (drafts.length > 0 && claimsDraftAlreadyHappened(reply)) {
     failures.push('describes a held draft as though it already happened (rule #4)');
   }
 
@@ -1451,8 +1594,15 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   ]
     .filter(Boolean)
     .join(' ');
-  const authored =
-    appended && reply.endsWith(appended) ? reply.slice(0, -appended.length).trim() : reply;
+  // The nearby clause and the activity URL are appended the same way the offer is:
+  // after the fit, by the runtime. A correct two-sentence answer plus that tail is
+  // not four sentences. The question count above still sees the whole reply.
+  const tail = {
+    appended,
+    nearbyClause: fixture.nearby?.clause ?? '',
+    links: activityLinksFor(fixture, calls),
+  };
+  const authored = modelProse(reply, tail);
   const sentenceCount = sentences(authored).length;
   if (sentenceCount > MAX_SENTENCES) {
     failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
@@ -1473,10 +1623,7 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   // the runtime de-duplicates that copy against the appended one, so charging it here
   // would fail a turn for a sentence that is only ever sent once.
   const composedPlain = plainText(String(composed ?? reply));
-  const composedAuthored =
-    appended && composedPlain.toLowerCase().endsWith(appended.toLowerCase())
-      ? composedPlain.slice(0, -appended.length).trim()
-      : composedPlain;
+  const composedAuthored = modelProse(composedPlain, { ...tail, ignoreCase: true });
   const composedSegments = smsSegments(composedAuthored);
   if (composedSegments > MAX_REPLY_SEGMENTS) {
     failures.push(
@@ -1622,8 +1769,10 @@ const JUDGE_SYSTEM = [
   'HALE HAS ONE LINK, AND ONLY WHEN `knows.referralLinkAppended` IS SET. That is the',
   "family's own referral link for telling a friend, appended by the runtime — not written",
   'by Hale and not a link to the app. When it is present the reply SHOULD carry it, and a',
-  'sentence telling the parent to forward it themselves is correct. When it is null, any',
-  'URL in the reply is invented; score that a 2 at most.',
+  'sentence telling the parent to forward it themselves is correct. When it is null, a',
+  'URL is still recall if it belongs to an activity in `knows.offerable` or',
+  '`knows.webFind` — the runtime appends that page. Any other URL is invented; score',
+  'that a 2 at most.',
   'THE CONNECT LINK IS REAL. Connecting a Google Calendar, Gmail or Google Drive is a',
   'capability Hale has: a parent who texts the plain ask ("connect my Google Calendar")',
   'is answered by a deterministic branch, before Hale composes anything, with a texted',
@@ -1650,6 +1799,24 @@ const JUDGE_SYSTEM = [
   'still wrong here is dressing a web find up as checked ("confirmed", "I verified"), or',
   'going quiet about one because it is unverified. The find-with-doubt rule above is',
   'about the nameless `stillBeingChecked` count, which Hale is given no names for at all.',
+  'NEVER hand over an activity that does not fit the ages in `knows.children`. Ranking',
+  'is by fit only. Free and paid are equal. If the live result does not fit, the',
+  'correct move is one retry of the live search with the right ages and interests in',
+  'the query. Only if that also yields nothing that fits does Hale say so honestly and',
+  'register a follow-up. A reply that offers a too-young or too-old program is a 2 at',
+  'most. Saying nothing fitted, and that Hale will come back, is a 5 when',
+  '`knows.promises` lists that follow-up.',
+  '`knows.promises` is every `promise_activity_followup` registered this turn. A',
+  'sentence that Hale will come back is TRUE when that list is non-empty, and an',
+  'unbacked promise when it is empty. Do not score a registered promise as invented.',
+  'QUOTE THE TITLE. The name of a find is the title in `knows.offerable` or',
+  '`knows.webFind`, whole. "Riverdale story time" and "Fanous lantern craft" are',
+  'not "storytime", "a lantern thing", or a rewrite built from the venue. A',
+  'paraphrase of the name is a miss; score it a 2 at most.',
+  "A DATE BELONGS TO ONE FIND. The day on an activity is that activity's own",
+  '`when`, and no other row\'s. Putting Aug 8 on a find whose when is Aug 9 is',
+  'an invention even when Aug 8 is sitting on a different find in the same turn.',
+  'Score that a 1.',
   "REGISTRATION WINDOWS ARE HALE'S OWN VERIFIED FACTS. `knows.registrationWindows` is a",
   'hand-checked municipal open date for THIS family: `opensFor` is the instant they can',
   'first register, `generalOpens` the later one everyone else waits for. Stating either',
@@ -1698,11 +1865,11 @@ const JUDGE_SYSTEM = [
   "saying the content is not Hale's to share is the CORRECT and complete answer — do not",
   'mark it down as evasive, and do not expect the activity to be named.',
   'THE CONTRACT, so you do not mark down the shape the product requires. Hale never',
-  'changes a schedule on its own: it DRAFTS, and the parent confirms by texting back the',
-  'literal word YES. When `drafted` is non-empty, a reply that names the change and ends',
-  '"...? YES to confirm." is exactly right — not robotic, and not a failure to act. A',
-  'warmer paraphrase that drops the word YES is WORSE: the answer would not be recognised',
-  'as consent. When `drafted` is empty, the correct reply is whichever of these fits —',
+  'changes a schedule on its own: it DRAFTS, and the parent confirms in their own words.',
+  'When `drafted` is non-empty, a reply that names the change and asks, in an ordinary',
+  'sentence, whether to go ahead is exactly right. Telling them to reply YES, or "YES to',
+  'confirm", is the failure: consent is read from what they actually say, not from a',
+  'keyword. When `drafted` is empty, the correct reply is whichever of these fits —',
   'asking WHICH of two matching events was meant, saying plainly that something is not on',
   'the schedule, giving the TIME of a private item without its content, or one short line',
   'answering a message that needs nothing done.',
@@ -1722,11 +1889,12 @@ const JUDGE_SYSTEM = [
   '1 = wrong: claims a change HAS been made when it was only drafted, invents a detail, or',
   'relays something it was told not to.',
   'ONE EXCEPTION on endings: a raising-kids question is answered with the advice and',
-  'then a FIXED line Hale appends itself - "Want the full plan? Reply YES and I\'ll send',
-  'it." That is the product working, not a dangling question or an invitation to chatter:',
-  'a complete plan really does follow a YES. Never mark a reply down for carrying it, and',
-  'judge the ADVICE in front of it as the whole answer - it is deliberately one short',
-  'beat, because the depth is in the plan being offered.',
+  'then a line Hale appends itself, a natural question such as "Want me to send the full',
+  'plan?" That is the product working, not a dangling question or an invitation to',
+  'chatter: a complete plan follows if they agree. Never mark a reply down for carrying',
+  'it, and do not mark it down for leaving out the word YES. Judge the ADVICE in front of',
+  'it as the whole answer - it is deliberately one short beat, because the depth is in',
+  'the plan being offered.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -1783,6 +1951,14 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
+  ({ spokenFind } = await tsImport(
+    join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
+    import.meta.url,
+  ));
+  ({ activityLinkSuffix, replyNamesActivity } = await tsImport(
+    join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'activity-links.ts'),
+    import.meta.url,
+  ));
   const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
   const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
   const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
@@ -1801,13 +1977,17 @@ async function main() {
   const subjectLatencies = [];
 
   const skill = await agent.loadSkill(SKILL_PATH);
+  const shortenSkill = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-shorten.md'),
+  );
   const model =
     process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
   // Sonnet, not the Haiku the other evals judge with. Scoring a two-sentence text
-  // against a contract ("is `YES to confirm` the required shape or a robotic one?") is
-  // judgment-dense work run rarely, and Haiku flapped between 2 and 5 on replies that
-  // differed by a comma. A grader that noisy makes a 100% gate unreachable for reasons
-  // that have nothing to do with the agent. The run is cached, so the tier costs once.
+  // against a contract (a natural question is the confirmation; "reply YES" is the
+  // failure) is judgment-dense work run rarely, and Haiku flapped between 2 and 5 on
+  // replies that differed by a comma. A grader that noisy makes a 100% gate unreachable
+  // for reasons that have nothing to do with the agent. The run is cached, so the tier
+  // costs once.
   const judgeModel = (await readModelIds()).sonnet;
   // MEDIAN OF THREE, not one draw. The per-fixture floor is a hard gate and the judge is a
   // sampled model: `capability-park-nearby-again` failed CI at 2 on a committed draw while
@@ -1869,6 +2049,7 @@ async function main() {
   for (const fixture of corpus) {
     const calls = [];
     const auditLog = [];
+    const toolOutputs = [];
     const children = childrenFor(fixture);
     /** What the companion handed back this turn — grounding the audit row cannot carry. */
     const guidance = [];
@@ -1898,7 +2079,14 @@ async function main() {
       reply = toSmsReply(stand.reply, children);
     } else {
       const tools = [
-        ...buildFixtureTools(agent, calls, villageFor(fixture), spots),
+        ...buildFixtureTools(
+          agent,
+          calls,
+          villageFor(fixture),
+          spots,
+          webPickFor(fixture),
+          toolOutputs,
+        ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
       ];
       const client = makeCachedAgentClient(
@@ -1939,21 +2127,72 @@ async function main() {
       }
       truncatedRetries = run.truncatedRetries;
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
+      const offerSentence = calls.find((call) => call.tool === 'offer_full_plan')?.offer;
+      const referralBlock = forward ? `${forward} ${FIXTURE_REFERRAL_LINK}` : undefined;
       composed = run.answer;
       reply = toSmsReply(
         run.answer,
         children,
-        calls.find((call) => call.tool === 'offer_full_plan')?.offer,
-        forward ? `${forward} ${FIXTURE_REFERRAL_LINK}` : undefined,
+        offerSentence,
+        referralBlock,
         fixture.nearby,
+        activityLinksFor(fixture, calls),
       );
+      // One shorter rewrite when no complete sentence fit. The same cached client
+      // keys it: a different system prompt is a different entry, and only a turn
+      // that actually overflowed writes one. The composed gate then grades the
+      // rewrite, which is the text that can be sent.
+      if (reply === null && plainText(run.answer) !== '') {
+        const suffix = redactTeenNames(
+          [offerSentence, referralBlock]
+            .map((part) => part?.trim() ?? '')
+            .filter((part) => part !== '')
+            .join(' '),
+          children,
+          NOW,
+        );
+        const lane = agent.withoutThinking(agent.pickLane(shortenSkill.meta.task));
+        if (!lane) throw new Error('coach-channel-shorten has no thinking-off lane');
+        const response = await client.messages.create({
+          ...agent.laneRequestFields(lane),
+          max_tokens: 200,
+          system: shortenSkill.instructions,
+          messages: [
+            {
+              role: 'user',
+              content: JSON.stringify({
+                ceiling: replyCharacterRoom(suffix),
+                text: plainText(run.answer),
+              }),
+            },
+          ],
+        });
+        const shorter = (response.content ?? [])
+          .filter((block) => block.type === 'text')
+          .map((block) => block.text)
+          .join('')
+          .trim();
+        if (shorter) {
+          composed = shorter;
+          reply = toSmsReply(
+            shorter,
+            children,
+            offerSentence,
+            referralBlock,
+            fixture.nearby,
+            activityLinksFor(fixture, calls),
+          );
+        }
+      }
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.
       toolResults = auditLog.map((entry) => entry.after);
     }
 
+    const pick = webPickFor(fixture);
     const hay = groundedHay(fixture, [
       toolResults,
+      toolOutputs,
       FIXTURE_EVENTS.filter((e) => !isPrivate(e)).map((e) => ({
         what: e.title,
         where: e.location,
@@ -1974,9 +2213,10 @@ async function main() {
       calls.some((call) => call.tool === 'share_referral_link') ? FIXTURE_REFERRAL_LINK : null,
       // The web pick, on the same terms: only a turn that actually called
       // find_activities was handed it, and on every other turn naming it is invention.
-      calls.some((call) => call.tool === 'find_activities') ? FIXTURE_WEB_PICK : null,
+      calls.some((call) => call.tool === 'find_activities') ? pick : null,
     ]);
-    const invented = reply === null ? [] : fabrications(reply, hay);
+    const invented =
+      reply === null ? [] : [...fabrications(reply, hay), ...borrowedFindDates(reply, dateSourcesFor(fixture, calls))];
     const verdict =
       broken || reply === null
         ? null
@@ -2015,8 +2255,11 @@ async function main() {
               // did, at 2/5, on a reply that was doing exactly what the skill asks.
               // Half-blind is not a noisy judge, it is a confidently wrong one.
               webFind: calls.some((call) => call.tool === 'find_activities')
-                ? `${FIXTURE_WEB_PICK.name} (${FIXTURE_WEB_PICK.ageFit}), ${FIXTURE_WEB_PICK.when}, per ${FIXTURE_WEB_PICK.sourceName} - source: web, NOT verified by Hale`
+                ? `${pick.name} (${pick.ageFit}), ${pick.when}, per ${pick.sourceName}${pick.url ? ` ${pick.url}` : ''} - source: web, NOT verified by Hale`
                 : null,
+              promises: calls
+                .filter((call) => call.tool === 'promise_activity_followup')
+                .map((call) => call.subject ?? ''),
               // THE NEARBY COUNT, on the same terms as the referral link and the web
               // pick: Hale composes it from what other households already answered and
               // the runtime appends it AFTER the trim, so the model neither wrote it
@@ -2031,7 +2274,8 @@ async function main() {
               // `undefined`, not `null`, on every turn without one — JSON.stringify
               // drops undefined, so every judge verdict already committed stays valid.
               nearbyCountAppended:
-                fixture.nearby && reply !== null && reply.endsWith(fixture.nearby.clause)
+                fixture.nearby &&
+                nearbyCountWasAppended(reply, fixture.nearby.clause, activityLinksFor(fixture, calls))
                   ? `${fixture.nearby.clause} - composed by Hale from what other households answered and appended by the runtime; the model neither wrote this sentence nor saw it`
                   : undefined,
               // What THIS text's Village read returned, split the way the
@@ -2043,9 +2287,12 @@ async function main() {
               // same four words an invented detail and put a correct reply below the
               // floor. Same half-blindness as `webFind` and `standingPlace` above, same
               // fix: show the judge what the tool showed the model.
-              offerable: villageFor(fixture).candidates.map(
-                (c) => `${c.title} at ${c.venue}, ${c.when} — ${c.summary}`,
-              ),
+              offerable: villageFor(fixture).candidates.map((c) => {
+                const line = c.venue
+                  ? `${c.title} at ${c.venue}, ${c.when} — ${c.summary}`
+                  : `${c.title}, ${c.when} — ${c.summary}`;
+                return c.url ? `${line} ${c.url}` : line;
+              }),
               stillBeingChecked: villageFor(fixture).inVerification,
               // The standing place, when the tool handed one over. Without it a judge
               // reads a named venue with no date attached as the invention it would

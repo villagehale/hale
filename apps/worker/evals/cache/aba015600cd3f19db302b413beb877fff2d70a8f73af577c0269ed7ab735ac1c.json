@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the Saturday soccer practice from the week and offers the one offerable activity (Riverdale story time) with its correct title, venue, day, and the URL (which is the activity's own page from knows.offerable — a runtime-appended link, not invented). The title \"Riverdale story time\" matches the offerable title exactly. The date Aug 8 matches the offerable's when (Sat, Aug 8). No greeting, no sign-off, no markdown, no questions. All ages are covered (the offerable is \"all ages welcome,\" fitting Milo at 63mo and Ada at 101mo; the teenager may not want storytime but the parent asked generally and the reply doesn't misrepresent it). The only small issue is that the stillBeingChecked count is 0, so nothing is pending — the reply is complete. This is clean and correct. One minor note: the reply is slightly long with two sentences plus a URL, but each sentence carries distinct necessary information (on-schedule event + offerable activity). This is the product working correctly.",
+    "score": 5
+  }
+}

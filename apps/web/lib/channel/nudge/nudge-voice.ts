@@ -54,10 +54,7 @@ export interface NudgeVoice {
  * against — and this skill's own contract forbids it anyway ("Never write a question").
  * The weekday FIND is voiced like any other offer; it asks nothing.
  */
-export type VoicedNudge = Exclude<
-  Nudge,
-  HealthCheckpointNudge | WeekdayCareAsk | EmptySaturdayNudge
->;
+export type VoicedNudge = Exclude<Nudge, HealthCheckpointNudge | WeekdayCareAsk>;
 
 /** Voice fields ONLY, strict: an unknown/extra top-level key fails the parse and the
  * caller falls back to the deterministic render. */
@@ -79,6 +76,16 @@ export function nudgeVoiceContext(nudge: VoicedNudge): unknown {
       kidNames: nudge.kidNames,
       residentNote: nudge.residentNote,
       ageApproximate: nudge.ageApproximate,
+    };
+  }
+  if (nudge.kind === 'empty_saturday') {
+    return {
+      kind: nudge.kind,
+      kidName: nudge.kidName,
+      what: nudge.title,
+      where: nudge.venueName,
+      when: nudge.whenLabel,
+      day: nudge.saturday,
     };
   }
   if (nudge.kind === 'weekday_dropin') {
@@ -114,6 +121,12 @@ export function nudgeFactSlots(nudge: VoicedNudge): string[] {
       ...nudge.kidNames,
     ];
     if (nudge.residentNote) slots.push(nudge.residentNote);
+    return slots;
+  }
+  if (nudge.kind === 'empty_saturday') {
+    const slots = [nudge.title, nudge.kidName, nudge.saturday];
+    if (nudge.venueName) slots.push(nudge.venueName);
+    if (nudge.whenLabel) slots.push(nudge.whenLabel);
     return slots;
   }
   if (nudge.kind === 'weekday_dropin') {
@@ -233,20 +246,58 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
  * its words ship. A null client (no API key, or the voice kill switch) skips the call
  * entirely — the deterministic render is a first-class outcome, not an error path.
  */
+function withActivityLink(message: string, url: string | null): string {
+  if (url === null || message.includes(url)) return message;
+  return `${message} ${url}`;
+}
+
+/**
+ * The Saturday line is model-written and names the session. There is no canned
+ * sentence behind it: a missing client or a voice that fails the grounding check
+ * is silence, named by the caller.
+ */
+async function composeEmptySaturday(
+  nudge: EmptySaturdayNudge,
+  deps: { familyId: string; database: Database; client: AgentClient | null },
+): Promise<string | null> {
+  if (!deps.client) return null;
+  let skill: Awaited<ReturnType<typeof loadNudgeVoiceSkill>>;
+  try {
+    skill = await loadNudgeVoiceSkill();
+  } catch (err) {
+    console.error({ err, familyId: deps.familyId }, 'nudge: skill load failed - saturday unvoiced');
+    return null;
+  }
+  const { voice } = await composeVoice<NudgeVoice>({
+    skill,
+    context: nudgeVoiceContext(nudge),
+    factSlots: nudgeFactSlots(nudge),
+    parse: parseNudgeVoiceAnswer,
+    voiceStrings: nudgeVoiceStrings,
+    client: deps.client,
+    database: deps.database,
+    familyId: deps.familyId,
+    agentName: 'nudge-voice',
+    traceName: 'nudge-voice',
+    maxTokens: VOICE_MAX_TOKENS,
+  });
+  if (!voice || !usableNudgeMessage(voice.message, nudge)) return null;
+  const linked = withActivityLink(voice.message, nudge.url);
+  if (smsSegments(`${linked}\n\n${NUDGE_OPT_OUT}`) > MAX_NUDGE_SEGMENTS) return null;
+  if (!linked.toLowerCase().includes(nudge.title.toLowerCase())) return null;
+  return linked;
+}
+
 export async function composeNudgeMessage(
   nudge: Nudge,
   deps: { familyId: string; database: Database; client: AgentClient | null },
-): Promise<string> {
+): Promise<string | null> {
+  if (nudge.kind === 'empty_saturday') return composeEmptySaturday(nudge, deps);
   const deterministic = renderNudgeDeterministically(nudge);
   // A health checkpoint never reaches the model (VIL-243 · M8): deterministic copy is
   // REVIEWABLE copy, and this is the one message class where a warmer sentence is not
   // worth the chance of a sentence nobody approved.
-  if (
-    nudge.kind === 'health_checkpoint' ||
-    nudge.kind === 'weekday_care' ||
-    nudge.kind === 'empty_saturday' ||
-    !deps.client
-  ) {
+  if (nudge.kind === 'health_checkpoint' || nudge.kind === 'weekday_care' || !deps.client) {
     return deterministic;
   }
 

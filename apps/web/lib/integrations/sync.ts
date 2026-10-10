@@ -629,6 +629,12 @@ function calendarChangeOf(item: Record<string, unknown>, runStamp: string): Cale
     // are the same edit — the alert path groups on it so six changes are one text.
     recurringEventId: readString(item.recurringEventId),
     status: status === 'cancelled' || status === 'tentative' ? status : 'confirmed',
+    transparency:
+      readString(item.transparency) === 'transparent'
+        ? 'transparent'
+        : readString(item.transparency) === 'opaque'
+          ? 'opaque'
+          : undefined,
     title: readString(item.summary),
     start,
     end: timePoint(item.end) ?? start,

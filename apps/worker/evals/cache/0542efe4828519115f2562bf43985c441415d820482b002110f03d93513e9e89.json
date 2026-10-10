@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The draft is set (calendar_move), so the correct reply names the change and asks in an ordinary sentence whether to go ahead. This reply does exactly that: it names the move (swim from Thursday to Friday 5:15pm) and asks a plain confirmation question. No keyword-prompt (\"reply YES\"), no greeting, no sign-off, no markdown, no extra detail. Short and exact. The only very minor thing is it omits the \"where\" (East pool) which could have been useful context, but that is not a required element and the reply is otherwise complete and correct.",
+    "score": 5
+  }
+}

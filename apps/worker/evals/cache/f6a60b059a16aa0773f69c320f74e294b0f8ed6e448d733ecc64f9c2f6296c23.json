@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to add the gymnastics class to the calendar. Hale had already named the class in the thread (\"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\"), so there is exactly one resolved reference. `drafted` contains `calendar_add`, meaning Hale drafted the add correctly. The reply names the event with its full title from the earlier thread mention, gives the day and time, and asks a plain ordinary sentence for confirmation — no keyword prompt like \"reply YES\", no greeting, no sign-off, no markdown. This is exactly the correct shape: draft named, confirmation sought in a natural sentence. It is short, exact, and complete.",
+    "score": 5
+  }
+}

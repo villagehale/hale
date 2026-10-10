@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the soccer practice from the week (Sat 10am, Cedarvale Park) and then offers the verified offerable activity (Riverdale story time, Riverdale Library, Sat Aug 8, free, all ages). Both details are traceable — one from `week`, one from `offerable`. No invented details, no markdown, no greeting or sign-off, no machinery exposed, no app referral, no clarifying question where none was needed. The reply is concise and complete. The one tiny blemish is the slightly awkward connector \"There's also\" starting the second sentence, but it reads naturally and does the job cleanly. Very close to a 5 — essentially correct in every dimension.",
+    "score": 5
+  }
+}

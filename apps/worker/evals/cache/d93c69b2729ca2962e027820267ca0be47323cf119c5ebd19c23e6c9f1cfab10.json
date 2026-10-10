@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that grocery ordering is outside Hale's capabilities. The `can` list confirms Hale cannot order groceries, so declining is right. The reply is short and honest. However, it reads slightly like a handback (\"past me\" is the phrasing flagged in the rubric for parenting questions), but grocery ordering is genuinely outside scope — this is not a parenting question or a capability Hale has, so declining is correct. The reply is minimal and accurate. A small issue: \"past me\" is a bit informal/vague and could be slightly clearer, but it gets the job done without inventing capabilities, sending the parent to the app, or making promises. This is essentially correct but could name what Hale *can* do (calendar, nearby activities, etc.) to be more useful — though the rubric doesn't require that. Overall it's a clean, honest, short refusal for something genuinely out of scope.",
+    "score": 4
+  }
+}

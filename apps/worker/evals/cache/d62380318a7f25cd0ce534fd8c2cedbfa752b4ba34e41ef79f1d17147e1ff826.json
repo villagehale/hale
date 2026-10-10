@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply drafts a calendar add for \"Tiny Gym at Cartwheels\" on Sun, Sep 13 at 9:30am — details Hale itself named in an earlier thread message (\"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\"), so this is recall, not invention. `drafted` contains `calendar_add`, confirming the draft was made. The reply names the change and asks in a plain sentence whether to go ahead — exactly the correct shape. No keyword confirmation prompt, no app link, no sign-off, no extra detail. Short and complete.",
+    "score": 5
+  }
+}

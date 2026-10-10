@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to connect their Google Calendar. Per the rules, a plain-words connecting ask that the deterministic branch didn't catch should be answered by saying the link is a text away and quoting the exact short phrase that will trigger it — which is exactly what this reply does. It names the feature, tells Sam the link is 15 minutes good (accurate recall), and hands over the verbatim phrase to send. No app referral, no invented URL, no machinery explanation, no sign-off, one sentence. That is the correct and complete shape.",
+    "score": 5
+  }
+}

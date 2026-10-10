@@ -1100,6 +1100,13 @@
       "when": 1781469800000,
       "tag": "0160_kid_interests",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1781469801000,
+      "tag": "0161_calendar_transparency",
+      "breakpoints": true
     }
   ]
 }

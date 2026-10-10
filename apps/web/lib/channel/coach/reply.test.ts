@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import { MAX_REPLY_SEGMENTS, redactTeenNames, toSmsReply } from './reply';
+import {
+  MAX_REPLY_SEGMENTS,
+  ReplyNeedsShorter,
+  plainText,
+  redactTeenNames,
+  toSmsReply,
+} from './reply';
 
 /**
  * The post-processing between the model and the carrier. Everything asserted here is a
@@ -158,22 +164,25 @@ describe('toSmsReply', () => {
     expect(out).not.toContain('1-2:30 p.m.');
   });
 
-  it('trims a single unbroken over-budget sentence on a word boundary', () => {
+  it('refuses to cut a single over-budget sentence in half', () => {
     const raw = `${'swim '.repeat(80)}now`;
 
-    const out = toSmsReply(raw, { children: [], now: NOW });
-
-    expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
-    expect(out).not.toContain(LINK);
-    expect(out.endsWith('...')).toBe(true);
-    expect(out).not.toMatch(/swi\b/);
+    expect(() => toSmsReply(raw, { children: [], now: NOW })).toThrow(ReplyNeedsShorter);
+    try {
+      toSmsReply(raw, { children: [], now: NOW });
+    } catch (err) {
+      expect((err as Error).message).toMatch(/budget/i);
+      expect((err as Error).message).not.toContain('swim');
+    }
   });
 
-  /** No prefix of a single 300-character token fits, so there is nothing honest left to
-   * send. The router reads the throw as a failed turn and answers with its own template
-   * — the same outcome an empty body gets, and the right one. */
-  it('refuses a body with no prefix inside the budget', () => {
-    expect(() => toSmsReply('x'.repeat(400), { children: [], now: NOW })).toThrow(/budget/i);
+  /** No complete sentence of a single 300-character token fits. The throw is the
+   * signal to ask for a shorter rewrite — not a stump, and not a sentence this
+   * function invented. */
+  it('refuses a body with no complete sentence inside the budget', () => {
+    expect(() => toSmsReply('x'.repeat(400), { children: [], now: NOW })).toThrow(
+      ReplyNeedsShorter,
+    );
   });
 
   it('refuses to emit an empty body', () => {
@@ -515,5 +524,72 @@ describe('the nearby count', () => {
     // The control: the answer itself WAS trimmed, so the clause survived a real trim
     // rather than a message that happened to fit.
     expect(reply.length).toBeLessThan(long.length + NEARBY.clause.length);
+  });
+
+  it('keeps the count when the only suffix is the find URL', () => {
+    const reply = toSmsReply('Riverdale story time is Saturday at 10.', {
+      children: [],
+      now,
+      nearby: {
+        clause: '3 families near you say Riverdale Library is worth it.',
+        title: 'Riverdale story time',
+        otherTitles: [],
+      },
+      activityLinks: [
+        {
+          title: 'Riverdale story time',
+          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+          venue: 'Riverdale Library',
+        },
+      ],
+    });
+
+    expect(reply).toContain('3 families near you say Riverdale Library is worth it.');
+    expect(reply).toContain('https://www.torontopubliclibrary.ca/programs-and-classes/');
+    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+  });
+
+  it('still drops the count when a plan offer is the suffix', () => {
+    const reply = toSmsReply('Riverdale story time is Saturday at 10.', {
+      children: [],
+      now,
+      nearby: NEARBY,
+      planOffer: 'Want me to send the full plan?',
+      activityLinks: [
+        {
+          title: 'Riverdale story time',
+          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+        },
+      ],
+    });
+
+    expect(reply).not.toContain('families near you');
+    expect(reply).toContain('Want me to send the full plan?');
+    expect(reply).toContain('https://www.torontopubliclibrary.ca/programs-and-classes/');
+  });
+});
+
+describe('plain ASCII folding', () => {
+  it('folds a non-breaking hyphen and a zero-width space so a short reply stays GSM-7', () => {
+    const body = `${'Up at 2 is common at eight. '.repeat(4)}One quiet check, then back to bed\u2011same as last week.\u200b`;
+    const folded = plainText(body);
+    expect(folded).not.toMatch(/[\u2011\u200b]/);
+    expect(smsSegments(folded)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(body)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
+  });
+});
+
+describe('activity links', () => {
+  it('appends the page for the activity the reply named, and not one it did not', () => {
+    const reply = toSmsReply('Fanous lantern craft is on Saturday afternoon at North York.', {
+      children: [],
+      now: NOW,
+      activityLinks: [
+        { title: 'Fanous lantern craft', url: 'https://tpl.example/lantern' },
+        { title: 'Robotics workshops', url: 'https://tpl.example/robotics' },
+      ],
+    });
+    expect(reply).toContain('https://tpl.example/lantern');
+    expect(reply).not.toContain('https://tpl.example/robotics');
   });
 });

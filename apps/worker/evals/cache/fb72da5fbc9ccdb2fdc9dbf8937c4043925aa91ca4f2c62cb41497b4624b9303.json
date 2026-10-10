@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does the job well. It correctly names the offerable activity with its exact title (\"Fanous lantern craft at North York Central Library\"), gives the correct day (Sat), time (2:00 p.m.), and notes it's free drop-in for ages 6-12 — all matching the offerable entry. It also surfaces the existing soccer practice from the week view, which is a useful and accurate addition to answering \"anything fun this weekend.\" The URL is the one from `knows.offerable`, appended by the runtime, so that is correct recall. Milo (63 months = ~5.25 years) is just under the 6-12 range, and Ada (101 months = ~8.4 years) fits squarely in it — the age note is passed along accurately and honestly. The teenager is not relevant to a drop-in for ages 6-12. No greeting, no sign-off, no markdown, no invented details, no questions. The reply is clean and complete. A very minor note: Milo at just over 5 years is technically outside the 6-12 age range listed, and the reply doesn't flag that only Ada clearly fits — but the activity information as stated is accurate and the parent can read the age range themselves. This is a negligible omission rather than an error. Overall this is a crisp, accurate, complete reply.",
+    "score": 5
+  }
+}

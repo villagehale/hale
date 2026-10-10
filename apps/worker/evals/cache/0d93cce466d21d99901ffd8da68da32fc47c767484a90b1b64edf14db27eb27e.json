@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the existing Saturday event (soccer practice at 10am, Cedarvale Park) and the one offerable activity (Riverdale story time at Riverdale Library, Sat Aug 8 — free indoor drop-in), quoting the title correctly and including the URL which is the runtime-appended activity page from `knows.offerable`. No greeting, no sign-off, no markdown, no unnecessary questions. Both items are accurate and traceable. The URL is the one from `knows.offerable`, so it's recall, not invention. This is a clean, complete, correct reply that does the job and stops.",
+    "score": 5
+  }
+}

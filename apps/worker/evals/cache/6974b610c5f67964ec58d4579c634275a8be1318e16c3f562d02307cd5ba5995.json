@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not on this week's calendar — that is the accurate and complete answer given the visible events (two swims, a private Tuesday item, a private Wednesday item, and Saturday soccer). The private Wednesday item is redacted and Hale cannot know it is piano, so Hale must not guess. The reply does not surface the private items as possibilities, which is correct per the rules. It then offers to check next week, which is a reasonable and helpful follow-up. The reply is concise, asks only one question, has no sign-off, no markdown, no invented details. One minor note: \"this week's calendar\" is a slight redundancy since the context is already clear, but it is not a real blemish. Overall this is a clean, correct, well-shaped reply.",
+    "score": 5
+  }
+}

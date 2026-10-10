@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names \"the thursday swim\" — exactly one event in the week matches: Thu 5:15pm swim lesson at East pool. The reference is fully resolved. Hale correctly drafted the cancel and is asking for confirmation in a plain sentence that names the specific event (day, time, venue). No keyword-prompt (\"reply YES\"), no greeting, no sign-off, no markdown, no app referral, no invented detail. Perfectly shaped reply.",
+    "score": 5
+  }
+}

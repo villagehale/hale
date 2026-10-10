@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not visible on this week's calendar — there is no piano event in `week`. The two private items cannot be assumed to be piano (Hale cannot see what they are, and the rubric says private items are not candidate matches and Hale must not hedge with them). So \"I don't see piano on this week's calendar\" is the complete and correct answer. The follow-up question \"Want me to check next week?\" is a natural and useful offer given the context — piano is a recurring activity that may simply fall next week. The reply is short, accurate, asks at most one question, no greeting or sign-off, no markdown. This is the product working cleanly.",
+    "score": 5
+  }
+}

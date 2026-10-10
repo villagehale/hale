@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the verified registration window (Sep 1, 7:00 a.m. for residents) from `knows.registrationWindows`, states that watching is already active (`watching: true`), and promises to text before it opens — which matches the described behavior (texts a week out, evening before, fifteen minutes before). This is exactly right: stating the date flat is recall, not invention; claiming the watch is already in place is true; promising to text before is the feature working. The reply is short, names the relevant fact, and stops. No app referral, no invented detail, no greeting or sign-off. One minor note: it doesn't explicitly mention Milo by name, but that's not required — the parent asked about swim registration and the reply addresses it directly. This is a clean, correct, complete answer.",
+    "score": 5
+  }
+}

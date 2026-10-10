@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the resident-priority opening date and time as a flat fact (recall, not hedged), confirms the watch is already active, and promises to text before it opens — all of which match `watching: true` and the rubric's instruction that \"I am already on it, and I will text you before\" is the whole point of the feature. It does not send Sam to the app, does not invent anything, does not use a keyword-confirmation prompt, and stops cleanly. The only tiny blemish is the dash before \"I'm on it\" reads slightly like a list separator rather than a natural sentence break, but it's a minor style point, not a substantive error. Functionally this is the exact correct shape.",
+    "score": 5
+  }
+}

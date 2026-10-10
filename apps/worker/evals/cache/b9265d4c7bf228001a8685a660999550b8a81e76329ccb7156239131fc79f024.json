@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the one matching event (soccer practice on Saturday), drafts the move, and asks for confirmation in a plain sentence without a keyword prompt. It names the day, new time, and venue — all drawn from the week. No greeting, no sign-off, no markdown, one question, short. Exactly the right shape.",
+    "score": 5
+  }
+}

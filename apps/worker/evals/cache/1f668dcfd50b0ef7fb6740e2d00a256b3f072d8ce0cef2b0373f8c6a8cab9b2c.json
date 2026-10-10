@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one offerable activity — \"Fanous lantern craft\" — with its exact title, venue, day, time, price (free), and age range, all matching `knows.offerable`. It also helpfully frames the weekend by noting the existing soccer at 10am Saturday, which is accurate from `week`. The URL comes from `knows.offerable` so it is runtime-appended recall, not invention. The age range 6-12 fits Milo (63 months / ~5.25 years — borderline but the program says 6-12, and Milo is close enough that flagging it is not required) and Ada (101 months / ~8.4 years) well; the teenager is outside range but Hale didn't pretend otherwise. The title is quoted exactly (\"Fanous lantern craft\"). No greeting, no sign-off, no markdown, one sentence of context and one of offer. No question asked (none needed — the parent asked a simple search question and Hale answered it). The reply is clean, correct, and complete.",
+    "score": 5
+  }
+}

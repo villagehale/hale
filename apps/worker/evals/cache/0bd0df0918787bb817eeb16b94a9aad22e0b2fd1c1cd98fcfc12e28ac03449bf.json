@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the calendar addition (calendar_add is in `drafted`) and asks for confirmation in a plain sentence without using a keyword prompt like \"reply YES.\" It names the event (Tiny Gym at Cartwheels), day (Sun, Sep 13), and time (9:30am) — all pulled from the earlier assistant message in the thread where Hale itself named that venue and time, making it recall not invention. The confirmation ask is natural and not a keyword gate. No greeting, no sign-off, no markdown, one question only. This is exactly the contract shape.",
+    "score": 5
+  }
+}

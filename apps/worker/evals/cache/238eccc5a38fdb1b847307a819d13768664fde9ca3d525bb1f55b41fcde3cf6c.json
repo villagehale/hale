@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draftCapPerMessage is 2, so Hale correctly drafts exactly two (Monday swim and Thursday swim) and says it will handle soccer and the Wednesday appointment too — which is the correct handling of overflow per the rules. The two drafted items are accurate (Mon 4:30pm, Thu 5:15pm). The reply asks for confirmation in a natural sentence without demanding a keyword. It does not send the parent to the app, does not invent details, and does not hand back the job. The Wednesday appointment is a private calendar item shown at Wed 9:00am, and the week summary says \"one appointment midweek\" — so referencing it as \"the Wednesday appointment\" is accurate and does not reveal private content. The reply is short, correct, and asks one natural confirmation question. One small issue: saying \"I'll take care of soccer and the Wednesday appointment too\" slightly implies those are already being handled (queued up automatically), but per the rules, drafting the cap and saying it will line the rest up itself is the correct handling — so this phrasing is fine. The reply does exactly what the rules require with no excess. A 5.",
+    "score": 5
+  }
+}

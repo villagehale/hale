@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces Cedarvale Park from the week (soccer Saturday 10am) as a nearby park already on the schedule — good recall. It then offers Riverdale Farm from `offerable`, names it correctly, gives the correct day (Sun Aug 9), notes it's free and open daily, and appends the correct URL from the offerable entry. No invented details, no greeting, no sign-off, no markdown, no app referral. The library storytime is not a park so correctly omitted. The reply is concise and answers the question directly. One small issue: \"For something else\" is a mildly redundant connector phrase, and the reply is slightly longer than the minimum needed, but nothing is wrong or misleading. This is essentially the product working correctly.",
+    "score": 4
+  }
+}

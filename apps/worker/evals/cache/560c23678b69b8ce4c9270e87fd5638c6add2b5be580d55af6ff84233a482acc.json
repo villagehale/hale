@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands the parent their referral link and explains they forward it themselves — that is the right shape. The link matches `knows.referralLinkAppended` exactly, so it is recall, not invention. The reply also gives a brief description of what Hale is, which is helpful context for forwarding. The only small blemish is the opening phrase \"Here's your referral line to forward -\" is slightly wordy and the em-dash phrasing is a bit informal, but there is no greeting, no sign-off, no markdown, no question, and no app referral. It does the job cleanly and stops. A very minor extra clause (\"nothing else to sign up for\") adds a touch of fluff but is not wrong. Overall this is a solid, correct reply with just a slight bit of extra length — a 4.",
+    "score": 4
+  }
+}

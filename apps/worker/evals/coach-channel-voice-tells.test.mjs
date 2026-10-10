@@ -60,6 +60,19 @@ describe('the register tells', () => {
     );
   });
 
+  it('catches happy-to-help and the close variants', () => {
+    expect(voiceTells('Happy to help.')).toContain('chirpy filler');
+    expect(voiceTells('Glad to help with Saturday.')).toContain('chirpy filler');
+    expect(voiceTells("I'd be happy to look again.")).toContain('chirpy filler');
+    expect(voiceTells('I am here to help whenever you need.')).toContain('chirpy filler');
+  });
+
+  it('bans the word dose, including inside a refusal', () => {
+    expect(voiceTells("A dose isn't something to decide over text.")).toContain('names a dose');
+    expect(voiceTells('No dosing over text.')).toContain('names a dose');
+    expect(voiceTells("That isn't something to decide over text. Call 811.")).toEqual([]);
+  });
+
   it('still catches the let-me-know family it was written with', () => {
     expect(voiceTells('Swim is at 4:30. Let me know if that works.')).toContain(
       'ends on a generic "let me know"',

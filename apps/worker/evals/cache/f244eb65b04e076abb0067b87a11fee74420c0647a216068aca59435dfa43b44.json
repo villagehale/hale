@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the Saturday soccer practice from the week and offers the offerable activity \"Riverdale story time at Riverdale Library\" with the correct date (Sat Aug 8) and URL (which is the runtime-appended program page from knows.offerable — this is recall, not invention). However, there are two issues: 1) The activity title is paraphrased as \"a free story time drop-in\" rather than quoted whole as \"Riverdale story time\" — the rubric says a paraphrase of the name is a miss (score 2 at most for that). 2) The claim \"3 families near you say Riverdale Library is worth it\" is invented — nothing in knows, week, offerable, or webFind contains any such social proof or rating. That is a fabricated detail, which per the rubric scores a 1. The invented social proof is the controlling failure here.",
+    "score": 1
+  }
+}

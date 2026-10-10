@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week — Mon 4:30 at West pool and Thu 5:15 at East pool. With more than one matching event, Hale must ask which one before drafting anything. The reply correctly identifies both swims and asks which to cancel. It drafts nothing, which is correct. The question is natural, not a keyword prompt. No sign-off, no markdown, no app referral, no invented details. Clean and exact.",
+    "score": 5
+  }
+}

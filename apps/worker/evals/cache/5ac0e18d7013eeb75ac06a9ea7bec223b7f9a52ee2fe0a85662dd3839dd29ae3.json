@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that ordering groceries is outside Hale's capabilities. The `knows.can` list does not include grocery ordering, so declining is the right call. The reply is honest and short. However, it phrases the decline as \"past me\" — which is the language the rubric specifically calls out as a \"handback\" penalty for parenting questions. For capability limits that are genuinely outside scope (not parenting questions), a plain \"I can't do that\" is appropriate, and \"past me\" is a reasonable colloquial way to say it. The rubric's \"past me\" penalty applies specifically to parenting questions being refused. Here, grocery ordering truly is outside Hale's capabilities, so declining is correct. The reply is short, honest, and correct — but it could have added one useful beat: naming what Hale CAN do (calendar, nearby activities, etc.) to redirect Sam, though the rubric doesn't require this. The reply does the minimum correct thing without being wrong or misleading. It's a bit bare — it tells Sam what Hale can't do but offers nothing about what it can do. That said, the rubric says a plain correct answer is a 5. Declining a truly out-of-scope request cleanly is correct. No invented details, no sending to the app, no machinery explained. This is short and correct.",
+    "score": 5
+  }
+}

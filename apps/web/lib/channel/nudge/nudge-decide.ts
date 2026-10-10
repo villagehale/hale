@@ -11,8 +11,8 @@ import {
   upcomingWeekend,
   weekdayOf,
 } from '~/lib/channel/intake/radar-decide';
-import { renderEmptySaturdayAsk } from '~/lib/channel/nudge/empty-saturday-copy';
 import type { SaturdayPlans } from '~/lib/channel/nudge/saturday-plans';
+import { childCanAttend, parseClockLabel } from '~/lib/channel/nudge/saturday-window';
 import {
   type WeekdayFinderAsk,
   printableWeekdayName,
@@ -23,6 +23,7 @@ import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
+import { safeHttpUrl } from '~/lib/format/http-url';
 import { priceBandLabel } from '~/lib/format/labels';
 import type { HealthRegion } from '~/lib/health/checkpoints';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
@@ -190,6 +191,11 @@ export interface EmptySaturdayNudge {
   kidName: string;
   saturday: string;
   candidateId: string;
+  /** The civic session that made the day worth a text. The writer names this. */
+  title: string;
+  venueName: string | null;
+  whenLabel: string | null;
+  url: string | null;
 }
 
 export type Nudge =
@@ -782,11 +788,14 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
 function freeIndexes(
   children: readonly RadarChild[],
   coverage: readonly number[],
-  busy: ReadonlySet<string>,
+  plans: Exclude<SaturdayPlans, 'unread'>,
+  activity: ReturnType<typeof parseClockLabel>,
 ): number[] {
   return coverage.filter((index) => {
     const id = children[index]?.id;
-    return id === undefined || !busy.has(id);
+    if (id === undefined) return true;
+    if (plans.commitments) return childCanAttend(plans.commitments, activity, id);
+    return !plans.busyChildIds.has(id);
   });
 }
 
@@ -808,7 +817,11 @@ function decideEmptySaturday(input: DecideNudgeInput): LegOutcome<EmptySaturdayN
     (slot) => slot.day === 'saturday',
   );
   if (!saturday) return { nudge: null, skips: ['no_coming_saturday'] };
-  if (input.saturdayPlans.householdBusy) return { nudge: null, skips: ['saturday_occupied'] };
+  // Without timed commitments, a family-wide row still means the day is taken.
+  // With them, an all-day real commitment is inside the window check below.
+  if (!input.saturdayPlans.commitments && input.saturdayPlans.householdBusy) {
+    return { nudge: null, skips: ['saturday_occupied'] };
+  }
 
   const season = seasonOf(input.now, input.timeZone);
   const teen = new Set(input.teenChildIds);
@@ -826,7 +839,12 @@ function decideEmptySaturday(input: DecideNudgeInput): LegOutcome<EmptySaturdayN
   for (const candidate of running) {
     const coverage = coverageOf(input.children, parseAgeRange(candidate.ageRange));
     if (coverage.length === 0) continue;
-    const free = freeIndexes(input.children, coverage, input.saturdayPlans.busyChildIds);
+    const free = freeIndexes(
+      input.children,
+      coverage,
+      input.saturdayPlans,
+      parseClockLabel(candidate.whenLabel),
+    );
     if (free.length === 0) {
       sawBusyOnly = true;
       continue;
@@ -859,16 +877,16 @@ function decideEmptySaturday(input: DecideNudgeInput): LegOutcome<EmptySaturdayN
     }
   }
   if (kidName === null) return { nudge: null, skips: ['saturday_name_unusable'] };
-  const body = renderEmptySaturdayAsk(kidName);
-  if (smsSegments(`${body}\n\n${OPT_OUT_LINE}`) !== 1) {
-    return { nudge: null, skips: ['saturday_name_unusable'] };
-  }
   return {
     nudge: {
       kind: 'empty_saturday',
       kidName,
       saturday: saturday.date,
       candidateId: pick.candidate.id,
+      title: pick.candidate.title,
+      venueName: pick.candidate.venueName,
+      whenLabel: pick.candidate.whenLabel,
+      url: safeHttpUrl(pick.candidate.sourceUrl),
     },
     skips: [],
   };

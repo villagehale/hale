@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the soccer practice from the week (Sat 10am, Cedarvale Park) and then offers the verified offerable activity (Central Library story time at Bloor/Gladstone branch, Saturday). Both pieces of information are grounded — one from `week`, one from `offerable`. No invented details, no app referral, no markdown, no greeting or sign-off. There is one still-being-checked result that Hale has no name for, so correctly saying nothing about it. The reply is clean and complete. One very minor note: \"For something else\" is a slightly loose connective that adds a word or two, but it doesn't constitute a real blemish — it's just light framing. Overall this is a tight, correct, useful reply.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces both offerable activities with their verified names, venues, and days. The titles match exactly (\"Central Library story time at Bloor/Gladstone\" and \"Riverdale Farm\"). The days are correct (Aug 8 for story time, Aug 9 for Riverdale Farm). The URLs are from knows.offerable, so they are runtime-appended recall, not invented. Both activities are free and appropriate for a 5-year-old (Milo, 63 months) and 8-year-old (Ada, 101 months) — story time is \"all ages welcome\" and Riverdale Farm is an outdoor farm open daily, both fine fits. The teenager's private-item nature doesn't affect activity suitability here. stillBeingChecked is 0, so no pending finds to mention. The reply is concise, no greeting, no sign-off, no markdown, no app referral. One small issue: \"free and open daily\" for Riverdale Farm is accurate but the phrasing slightly conflates the standing-place cadence with a dated suggestion (Sun Aug 9), which is the correct offerable date — so that's fine. The reply does everything right and stops. A 5.",
+    "score": 5
+  }
+}

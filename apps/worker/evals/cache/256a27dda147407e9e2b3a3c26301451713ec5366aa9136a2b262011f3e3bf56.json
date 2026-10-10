@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event (soccer on Saturday) and asks for it to move to 11am. That is unambiguous. Hale correctly drafted the move and asks for confirmation in a plain sentence — no keyword prompt, no sign-off, no markdown, no app reference. The reply is short, names the change, and ends with a natural confirmation question. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

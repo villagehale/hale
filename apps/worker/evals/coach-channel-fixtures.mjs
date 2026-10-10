@@ -172,6 +172,7 @@ export const FIXTURE_VILLAGE = {
       summary: 'Free indoor drop-in, all ages welcome.',
       venue: 'Bloor/Gladstone branch',
       when: 'Sat, Aug 8',
+      url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
     },
     {
       title: 'Riverdale Farm visit',
@@ -179,6 +180,7 @@ export const FIXTURE_VILLAGE = {
       summary: 'Free outdoor farm, open daily.',
       venue: 'Riverdale Farm',
       when: 'Sun, Aug 9',
+      url: 'https://www.toronto.ca/explore-enjoy/parks-gardens-beaches/riverdale-farm/',
     },
   ],
   inVerification: 0,
@@ -203,19 +205,22 @@ export const FIXTURE_VILLAGE_MIXED = {
  * makes load-bearing: the count attaches only to a body carrying EVERY distinctive word
  * of the offer's title, so a title the reply would routinely shorten ("Central Library
  * story time" → "story time at Bloor/Gladstone") grades whether the model wrote the
- * longer name rather than whether the gate works. The title here is the whole name a
- * reply uses, and the VENUE is a different string from it — which is the point: the
- * households answered about the branch, the body names the programme (founder decision
- * 2), and the pair proves the clause can land while saying neither one twice.
+ * longer name rather than whether the gate works. The title is the name a parent would
+ * say. "Riverdale storytime" as one lowercase word is not that name, and a model that
+ * is handed it rewrites it from the venue and the summary. The VENUE is a different
+ * string — the households answered about the branch, the body names the programme
+ * (founder decision 2), and the pair proves the clause can land while saying neither
+ * one twice.
  */
 export const FIXTURE_VILLAGE_POOLED = {
   candidates: [
     {
-      title: 'Riverdale storytime',
+      title: 'Riverdale story time',
       kind: 'drop_in',
       summary: 'Free indoor drop-in, all ages welcome.',
       venue: 'Riverdale Library',
       when: 'Sat, Aug 8',
+      url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
     },
   ],
   inVerification: 0,
@@ -413,7 +418,9 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['lookup_week'],
       mustDraft: ['calendar_move'],
       onlyTargets: ['evt-swim-thu'],
-      mustMention: ['yes'],
+      // The confirmation is a question in ordinary words. The parent answers in
+      // their own words; the reply must not demand the token YES.
+      mustAsk: true,
     },
   },
   {
@@ -436,7 +443,7 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['lookup_week'],
       mustDraft: ['calendar_cancel'],
       onlyTargets: ['evt-swim-thu'],
-      mustMention: ['yes'],
+      mustAsk: true,
     },
   },
   {
@@ -516,12 +523,9 @@ export const COACH_CHANNEL_FIXTURES = [
           /\bd'accord\b/i,
         ],
       },
-      // The literal token C1's fast-path matches (lib/channel/affirmative.ts). It is an
-      // English closed vocabulary with no French entries — "oui" resolves to `unclear` —
-      // so a French reply that asks for OUI would collect an answer the approval spine
-      // silently drops, and the parent's swim lesson never moves. The word stays YES even
-      // when the sentence around it does not.
-      mustMention: ['yes'],
+      // The confirmation is the question itself, in French. affirmative.ts reads
+      // "oui" and the other ordinary answers; the reply must not embed YES.
+      mustAsk: true,
     },
   },
   {
@@ -541,9 +545,10 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['lookup_week'],
       maxDrafts: 2,
       onlyTargets: ['evt-swim-mon', 'evt-swim-thu', 'evt-soccer-sat', 'evt-dentist-wed'],
-      // The word YES is what C1's fast-path matches; "I'll" is the carry-forward — Hale
-      // keeping the outstanding two rather than parking them somewhere.
-      mustMention: ['yes', "i'll"],
+      // "I'll" is the carry-forward — Hale keeping the outstanding two rather than
+      // parking them somewhere. The confirmation is a question, not the token YES.
+      mustAsk: true,
+      mustMention: ["i'll"],
     },
   },
   {
@@ -579,6 +584,16 @@ export const COACH_CHANNEL_FIXTURES = [
       // opening time is caught separately and for free: the standing option carries no
       // digits, so the fabrication gate flags any number the reply reaches for.
       forbidden: [...HEDGES, 'story time', 'riverdale'],
+    },
+  },
+  {
+    id: 'find-activities-bare-ask',
+    text: "why don't u find some activities",
+    note: 'VIL-365. A bare ask: no day, no kind, no child. Ages are already in context and the tools attach the town from the postal area, so the turn searches and hands a verified find over. A clarifying question with no search is the failure. One question after the find, offering to narrow, is allowed.',
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      mustMention: ['story time', 'bloor'],
     },
   },
   {
@@ -891,10 +906,12 @@ export const COACH_CHANNEL_FIXTURES = [
       // must not guess, so the draft IS the gate: severing the thread turns this into a
       // clarifying question, which is what the severed run must produce.
       mustDraft: ['calendar_add'],
-      // YES is the word C1's fast-path matches, and the NAME is what makes the draft
-      // confirmable: a parent cannot approve "it". Naming it is also the half of this
-      // gate a severed run cannot fake - "Tiny Gym" exists nowhere but that message.
-      mustMention: ['yes', 'tiny gym'],
+      // The NAME is what makes the draft confirmable: a parent cannot approve "it".
+      // Naming it is also the half of this gate a severed run cannot fake - "Tiny Gym"
+      // exists nowhere but that message. The confirmation is a question in ordinary
+      // words, not the token YES.
+      mustAsk: true,
+      mustMention: ['tiny gym'],
       forbidden: [
         ...HEDGES,
         'which one did you mean',
@@ -1051,7 +1068,7 @@ export const COACH_CHANNEL_FIXTURES = [
       // Byte-for-byte what renderVerdictClause composes for this venue at k=3: the
       // positive count, no denominator, no adjective, the VENUE and not the programme.
       clause: '3 families near you say Riverdale Library is worth it.',
-      title: 'Riverdale storytime',
+      title: 'Riverdale story time',
       otherTitles: [],
     },
     note: 'The offered find is the one three households already answered about. The reply must name the find whole - that is what lets the count attach - and the count must arrive VERBATIM, because the parent is being told a number about a real place and a paraphrase of it is a different claim.',
@@ -1060,9 +1077,10 @@ export const COACH_CHANNEL_FIXTURES = [
       mustNotDraft: true,
       // Two assertions, deliberately split: the first says the model named the offer,
       // the second says the gate attached the count to it. One failure message tells
-      // you which half broke.
+      // you which half broke. The name is the natural title, and the check is that
+      // whole phrase — a paraphrase built from the venue and the summary still fails.
       mustMention: [
-        'riverdale storytime',
+        'riverdale story time',
         '3 families near you say riverdale library is worth it.',
       ],
       forbidden: [...HEDGES],
@@ -1076,8 +1094,84 @@ export const COACH_CHANNEL_FIXTURES = [
     expect: {
       mustCall: ['search_village'],
       mustNotDraft: true,
-      mustMention: ['riverdale storytime'],
+      mustMention: ['riverdale story time'],
       forbidden: [...HEDGES, 'families near you'],
+    },
+  },
+  {
+    id: 'weekend-saved-find-school-age',
+    text: 'anything fun for the kids this weekend?',
+    note: 'A school-age ask with a dated Saturday find already on the radar. The find is the answer. The live web does not ride along, and a canned baby storytime is not a substitute.',
+    village: {
+      candidates: [
+        {
+          title: 'Fanous lantern craft',
+          kind: 'drop_in',
+          summary: 'Free drop-in for ages 6-12.',
+          venue: 'North York Central Library',
+          when: 'Sat, Aug 8, 2:00 p.m.',
+          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+        },
+      ],
+      inVerification: 0,
+      standingOption: null,
+    },
+    expect: {
+      mustCall: ['search_village', 'lookup_week'],
+      mustNotCall: ['find_activities'],
+      mustNotDraft: true,
+      mustMention: ['fanous lantern craft'],
+      forbidden: [...HEDGES, 'baby time', 'toddler time'],
+    },
+  },
+  {
+    id: 'weekend-empty-live-search',
+    text: 'anything fun for the kids this weekend?',
+    note: 'Saved finds are empty and there is no standing place. The live web search has to run in this turn, and the stub pick fits a school-age child. A toddler class is not an answer.',
+    village: {
+      candidates: [],
+      inVerification: 0,
+      standingOption: null,
+    },
+    webPick: {
+      name: 'Fanous lantern craft',
+      ageFit: 'ages 6-12',
+      sourceName: "Toronto Public Library's program page",
+      when: 'Saturday afternoon',
+      price: 'free',
+      url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+    },
+    expect: {
+      mustCall: ['search_village', 'find_activities', 'lookup_week'],
+      mustNotDraft: true,
+      mustMention: ['fanous lantern craft'],
+      forbidden: [...HEDGES, 'baby time', 'toddler time', 'high park', 'tiny tumblers'],
+    },
+  },
+  {
+    id: 'saturday-morning-block-afternoon-find',
+    text: 'anything fun for the kids this weekend?',
+    note: 'Saturday already has soccer in the morning. An afternoon library craft still fits. The day is not full, and the craft is named.',
+    village: {
+      candidates: [
+        {
+          title: 'Fanous lantern craft',
+          kind: 'drop_in',
+          summary: 'Free drop-in for ages 6-12, Saturday afternoon.',
+          venue: 'North York Central Library',
+          when: 'Sat, Aug 8, 2:00 p.m.',
+          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
+        },
+      ],
+      inVerification: 0,
+      standingOption: null,
+    },
+    expect: {
+      mustCall: ['search_village', 'lookup_week'],
+      mustNotCall: ['find_activities'],
+      mustNotDraft: true,
+      mustMention: ['fanous lantern craft', 'soccer'],
+      forbidden: [...HEDGES, 'saturday is full', 'nothing on'],
     },
   },
 ];

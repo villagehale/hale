@@ -90,6 +90,8 @@ export interface CalendarChange {
    * carrying least are the cancellations (see `calendarChangeOf`). */
   updated: string;
   status: 'confirmed' | 'tentative' | 'cancelled';
+  /** Google's `transparency`: opaque (busy) or transparent (free). Absent when unset. */
+  transparency?: 'opaque' | 'transparent';
   /** `summary`, which Google permits to be absent — rendered generically rather than as a
    * sentence with a hole in it, and a tombstone never carries one at all. */
   title?: string;
@@ -798,6 +800,7 @@ interface SnapshotWrite {
   startAt: Date;
   endAt: Date;
   allDay: boolean;
+  transparency: 'opaque' | 'transparent' | null;
   updatedStamp: string;
   status: string;
   pendingSince: Date | null;
@@ -861,6 +864,7 @@ async function writeSnapshots(
         startAt: sql`excluded.start_at`,
         endAt: sql`excluded.end_at`,
         allDay: sql`excluded.all_day`,
+        transparency: sql`excluded.transparency`,
         updatedStamp: sql`excluded.updated_stamp`,
         status: sql`excluded.status`,
         pendingSince: sql`excluded.pending_since`,
@@ -890,6 +894,7 @@ function remember(
     startAt: new Date(placed.span.startMs),
     endAt: new Date(placed.span.endMs),
     allDay: placed.span.allDay,
+    transparency: placed.change.transparency ?? null,
     updatedStamp: placed.change.updated,
     status: placed.change.status,
     pendingSince: hold?.since ?? null,

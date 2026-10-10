@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces Cedarvale Park from the week (soccer practice Sat 10am) as an existing nearby park, and pairs it with the offerable Riverdale Farm (free outdoor, open daily, Sun Aug 9) with its URL — both the title and the link match `knows.offerable` exactly. The ages fit (child 63mo and 101mo, teenager). No invented details, no app referral, no markdown, no greeting or sign-off. The URL is the one appended by the runtime from `offerable`, so it is recall. One small blemish: the phrase \"something more park-like\" is a slight editorial aside that adds a little noise, and the reply is a touch long for what it needed to say, but it is well within acceptable. The Riverdale Farm title is quoted correctly. Overall this is a clean, accurate, useful reply that does the job.",
+    "score": 4
+  }
+}

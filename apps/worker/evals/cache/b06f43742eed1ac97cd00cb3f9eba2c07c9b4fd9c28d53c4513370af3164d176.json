@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the capability (`watch_for_opening`) and correctly explains why it cannot act yet — no course-page link was pasted by the parent. Per the rules, \"asking for the link is the right answer rather than a stall.\" The reply names what it needs (the course page link), explains it will then watch, and stops. No greeting, no sign-off, no markdown, one question implicit. The phrase \"to start watching it\" is fine and accurate. Only minor quibble: \"actual link from the Tuesday preschool swim's course page\" is a touch wordy but still tight. This is the correct and complete shape.",
+    "score": 5
+  }
+}

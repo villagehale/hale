@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does two things correctly: it states the registration window flat (a verified fact, `watching: true`, so \"I'm on it\" is accurate and the right thing to say), and it hands over the webFind for Remy with attribution (\"their site\") and an honest note about missing price. That is exactly what the rules require for a webFind. The reply is concise, no greeting, no sign-off, no markdown, one coherent message. The only small gap: Sam has four children (Remy the toddler, Milo 63 months, Ada 101 months, and a teenager), and the reply only surfaces something for Remy. A parent asking \"what's there for the fall near us\" might reasonably expect options for the older kids too — but `offerable` is empty and `stillBeingChecked` is 0, so Hale genuinely has nothing verified to offer for them. There is no webFind for the older children either. Silence on them is the correct handling given the data, not a gap. The reply is accurate, appropriately attributed, and complete given what Hale actually has. It is tight and correct. A very minor blemish: \"their site didn't list a price\" is slightly awkward phrasing but is honest and appropriate per webFind rules. This is a clean 5.",
+    "score": 5
+  }
+}

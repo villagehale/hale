@@ -39,7 +39,6 @@ import {
 import {
   absorbHowItWentLines,
   groupBothReaderFrench,
-  groupEmptySaturdayLine,
 } from '~/lib/channel/linq/group-coparent-copy';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -680,6 +679,17 @@ async function runForFamily(
     database,
     client: deps.client,
   });
+  if (message === null) {
+    await deps.audit(database, {
+      familyId: family.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_nudge_skipped',
+      targetTable: 'families',
+      targetId: family.familyId,
+      after: { reason: 'saturday_unvoiced', kind: nudge.kind },
+    });
+    return emptyTally({ quiet: true });
+  }
 
   let sent = 0;
   /** The row a family-scoped ledger write points at — the first copy that actually
@@ -699,9 +709,7 @@ async function runForFamily(
   if (target.channel === 'group') {
     const speakerId = copies[0]?.recipient.parentUserId ?? '';
     const speech = await familySpeech(database, family.familyId, speakerId);
-    if (nudge.kind === 'empty_saturday') {
-      wireMessage = groupEmptySaturdayLine(speech.language, speech.name, nudge.kidName);
-    } else if (speech.language === 'fr' && isBothParentsNudge(nudge.kind)) {
+    if (speech.language === 'fr' && isBothParentsNudge(nudge.kind)) {
       wireMessage = groupBothReaderFrench(message);
     }
     if (nudge.kind !== 'registration' && deps.pendingHowItWent) {

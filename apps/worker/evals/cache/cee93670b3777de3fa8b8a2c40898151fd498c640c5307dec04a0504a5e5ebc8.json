@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to move soccer to 11 on Saturday. The week shows exactly one match: Soccer practice, Sat 10:00am, Cedarvale Park. The reference is unambiguous — one event, one target time. Hale correctly drafted a calendar_move and the reply names the change and asks for confirmation in a natural sentence. No greeting, no sign-off, no markdown, no \"reply YES\" instruction, no app referral, no invented detail. Short, exact, correct. A 5.",
+    "score": 5
+  }
+}

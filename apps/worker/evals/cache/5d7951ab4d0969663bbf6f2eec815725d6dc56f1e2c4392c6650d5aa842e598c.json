@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent is asking to connect their Google Calendar. Per the rules, connecting Google Calendar is a real feature where a deterministic branch fires before Hale composes anything — sending a one-tap sign-in link. But when the plain-text ask reaches Hale (the branch didn't catch it), the correct reply is to say the link is a text away and give the parent the exact words to send. That is exactly what this reply does: it tells Sam to text \"connect my Google Calendar\" verbatim and that a one-tap link good for 15 minutes will follow. This is recall of a real feature, not internal machinery, and quoting the short ask verbatim is precisely what makes the next text land on the branch. No greeting, no sign-off, no markdown, one sentence, no invented detail. Exactly right.",
+    "score": 5
+  }
+}

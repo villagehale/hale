@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to cancel the Thursday swim. There is exactly one Thursday swim in the week (Thu 5:15pm, East pool), so the reference is fully resolved — no ambiguity. Hale correctly drafted a cancel and asks for confirmation in a plain sentence naming the event. It does not say \"reply YES\", it does not send the parent to the app, it does not invent any details. The reply is tight and correct. One very minor note: it could have included the venue for completeness, but it does include both the time and \"East pool,\" so it is complete. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

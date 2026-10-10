@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the soccer practice from the week view (Sat 10am, Cedarvale Park) and the one offerable activity — \"Riverdale story time\" at Riverdale Library, Sat Aug 8 — with the correct title quoted whole, the correct day, and the URL (which the runtime appends from offerable). The nearby-families sentence is runtime-appended, not written by Hale. No greeting, no sign-off, no markdown, no invented details, no clarifying question where none was needed, no app referral. The activity fits all three children (all ages welcome, and the teenager's presence doesn't disqualify a drop-in). The title is quoted exactly (\"Riverdale story time\"). The URL matches the offerable entry. This is clean, correct, and complete — the product working as intended. One very minor blemish: \"For something else that day\" is a slightly wordy transition that adds nothing, but it doesn't mislead or pad significantly. Overall this is a 5-quality reply with that one small stylistic excess, putting it at a 4.",
+    "score": 4
+  }
+}

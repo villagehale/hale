@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces Cedarvale Park (from the week — soccer practice Sat 10am) as a nearby park the family already uses, which is a real and useful anchor. It then offers Riverdale Farm from offerable, names it correctly (\"Riverdale Farm\"), attributes it to the city's page (\"per the city's page\"), and appends the correct URL from the offerable entry. The date is not stated (the offerable says \"Sun, Aug 9\" but the reply wisely doesn't pin it to a day since the parent asked about a park generally, not a specific visit — and Riverdale Farm is described as \"open daily,\" so no date is invented or misattributed). No markdown, no greeting, no sign-off, no redundant machinery. One small issue: the story time option is not relevant here (park question), so correctly left out. The webFind attribution rule doesn't apply (webFind is null; offerable is the source). The URL is from the offerable entry, so it's real recall. This is a clean, correct, useful reply that does the job and stops.",
+    "score": 5
+  }
+}

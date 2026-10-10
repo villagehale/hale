@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event (soccer on Saturday) and one target time (11am). The reference is fully resolved. Hale correctly drafted the move and confirmed it in a plain sentence asking for approval. No greeting, no sign-off, no markdown, no keyword instruction (\"reply YES\"), no app mention, no invented details — just the drafted change named and a natural confirmation question. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

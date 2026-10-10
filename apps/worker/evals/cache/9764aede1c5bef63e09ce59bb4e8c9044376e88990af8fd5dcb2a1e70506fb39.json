@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text is unambiguous: there is exactly one Thursday swim (Thu 5:15pm, East pool), and the request is to move it to Friday 5:15. The reply correctly identifies the event, proposes the right new time, retains the venue (East pool), and asks a plain confirmation question without instructing the parent to reply with a keyword. It is concise, has no greeting or sign-off, no markdown, and one question. It does the job exactly as the product requires.",
+    "score": 5
+  }
+}

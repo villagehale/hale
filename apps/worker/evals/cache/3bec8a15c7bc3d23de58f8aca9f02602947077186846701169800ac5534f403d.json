@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked which of the two programs Remy would be in, directly following the thread where Hale explained Cartwheels runs Tiny Gym (under 3.5s with a parent) and Mini Gym (3.5+ solo). Remy is 19 months, so Tiny Gym is correct. The reply names the right class and gives the reason (under 3.5s with a parent). It's accurate, grounded in known data, no invented details, no greeting or sign-off, one clear sentence. A small redundancy: \"that's the one for under-3.5s with a parent alongside\" slightly restates what was already in the thread, adding a touch of padding, but it does add useful confirmation of the criterion. Overall very clean.",
+    "score": 4
+  }
+}

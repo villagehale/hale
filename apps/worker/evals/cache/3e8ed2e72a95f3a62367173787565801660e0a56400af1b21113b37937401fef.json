@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the resident open date (Sep 1, 7:00 a.m.) and the general open date (Sep 8) — both are straight recall from registrationWindows, no hedging, no \"their site says.\" It also correctly says it is not watching that one, since watching is false and Hale has no verb to flip it. However, the rubric says \"on a false window the DATE IS THE WHOLE ANSWER and saying it is not watching that one is honest\" — so that part is fine. But the reply stops there without giving Sam anything actionable to do with that information, and more importantly, the rubric also says \"score a 2 at most if it tells the parent to set their own alarm.\" This reply doesn't tell the parent to set an alarm, it just states the date and says it isn't watching. That is the honest, correct shape: state the date, say it's not watching. The reply is complete and correct per the rules. The only minor issue is it could briefly acknowledge Milo by name or say something like \"for Milo's swim\" to make it feel grounded, but that's a very small blemish. Overall, this is a short, exact, correct answer doing exactly what the rubric requires for a watching:false window.",
+    "score": 4
+  }
+}
