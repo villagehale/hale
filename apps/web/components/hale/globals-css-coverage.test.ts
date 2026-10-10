@@ -104,10 +104,10 @@ for (const file of FILES) {
 describe('globals.css coverage — every bespoke class the authed surface uses is defined', () => {
   it('extracts a real, broad class set (guards against a vacuous pass)', () => {
     // Floors well below the current reality. A big regression here means the
-    // extractor silently broke. The legacy shell, the village board, and the
-    // retired ask/settings components leaving the scan dropped the count; the
-    // floors sit under what remains.
-    expect(totalUsages).toBeGreaterThanOrEqual(150);
+    // extractor silently broke. The legacy shell, the village board, the
+    // retired ask/settings components, and the unused hale cards leaving the
+    // scan dropped the count; the floors sit under what remains.
+    expect(totalUsages).toBeGreaterThanOrEqual(100);
     expect(usedBespoke.size).toBeGreaterThanOrEqual(50);
     expect(BESPOKE_PREFIXES.size).toBeGreaterThanOrEqual(30);
     // Anchors from distinct namespaces prove the scan reached each surface.
