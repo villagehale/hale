@@ -232,11 +232,11 @@ export const FIXTURE_VILLAGE_POOLED = {
  *
  * There is still no ACTIVITY to name, and there never was. What is new is that being
  * empty-handed about events is not the same as having nowhere to go: the standing option
- * below is a verified free place in this family's own city, and it is what production
- * returns for a Toronto family in August whose children are past the EarlyON band (see
- * lib/village/standing-option.ts — warm month, so the park tier leads).
+ * below is a verified free place in this family's own city. Production leaves
+ * `standingOption` null; this fixture still injects one (a warm-month park) so the
+ * reply gate can see a place with no event.
  *
- * Copied VERBATIM from the row in evergreen-venues-data.ts. The name is what the reply
+ * The name is what the reply
  * must carry; the cadence is deliberately loose because that is what the City publishes,
  * and a reply that sharpens it into an opening time has invented one. No `source` here,
  * because the tool does not hand one out.

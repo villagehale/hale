@@ -36,9 +36,6 @@ vi.mock('~/lib/dashboard/queries', () => ({
 vi.mock('~/lib/integrations/load', () => ({ loadFamilyConnectors: vi.fn(async () => []) }));
 vi.mock('~/lib/mcp/oauth-store', () => ({ listMcpConnectionsForUser: vi.fn(async () => []) }));
 vi.mock('~/lib/consent-records', () => ({ listConsentRecordsForViewer: vi.fn(async () => []) }));
-vi.mock('~/lib/settings/push-notification-prefs', () => ({
-  loadPushNotificationPrefs: vi.fn(async () => ({ status: 'preview' as const })),
-}));
 vi.mock('~/lib/settings/loop-prefs', () => ({
   loadLoopNotificationPrefs: vi.fn(async () => ({ status: 'preview' as const })),
 }));

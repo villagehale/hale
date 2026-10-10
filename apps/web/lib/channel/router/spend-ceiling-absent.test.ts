@@ -10,11 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
 
-const SURFACES = [
-  'apps/web/lib/channel/router/route.ts',
-  'apps/web/lib/channel/coach/runtime.ts',
-  'apps/web/lib/coach/agent.ts',
-];
+const SURFACES = ['apps/web/lib/channel/router/route.ts', 'apps/web/lib/channel/coach/runtime.ts'];
 
 const FORBIDDEN = [
   'isOverHardCeiling',

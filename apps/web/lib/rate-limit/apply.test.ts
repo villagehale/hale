@@ -19,13 +19,13 @@ describe('enforceRateLimit', () => {
   it('returns null (proceed) when under the cap', async () => {
     setRateLimiterForTesting(fixedLimiter({ allowed: true, retryAfterSec: 30 }));
 
-    expect(await enforceRateLimit('coach', 'user-a')).toBeNull();
+    expect(await enforceRateLimit('ingest', 'family-a')).toBeNull();
   });
 
   it('returns 429 with a Retry-After header when over the cap', async () => {
     setRateLimiterForTesting(fixedLimiter({ allowed: false, retryAfterSec: 42 }));
 
-    const res = await enforceRateLimit('coach', 'user-a');
+    const res = await enforceRateLimit('ingest', 'family-a');
 
     expect(res?.status).toBe(429);
     expect(res?.headers.get('Retry-After')).toBe('42');
@@ -35,7 +35,7 @@ describe('enforceRateLimit', () => {
     const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {});
     setRateLimiterForTesting({ check: vi.fn().mockRejectedValue(new Error('db down')) });
 
-    expect(await enforceRateLimit('coach', 'user-a')).toBeNull();
+    expect(await enforceRateLimit('ingest', 'family-a')).toBeNull();
     expect(consoleErr).toHaveBeenCalled();
   });
 

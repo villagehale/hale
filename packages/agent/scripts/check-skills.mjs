@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Drift-check for the web-side skill prompts (CLAUDE.md hard rule #2).
 //
-// The LIVE web pipeline (/api/events/ingest, /api/coach) loads its agent system
-// prompts from packages/agent/skills/*.md via loadSkill and feeds them straight
-// to Anthropic as `system=`. The worker's Langfuse drift-check only guards
+// The live web pipeline loads its agent system prompts from
+// packages/agent/skills/*.md via loadSkill and feeds them straight
+// to Anthropic as `system=`. Callers include /api/events/ingest and the SMS
+// coach (apps/web/lib/channel/coach/runtime.ts). The worker's Langfuse drift-check only guards
 // apps/worker/prompts/* — it never sees these files. Without this gate a silent
 // on-disk edit to any skill (classify-event, draft-action, ask-hale, …)
 // would ship to prod with no CI failure.

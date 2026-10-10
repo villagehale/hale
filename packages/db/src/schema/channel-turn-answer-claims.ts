@@ -13,7 +13,7 @@ import { pgTable, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
  * 'sms_turn_answered' audit row in one transaction; the loser inserts nothing anywhere
  * and reports 'already_answered'.
  *
- * Family-AGNOSTIC ops data, like voice_relay_claims beside it: one uuid pointing at a
+ * Family-AGNOSTIC ops data: one uuid pointing at a
  * channel_messages row, no body, no number, no family column. Rows age out with the
  * ledger's own 7-day lookback (the claim path deletes as it claims); the exactly-once
  * property is the unique index's, never the sweep's. Rule #1.

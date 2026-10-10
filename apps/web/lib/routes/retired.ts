@@ -13,9 +13,10 @@
  * `redirect()` under the streaming `(authed)` layout is a soft client navigation, not
  * a redirect a browser or a crawler can see, so the gate cannot live only in a page.
  *
- * Their API routes are NOT retired, and must never be added here: /api/coach/* backs
- * the SMS coach. Matching is prefix-on-segment, so an /api/* path never matches one of
- * these (it does not start with the prefix).
+ * Do not retire an /api path from here. The SMS coach is
+ * apps/web/lib/channel/coach/runtime.ts, not /api/coach (those web routes are gone).
+ * Matching is prefix-on-segment, so an /api/* path never matches one of these (it
+ * does not start with the prefix).
  */
 export const RETIRED_PREFIXES = ['/coach', '/companion', '/saved'];
 

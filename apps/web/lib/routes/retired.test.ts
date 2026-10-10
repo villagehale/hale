@@ -10,9 +10,10 @@ import { RETIRED_PREFIXES, RETIRED_TARGET, isRetiredPath } from './retired';
  *
  *  - it must actually be gone (a real permanent redirect, from the middleware, so it
  *    is a redirect a browser and a crawler can see rather than a soft client push), and
- *  - it must take NOTHING live with it — above all the API routes that back the SMS
- *    coach, whose paths only differ by an /api prefix. A too-greedy match there would
- *    take the product down, silently.
+ *  - it must take NOTHING live with it. A too-greedy match on a page noun would also
+ *    match an /api path that only differs by an /api prefix. The SMS coach is
+ *    apps/web/lib/channel/coach/runtime.ts, not /api/coach. A match there would take
+ *    the product down, silently.
  */
 
 const middleware = readFileSync(
@@ -38,8 +39,10 @@ describe('isRetiredPath', () => {
   });
 
   /**
-   * The load-bearing one. /api/coach/* is the SMS coach. Retiring a browser page
-   * must never retire the API that shares its noun.
+   * The load-bearing one. Retiring the /coach page must never match /api/coach.
+   * The SMS coach is apps/web/lib/channel/coach/runtime.ts, not that route. The
+   * web /api/coach handlers are gone; the prefix guard stays so a page redirect
+   * cannot swallow an /api path that shares its noun.
    */
   it('never matches an API route that shares a retired page’s noun', () => {
     for (const api of [
@@ -105,7 +108,7 @@ describe('the page stubs are gone; next.config serves the 308', () => {
     }
   });
 
-  it('does not forward /api/coach or /api/companion', async () => {
+  it('forwards no /api path (a page noun like /coach does not take /api/coach with it)', async () => {
     if (typeof nextConfig.redirects !== 'function')
       throw new Error('next.config has no redirects()');
     const sources = (await nextConfig.redirects()).map((r) => r.source);

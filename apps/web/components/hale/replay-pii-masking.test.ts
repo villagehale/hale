@@ -1,8 +1,6 @@
-import type { ToolCard } from '@hale/agent';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { LogsPage } from '~/lib/companion/logs-view';
 import type { ActionReview } from '~/lib/dashboard/action-review';
 import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { HistoryView } from '~/lib/dashboard/history';
@@ -10,26 +8,17 @@ import type { TrailView } from '~/lib/dashboard/mappers';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
 import { ReviewNote } from './action-progress';
 import { ApprovalCard, ReversibleCard } from './approval-card';
-import { ConnectorCard } from './connector-card';
-import { LogsBrowser } from './logs-browser';
 import { AuthoredPlanCard } from './plan-cards';
 import { SharedLinkRow } from './shared-links';
 import { TeenAccessGrants } from './teen-access-grants';
 import { TrailTimeline } from './trail-timeline';
 
-// The logs browser reaches the 'use server' log module for its writes; stub it so
+// The teen-access revoke form reaches a 'use server' action module; stub it so
 // a static render doesn't drag the auth/db chain into the test.
-vi.mock('~/lib/companion/log', () => ({
-  markCompanionItemDone: vi.fn(),
-  editQuickEpisode: vi.fn(),
-  deleteQuickEpisode: vi.fn(),
-  logQuickEpisode: vi.fn(),
-}));
-// Same reason for the teen-access revoke form's 'use server' action module.
 vi.mock('~/app/(authed)/family/teen-access-actions', () => ({
   revokeTeenAccessAction: vi.fn(),
 }));
-// Same reason for the plan cards' done/remove actions and the area switcher's.
+// Same reason for the plan cards' done/remove actions.
 vi.mock('~/lib/plan/plan-actions', () => ({
   completePlan: vi.fn(),
   deletePlan: vi.fn(),
@@ -205,58 +194,6 @@ describe('a trail trace masks the folded step sentences as well as its summary',
   it('keeps every step individually anchored, so an M9 deep link still resolves', () => {
     expect(html).toContain('id="e1"');
     expect(html).toContain('id="e2"');
-  });
-});
-
-/**
- * The connector cards surface the PARENT's own Google Drive file names and Calendar
- * event titles/locations — family PII that a session replay must mask (rule #1). The
- * card FRAME (the "Google Drive" header, the file-type label, the day/time) is not
- * PII and should survive. This fails if a future edit moves a file name / event
- * title / location out of its `data-hale-pii` container.
- */
-describe('connector cards mask the parent’s file names + event details', () => {
-  const DRIVE_CARD: ToolCard = {
-    kind: 'drive',
-    files: [
-      {
-        name: 'Custody agreement 2026.pdf',
-        mimeType: 'application/pdf',
-        modifiedTime: '2026-07-01T09:00:00Z',
-        webViewLink: 'https://drive.google.com/file/d/abc/view',
-      },
-    ],
-  };
-  const CALENDAR_CARD: ToolCard = {
-    kind: 'calendar',
-    events: [
-      {
-        title: 'Family therapy — Dr. Okafor',
-        start: '2026-07-11T14:00:00Z',
-        end: '2026-07-11T15:00:00Z',
-        location: '221 Bloor St W',
-      },
-    ],
-  };
-
-  it('renders the Drive file name at all, then masks it while the frame survives', () => {
-    const html = renderToStaticMarkup(h(ConnectorCard, { card: DRIVE_CARD }));
-    expect(html).toContain('Custody agreement 2026.pdf');
-    const residue = stripMaskedSubtrees(html);
-    expect(residue).not.toContain('Custody agreement 2026.pdf');
-    // The non-PII frame survives the strip.
-    expect(residue).toContain('Google Drive');
-    expect(residue).toContain('PDF');
-  });
-
-  it('renders the Calendar title + location at all, then masks both while the frame survives', () => {
-    const html = renderToStaticMarkup(h(ConnectorCard, { card: CALENDAR_CARD }));
-    expect(html).toContain('Family therapy');
-    expect(html).toContain('221 Bloor St W');
-    const residue = stripMaskedSubtrees(html);
-    expect(residue).not.toContain('Family therapy');
-    expect(residue).not.toContain('221 Bloor St W');
-    expect(residue).toContain('Next 7 days');
   });
 });
 
@@ -504,9 +441,7 @@ describe('teen access grants mask the teen name and the parent\u2019s stated rea
  */
 const CHILD = 'Marisol';
 const PLAN_TITLE = 'Sign Marisol up for Saturday swim';
-const LOG_ROW = 'Fed 140 ml before the nap';
 const SHARE_TITLE = 'the Marisol week plan';
-const DRIVE_FILE = 'Custody-agreement-2026.pdf';
 const REVIEWER_RATIONALE = 'The swim school is already on Marisol’s recipient list.';
 const TRACE_STEP = 'put Marisol’s swim lesson on your calendar';
 
@@ -518,19 +453,6 @@ const PLAN: AuthoredPlanView = {
   completedAt: null,
   childId: 'c1',
   childName: CHILD,
-};
-
-const LOGS: LogsPage = {
-  logs: [
-    {
-      id: 'l1',
-      childId: 'c1',
-      episodeType: 'feed',
-      summary: LOG_ROW,
-      occurredAt: '2026-08-01T18:00:00.000Z',
-    },
-  ],
-  nextCursor: null,
 };
 
 interface AttributeSurface {
@@ -546,12 +468,6 @@ const SENTINEL_SURFACES: AttributeSurface[] = [
     name: 'a parent-authored plan card (done + remove controls)',
     sentinels: [PLAN_TITLE, CHILD],
     render: () => renderToStaticMarkup(h(AuthoredPlanCard, { plan: PLAN })),
-  },
-  {
-    name: 'a logs browser row (edit + remove controls)',
-    sentinels: [LOG_ROW],
-    render: () =>
-      renderToStaticMarkup(h(LogsBrowser, { initial: LOGS, kids: [], units: 'metric' })),
   },
   {
     name: 'a shared-link row (revoke control)',
@@ -604,26 +520,6 @@ const SENTINEL_SURFACES: AttributeSurface[] = [
             actionId: 'ac710000-0000-4000-8000-00000000000a',
             reversalKept: n === 0,
           })),
-        }),
-      ),
-  },
-  {
-    name: 'a Drive connector card',
-    sentinels: [DRIVE_FILE],
-    render: () =>
-      renderToStaticMarkup(
-        h(ConnectorCard, {
-          card: {
-            kind: 'drive',
-            files: [
-              {
-                name: DRIVE_FILE,
-                mimeType: 'application/pdf',
-                modifiedTime: '2026-07-01T09:00:00Z',
-                webViewLink: 'https://drive.google.com/file/d/abc/view',
-              },
-            ],
-          },
         }),
       ),
   },
