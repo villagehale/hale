@@ -92,7 +92,7 @@ test('sign-in renders the flag-on phone door (no cookie)', async ({ browser }) =
   const response = await page.goto('/sign-in');
   expect(response?.status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
-  // Flag-on subtitle — with the flag off this page shows the email/Google door instead.
+  // Phone is the only door, flag on or off. The email form that used to sit behind the flag is gone.
   await expect(page.getByText('Use the number you text Hale from')).toBeVisible();
   await assertHealthy(page, errors, '01-sign-in');
 });

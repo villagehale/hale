@@ -11,13 +11,13 @@
  * environment only — never Production). The demo route does not read these.
  *
  * - `F14_RECEIPTS_IA` = `true` with no trailing newline (`printf '%s' true`).
- *   That is the phone door and the portal shell. Anything else, including
- *   `true\n`, stays off.
+ *   That is the receipts shell. Anything else, including `true\n`, leaves the
+ *   shell off. /sign-in is the phone door either way.
  * - `AUTH_SECRET` = a Preview-only random string (`openssl rand -base64 33`).
  *   Auth.js uses it to sign the session JWT. Without it, Preview (NODE_ENV
  *   production) fail-closes every authed route to `/sign-in`.
- * - `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` — only for the
- *   flag-off Google button. The flag-on door hides that button.
+ * - `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` configure the
+ *   Auth.js Google provider. /sign-in does not render that button.
  *
  * Completing a phone sign-in also needs the existing server secrets
  * (`DATABASE_URL`, `APP_ENCRYPTION_KEY`, `LINQ_API_KEY`, `LINQ_FROM_E164`).

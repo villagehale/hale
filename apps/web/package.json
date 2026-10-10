@@ -35,7 +35,6 @@
     "@langfuse/otel": "^5.6.0",
     "@langfuse/tracing": "^5.6.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "@node-rs/argon2": "^2.0.2",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/sdk-trace-node": "^2.8.0",
     "@tanstack/react-table": "^9.2.4",

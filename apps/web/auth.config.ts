@@ -2,13 +2,14 @@ import type { NextAuthConfig } from 'next-auth';
 import Google from 'next-auth/providers/google';
 
 // Edge-safe Auth.js base config. The middleware runs on the Edge runtime, where
-// the credential password check's Node-only deps (argon2, node:crypto, the
-// Postgres client) can't load — so the Credentials provider and its authorize live
-// ONLY in auth.ts (the Node API route), which spreads this base. This file must
-// stay free of any Node-only import so the Edge middleware bundle compiles.
+// the phone providers' Node-only deps (node:crypto, the Postgres client) can't
+// load — so those Credentials providers and their authorize live ONLY in auth.ts
+// (the Node API route), which spreads this base. This file must stay free of any
+// Node-only import so the Edge middleware bundle compiles.
 //
 // The identity callbacks live here (not just in auth.ts) so the JWT the middleware
-// reads carries the same `sub` → session.user.id mapping for both providers.
+// reads carries the same `sub` → session.user.id mapping for every provider.
+// Google stays. Email/password and magic-link do not.
 export const authConfig = {
   providers: [
     Google({
@@ -22,20 +23,13 @@ export const authConfig = {
   callbacks: {
     jwt({ token, account, user }) {
       // Pin the stable external account id as the JWT subject so session.user.id
-      // is that id. Google's is the OAuth `sub` (account.providerAccountId); the
-      // Credentials authorize (auth.ts) returns `credentials:<id>` as user.id.
+      // is that id. Google's is the OAuth `sub` (account.providerAccountId).
       if (account?.provider === 'google') {
         token.sub = account.providerAccountId;
       } else if (
-        (account?.provider === 'credentials' ||
-          account?.provider === 'magic-link' ||
-          account?.provider === 'claim-phone' ||
-          account?.provider === 'channel-link') &&
+        (account?.provider === 'claim-phone' || account?.provider === 'channel-link') &&
         user?.id
       ) {
-        // Both email-based providers return `credentials:<id>` as user.id (magic
-        // link find-or-creates the same credential a password login uses), so a
-        // magic-link session resolves to the same account/family as a password one.
         // `claim-phone` and `channel-link` (the texted connect link) both return the
         // external_auth_id the account ALREADY holds —
         // `sms:<blind index>` for a text-onboarded family — which is what makes

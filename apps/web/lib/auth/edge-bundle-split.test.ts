@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
  * pattern, pointed at a different invariant).
  *
  * The middleware runs on the EDGE runtime and builds its Auth.js instance from
- * auth.config.ts. Node-only deps — argon2, node:crypto, the Postgres client — cannot
+ * auth.config.ts. Node-only deps — node:crypto, the Postgres client — cannot
  * load there, so the rule is that everything REACHABLE from the middleware stays free
  * of them, and the providers whose authorize needs those deps live only in auth.ts.
  *

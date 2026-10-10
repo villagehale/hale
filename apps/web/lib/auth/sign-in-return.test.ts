@@ -23,7 +23,6 @@ vi.mock('next/navigation', () => ({ redirect }));
 vi.mock('~/lib/auth-config', () => ({ authConfigured: () => true }));
 
 import { claimByPhoneAction } from './claim-phone-actions';
-import { redeemMagicLinkAction } from './magic-link-actions';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -41,16 +40,6 @@ describe('post-sign-in return path', () => {
     expect(signIn).toHaveBeenCalledWith('claim-phone', {
       phone: '+14165550100',
       code: '123456',
-      redirectTo: '/messages',
-    });
-  });
-
-  it('sends a successful magic-link sign-in to /messages', async () => {
-    await expect(
-      redeemMagicLinkAction('tok', '/messages', { status: 'idle' }, new FormData()),
-    ).rejects.toThrow('REDIRECT:/messages');
-    expect(signIn).toHaveBeenCalledWith('magic-link', {
-      token: 'tok',
       redirectTo: '/messages',
     });
   });

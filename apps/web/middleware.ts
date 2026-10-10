@@ -7,12 +7,13 @@ import { RETURN_PATH_HEADER, signInHref } from '~/lib/auth/redirect';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { PASSPORT_DEMO_HEADER, passportDemoBypassesAuth } from '~/lib/passport/demo';
 import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
+import { isRetiredAuthPath, retiredAuthRedirectUrl } from '~/lib/routes/retired-auth';
 
 // The middleware runs on the Edge runtime, so it builds `auth` from the Edge-safe
-// base config (Google + identity callbacks) — NOT from ~/auth, whose Credentials
-// authorize pulls in Node-only deps (argon2, node:crypto, the Postgres client)
-// the Edge bundle can't load. Credentials sign-in runs in the Node API route,
-// never here; the middleware only reads the already-signed session JWT.
+// base config (Google + identity callbacks) — NOT from ~/auth, whose phone and
+// connect authorize pull in Node-only deps (node:crypto, the Postgres client)
+// the Edge bundle can't load. Those sign-ins run in the Node API route, never
+// here; the middleware only reads the already-signed session JWT.
 const { auth } = NextAuth(authConfig);
 
 // auth() wraps the middleware so req.auth carries the Auth.js session. An
@@ -37,6 +38,13 @@ export default auth((req) => {
   // lib/routes/retired.ts for why this cannot live in the page alone.
   if (isRetiredPath(pathname)) {
     return NextResponse.redirect(new URL(RETIRED_TARGET, req.nextUrl), 308);
+  }
+
+  // Retired email doors (password, magic link, email verify, the email invite
+  // landing). Same reason this cannot live in the page alone. The target is
+  // bare /sign-in — retiredAuthRedirectUrl drops any token or query.
+  if (isRetiredAuthPath(pathname)) {
+    return NextResponse.redirect(retiredAuthRedirectUrl(req.nextUrl), 308);
   }
 
   if (!isProtectedPath(pathname)) {

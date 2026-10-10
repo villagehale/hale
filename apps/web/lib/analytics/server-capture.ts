@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { type AnalyticsEvent, buildEvent } from './events';
 
 /**
- * Server-side analytics capture for the paths a client hook can't reach — the
- * sign-up server action fires signup_completed here on ACTUAL account creation, not
- * on button-intent, so cancelled/failed attempts aren't counted as conversions.
+ * Server-side analytics capture for the paths a client hook can't reach.
+ * Payloads go through buildEvent, so a cancelled attempt is not a conversion
+ * just because a button was pressed.
  *
  * Dependency-free: a single POST to PostHog's public capture endpoint (no
  * posthog-node client, no flush lifecycle to leak in a short-lived server action).

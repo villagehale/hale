@@ -730,7 +730,7 @@ export interface LoopHealthDigestResult {
 }
 
 /** The weekly cron entry point: aggregate the trailing week and email the founder.
- * Un-gated by a feature flag (like founder-signal's notifySignup) — it degrades to
+ * Un-gated by a feature flag (like the founder-address mailers) — it degrades to
  * a NAMED no-op via the sender's own guards (no founder address / no Resend key)
  * rather than a separate send-enabled switch, since this never reaches a real
  * family. A provider refusal is escalated through the ops seam: the digest failing
