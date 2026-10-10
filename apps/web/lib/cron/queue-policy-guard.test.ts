@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
  * class once already (channel/config.ts CHANNEL_MESSAGE_RECEIVED_RETRY); this guard is
  * what keeps the cure from being site-by-site vigilance.
  *
- * Structural, like admin/no-mutation.test.ts: a `.createQueue(` INVOCATION anywhere in
+ * Structural: a `.createQueue(` INVOCATION anywhere in
  * production source outside the one blessed helper module is a failure. Interface
  * declarations (`createQueue(name: string …): Promise<void>`) carry no leading dot and
  * are exempt by construction.

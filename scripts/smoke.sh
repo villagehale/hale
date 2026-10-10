@@ -76,7 +76,6 @@ AUTH_SECRET="$(openssl rand -base64 32)"
 APP_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 export AUTH_SECRET APP_ENCRYPTION_KEY
 export F14_RECEIPTS_IA=true
-export ADMIN_PHONES=+14165550123
 
 # Blank every real service key .env/.env.local could otherwise hand the server.
 # Two need syntactically VALID throwaway values, not empty: the worker env schema
@@ -86,7 +85,7 @@ export ADMIN_PHONES=+14165550123
 export ANTHROPIC_API_KEY=smoke-placeholder-never-a-real-key
 export LANGFUSE_HOST=http://127.0.0.1:9 LANGFUSE_BASE_URL=http://127.0.0.1:9
 export LANGFUSE_PUBLIC_KEY= LANGFUSE_SECRET_KEY= \
-  POSTHOG_PERSONAL_API_KEY= POSTHOG_PROJECT_ID= SUPABASE_URL= \
+  SUPABASE_URL= \
   RESEND_API_KEY= GOOGLE_OAUTH_CLIENT_ID= GOOGLE_OAUTH_CLIENT_SECRET= \
   STRIPE_SECRET_KEY= STRIPE_WEBHOOK_SECRET= \
   NEXT_PUBLIC_POSTHOG_KEY= NEXT_PUBLIC_POSTHOG_HOST=

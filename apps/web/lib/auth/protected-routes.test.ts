@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PROTECTED_PREFIXES, isAdminPath, isProtectedPath } from './protected-routes';
+import { PROTECTED_PREFIXES, isProtectedPath } from './protected-routes';
 
 /**
  * VIL-256 — the Edge gate is defense in depth for the `(authed)` route group. Its
@@ -18,9 +18,6 @@ const routesOfGroup = (group: string) =>
     .filter((entry) => entry.isDirectory())
     .map((entry) => `/${entry.name}`);
 
-// /admin lives inside (authed) now (the portal shell) — its own nested layout
-// additionally 404s non-admins, but a request with no session at all must
-// still never reach it, so the derived list picks it up with the rest.
 const authedRoutes = routesOfGroup('(authed)');
 
 describe('the Edge gate covers the authed route group', () => {
@@ -49,13 +46,11 @@ describe('isProtectedPath', () => {
       expect(isProtectedPath(path)).toBe(false);
     }
   });
-});
 
-describe('isAdminPath', () => {
-  it('matches /admin and its sub-paths, and nothing that merely shares the prefix', () => {
-    expect(isAdminPath('/admin')).toBe(true);
-    expect(isAdminPath('/admin/anything')).toBe(true);
-    expect(isAdminPath('/administrator')).toBe(false);
-    expect(isAdminPath('/approvals')).toBe(false);
+  it('leaves /admin ungated, so a missing page is the portal 404 and not a sign-in redirect', () => {
+    expect(isProtectedPath('/admin')).toBe(false);
+    expect(isProtectedPath('/admin/anything')).toBe(false);
+    expect(isProtectedPath('/admin/ledger/extra')).toBe(false);
+    expect(isProtectedPath('/administrator')).toBe(false);
   });
 });

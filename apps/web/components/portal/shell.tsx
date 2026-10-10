@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { Wordmark } from '~/components/hale/connect/wordmark';
 import { type RootHero, type RootRoute, resolveHero } from '~/components/hale/hero-map';
-import { navWithAdmin, primaryNav } from '~/components/hale/nav';
+import { primaryNav } from '~/components/hale/nav';
 import { signOutAction } from '~/lib/auth-actions';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { AppearanceControl } from './appearance';
@@ -29,14 +29,12 @@ function onRoute(pathname: string, href: string): boolean {
  */
 export function PortalShell({
   children,
-  showAdmin,
   canSignOut,
   roots,
   basePath = '',
   signOutTo,
 }: {
   children: ReactNode;
-  showAdmin: boolean;
   canSignOut: boolean;
   roots: Record<RootRoute, RootHero>;
   /** Prefix for nav targets. The seeded preview demo keeps links inside `/demo/portal`. */
@@ -45,8 +43,7 @@ export function PortalShell({
   signOutTo?: string;
 }) {
   const pathname = usePathname() ?? portalHref(basePath, '/home');
-  const stops = navWithAdmin(primaryNav(true), showAdmin);
-  const tabs = primaryNav(true);
+  const stops = primaryNav(true);
   const homeHref = portalHref(basePath, '/home');
 
   return (
@@ -114,7 +111,7 @@ export function PortalShell({
         </footer>
       </div>
       <nav className={styles.tabbar} aria-label="Sections">
-        {tabs.map((item) => {
+        {stops.map((item) => {
           const Icon = item.icon;
           const href = portalHref(basePath, item.href);
           const on = onRoute(pathname, href);

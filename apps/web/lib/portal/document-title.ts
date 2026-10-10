@@ -6,11 +6,6 @@ export const PORTAL_TITLE = {
   template: '%s · Hale',
 } as const;
 
-export const ADMIN_TITLE = {
-  absolute: 'Admin · Hale',
-  template: '%s · Admin · Hale',
-} as const;
-
 export const DEMO_TITLE = {
   absolute: 'Preview · Hale',
   template: '%s · Hale preview',

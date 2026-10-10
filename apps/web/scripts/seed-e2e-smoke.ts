@@ -1,24 +1,18 @@
 #!/usr/bin/env tsx
 // Fixture seed for the CI web-smoke walk (the #577 class: real authed flag-on
-// renders). Two PII-free accounts, keyed by external_auth_id so the minted
-// session cookies resolve them:
+// renders). One PII-free account, keyed by external_auth_id so the minted
+// session cookie resolves it:
 //
-//   smoke-admin  — primary parent + toddler + an ACTIVE VERIFIED sms channel whose
-//                  blind index matches ADMIN_PHONES, so /admin opens for this user.
-//   smoke-parent — primary parent + preschooler, no admin phone (the /admin 404 leg).
+//   smoke-admin — primary parent + toddler. The id is historical; the account
+//                 is an ordinary signed-in parent, not a privileged role.
 //
-// The channel row encrypts/hashes through the same lib/crypto modules the admin
-// gate reads, so the hash matches by construction (same module, same env key).
-// Idempotent: re-running deletes the two accounts' families (cascade) and re-seeds.
+// Idempotent: re-running deletes the fixture family (cascade) and re-seeds.
 //
 // Refuses any non-local DATABASE_URL: this seed exists for ephemeral smoke
 // databases only and must never run against prod.
 
 import { createDb, schema } from '@hale/db';
 import { inArray } from 'drizzle-orm';
-import { normalizePhoneE164 } from '../lib/channels/phone';
-import { phoneBlindIndex } from '../lib/crypto/blind-index';
-import { encryptString } from '../lib/crypto/string-cipher';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -33,16 +27,7 @@ if (host !== 'localhost' && host !== '127.0.0.1') {
   process.exit(1);
 }
 
-const adminPhoneRaw = process.env.ADMIN_PHONES?.split(',')[0]?.trim();
-const adminPhone = adminPhoneRaw ? normalizePhoneE164(adminPhoneRaw) : null;
-if (!adminPhone) {
-  console.error(
-    'seed-e2e-smoke: ADMIN_PHONES must carry a valid CA/US E.164 number — the /admin leg keys the fixture channel off it.',
-  );
-  process.exit(1);
-}
-
-const EXTERNAL_IDS = ['smoke-admin', 'smoke-parent'];
+const EXTERNAL_IDS = ['smoke-admin'];
 
 /** date-only string N months before now (UTC) — feeds deriveStage. */
 function dobMonthsAgo(months: number): string {
@@ -59,7 +44,7 @@ function one<T>(rows: T[], what: string): T {
   return row;
 }
 
-// ── Idempotent cleanup: the two fixture accounts and their families ──
+// ── Idempotent cleanup: the fixture account and its family ──
 const existing = await db
   .select({ id: schema.users.id })
   .from(schema.users)
@@ -77,7 +62,7 @@ if (existing.length > 0) {
   await db.delete(schema.users).where(inArray(schema.users.id, userIds));
 }
 
-// ── smoke-admin: family + toddler + allowlisted verified sms channel ──
+// ── smoke-admin: family + toddler ──
 const adminUser = one(
   await db
     .insert(schema.users)
@@ -102,40 +87,6 @@ await db.insert(schema.children).values({
   name: 'Juniper',
   dateOfBirth: dobMonthsAgo(26),
 });
-await db.insert(schema.parentChannels).values({
-  userId: adminUser.id,
-  familyId: adminFamily.id,
-  kind: 'sms',
-  phoneE164Encrypted: encryptString(adminPhone),
-  phoneE164Hash: phoneBlindIndex(adminPhone),
-  verifiedAt: new Date(),
-});
 
-// ── smoke-parent: family + preschooler, no channel (never an admin) ──
-const parentUser = one(
-  await db
-    .insert(schema.users)
-    .values({ externalAuthId: 'smoke-parent', email: 'smoke-parent@example.test', name: 'Pat Smoke' })
-    .returning({ id: schema.users.id }),
-  'smoke-parent user',
-);
-const parentFamily = one(
-  await db
-    .insert(schema.families)
-    .values({ displayName: 'Smoke Two', onboardingStage: 'sms_active' })
-    .returning({ id: schema.families.id }),
-  'smoke-parent family',
-);
-await db.insert(schema.familyMembers).values({
-  familyId: parentFamily.id,
-  userId: parentUser.id,
-  role: 'primary_parent',
-});
-await db.insert(schema.children).values({
-  familyId: parentFamily.id,
-  name: 'Wren',
-  dateOfBirth: dobMonthsAgo(40),
-});
-
-console.log('seed-e2e-smoke: seeded smoke-admin (Juniper) and smoke-parent (Wren).');
+console.log('seed-e2e-smoke: seeded smoke-admin (Juniper).');
 process.exit(0);

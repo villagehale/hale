@@ -2,7 +2,7 @@
 # real authed flag-on render crashed into the error boundary (a lucide component
 # ref crossing the RSC/client seam). Only a real `next build` + `next start`
 # render sees that class — so this job builds the app, migrates a throwaway
-# Postgres, seeds two PII-free fixture accounts, mints session cookies and walks
+# Postgres, seeds one PII-free fixture account, mints a session cookie and walks
 # the authed pages with Playwright. Own workflow (not a job in ci.yml) so the
 # paths filter keeps site-only PRs fast; it runs in PARALLEL with `verify`, so CI
 # wall-clock stays bounded by the slower of the two.
@@ -60,9 +60,6 @@ jobs:
       # Set via env block, never `echo |` (the trailing-\n landmine — the flag
       # reader is strict equality on the literal 'true').
       F14_RECEIPTS_IA: 'true'
-      # Fixture allowlist number — the seed enrolls the smoke-admin account's
-      # channel with this same value, so /admin opens by construction.
-      ADMIN_PHONES: '+14165550123'
 
     steps:
       - name: Checkout

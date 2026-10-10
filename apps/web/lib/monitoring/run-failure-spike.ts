@@ -42,9 +42,8 @@ export interface RunStatusCount {
   count: number;
 }
 
-/** The terminal states that mean the run did NOT serve its family — the one failure
- * vocabulary the admin errors table and the pulse band already use
- * (lib/admin/queries/errors.ts). Everything terminal that is not `completed`. */
+/** The terminal states that mean the run did NOT serve its family.
+ * Everything terminal that is not `completed`. */
 const TERMINAL_FAILURE_STATUSES: ReadonlySet<string> = new Set([
   'failed',
   'timed_out',
