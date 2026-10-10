@@ -215,7 +215,7 @@ describe('no bundle promises quiet, in any locale', () => {
     // The subtraction must leave the cadence described, not the page silent about
     // it — otherwise these absences would also pass on an empty bundle.
     const say = {
-      en: 'a heads-up the week a registration opens',
+      en: 'a heads-up before sign-ups',
       fr: 'une inscription ouvre',
       zh: '报名开放',
     };

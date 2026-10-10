@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { GTA_REGIONS } from './regions';
 import { SOCIAL_SEED, SOCIAL_SEED_TOS_RISK } from './seed';
+
+/** Same allowlist the social-watch schema stores. Inlined so this test does not import the db package. */
+const GTA_REGIONS = ['toronto', 'peel', 'york', 'halton', 'durham', 'day_trip'] as const;
 
 const REQUIRED = ['acton_georgetownearlyon', 'downeysfarm'] as const;
 const NEEDED_CATEGORIES = ['T1', 'T2', 'T3', 'T5', 'T6', 'T10', 'T11'] as const;

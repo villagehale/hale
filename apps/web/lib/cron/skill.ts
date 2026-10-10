@@ -5,9 +5,8 @@ import { resolveRepoFile } from '~/lib/coach/resolve-repo-file';
 /**
  * Loads a SKILL — an agent's system instructions — from the single source of
  * truth in `packages/agent/skills/<name>.md` (rule #2: prompts by reference,
- * never inline). Same repo-root resolution as the coach's loadAskHaleSkill: a
- * Next serverless bundle relocates the package-relative skills dir, so we resolve
- * the absolute path (next.config.ts ships the skill files via
+ * never inline). A Next serverless bundle relocates the package-relative skills
+ * dir, so we resolve the absolute path (next.config.ts ships the skill files via
  * outputFileTracingIncludes) and hand it to loadSkill. Cached per skill name.
  */
 const cache = new Map<string, Skill>();
@@ -26,10 +25,6 @@ export function loadInferMemorySkill(): Promise<Skill> {
 
 export function loadWeekSummarySkill(): Promise<Skill> {
   return loadCronSkill('week-summary');
-}
-
-export function loadWelcomeVoiceSkill(): Promise<Skill> {
-  return loadCronSkill('welcome-voice');
 }
 
 export function loadReminderVoiceSkill(): Promise<Skill> {

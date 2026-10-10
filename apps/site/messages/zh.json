@@ -29,7 +29,6 @@
     "linkActivities": "活动",
     "linkGuides": "育儿指南",
     "linkAbout": "关于",
-    "linkForCentres": "给中心",
     "linkContact": "联系我们",
     "linkPrivacy": "隐私政策",
     "linkTerms": "服务条款",
@@ -53,20 +52,9 @@
     "toLight": "切换到浅色模式",
     "toDark": "切换到深色模式"
   },
-  "CopyNumber": {
-    "label": "复制号码",
-    "copied": "已复制——用手机给我发短信吧",
-    "aria": "将 Hale 的电话号码复制到剪贴板"
-  },
-  "EmailCta": {
-    "emailMe": "给我发邮件",
-    "copy": "复制 {email}",
-    "copied": "已复制 ✓"
-  },
   "About": {
     "metaTitle": "关于 · Hale",
     "metaDescription": "Hale 是孩子这一年的规划。两个家长，在做我们想要的帮手。Barton Dong，首席执行官；Eugene Song，首席技术官。Village Hale Technologies Inc.",
-    "eyebrow": "关于 Hale",
     "headline": [
       {
         "text": "孩子这一年的规划。",
@@ -74,48 +62,6 @@
       }
     ],
     "lede": "孩子附近有什么，很容易被错过；早晨几分钟就满了；也没人问后来怎么样。Hale 把它找出来，盯着那个日期，事后问一句——靠短信。",
-    "missionEyebrow": "我们的使命",
-    "mission": "每一位家长都应该有这样一个人：知道你家附近有什么，记得那个两分钟就会被抢光的日期，还会回头问问进展如何。贯穿童年的每一个阶段，从最初的几个月，到孩子几近长大。",
-    "howEyebrow": "Hale 是怎么运作的",
-    "howHeadline": [
-      {
-        "text": "每一级，"
-      },
-      {
-        "text": "都要自己赢得。",
-        "accent": true
-      }
-    ],
-    "howLede": "Hale 一开始只负责找到附近有什么，并问进展如何。这个阶梯就是产品的全部：它一次只上一级，而且只有在你允许时才上。",
-    "ladder": [
-      {
-        "tag": "推荐",
-        "title": "Hale 来建议",
-        "line": "这一周值得知道的那件事，以及为什么现在要紧。",
-        "checks": ["你家附近值得去的三件事，而不是三十件", "报名开放那一周的提前知会"],
-        "linkLabel": "育儿指南"
-      },
-      {
-        "tag": "准备",
-        "title": "Hale 来备好",
-        "line": "精选清单、链接、时间——在窗口打开之前，而不是之后。",
-        "checks": ["前一晚的方案", "开放上线时的一记提醒", "链接和时间"],
-        "linkLabel": "价格几何"
-      },
-      {
-        "tag": "询问",
-        "title": "Hale 来问进展如何",
-        "line": "事情过后，回你一句——Hale 不替你代订。",
-        "checks": [
-          "第一节课过去几天后的一句问候",
-          "晚上一句，问今天过得如何",
-          "你发一条短信授予、也发一条短信收回的同意"
-        ],
-        "linkLabel": "你的数据如何被处理"
-      }
-    ],
-    "founderEyebrow": "两位创始人",
-    "founderLink": "LinkedIn",
     "founders": [
       {
         "name": "Barton Dong",
@@ -130,181 +76,18 @@
   },
   "Pricing": {
     "metaTitle": "价格 · Hale",
-    "metaDescription": "免费，聊天不限量。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。",
-    "eyebrow": "价格",
-    "headline": [
-      {
-        "text": "免费，聊天不限量。"
-      }
-    ],
-    "lede": "整个核心功能——每个阶段、每个孩子——都是免费的。随着每一部分上线，Plus 和 Max 会让更多的一年有人陪你盯着。",
-    "cta": "等你准备好了，再让 Hale 慢慢长成其余的样子。"
+    "metaDescription": "免费，聊天不限量。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。"
   },
   "Contact": {
     "metaTitle": "联系我们 · Hale",
-    "metaDescription": "联系 Hale 背后的团队。任何事都可以发邮件到 aloha@villagehale.com；隐私和数据相关请求发到 privacy@villagehale.com。",
-    "eyebrow": "联系我们",
-    "headline": [
-      {
-        "text": "打个"
-      },
-      {
-        "text": "招呼吧。",
-        "accent": true
-      }
-    ],
-    "lede": "我们团队很小、由家长亲手打造、还很早期——所以是一个真人在读你发来的内容。联系我们最快的方式是发邮件。",
-    "emailButton": "发邮件至 aloha@villagehale.com",
-    "channels": {
-      "general": {
-        "eyebrow": "任何事都行",
-        "line": "问题、反馈，或是一门你的村子应该知道的课——每一条留言我们都会读。"
-      },
-      "privacy": {
-        "eyebrow": "隐私与你的数据",
-        "line": "访问、更正或删除请求，以及任何关于我们如何处理你家数据的事。"
-      }
-    },
-    "centresNote": "你在中心、图书馆或社区项目工作？",
-    "centresLink": "看看 Hale 对你服务的家庭意味着什么"
+    "metaDescription": "联系 Hale 背后的团队。任何事都可以发邮件到 aloha@villagehale.com；隐私和数据相关请求发到 privacy@villagehale.com。"
   },
   "ForCentres": {
-    "metaTitle": "给中心与社区伙伴 · Hale",
-    "eyebrow": "给中心与伙伴",
-    "headline": [
-      {
-        "text": "写给家长们"
-      },
-      {
-        "text": "已经信任的人。",
-        "accent": true
-      }
-    ],
-    "townsLabel": "盯着的市镇",
-    "getEyebrow": "一个家庭会得到什么",
-    "getHeadline": [
-      {
-        "text": "一条短信，"
-      },
-      {
-        "text": "同一分钟内就有回复。",
-        "accent": true
-      }
-    ],
-    "getLede": "第一条消息总是家长发的——Hale 从不先给一个家庭发短信。这是其中一条，以及回来的话。",
-    "getAfter": "在真正要紧的事情之间，它不打扰你：报名开放前一晚的链接、提前十五分钟的一句提醒，以及晚上那一句问你今天过得如何。",
-    "waysEyebrow": "怎么把一个家庭指向 Hale",
-    "waysHeadline": [
-      {
-        "text": "三种让一个家庭"
-      },
-      {
-        "text": "开始的做法。",
-        "accent": true
-      }
-    ],
-    "waysLede": "不用签什么，不用装什么，工作人员也不用跟进什么。",
-    "ways": {
-      "number": {
-        "tag": "直接给",
-        "title": "把号码给他们",
-        "body": "复制下来，放在家长会看的地方——白板、一张页子、活动室表格的背面。家长准备好了就发。"
-      },
-      "poster": {
-        "tag": "打印出来",
-        "title": "贴一张海报",
-        "body": "这个码打开的页面，会把家长的第一条消息先写好。我们会印带有你们中心专属代码的海报，这样我们就能告诉你们它带来了多少个家庭——发封邮件，我们就寄一张过去。"
-      },
-      "try": {
-        "tag": "自己试试",
-        "title": "先自己发一条",
-        "body": "像家长那样发出第一条消息，读一读回来的话，你就知道自己在推荐什么。回复 STOP 就结束。"
-      }
-    },
-    "numberPending": "号码还没对外公布。发封邮件给我们，它公布时我们会告诉你。",
-    "knowEyebrow": "工作人员需要知道的",
-    "knowHeadline": [
-      {
-        "text": "关于隐私的"
-      },
-      {
-        "text": "大白话回答。",
-        "accent": true
-      }
-    ],
-    "knowLede": "家庭会先问你们这几件事，然后才来问我们。",
-    "facts": [
-      {
-        "title": "Hale 会问什么",
-        "body": "孩子的名字、年龄，和一个邮编。前三位就够了——它指的是一个市镇，而不是一条街。"
-      },
-      {
-        "title": "什么都不出售",
-        "body": "一个家庭的信息从不出售，从不用于广告共享，也从不展示给另一个家庭。"
-      },
-      {
-        "title": "STOP 就能结束",
-        "body": "家长发一条 STOP，消息就停。他们可以向 privacy@villagehale.com 要回自己的数据，或者要求删除。"
-      },
-      {
-        "title": "法语，用法语回",
-        "body": "家长可以用法语给 Hale 发短信，Hale 也用法语回。"
-      },
-      {
-        "title": "孩子说的话只属于他的家长",
-        "body": "Hale 是和家长说话的。对 13 岁及以上的孩子，家长看到的是话题和摘要，而不是原话——除非涉及安全，而那时会告知这位青少年。"
-      }
-    ],
-    "officialEyebrow": "如果家长问 Hale 是不是官方的",
-    "officialLine": "Hale 是独立的。它不属于你们中心，也不属于市、区或省。每一个报名日期它都会对照市政府自己的页面核实；若两者不一致，以市政府的页面为准。",
-    "faqEyebrow": "我们常被问到的",
-    "faqHeadline": [
-      {
-        "text": "工作人员最先问的"
-      },
-      {
-        "text": "四件事。",
-        "accent": true
-      }
-    ],
-    "faq": [
-      {
-        "question": "家庭需要注册账号吗？",
-        "answer": "不需要。家长给一个号码发短信，Hale 就回。不用装应用，没有密码，也没有注册页。"
-      },
-      {
-        "question": "对一个家庭来说要花多少钱？",
-        "answer": "开始是免费的。盯日期、答问题都不收费，而且现在加入的家庭可以永久保留创始价。"
-      },
-      {
-        "question": "我们需要签什么吗？",
-        "answer": "不需要。没有协议，工作人员也没有需要上报或跟进的东西。我们唯一会和你们一起安排的，是一张带有你们中心代码的海报。"
-      },
-      {
-        "question": "Hale 不会做什么？",
-        "answer": "它不做诊断，也从不说用药剂量——医疗问题会回到你自己的医护人员那里。它也从不替家庭填报名表、占位子。它只负责备好和提醒；报名的是家长。"
-      }
-    ],
-    "ctaHeading": "想给你们中心要一张海报吗？",
-    "ctaSub": "发封邮件给我们，我们会寄一张带有你们中心专属代码的过去。回信的是真人。",
-    "ctaButton": "发邮件至 aloha@villagehale.com",
-    "ctaQuiet": "其他联系方式"
+    "metaTitle": "给中心与社区伙伴 · Hale"
   },
   "Faq": {
     "metaTitle": "Hale 是否免费、私密，又是否适合你家？ · Hale",
     "metaDescription": "给家长的 Hale 常见问题：免费、聊天不限量，适合 0–18 岁的孩子，没有你的同意绝不擅自行动。",
-    "eyebrow": "问题，都有答案",
-    "headline": [
-      {
-        "text": "Hale 适合"
-      },
-      {
-        "text": "你家吗？",
-        "accent": true
-      }
-    ],
-    "lede": "家长们问我们最多的那些诚实回答——关于费用、隐私，以及 Hale 到底是怎么运作的。",
-    "ctaHeading": "还在犹豫？直接问我就好。",
     "items": [
       {
         "question": "Hale 是什么？",
@@ -351,30 +134,12 @@
   "Answers": {
     "metaTitle": "育儿指南 · Hale",
     "metaDescription": "为家长们常搜的问题提供平和、有出处的育儿指南——立足于可信框架的通用指导，绝不替代你的医护人员。",
-    "eyebrow": "育儿指南",
-    "headline": [
-      {
-        "text": "平和、有出处的指南，覆盖"
-      },
-      {
-        "text": "每个阶段。",
-        "accent": true
-      }
-    ],
-    "lede": "为家长们真正会搜的问题准备的实用指南——每一篇都立足于可信的育儿健康框架，并对自己的局限诚实以告。这是通用指导，绝不替代你的医护人员。",
     "empty": "我们最早的一批育儿指南正在审阅中。在此期间，要为你自己的孩子拿到指导——把他们的年龄和你家的情况都考虑进去——最快的方式就是直接问 Hale。",
     "countHeading": "家长常搜的 {n} 个问题。",
     "filterLabel": "按阶段筛选指南",
     "filterStatus": "显示 {n} 篇，共 {total} 篇指南",
     "filterEmpty": "这个阶段暂时还没有指南。",
-    "filterSeeAll": "查看所有阶段",
-    "ctaHeading": "对你自己的孩子有疑问吗？",
-    "stageLabels": {
-      "newborn": "新生儿 · 0–11 个月",
-      "toddler": "幼儿 · 1–3 岁",
-      "child": "学龄 · 4–12 岁",
-      "teenager": "青少年 · 13 岁以上"
-    }
+    "filterSeeAll": "查看所有阶段"
   },
   "AnswerArticle": {
     "breadcrumb": "育儿指南",
@@ -388,7 +153,6 @@
     "disclaimerEyebrow": "请阅读",
     "disclaimerHeading": "这是通用指导，不是医疗建议。",
     "disclaimerBody": "Hale 总结的是被广泛推荐、有出处的育儿健康指导。它看不到你的孩子，也不做诊断、开处方或解读症状。任何与你孩子健康有关的事——包括诊断、用药剂量或症状——都请咨询你的儿科医生或医护人员。如遇紧急情况，请联系你当地的紧急服务。",
-    "askCta": "对你自己的孩子有疑问吗？Hale 会把你孩子的年龄和你家的情况考虑进去来回答。",
     "relatedGuides": "相关指南"
   },
   "Legal": {
@@ -399,16 +163,7 @@
   },
   "Text": {
     "metaTitle": "给 Hale 发短信",
-    "metaDescription": "孩子这一年，交给 Hale。值得和孩子一起做的事。",
-    "onLaptop": "在用笔记本电脑？",
-    "scanHint": "用手机相机扫描这个二维码，或者复制号码，用你的手机发短信。会按标准短信资费收费；随时回复 STOP 都可以。",
-    "qrAria": "二维码——扫码给 Hale 发短信",
-    "chooserHeadline": "欢迎。选一个我们聊天的地方。",
-    "chooserLede": "你的第一条消息已经写好了——你发出去，我来回复。我从不先发消息。",
-    "continueMessages": "继续用「信息」聊",
-    "continueWhatsapp": "继续用 WhatsApp 聊",
-    "orMessages": "或者用「信息」",
-    "orWhatsapp": "或者用 WhatsApp"
+    "metaDescription": "孩子这一年，交给 Hale。值得和孩子一起做的事。"
   },
   "Jsonld": {
     "orgDescription": "Hale 是孩子这一年的规划——帮你看看附近有什么、盯着报名，再回来问问怎么样。",
@@ -507,7 +262,6 @@
     "Free outings, parks and one‑time events, when you need an idea for Saturday.": "免费出门、公园、一次性的活动，周六不知道去哪的时候。",
     "Free. You text first; standard message rates apply, reply STOP any time.": "免费。你先发短信；按普通短信资费，随时回复 STOP。",
     "Founding families get everything free until paid plans start.": "创始家庭在付费方案开始前，全部免费。",
-    "Founding families get every feature free until paid plans start.": "创始家庭在付费方案开始前，每项功能都免费。",
     "Free, with unlimited chat.": "免费，聊天不限量。",
     "$0 CAD/mo": "每月 0 加元",
     "$19 CAD/mo": "每月 19 加元",

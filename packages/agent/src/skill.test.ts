@@ -77,11 +77,11 @@ body
 });
 
 describe('loadSkill', () => {
-  it('loads the bundled ask-hale skill by bare name', async () => {
-    const skill = await loadSkill('ask-hale');
-    expect(skill.meta.name).toBe('ask-hale');
-    expect(skill.meta.task).toBe('converse');
-    expect(skill.meta.tools).toContain('get_child_profile');
+  it('loads the bundled week-summary skill by bare name', async () => {
+    const skill = await loadSkill('week-summary');
+    expect(skill.meta.name).toBe('week-summary');
+    expect(skill.meta.task).toBe('draft');
+    expect(skill.meta.tools).toEqual([]);
     expect(skill.instructions.length).toBeGreaterThan(0);
   });
 
