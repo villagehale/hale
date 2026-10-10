@@ -468,13 +468,14 @@ describe('/sign-in has no toggle', () => {
     expect(html).toContain('claim-phone');
   });
 
-  it('keeps the flag-off door free of the portal control', async () => {
+  it('keeps the flag-off door on the phone form, with no portal control', async () => {
     const html = await renderSignIn();
 
     expect(html).not.toContain('aria-label="Appearance"');
     expect(html).not.toContain(NOTE);
     expect(html).not.toContain('>Auto<');
-    expect(html).toContain('Continue with Google');
+    expect(html).not.toContain('Continue with Google');
+    expect(html).toContain('claim-phone');
   });
 
   it('does not mount the control on the demo sign-in page', () => {
