@@ -2,16 +2,16 @@ import { headers } from 'next/headers';
 import { enforceRateLimit } from '~/lib/rate-limit/apply';
 
 /**
- * Per-IP brute-force / signup-spam guard for the auth surface, keyed off the
- * request the server is currently handling (the IP comes from `next/headers`, so
- * callers don't pass a Request). Used at BOTH auth entry points so neither can be
- * hit unthrottled:
- *   - the Credentials `authorize` (covers /sign-in AND a direct POST to
- *     /api/auth/callback/credentials, which bypasses the server action);
- *   - the sign-up server action (which doesn't go through authorize).
+ * Per-IP brute-force guard for the auth surface, keyed off the request the server
+ * is currently handling (the IP comes from `next/headers`, so callers don't pass
+ * a Request). The phone doors call it inside authorize, so the cap covers the
+ * form and a direct POST to that provider's callback:
+ *   - claim-phone: /sign-in and /api/auth/callback/claim-phone
+ *   - channel-link: /connect and /api/auth/callback/channel-link
+ * The claim-phone code-request route calls it too.
  *
- * Fails CLOSED (rule #1): a limiter/DB outage must not silently lift the only
- * throttle on password guessing — over the cap OR on error, returns true (block).
+ * Fails CLOSED (rule #1): a limiter/DB outage must not silently lift the throttle
+ * — over the cap OR on error, returns true (block).
  */
 export async function authRateLimited(): Promise<boolean> {
   const forwarded = (await headers()).get('x-forwarded-for');
