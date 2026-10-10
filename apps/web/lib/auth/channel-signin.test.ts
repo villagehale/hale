@@ -13,9 +13,10 @@ import {
 } from './channel-signin';
 
 /**
- * The phone-channel sign-in token — magic_link_tokens' lifecycle keyed on user_id,
- * because an SMS-onboarded parent has no email for a magic link to reach and redeeming
- * one would fork a second, empty account (the resolver-keyed-on-unwritten-field shape).
+ * The phone-channel sign-in token — the retired magic-link lifecycle, keyed on
+ * user_id, because an SMS-onboarded parent has no email for a magic link to reach
+ * and redeeming one would fork a second, empty account (the
+ * resolver-keyed-on-unwritten-field shape).
  *
  * Over REAL Postgres because everything that matters here is SQL: the atomic
  * conditional burn that makes it single-use, the expiry read, and the

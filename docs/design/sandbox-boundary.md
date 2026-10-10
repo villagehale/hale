@@ -55,7 +55,7 @@ On main, parent confirmation is the explicit phrase plus one session plus an app
 
 Stop reasons are `SignupStopReason` in `types.ts`. The ones enforced before a submit include: no offer, bare yes, ambiguous or full or unknown session, unapproved or changed price, payment, captcha, login or one-time-code, waiver, medical, allergy, waiting room, resident or identity verification, timed open-at, unexpected required field, missing detail, teen, URL refusal, browser missing, unconfirmed submit, a second attempt, and a result that would start a new 1:1. Payment and login classification live in `apps/web/lib/signup/forms/safety.ts`. A password control, or a control whose hay matches password / 2FA / OTP, returns `login_wall` before any fill.
 
-`credentials` (`packages/db/src/schema/credentials.ts`) holds an argon2id password hash and a verification token for Hale login. The signup runner does not read that table.
+The retired `credentials` table held an argon2id password hash and a verification token for Hale login. It was dropped in migration 0163 (0 rows in prod). The signup runner does not read it.
 
 ## Connector path
 

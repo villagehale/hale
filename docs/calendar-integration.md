@@ -35,8 +35,9 @@ requires all of the following; none of it exists in the repo today.
   calendar must be an explicit, revocable opt-in (PIPEDA/Law 25; rule #1).
 - **Per-family token storage**: access token + refresh token + expiry + the
   chosen `calendarId`, encrypted at rest, family-scoped. The existing
-  `credentials` / `integrations` schema is the likely home — a new
-  additive migration (rule #9), not a destructive change.
+  `integrations` schema is the likely home — a new additive migration
+  (rule #9), not a destructive change. The retired `credentials` table was
+  email/password sign-in and was dropped in migration 0163.
 - **Refresh handling**: access tokens expire (~1h); the client must refresh via
   the stored refresh token and persist the rotated token. A revoked/expired grant
   must surface as "calendar disconnected — reconnect", not a silent failure.

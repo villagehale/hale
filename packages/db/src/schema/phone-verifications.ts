@@ -17,7 +17,7 @@ import { users } from './users.js';
  *   - `last_sent_at` gates the 60-second resend cooldown.
  *
  * A new send invalidates the user's prior unconsumed verifications so only the
- * newest code works, mirroring magic_link_tokens.
+ * newest code works, the same rule the retired magic_link_tokens table used.
  */
 export const phoneVerifications = pgTable(
   'phone_verifications',
