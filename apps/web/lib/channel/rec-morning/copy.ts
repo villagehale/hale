@@ -24,8 +24,9 @@ import { matchRecMorning, postalMentioned } from './match';
  * follow only for levels or membership. Jack of Sports only if they ask. Never ActiveTO
  * (even to negate it), never "I'm an AI", never unofficial, never an app URL.
  *
- * Facts stay aligned with apps/site/lib/registration/guides.ts. This file is the SMS
- * voice, not a city-page paraphrase.
+ * Facts stay aligned with the constants in facts.ts and the verified registration
+ * dataset that city-line.ts reads. This file is the SMS voice, not a city-page
+ * paraphrase.
  */
 
 const INTAKE_MAX_REPLY_CHARS = 300;

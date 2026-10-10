@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The assistant's answer matches the reference answer exactly. It correctly states that Mira settled best swaddled on her back as a young baby and that the swaddle was dropped at 5 months. This is also confirmed in the knownFamilyHistory data under \"early_sleep_position\" which lists \"settled_best: swaddled on back\" and \"dropped_swaddle_month: 5\". The answer is accurate, complete, and contains no contradictions or fabrications."
-  }
-}

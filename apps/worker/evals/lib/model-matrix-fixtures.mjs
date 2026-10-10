@@ -301,13 +301,11 @@ function varyVisibleInput(role, fixture, profile, round) {
     fixture.input.event.payload.message_reference = reference;
   } else if (role === 'review') {
     fixture.input.draft_action.id += `-${reference.toLowerCase()}`;
-  } else if (role === 'coach') {
-    fixture.question = `${profile.prefix}${fixture.question} (${reference})`;
   }
 }
 
 export function expandMatrixCases(role, cases, target = MATRIX_SAMPLE_TARGET) {
-  const visibleInput = (item) => (role === 'coach' ? item.question : item.input);
+  const visibleInput = (item) => item.input;
   return expandSyntheticFixtures(role, cases, target, {
     vary: (fixture, { profile, round }) => varyVisibleInput(role, fixture, profile, round),
     visibleInput,

@@ -192,20 +192,12 @@ describe('/about — the locked page', () => {
         readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
       ).About as {
         metaDescription: string;
-        lede: string;
-        headline: { text: string }[];
-        founders: { name: string; role: string }[];
       };
       const copy = JSON.stringify(about);
-      const names = about.founders.map((founder) => founder.name);
-      expect(names).toEqual(['Barton Dong', 'Eugene Song']);
       expect(about.metaDescription).toContain('Barton Dong');
       expect(about.metaDescription).toContain('Eugene Song');
       expect(copy).not.toMatch(
         /Anzhe|agentic|agentique|智能体|equity|ownership|cap table|cap-table/,
-      );
-      expect(about.headline.map((segment) => segment.text).join(' ')).not.toMatch(
-        /not another app|pas une autre appli|又一个应用/,
       );
     }
   });

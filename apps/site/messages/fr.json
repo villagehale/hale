@@ -54,28 +54,7 @@
   },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale est un planificateur pour l’année de tes enfants. Deux parents qui bâtissent l’aide qu’on aurait voulu avoir. Barton Dong, PDG, et Eugene Song, directeur technique, chez Village Hale Technologies Inc.",
-    "headline": [
-      {
-        "text": "Un planificateur pour"
-      },
-      {
-        "text": "l’année de vos enfants.",
-        "accent": true
-      }
-    ],
-    "lede": "Ce qui se passe près des enfants passe à côté; les matins se remplissent en quelques minutes; personne ne demande comment ça s’est passé. Hale le trouve, surveille la date, demande ensuite — par texto.",
-    "founders": [
-      {
-        "name": "Barton Dong",
-        "role": "PDG"
-      },
-      {
-        "name": "Eugene Song",
-        "role": "directeur technique"
-      }
-    ],
-    "cta": "Ça commence par les noms, les âges et un code postal. Pas d’appli, pas de compte."
+    "metaDescription": "Hale est un planificateur pour l’année de tes enfants. Deux parents qui bâtissent l’aide qu’on aurait voulu avoir. Barton Dong, PDG, et Eugene Song, directeur technique, chez Village Hale Technologies Inc."
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",
@@ -85,50 +64,9 @@
     "metaTitle": "Contact · Hale",
     "metaDescription": "Joignez l’équipe derrière Hale. Écrivez à aloha@villagehale.com pour tout; privacy@villagehale.com pour la confidentialité et les demandes de données."
   },
-  "ForCentres": {
-    "metaTitle": "Pour les centres et les partenaires · Hale"
-  },
   "Faq": {
     "metaTitle": "Hale : gratuit, privé, fait pour ta famille? · Hale",
-    "metaDescription": "Des réponses claires sur Hale pour les parents : gratuit, textos illimités, pour les enfants de 0 à 18 ans, et Hale n'agit jamais sans toi.",
-    "items": [
-      {
-        "question": "Qu’est-ce que Hale?",
-        "answer": "Un planificateur pour l’année de vos enfants. Il trouve ce qui se donne vraiment près de vos enfants — natation, camps, haltes-jeux, le centre ON y va du quartier — surveille les matins d’inscription là où vous habitez, vous remet le lien de votre ville la veille au soir, et revient vous demander comment ça s’est passé. Il répond aussi aux questions de parentalité. Il n’y a aucune appli à installer ni aucun compte à créer."
-      },
-      {
-        "question": "Comment est-ce que je commence?",
-        "answer": "Vous textez le numéro et vous demandez ce qui vaut la peine avec les enfants, près de chez vous. Hale demande les noms et les âges de vos enfants ainsi que votre code postal, et c’est toute la configuration — le reste, il le demande plus tard, seulement quand il en a besoin. Hale ne texte jamais un numéro qui ne lui a pas écrit en premier."
-      },
-      {
-        "question": "Est-ce que Hale fait quoi que ce soit sans demander?",
-        "answer": "Non. Hale trouve ce qui se passe et demande comment ça s’est passé — il ne réserve pas de cours et ne vous inscrit pas. Chaque message nomme ce qu’il a trouvé, et Hale garde le dossier complet de qui a demandé, de ce qui a été envoyé et de quand."
-      },
-      {
-        "question": "À quelle fréquence Hale va-t-il me texter?",
-        "answer": "Un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. Le soir, Hale demande en une ligne comment la journée s’est passée — répondez LESS et ça devient hebdomadaire, NO et ça s’arrête. STOP fonctionne en tout temps."
-      },
-      {
-        "question": "Est-ce que Hale peut répondre aux questions de parentalité, ou seulement à celles d’horaire?",
-        "answer": "Les deux. Posez une question sur le sommeil, l’introduction des solides, l’apprentissage de la propreté, les repas difficiles, les crises de colère, le temps d’écran ou les routines, et vous obtenez une réponse ajustée à l’âge de votre enfant, en plus de l’offre du plan complet — deux ou trois textos que vous pouvez commencer ce soir. Quelques jours plus tard, Hale demande comment ça s’est passé. Il ne pose jamais de diagnostic et ne nomme jamais de dose."
-      },
-      {
-        "question": "Est-ce que Hale est gratuit?",
-        "answer": "Oui. Hale est gratuit, textos illimités. Les familles qui commencent maintenant ont toutes les fonctions gratuites, jusqu’à ce que les forfaits payants commencent."
-      },
-      {
-        "question": "Est-ce que je dois utiliser le site Web?",
-        "answer": "Non. La recherche et les nouvelles se passent dans le fil de textos. Le dossier complet de ce que Hale a envoyé est à vous quand vous le voulez — demandez-le dans le fil, ou connectez-vous avec votre numéro de téléphone pour le consulter."
-      },
-      {
-        "question": "Est-ce que vous me direz si un cours est bon?",
-        "answer": "Pas encore. Aujourd’hui, Hale demande comment ça s’est passé. Dire au prochain parent ce que d’autres familles en ont pensé, c’est ce que Hale veut bâtir ensuite — et quand ce sera fait, ce sera un nombre et un verdict, jamais les mots de qui que ce soit."
-      },
-      {
-        "question": "Pouvez-vous me dire qui d’autre y sera?",
-        "answer": "Pas encore. Aujourd’hui, je ne vous parle que de votre propre famille, jamais de celle de quelqu’un d’autre."
-      }
-    ]
+    "metaDescription": "Des réponses claires sur Hale pour les parents : gratuit, textos illimités, pour les enfants de 0 à 18 ans, et Hale n'agit jamais sans toi."
   },
   "Activities": {
     "metaTitle": "Activités à faire avec les enfants, près de chez toi · Hale",

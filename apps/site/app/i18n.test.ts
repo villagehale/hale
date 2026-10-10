@@ -7,7 +7,6 @@ import { SiteFooter } from '~/components/site-footer.js';
 import { buildAlternates } from '~/i18n/metadata.js';
 import { LOCALE_NAMES, localeHref, stripLocalePrefix } from '~/i18n/navigation.js';
 import { routing } from '~/i18n/routing.js';
-import { FAQ } from '~/lib/faq/index.js';
 import AboutPage from './[locale]/about/page.js';
 import { generateMetadata as aboutMetadata } from './[locale]/about/page.js';
 
@@ -215,9 +214,9 @@ describe('no bundle promises quiet, in any locale', () => {
     // The subtraction must leave the cadence described, not the page silent about
     // it — otherwise these absences would also pass on an empty bundle.
     const say = {
-      en: 'a heads-up before sign-ups',
-      fr: 'une inscription ouvre',
-      zh: '报名开放',
+      en: 'watches for spots',
+      fr: 'surveille les inscriptions',
+      zh: '报名前提醒',
     };
     for (const { locale, raw } of files) {
       expect(raw.toLowerCase()).toContain(say[locale].toLowerCase());
@@ -263,23 +262,16 @@ describe('the positioning noun is gone from every bundle', () => {
 
   it('positive control: the anti-scam line the ban must not erase is still there', () => {
     const en = files.find((f) => f.locale === 'en')?.raw ?? '';
-    expect(en).toContain('it never pretends to be');
-    expect(en).toContain('a real person reads it');
+    expect(en).toContain('a planner for your kids’ year');
+    for (const locale of ['fr', 'zh'] as const) {
+      const raw = files.find((f) => f.locale === locale)?.raw ?? '';
+      expect(raw).toContain('it never pretends to be');
+      expect(raw).toContain('a real person reads it');
+    }
   });
 });
 
-describe('the FAQ translation source mirrors the canonical English list', () => {
-  it('en.json Faq.items matches lib/faq so translations descend from the shipped copy', () => {
-    const en = JSON.parse(
-      readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'),
-    );
-    expect(en.Faq.items).toEqual(
-      FAQ.map((item) => ({ question: item.question, answer: item.answer })),
-    );
-  });
-});
-
-describe('VIL-325 designer-locked intake copy — the first-text sentence and About.cta', () => {
+describe('VIL-325 designer-locked intake copy', () => {
   const bundles = Object.fromEntries(
     (['en', 'fr', 'zh'] as const).map((locale) => [
       locale,
@@ -289,25 +281,10 @@ describe('VIL-325 designer-locked intake copy — the first-text sentence and Ab
     ]),
   );
 
-  /**
-   * The founder locked a SENTENCE. It used to live in the Landing namespace,
-   * which left with the unmounted landing. About.cta is the copy that remains.
-   */
   it('drops the retired Landing namespace', () => {
     for (const locale of ['en', 'fr', 'zh'] as const) {
       expect(bundles[locale].Landing, `${locale} still has a Landing namespace`).toBeUndefined();
     }
-  });
-
-  it('pins About.cta exactly, in all three locales', () => {
-    expect(bundles.en.About.cta).toBe(
-      'It starts with names, ages, and a postal code. No app, no account.',
-    );
-    expect(bundles.fr.About.cta).toBe(
-      'Ça commence par les noms, les âges et un code postal. Pas d’appli, pas de compte.',
-    );
-    expect(bundles.zh.About.cta).toBe('一切从名字、年龄和一个邮编开始。不用装应用，不用注册账号。');
-    expect(bundles.en.About.cta).not.toMatch(/no form/i);
   });
 
   it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {

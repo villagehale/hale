@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The assistant's answer correctly states that Mira moved from purees to finger foods at 9 months old, which matches the reference answer exactly. The assistant also adds contextual information about this being saved in feeding routine notes and notes that she's 18 months old today - both of which are consistent with the known family history (the feeding_transition fact confirms age_months: 9). No contradictory or fabricated information is present."
-  }
-}
