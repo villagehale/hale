@@ -115,8 +115,8 @@ describe('legal pages (long-form shell)', () => {
   it('dates both policies on the Toronto day the text was last edited', async () => {
     // Hard-coded calendar day, formatted in America/Toronto. UTC had already
     // rolled to October 8 when the text was edited.
-    expect(privacyHtml).toContain('Last updated October 7, 2026');
-    expect(termsHtml).toContain('Last updated October 7, 2026');
+    expect(privacyHtml).toContain('Last updated October 9, 2026');
+    expect(termsHtml).toContain('Last updated October 9, 2026');
     expect(privacyHtml).not.toContain('October 8, 2026');
     expect(termsHtml).not.toContain('October 8, 2026');
     const fr = { params: Promise.resolve({ locale: 'fr' as const }) };
@@ -126,11 +126,11 @@ describe('legal pages (long-form shell)', () => {
     const zhPrivacy = renderToStaticMarkup(await PrivacyPage(zh));
     const zhTerms = renderToStaticMarkup(await TermsPage(zh));
     for (const html of [frPrivacy, frTerms]) {
-      expect(html).toContain('Dernière mise à jour le 7 octobre 2026');
+      expect(html).toContain('Dernière mise à jour le 9 octobre 2026');
       expect(html).not.toContain('8 octobre 2026');
     }
     for (const html of [zhPrivacy, zhTerms]) {
-      expect(html).toContain('最后更新于 2026年10月7日');
+      expect(html).toContain('最后更新于 2026年10月9日');
       expect(html).not.toContain('10月8日');
     }
   });
@@ -174,8 +174,8 @@ describe('terms (migrated verbatim)', () => {
    * so the governing document for a texting product described a Google-only
    * sign-in and never mentioned texting at all — a contradiction a reader hits
    * two clicks after the homepage. These pin the corrections; each one maps to a
-   * shipped fact (SMS is the product surface, sign-in is Google + password, STOP
-   * ends the conversation, carrier rates are the reader's).
+   * shipped fact (SMS is the product surface, sign-in is the phone number plus a
+   * one-time code, STOP ends the conversation, carrier rates are the reader's).
    */
   it('governs the product that actually exists — a family assistant you reach by text, not a Google-only app', () => {
     expect(termsHtml).not.toContain('You sign in through Google.');
@@ -183,7 +183,10 @@ describe('terms (migrated verbatim)', () => {
     expect(termsHtml).toContain('a family assistant you reach by iMessage or text message');
     expect(termsHtml).not.toContain('an AI service');
     expect(termsHtml).not.toContain('helps carry them out');
-    expect(termsHtml).toContain('a Google account or an email address and password');
+    expect(termsHtml).toContain(
+      'you use the phone number you text from and a one-time code we send to it',
+    );
+    expect(termsHtml).not.toContain('a Google account or an email address and password');
     // Agreement is reachable without an account, because most families never make one.
     expect(termsHtml).toContain('By texting Hale, creating an account, or otherwise using Hale');
   });
@@ -213,6 +216,13 @@ describe('terms (migrated verbatim)', () => {
 });
 
 describe('privacy (migrated verbatim, plus the SMS-transit disclosure)', () => {
+  it('describes web sign-in as the phone number and a one-time code', () => {
+    expect(privacyHtml).toContain(
+      'The phone number you text from, which is also how you sign in to the web app with a one-time code.',
+    );
+    expect(privacyHtml).not.toContain('email address and password you register');
+  });
+
   it('says the main database is hosted in Canada and names no city', () => {
     expect(privacyHtml).toContain('redacted from parents by default');
     expect(privacyHtml).toContain('main database is hosted in Canada');
