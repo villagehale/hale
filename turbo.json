@@ -17,8 +17,7 @@
         "LANGFUSE_SECRET_KEY",
         "LANGFUSE_BASE_URL",
         "LANGFUSE_HOST",
-        "APP_URL",
-        "WORKER_URL"
+        "APP_URL"
       ]
     },
     "dev": {

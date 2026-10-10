@@ -70,7 +70,7 @@ full app env; the table below is the **deploy-time** subset per platform.
 | `CLERK_SECRET_KEY` | ✓ | — | Auth |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✓ | — | Auth (public) |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | ✓ | — | Tracing |
-| `APP_URL` / `WORKER_URL` | ✓ | — | Cross-service URLs |
+| `APP_URL` | ✓ | — | Public app origin |
 | (none app-specific) | — | ✓ | site is static marketing |
 
 ### GitHub Actions — CI/CD deploy (`Settings → Secrets → Actions`)
