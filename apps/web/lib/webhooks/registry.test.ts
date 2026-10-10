@@ -8,10 +8,9 @@ import { getAdapter, SUPPORTED_PROVIDERS } from './registry.js';
  *   gmail   → emailAddress           gcal   → channelId / resourceId
  *   outlook → subscriptionId         stripe → account
  *
- * 'twilio' is deliberately ABSENT: VIL-214 · A3 removed its adapter (its verify()
- * could never be correct here — this interface never sees the request URL that
- * Twilio signs). All Twilio ingress goes through /api/channels/twilio/*, so this
- * route must now treat it as an unknown provider.
+ * 'twilio' is deliberately ABSENT. getAdapter returns null, so this route
+ * treats that name as an unknown provider. Parents' texts arrive at
+ * POST /api/channels/linq/inbound.
  *
  * The three scaffold legs (brightwheel / himama / google_classroom) are
  * KNOWN-but-NOT-LIVE: verify() must return not_configured so the route answers
@@ -185,11 +184,7 @@ describe('live providers — behaviour preserved', () => {
     expect(getAdapter('stripe')?.extractExternalId({ account: 'acct_1' })).toBe('acct_1');
   });
 
-  it('does NOT resolve a twilio adapter — this route is no longer a Twilio ingress', () => {
-    // The removed placeholder returned `verified` for ANY non-empty signature once
-    // TWILIO_AUTH_TOKEN existed. A3 sets that variable, so leaving it would have armed
-    // a forged path into events.ingested. 404 (unknown provider) is the correct answer.
-    vi.stubEnv('TWILIO_AUTH_TOKEN', 'a_real_token');
+  it('does NOT resolve a twilio adapter — this route is not a text ingress', () => {
     expect(getAdapter('twilio')).toBeNull();
     expect(SUPPORTED_PROVIDERS).not.toContain('twilio');
   });

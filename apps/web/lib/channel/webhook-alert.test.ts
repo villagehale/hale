@@ -17,8 +17,6 @@ import {
  * leg: a configured FOUNDER_ALERT_PHONE must not produce a Twilio request.
  */
 
-const ACCOUNT_SID = 'AC00000000000000000000000000000000';
-const AUTH_TOKEN = 'twilio_auth_token_value';
 const FOUNDER_PHONE = '+14165550111';
 const WEBHOOK = 'https://hooks.slack.com/services/T000/B000/XXXX';
 const POSTHOG_KEY = 'phc_test_key';
@@ -27,8 +25,6 @@ const POSTHOG_HOST = 'https://ph.example.com';
 function configure(): void {
   vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
   vi.stubEnv('FOUNDER_ALERT_PHONE', FOUNDER_PHONE);
-  vi.stubEnv('TWILIO_ACCOUNT_SID', ACCOUNT_SID);
-  vi.stubEnv('TWILIO_AUTH_TOKEN', AUTH_TOKEN);
   vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', POSTHOG_KEY);
   vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', POSTHOG_HOST);
 }
@@ -205,22 +201,6 @@ describe('webhookFailureAlert', () => {
     expect(twilioCall(calls)).toHaveLength(0);
     expect(outcome.analytics).toBe('sent');
     expect(posthogCall(calls)).toHaveLength(1);
-  });
-
-  it('still pages Slack when Twilio credentials are absent', async () => {
-    configure();
-    vi.stubEnv('TWILIO_ACCOUNT_SID', '');
-    vi.stubEnv('TWILIO_AUTH_TOKEN', '');
-    const { calls, fetch } = recorder();
-
-    const outcome = await webhookFailureAlert(
-      { route: 'linq_inbound', error: new Error('boom') },
-      { fetch },
-    );
-
-    expect(outcome.page).toBe('sent');
-    expect(pageText(calls)).toContain('linq_inbound');
-    expect(twilioCall(calls)).toHaveLength(0);
   });
 
   it('names a missing PostHog key rather than reporting a capture that never happened', async () => {

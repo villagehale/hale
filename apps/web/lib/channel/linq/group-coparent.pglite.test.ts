@@ -58,7 +58,6 @@ beforeEach(() => {
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_FROM_E164', FROM);
   vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
-  stubTwilioConfigured();
 });
 
 afterEach(async () => {
@@ -129,14 +128,6 @@ function linqFetch(opts?: { failCreate?: boolean; failMessages?: boolean }): {
     privateTexts: values((row) => !row.url.includes(GROUP)),
     createdChats: () => created,
   };
-}
-
-function stubTwilioConfigured(): void {
-  vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
-  vi.stubEnv('TWILIO_AUTH_TOKEN', 'auth-token');
-  vi.stubEnv('TWILIO_API_KEY_SID', 'SK11111111111111111111111111111111');
-  vi.stubEnv('TWILIO_API_KEY_SECRET', 'api-key-secret');
-  vi.stubEnv('TWILIO_FROM_NUMBER', '+14165550000');
 }
 
 function expectLinqGroupOnly(wire: { urls: () => string[]; twilioUrls: () => string[] }): void {

@@ -29,8 +29,8 @@ vi.mock('~/lib/village/share-revoke', () => ({
 const LINK_ID = '22222222-2222-4222-8222-222222222222';
 
 function configureAuth(on: boolean) {
-  vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
-  vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', on ? 'gsecret_test' : '');
+  // authConfigured() is AUTH_SECRET. '' is falsy → unconfigured.
+  vi.stubEnv('AUTH_SECRET', on ? 'test-auth-secret' : '');
 }
 
 function session(externalAuthId: string | null) {

@@ -16,8 +16,8 @@ vi.mock('~/lib/family', async () => {
 let fakeDbHandle: unknown = {};
 
 function configureAuth(on: boolean) {
-  vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
-  vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', on ? 'gsecret_test' : '');
+  // authConfigured() is AUTH_SECRET. '' is falsy → unconfigured.
+  vi.stubEnv('AUTH_SECRET', on ? 'test-auth-secret' : '');
 }
 
 const GOOGLE_ID = 'google_user_abc';

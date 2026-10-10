@@ -14,9 +14,9 @@ import { type GeocodeResult, type LatLng, geocodeArea, geocodeVenue } from './ge
 import type { Season } from './visibility';
 
 /**
- * Web-side, on-demand village discovery. The scheduled worker job
- * (`runVillageDiscovery`) only runs where the worker is deployed; this mirrors
- * its logic so a signed-in family can populate `/village` from the web app. We
+ * Web-side village discovery. The weekly run is Vercel `/api/cron/discovery`
+ * (yul1), which calls `discoverForFamily` directly. We mirror the worker
+ * package's discovery flow so a signed-in family can populate `/village`. We
  * replicate the worker's flow (read coarse area, derive non-teen stages, call
  * the model, persist + audit) rather than import it: the worker's agent and
  * memory-writer reach into its own internal modules, neither exported nor

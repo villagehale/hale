@@ -301,25 +301,19 @@ describe('sign-in under the flag', () => {
   const src = app('sign-in/page.tsx');
 
   /**
-   * M9 put the emailed link FIRST behind this flag and Google second, on the reasoning
-   * that a phone-first family has neither a password nor a Google account to hand. The
-   * founder took that reasoning to its conclusion: behind the flag the phone is now the
-   * only door, so there is no longer an ordering to have — the email/Google branch is
-   * unreachable. What is asserted here is the replacement, and the render tests in
-   * auth-passwordless.test.ts are what prove which affordances actually appear.
+   * The phone door does not read the flag. Flag-off used to render Google plus a
+   * magic-link form. Those doors are gone, so unsetting the flag must not bring
+   * a second entrance back. The render tests in auth-passwordless.test.ts prove
+   * which affordances actually appear.
    */
-  it('shows the phone path alone, with no ordering left to choose', () => {
-    expect(src).toContain('const phoneOnly = receiptsIaEnabled();');
+  it('shows the phone path and does not branch on the receipts flag', () => {
+    expect(src).not.toContain('receiptsIaEnabled');
     expect(src).toContain('<ClaimByPhoneForm');
     expect(src).toContain('callbackUrl={redirectTo}');
     expect(src).toContain('smsNumber={haleTextsNumber()}');
     expect(src).toContain('source={parsePortalSourceCode(s)}');
     expect(src).not.toContain('linkFirst');
-  });
-
-  it('leaves the providers and the callback untouched for the flag-off page', () => {
-    expect(src).toContain("await signIn('google', { redirectTo })");
-    expect(src).toContain('callbackUrl={redirectTo}');
+    expect(src).not.toContain("signIn('google'");
     expect(src).not.toContain('type="password"');
   });
 });

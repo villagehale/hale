@@ -1,54 +1,9 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import { AuthShell } from '~/components/hale/auth-shell';
-import stage from '~/components/hale/connect/connect.module.css';
-import { MagicLinkRedeem } from '~/components/hale/magic-link-redeem';
-import door from '~/components/portal/signin.module.css';
-import { credentialsConfigured } from '~/lib/auth-config';
-import { safeInternalRedirect } from '~/lib/auth/redirect';
-
-export const metadata: Metadata = { title: 'Sign in' };
-
-export const dynamic = 'force-dynamic';
-
-interface PageProps {
-  searchParams: Promise<{ token?: string; callbackUrl?: string }>;
-}
+import { permanentRedirect } from 'next/navigation';
 
 /**
- * Redeem landing for /magic-link?token=…. The token is validated (single-use,
- * expiring, hashed at rest) only when the client component submits it, in the
- * server action — this page render never consumes it. A missing token shows a calm
- * path back to request a fresh one.
+ * Retired email door. The middleware 308s first and drops any query. This page
+ * is the second gate, so the form cannot render if that rule is bypassed.
  */
-export default async function MagicLinkPage({ searchParams }: PageProps) {
-  const { token, callbackUrl } = await searchParams;
-  const redirectTo = safeInternalRedirect(callbackUrl);
-
-  if (!credentialsConfigured()) {
-    return (
-      <AuthShell heading="Sign in to Hale">
-        <p className={stage.lede}>Magic-link sign-in isn&rsquo;t available in this preview.</p>
-      </AuthShell>
-    );
-  }
-
-  if (!token) {
-    return (
-      <AuthShell heading="Sign in to Hale">
-        <p className={stage.lede}>
-          This sign-in link is missing or incomplete. Request a fresh one and try again.
-        </p>
-        <Link href="/sign-in" className={`${stage.btn} ${door.full}`}>
-          Request a new link
-        </Link>
-      </AuthShell>
-    );
-  }
-
-  return (
-    <AuthShell heading="Sign in to Hale">
-      <MagicLinkRedeem token={token} redirectTo={redirectTo} />
-    </AuthShell>
-  );
+export default function Page(): never {
+  permanentRedirect('/sign-in');
 }

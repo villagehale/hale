@@ -29,7 +29,6 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `F14_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `LINQ_GROUP_COPARENT` | unset (anything except `off`) | on | `off` | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | unset (anything except `false`) | on | `false` | Noah |
-| `REQUIRE_EMAIL_VERIFICATION` | unset (anything except `false`) | on | `false` | Noah |
 | `VOICE_DISABLED` | unset | unset (voice runs) | `true` | Sloane |
 | `WEEK_PLAN_SUMMARY_DISABLED` | unset | unset (summary runs) | `true` | Sloane |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `candidate` | unset (means `current`) | `current` | Eugene |
@@ -129,7 +128,6 @@ These are the flags the brief says are on. Confirm the Vercel value before treat
 | --- | --- | --- | --- | --- |
 | `LINQ_GROUP_COPARENT` | Co-parent seating and calendar notices stay in the Linq group. | Group `channel_messages` with status `failed`. | `off` | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | Calendar items that already ended skip the classifier. | A jump in classify volume or Anthropic spend after a calendar connect. | `false` | Noah |
-| `REQUIRE_EMAIL_VERIFICATION` | An unverified email cannot sign in. | Sign-in errors on `/sign-in` for a new parent. | `false` | Noah |
 | `VOICE_DISABLED` | Unset, voice compose runs when `ANTHROPIC_API_KEY` is set. | Odd parent-visible wording on composed sends, and `sms_turn_failed` on those turns. | `true` | Sloane |
 | `WEEK_PLAN_SUMMARY_DISABLED` | Unset, the week-plan summary is composed. Sending still needs `LOOP_SEND_ENABLED`. | Summary text that names the wrong child or the wrong day. | `true` | Sloane |
 

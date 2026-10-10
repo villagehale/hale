@@ -101,14 +101,6 @@ function groupWire(over?: { status?: number }): {
   };
 }
 
-function stubTwilioConfigured(): void {
-  vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
-  vi.stubEnv('TWILIO_AUTH_TOKEN', 'auth-token');
-  vi.stubEnv('TWILIO_API_KEY_SID', 'SK11111111111111111111111111111111');
-  vi.stubEnv('TWILIO_API_KEY_SECRET', 'api-key-secret');
-  vi.stubEnv('TWILIO_FROM_NUMBER', '+14165550000');
-}
-
 function linqFetch(): { fetch: typeof fetch; texts: () => string } {
   const bodies: unknown[] = [];
   const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
@@ -471,7 +463,6 @@ describe('household calendars', () => {
   });
 
   it('sends kid-event, conflict, handoff, and post-event only to the Linq group chat', async () => {
-    stubTwilioConfigured();
     const start = new Date('2026-09-25T19:00:00.000Z');
     const end = new Date('2026-09-25T20:00:00.000Z');
 
@@ -598,7 +589,6 @@ describe('household calendars', () => {
   });
 
   it('does not fall back to Twilio when the group notice is refused', async () => {
-    stubTwilioConfigured();
     const seeded = await seedPair();
     const wire = groupWire({ status: 500 });
     await rememberAndNarrateCalendar(db.database, {

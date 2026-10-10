@@ -74,11 +74,6 @@ describe('portal title template', () => {
   it('uses the approved bare titles, each resolving through the template once', () => {
     const pages: Array<[string, string]> = [
       ['./sign-in/page.tsx', 'Sign in · Hale'],
-      ['./magic-link/page.tsx', 'Sign in · Hale'],
-      ['./forgot-password/page.tsx', 'Reset password · Hale'],
-      ['./reset-password/page.tsx', 'New password · Hale'],
-      ['./verify/page.tsx', 'Confirm your email · Hale'],
-      ['./invite/[token]/page.tsx', 'Invitation · Hale'],
       ['./oauth/authorize/page.tsx', 'Allow access · Hale'],
       ['./(authed)/messages/page.tsx', 'Messages · Hale'],
       ['./(authed)/settings/page.tsx', 'Settings · Hale'],
@@ -97,13 +92,6 @@ describe('portal title template', () => {
       expect(rendered(path, PORTAL_TITLE.template, PORTAL_TITLE.default), path).toBe(title);
       expect(pageSource(path).match(/export const metadata/g)?.length, path).toBe(1);
     }
-  });
-
-  it('leaves /m/magic unsuffixed', () => {
-    expect(bareTitle('./m/magic/page.tsx')).toEqual({ absolute: 'Open Hale' });
-    expect(rendered('./m/magic/page.tsx', PORTAL_TITLE.template, PORTAL_TITLE.default)).toBe(
-      'Open Hale',
-    );
   });
 
   it('templates admin tabs under Admin · Hale and demo pages as previews', () => {
@@ -127,6 +115,8 @@ describe('portal title template', () => {
 
     expect(DEMO_TITLE).toEqual({ absolute: 'Preview · Hale', template: '%s · Hale preview' });
     expect(pageSource('./demo/layout.tsx')).toContain('title: DEMO_TITLE');
+    expect(pageSource('./demo/layout.tsx')).toContain("absolute: 'Page not found · Hale'");
+    expect(pageSource('./demo/not-found.tsx')).toContain("absolute: 'Page not found · Hale'");
     expect(rendered('./demo/portal/home/page.tsx', DEMO_TITLE.template, DEMO_TITLE.absolute)).toBe(
       'Home · Hale preview',
     );
