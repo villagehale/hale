@@ -111,7 +111,7 @@ export default async function TermsPage({
       locale={locale}
       source={await pageSource(searchParams)}
       title="Terms of Service"
-      lastUpdatedIso="2026-10-07"
+      lastUpdatedIso="2026-10-09"
       intro={
         <p>
           These terms are an agreement between you and Village Hale Technologies Inc.
@@ -196,12 +196,11 @@ export default async function TermsPage({
 
       <LegalSectionBlock id="accounts" title="Your account and security">
         <p>
-          Most families use Hale entirely by text and never create an account. If you do sign in to
-          the web app, you can use a Google account or an email address and password. You are
-          responsible for keeping access to your account and to the phone number you text from
-          secure, and for the activity that happens under them. Tell us promptly if you believe
-          either has been used without your permission. Keep your information accurate so Hale can
-          serve your family well.
+          Most families use Hale entirely by text. If you sign in to the web app, you use the phone
+          number you text from and a one-time code we send to it. You are responsible for keeping
+          that phone number secure, and for the activity that happens under it. Tell us promptly if
+          you believe it has been used without your permission. Keep your information accurate so
+          Hale can serve your family well.
         </p>
         <p>
           You can delete your account at any time from the web app, and you can end the text

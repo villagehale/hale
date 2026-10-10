@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { VillageAiSearch } from '~/components/hale/village-ai-search';
 import { VillageBoard } from '~/components/hale/village-board';
@@ -81,16 +80,6 @@ export default async function VillagePage({
               showInlineSearch={false}
             />
           </VillageAiSearch>
-        </div>
-      )}
-
-      {/* ── Below the board: the calmer, preserved sections. A season search stays
-           focused on its results, so these are the standing view only. ─────────── */}
-      {activeSeason ? null : (
-        <div className="mt-12 space-y-12">
-          <section className="rise rise-4">
-            <BuildYourVillage />
-          </section>
         </div>
       )}
 

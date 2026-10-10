@@ -6,14 +6,13 @@ import { type Database, schema } from '@hale/db';
  * bound to its live page by the drift test in consent.test.ts, so a re-dated
  * policy cannot silently leave its constant behind (VIL-257).
  *
- * Both public lines are October 7, 2026: the Toronto day the text was last
- * edited. UTC had already rolled to October 8. Nothing here forces a
- * re-consent — POLICY_VERSION is only ever WRITTEN into a consent row, never
- * compared against a stored one. A later merge should bump the page dates and
- * these constants together.
+ * Both public lines are October 9, 2026: the Toronto day the text was last
+ * edited. Nothing here forces a re-consent — POLICY_VERSION is only ever
+ * WRITTEN into a consent row, never compared against a stored one. A later
+ * merge should bump the page dates and these constants together.
  */
-export const TERMS_VERSION = 'October 7, 2026';
-export const PRIVACY_VERSION = 'October 7, 2026';
+export const TERMS_VERSION = 'October 9, 2026';
+export const PRIVACY_VERSION = 'October 9, 2026';
 
 /**
  * The policy version a consent is recorded against, so a consent row names the

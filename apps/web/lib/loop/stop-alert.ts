@@ -7,7 +7,7 @@ import type { captureServerEvent } from '~/lib/analytics/server-capture';
 /**
  * X1 (VIL-227) · the STOP guardrail. The ticket's rule for beta: page the founder
  * at ANY loop-category CASL unsubscribe, immediately — not batched into the weekly
- * digest. Mirrors founder-signal.ts's notifySignup exactly (same aloha@ identity,
+ * digest. Mirrors the founder-address mailer (same aloha@ identity,
  * same injectable-Resend-client pattern, same best-effort contract): the caller
  * (the /unsubscribe page) has already recorded the opt-out by the time this runs,
  * so a failure here must never surface as a broken unsubscribe confirmation.

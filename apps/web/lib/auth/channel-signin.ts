@@ -2,16 +2,14 @@ import { createHash, randomBytes } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { isParentRole } from '~/lib/channel/role-scope';
-import { MAGIC_LINK_TTL_MS } from './magic-link';
 
 /**
- * The phone-channel sign-in token — the magic-link lifecycle keyed on `user_id`, for
- * the account an email link cannot reach (email NULL, `external_auth_id =
- * 'sms:<blind index>'`). Minted only from a routed inbound turn (the caller owns that
- * gate — see channel/connect/offer.ts); redeemed by the `channel-link` Auth.js
- * provider, whose session subject is the external_auth_id the account ALREADY has, so
- * redemption can never fork a second account off the same family (the claim-by-phone
- * anti-fork property, link-shaped).
+ * The phone-channel sign-in token, keyed on `user_id`, for the account a text
+ * reaches (`external_auth_id = 'sms:<blind index>'`). Minted only from a routed
+ * inbound turn (the caller owns that gate — see channel/connect/offer.ts); redeemed
+ * by the `channel-link` Auth.js provider, whose session subject is the
+ * external_auth_id the account ALREADY has, so redemption can never fork a second
+ * account off the same family (the claim-by-phone anti-fork property, link-shaped).
  *
  * Hash-only at rest, 15-minute TTL, and invalidate-prior. Presenting the link signs
  * the parent in and does NOT burn it: an abandoned Google screen must leave the same
@@ -20,9 +18,8 @@ import { MAGIC_LINK_TTL_MS } from './magic-link';
  * message may offer two connectors, and its two links must outlive each other.
  */
 
-/** Same window as the email magic link — one product promise about what "a sign-in
- * link from Hale" is good for, stated once. */
-export const CHANNEL_SIGNIN_TTL_MS = MAGIC_LINK_TTL_MS;
+/** 15 minutes. A texted /connect link is good for one short window. */
+export const CHANNEL_SIGNIN_TTL_MS = 15 * 60 * 1000;
 
 /**
  * 16 bytes — the join link's call, for the join link's reason: unguessable at any

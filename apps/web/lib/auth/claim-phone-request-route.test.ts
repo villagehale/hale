@@ -170,24 +170,24 @@ describe('POST /api/auth/claim-phone/request', () => {
     expect(logged).not.toContain(sender.sent[0]?.code ?? 'no-code');
   });
 
-  it('does not exist while the flag is dark', async () => {
-    process.env.F14_RECEIPTS_IA = '';
+  it('still accepts a request when the receipts flag is off or only looks true', async () => {
     rows = {
       channels: [activeChannel()],
       members: [{ familyId: FAMILY_ID, userId: USER_ID, role: 'primary_parent' }],
     };
 
-    const res = await post({ phone: PHONE });
+    process.env.F14_RECEIPTS_IA = '';
+    const off = await post({ phone: PHONE });
+    expect(off.status).toBe(200);
+    expect(sender.sent).toHaveLength(1);
 
-    expect(res.status).toBe(404);
-    expect(sender.sent).toEqual([]);
-  });
-
-  it('is dark for a flag value that merely looks true', async () => {
-    // `vercel env add` fed from a piped echo stores a trailing newline.
+    sender = new FakeOtpSender();
+    // `vercel env add` fed from a piped echo stores a trailing newline. That
+    // still leaves the receipts shell off, and it must not close this door.
     process.env.F14_RECEIPTS_IA = 'true\n';
-    const res = await post({ phone: PHONE });
-    expect(res.status).toBe(404);
+    const looksTrue = await post({ phone: PHONE });
+    expect(looksTrue.status).toBe(200);
+    expect(sender.sent).toHaveLength(1);
   });
 
   it('caps the sends per NUMBER, keyed on the blind index and never the number', async () => {

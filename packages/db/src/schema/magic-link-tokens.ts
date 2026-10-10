@@ -10,7 +10,8 @@ import { pgTable, uuid, text, timestamp, index } from 'drizzle-orm/pg-core';
  * Unlike password-reset tokens, this table keys off `email` (a plain column, no FK
  * to credentials): a magic link doubles as first-time SIGN-UP, so it must be
  * mintable for an address that has no `credentials` row yet. Redemption find-or-
- * creates the credential (see apps/web/lib/auth/magic-link.ts).
+ * created the credential. The email door is gone; the table stays (no
+ * destructive migration).
  *
  * One row per issued token. `consumed_at` burns the token on redemption (single
  * use, via an atomic conditional UPDATE); `expires_at` bounds the ~15-minute

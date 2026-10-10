@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { generateMetadata as demoMetadata } from '~/app/demo/layout';
 import { DEMO_PHONE_E164, demoMaskedPhone } from '~/lib/portal/demo-fixture';
 import { portalDemoEnabled } from './portal-demo';
 
@@ -35,6 +36,20 @@ describe('the demo tree', () => {
     expect(layout).toContain('portalDemoEnabled()');
     expect(layout).toContain('notFound()');
     expect(layout).toContain("dynamic = 'force-dynamic'");
+  });
+
+  it('titles that production 404 Page not found · Hale, not Hale preview', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    const meta = await demoMetadata();
+    expect(meta.title).toEqual({ absolute: 'Page not found · Hale' });
+    expect(JSON.stringify(meta.title)).not.toContain('preview');
+
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    const preview = await demoMetadata();
+    expect(preview.title).toEqual({
+      absolute: 'Preview · Hale',
+      template: '%s · Hale preview',
+    });
   });
 
   it('seeds a masked phone a parent can recognise', () => {

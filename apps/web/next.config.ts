@@ -50,7 +50,6 @@ const config: NextConfig = {
   serverExternalPackages: [
     'postgres',
     'pg-boss',
-    '@node-rs/argon2',
     // Authorized signup loads Playwright at runtime when the flag is on.
     // Absent in a runtime that did not install it — the runner hands back
     // browser_unavailable rather than bundling a browser into the function.

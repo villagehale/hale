@@ -1,17 +1,20 @@
 import { verifyClaimCode } from '~/lib/auth/claim-by-phone';
 import { authRateLimited } from '~/lib/auth/rate-limit';
 import { db } from '~/lib/db';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 
 /**
  * The request/auth wrapper the `claim-phone` Auth.js provider's authorize delegates
  * to — the same split channels/sms-consent.ts uses: the core (claim-by-phone.ts) owns
- * the gates and the DB writes and takes a handle, this layer owns the flag, the
- * throttle, and the mapping to an Auth.js identity.
+ * the gates and the DB writes and takes a handle, this layer owns the throttle and
+ * the mapping to an Auth.js identity.
+ *
+ * Phone sign-in is the only portal door, so it does not read F14_RECEIPTS_IA.
+ * That flag still chooses the receipts shell. Gating this chokepoint on it would
+ * leave /sign-in showing a form that can never complete.
  *
  * It is a separate module for one reason: authorize is the chokepoint for EVERY
  * claim — the /sign-in form AND a direct POST to /api/auth/callback/claim-phone — so
- * the flag check and the rate limit have to live here rather than in the page, and a
+ * the rate limit has to live here rather than in the page, and a
  * chokepoint that can only be exercised by standing up NextAuth is a chokepoint nobody
  * tests.
  *
@@ -28,9 +31,6 @@ export interface ClaimPhoneIdentity {
 export async function authorizeClaimByPhone(
   raw: Partial<Record<string, unknown>> | undefined,
 ): Promise<ClaimPhoneIdentity | null> {
-  if (!receiptsIaEnabled()) {
-    return null;
-  }
   const phone = typeof raw?.phone === 'string' ? raw.phone : '';
   const code = typeof raw?.code === 'string' ? raw.code : '';
   if (!phone || !code) {

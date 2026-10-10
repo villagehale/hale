@@ -4,7 +4,8 @@ import { pgTable, uuid, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core
 /**
  * Email + password identities, alongside Google OAuth. A row is the *credential*,
  * not the app user: the mirrored `users` row keys off `external_auth_id`, which for
- * a credentials login is `credentials:<this id>` (see lib/auth/credentials.ts). So
+ * a credentials login would have been `credentials:<this id>`. The email door
+ * is gone; the table stays (no destructive migration). So
  * the downstream family-linking flow is identical to a Google user's — the only
  * Hale-specific identity is still `users.external_auth_id`.
  *

@@ -66,14 +66,12 @@
 }
 
 /* Reset connect-local controls. Buttons that already carry the app's own
-   classes (flag-off sign-in) keep those paints. The door pill (`.btn`) is
-   excluded so this reset cannot strip it. :where holds the rest at the same
-   specificity as a plain `.stage button`. */
+   classes keep those paints. The door pill (`.btn`) is excluded so this reset
+   cannot strip it. :where holds the rest at the same specificity as a plain
+   `.stage button`. */
 .stage
   button:where(
-    :not(.btn):not(:global(.btn-primary)):not(:global(.btn-secondary)):not(:global(.btn-ghost)):not(
-        :global(.auth-submit)
-      ):not(:global(.auth-google))
+    :not(.btn):not(:global(.btn-primary)):not(:global(.btn-secondary)):not(:global(.btn-ghost))
   ) {
   font: inherit;
   border: 0;
