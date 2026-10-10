@@ -839,7 +839,7 @@ MICROSOFT_OAUTH_CLIENT_SECRET=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 
-# Text (Linq). Historical Twilio credentials are not read.
+# Text (Linq).
 LINQ_API_KEY=
 LINQ_FROM_E164=
 LINQ_WEBHOOK_SECRET=

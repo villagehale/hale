@@ -40,8 +40,7 @@ console.log(await adapter.send({
 
 ## 3. Loop SMS — `createSmsChannel`
 
-The default sender is Linq (`LINQ_API_KEY` and `LINQ_FROM_E164`). Twilio is not
-constructed. The config gate:
+The default sender is Linq (`LINQ_API_KEY` and `LINQ_FROM_E164`). The config gate:
 
 ```ts
 import { createSmsChannel } from './phone-sms';

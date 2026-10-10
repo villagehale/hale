@@ -128,5 +128,5 @@ merged once CI is green. Opening any flag, creating new spend, changing parent-v
 changing consent logic, or otherwise changing live behavior still requires a Barton heads-up first;
 post the plan and results in the Slack thread for review.
 
-The repository contains no Twilio path after #741. Any live SMS verification must use Linq iMessage
+Any live SMS verification must use Linq iMessage
 and one test number to avoid consuming the 200-number allocation.

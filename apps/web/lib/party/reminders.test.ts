@@ -212,11 +212,10 @@ describe('a guest message that cannot leave (VIL-267)', () => {
     };
   }
 
-  /** The provider is unreachable — the shape an unconfigured deploy takes, because
-   * `requireTwilioConfig` throws by NAME rather than handing back a dead client. */
+  /** The provider is unreachable. The transport throws rather than reporting a send. */
   const unreachable: ChannelTransport = {
     async send() {
-      throw new Error('twilio not configured: missing TWILIO_ACCOUNT_SID');
+      throw new Error('transport not configured');
     },
   };
 
