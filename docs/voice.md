@@ -54,7 +54,7 @@ These are immovable, and the reason is written beside each one so a voice PR can
 |---|---|---|
 | `Reply STOP to opt out.` / `STOP to opt out.` | Founder decision 2026-10-01: neither line is appended to an outbound text. Inbound STOP is still the keyword the machine honours. Do not put either line back on a text. | `apps/web/lib/channel/opt-out.ts` |
 | `IDENTITY_ACCOUNTABILITY_LINE` (EN + FR) | anti-scam disclosure, byte-locked 2026-09-23 (VIL-333); the whole reply on an identity challenge, never a sentence a model writes | `apps/web/lib/channel/intake/copy.ts` |
-| the voice front door's *"I'm an AI assistant, not a person"* | the caller cannot see a screen | not in source; the Twilio copy module was removed and the sentence is not elsewhere in the tree |
+| the voice front door's *"I'm an AI assistant, not a person"* | the caller cannot see a screen | not in source; the sentence is not elsewhere in the tree |
 | `HELP_REPLY`'s identity clause and its opt-out tail (ARRET/AIDE on the French twin) | CTA short-code policy, adopted voluntarily | `apps/web/lib/channel/intake/copy.ts` |
 | `PRIVACY_URL` | spliced into the consent ask; a typographic character here rides every consent question | `apps/web/lib/legal-links.ts` |
 | the coach's *"you are an AI and you say so plainly"* on a doubt turn | answering suspicion by selling confirms it | `packages/agent/skills/coach-channel-sms.md` |

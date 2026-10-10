@@ -41,8 +41,6 @@ describe('postOpsSlack', () => {
   it('posts the alert text to #ops and does not call Twilio', async () => {
     vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
     vi.stubEnv('FOUNDER_ALERT_PHONE', '+14165550111');
-    vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
-    vi.stubEnv('TWILIO_AUTH_TOKEN', 'token');
     const { calls, fetch } = recorder();
 
     const outcome = await postOpsSlack('Hale: inbound webhook failing. 2 alerts.', fetch);
