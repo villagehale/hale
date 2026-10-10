@@ -15,9 +15,10 @@
  *   shell off. /sign-in is the phone door either way.
  * - `AUTH_SECRET` = a Preview-only random string (`openssl rand -base64 33`).
  *   Auth.js uses it to sign the session JWT. Without it, Preview (NODE_ENV
- *   production) fail-closes every authed route to `/sign-in`.
- * - `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` configure the
- *   Auth.js Google provider. /sign-in does not render that button.
+ *   production) fail-closes every authed route to `/sign-in`. It is the only
+ *   switch for that gate. Gmail/Calendar consent is a different OAuth client
+ *   (`GOOGLE_CONNECTOR_CLIENT_*`, or `GOOGLE_OAUTH_CLIENT_*` as its fallback)
+ *   and does not register a sign-in provider.
  *
  * Completing a phone sign-in also needs the existing server secrets
  * (`DATABASE_URL`, `APP_ENCRYPTION_KEY`, `LINQ_API_KEY`, `LINQ_FROM_E164`).

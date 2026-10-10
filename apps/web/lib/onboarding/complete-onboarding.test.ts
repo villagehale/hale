@@ -31,8 +31,7 @@ vi.mock('~/lib/onboarding/founding', () => ({ assignFoundingNumber: vi.fn() }));
 let fakeDbHandle: unknown = {};
 
 function configureAuth(on: boolean) {
-  vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
-  vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', on ? 'gsecret_test' : '');
+  vi.stubEnv('AUTH_SECRET', on ? 'test-auth-secret' : '');
   vi.stubEnv('DATABASE_URL', on ? 'postgres://test' : '');
 }
 

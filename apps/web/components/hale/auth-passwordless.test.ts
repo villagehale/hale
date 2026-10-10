@@ -24,8 +24,6 @@ async function renderSignIn(): Promise<string> {
 }
 
 beforeEach(() => {
-  process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client';
-  process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-secret';
   process.env.AUTH_SECRET = 'test-auth-secret';
   process.env.F14_RECEIPTS_IA = '';
 });

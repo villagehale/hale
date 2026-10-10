@@ -10,7 +10,7 @@ import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
 import { isRetiredAuthPath, retiredAuthRedirectUrl } from '~/lib/routes/retired-auth';
 
 // The middleware runs on the Edge runtime, so it builds `auth` from the Edge-safe
-// base config (Google + identity callbacks) — NOT from ~/auth, whose phone and
+// base config (identity callbacks, no providers) — NOT from ~/auth, whose phone and
 // connect authorize pull in Node-only deps (node:crypto, the Postgres client)
 // the Edge bundle can't load. Those sign-ins run in the Node API route, never
 // here; the middleware only reads the already-signed session JWT.
@@ -19,11 +19,11 @@ const { auth } = NextAuth(authConfig);
 // auth() wraps the middleware so req.auth carries the Auth.js session. An
 // unauthenticated request to a protected route is redirected to /sign-in.
 //
-// Dev-preview parity with the old clerkConfigured()===false path: when Google
-// isn't configured we leave the route group UNPROTECTED so local screenshots
-// work — but ONLY outside production. In production an unconfigured provider
-// fails CLOSED (redirect to /sign-in) so a misconfiguration can never expose a
-// protected route to an unauthenticated request (rule #1).
+// Dev-preview parity with the old clerkConfigured()===false path: when
+// AUTH_SECRET isn't set we leave the route group UNPROTECTED so local
+// screenshots work — but ONLY outside production. In production an unconfigured
+// secret fails CLOSED (redirect to /sign-in) so a misconfiguration can never
+// expose a protected route to an unauthenticated request (rule #1).
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 

@@ -24,8 +24,8 @@ interface PageProps {
  * (home, family, settings). It used to swap this page to a Google button plus a
  * magic-link form. Those email doors are gone, and a flag-off branch that still
  * rendered the form would post to a route that no longer exists. Phone is the
- * safe door in both states. The Google Auth.js provider stays on the server; this
- * page does not offer its button.
+ * safe door in both states. There is no Google sign-in provider. Connecting
+ * Gmail or Calendar is a separate consent on /connect.
  */
 export default async function SignInPage({ searchParams }: PageProps) {
   const { callbackUrl, s } = await searchParams;

@@ -51,8 +51,7 @@ function ctx(id: string) {
 }
 
 function configureAuth() {
-  vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'gid_test');
-  vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', 'gsecret_test');
+  vi.stubEnv('AUTH_SECRET', 'test-auth-secret');
 }
 
 describe('approve/decline record the INTERNAL user id as the audit actor', () => {

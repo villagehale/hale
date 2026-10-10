@@ -1,5 +1,4 @@
 import type { NextAuthConfig } from 'next-auth';
-import Google from 'next-auth/providers/google';
 
 // Edge-safe Auth.js base config. The middleware runs on the Edge runtime, where
 // the phone providers' Node-only deps (node:crypto, the Postgres client) can't
@@ -9,33 +8,26 @@ import Google from 'next-auth/providers/google';
 //
 // The identity callbacks live here (not just in auth.ts) so the JWT the middleware
 // reads carries the same `sub` → session.user.id mapping for every provider.
-// Google stays. Email/password and magic-link do not.
+// There is no Google sign-in provider. Gmail and Calendar connect through
+// lib/integrations/google-oauth.ts, a separate OAuth client flow.
 export const authConfig = {
-  providers: [
-    Google({
-      clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-    }),
-  ],
+  providers: [],
   session: { strategy: 'jwt' },
   trustHost: true,
   pages: { signIn: '/sign-in' },
   callbacks: {
     jwt({ token, account, user }) {
       // Pin the stable external account id as the JWT subject so session.user.id
-      // is that id. Google's is the OAuth `sub` (account.providerAccountId).
-      if (account?.provider === 'google') {
-        token.sub = account.providerAccountId;
-      } else if (
+      // is that id. `claim-phone` and `channel-link` (the texted connect link)
+      // both return the external_auth_id the account ALREADY holds —
+      // `sms:<blind index>` for a text-onboarded family — which is what makes
+      // signing in by phone land in that family rather than forking a new one.
+      // Enumerated rather than left to Auth.js's default so the subject a
+      // provider resolves to is a decision this file states, not one it inherits.
+      if (
         (account?.provider === 'claim-phone' || account?.provider === 'channel-link') &&
         user?.id
       ) {
-        // `claim-phone` and `channel-link` (the texted connect link) both return the
-        // external_auth_id the account ALREADY holds —
-        // `sms:<blind index>` for a text-onboarded family — which is what makes
-        // signing in by phone land in that family rather than forking a new one.
-        // Enumerated rather than left to Auth.js's default so the subject a
-        // provider resolves to is a decision this file states, not one it inherits.
         token.sub = user.id;
       }
       return token;
