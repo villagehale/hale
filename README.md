@@ -6,10 +6,10 @@ Passive, event-driven, multi-agent household AI assistant for families, across e
 
 ## Architecture
 
-Two services sharing a Postgres database:
+The web app and the worker package share a Postgres database. The worker package is library code the Vercel drain imports:
 
 - **`apps/web`** — Next.js 15 app (UI + thin API + webhook receivers) → deployed to Vercel
-- **`apps/worker`** — Long-running Node.js service (agent runtime + executors) → deployed to Fly.io YYZ Toronto
+- **`apps/worker`** — Agent runtime + executors, imported by the Vercel `/api/cron/drain` function (yul1)
 - **Postgres** — Supabase Toronto region
 
 Agent runtime is **Claude Agent SDK** with 5 specialized agents (Classifier, Drafter, Coach, Reviewer, Memory Inferencer) and 3 deterministic services (Orchestrator, Memory Writer, Executor).
@@ -31,7 +31,7 @@ hale/
 │   ├── superpowers/specs/        Design docs
 │   ├── architecture/             ADRs
 │   └── compliance/               PIA documents
-└── infra/                        Deployment configs (Vercel, Fly, Supabase)
+└── infra/                        Deployment configs (Vercel, Supabase)
 ```
 
 ## Development
@@ -43,7 +43,7 @@ pnpm install
 cp .env.example .env.local      # fill in secrets
 pnpm db:migrate                 # run Drizzle migrations
 pnpm db:check-migrations        # exit non-zero if the journal has unapplied hashes
-pnpm dev                        # runs web + worker concurrently via Turbo
+pnpm dev                        # runs the web app via Turbo
 ```
 
 ## Compliance posture

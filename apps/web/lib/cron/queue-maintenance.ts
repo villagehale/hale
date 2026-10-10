@@ -1,9 +1,9 @@
 import PgBoss from 'pg-boss';
 
 /**
- * pg-boss queue maintenance (recipe #2, NON-OPTIONAL). The Fly worker, which
- * normally runs pg-boss with supervision, is not deployed — so nothing expires
- * stuck `active` jobs or archives completed ones. Without periodic maintenance a
+ * pg-boss queue maintenance (recipe #2, NON-OPTIONAL). The Vercel drain runs
+ * pg-boss with supervision off, so nothing else expires stuck `active` jobs or
+ * archives completed ones. Without periodic maintenance a
  * pipeline that crashed mid-job leaks an `active` row forever and that job never
  * re-runs. This runs boss.maintain() on a schedule to reap them.
  *

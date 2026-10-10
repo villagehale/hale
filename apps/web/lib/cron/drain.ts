@@ -40,10 +40,10 @@ import type { LoopMessage } from '~/lib/channel/types';
 
 /**
  * Serverless drain of the two HOT worker queues — `events.ingested` and
- * `actions.approved` — running the SAME orchestrator pipeline the Fly worker
- * would, from a Vercel cron. The Fly worker is not deployed, so without this
- * these jobs were enqueued (by the accept + approve routes) and never consumed,
- * so "add to my week" silently did nothing.
+ * `actions.approved` — running the orchestrator pipeline from the Vercel
+ * `/api/cron/drain` cron (functions in yul1). Without this, jobs enqueued by
+ * the accept and approve routes would never be consumed, so "add to my week"
+ * would silently do nothing.
  *
  * Every orchestrator gate is preserved because we reuse runOrchestrator /
  * executeApprovedAction verbatim (rule #3 reviewer tool-coverage, #7 spending
@@ -212,9 +212,8 @@ export interface DrainSummary {
 
 /**
  * Drive one `events.ingested` job through the orchestrator. A schema-invalid
- * payload is DROPPED (completed) not failed — it can never become valid on a
- * retry, so failing it would only spin pg-boss's retry loop. Mirrors the
- * worker's handleIngestedEvent drop-don't-throw policy. A handler throw is
+ * payload is dropped and completed — it can never become valid on a retry, so
+ * failing it would only spin pg-boss's retry loop. A handler throw is
  * propagated so the caller fails (not completes) the job — at-least-once
  * redelivery then re-runs it, and the orchestrator's own dedup-hash checkpoint
  * makes that re-run idempotent (no double draft / audit row).

@@ -8,8 +8,8 @@ production worker host. All residency-sensitive compute and data stay in Canada
 
 > **Status:** deploy-READY config. The live deploy is **credential-gated** — no
 > Supabase project, no Vercel prod token are wired yet. Everything
-> below is verifiable without secrets (config validity, Docker build, scratch-DB
-> migration test); see [Verification status](#verification-status). See
+> below is verifiable without secrets (config validity, scratch-DB migration
+> test); see [Verification status](#verification-status). See
 > [Release blockers](#release-blockers) for historical provisioning blockers (B1
 > migration baseline and B2 package entrypoints — both now resolved).
 
@@ -38,8 +38,8 @@ production worker host. All residency-sensitive compute and data stay in Canada
 **Production compute is `hale-web`.** The app and the `/api/cron/*` handlers
 run on Vercel. Cron routes read and write Supabase, including the pg-boss
 schema (`/api/cron/drain` and `/api/cron/queue-maintenance` keep that queue
-moving). `apps/worker` remains the local and durable pg-boss process. It is
-not a production host.
+moving). `apps/worker` is the library those routes import. It is not a
+separate process or a production host.
 
 ### Data-residency rationale
 
@@ -155,8 +155,8 @@ cat .vercel/project.json   # → orgId, projectId  → VERCEL_ORG_ID, VERCEL_PRO
 #### Scheduled agents (cron)
 
 The passive agentic engine runs in production as **Vercel Cron → API routes** on
-the `@hale/agent` harness — no separate worker needed in prod (the pg-boss worker
-stays for local/durable). The schedule lives in `apps/web/vercel.json` under
+the `@hale/agent` harness. Worker code runs inside `/api/cron/drain` (yul1).
+The schedule lives in `apps/web/vercel.json` under
 `crons`; the handlers are Node-runtime routes under `apps/web/app/api/cron/*`.
 
 | Route | Schedule (UTC) | Toronto local | Cadence | Does |
@@ -190,7 +190,7 @@ Production does not deploy `apps/worker`. The schedule is the `crons` array in
 `apps/web/vercel.json`; the handlers are `apps/web/app/api/cron/*`. Set
 `CRON_SECRET` on the hale-web Production environment (see
 [Scheduled agents (cron)](#scheduled-agents-cron)). `apps/worker` stays in the
-repo for local and durable pg-boss runs. It is not part of the production deploy.
+repo as the library `/api/cron/drain` imports. It is not a separate deploy.
 
 ---
 
@@ -331,8 +331,10 @@ pointed at the compiled `dist/schema/index.js`; that fix is in place and
 
 ### B2 — Workspace packages are not runtime-resolvable  ⛔
 
-**Status:** confirmed by test (both in Docker and locally). The worker crashes
-on boot:
+**Status:** historical. The Fly worker image this note describes has been
+removed. The live path is Vercel `/api/cron/drain` (yul1), which transpiles the
+workspace packages. The crash below was the deleted image booting `node
+dist/index.js`:
 
 ```
 Error [ERR_MODULE_NOT_FOUND]: Cannot find module
@@ -348,12 +350,11 @@ mis-pointed.
 
 **Fix (one line per package, owned by `packages/**`):** repoint `main`/`types`/
 `exports` to `./dist/index.js` / `./dist/index.d.ts` (and the `./schema`,
-`./client` subpath exports for `@hale/db`). The worker Docker image already
-ships `dist/` for all three, so this alone makes the worker run.
+`./client` subpath exports for `@hale/db`).
 
 This edit lives in `packages/**` and is owned by the packages maker — it was
-**not** made here (infra scope). The Docker image **builds** correctly; the
-crash is purely the package-entrypoint defect.
+**not** made here (infra scope). The crash was the package-entrypoint defect
+on the removed image. The Vercel drain does not boot that image.
 
 ---
 
@@ -361,8 +362,7 @@ crash is purely the package-entrypoint defect.
 
 | Item | Verifiable now (no secrets) | Credential-gated |
 |---|---|---|
-| `infra/fly.toml` | Still in the repo. Not used by `.github/workflows/deploy.yml`. Production does not deploy a Fly worker. | — |
-| Worker Docker image | **Builds** end-to-end from repo root; fails loud without `DATABASE_URL` | Not part of the production deploy (`apps/worker` is local/durable only) |
+| Fly worker (`infra/fly.toml`, `apps/worker/Dockerfile`) | Removed. Production never deployed it. Worker code runs inside Vercel `/api/cron/drain` (yul1). | — |
 | `apps/web/vercel.json` | Valid JSON; `yul1` pinned; crons defined | `vercel deploy --prod` (needs token + linked project) |
 | Migration provisioning | `drizzle-kit migrate` applies all 37 migrations to a fresh DB and `drift-check` reports in sync (verified on the local Supabase DB) | Real prod run needs `DATABASE_DIRECT_URL` set (see guard) |
 | Migration ledger guard | `pnpm db:check-migrations` — hash comparison; unit tests cover a missing table, a watermark-skipped file, and the historical exemptions | Prod gate needs `DATABASE_DIRECT_URL` set on Vercel Production and in GitHub Actions |
