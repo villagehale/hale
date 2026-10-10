@@ -47,9 +47,7 @@ export const DRILL_HEROES: Record<string, DrillHero> = {
   // This repo's /plan is the week-ahead activity plan (not subscription/billing —
   // billing lives under /settings), so the drill title reflects the real content.
   '/plan': { crumb: 'Family', title: 'Plan', backHref: '/family' },
-  '/saved': { crumb: 'Family', title: 'Saved', backHref: '/family' },
   '/trail': { crumb: 'Family', title: 'History', backHref: '/family' },
-  '/companion/logs': { crumb: 'Companion', title: 'Logs', backHref: '/companion' },
 };
 
 /**
@@ -71,8 +69,8 @@ export const RECEIPTS_ROOT_HEROES: Record<string, RootHero> = {
 };
 
 /**
- * Resolve the hero for a pathname: a drill match wins (so /companion/logs reads as
- * a drill, not the /companion root), otherwise the longest matching root prefix.
+ * Resolve the hero for a pathname: a receipts-room root wins, then a drill match,
+ * otherwise the longest matching root prefix.
  * Returns null when the path is outside the app surfaces (no hero shown).
  */
 export function resolveHero(

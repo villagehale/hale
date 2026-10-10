@@ -22,13 +22,9 @@ describe('resolveHero', () => {
     expect((res?.hero as RootHero).title).toBe('Settings');
   });
 
-  it('prefers a drill match over the root it lives under', () => {
-    // /companion/logs must read as a drill (breadcrumb + back), NOT the companion root.
-    const res = resolveHero('/companion/logs', roots);
-    expect(res).toEqual({
-      kind: 'drill',
-      hero: { crumb: 'Companion', title: 'Logs', backHref: '/companion' },
-    });
+  it('does not drill into the retired saved and companion-logs routes', () => {
+    expect(resolveHero('/saved', roots)).toBeNull();
+    expect(resolveHero('/companion/logs', roots)).toBeNull();
   });
 
   it('maps messages to a Family breadcrumb + back', () => {

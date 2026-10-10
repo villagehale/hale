@@ -79,7 +79,7 @@ describe('editQuickEpisode', () => {
     expect(familyId).toBe(FAMILY_ID);
     expect(actor).toBe(USER_ID);
     expect(patch).toMatchObject({ summary: 'Fed 150 ml' });
-    expect(revalidateMock).toHaveBeenCalledWith('/companion');
+    expect(revalidateMock).toHaveBeenCalledWith('/home');
   });
 
   it("forbids editing a foreign episode (helper returns false) — never claims success (rule #1)", async () => {
@@ -119,7 +119,7 @@ describe('deleteQuickEpisode', () => {
     expect(id).toBe(EPISODE_ID);
     expect(familyId).toBe(FAMILY_ID);
     expect(actor).toBe(USER_ID);
-    expect(revalidateMock).toHaveBeenCalledWith('/companion');
+    expect(revalidateMock).toHaveBeenCalledWith('/home');
   });
 
   it('forbids deleting a foreign episode (helper returns false) (rule #1)', async () => {

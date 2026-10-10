@@ -94,7 +94,6 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
     buildEpisodeInsert(parsed.data, familyId, occurredAt.date, authoredBy, nap.durationMin),
   );
 
-  revalidatePath('/companion');
   revalidatePath('/home');
   return { status: 'logged' };
 }
@@ -138,7 +137,6 @@ export async function markCompanionItemDone(
   const authoredBy = await currentUserId(database);
   await writeEpisode(database, buildDoneEpisodeInsert(parsed.data, familyId, now, authoredBy));
 
-  revalidatePath('/companion');
   revalidatePath('/home');
   return { status: 'done' };
 }
@@ -173,7 +171,6 @@ export async function editQuickEpisode(raw: unknown, now: Date = new Date()): Pr
   );
   if (!ok) return { status: 'forbidden' };
 
-  revalidatePath('/companion');
   revalidatePath('/home');
   return { status: 'edited' };
 }
@@ -198,7 +195,6 @@ export async function deleteQuickEpisode(
   const ok = await softDeleteEpisode(scope.database, parsed.data.id, scope.familyId, scope.actorUserId, now);
   if (!ok) return { status: 'forbidden' };
 
-  revalidatePath('/companion');
   revalidatePath('/home');
   return { status: 'deleted' };
 }

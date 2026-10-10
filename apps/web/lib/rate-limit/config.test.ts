@@ -48,15 +48,6 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     }
   });
 
-  it('guards the AI-search intent parse as a generous per-minute bot guard, not the paid cooldown', () => {
-    // The natural-language search's per-submit intent parse is a CHEAP model call;
-    // the expensive discovery it may trigger is separately bounded by village-search
-    // (5/hour). So this stays a per-minute guard on a burst, generous enough that a
-    // parent exploring phrasings never hits it — only a scripted loop does.
-    expect(RATE_LIMITS['village-ai-search'].windowSec).toBe(60);
-    expect(RATE_LIMITS['village-ai-search'].limit).toBeGreaterThanOrEqual(15);
-  });
-
   it('bounds MCP registration and parent consent per hour while allowing normal tool bursts', () => {
     expect(RATE_LIMITS['mcp-register']).toEqual({ limit: 20, windowSec: 3600 });
     expect(RATE_LIMITS['mcp-authorize']).toEqual({ limit: 20, windowSec: 3600 });
@@ -76,8 +67,7 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     // teen-content-grant joins them for a different reason than cost: every request
     // notifies a CHILD, so a minute window would let a parent pressure a teen with a
     // burst of asks and call it rate-limited (VIL-147).
-    // Every OTHER route is an invisible bot guard on a minute (the cheap AI-search
-    // intent parse included).
+    // Every OTHER route is an invisible bot guard on a minute.
     const hourWindow = new Set([
       'village-search',
       'avatar-upload',
