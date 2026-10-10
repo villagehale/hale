@@ -650,7 +650,7 @@ describe('threading', () => {
   });
 
   /**
-   * The reply is QUEUED, not sent. Twilio accepts a message and transmits it later — a
+   * The reply is QUEUED, not sent. The phone provider accepts a message and transmits it later — a
    * segment per second from one long code — so 'sent' at accept time asserted a carrier
    * handoff nobody observed, and made a backlog of texts waiting for airtime
    * indistinguishable from texts already delivered. The status callback is what moves

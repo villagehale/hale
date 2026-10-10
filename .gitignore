@@ -51,9 +51,6 @@ drizzle/meta/
 # Vercel
 .vercel
 
-# Fly
-.fly/
-
 # Supabase
 .supabase/
 

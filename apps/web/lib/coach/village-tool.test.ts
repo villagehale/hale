@@ -1,7 +1,7 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildAskHaleTools, searchVillageTool } from './tools';
+import { searchVillageTool } from './tools';
 
 /**
  * search_village must recall only the CURRENT, in-season, unexpired discovery run:
@@ -47,10 +47,8 @@ function fakeDb(
   return db as unknown as import('@hale/db').Database;
 }
 
-function toolByName(database: import('@hale/db').Database, name: string) {
-  const tool = buildAskHaleTools(database).find((t) => t.name === name);
-  if (!tool) throw new Error(`no tool ${name}`);
-  return tool;
+function villageTool(database: import('@hale/db').Database) {
+  return searchVillageTool(database);
 }
 
 const guardDeps: GuardDeps = { writeAudit: async () => {} };
@@ -87,7 +85,7 @@ async function search(
   reviews: Array<Record<string, unknown>> = [],
 ): Promise<VillageToolResult> {
   return (await invokeTool(
-    toolByName(fakeDb(candidates, children, families, reviews), 'search_village'),
+    villageTool(fakeDb(candidates, children, families, reviews)),
     {},
     { familyId: FAMILY_ID, actor: 'user-1' },
     guardDeps,
@@ -277,7 +275,7 @@ describe('search_village — no canned standing place', () => {
     });
 
     const missed = (await invokeTool(
-      toolByName(
+      villageTool(
         fakeDb([
           {
             ...lantern,
@@ -285,7 +283,6 @@ describe('search_village — no canned standing place', () => {
             sourceUrl: null,
           },
         ]),
-        'search_village',
       ),
       { query: 'weekend' },
       { familyId: FAMILY_ID, actor: 'user-1' },

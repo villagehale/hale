@@ -14,8 +14,8 @@ import { DRILL_HEROES, ROOT_ROUTES } from './hero-map';
  * accessibility tree.
  *
  * The earlier version only scanned each DRILL route's page.tsx, so a root route whose
- * hero lives in a nested component (/coach → CoachConversation → AskHaleThread) went
- * unguarded — exactly how a duplicate "Hale" <h1> shipped. This walks the component
+ * hero lived in a nested component went unguarded — exactly how a duplicate "Hale"
+ * <h1> shipped. This walks the component
  * graph of every authed route (root + drill). A file bundling several exports (a badge
  * next to an unrendered public hero) would over-match, so an <h1>/<header> only counts
  * when it sits in the entry page itself or in a top-level component that is actually

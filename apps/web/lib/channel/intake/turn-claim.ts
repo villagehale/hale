@@ -5,7 +5,7 @@ import { eq, lt } from 'drizzle-orm';
  * VIL-237 / audit P1-4 — claiming an intake turn, so one inbound text is one turn.
  *
  * The machine's step-4 duplicate check reads `session.lastProviderId` — a value saved
- * only AFTER the turn's model calls and sends — so a Twilio 15s-budget resend arriving
+ * only AFTER the turn's model calls and sends — so a Linq 15s-budget resend arriving
  * mid-turn passed it and ran the whole turn again: two welcome texts, doubled extractor
  * spend, and a last-write-wins session clobber (the exact resend race migration 0085's
  * comment records firing in production for the post-intake leg). Pre-provisioning
@@ -28,7 +28,7 @@ import { eq, lt } from 'drizzle-orm';
  * property is the unique index's, never the sweep's.
  */
 
-/** Long enough that no Twilio redelivery — including its multi-hour fallback retries —
+/** Long enough that no Linq redelivery — including its multi-hour fallback retries —
  * can outlive it, and short enough that the table stays a day of texts. */
 const CLAIM_RETENTION_HOURS = 24;
 

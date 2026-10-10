@@ -117,7 +117,7 @@ describe('webhookFailureAlert', () => {
     });
   });
 
-  /** The boundary is the SEAM'S, not Twilio's: the email door alerts through the same
+  /** The boundary is the SEAM'S, not the provider's: the email door alerts through the same
    * two legs under its own route token (audit P1-5a). */
   it('names the email door with its own route token', async () => {
     configure();
@@ -316,7 +316,7 @@ describe('withWebhookFailureAlert', () => {
       { fetch },
     );
 
-    // Twilio's SmsFallbackUrl retry only fires on a 5xx — a swallowed failure would
+    // A provider retry only fires on a 5xx — a swallowed failure would
     // drop the parent's text for good.
     expect(response.status).toBe(500);
     expect(console.error).toHaveBeenCalled();

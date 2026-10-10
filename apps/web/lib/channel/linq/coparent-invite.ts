@@ -74,7 +74,7 @@ function inviteeLabel(name: string | null, language: ReplyLanguage): string {
 }
 
 export interface CoParentNumberDeps {
-  /** The Twilio door. Unused when this turn arrived on iMessage. */
+  /** The SMS door. Unused when this turn arrived on iMessage. */
   sendSms(input: { to: string; body: string }): Promise<{ providerMessageId: string }>;
 }
 
@@ -141,7 +141,7 @@ async function answerNewGroupChoice(
  *
  * `not_pending` means this message is not the answer to the ask: the handler
  * must not claim it. A number on iMessage is always `not_pending`. SMS's
- * reply is the locked sent-ack, and only after Twilio accepted the body.
+ * reply is the locked sent-ack, and only after the SMS door accepted the body.
  */
 export async function deliverCoParentNumberInvite(
   database: Database,

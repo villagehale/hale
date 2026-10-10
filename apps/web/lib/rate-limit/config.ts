@@ -13,9 +13,9 @@ import type { RateLimitOptions } from './limiter';
  *   delivers a handful of signals a minute even on a busy day; a flood is
  *   hundreds. 120 sits far above legitimate traffic yet well under a flood, so it
  *   stops the flood without ever throttling a real source.
- * - auth (20/min/IP): sign-in + sign-up share one per-IP window. A human signs in
- *   or registers a handful of times a minute even fumbling a password; 20 is far
- *   above that yet blunts password brute-force / signup spam from one source.
+ * - auth (20/min/IP): phone sign-in and the texted connect link share one per-IP
+ *   window. A human requests a code a handful of times a minute; 20 is far above
+ *   that yet blunts code and token guessing from one source.
  * - avatar-upload (20/hour/user): a child photo is set once and replaced rarely, so
  *   even a parent tidying every child's photo in one sitting is a handful. 20/hour is
  *   far above that yet stops a script from running up storage/bandwidth on the private

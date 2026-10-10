@@ -300,7 +300,7 @@ describe('sendConnectorConnectedText', () => {
     });
   });
 
-  it('stays on Twilio when the latest turn was SMS, even if an older iMessage chat exists', async () => {
+  it('stays on SMS when the latest turn was SMS, even if an older iMessage chat exists', async () => {
     await seedChannel();
     await db.database.insert(schema.channelMessages).values([
       {

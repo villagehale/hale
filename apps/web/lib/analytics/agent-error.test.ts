@@ -11,7 +11,7 @@ import {
  * AGENT ERROR TRACKING, and the guarantee that makes it safe to have at all.
  *
  * The lanes these report from are the places Hale is holding a parent's own words: a
- * coach turn, a Twilio send, a relay call, a trimmed reply, a promised follow-up. So the
+ * coach turn, a phone send, a relay call, a trimmed reply, a promised follow-up. So the
  * question is not "does it report" — it is "could a message ever ride out on one".
  *
  * Expected values are derived from the rule (a lane, an enum class, a one-way family
@@ -21,7 +21,7 @@ import {
 const FAMILY = 'f0f1f2f3-1111-4111-8111-aaaaaaaaaaaa';
 
 /**
- * A parent's real text, a child's name, a phone number, a Twilio error string — the
+ * A parent's real text, a child's name, a phone number, a provider error string — the
  * things that actually sit in scope at each of these call sites. Every assertion below
  * runs against these, so a leak has to show up as one of them.
  */
@@ -52,7 +52,7 @@ describe('the payload carries a lane, a class, and a hashed family — nothing e
     });
   });
 
-  it('reports a Twilio refusal by its numeric code and whether a retry could help', () => {
+  it('reports a provider refusal by its numeric code and whether a retry could help', () => {
     expect(
       buildAgentErrorPayload({
         lane: 'transport',
@@ -137,7 +137,7 @@ describe('no free text can reach the payload (poisoned fixtures)', () => {
     expect(out).toContain('unclassified');
   });
 
-  it("Twilio's own error string is dropped where only its code belongs", () => {
+  it("the provider's own error string is dropped where only its code belongs", () => {
     const out = serialized({
       lane: 'transport',
       code: POISON.twilioMessage,

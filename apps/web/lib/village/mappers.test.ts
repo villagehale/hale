@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { TEEN_REDACTED_PLACEHOLDER } from '../dashboard/mappers.js';
 import {
   type VillageCandidate,
-  filterCandidatesByCadence,
   filterCandidatesByScope,
   toVillageCandidateView,
 } from './mappers.js';
@@ -235,35 +234,5 @@ describe('filterCandidatesByScope', () => {
   it("a child scope keeps that child's picks AND the family-wide picks, drops other children", () => {
     const result = filterCandidatesByScope([nadiaPick, omarPick, familyPick], NADIA);
     expect(result.map((c) => c.id)).toEqual(['c-nadia', 'c-family']);
-  });
-});
-
-describe('filterCandidatesByCadence', () => {
-  const byCadence = (id: string, cadence: string | null) =>
-    toVillageCandidateView(candidate({ id, childId: null, cadence }), false, NO_ENGAGEMENT);
-
-  const oneTime = byCadence('c-once', 'one-time');
-  const seasonal = byCadence('c-season', 'seasonal');
-  const ongoing = byCadence('c-ongoing', 'ongoing');
-  // A null-cadence row with no date/season DERIVES to ongoing (effectiveCadence), so
-  // it is filterable under year-round now instead of stranded under "all" only — the
-  // reported bug. Its derivation is unit-tested in cadence.test.ts.
-  const derivedOngoing = byCadence('c-null', null);
-  const all = [oneTime, seasonal, ongoing, derivedOngoing];
-
-  it('"all" narrows nothing', () => {
-    expect(filterCandidatesByCadence(all, 'all')).toEqual(all);
-  });
-
-  it('"year-round" keeps ongoing rows — stored AND derived-from-null (never renders the raw token)', () => {
-    expect(filterCandidatesByCadence(all, 'year-round').map((c) => c.id)).toEqual([
-      'c-ongoing',
-      'c-null',
-    ]);
-  });
-
-  it('a one-time / seasonal filter keeps only that cadence (a derived-ongoing null row does not match)', () => {
-    expect(filterCandidatesByCadence(all, 'one-time').map((c) => c.id)).toEqual(['c-once']);
-    expect(filterCandidatesByCadence(all, 'seasonal').map((c) => c.id)).toEqual(['c-season']);
   });
 });

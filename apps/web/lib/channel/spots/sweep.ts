@@ -53,8 +53,8 @@ import { sanitizeSpotUrl } from './url';
  *   RIGHT NOW — a held observation (a 2 a.m. opening waiting out quiet hours) is
  *     re-derived against THIS tick's bytes before anything is composed. A page that
  *     refilled overnight is `closedBeforeSend`, not a text about a seat that is gone.
- *   NEVER QUIETLY — a Twilio accept is not a delivery (twilio/status.ts maps
- *     undelivered → failed and the delivery sweep forces a terminal within a day), so
+ *   NEVER QUIETLY — a provider accept is not a delivery (an undelivered receipt
+ *     maps to failed and the delivery sweep forces a terminal within a day), so
  *     the watch stays LIVE after the send and is released only by a sent/delivered
  *     receipt on its own ledger row. A failed receipt buys exactly one more attempt
  *     under a new key, then a NAMED release.
@@ -825,7 +825,7 @@ function supportsKind(
  * opening against fresh bytes — while a lost write AFTER the transport call must cost
  * one, or a text that went out would be re-sent every ten minutes forever.
  *
- * THE WATCH IS NOT RELEASED HERE and the promise is not kept here: a Twilio accept is
+ * THE WATCH IS NOT RELEASED HERE and the promise is not kept here: a provider accept is
  * 'queued', not a delivery.
  */
 async function sendSpotOpen(

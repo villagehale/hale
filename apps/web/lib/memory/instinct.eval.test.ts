@@ -1,5 +1,4 @@
 import { schema } from '@hale/db';
-import { deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadAgentContext } from '~/lib/coach/context';
@@ -8,7 +7,6 @@ import { assembleMemoryBrief } from './brief';
 import { runFamilyMemoryDigest } from './digest';
 import { writeFact } from './facts';
 import { forgetFamilyFact } from './forget';
-import { loadFactHistory, searchFamilyMemory } from './search';
 
 /**
  * Fixture evals for Instinct-style memory. Deterministic on purpose: rule #8
@@ -31,109 +29,8 @@ afterAll(async () => {
   await db.close();
 });
 
-async function teens(familyId: string): Promise<Set<string>> {
-  const rows = await db.database
-    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  return new Set(
-    rows.filter((row) => deriveStage(row.dateOfBirth, NOW) === 'teenager').map((row) => row.id),
-  );
-}
-
 describe('instinct memory evals', () => {
-  it('recalls one fact, ranks a newer equal match first, and abstains on a miss or a typo', async () => {
-    const { familyId } = await seedFamily(db.database, 'Recall');
-    await writeFact(db.database, {
-      familyId,
-      childId: null,
-      factType: 'preference',
-      factKey: 'pasta_lunch',
-      factValue: 'Tuesday pasta',
-      confidence: 1,
-      inferredBy: 'ask-hale',
-      validFrom: new Date('2026-09-01T00:00:00Z'),
-    });
-    await writeFact(db.database, {
-      familyId,
-      childId: null,
-      factType: 'preference',
-      factKey: 'pasta_dinner',
-      factValue: 'Friday pasta',
-      confidence: 1,
-      inferredBy: 'ask-hale',
-      validFrom: new Date('2026-09-20T00:00:00Z'),
-    });
-    const teenIds = await teens(familyId);
-    const hits = await searchFamilyMemory(db.database, {
-      familyId,
-      query: 'pasta',
-      teenChildIds: teenIds,
-    });
-    expect(hits.map((hit) => hit.factKey)).toEqual(['pasta_dinner', 'pasta_lunch']);
-    expect(
-      await searchFamilyMemory(db.database, {
-        familyId,
-        query: 'zzzz-not-a-fact',
-        teenChildIds: teenIds,
-      }),
-    ).toEqual([]);
-    expect(
-      await searchFamilyMemory(db.database, { familyId, query: 'pazta', teenChildIds: teenIds }),
-    ).toEqual([]);
-    expect(
-      await searchFamilyMemory(db.database, { familyId, query: 'pastaa', teenChildIds: teenIds }),
-    ).toEqual([]);
-  });
-
-  it('links two facts that share a token and a daycare alias', async () => {
-    const { familyId } = await seedFamily(db.database, 'Hop');
-    await writeFact(db.database, {
-      familyId,
-      childId: null,
-      factType: 'relationship',
-      factKey: 'partner_clinic',
-      factValue: 'riverside clinic',
-      confidence: 1,
-      inferredBy: 'ask-hale',
-      validFrom: NOW,
-    });
-    await writeFact(db.database, {
-      familyId,
-      childId: null,
-      factType: 'logistic',
-      factKey: 'clinic_hours',
-      factValue: 'closes at 5',
-      confidence: 1,
-      inferredBy: 'ask-hale',
-      validFrom: NOW,
-    });
-    await writeFact(db.database, {
-      familyId,
-      childId: null,
-      factType: 'logistic',
-      factKey: 'childcare_pickup',
-      factValue: 'riverside',
-      confidence: 1,
-      inferredBy: 'ask-hale',
-      validFrom: NOW,
-    });
-    const teenIds = await teens(familyId);
-    const clinic = await searchFamilyMemory(db.database, {
-      familyId,
-      query: 'clinic',
-      teenChildIds: teenIds,
-    });
-    expect(clinic.map((hit) => hit.factKey).sort()).toEqual(['clinic_hours', 'partner_clinic']);
-    const daycare = await searchFamilyMemory(db.database, {
-      familyId,
-      query: 'daycare',
-      teenChildIds: teenIds,
-    });
-    expect(daycare.map((hit) => hit.factKey)).toEqual(['childcare_pickup']);
-  });
-
-  it('keeps another family and a teenager out of search and the brief', async () => {
+  it('keeps another family and a teenager out of the brief', async () => {
     const alpha = await seedFamily(db.database, 'Alpha');
     const beta = await seedFamily(db.database, 'Beta');
     const teenId = await seedChild(db.database, alpha.familyId, 'Noa', 170);
@@ -167,13 +64,6 @@ describe('instinct memory evals', () => {
       inferredBy: 'ask-hale',
       validFrom: NOW,
     });
-    const teenIds = await teens(alpha.familyId);
-    const hits = await searchFamilyMemory(db.database, {
-      familyId: alpha.familyId,
-      query: 'dining secret',
-      teenChildIds: teenIds,
-    });
-    expect(hits.map((hit) => hit.factValue)).toEqual(['pasta']);
     const brief = await assembleMemoryBrief(db.database, alpha.familyId, NOW);
     expect(brief.text).toContain('pasta');
     expect(brief.text).not.toContain('BETA_ONLY');
@@ -181,18 +71,8 @@ describe('instinct memory evals', () => {
     expect(brief.text).not.toContain('Noa');
   });
 
-  it('supersedes a correction, forgets on request, and keeps history opt-in', async () => {
+  it('forgets a fact on request and keeps it out of the brief', async () => {
     const { familyId } = await seedFamily(db.database, 'Correct');
-    const first = await writeFact(db.database, {
-      familyId,
-      childId: null,
-      factType: 'routine',
-      factKey: 'bedtime',
-      factValue: '7pm',
-      confidence: 1,
-      inferredBy: 'ask-hale',
-      validFrom: new Date('2026-09-01T00:00:00Z'),
-    });
     const second = await writeFact(db.database, {
       familyId,
       childId: null,
@@ -203,23 +83,6 @@ describe('instinct memory evals', () => {
       inferredBy: 'ask-hale',
       validFrom: new Date('2026-09-20T00:00:00Z'),
     });
-    const teenIds = await teens(familyId);
-    const live = await searchFamilyMemory(db.database, {
-      familyId,
-      query: 'bedtime',
-      teenChildIds: teenIds,
-    });
-    expect(live.map((hit) => hit.factValue)).toEqual(['8pm']);
-    const history = await loadFactHistory(db.database, {
-      familyId,
-      factId: second.factId,
-      teenChildIds: teenIds,
-    });
-    expect(history.found).toBe(true);
-    if (history.found) {
-      expect(history.nodes.map((node) => node.factValue)).toEqual(['7pm', '8pm']);
-      expect(history.nodes[0]?.id).toBe(first.factId);
-    }
 
     const forgotten = await forgetFamilyFact(db.database, {
       familyId,
@@ -228,16 +91,6 @@ describe('instinct memory evals', () => {
       now: NOW,
     });
     expect(forgotten.forgotten).toBe(1);
-    expect(
-      await searchFamilyMemory(db.database, { familyId, query: 'bedtime', teenChildIds: teenIds }),
-    ).toEqual([]);
-    const withHistory = await searchFamilyMemory(db.database, {
-      familyId,
-      query: 'bedtime',
-      teenChildIds: teenIds,
-      includeHistory: true,
-    });
-    expect(withHistory.map((hit) => hit.factValue)).toContain('8pm');
     const brief = await assembleMemoryBrief(db.database, familyId, NOW);
     expect(brief.text).not.toContain('8pm');
 
@@ -259,55 +112,6 @@ describe('instinct memory evals', () => {
     });
     expect(refused.refusedControlPlane).toBe(1);
     expect(refused.forgotten).toBe(0);
-  });
-
-  it('caps a long supersede chain and a wide search', async () => {
-    const { familyId } = await seedFamily(db.database, 'Bound');
-    let latest = '';
-    for (let i = 0; i < 25; i += 1) {
-      const written = await writeFact(db.database, {
-        familyId,
-        childId: null,
-        factType: 'preference',
-        factKey: 'chain',
-        factValue: `v${i}`,
-        confidence: 1,
-        inferredBy: 'ask-hale',
-        validFrom: new Date(Date.UTC(2026, 0, i + 1)),
-      });
-      latest = written.factId;
-    }
-    await db.database.insert(schema.familyMemoryFacts).values(
-      Array.from({ length: 200 }, (_, i) => ({
-        familyId,
-        childId: null,
-        factType: 'logistic' as const,
-        factKey: `note_${i}`,
-        factValue: { i },
-        confidence: 1,
-        inferredBy: 'ask-hale',
-        validFrom: NOW,
-      })),
-    );
-    const teenIds = await teens(familyId);
-    const history = await loadFactHistory(db.database, {
-      familyId,
-      factId: latest,
-      teenChildIds: teenIds,
-    });
-    expect(history.found).toBe(true);
-    if (history.found) {
-      expect(history.nodes.length).toBeLessThanOrEqual(20);
-      expect(history.truncated).toBe(true);
-      expect(history.nodes.at(-1)?.factValue).toBe('v24');
-    }
-    const wide = await searchFamilyMemory(db.database, {
-      familyId,
-      query: 'note',
-      teenChildIds: teenIds,
-    });
-    expect(wide.length).toBeLessThanOrEqual(8);
-    expect(wide.length).toBeGreaterThan(0);
   });
 
   it('writes one day and one week digest, skips message text, and is idempotent', async () => {

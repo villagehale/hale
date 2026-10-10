@@ -116,7 +116,7 @@ export function welcomeCardRedrivePorts(): WelcomeCardPorts {
 /**
  * The ports the co-parent departure notice needs. Built here for the same reason as the
  * card re-drive's: `departure-notice.ts` deliberately constructs no transport, so it
- * stays off the Twilio one-door allowlist and the wiring stays in the module that owns
+ * stays off the outbound one-door allowlist and the wiring stays in the module that owns
  * the door.
  */
 export function departureNoticePorts(database: Database): DepartureNoticePorts {

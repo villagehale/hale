@@ -221,30 +221,3 @@ export function filterCandidatesByScope(
   return candidates.filter((c) => c.childId === scope || c.childId === null);
 }
 
-/** The cadence-filter selections the /village feed offers. "all" narrows nothing;
- * "year-round" is the human label for the stored `ongoing` cadence — the UI never
- * shows the raw token (rule #1: a stored value never renders raw). */
-export type CadenceFilter = 'all' | 'one-time' | 'seasonal' | 'year-round';
-
-const CADENCE_FILTER_MATCH: Record<Exclude<CadenceFilter, 'all'>, string> = {
-  'one-time': 'one-time',
-  seasonal: 'seasonal',
-  'year-round': 'ongoing',
-};
-
-/**
- * Narrow the feed to one cadence — a display-only selector over the rows the
- * server already visibility-filtered (no request, no new signal). "all" returns
- * every candidate; any other selection keeps only rows whose stored cadence maps
- * to it (so an unclassified null-cadence row is hidden under a specific filter,
- * shown under "all").
- */
-export function filterCandidatesByCadence(
-  candidates: VillageCandidateView[],
-  filter: CadenceFilter,
-): VillageCandidateView[] {
-  if (filter === 'all') return candidates;
-  const wanted = CADENCE_FILTER_MATCH[filter];
-  return candidates.filter((c) => c.cadence === wanted);
-}
-

@@ -1,7 +1,7 @@
 /**
  * Dead-man switch staleness assessment (audit P1-8).
  *
- * Every watchdog Hale has — the drain, the Twilio triage, the delivery sweep,
+ * Every watchdog Hale has — the drain, the delivery sweep,
  * the digests — runs on the same Vercel cron substrate it monitors, so "crons
  * stopped" silences its own alarm. The cure is a liveness fact that lives
  * OUTSIDE the substrate's failure domain: each cron stamps `cron_heartbeats`

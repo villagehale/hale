@@ -7,7 +7,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
  * The phone enrollment is one row (`parent_channels.kind = 'sms'`) for both
  * doors — the number is the person. The door is whichever pipe they used last.
  * An iMessage turn stores the Linq chat id on the inbound row; that is the
- * chat a later receipt has to return to. Falling through to Twilio would put
+ * chat a later receipt has to return to. Falling through to SMS would put
  * the sentence on a different app (a second identity). An SMS last turn stays
  * on the phone transport this caller already had. WhatsApp is retired, so a
  * historical whatsapp row is not a door.

@@ -185,7 +185,7 @@ export const channelMessages = pgTable(
     providerIdx: index('channel_messages_provider_msg_idx').on(table.providerMessageId),
     // One inbound row per provider message, enforced by the DATABASE. The webhook's
     // duplicate guard used to be select-then-insert, which two concurrent deliveries of
-    // the same MessageSid both pass — Twilio resends on a 15s timeout, so the resend can
+    // the same message id both pass — Linq resends on a 15s timeout, so the resend can
     // land mid-flight. This index is what makes the insert itself the claim: exactly one
     // request wins it and is the one that enqueues. Partial on direction, because
     // outbound rows legitimately share nothing with this rule.

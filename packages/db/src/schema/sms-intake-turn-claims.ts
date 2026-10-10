@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core
 
 /**
  * One row per inbound intake text the machine has agreed to act on — the claim that
- * makes a Twilio 15s-budget resend a refusal instead of a second full turn.
+ * makes a Linq 15s-budget resend a refusal instead of a second full turn.
  *
  * The intake dedupe was `session.lastProviderId === providerId`, a value saved only
  * AFTER the turn's model calls and sends — so a resend arriving mid-turn passed it and
@@ -27,7 +27,7 @@ export const smsIntakeTurnClaims = pgTable(
   'sms_intake_turn_claims',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    /** Twilio's MessageSid. Globally unique and never reused. */
+    /** The provider message id. Globally unique and never reused. */
     providerMessageId: text('provider_message_id').notNull(),
     claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
     /** Stamped when the claimed turn returns an outcome. NULL past the turn's own

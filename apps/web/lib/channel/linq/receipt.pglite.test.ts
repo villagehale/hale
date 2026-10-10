@@ -7,7 +7,7 @@ import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { handleLinqInboundRequest } from './inbound';
 
 /**
- * Delivery receipts land on the same monotonic ledger write Twilio uses.
+ * Delivery receipts land on the same monotonic ledger write the status callback uses.
  * A read advances a sent row to delivered and is still named `message.read`
  * in the response, so pacing can tell a read from a first delivery. A later
  * read does not move a row that is already delivered. A failure stores the

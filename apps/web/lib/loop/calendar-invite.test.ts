@@ -485,7 +485,7 @@ describe('the tap-to-add link a text-only family gets', () => {
 
     const rows = await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY);
     expect(rows).toHaveLength(1);
-    // Born 'queued': Twilio took it, the delivery receipt has not landed yet.
+    // Born 'queued': the provider took it, the delivery receipt has not landed yet.
     expect(rows[0]).toMatchObject({ status: 'queued', channel: 'sms' });
     expect(rows[0]?.body).toBeNull();
   });

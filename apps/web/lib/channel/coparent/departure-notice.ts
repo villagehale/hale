@@ -74,7 +74,7 @@ export interface DepartureNoticePorts {
 }
 
 /** The gate and the phone resolver, wired to the real readers. The transport is NOT
- * defaulted here: this module never constructs one, so it stays off the Twilio
+ * defaulted here: this module never constructs one, so it stays off the outbound
  * one-door allowlist and the caller has to hand it the door it is using. */
 export function departureNoticeReaders(
   database: Database,

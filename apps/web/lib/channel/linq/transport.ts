@@ -2,8 +2,8 @@ import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { linqApiKey, linqFromE164 } from './config';
 
 /**
- * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK, matching the Twilio
- * transport. Every partner call lives in this file (the one-door scanner).
+ * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK. Every partner call
+ * lives in this file (the one-door scanner).
  *
  * The v1 reply is one text part into the chat the parent just texted:
  * POST /api/partner/v3/chats/{chatId}/messages with `{ message: { parts } }`,
@@ -934,8 +934,7 @@ async function findLinqDirectChat(input: {
 }
 
 /**
- * Phone-addressed outbound, the same `ChannelTransport` contract the Twilio
- * SMS transport implements: `to` is a bare E.164.
+ * Phone-addressed outbound, the same `ChannelTransport` contract: `to` is a bare E.164.
  *
  * This door is a 1:1 on the Hale line. `preferred_service` is omitted, so
  * Linq selects the protocol

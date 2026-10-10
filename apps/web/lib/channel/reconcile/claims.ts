@@ -286,7 +286,7 @@ export function extractStateClaims(body: string): StateClaim[] {
  */
 export function claimsNoLedgerCanBack(body: string): StateClaim[] {
   // `co_parent_invite` is in this set on purpose. The SMS invite path says it
-  // sent only after Twilio accepts, and that ack does not match this claim.
+  // sent only after the SMS door accepts, and that ack does not match this claim.
   // A model sentence ("I'll send an invite", "I'll invite them") has no row
   // that makes it true, on Linq or anywhere else. The dispatch choke has no
   // database, so this is the gate that keeps the sentence off every template.

@@ -86,9 +86,8 @@ export function currentUserId(database: Database = defaultDb()): Promise<string 
 
 /**
  * The signed-in parent's display name for greetings ("Good evening, Alex" / "Hi
- * Alex, …"), sourced robustly: the Auth.js session name first (Google supplies it),
- * then a fallback to the stored `users.name` — so an email/password parent whose
- * token carries no name still gets their name. Null when unauthed / no name on file.
+ * Alex, …"), sourced robustly: the Auth.js session name first, then a fallback to
+ * the stored `users.name`. Null when unauthed / no name on file.
  */
 export async function loadViewerName(database?: Database): Promise<string | null> {
   // The database argument used to be a default parameter (`= defaultDb()`). That

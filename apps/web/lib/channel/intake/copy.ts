@@ -827,7 +827,7 @@ export function intakeGmailCard(language: ReplyLanguage, url: string): string {
 /**
  * Last ask of intake on SMS, its own text, after the Gmail card.
  *
- * Twilio still needs a number before it can text the invite, so this door
+ * The SMS door still needs a number before it can text the invite, so this door
  * keeps the number ask. Linq does not use it: the iMessage ask is
  * `linqCoParentAsk` (Sloane, 2026-09-25) and does not collect a phone.
  * This ask does not claim an invite already left. "add my partner" still

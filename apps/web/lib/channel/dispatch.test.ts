@@ -282,7 +282,7 @@ describe('provider outcomes', () => {
     expect(ledger).toHaveLength(0);
   });
 
-  it('records the failed row for a permanent SMS refusal, through the REAL Twilio adapter', async () => {
+  it('records the failed row for a permanent SMS refusal, through the real SMS adapter', async () => {
     // The branch above proves the policy with a fake; this proves the SMS leg can
     // actually reach it. It could not before: the transport threw a bare string error,
     // the adapter had no error variant, and every permanent refusal came out of the
@@ -350,7 +350,7 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
   });
 
   /**
-   * The SMS leg's row is born 'queued' — Twilio accepted it, the carrier has not
+   * The SMS leg's row is born 'queued' — the provider accepted it, the carrier has not
    * confirmed it (channel/ledger.ts acceptedStatus). The capture must NOT follow the
    * status blindly: a queued SMS is a SEND, and pairing it with loop_message_failed
    * would report every text Hale sends as a failure.

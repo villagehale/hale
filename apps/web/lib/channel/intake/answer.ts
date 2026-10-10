@@ -312,7 +312,7 @@ export function readPair(
  * The production composer.
  *
  * The client is a VALUE rather than a resolver, unlike the router's stages: intake's
- * deps are built only after a Twilio signature passes and `buildIntakeDeps` already
+ * deps are built only after the inbound signature passes and `buildIntakeDeps` already
  * throws without a key, so "no client" is not a state this seam can be in — and rule
  * #11 says an effect that cannot be absent must not be nullable.
  */

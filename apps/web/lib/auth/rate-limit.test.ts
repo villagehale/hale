@@ -20,11 +20,10 @@ afterEach(() => {
 });
 
 /**
- * authRateLimited is the SHARED brute-force guard wired into BOTH auth entry
- * points (the Credentials authorize chokepoint and the sign-up action). These
- * tests prove it blocks once over the per-IP cap and fails CLOSED on a limiter
- * outage — the property that protects the direct /api/auth/callback/credentials
- * path, not just the form.
+ * authRateLimited is the shared brute-force guard on the phone doors (claim-phone
+ * authorize, channel-link authorize, and the claim-phone code-request route).
+ * These tests prove it blocks once over the per-IP cap and fails CLOSED on a
+ * limiter outage, including a direct provider callback that never touches a form.
  */
 describe('authRateLimited', () => {
   it('allows up to the auth cap, then blocks the same IP', async () => {

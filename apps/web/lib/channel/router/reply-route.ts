@@ -2,7 +2,7 @@
  * WHERE HALE'S ANSWER GOES — the router's one question about delivery, and the only
  * place the answer is allowed to be shaped like a phone number.
  *
- * C1 was written when there was one door: `phoneE164` on the context, a Twilio transport
+ * C1 was written when there was one door: `phoneE164` on the context, formerly a Twilio transport
  * on the deps, `channel: 'sms'` in the ledger row. Every one of those was true and none
  * of them said so — a parent who wrote by EMAIL would have been answered by text, or
  * dropped as `unreachable` for owning no phone. Naming the route is what makes the

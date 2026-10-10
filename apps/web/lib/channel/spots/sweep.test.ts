@@ -303,7 +303,7 @@ beforeEach(async () => {
 describe('runWatchedSpotsSweep — the delivery-truth invariant', () => {
   it('releases a watch only when the text was CONFIRMED, and tries once more when it was not', async () => {
     // The mutation this kills: releasing the watch (and keeping the promise) on the
-    // Twilio ACCEPT. That design passes tick 1 and tick 2 and then marks a household
+    // provider ACCEPT. That design passes tick 1 and tick 2 and then marks a household
     // "told" about a seat whose text the carrier threw away.
     const family = await seedFamily(db.database);
     const test = harness();
@@ -322,7 +322,7 @@ describe('runWatchedSpotsSweep — the delivery-truth invariant', () => {
     expect(row.lastState).toBe('full');
     expect((await commitment(family.familyId))?.fulfilledAt).toBeNull();
 
-    // Tick 2 — Twilio has accepted and nothing has come back. Still live, and the page
+    // Tick 2 — the provider has accepted and nothing has come back. Still live, and the page
     // is not re-read: there is nothing this tick could learn.
     await setReceipt('queued');
     const before = test.fetched.length;

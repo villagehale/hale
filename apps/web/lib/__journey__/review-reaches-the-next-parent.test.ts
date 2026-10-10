@@ -41,7 +41,7 @@ import { createTestDb, type TestDb } from '~/lib/testing/pglite';
  * reply and the verdict below are the `two-clauses` fixture from that corpus, verbatim,
  * so what stands in for the model here is what the model was measured saying (rule #8:
  * the judgement is an eval, never an assertion against a mock). The outbound gate and
- * the transport are faked because consent, quiet hours and Twilio each have their own
+ * the transport are faked because consent, quiet hours and the phone provider each have their own
  * tests and none of them is this path.
  */
 

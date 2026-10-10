@@ -53,7 +53,7 @@ export const SITTING_REMINDER_HOUR_LOCAL = localHourFromHm(PROACTIVE_QUIET_HOURS
 
 /**
  * GTM lock 2026-08-28 — tonight's founder pair already got a text (Claude may
- * have hit Twilio raw; Hale's ledger is empty). Do not send Still here to these
+ * have hit the carrier raw, formerly Twilio; Hale's ledger is empty). Do not send Still here to these
  * two. Claim the reminder so a later tick stays quiet. Everyone else still sitting
  * gets the locked line at 8:00 America/Toronto.
  */

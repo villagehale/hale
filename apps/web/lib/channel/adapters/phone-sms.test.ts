@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('createSmsChannel().send', () => {
-  it('sends the rendered text to the resolved number and returns Twilio’s id', async () => {
+  it('sends the rendered text to the resolved number and returns the provider id', async () => {
     const transport = new FakeTransport();
 
     const outcome = await createSmsChannel({
@@ -125,7 +125,7 @@ describe('createSmsChannel().send', () => {
     expect(JSON.parse(String(init?.body))).not.toHaveProperty('preferred_service');
   });
 
-  it('maps a permanent Twilio refusal (21610 — this parent opted out) to a NON-transient error outcome', async () => {
+  it('maps a permanent Linq refusal (21610 — this parent opted out) to a NON-transient error outcome', async () => {
     const outcome = await createSmsChannel({
       transport: refusingTransport(new LinqSendError('21610', 400, true)),
       resolveTarget: async () => PHONE,
@@ -157,7 +157,7 @@ describe('createSmsChannel().send', () => {
     });
   });
 
-  it('lets anything that is not a Twilio refusal escape — a bug here is not a delivery outcome', async () => {
+  it('lets anything that is not a Linq refusal escape — a bug here is not a delivery outcome', async () => {
     await expect(
       createSmsChannel({
         transport: refusingTransport(new TypeError('fetch is not a function')),

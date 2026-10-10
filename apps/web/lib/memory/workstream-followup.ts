@@ -1365,7 +1365,7 @@ export async function runWorkstreamFollowupSweep(
           bubbleKind: 'discretionary',
         });
       } catch (err) {
-        // Linq and Twilio throw a transient failure. A returned skip and a
+        // Linq throws a transient failure. A returned skip and a
         // throw are the same miss: backoff, one page, then stop.
         result.failed += 1;
         console.error(

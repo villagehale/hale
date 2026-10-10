@@ -8,8 +8,8 @@ import { CLAIM_CODE_ERROR } from '~/lib/auth/claim-phone-copy';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
 
 /**
- * Server action behind the /sign-in phone form's second step. Mirrors
- * redeemMagicLinkAction: it hands the pair to Auth.js and lets the `claim-phone`
+ * Server action behind the /sign-in phone form's second step. It hands the pair
+ * to Auth.js and lets the `claim-phone`
  * provider's authorize do the real work (both gates, the OTP verify, the single-use
  * burn). On success signIn throws the redirect; the authed layout then routes a
  * no-family user on to /onboarding, so there is no second copy of that gate here.
