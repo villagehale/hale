@@ -3,7 +3,7 @@ import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ACTIVITY_REVIEWS_SURFACE_ENV } from '~/lib/reviews/aggregate';
 import { createTestDb, type TestDb } from '~/lib/testing/pglite';
-import { buildAskHaleTools } from './tools';
+import { searchVillageTool } from './tools';
 
 /**
  * NEGATIVES ARE NEVER SPOKEN, ONLY RANKED (founder decision 3), against real rows.
@@ -116,8 +116,7 @@ interface VillageToolResult {
 }
 
 async function search(familyId: string): Promise<VillageToolResult> {
-  const tool = buildAskHaleTools(db.database).find((t) => t.name === 'search_village');
-  if (!tool) throw new Error('no search_village tool');
+  const tool = searchVillageTool(db.database);
   const guardDeps: GuardDeps = { writeAudit: async () => {} };
   return (await invokeTool(
     tool,

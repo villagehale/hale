@@ -246,7 +246,7 @@ describe('runSittingReminderCron', () => {
     vi.unstubAllEnvs();
   });
 
-  it('sends the locked line once from the injected Twilio transport', async () => {
+  it('sends the locked line once from the injected transport', async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
     seedSession(fake);

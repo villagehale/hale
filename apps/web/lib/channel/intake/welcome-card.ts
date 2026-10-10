@@ -15,7 +15,7 @@ import type { ChannelTransport } from './transport';
  *
  * IT IS ITS OWN MESSAGE, not media hung on the welcome text, and that is the whole
  * design decision. Live against the prod messaging service (2026-08-26): a MediaUrl
- * Twilio cannot fetch does not degrade to a plain SMS — the WHOLE message goes to
+ * the provider cannot fetch does not degrade to a plain SMS — the WHOLE message goes to
  * `status: failed`, `error_code: 11200`, body and all. Attaching the card to the first
  * radar would mean a blip on one static file costs a family the only message a stranger
  * is guaranteed to read, plus the consent ask carrying the privacy link. Separated, a
@@ -27,7 +27,7 @@ import type { ChannelTransport } from './transport';
  */
 
 /** Where the card is served. apps/site owns the route (`app/hale.vcf/route.ts`), on the
- * marketing origin and on `www` — the apex 308s, and Twilio should not pay a hop to
+ * marketing origin and on `www` — the apex 308s, and the provider should not pay a hop to
  * fetch a contact card. Never the app domain: this URL is fetched by the PROVIDER, so
  * it has to be public. */
 export const CONTACT_CARD_URL = `${MARKETING_SITE_URL}/hale.vcf`;

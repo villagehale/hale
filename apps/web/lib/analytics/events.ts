@@ -25,10 +25,9 @@
  *                                 (lib/party/store.ts) and stays there.
  *
  * Everything from `first_activity_added` through `plan_upgrade_started` was on the same
- * retirement list and STAYED: the app is demoted to the receipts room (D4/D20), not
- * deleted, and every one of those events still fires from a component on a live route
- * (/plan, /village, /coach, /settings, /family/members). An event whose surface a parent
- * can still reach is instrumentation, not debris.
+ * retirement list and STAYED in the catalog: the app is the receipts room (D4/D20),
+ * and /plan, /settings, and /family still render. /village and /coach do not. An event
+ * name that a live surface still captures is instrumentation, not debris.
  */
 export type AnalyticsEvent =
   | 'signup_completed'

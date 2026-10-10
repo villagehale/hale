@@ -467,7 +467,7 @@ async function answerDoneStep(
 /**
  * The ask and its card, one bubble. Linq refuses a link part beside text, so
  * the URL is the next line of the same text part. The locked sentence itself
- * does not contain the token. Nothing here opens a 1:1 or falls back to Twilio.
+ * does not contain the token. Nothing here opens a 1:1.
  */
 async function sendAskWithLink(
   database: Database,
@@ -515,7 +515,7 @@ async function sendAskWithLink(
 
 /**
  * A card on its own, when the parent already asked for the link. The token is
- * the link part only. Nothing here opens a 1:1 or falls back to Twilio.
+ * the link part only. Nothing here opens a 1:1.
  */
 async function deliverGroupLink(
   database: Database,
@@ -570,7 +570,7 @@ async function deliverGroupLink(
  * The group receipt for a co-parent connect. Its own bubble, only into
  * `families.linq_group_chat_id`, and never paired with the next ask. Gmail's
  * line names the connect and nothing from the mailbox. A Linq refusal is not
- * retried on Twilio. The 1:1 receipt is a different send.
+ * retried as a 1:1. The 1:1 receipt is a different send.
  */
 export async function sendCoparentGroupCalendarReceipt(
   database: Database,

@@ -640,7 +640,7 @@ export async function handleInboundSms(
 
 /**
  * Run one intake turn under the P1-4 provider-id claim (turn-claim.ts): the first
- * delivery to claim the sid runs; every later one — including a Twilio resend racing
+ * delivery to claim the sid runs; every later one — including a Linq resend racing
  * this very turn — is the same named 'duplicate' step 4 has always produced. Wraps
  * ONLY the branches where intake itself acts (greet, the model-bound session turns):
  * keywords stay unclaimed (a STOP resend must always be honoured), token-redeeming
@@ -1077,7 +1077,7 @@ async function greetNewFamily(
   });
   // Voice already releases a claim when the opener cannot be sent. Intake did
   // not: createSession committed, send/model threw, and the open row swallowed
-  // every Twilio retry as details (VIL-332). Close the unfinished claim so the
+  // every Linq retry as details (VIL-332). Close the unfinished claim so the
   // retry can greet on a new session.
   try {
     return await deliverFirstHelloReporting(
@@ -4189,7 +4189,7 @@ async function provision(
  *
  * The split is by COST. The civic projection is pure DB work over rows the sweep wrote
  * days ago, so it runs INLINE and its output is visible to the radar composed one line
- * later. Discovery is a model call plus geocodes, far past a Twilio webhook's budget,
+ * later. Discovery is a model call plus geocodes, far past a Linq webhook's budget,
  * so it runs in the background and pays off at the 48h nudge instead.
  *
  * VIL-260 · WS5 adds ONE coarse-area geocode to the inline half, and it does not move
@@ -5046,7 +5046,7 @@ async function handleStop(
       );
     }
   } catch (error) {
-    // A PERMANENT refusal means there is no ack to retry. 21610 above all: Twilio
+    // A PERMANENT refusal means there is no ack to retry. 21610 above all: the provider
     // refusing to text a number that has opted out AT THE CARRIER — the exact number a
     // STOP creates — and it has already sent its own advisory there, so the confirmation
     // IS delivered, by them. The rest (21211, 21614, 21408) mean the handset cannot be

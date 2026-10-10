@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 /**
  * POST /api/channels/linq/inbound — an iMessage a parent sends Hale (VIL-335).
  *
- * A shell on purpose, matching the Twilio door: the gates live in lib/channel/linq
+ * A shell on purpose: the gates live in lib/channel/linq
  * so vitest covers them, and the only thing that can differ on the deployed path
  * is which dependencies are injected. The whole body, dependency construction
  * included, sits inside the failure boundary (VIL-331).

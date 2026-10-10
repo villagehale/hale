@@ -5,7 +5,7 @@ import type { z } from 'zod';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { buildDistillTools, buildInferenceTools } from '~/lib/cron/inference-tools';
 import { buildRankTools } from '~/lib/village/rank/rank-tools';
-import { buildAskHaleTools, searchVillageTool } from './tools';
+import { searchVillageTool } from './tools';
 
 /**
  * VIL-270 · THE DECLARATION MUST EQUAL THE GUARD'S REACH.
@@ -36,8 +36,8 @@ const NOW = new Date('2026-07-30T12:00:00.000Z');
 
 /**
  * A floor, not a count: a registry that silently stopped registering anything would
- * otherwise pass this file with an empty array. Deliberately well below the 26 entries
- * the five builders register today, so adding or removing one verb is not a test edit.
+ * otherwise pass this file with an empty array. Deliberately well below what the
+ * live builders register, so adding or removing one verb is not a test edit.
  */
 const MIN_REGISTERED_TOOLS = 15;
 
@@ -88,7 +88,6 @@ function channelTools(): RegisteredTool[] {
 /** Every tool the app registers anywhere, with the surface it came from for the message. */
 function everyRegisteredTool(): Array<{ surface: string; tool: RegisteredTool }> {
   const surfaces: Array<[string, RegisteredTool[]]> = [
-    ['buildAskHaleTools', buildAskHaleTools(NO_DB, NOW)],
     ['buildChannelCoachTools', channelTools()],
     ['buildInferenceTools', buildInferenceTools(NO_DB, NOW)],
     ['buildDistillTools', buildDistillTools(NO_DB, NOW)],

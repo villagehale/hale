@@ -6,7 +6,7 @@ import { QUERY_TIMEOUT_MS, QueryTimeoutError, createDb, guardQuery } from './cli
 /**
  * Timeout discipline at the ONE postgres() chokepoint (2026-09-03 SMS audit P1-9):
  * a slow-not-down DB must not be able to wall a serverless function silently —
- * the tightest consumer of the shared web pool is the Twilio inbound webhook,
+ * the tightest consumer of the shared web pool is the Linq inbound webhook,
  * whose whole budget is 15s. VIL-331 made DB-down loud; these bounds are for
  * DB-slow. Constructing the client without them is the regression this test
  * exists to catch.

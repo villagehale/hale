@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  *
  * The boundary (`withWebhookFailureAlert`) is what turns a 2026-08-28-style outage —
  * the first DB call throwing on every inbound message for six hours — into a founder
- * page instead of an anonymous 500. The Twilio doors got it when it was built; the
+ * page instead of an anonymous 500. The former Twilio doors got it when it was built; the
  * email door shipped without it, and nothing failed anywhere: the routes are shells
  * vitest never imports, so the only thing that can hold the invariant is reading them.
  *

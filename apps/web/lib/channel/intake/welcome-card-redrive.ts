@@ -85,7 +85,7 @@ interface HeldCard {
  * withdrawn consent out of this sweep — those are different refusals and re-driving them
  * at 08:00 would be overruling the reason they were refused. The key check is what keeps
  * a FAILED send out: a provider refusal consumes the key on purpose (ledger.ts), and a
- * family whose MMS Twilio rejected must not be retried from here.
+ * family whose MMS the provider rejected must not be retried from here.
  *
  * OLDEST HELD FIRST, and that ordering is the per-run cap's fairness: with no ORDER BY
  * the families a capped run serves are whichever hundred the heap handed back, which can

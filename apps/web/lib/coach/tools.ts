@@ -1,22 +1,12 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { companionForChild, deriveStage } from '@hale/types';
+import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { selectByActivityQuery } from '~/lib/coach/activity-query';
-import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { formatCalendarDayLabel } from '~/lib/format/datetime';
 import { safeHttpUrl } from '~/lib/format/http-url';
-import { commitClassifiedMemory, modelClassificationShape } from '~/lib/memory/classify-write';
-import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
-import { forgetFamilyFact } from '~/lib/memory/forget';
-import {
-  getFamilyMemoryFact,
-  listMemoryBuckets,
-  loadFactHistory,
-  searchFamilyMemory,
-} from '~/lib/memory/search';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -27,32 +17,18 @@ import {
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { visibleCandidates } from '~/lib/village/visibility';
-import { buildConnectorTools } from './connector-tools';
 import { spokenFind } from './spoken-find';
 
 /**
- * The Ask Hale agent's tools — every one family-scoped (rule #1: a handler reads
- * only `ctx.familyId`'s rows, never another family's). The guarded invoker writes
- * the audit row for each call (rule #6) and runs the teen-content check before
- * `get_child_profile`'s handler (rule #1/#5), so the rails are enforced no matter
- * what the model decides to call. None of these spend money; `save_memory` is the
- * only writer and it persists only what the parent stated (rule: no inference).
+ * The Village read shared by every surface that offers it (VIL-221 · C2).
+ * Family-scoped (rule #1: the handler reads only `ctx.familyId`'s rows). It does
+ * not name a childId, so the guarded invoker's child-content check never runs;
+ * a teen-attributed row is redacted to category only via the mapper before it
+ * can reach the model.
  *
- * Teen-content (rule #1) defense in depth: `get_child_profile` names a childId, so
- * the guarded invoker's `checkChildContentAccess` gate refuses a teenager before
- * the handler runs. The two reads that DON'T name a child — `search_village` and
- * `search_memory` — can still surface rows attributed to a teen (memory facts and
- * episodes carry a nullable child_id; candidates likewise). The guard can't reach
- * those (no childId in the input to resolve), so each is teen-safe BY
- * CONSTRUCTION instead: it resolves the family's teen child ids LIVE from DOB and
- * drops/redacts any teen-attributed row at the source, before it can reach the
- * model. `search_memory` excludes teen rows outright (facts/episodes carry raw,
- * potentially teen-quoting content); `search_village` redacts to category only via
- * the mapper. `get_framework_guidance` reads no real child data at all.
- *
- * Tools take a `Database` by closure so the same definitions are reused with a
- * test db. The harness validates each tool's zod input at the boundary, so a
- * hallucinated arg is rejected before the handler runs.
+ * The tool takes a `Database` by closure so the same definition is reused with a
+ * test db. The harness validates the zod input at the boundary, so a hallucinated
+ * arg is rejected before the handler runs.
  */
 
 const MEMORY_RESULT_LIMIT = 15;
@@ -71,9 +47,8 @@ export const EXAMPLE_CHILD_ID = '00000000-0000-4000-8000-000000000000';
 
 /**
  * The family's children currently in the teenager stage, derived LIVE from DOB
- * (never stored) — the source-side teen filter shared by the child-naming-less
- * reads (`search_memory`, `search_village`) so a teen's row can't slip past the
- * guard those tools never trigger.
+ * (never stored) — the source-side teen filter for `search_village`, which never
+ * names a childId and so never trips the guard.
  */
 async function teenChildIdsForFamily(database: Database, familyId: string): Promise<Set<string>> {
   const children = await database
@@ -88,15 +63,6 @@ async function teenChildIdsForFamily(database: Database, familyId: string): Prom
 function isTeenAttributed(childId: string | null, teenChildIds: ReadonlySet<string>): boolean {
   return childId !== null && teenChildIds.has(childId);
 }
-
-const memoryFactType = z.enum([
-  'preference',
-  'routine',
-  'medical',
-  'logistic',
-  'relationship',
-  'voice',
-]);
 
 /** One activity Hale may actually put in front of a parent. An offer a parent cannot
  * turn up to is not an offer: the title and the day are always present.
@@ -215,8 +181,8 @@ export function searchVillageTool(
   /**
    * Told about every candidate this call OFFERED — the `onDraft`/`onOffer` shape, and
    * for the same reason: the tool's return value belongs to the model and this does
-   * not. Absent on the surfaces that place nothing (the app's Ask, a parity test), so
-   * there is no path that collects a provenance nobody will use.
+   * not. Absent on a surface that places nothing (a parity test), so there is no
+   * path that collects a provenance nobody will use.
    */
   onOffered?: (offers: readonly OfferedCandidate[]) => void,
 ): RegisteredTool {
@@ -323,271 +289,4 @@ export function searchVillageTool(
       return { candidates, inVerification, standingOption: null };
     },
   });
-}
-
-export function buildAskHaleTools(database: Database, now: Date = new Date()): RegisteredTool[] {
-  const getChildProfile = defineTool({
-    name: 'get_child_profile',
-    description:
-      "Read one of THIS family's children by id: derived stage, age in months, and stage-appropriate developmental guidance. A teenager's profile is refused by the child-content guard (rule #1).",
-    inputSchema: z.object({ childId: z.string() }),
-    // The only source of a childId is the context this run was given — no tool in
-    // the allowlist returns one, so the example exists to stop the model
-    // composing a plausible uuid (rule #1: invented placeholder, never a row).
-    inputExamples: [{ childId: EXAMPLE_CHILD_ID }],
-    monetary: false,
-    touchesChildContent: true,
-    handler: async (input, ctx) => {
-      const rows = await database
-        .select({
-          id: schema.children.id,
-          name: schema.children.name,
-          dateOfBirth: schema.children.dateOfBirth,
-          gestationalWeeks: schema.children.gestationalWeeks,
-          parentingStyleOverrides: schema.children.parentingStyleOverrides,
-        })
-        .from(schema.children)
-        .where(
-          and(eq(schema.children.id, input.childId), eq(schema.children.familyId, ctx.familyId)),
-        )
-        .limit(1);
-
-      const child = rows[0];
-      if (!child) {
-        return { found: false as const };
-      }
-      const companion = companionForChild({ dateOfBirth: child.dateOfBirth, name: child.name });
-      return {
-        found: true as const,
-        name: child.name,
-        stage: companion.stage,
-        ageMonths: companion.ageMonths,
-        gestationalWeeks: child.gestationalWeeks,
-        parentingStyleOverrides: child.parentingStyleOverrides,
-        whatsNow: companion.whatsNow,
-        whatsNext: companion.whatsNext,
-      };
-    },
-  });
-
-  const searchMemory = defineTool({
-    name: 'search_memory',
-    description:
-      'Lexical recall for THIS family. Matches fact keys, a closed alias list (daycare matches childcare; a typo matches nothing), and fact values. Each fact includes kind (enduring, obligation, curiosity), disposition (confirmed, declined, asked), and source. Live facts only unless includeHistory is true. Teen-attributed rows are omitted.',
-    inputSchema: z.object({
-      query: z.string().min(1),
-      factType: memoryFactType.optional(),
-      includeHistory: z.boolean().optional(),
-    }),
-    inputExamples: [
-      { query: 'bedtime' },
-      { query: 'daycare' },
-      { query: 'allergy', factType: 'medical' },
-    ],
-    monetary: false,
-    touchesChildContent: false,
-    handler: async (input, ctx) => {
-      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
-
-      const facts = await searchFamilyMemory(database, {
-        familyId: ctx.familyId,
-        query: input.query,
-        factType: input.factType,
-        includeHistory: input.includeHistory === true,
-        teenChildIds,
-        limit: MEMORY_RESULT_LIMIT,
-      });
-
-      const needle = input.query.toLowerCase();
-      const episodeRows = await database
-        .select({
-          childId: schema.familyMemoryEpisodes.childId,
-          occurredAt: schema.familyMemoryEpisodes.occurredAt,
-          episodeType: schema.familyMemoryEpisodes.episodeType,
-          summary: schema.familyMemoryEpisodes.summary,
-        })
-        .from(schema.familyMemoryEpisodes)
-        .where(eq(schema.familyMemoryEpisodes.familyId, ctx.familyId))
-        .orderBy(desc(schema.familyMemoryEpisodes.occurredAt))
-        .limit(MEMORY_RESULT_LIMIT);
-
-      return {
-        facts: facts.map(({ score: _score, matchedBy: _matchedBy, ...fact }) => fact),
-        episodes: episodeRows
-          .filter((e) => !isTeenAttributed(e.childId, teenChildIds))
-          .filter((e) => e.summary.toLowerCase().includes(needle))
-          .map((e) => ({
-            occurredAt: e.occurredAt.toISOString(),
-            episodeType: e.episodeType,
-            summary: e.summary,
-          })),
-      };
-    },
-  });
-
-  const saveMemory = defineTool({
-    name: 'save_memory',
-    description:
-      'Persist a fact the parent STATED about THIS family, so Hale recalls it next turn. Classify it: memoryClass enduring (who they are, names, ages, home, a settled routine), obligation (a one-off event or a declined activity), or curiosity (a passing question). disposition is confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event time. A passing question is curiosity and asked, not a preference. Upserts on (factType, factKey). When the parent corrects a fact, pass the same factKey, or correctsKey when the old key differs — the old fact is superseded. Never store inferences. confidence is how sure you are the parent SAID this. Below 0.7 is refused.',
-    inputSchema: z.object({
-      factType: memoryFactType,
-      factKey: z.string().min(1),
-      factValue: z.unknown(),
-      confidence: z.number().min(0).max(1),
-      observedAt: z.string().optional(),
-      ...modelClassificationShape,
-    }),
-    // `confidence` is required by the schema, so the API validates it in every
-    // example: 1 is the parent's own words, 0.8 a clear implication.
-    inputExamples: [
-      {
-        factType: 'routine',
-        factKey: 'bedtime',
-        factValue: '7:30pm, bath then two books',
-        confidence: 1,
-        memoryClass: 'enduring',
-        disposition: 'confirmed',
-      },
-      {
-        factType: 'preference',
-        factKey: 'saturday_swim_trial',
-        factValue: 'skipping the Saturday swim trial',
-        confidence: 1,
-        observedAt: '2026-03-14T14:00:00.000Z',
-        memoryClass: 'obligation',
-        disposition: 'declined',
-      },
-      {
-        factType: 'preference',
-        factKey: 'toddler_pottery',
-        factValue: 'asked whether there is a toddler pottery class nearby',
-        confidence: 0.8,
-        memoryClass: 'curiosity',
-        disposition: 'asked',
-      },
-    ],
-    monetary: false,
-    touchesChildContent: false,
-    handler: async (input, ctx) => {
-      // The same floor the inferencer is held to. A fact the coach only half-heard
-      // outranks nothing — under MEM-1 confidence now decides what Hale recalls at
-      // all, so a hunch filed at certainty would evict something the parent said.
-      if (input.confidence < CONFIDENCE_FLOOR) {
-        return { saved: false as const, reason: 'below_confidence_floor' };
-      }
-
-      const { factId } = await commitClassifiedMemory(database, {
-        familyId: ctx.familyId,
-        childId: null,
-        factType: input.factType,
-        factKey: input.factKey,
-        factValue: input.factValue,
-        confidence: input.confidence,
-        inferredBy: 'ask-hale',
-        source: 'parent_message',
-        now,
-        memoryClass: input.memoryClass,
-        disposition: input.disposition,
-        observedAt: input.observedAt,
-        expiresAt: input.expiresAt,
-        correctsKey: input.correctsKey,
-      });
-      return { saved: true as const, factId };
-    },
-  });
-
-  const listMemory = defineTool({
-    name: 'list_memory',
-    description:
-      "Counts of THIS family's live memory by fact type, open and completed workstreams, and stored digests. No fact values. Pass includeHistory to also count closed facts.",
-    inputSchema: z.object({ includeHistory: z.boolean().optional() }),
-    inputExamples: [{}, { includeHistory: true }],
-    monetary: false,
-    touchesChildContent: false,
-    handler: async (input, ctx) => {
-      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
-      return listMemoryBuckets(database, {
-        familyId: ctx.familyId,
-        teenChildIds,
-        includeHistory: input.includeHistory === true,
-      });
-    },
-  });
-
-  const getMemory = defineTool({
-    name: 'get_memory',
-    description:
-      "Read one memory fact of THIS family by id. Closed and forgotten facts require includeHistory. A teenager's fact is refused.",
-    inputSchema: z.object({
-      factId: z.string().uuid(),
-      includeHistory: z.boolean().optional(),
-    }),
-    inputExamples: [{ factId: '11111111-1111-4111-8111-111111111111' }],
-    monetary: false,
-    touchesChildContent: false,
-    handler: async (input, ctx) => {
-      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
-      return getFamilyMemoryFact(database, {
-        familyId: ctx.familyId,
-        factId: input.factId,
-        includeHistory: input.includeHistory === true,
-        teenChildIds,
-      });
-    },
-  });
-
-  const memoryHistory = defineTool({
-    name: 'memory_history',
-    description:
-      "The supersede chain for one fact of THIS family: earlier values and the row that replaced them. This is the explicit history read. A teenager's chain is refused.",
-    inputSchema: z.object({ factId: z.string().uuid() }),
-    inputExamples: [{ factId: '11111111-1111-4111-8111-111111111111' }],
-    monetary: false,
-    touchesChildContent: false,
-    handler: async (input, ctx) => {
-      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
-      return loadFactHistory(database, {
-        familyId: ctx.familyId,
-        factId: input.factId,
-        teenChildIds,
-      });
-    },
-  });
-
-  const forgetMemory = defineTool({
-    name: 'forget_memory',
-    description:
-      'Retire one live fact the parent asked Hale to forget. It leaves search and the memory brief; history can still show it. Health-checkpoint and registration-outcome receipts are refused.',
-    inputSchema: z.object({ factId: z.string().uuid() }),
-    inputExamples: [{ factId: '11111111-1111-4111-8111-111111111111' }],
-    monetary: false,
-    touchesChildContent: false,
-    handler: async (input, ctx) => {
-      const outcome = await forgetFamilyFact(database, {
-        familyId: ctx.familyId,
-        factId: input.factId,
-        actor: ctx.actor,
-        now,
-      });
-      return outcome;
-    },
-  });
-
-  // Shared with the SMS channel coach since 2026-08-12 (framework-tool.ts): the
-  // skill audit caught the two registries drifting — the channel skill instructed
-  // a tool only this runtime carried.
-  const getFrameworkGuidance = frameworkGuidanceTool();
-
-  return [
-    getChildProfile,
-    searchMemory,
-    listMemory,
-    getMemory,
-    memoryHistory,
-    saveMemory,
-    forgetMemory,
-    getFrameworkGuidance,
-    searchVillageTool(database),
-    ...buildConnectorTools(database),
-  ];
 }

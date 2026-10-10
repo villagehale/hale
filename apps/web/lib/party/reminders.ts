@@ -44,7 +44,7 @@ import { claimGuestReminder, loadTeenFirstNames, releaseGuestReminder } from './
  *     subtraction: no timezone to store, no check to get wrong.
  *   THE WAY OUT is inbound, not a footer. Guest texts do not end with an opt-out line
  *     (founder decision, 2026-10-01). A guest STOP is still honoured two ways — the
- *     carrier's own opt-out list rejects the send (Twilio 21610), and
+ *     carrier's own opt-out list rejects the send (21610), and
  *     `optOutGuestRemindersOnStop` erases the opt-in and the stored number the moment a
  *     STOP reaches the inbound webhook.
  *

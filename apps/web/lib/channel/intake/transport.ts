@@ -10,7 +10,7 @@ import type { IntakeKeyword } from './keywords';
  * widened one: nothing in intake should be able to reach a loop template, and no loop
  * caller should be able to text an unresolved number.
  *
- * Provider-neutral (no Twilio here, and none coming through this file): M2 ships the
+ * Provider-neutral: M2 ships the
  * interface plus {@link FakeTransport}, and a real CPaaS adapter lands behind the SAME
  * `send` later — the state machine and its tests depend on the contract only.
  */

@@ -71,7 +71,7 @@ export async function captureServerEvent(
 /**
  * THE FAILURES THAT NEVER REACH AN ERROR PAGE.
  *
- * Hale's worst failures are quiet: a turn deferred back onto the queue, a Twilio refusal
+ * Hale's worst failures are quiet: a turn deferred back onto the queue, a provider refusal
  * classified and swallowed, a relay socket hung up on, an answer trimmed past the segment
  * budget, a promise the sweep could not keep. Every one is already TYPED at its call site
  * and already logged — but a log line on a serverless function is something you read
@@ -195,7 +195,7 @@ const INBOUND_CAPTURE_TIMEOUT_MS = 4_000;
 /**
  * Count one routed inbound message. Both doors call this with their FINAL outcome —
  * every named refusal included — because a refusal that is never counted is
- * indistinguishable from silence (rule #11; the 2026-09-03 audit found 84 Twilio
+ * indistinguishable from silence (rule #11; the 2026-09-03 audit found 84 formerly-Twilio
  * inbound against 19 ledger rows with nothing saying where the other 65 went).
  *
  * The payload is the door and the outcome enum, nothing else — no sender, no provider

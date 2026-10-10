@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * connection. The bug this pins: the memo also captured a REJECTED start, so a single
  * transient failure (pool exhaustion during a drain tick) made every later enqueue on
  * that lambda instance reject with the same stale error — for the instance's whole
- * lifetime. On the Twilio inbound path that turns one blip into a parent's text being
+ * lifetime. On the Linq inbound path that turns one blip into a parent's text being
  * swallowed on every retry.
  */
 

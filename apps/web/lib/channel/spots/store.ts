@@ -76,7 +76,7 @@ export function faultOf(err: unknown): {
 export const WATCH_TTL_DAYS = 60;
 
 /** Two attempts per opening — the send claim and the retry bound are the same counter.
- * The second exists because a Twilio accept is not a delivery: a `failed` receipt on the
+ * The second exists because a provider accept is not a delivery: a `failed` receipt on the
  * first buys exactly one more text, and then the watch ends with a named reason rather
  * than trying forever. */
 export const MAX_SEND_ATTEMPTS = 2;
@@ -566,7 +566,7 @@ export async function findLedgerRowByDedupeKey(
  * What the carrier finally said about one attempt.
  *
  * The whole delivery-truth path rests on this rather than on the transport's own answer: a
- * Twilio accept is 'queued', an undelivered receipt rewrites the same row to 'failed', and
+ * provider accept is 'queued', an undelivered receipt rewrites the same row to 'failed', and
  * the delivery sweep forces a terminal within a day. So the watch is released on the ROW,
  * never on the accept.
  */

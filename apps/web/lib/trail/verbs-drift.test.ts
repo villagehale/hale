@@ -30,7 +30,7 @@ import { AUDIT_VERBS } from './verbs';
 
 const REPO_ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../..');
 
-/** Where audit rows are written from. apps/mobile writes none (it calls the web API). */
+/** Where audit rows are written from. */
 const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages'];
 
 /**

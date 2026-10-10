@@ -24,7 +24,7 @@ describe('CONSUMED_SEND_STATUSES — a provider attempt consumes idempotency for
 /**
  * WHAT A LEDGER ROW CLAIMS AT BIRTH.
  *
- * Twilio ACCEPTS a message and transmits it later — one segment per second from a
+ * The phone provider ACCEPTS a message and transmits it later — one segment per second from a
  * Canadian long code — so 'sent' written the moment the API answered was asserting a
  * carrier handoff nobody had observed. It also hid the one thing worth watching during
  * a burst: with every row born 'sent', a queue of messages waiting for airtime looks

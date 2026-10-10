@@ -118,8 +118,8 @@ import { type LinqEffectResult, markLinqChatRead } from './transport';
  * goes out. Group chats are not marked — Linq delivers nothing there.
  *
  * `message.delivered`, `message.read`, and `message.failed` are the exception:
- * they update the outbound ledger row (the same monotonic write Twilio's
- * status callback uses) and answer 200 either way. `unknown_message` is
+ * they update the outbound ledger row (the same monotonic write the status
+ * callback uses) and answer 200 either way. `unknown_message` is
  * logged. A read is stored as delivered — the status enum has no further
  * state — and the log line keeps the event name so pacing can tell them apart.
  */

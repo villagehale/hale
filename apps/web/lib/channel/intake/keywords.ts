@@ -59,7 +59,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  * localized keyword set has to hold every word Hale prints.
  *
  * OBSERVED, NOT ASSUMED — and observed of the PRODUCT, not of this account: as
- * documented on 2026-08-18, Twilio's built-in set is English only
+ * documented on 2026-08-18, the former Twilio built-in set is English only
  * (STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/QUIT/REVOKE/OPTOUT, START/YES/UNSTOP, HELP/INFO)
  * and localized keywords exist only as explicit entries on a Messaging Service with
  * Advanced Opt-Out configured. WHAT HALE'S OWN MESSAGING SERVICE HOLDS HAS NOT BEEN READ

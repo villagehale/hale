@@ -994,7 +994,7 @@ describe('deep.research', () => {
 
 /**
  * THE QUEUE-POLICY INVARIANT (SMS reliability audit P0-3). `channel.send` rode pg-boss's
- * defaults — two retries zero seconds apart, no dead letter — so a transient Twilio blip
+ * defaults — two retries zero seconds apart, no dead letter — so a transient provider blip
  * during a weekly-brief burst burned all three attempts inside the same blip and the
  * composed message stopped existing with no ledger row and no trace. The inbound turn
  * queue was cured of exactly this class (retryLimit 8 + backoff + a consumed DLQ); these

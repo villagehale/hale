@@ -80,7 +80,7 @@ export interface ConnectedNoticePorts {
   /**
    * The iMessage door, bound by the caller to an existing Linq chat. Absent
    * is named `imessage_not_configured` when the door is iMessage — never a
-   * silent hop onto Twilio.
+   * silent hop onto SMS.
    */
   imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
   threadMessage: typeof threadProactiveMessage;
@@ -111,7 +111,7 @@ export type ConnectedNoticeOutcome =
   | { status: 'not_sent'; reason: 'no_chat' }
   /** Friend voice could not write the receipt. The claim is released so a retry can. */
   | { status: 'not_sent'; reason: 'voice_unsent' }
-  /** The provider refused it. `code` is Twilio's, or `unknown`. */
+  /** The provider refused it. `code` is the provider's, or `unknown`. */
   | { status: 'not_sent'; reason: 'send_failed'; code: string }
   /** Something on this path threw — a ledger write, the thread append. Its own outcome
    * and not a `send_failed`, because the throw can land either side of the send: what

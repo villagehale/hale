@@ -14,7 +14,7 @@ import type { ChannelKind, LoopCategory } from './types';
  * The status an outbound row starts at once the provider ACCEPTED it — the one place
  * that decides what a fresh send row claims.
  *
- * SMS starts at 'queued'. Twilio accepts a message and transmits it later, at roughly
+ * SMS starts at 'queued'. The phone provider accepts a message and transmits it later, at roughly
  * one segment per second from a Canadian long code, so 'sent' written the moment the
  * API answered asserted a carrier handoff nobody had observed — and it hid the only
  * thing worth watching during a burst, because a pile of messages waiting for airtime

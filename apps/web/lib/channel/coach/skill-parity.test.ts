@@ -8,15 +8,14 @@ import { MAX_REPLY_SEGMENTS } from './reply';
 import { buildChannelCoachTools } from './tools';
 
 /**
- * The live-path parity gate, the same one ask-hale has and for the same reason:
- * `toAnthropicTools` only offers the model the tools NAMED in the skill frontmatter, so
- * a registered-but-unlisted tool is a silent no-op — the model can never call it, and
- * the failure looks like the model choosing not to. Over SMS that reads as Hale
- * refusing to move an event it can plainly see.
+ * The live-path parity gate: `toAnthropicTools` only offers the model the tools NAMED
+ * in the skill frontmatter, so a registered-but-unlisted tool is a silent no-op — the
+ * model can never call it, and the failure looks like the model choosing not to. Over
+ * SMS that reads as Hale refusing to move an event it can plainly see.
  *
- * The reverse direction matters more here than it does in the app: a skill that lists a
- * tool nobody registered makes `runAgent` THROW mid-turn, which the router answers with
- * the honesty template. Both directions are asserted against the real skill file.
+ * The reverse direction matters too: a skill that lists a tool nobody registered makes
+ * `runAgent` THROW mid-turn, which the router answers with the honesty template. Both
+ * directions are asserted against the real skill file.
  */
 describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   const registered = () =>

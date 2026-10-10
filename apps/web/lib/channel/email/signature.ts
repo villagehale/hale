@@ -27,14 +27,14 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  *   new signature ride along. A verifier that reads only the first entry rejects half
  *   the traffic mid-rotation, so every `v1` entry is tried.
  *
- *   THE TIMESTAMP. Unlike Twilio's scheme this one has a nonce and a clock, so replay
+ *   THE TIMESTAMP. Unlike the former Twilio scheme this one has a nonce and a clock, so replay
  *   IS defensible here — and the timestamp is checked because it is inside the signed
  *   base string, which is what stops an attacker editing the header to a fresh time.
  *   It is a bound on replay, not a substitute for idempotency: a genuine retry inside
  *   the window is still deduped downstream on the provider's message id.
  *
  * We implement the scheme rather than construct an SDK client for it, exactly as the
- * Twilio leg does: verification must be a pure function of (secret, headers, body) so
+ * Linq leg does: verification must be a pure function of (secret, headers, body) so
  * it is testable without a provider, and so a forged request cannot cause a client to
  * be built.
  */

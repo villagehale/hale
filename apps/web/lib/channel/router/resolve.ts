@@ -204,7 +204,7 @@ export function replyResolverUserMessage(
  * The house pattern elsewhere keeps `err.message` on the argument that dropping the object
  * keeps the request out of the log. It does not: for an Anthropic 400 the message IS the
  * stringified response body, which is the field most likely to quote what was sent — and
- * what was sent here is a parent's own words (rule #1). The Twilio transport already draws
+ * what was sent here is a parent's own words (rule #1). The phone transport already draws
  * the line in the right place; this follows it.
  */
 function message(err: unknown): string {
@@ -277,7 +277,7 @@ export function createReplyResolver(client: () => AgentClient): ReplyResolver {
       // Belt and braces: the router does not call this with an empty list, and an empty
       // list would ask a model to pick from nothing.
       if (questions.length === 0) return unresolved('no_target', 'nothing open');
-      // Bounded HERE rather than inherited from Twilio's 1600-character Body limit: a
+      // Bounded HERE rather than inherited from the former Twilio 1600-character Body limit: a
       // bound that lives in another company's product is not a bound.
       const bounded = text.slice(0, MAX_TEXT_CHARS);
 

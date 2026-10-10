@@ -69,7 +69,7 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  *
  * Kid-event, conflict, handoff, and post-event notices leave only through the
  * family's `linq_group_chat_id`. A Linq refusal is `not_sent`. Nothing on this
- * path sends SMS, and a failed group send is not retried on Twilio.
+ * path sends SMS, and a failed group send is not retried as a 1:1.
  */
 
 const LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;

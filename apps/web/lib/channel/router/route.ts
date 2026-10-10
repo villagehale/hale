@@ -2319,7 +2319,7 @@ async function sendReply(
       // receipt) read it back so they return to this thread rather than
       // opening a second one, or falling through to SMS.
       providerChatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
-      // Accepted by Twilio, not yet on a phone — the receipt advances it
+      // Accepted by the provider, not yet on a phone — the receipt advances it
       // (channel/ledger.ts acceptedStatus, delivery-status.ts).
       status: acceptedStatus(carriedBy),
       body: null,

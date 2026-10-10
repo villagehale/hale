@@ -17,7 +17,8 @@ interface CreateDbOptions {
    * linq/transport.ts): the driver's 30s default could legally spend
    * twice that budget on a connect that a healthy same-region pooler does in
    * milliseconds. A 5s-stuck connect is a brown-out; failing fast is what lets
-   * the failure boundary 5xx while Twilio still retries (2026-09-03 audit P1-9).
+   * the failure boundary 5xx while Linq still retries (2026-09-03 audit P1-9;
+   * formerly Twilio).
    */
   connectTimeoutSeconds?: number;
   /**

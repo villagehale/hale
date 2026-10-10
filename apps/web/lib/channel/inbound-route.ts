@@ -144,8 +144,9 @@ export type InboundRouteOutcome =
   | 'location_not_waiting'
   /** The share started but Linq had no city locality yet. No nudge. */
   | 'location_unread'
-  /** WhatsApp is retired. The prefix is still recognized so a leftover Twilio
-   * webhook is counted and dropped: no ledger row, no keyword, no SMS answer. */
+  /** WhatsApp is retired. The prefix is still recognized so a leftover webhook
+   * from the former Twilio door is counted and dropped: no ledger row, no keyword,
+   * no SMS answer. */
   | 'whatsapp_dropped';
 
 /**
@@ -221,7 +222,7 @@ export async function routeInboundText(
  * VIL-348 — what became of HALE'S OWN acknowledgment, carried out through the door.
  *
  * The machine names it (`KeywordAck`), and this is the only place that name can reach an
- * operator: the webhook answers Twilio with an empty document whatever happens, so the
+ * operator: the webhook answers Linq with an empty document whatever happens, so the
  * routed line and its counter are the entire observable surface of an inbound text. A
  * `provider_refused` flattened to `intake` — which is what this door did before — is a
  * household whose ledger says enrolled, whose number the provider will not accept, and
@@ -252,8 +253,8 @@ function keywordOutcome(
  * CONSENT. A number whose channel is revoked pressed STOP, and this is the one
  * outbound A3 owns outright — so it refuses rather than sending an app link to
  * someone who asked to be left alone (rule #1 / CASL). It would fail anyway once
- * Twilio's opt-out list rejects the send (error 21610), and that failure would throw
- * out of the transport and turn the webhook into a 500 Twilio then retries.
+ * the provider's opt-out list rejects the send (error 21610), and that failure would
+ * throw out of the transport and turn the webhook into a 500 Linq then retries.
  *
  * RATE. It re-checks the SAME limiter, key, and route the machine uses, so the two
  * paths share one budget rather than each granting its own — otherwise an attacker
@@ -354,7 +355,7 @@ async function replyMediaUnsupported(
  * handed to an agent that answers with household data. Anyone who is not demonstrably a
  * parent is dropped, so a role we cannot vouch for is silence rather than disclosure.
  *
- * Idempotent on the provider's message id, and the INSERT is what makes it so. Twilio
+ * Idempotent on the provider's message id, and the INSERT is what makes it so. Linq
  * resends when we exceed its 15s budget, so the resend can arrive while this handler is
  * still running: a select-then-insert guard is a guard both deliveries walk straight
  * through. The unique index on `provider_message_id` where `direction = 'in'` decides it
@@ -364,7 +365,7 @@ async function replyMediaUnsupported(
  * `handed_off_at` is then the answer to a DIFFERENT question: not "have we seen this
  * text" but "does C1 actually have it". Those were one question before, and that is how a
  * failed enqueue swallowed a parent's approval forever — the ledger row committed, the
- * enqueue threw, and every Twilio retry found the row and answered 'duplicate'. The mark
+ * enqueue threw, and every Linq retry found the row and answered 'duplicate'. The mark
  * is written only after the job really exists, so a row left null is a text still owed a
  * reply, and `reconcileUnhandedInbound` (queue-maintenance cron) is what re-drives it.
  * Nothing re-drives it inside the request: a retry arriving seconds later cannot tell a

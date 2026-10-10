@@ -102,7 +102,7 @@ function isCanaryBody(body: string): boolean {
  * pure. That matters more than the saved query: the door asks only to LABEL its
  * counter, and it asks after the ledger insert, the audit row and the enqueue
  * have all committed — a lookup there could turn a completed hand-off into a
- * 500, a Twilio retry, and a 'duplicate'. A label must never be able to fail the
+ * 500, a Linq retry, and a 'duplicate'. A label must never be able to fail the
  * request it is labelling.
  *
  * The NUMBER alone, not the number and the word. Everything arriving from the

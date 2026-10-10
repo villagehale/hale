@@ -12,7 +12,7 @@ let startPromise: Promise<PgBoss> | undefined;
  * memoized rejection is not a cache, it is a poisoned lambda: one transient
  * `boss.start()` failure (a pool blip during a drain tick) would otherwise re-reject
  * every enqueue for the rest of that instance's life, long after the pool recovered.
- * On the Twilio inbound path that is the difference between a retried text and a
+ * On the Linq inbound path that is the difference between a retried text and a
  * swallowed one.
  */
 export async function getQueue(): Promise<PgBoss> {

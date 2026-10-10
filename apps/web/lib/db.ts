@@ -9,7 +9,7 @@ export function db(): Database {
       throw new Error('DATABASE_URL is not set');
     }
     // Chokepoint timeout defaults apply (5s connect, 10s statement — audit P1-9):
-    // this ONE pool serves every web path, and its tightest consumer is the Twilio
+    // this ONE pool serves every web path, and its tightest consumer is the Linq
     // inbound webhook's 15s budget, so the shared bounds are sized to the webhook
     // rather than to the roomiest cron. A cron path that ever legitimately needs a
     // longer statement passes statementTimeoutMs on its own pool — it does not

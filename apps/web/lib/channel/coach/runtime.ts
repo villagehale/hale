@@ -73,21 +73,20 @@ import {
 /**
  * VIL-221 · C2 — the coach, over SMS.
  *
- * This is the SAME brain the app's Ask runs: the same harness, the same guarded
- * invoker, the same family context assembly, the same teen redaction at the source.
- * What changes is only what a text can afford, and each difference below is a
- * consequence of the surface rather than a second product:
+ * The harness, the guarded invoker, the family context assembly, and teen redaction
+ * at the source. What a text can afford is the difference, and each one below is a
+ * consequence of the surface:
  *
  *   NO STREAMING. A carrier takes one body, once. So the loop is `runAgent`, not
  *   `runAgentStreaming`, and the answer is assembled before anything is sent — which
  *   is also why the post-processor can hold a segment budget at all.
  *
- *   A TERSER VOICE. The `coach-channel-sms` skill, not `ask-hale`. Same instructions
- *   about honesty and scope, a different answer shape, because markdown and a
- *   four-paragraph answer are a worse artifact on a phone than a short one.
+ *   A TERSER VOICE. The `coach-channel-sms` skill. Same instructions about honesty
+ *   and scope, a shorter answer shape, because markdown and a four-paragraph answer
+ *   are a worse artifact on a phone than a short one.
  *
- *   SCHEDULE VERBS. The three propose_* tools plus lookup_week, none of which exist in
- *   the app's Ask because the app has buttons for them. Every one drafts (rule #4).
+ *   SCHEDULE VERBS. The three propose_* tools plus lookup_week. Every one drafts
+ *   (rule #4).
  *
  * WHAT THIS DOES NOT DO, deliberately: it never touches `messages`. C1 appends the
  * parent's turn before calling in, and appends the reply after the transport accepts

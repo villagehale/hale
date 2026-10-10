@@ -16,7 +16,7 @@ import {
 /**
  * The reconciler exists because `handed_off_at` is written only once C1's job really
  * exists, which means a row left null is a parent's text that Hale recorded, audited,
- * answered 200 to — and never replied to. Twilio cannot re-drive it (its retry loses
+ * answered 200 to — and never replied to. Linq cannot re-drive it (its retry loses
  * the claim index and answers 'duplicate'), so this is the only thing that can.
  */
 

@@ -3,7 +3,6 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
-import { buildAskHaleTools } from '~/lib/coach/tools';
 import { buildCronGuardDeps } from '~/lib/cron/guards';
 import { buildDistillTools, buildInferenceTools } from '~/lib/cron/inference-tools';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -11,7 +10,7 @@ import { renderMemoryBrief } from './brief';
 import { loadRecommendationMemory } from './store';
 
 /**
- * VIL-419 — the distiller and the coach persist the model's class. A rejected
+ * VIL-419 — the distiller and the nightly inferencer persist the model's class. A rejected
  * Oct 1 activity must not land as a confirmed Oct 4 fact, and one question is
  * not a preference.
  */
@@ -150,45 +149,6 @@ describe('declined events and passing questions', () => {
     expect(closed.some((row) => row.supersededBy === live[0]?.id)).toBe(true);
   });
 
-  it('lets a parent correction supersede the old fact, including under a new key', async () => {
-    const { familyId } = await seedFamily(db.database);
-    const save = toolNamed(buildAskHaleTools(db.database, OCT_4), 'save_memory');
-
-    await save.handler(
-      {
-        factType: 'logistic',
-        factKey: 'kid_age',
-        factValue: 'three',
-        confidence: 1,
-        memoryClass: 'enduring',
-        disposition: 'confirmed',
-      },
-      ctx(familyId),
-    );
-    const corrected = (await save.handler(
-      {
-        factType: 'logistic',
-        factKey: 'age',
-        factValue: 'four',
-        confidence: 1,
-        memoryClass: 'enduring',
-        disposition: 'confirmed',
-        correctsKey: 'kid_age',
-      },
-      ctx(familyId),
-    )) as { factId: string };
-
-    const rows = await rowsFor(familyId);
-    const old = rows.find((row) => row.factKey === 'kid_age');
-    const next = rows.find((row) => row.factKey === 'age');
-    expect(old?.validUntil).not.toBeNull();
-    expect(old?.supersededBy).toBe(corrected.factId);
-    expect(next?.validUntil).toBeNull();
-    expect(next?.factValue).toBe('four');
-    expect(next?.memoryKind).toBe('lasting');
-    expect(next?.memorySource).toBe('parent_message');
-  });
-
   it('does not promote a curiosity filed under an identity-shaped key', async () => {
     const { familyId } = await seedFamily(db.database);
     const save = toolNamed(buildInferenceTools(db.database, OCT_4), 'save_memory');
@@ -232,16 +192,6 @@ const WRITERS: Array<{
       factKey: 'winter_hockey',
       summary: 'Hockey this winter',
       confidence: 0.95,
-    },
-  },
-  {
-    writer: 'coach save_memory',
-    tool: (database) => toolNamed(buildAskHaleTools(database, OCT_4), 'save_memory'),
-    unclassified: {
-      factType: 'preference',
-      factKey: 'winter_hockey',
-      factValue: 'Hockey this winter',
-      confidence: 1,
     },
   },
 ];

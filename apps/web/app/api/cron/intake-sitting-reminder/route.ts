@@ -9,7 +9,7 @@ import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 
-// Node runtime: the sweep reaches the session store and the Twilio send, neither of
+// Node runtime: the sweep reaches the session store and the Linq send, neither of
 // which runs on the edge runtime.
 export const runtime = 'nodejs';
 export const maxDuration = 60;

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
  * created through `createQueueWithPolicy` (@hale/tools-contracts), which requires an
  * explicit retry policy and a dead-letter queue — because a queue created bare rides
  * pg-boss's defaults (two retries, zero delay, no dead letter), and that is exactly how
- * a transient Twilio blip during a weekly-brief burst permanently killed a composed
+ * a transient provider blip during a weekly-brief burst permanently killed a composed
  * message with no ledger row and no trace. The inbound turn queue was cured of this
  * class once already (channel/config.ts CHANNEL_MESSAGE_RECEIVED_RETRY); this guard is
  * what keeps the cure from being site-by-site vigilance.

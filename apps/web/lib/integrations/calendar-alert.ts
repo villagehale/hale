@@ -146,7 +146,7 @@ export const CALENDAR_ALERT_OUTCOMES = [
   'pending_outside_window',
   /** The family has a claimed Linq group. Kid dates are spoken there by the
    * household notice. This SMS path stays quiet so a non-kid title never
-   * reaches the group and nothing is retried on Twilio. */
+   * reaches the group and nothing is retried as a 1:1. */
   'group_home',
 ] as const;
 
@@ -336,7 +336,7 @@ export async function alertParentForCalendarChanges(
   // The group is the home channel. Kid dates are spoken by the household
   // notice. The SMS sentence names whatever title Google stored, including
   // events that are not the kids', so it does not move to the group and it
-  // does not stay on Twilio.
+  // is not sent as a 1:1.
   const outbound = await familyOutboundTarget(database, familyId, {
     contentClass: 'event_logistics',
   });

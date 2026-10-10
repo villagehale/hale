@@ -263,7 +263,7 @@ describe('routing', () => {
     const outcome = await routeInboundText(h.deps, inbound({ body: '' }), 1);
 
     // An app link to someone who pressed STOP is a CASL breach; it would also be
-    // rejected by Twilio (21610) and throw the webhook into a retry loop.
+    // rejected by the provider (21610) and throw the webhook into a retry loop.
     expect(outcome).toBe('unsubscribed');
     expect(h.transport.sent).toHaveLength(0);
   });
@@ -360,7 +360,7 @@ describe('handoff to C1', () => {
     // The handoff resolves through `resolveVerifiedChannelByPhone`, which never returns
     // a revoked row — so a number that pressed STOP is structurally unable to become a
     // C1 conversation. (What the machine does with such a text is M2's call, not A3's;
-    // see the PR's live-config note on Twilio Advanced Opt-Out.)
+    // see the PR's live-config note on the former Twilio Advanced Opt-Out.)
     expect(outcome).not.toBe('handed_off');
     expect(h.jobs).toHaveLength(0);
     expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
@@ -448,7 +448,7 @@ describe('handoff to C1', () => {
    * The hand-off marker exists so that "have we seen this message" and "was it handed to
    * C1" stop being the same question answered by the same row. Before it, a parent's
    * "yes, book it" whose enqueue failed after the ledger row committed was swallowed
-   * forever: Twilio's retry found the row, said 'duplicate', answered 200, and the audit
+   * forever: Linq's retry found the row, said 'duplicate', answered 200, and the audit
    * trail asserted the message had been received AND handled.
    */
   it('marks the row handed off once the job is really enqueued', async () => {
@@ -464,7 +464,7 @@ describe('handoff to C1', () => {
 
   /**
    * A failed enqueue is an OUTCOME, not an exception that escapes (rule #11). Letting it
-   * throw made the route 500, which made Twilio retry, and the retry could only ever lose
+   * throw made the route 500, which made Linq retry, and the retry could only ever lose
    * the claim and answer 'duplicate' — so the exception bought a retry that was
    * guaranteed to do nothing while the text went unanswered and unnamed.
    */
@@ -507,7 +507,7 @@ describe('handoff to C1', () => {
   });
 
   /**
-   * The P2 race. Twilio resends when the handler exceeds its 15s budget, and the resend
+   * The P2 race. Linq resends when the handler exceeds its 15s budget, and the resend
    * can land while attempt #1 is still executing. Select-then-insert let both attempts
    * pass the duplicate guard: two ledger rows for one MessageSid, two `sms_reply_received`
    * audit rows, two jobs, and C1 answering one text twice. The unique index makes the

@@ -62,8 +62,8 @@ export interface LinqSignal {
 
 /** Delivery receipts the ledger already knows how to store. `read` is its own
  * event so a log line can pace on it; the ledger status it writes is still
- * `delivered`, which is the furthest the status enum goes (Twilio does the
- * same). `message.failed` uses `data.message_id` and `data.code`, not the
+ * `delivered`, which is the furthest the status enum goes. `message.failed`
+ * uses `data.message_id` and `data.code`, not the
  * message-event envelope the other two share. */
 export type LinqReceiptEvent = 'message.delivered' | 'message.read' | 'message.failed';
 

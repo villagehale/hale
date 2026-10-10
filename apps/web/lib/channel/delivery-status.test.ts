@@ -3,7 +3,7 @@ import { mapDeliveryStatus, overwritableFrom } from '~/lib/channel/delivery-stat
 
 /**
  * The delivery-callback DECISION, tested as the pure function it is. Callbacks arrive
- * out of order (Twilio makes no ordering guarantee across HTTP requests), so "which
+ * out of order (the provider makes no ordering guarantee across HTTP requests), so "which
  * ledger states may this callback overwrite" is the whole correctness question — a
  * late `sent` must not un-deliver a message that is already delivered.
  */
@@ -51,7 +51,7 @@ describe('overwritableFrom', () => {
   });
 
   it('lets failed overwrite every non-terminal state, including delivered', () => {
-    // A late failure is the more actionable truth than a stale success, and Twilio
+    // A late failure is the more actionable truth than a stale success, and the provider
     // does report undelivered after an optimistic delivered on some carriers.
     expect(overwritableFrom('failed')).toEqual(['queued', 'sent', 'delivered']);
   });

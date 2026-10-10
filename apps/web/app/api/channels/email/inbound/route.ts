@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 /**
  * POST /api/channels/email/inbound — every email a parent sends Hale.
  *
- * A shell on purpose, exactly like the Twilio one: the gates, the routing and the
+ * A shell on purpose, exactly like the Linq one: the gates, the routing and the
  * ledger writes all live in lib/channel/email so they are unit-testable (vitest covers
  * lib/**, not app/**), and so the only thing that can differ between the tested path and
  * the deployed one is which dependencies are injected.
@@ -24,8 +24,9 @@ export const runtime = 'nodejs';
  */
 export async function POST(req: Request): Promise<Response> {
   // The whole body — dependency construction included — is inside the failure boundary
-  // (VIL-331), exactly like the Twilio doors: the 2026-08-28 incident threw from the
-  // first DB touch, before any handler logic ran. A svix retry on the 500 is welcome —
+  // (VIL-331), exactly like the Linq door: the 2026-08-28 incident (formerly Twilio)
+  // threw from the first DB touch, before any handler logic ran. A svix retry on the
+  // 500 is welcome —
   // it redelivers a message we never recorded.
   return withWebhookFailureAlert('email_inbound', async () => {
     const deps = emailInboundDeps();

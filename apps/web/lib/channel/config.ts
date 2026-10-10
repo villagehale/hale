@@ -168,7 +168,7 @@ export const TURN_UNREACHABLE = 'unreachable';
 /**
  * SMS reliability audit P0-3 — the OUTBOUND ceiling, cut from the same cloth as
  * {@link CHANNEL_MESSAGE_RECEIVED_RETRY}. `channel.send` used to ride pg-boss's
- * defaults (two retries zero seconds apart, no dead letter), so a transient Twilio
+ * defaults (two retries zero seconds apart, no dead letter), so a transient provider
  * blip during a weekly-brief burst burned all three attempts inside the same blip and
  * the composed message stopped existing with no ledger row and no trace.
  *

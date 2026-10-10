@@ -15,7 +15,7 @@ const EN = () => ({ params: Promise.resolve({ locale: 'en' as const }) });
  * marketing domain, in the landing's design system. The copy migrated verbatim
  * from the app's pages (a legal-copy change is its own change) with exactly one
  * planned addition: the SMS-transit disclosure from Technical Design §7, which
- * has to exist before the Twilio soft-launch.
+ * has to exist. The former Twilio soft-launch is why the page was written.
  *
  * The routes ship noindexed. That first held back a second indexable copy of a
  * live policy; since VIL-256 made app.villagehale.com/{terms,privacy} permanent

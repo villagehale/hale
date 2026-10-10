@@ -1,9 +1,9 @@
 /**
  * Transport-address boundary parser.
  *
- * Twilio posts a WhatsApp sender as `From=whatsapp:+14165551234`. The prefix is
- * recognized HERE so the inbound webhook can count `whatsapp_dropped` and return
- * empty TwiML. It is not folded into the SMS spine: the pipe is retired, and a
+ * The former Twilio door posted a WhatsApp sender as `From=whatsapp:+14165551234`.
+ * The prefix is recognized HERE so the inbound webhook can count `whatsapp_dropped`
+ * and return empty. It is not folded into the SMS spine: the pipe is retired, and a
  * WhatsApp turn is not the same door as a text. `normalizePhoneE164` stays
  * E.164-pure.
  */
@@ -15,7 +15,7 @@
  * inside the address. */
 export type MessageTransport = 'sms' | 'whatsapp' | 'imessage';
 
-/** Twilio's WhatsApp address form, on both `From` and `To`. */
+/** The former Twilio WhatsApp address form, on both `From` and `To`. */
 export const WHATSAPP_ADDRESS_PREFIX = 'whatsapp:';
 
 export interface TransportAddress {

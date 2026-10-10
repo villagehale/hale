@@ -1,10 +1,10 @@
 /**
- * Ops pages for service alerts — Twilio triage, inbound webhook crashes, delivery
+ * Ops pages for service alerts — inbound webhook crashes, delivery
  * health, and the off-Vercel cron dead-man — go to Slack #ops.
  *
- * This is not parent messaging. Linq and Twilio sends to families do not call here,
+ * This is not parent messaging. Linq sends to families do not call here,
  * and this module does not text anyone. The incoming-webhook URL is the whole
- * configuration: no founder phone, no Twilio credentials. An absent or non-https URL
+ * configuration: no founder phone, no messaging credentials. An absent or non-https URL
  * is a named skip, logged, never a silent success and never an SMS fallback (rule #11).
  *
  * Database-independent on purpose. The page has to leave the instance when the

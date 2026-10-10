@@ -35,7 +35,7 @@ function ports(transport: ChannelTransport): { ports: WelcomeCardPorts; threaded
   };
 }
 
-/** A provider that refuses every send with the given Twilio code. */
+/** A provider that refuses every send with the given provider code. */
 function refusing(code: string): ChannelTransport {
   return {
     async send() {

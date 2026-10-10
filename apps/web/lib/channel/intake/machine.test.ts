@@ -1502,7 +1502,7 @@ describe('intake · CASL keywords', () => {
     vi.unstubAllEnvs();
   });
 
-  it('records the STOP even when Twilio permanently refuses the ack (21610 — the carrier already told them)', async () => {
+  it('records the STOP even when Linq permanently refuses the ack (21610 — the carrier already told them)', async () => {
     const { fake, transport, deps } = harness({});
     await text(fake, transport, deps, 'hi');
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
@@ -2229,7 +2229,7 @@ describe('intake · VIL-332 first-hello cannot die after createSession', () => {
 
 /**
  * P1-4 — the turn CLAIM. `lastProviderId` is saved only at the END of a turn, so the
- * old duplicate check could not see a resend racing a turn still running (Twilio
+ * old duplicate check could not see a resend racing a turn still running (Linq
  * resends at 15s while a model-bound turn is mid-flight — the race migration 0085's
  * comment records firing in production), and it remembered only the LAST id, so a
  * delayed redelivery of an older message re-ran an already-answered turn. The claim
@@ -3353,7 +3353,7 @@ describe('intake · the provider answered the keyword first (VIL-348)', () => {
    * THE STOP → DEBUT ASYMMETRY. An opt-out list that holds STOP but not DEBUT keeps
    * refusing every send to this number — 21610 — although Hale has just re-enrolled its
    * owner. Before this ticket the refusal threw out of the START branch, so the webhook
-   * 500'd and Twilio retried it into the same wall, AFTER the consent write had landed.
+   * 500'd and Linq retried it into the same wall, AFTER the consent write had landed.
    * Hale cannot fix the list from here; what it can do is not lie about the outcome.
    */
   it('names a re-enrolment the provider refuses to deliver, instead of 500ing the webhook', async () => {
