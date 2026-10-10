@@ -1,18 +1,10 @@
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { LogsPage } from '~/lib/companion/logs-view';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
-import { LogsBrowser } from './logs-browser';
 import { AuthoredPlanCard } from './plan-cards';
 import { SharedLinkRow } from './shared-links';
 
-vi.mock('~/lib/companion/log', () => ({
-  editQuickEpisode: vi.fn(),
-  deleteQuickEpisode: vi.fn(),
-  logQuickEpisode: vi.fn(),
-  markCompanionItemDone: vi.fn(),
-}));
 vi.mock('~/lib/plan/plan-actions', () => ({
   completePlan: vi.fn(),
   deletePlan: vi.fn(),
@@ -88,32 +80,11 @@ const plan: AuthoredPlanView = {
   childName: 'Marisol',
 };
 
-const LOG_ROW = 'Fed 140 ml before the nap';
-
-const logs: LogsPage = {
-  logs: [
-    {
-      id: 'l1',
-      childId: 'c1',
-      episodeType: 'feed',
-      summary: LOG_ROW,
-      occurredAt: '2026-08-01T18:00:00.000Z',
-    },
-  ],
-  nextCursor: null,
-};
-
 describe('per-row controls still name their row (VIL-276)', () => {
   it('names the plan card’s done + remove controls with their verb plus the plan', () => {
     const html = renderToStaticMarkup(h(AuthoredPlanCard, { plan }));
     expect(accessibleName(html, 'mark done')).toBe(`mark done ${PLAN_TITLE}`);
     expect(accessibleName(html, 'remove plan')).toBe(`remove plan ${PLAN_TITLE}`);
-  });
-
-  it('names a log row’s edit + remove controls with their verb plus the row', () => {
-    const html = renderToStaticMarkup(h(LogsBrowser, { initial: logs, kids: [], units: 'metric' }));
-    expect(accessibleName(html, 'edit log')).toBe(`edit log ${LOG_ROW}`);
-    expect(accessibleName(html, 'remove log')).toBe(`remove log ${LOG_ROW}`);
   });
 
   it('names the revoke control with its visible text plus the shared link', () => {

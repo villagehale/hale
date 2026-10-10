@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allAnswers } from '~/lib/answers/index.js';
 import { SITE_URL } from '~/lib/app-url.js';
-import { allCheckpoints } from '~/lib/milestones/index.js';
 import sitemap from './sitemap.js';
 
 /**
@@ -85,12 +84,6 @@ describe('sitemap', () => {
   it('advertises the activities hub and no retired city guide', () => {
     expect(urls).toContain(`${SITE_URL}/activities`);
     expect(urls.filter((u) => /\/activities\/[^/]+/.test(u))).toEqual([]);
-  });
-
-  it('still carries no checkpoint slug anywhere in the sitemap', () => {
-    for (const checkpoint of allCheckpoints) {
-      expect(entries.find((e) => e.url.endsWith(`/${checkpoint.slug}`))).toBeUndefined();
-    }
   });
 
   it('does not advertise the retired city-registration guides', () => {

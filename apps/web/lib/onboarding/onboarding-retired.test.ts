@@ -44,20 +44,22 @@ describe('the /onboarding surface is gone', () => {
     'lib/onboarding/load-places.ts',
     'lib/onboarding/city-search.ts',
     'lib/onboarding/parse-place.ts',
+    // The old web provisioning + welcome-email path: no importer once the wizard
+    // and the legacy family editor were gone (SMS intake provisions on its own).
+    'lib/onboarding/complete-onboarding.ts',
+    'lib/onboarding/welcome-email.ts',
+    'lib/onboarding/send-welcome.ts',
   ])('%s no longer exists', (rel) => {
     expect(existsSync(webPath(rel))).toBe(false);
   });
 
   it.each([
-    // Provisioning, reached by the SMS intake and the family editor — the wizard was
-    // one caller of these, never their owner. Deleting them would delete the product.
-    'lib/onboarding/complete-onboarding.ts',
+    // Provisioning, reached by the SMS intake — the wizard was one caller of these,
+    // never their owner. Deleting them would delete the product.
     'lib/onboarding/persist.ts',
     'lib/onboarding/children.ts',
     'lib/onboarding/founding.ts',
     'lib/onboarding/trigger-discovery.ts',
-    'lib/onboarding/welcome-email.ts',
-    'lib/onboarding/send-welcome.ts',
   ])('%s survives — it was never the wizard’s', (rel) => {
     expect(existsSync(webPath(rel))).toBe(true);
   });

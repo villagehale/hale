@@ -1,7 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DEVELOPMENT_DOMAINS } from '~/lib/companion/development-snapshot';
 
 /**
  * Nothing else gates a className against globals.css — a component can ship a class
@@ -105,10 +104,11 @@ describe('globals.css coverage — every bespoke class the authed surface uses i
   it('extracts a real, broad class set (guards against a vacuous pass)', () => {
     // Floors well below the current reality. A big regression here means the
     // extractor silently broke. The legacy shell, the village board, the
-    // retired ask/settings components, and the unused hale cards leaving the
-    // scan dropped the count; the floors sit under what remains.
-    expect(totalUsages).toBeGreaterThanOrEqual(100);
-    expect(usedBespoke.size).toBeGreaterThanOrEqual(50);
+    // retired ask/settings components, the unused hale cards and the orphaned
+    // companion/coach components leaving the scan dropped the count; the floors
+    // sit under what remains.
+    expect(totalUsages).toBeGreaterThanOrEqual(60);
+    expect(usedBespoke.size).toBeGreaterThanOrEqual(25);
     expect(BESPOKE_PREFIXES.size).toBeGreaterThanOrEqual(30);
     // Anchors from distinct namespaces prove the scan reached each surface.
     // (comp-hub / care-chip left with the retired companion-tabs component.)
@@ -119,13 +119,6 @@ describe('globals.css coverage — every bespoke class the authed surface uses i
 
   it('defines every bespoke class used under components/hale + app/(authed)', () => {
     const missing = [...usedBespoke].filter((cls) => !DEFINED.has(cls)).sort();
-    expect(missing).toEqual([]);
-  });
-
-  it('declares a --domain-* variable for every development domain the donut renders', () => {
-    const missing = DEVELOPMENT_DOMAINS.map((d) => `--domain-${d.area}`).filter(
-      (v) => !CSS.includes(`${v}:`),
-    );
     expect(missing).toEqual([]);
   });
 });
