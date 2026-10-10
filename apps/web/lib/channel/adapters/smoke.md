@@ -6,22 +6,7 @@ creds. Do NOT run in CI — these reach a provider. Each snippet goes in a throw
 real env) and runs with `npx vitest run apps/web/lib/channel/adapters/_smoke.test.ts`.
 Delete the scratch file after. Never paste real creds into a committed file.
 
-## 1. Expo push — `createExpoPushChannelAdapter`
-
-Prereqs: `PUSH_SEND_ENABLED=true`, `DATABASE_URL` set, and one row in `push_tokens`
-for `USER_ID` holding a real (sandbox/dev) Expo token from a device you can watch.
-
-```ts
-import { defaultExpoChannelDeps, createExpoPushChannel } from '~/lib/push/channel';
-import { db } from '~/lib/db';
-import { createExpoPushChannelAdapter } from './expo-push';
-
-const adapter = createExpoPushChannelAdapter({ push: createExpoPushChannel(defaultExpoChannelDeps(db())) });
-console.log(await adapter.send({ userId: USER_ID, rendered: { kind: 'push', title: 'Hale smoke', body: 'push leg live' } }));
-// expect: { status: 'sent', providerMessageId: null }  + the device buzzes
-```
-
-## 2. Resend email — `createResendEmailChannel`
+## 1. Resend email — `createResendEmailChannel`
 
 Prereqs: `RESEND_API_KEY=re_...` (a Resend test key), `RESEND_FROM` a verified sender.
 `delivered@resend.dev` is Resend's always-accepts test recipient.
@@ -38,7 +23,7 @@ console.log(await adapter.send({
 // with RESEND_API_KEY unset it must instead be { status: 'skipped', reason: 'not_configured' }
 ```
 
-## 3. Loop SMS — `createSmsChannel`
+## 2. Loop SMS — `createSmsChannel`
 
 The default sender is Linq (`LINQ_API_KEY` and `LINQ_FROM_E164`). The config gate:
 

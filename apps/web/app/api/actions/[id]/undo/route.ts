@@ -28,9 +28,6 @@ const idSchema = z.string().uuid();
  * signed-out → 401, a family that doesn't own the action → 403. The audit actor is
  * the INTERNAL users.id — family_members.user_id holds that id, so an external
  * Auth.js id would credit the parent's own reversal to Hale (rules #5, #6).
- *
- * Reachable from the native app through the Edge Bearer bridge, exactly like
- * /api/actions/:id/approve — so there is no separate mobile route.
  */
 export async function POST(_req: Request, context: RouteContext): Promise<Response> {
   const { id } = await context.params;
