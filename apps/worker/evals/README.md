@@ -124,7 +124,7 @@ calling live, so CI can never spend.
 
 Two suites, each calibrated BOTH directions (real cached model PASSES; the `--broken` known-bad generator FAILS):
 
-- **ask-hale** (the interactive coach, `apps/web/lib/coach/agent.ts`): runs the REAL `runAgent` loop over the REAL
+- **ask-hale** (the interactive-coach skill): runs the REAL `runAgent` loop over the REAL
   `packages/agent/skills/ask-hale.md` skill (imported live via tsx), with FIXTURE-backed tools (deterministic,
   family-scoped) dispatched through the REAL guarded `invokeTool` — so rule #1 (the teen-content guard refuses a
   teenager's profile) and rule #6 (an audit row per tool call) actually fire in the eval path. Model id = the skill's

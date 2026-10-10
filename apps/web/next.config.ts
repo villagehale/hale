@@ -41,7 +41,8 @@ const config: NextConfig = {
       // Receipts-room stubs. The browser pages are gone; these forwards are
       // permanent (308) and kept for bookmarks. Bare and :path* are both
       // listed — :path* does not match zero segments. Sources are the page
-      // paths, so /api/coach/* and /api/companion/* are not forwarded.
+      // paths, so /api/* is not forwarded. /api/coach is not the SMS coach;
+      // that runs in lib/channel/coach/runtime.ts.
       // Next appends the request query when the destination has none (same
       // as /signin). The email doors are NOT here: a token must not ride
       // along, and this seam cannot drop one.

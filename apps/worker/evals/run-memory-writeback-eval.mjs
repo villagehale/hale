@@ -51,7 +51,7 @@ const SAVE_TOOLS = new Set(['save_memory', 'save_child_fact']);
 
 const PRICE = { input: 3.0, output: 15.0 }; // Sonnet list, USD per 1M tokens.
 
-/** The agent loop's caps, matching apps/web/lib/coach/agent.ts. */
+/** Caps for this writeback eval's own agent loop. */
 const MAX_STEPS = 8;
 const MAX_TOKENS = 1024;
 

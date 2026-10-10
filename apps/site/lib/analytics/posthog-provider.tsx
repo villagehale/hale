@@ -26,7 +26,7 @@ export function analyticsEnabled(): boolean {
  *    cookie, not localStorage: the distinct id lives in a JS variable and dies with the
  *    tab. It costs cross-visit stitching, which on a site whose only conversion leaves
  *    for an SMS composer was never measurable anyway. Google Ads is a separate head tag
- *    that may set advertising cookies; it is not this client (google-ads-tag.tsx).
+ *    that may set advertising cookies; it is not this client (google-ads-client.ts).
  *    ACCEPTED TRADEOFF (2026-08 ad-week audit): the distinct id also dies on every
  *    NAVIGATION (each page load is a fresh id), so "sessions" ≈ pageviews and a
  *    cross-page funnel (landing → /text → CTA) cannot be stitched into one visitor.

@@ -950,10 +950,9 @@ const BRAND_PLURAL = /\b(?:we|us|our|ours)\b/i;
 const THIRD_PERSON_SELF = /\bHale(?:'s)?\s+(?:is|was|has|can|will|does|helps|brings)\b/i;
 
 /**
- * The DETERMINISTIC copy this voice stage replaces, from apps/web/lib/onboarding/
- * welcome-email.ts (`villageLine()` and `REPLY_LINE`) — replicated here rather than
- * imported for the reason the other web-side evals replicate: that module sits behind the
- * app's `~/` alias, which the tsx loader cannot resolve.
+ * The DETERMINISTIC copy this voice stage replaces. `villageLine()` and `REPLY_LINE`
+ * used to live in the web welcome-email module, which is gone, so the lines are copied
+ * here rather than imported.
  *
  * They are fed to the variation gate as parrot samples, because a composed line that
  * reproduces the fallback is the most expensive way possible to send the fallback. They

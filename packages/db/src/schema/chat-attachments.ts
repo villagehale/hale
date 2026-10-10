@@ -10,8 +10,10 @@ import { families } from './families.js';
  * short-TTL server-minted signed URL (rule #1).
  *
  * `conversationId` and `messageId` are nullable: an attachment is uploaded BEFORE
- * the message exists, then linked (both set) when the /api/coach turn persists the
- * user message. An unlinked row (`messageId` null) is a pending, not-yet-consumed
+ * the message exists, then linked (both set) when a turn persists the user
+ * message. The retired web /api/coach route used to do that; the SMS coach
+ * (apps/web/lib/channel/coach/runtime.ts) does not. An unlinked row
+ * (`messageId` null) is a pending, not-yet-consumed
  * upload. `originalName` is the client filename kept ONLY as a display label — it is
  * never part of the storage key and never reaches a log or trace (rule #1). The
  * audit trail lives in `audit_log`, so there is no soft-delete column.
