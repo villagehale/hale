@@ -1,17 +1,13 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import type { DeleteAccountRole } from '~/components/hale/delete-account-button';
 import { PrivacyView } from '~/components/portal/privacy-view';
 import { listConsentRecordsForViewer } from '~/lib/consent-records';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId, listSeatsForUser } from '~/lib/family';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 
 export const metadata: Metadata = { title: 'Privacy & data' };
 
 export default async function PrivacyPage() {
-  if (!receiptsIaEnabled()) redirect('/settings#trust');
-
   const database = db();
   const [familyId, userId] = await Promise.all([
     currentFamilyId(database),

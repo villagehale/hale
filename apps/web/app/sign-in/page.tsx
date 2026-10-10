@@ -20,12 +20,9 @@ interface PageProps {
  * the portal can serve is one it has a number for, and the only door shown is
  * the one that proves you hold it.
  *
- * This does not read F14_RECEIPTS_IA. That flag still chooses the receipts shell
- * (home, family, settings). It used to swap this page to a Google button plus a
- * magic-link form. Those email doors are gone, and a flag-off branch that still
- * rendered the form would post to a route that no longer exists. Phone is the
- * safe door in both states. There is no Google sign-in provider. Connecting
- * Gmail or Calendar is a separate consent on /connect.
+ * This does not read F14_RECEIPTS_IA. The email doors are gone. There is no
+ * Google sign-in provider. Connecting Gmail or Calendar is a separate consent
+ * on /connect.
  */
 export default async function SignInPage({ searchParams }: PageProps) {
   const { callbackUrl, s } = await searchParams;

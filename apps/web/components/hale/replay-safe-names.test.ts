@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { LogsPage } from '~/lib/companion/logs-view';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
 import { AttachmentChip } from './ask-hale-thread';
-import { AreaRemoveControl } from './location-switcher';
 import { LogsBrowser } from './logs-browser';
 import { AuthoredPlanCard } from './plan-cards';
 import { SharedLinkRow } from './shared-links';
@@ -19,12 +18,6 @@ vi.mock('~/lib/plan/plan-actions', () => ({
   completePlan: vi.fn(),
   deletePlan: vi.fn(),
   createPlan: vi.fn(),
-}));
-vi.mock('~/lib/village/areas-action', () => ({
-  activateAreaAction: vi.fn(),
-  deleteAreaAction: vi.fn(),
-  relocateToCityAction: vi.fn(),
-  searchCitiesAction: vi.fn(),
 }));
 
 /**
@@ -144,20 +137,14 @@ describe('per-row controls still name their row (VIL-276)', () => {
     expect(accessibleName(html, 'Remove')).toBe('Remove Marisol-record.pdf');
   });
 
-  it('names the saved-area remove control with the area it removes', () => {
-    const html = renderToStaticMarkup(
-      h(AreaRemoveControl, { areaId: 'ar1', label: 'Riverdale, Ontario', onRemoved: () => {} }),
-    );
-    // No reference to resolve here: the control owns its whole name as masked text,
-    // because the visible label lives in the popover row above it.
-    expect(accessibleName(html, 'Remove')).toBe('Remove Riverdale, Ontario');
-  });
-
   it('gives two rows on one page two different names, and two different references', () => {
     const html = renderToStaticMarkup(
       h('div', null, [
         h(AuthoredPlanCard, { key: 'p1', plan }),
-        h(AuthoredPlanCard, { key: 'p2', plan: { ...plan, id: 'p2', title: 'Book the 2-year visit' } }),
+        h(AuthoredPlanCard, {
+          key: 'p2',
+          plan: { ...plan, id: 'p2', title: 'Book the 2-year visit' },
+        }),
       ]),
     );
     expect(html).toContain('id="plan-p1-title"');

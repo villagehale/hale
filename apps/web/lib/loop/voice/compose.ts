@@ -1,19 +1,18 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, type Skill, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { type RecordAgentRunInput, recordAgentRun } from '~/lib/agent-run';
 import { buildCronGuardDeps } from '~/lib/cron/guards';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentTraceName, traceAgentRun } from '~/lib/telemetry/langfuse';
 import { findInventedFacts } from './facts-lint';
 
 /**
  * VIL-229 · the shared voice composer — the house agent seam for user-facing copy.
  *
- * It is the exact structured-output-with-deterministic-fallback shape as
- * parseVillageSearchIntent (apps/web/lib/village/ai-search-parse.ts): the skill is
- * loaded by the CALLER, OUTSIDE this boundary (a missing skill file is a deploy bug
- * that must surface, not degrade); this runs the REAL `runAgent` seam — pickModel by
+ * The skill is loaded by the CALLER, OUTSIDE this boundary (a missing skill file is
+ * a deploy bug that must surface, not degrade); this runs the REAL `runAgent` seam —
+ * pickModel by
  * the skill's task, no tools, the guarded invoker, one round-trip — over the
  * already-redacted context, parses the JSON answer into the caller's typed TVoice,
  * and lints every voice string against the injected fact slots.
@@ -165,7 +164,10 @@ export async function composeVoice<TVoice>(
           toolContext: { familyId: args.familyId, actor: 'system' },
           guardDeps,
         });
-        trace.recordGeneration(`${args.traceName}-compose`, { model: modelUsed, usage: result.usage });
+        trace.recordGeneration(`${args.traceName}-compose`, {
+          model: modelUsed,
+          usage: result.usage,
+        });
 
         const { voice, reason } = validateVoice(args, result.answer);
         await recordAgentRun(args.database, {

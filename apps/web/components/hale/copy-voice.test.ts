@@ -24,10 +24,8 @@ const webRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
  */
 const SURFACES = [
   'app/(authed)/trail/page.tsx',
-  'app/(authed)/village/page.tsx',
   'app/(authed)/plan/page.tsx',
   'app/(authed)/settings/page.tsx',
-  'app/(authed)/settings/legacy-settings.tsx',
   'components/portal/home-view.tsx',
   'components/portal/family-view.tsx',
   'components/portal/settings-index.tsx',
@@ -40,7 +38,7 @@ const SURFACES = [
   'app/(authed)/approvals/page.tsx',
   'app/sign-in/page.tsx',
   'app/sign-up/page.tsx',
-  'components/hale/village-feed-section.tsx',
+  'components/portal/shell.tsx',
   'components/hale/approvals-header.tsx',
   'components/hale/ask-hale-thread.tsx',
   'components/hale/getting-ready-checklist.tsx',
@@ -89,8 +87,8 @@ describe('one-voice copy scan', () => {
   it('the privacy colophon links to /privacy where it names Canadian privacy law', () => {
     // Wherever a surface still names the privacy posture in a colophon, it must be
     // the warm line that links out to the policy — not a bare statute string.
-    const village = sources.get('app/(authed)/village/page.tsx') ?? '';
-    expect(village).toContain('/privacy');
+    const shell = sources.get('components/portal/shell.tsx') ?? '';
+    expect(shell).toContain('privacy policy');
   });
 });
 

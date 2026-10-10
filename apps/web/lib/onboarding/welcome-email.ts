@@ -28,7 +28,6 @@ const SUBJECT = 'welcome to your village';
 /** The product surfaces the three next steps point at. */
 const LINKS = {
   home: `${APP_BASE}/home`,
-  village: `${APP_BASE}/village`,
   family: `${APP_BASE}/family`,
 } as const;
 
@@ -174,7 +173,7 @@ function bodyText(content: WelcomeContent): string {
     greetingLine(content),
     villageSentence(content),
     "Here's where to start:",
-    `1. See what your village recommends: ${LINKS.village}`,
+    `1. See what your village recommends: ${LINKS.home}`,
     `2. Add your first activity to your week: ${LINKS.home}`,
     `3. Invite a parent you trust: ${LINKS.family}`,
     closingLine(content),
@@ -200,10 +199,13 @@ function renderHtml(content: WelcomeContent, unsubscribeUrl: string): string {
   const para = (text: string) =>
     `<p style="margin:0 0 16px;color:${SLATE};font-size:16px;line-height:1.65;">${text}</p>`;
 
-  const intro = [para(escapeHtml(greetingLine(content))), para(escapeHtml(villageSentence(content)))].join('');
+  const intro = [
+    para(escapeHtml(greetingLine(content))),
+    para(escapeHtml(villageSentence(content))),
+  ].join('');
 
   const cta = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;"><tr><td style="border-radius:12px;background:${LINK};"><a href="${escapeHtml(
-    LINKS.village,
+    LINKS.home,
   )}" style="display:inline-block;padding:14px 28px;color:#ffffff;font-size:16px;font-weight:600;text-decoration:none;border-radius:12px;">Open your village</a></td></tr></table>`;
 
   const step = (n: number, href: string, lead: string, label: string) =>
@@ -217,7 +219,7 @@ function renderHtml(content: WelcomeContent, unsubscribeUrl: string): string {
 
   const steps = `<p style="margin:0 0 14px;color:${PRUSSIAN};font-size:15px;font-weight:600;letter-spacing:-0.01em;">Here's where to start</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${step(
     1,
-    LINKS.village,
+    LINKS.home,
     'See what your village recommends',
     'open your village',
   )}${step(

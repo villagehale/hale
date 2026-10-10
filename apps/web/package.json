@@ -14,7 +14,6 @@
     "test:smoke": "playwright test --config playwright.smoke.config.ts",
     "eval:coach": "node evals/run-coach-eval.mjs --cached-only",
     "live:onboarding": "LIVE=1 HALE_LLM_NO_STREAM=1 vitest run lib/channel/intake/onboarding-live.test.ts",
-    "backfill:source-urls": "tsx scripts/backfill-source-urls.ts",
     "probe:week-plan": "tsx scripts/probe-week-plan.ts",
     "booked-detection:dry-run": "tsx scripts/booked-detection-dry-run.ts",
     "supersede:false-children-age-range": "tsx scripts/supersede-false-children-age-range.ts",

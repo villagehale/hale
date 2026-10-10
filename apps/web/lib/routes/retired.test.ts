@@ -31,7 +31,7 @@ describe('isRetiredPath', () => {
   });
 
   it('leaves the surfaces that DO earn their place alone', () => {
-    for (const live of ['/approvals', '/trail', '/settings', '/family', '/plan', '/village']) {
+    for (const live of ['/approvals', '/trail', '/settings', '/family', '/plan', '/home']) {
       expect(isRetiredPath(live), live).toBe(false);
     }
   });
@@ -41,7 +41,12 @@ describe('isRetiredPath', () => {
    * must never retire the API that shares its noun.
    */
   it('never matches an API route that shares a retired page’s noun', () => {
-    for (const api of ['/api/coach', '/api/coach/action', '/api/coach/attachments', '/api/companion']) {
+    for (const api of [
+      '/api/coach',
+      '/api/coach/action',
+      '/api/coach/attachments',
+      '/api/companion',
+    ]) {
       expect(isRetiredPath(api), api).toBe(false);
     }
   });

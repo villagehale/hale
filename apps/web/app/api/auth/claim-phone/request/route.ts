@@ -21,8 +21,7 @@ export const runtime = 'nodejs';
  * an account would hand a stranger a household-membership oracle). The core's distinct
  * outcomes are logged server-side and collapse here.
  *
- * Open whenever auth is configured. /sign-in always renders this door, including
- * when F14_RECEIPTS_IA is off, so the route must not 404 in that case.
+ * Open whenever auth is configured. /sign-in always renders this door.
  *
  * TWO LIMITS, different jobs. Per-IP is the shared auth window — one source cannot walk
  * a list of numbers. Per-NUMBER (keyed on the blind index, never the raw number) is the
@@ -54,9 +53,13 @@ export async function POST(req: Request): Promise<Response> {
   const limited = await enforceRateLimit('claim-phone-send', phoneBlindIndex(phoneE164), true);
   if (limited) return limited;
 
-  const outcome = await requestClaimCode(db(), { phoneRaw: phoneE164 }, {
-    sender: createClaimCodeSender(),
-  });
+  const outcome = await requestClaimCode(
+    db(),
+    { phoneRaw: phoneE164 },
+    {
+      sender: createClaimCodeSender(),
+    },
+  );
   // The label only — never the number, and never in the response body.
   console.info({ outcome: outcome.status }, 'claim-by-phone: code requested');
 

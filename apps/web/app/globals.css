@@ -76,80 +76,80 @@
 
 @theme {
   /* ── Surfaces (light) — Hale Shore warm white behind white cards ─────── */
-  --color-canvas: #FDFCFA;      /* CANVAS — Hale Shore warm white (page ground) */
-  --color-card: #FFFFFF;        /* CARD surface — pure white, separated by a #E4E7EE border + faint shadow */
-  --color-linen: #FDFCFA;       /* legacy name for `canvas` — see the mapping table above */
-  --color-oat: #FFFFFF;         /* legacy name for `card` */
-  --color-raised: #FFFFFF;      /* RAISED — lifted card / popover ground */
-  --color-tile: #FBFAF7;        /* inner stat tile / warm chip */
-  --color-chrome: #F7F5F0;      /* warm sidebar / chrome surface (light) — web-only frame */
-  --color-alt-surface: #F5F7FB; /* selected list-row / info-callout ground */
+  --color-canvas: #fdfcfa; /* CANVAS — Hale Shore warm white (page ground) */
+  --color-card: #ffffff; /* CARD surface — pure white, separated by a #E4E7EE border + faint shadow */
+  --color-linen: #fdfcfa; /* legacy name for `canvas` — see the mapping table above */
+  --color-oat: #ffffff; /* legacy name for `card` */
+  --color-raised: #ffffff; /* RAISED — lifted card / popover ground */
+  --color-tile: #fbfaf7; /* inner stat tile / warm chip */
+  --color-chrome: #f7f5f0; /* warm sidebar / chrome surface (light) — web-only frame */
+  --color-alt-surface: #f5f7fb; /* selected list-row / info-callout ground */
 
   /* ── Ink + text ladder (WCAG ratio on the Shore canvas #FDFCFA) ──────── */
-  --color-ink: #17294A;         /* PRIMARY INK — text default — 14.1:1 on canvas */
-  --color-ink-2: #3D4C68;       /* secondary body text — 8.4:1 on canvas */
-  --color-ink-3: #5C6B87;       /* tertiary / meta / nav-inactive — 5.2:1 on canvas (AA floor for small text) */
-  --color-caption: #8B95A9;     /* CAPTION GRAY — 2.9:1; redundant/decorative subtext ONLY (contrast policy) */
-  --color-on-ink: #FFFFFF;      /* the label ON an ink / brand fill */
-  --color-spruce: #17294A;      /* legacy name for `ink` */
-  --color-slate-green: #3D4C68; /* legacy name for `ink-2` */
-  --color-faded-sage: #5C6B87;  /* legacy name for `ink-3` */
-  --color-muted: #8B95A9;       /* legacy name for `caption` */
-  --color-faint: #98A2B3;       /* Skip / placeholders / chevrons — 2.51:1, decorative only */
-  --color-mist: #B0B8C7;        /* dropdown labels / timestamps — 1.95:1, decorative only */
+  --color-ink: #17294a; /* PRIMARY INK — text default — 14.1:1 on canvas */
+  --color-ink-2: #3d4c68; /* secondary body text — 8.4:1 on canvas */
+  --color-ink-3: #5c6b87; /* tertiary / meta / nav-inactive — 5.2:1 on canvas (AA floor for small text) */
+  --color-caption: #8b95a9; /* CAPTION GRAY — 2.9:1; redundant/decorative subtext ONLY (contrast policy) */
+  --color-on-ink: #ffffff; /* the label ON an ink / brand fill */
+  --color-spruce: #17294a; /* legacy name for `ink` */
+  --color-slate-green: #3d4c68; /* legacy name for `ink-2` */
+  --color-faded-sage: #5c6b87; /* legacy name for `ink-3` */
+  --color-muted: #8b95a9; /* legacy name for `caption` */
+  --color-faint: #98a2b3; /* Skip / placeholders / chevrons — 2.51:1, decorative only */
+  --color-mist: #b0b8c7; /* dropdown labels / timestamps — 1.95:1, decorative only */
 
   /* ── Brand navy ──────────────────────────────────────────────────────── */
-  --color-brand: #1B2160;       /* NAVY — primary buttons, wordmark, links, active nav — 14.29:1 on canvas; white text on it 14.65:1 */
-  --color-brand-hover: #2A327D; /* primary-button hover (a touch lighter navy) */
+  --color-brand: #1b2160; /* NAVY — primary buttons, wordmark, links, active nav — 14.29:1 on canvas; white text on it 14.65:1 */
+  --color-brand-hover: #2a327d; /* primary-button hover (a touch lighter navy) */
 
   /* Accent (legacy Tailwind name: apricot*) — RE-POINTED to ink navy for small-scale
    * content accents (icons, numbers, links, "You" pill, selected borders, focus rings).
    * Founder palette law: navy / warm-white / orange — no blue-reading small accents.
    * Large brand FILLS stay --color-brand navy; decorative art keeps --color-illustration. */
-  --color-apricot: #17294A;       /* ink-navy accent (was #3B5BDB blue) — 14.10:1 on canvas */
-  --color-apricot-deep: #17294A;  /* text-safe ink navy — 14.10:1 on canvas */
-  --color-apricot-tint: #ECE8DE;  /* warm-neutral wash — avatars, chips, "You" pill (was #EDF0FA blue); navy on it 12:1 */
+  --color-apricot: #17294a; /* ink-navy accent (was #3B5BDB blue) — 14.10:1 on canvas */
+  --color-apricot-deep: #17294a; /* text-safe ink navy — 14.10:1 on canvas */
+  --color-apricot-tint: #ece8de; /* warm-neutral wash — avatars, chips, "You" pill (was #EDF0FA blue); navy on it 12:1 */
 
   /* Decorative illustration blue — the Meadow illo kit's own periwinkle, kept out of
    * the content-accent sweep so mascot/scene art is unchanged (illos.tsx only). */
-  --color-illustration: #3B5BDB;
-  --color-illustration-tint: #EDF0FA;
+  --color-illustration: #3b5bdb;
+  --color-illustration-tint: #edf0fa;
 
   /* Teal accent (legacy name: sky*) — coach / calm */
-  --color-sky: #56B9AE;        /* teal illustration */
-  --color-sky-deep: #0F766E;   /* text-safe teal — 5.47:1 on white (AA) */
-  --color-sky-tint: #E0F2F1;   /* teal wash */
+  --color-sky: #56b9ae; /* teal illustration */
+  --color-sky-deep: #0f766e; /* text-safe teal — 5.47:1 on white (AA) */
+  --color-sky-tint: #e0f2f1; /* teal wash */
 
-  --color-sea: #1B2160;        /* brand / turtle accent — navy */
+  --color-sea: #1b2160; /* brand / turtle accent — navy */
 
   /* Green accent (legacy name: sage/success) — done / health / on-track */
-  --color-sage: #1F8A4C;       /* text-safe green (badge/large) — 4.38:1 on white */
-  --color-sage-tint: #E7F6EC;  /* green wash — Health / Growth / Milestones */
-  --color-success: #2EA35E;    /* brighter green — checks / "Connected" (icon/large) */
+  --color-sage: #1f8a4c; /* text-safe green (badge/large) — 4.38:1 on white */
+  --color-sage-tint: #e7f6ec; /* green wash — Health / Growth / Milestones */
+  --color-success: #2ea35e; /* brighter green — checks / "Connected" (icon/large) */
 
   /* Amber accent — awaiting / paid / waitlist / Hale tip */
-  --color-amber: #B26B1F;      /* text-safe amber (badge/large) — 4.19:1 on white */
-  --color-amber-tint: #FEF0C7; /* amber wash */
+  --color-amber: #b26b1f; /* text-safe amber (badge/large) — 4.19:1 on white */
+  --color-amber-tint: #fef0c7; /* amber wash */
 
   /* Purple accent (legacy name: lavender) — insight / AI / memory */
-  --color-lavender: #F1EEFA;   /* purple wash */
-  --color-purple: #7A6FB3;     /* text-safe purple (badge/large) — 4.42:1 on white */
+  --color-lavender: #f1eefa; /* purple wash */
+  --color-purple: #7a6fb3; /* text-safe purple (badge/large) — 4.42:1 on white */
 
   /* Terracotta accent (legacy name: berry*) — needs-you / danger / sign-out */
-  --color-berry: #C2543F;      /* text-safe terracotta — 4.53:1 on white */
-  --color-berry-tint: #FDEBE8; /* terracotta wash */
+  --color-berry: #c2543f; /* text-safe terracotta — 4.53:1 on white */
+  --color-berry-tint: #fdebe8; /* terracotta wash */
 
   /* Text-safe accent INKS for text set ON its own warm tint (attach chips, Hale
    * tip). The base accent hues clear AA on WHITE but NOT on their warmer tint
    * wash, so these darker variants restore ≥4.5:1 there. Dark mode reuses the
    * already-light accent (high contrast on the dark tint) — see .dark below. */
-  --color-amber-ink: #8A5214;  /* on tip gradient #FBEDDC 5.5:1 · on amber-tint 5.6:1 */
-  --color-berry-ink: #A83A28;  /* on berry-tint #FDEBE8 5.5:1 */
-  --color-sage-ink: #17753F;   /* on sage-tint #E7F6EC 5.1:1 */
+  --color-amber-ink: #8a5214; /* on tip gradient #FBEDDC 5.5:1 · on amber-tint 5.6:1 */
+  --color-berry-ink: #a83a28; /* on berry-tint #FDEBE8 5.5:1 */
+  --color-sage-ink: #17753f; /* on sage-tint #E7F6EC 5.1:1 */
 
   /* Sleep mini-chart bar (design handoff §4.2 — periwinkle "asleep"). Decorative
    * data mark, not text. */
-  --color-sleep-bar: #C0C4E8;
+  --color-sleep-bar: #c0c4e8;
 
   /* ── Hale Shore roles apps/web had no name for ───────────────────────────── *
    * Added by VIL-209 W1 so the later phases of this arc can build the cream
@@ -159,21 +159,21 @@
 
   /* Apricot — Shore's scarce second emphasis. `accent` is the text-safe tone;
    * `accent-fill` is FILL / large-graphic only, never text or thin strokes. */
-  --color-accent: #C2410C;      /* text-safe apricot — 5.0:1 on canvas */
-  --color-accent-fill: #F28C45; /* FILL / large-graphic only */
-  --color-accent-tint: #FDEEDE;
+  --color-accent: #c2410c; /* text-safe apricot — 5.0:1 on canvas */
+  --color-accent-fill: #f28c45; /* FILL / large-graphic only */
+  --color-accent-tint: #fdeede;
 
   /* Status roles Shore names separately from the tone palette. */
-  --color-badge: #E8853D;       /* orange count badge (fill; the count on it is large + bold) */
-  --color-destructive: #C2543F; /* Shore name for `berry` */
+  --color-badge: #e8853d; /* orange count badge (fill; the count on it is large + bold) */
+  --color-destructive: #c2543f; /* Shore name for `berry` */
 
   /* Cream highlight card — Shore's "great news" tile. */
-  --color-cream: #FFF6E9;
-  --color-cream-border: #F5E5C9;
+  --color-cream: #fff6e9;
+  --color-cream-border: #f5e5c9;
   /* Shore name for `amber`. It measures 3.91:1 on the cream — an AA pass for large
    * text (≥18.66px bold / 24px) and non-text marks, NOT for body copy, which takes
    * `--color-amber-ink` (5.5:1 on the tip gradient) as this file already does. */
-  --color-cream-accent: #B26B1F;
+  --color-cream-accent: #b26b1f;
 
   /* Tint chips — six {background, icon} pairs for Shore's 34×34 rounded icon
    * chips. Meaning is the icon + label beside it, never the tone. Measured icon-on-
@@ -182,33 +182,33 @@
    * large-scale graphic (WCAG non-text floor 3:1), so every pair clears its bar —
    * but NONE of them clears 4.5:1 across the board, so a chip tone is never the
    * colour for small text. Label text beside a chip takes ink-2 / ink-3. */
-  --color-chip-blue: #EDF0FA;
-  --color-chip-blue-icon: #3B5BDB;
-  --color-chip-green: #E7F6EC;
-  --color-chip-green-icon: #1F8A4C;
-  --color-chip-yellow: #FEF0C7;
-  --color-chip-yellow-icon: #B26B1F;
-  --color-chip-red: #FDEBE8;
-  --color-chip-red-icon: #C2543F;
-  --color-chip-teal: #E0F2F1;
-  --color-chip-teal-icon: #0F766E;
-  --color-chip-gray: #F0F2F6;
-  --color-chip-gray-icon: #5C6B87;
+  --color-chip-blue: #edf0fa;
+  --color-chip-blue-icon: #3b5bdb;
+  --color-chip-green: #e7f6ec;
+  --color-chip-green-icon: #1f8a4c;
+  --color-chip-yellow: #fef0c7;
+  --color-chip-yellow-icon: #b26b1f;
+  --color-chip-red: #fdebe8;
+  --color-chip-red-icon: #c2543f;
+  --color-chip-teal: #e0f2f1;
+  --color-chip-teal-icon: #0f766e;
+  --color-chip-gray: #f0f2f6;
+  --color-chip-gray-icon: #5c6b87;
 
   /* ── Borders / hairlines ─────────────────────────────────────────────── */
-  --color-rule: #E4E7EE;        /* primary card border */
-  --color-rule-strong: #D9DEE8; /* input / composer border */
-  --color-warm-border: #E9E6DE; /* sidebar right border / warm divider */
-  --color-warm-hover: #ECE8DE;  /* sidebar item hover / active bg (design handoff §3.1) */
-  --color-hairline: #F0F2F6;    /* faint divider inside cards */
+  --color-rule: #e4e7ee; /* primary card border */
+  --color-rule-strong: #d9dee8; /* input / composer border */
+  --color-warm-border: #e9e6de; /* sidebar right border / warm divider */
+  --color-warm-hover: #ece8de; /* sidebar item hover / active bg (design handoff §3.1) */
+  --color-hairline: #f0f2f6; /* faint divider inside cards */
 
   /* On-navy text (on the brand fill: buttons, outgoing bubbles) */
-  --color-on-spruce: #FFFFFF;
+  --color-on-spruce: #ffffff;
   --color-on-spruce-soft: rgb(255 255 255 / 0.74);
   --color-on-spruce-faint: rgb(255 255 255 / 0.55);
 
   /* Hale tip gradient (design handoff) */
-  --tip-gradient: linear-gradient(180deg, #FFF9F1, #FBEDDC);
+  --tip-gradient: linear-gradient(180deg, #fff9f1, #fbeddc);
 
   /* ── Type — Figtree (body/UI) + Fraunces (display) ────────────────────── *
    * Shore is a TWO-family system: Fraunces for display/title only, and Figtree
@@ -225,9 +225,9 @@
   --font-display: var(--font-serif);
   --font-body: var(--font-sans);
 
-  --tracking-display: -0.02em;       /* Shore display tracking */
-  --tracking-eyebrow: 0.08em;        /* tag / chip / timing small-caps */
-  --tracking-eyebrow-tight: 0.07em;  /* Shore's section-label eyebrow */
+  --tracking-display: -0.02em; /* Shore display tracking */
+  --tracking-eyebrow: 0.08em; /* tag / chip / timing small-caps */
+  --tracking-eyebrow-tight: 0.07em; /* Shore's section-label eyebrow */
 
   /* ── Spacing & rhythm ────────────────────────────────────────────────── */
   --shell-pad-x: clamp(1.5rem, 5vw, 6rem);
@@ -265,7 +265,7 @@
   --shadow-card-hover: 0 12px 32px rgb(23 41 74 / 0.14);
   --shadow-menu: 0 12px 32px rgb(23 41 74 / 0.14);
   --shadow-popover: 0 16px 40px rgb(23 41 74 / 0.16);
-  --shadow-modal: 0 30px 80px rgb(20 28 60 / 0.30);
+  --shadow-modal: 0 30px 80px rgb(20 28 60 / 0.3);
 
   /* ── Curves — the one slow "breathing" easing ────────────────────────── */
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
@@ -308,102 +308,102 @@
  * generous separation a near-black card gave away for free. */
 .dark {
   /* Surfaces — the brand-hue navy ladder, canvas → card → raised → #17294A. */
-  --color-canvas: #0E1A2F;       /* CANVAS — deep Prussian navy ground, hsl(218 54% 12%) */
-  --color-card: #13223E;         /* CARD surface — one notch above canvas (1.10:1) */
-  --color-linen: #0E1A2F;        /* legacy name for `canvas` */
-  --color-oat: #13223E;          /* legacy name for `card` */
-  --color-raised: #17294A;       /* RAISED — the BRAND ink navy itself (1.10:1 on card) */
-  --color-tile: #152541;         /* inner tile — subtle lift on card (1.04:1); web-only role */
-  --color-chrome: #17294A;       /* CHROME ANCHOR — the ladder's own `raised` rung, sidebar frame only (1.20:1 on canvas) */
-  --color-alt-surface: #192D52;  /* selected row — lift on the card (1.16:1) */
+  --color-canvas: #0e1a2f; /* CANVAS — deep Prussian navy ground, hsl(218 54% 12%) */
+  --color-card: #13223e; /* CARD surface — one notch above canvas (1.10:1) */
+  --color-linen: #0e1a2f; /* legacy name for `canvas` */
+  --color-oat: #13223e; /* legacy name for `card` */
+  --color-raised: #17294a; /* RAISED — the BRAND ink navy itself (1.10:1 on card) */
+  --color-tile: #152541; /* inner tile — subtle lift on card (1.04:1); web-only role */
+  --color-chrome: #17294a; /* CHROME ANCHOR — the ladder's own `raised` rung, sidebar frame only (1.20:1 on canvas) */
+  --color-alt-surface: #192d52; /* selected row — lift on the card (1.16:1) */
 
   /* Ink + text ladder — the SAME warm cream/blue-gray hexes, re-measured on the
    * navy ground. The navy canvas is lighter than the near-black it replaces, so
    * every ratio drops ~7% and every one still clears its bar by a wide margin. */
-  --color-ink: #F6F1E7;          /* PRIMARY INK — warm cream — 15.45:1 on canvas, 14.07:1 on card */
-  --color-ink-2: #C7D3E6;        /* secondary text — 11.50:1 on canvas, 9.56:1 on raised */
-  --color-ink-3: #9BB0D0;        /* tertiary / meta / nav-inactive / .eyebrow — 7.88:1 on canvas, 6.55:1 on raised */
-  --color-caption: #8B93A1;      /* Shore caption gray — 5.62:1 on canvas, 4.67:1 on raised (clears AA on every surface) */
-  --color-on-ink: #17294A;       /* Shore — the label ON an ink / brand fill inverts to ink navy */
-  --color-spruce: #F6F1E7;       /* legacy name for `ink` */
-  --color-slate-green: #C7D3E6;  /* legacy name for `ink-2` */
-  --color-faded-sage: #9BB0D0;   /* legacy name for `ink-3` */
-  --color-muted: #8B93A1;        /* legacy name for `caption` */
-  --color-faint: #79879E;        /* Skip / placeholders / chevrons — 4.78:1 on canvas, decorative */
-  --color-mist: #6C7A92;         /* dropdown labels / timestamps — 4.01:1 on canvas, decorative
+  --color-ink: #f6f1e7; /* PRIMARY INK — warm cream — 15.45:1 on canvas, 14.07:1 on card */
+  --color-ink-2: #c7d3e6; /* secondary text — 11.50:1 on canvas, 9.56:1 on raised */
+  --color-ink-3: #9bb0d0; /* tertiary / meta / nav-inactive / .eyebrow — 7.88:1 on canvas, 6.55:1 on raised */
+  --color-caption: #8b93a1; /* Shore caption gray — 5.62:1 on canvas, 4.67:1 on raised (clears AA on every surface) */
+  --color-on-ink: #17294a; /* Shore — the label ON an ink / brand fill inverts to ink navy */
+  --color-spruce: #f6f1e7; /* legacy name for `ink` */
+  --color-slate-green: #c7d3e6; /* legacy name for `ink-2` */
+  --color-faded-sage: #9bb0d0; /* legacy name for `ink-3` */
+  --color-muted: #8b93a1; /* legacy name for `caption` */
+  --color-faint: #79879e; /* Skip / placeholders / chevrons — 4.78:1 on canvas, decorative */
+  --color-mist: #6c7a92; /* dropdown labels / timestamps — 4.01:1 on canvas, decorative
                                   * (light mode's counterpart is 1.95:1, so dark stays the safer mode) */
 
   /* Brand — Shore lightens the navy to periwinkle so it stays the one committed
    * accent on dark (a cream brand would collapse into the ink it sits beside). */
-  --color-brand: #9AA6E6;        /* 7.43:1 on canvas · on-ink label on it 6.18:1 */
-  --color-brand-hover: #B3BCEE;  /* +1 step lighter, mirroring light's navy→lighter-navy hover */
+  --color-brand: #9aa6e6; /* 7.43:1 on canvas · on-ink label on it 6.18:1 */
+  --color-brand-hover: #b3bcee; /* +1 step lighter, mirroring light's navy→lighter-navy hover */
 
   /* Accent (apricot*) — follows INK, not brand: the light palette re-points it to
    * ink navy, so dark inverts it to cream. Small content accents + focus rings
    * (ring on canvas 15.45:1 · on card 14.07:1 · on chrome 13.02:1). */
-  --color-apricot: #F6F1E7;
-  --color-apricot-deep: #F6F1E7;     /* 15.45:1 on canvas */
-  --color-apricot-tint: #273145;     /* the neutral wash — avatars / chips / "You" pill. Light's
+  --color-apricot: #f6f1e7;
+  --color-apricot-deep: #f6f1e7; /* 15.45:1 on canvas */
+  --color-apricot-tint: #273145; /* the neutral wash — avatars / chips / "You" pill. Light's
                                       * #ECE8DE is a WARM-neutral wash on warm white; on a navy
                                       * ground the analogous wash is the ground's own hue,
                                       * desaturated (hsl 221 28%) — 1.22:1 on card, exactly light's
                                       * step. Brand on it 5.57:1 (.avatar-child), ink 11.58:1. */
 
   /* Decorative illustration blue — dark variant, kept for the illo kit only. */
-  --color-illustration: #8AA2F2;
-  --color-illustration-tint: #1E2B4E;  /* re-lifted 1.08 → 1.14:1 on the navy card */
+  --color-illustration: #8aa2f2;
+  --color-illustration-tint: #1e2b4e; /* re-lifted 1.08 → 1.14:1 on the navy card */
 
   /* Teal accent (sky*) — coach / calm. */
-  --color-sky: #56B9AE;
-  --color-sky-deep: #56B9AE;     /* 7.41:1 on canvas · 5.87:1 on sky-tint */
-  --color-sky-tint: #123230;     /* already 1.15:1 on the navy card — unchanged */
+  --color-sky: #56b9ae;
+  --color-sky-deep: #56b9ae; /* 7.41:1 on canvas · 5.87:1 on sky-tint */
+  --color-sky-tint: #123230; /* already 1.15:1 on the navy card — unchanged */
 
-  --color-sea: #9AA6E6;          /* follows `brand`, exactly as it does in light */
+  --color-sea: #9aa6e6; /* follows `brand`, exactly as it does in light */
 
   /* Green accent (sage/success) — done / health. */
-  --color-sage: #6FCB8F;         /* 8.79:1 on canvas · 7.19:1 on sage-tint */
-  --color-sage-tint: #16301F;    /* already 1.11:1 on the navy card — unchanged */
-  --color-success: #6FCB8F;
+  --color-sage: #6fcb8f; /* 8.79:1 on canvas · 7.19:1 on sage-tint */
+  --color-sage-tint: #16301f; /* already 1.11:1 on the navy card — unchanged */
+  --color-success: #6fcb8f;
 
   /* Amber accent — awaiting / tip. The amber TONE is a pre-existing semantic
    * (like sage / berry / sky); it is not part of the app's brand palette, which
    * stays navy + warm-neutral. Only its wash moved, to hold its step. */
-  --color-amber: #E0A44E;        /* 7.94:1 on canvas · 6.45:1 on amber-tint */
-  --color-amber-tint: #372910;   /* re-lifted 1.07 → 1.12:1 on card; ink on it 12.54:1 (.pill-amber) */
+  --color-amber: #e0a44e; /* 7.94:1 on canvas · 6.45:1 on amber-tint */
+  --color-amber-tint: #372910; /* re-lifted 1.07 → 1.12:1 on card; ink on it 12.54:1 (.pill-amber) */
 
   /* Purple accent (lavender) — insight / AI. */
-  --color-lavender: #2B2546;     /* re-lifted 1.00 → 1.10:1 on card (it VANISHED on the navy card) */
-  --color-purple: #B3A6E6;       /* 7.88:1 on canvas · 6.54:1 on lavender */
+  --color-lavender: #2b2546; /* re-lifted 1.00 → 1.10:1 on card (it VANISHED on the navy card) */
+  --color-purple: #b3a6e6; /* 7.88:1 on canvas · 6.54:1 on lavender */
 
   /* Terracotta accent (berry*) — needs-you / danger / sign-out. */
-  --color-berry: #E58C78;        /* 6.92:1 on canvas · 5.60:1 on berry-tint */
-  --color-berry-tint: #42231E;   /* re-lifted 1.05 → 1.12:1 on card */
+  --color-berry: #e58c78; /* 6.92:1 on canvas · 5.60:1 on berry-tint */
+  --color-berry-tint: #42231e; /* re-lifted 1.05 → 1.12:1 on card */
 
   /* Accent inks on their dark tint — the already-light accent reads high-contrast
    * on the deep tint, so no separate darkening is needed (unlike light mode). */
-  --color-amber-ink: #E0A44E;    /* on dark amber-tint #372910 — 6.45:1 */
-  --color-berry-ink: #E58C78;    /* on dark berry-tint #42231E — 5.60:1 */
-  --color-sage-ink: #6FCB8F;     /* on dark sage-tint #16301F — 7.19:1 */
+  --color-amber-ink: #e0a44e; /* on dark amber-tint #372910 — 6.45:1 */
+  --color-berry-ink: #e58c78; /* on dark berry-tint #42231E — 5.60:1 */
+  --color-sage-ink: #6fcb8f; /* on dark sage-tint #16301F — 7.19:1 */
 
   /* Sleep mini-chart bar — periwinkle, lightened to read on the dark card. */
-  --color-sleep-bar: #7981C9;    /* 4.80:1 on canvas — decorative data mark, not text */
+  --color-sleep-bar: #7981c9; /* 4.80:1 on canvas — decorative data mark, not text */
 
   /* ── Hale Shore roles apps/web had no name for — dark ────────────────────── */
-  --color-accent: #FB923C;       /* text-safe apricot — 7.68:1 on canvas · 6.37:1 on accent-tint */
-  --color-accent-fill: #F97316;
-  --color-accent-tint: #35271B;  /* re-lifted 1.04 → 1.10:1 on the navy card */
+  --color-accent: #fb923c; /* text-safe apricot — 7.68:1 on canvas · 6.37:1 on accent-tint */
+  --color-accent-fill: #f97316;
+  --color-accent-tint: #35271b; /* re-lifted 1.04 → 1.10:1 on the navy card */
 
-  --color-badge: #EF9350;
-  --color-destructive: #E58C78;  /* Shore name for `berry` */
+  --color-badge: #ef9350;
+  --color-destructive: #e58c78; /* Shore name for `berry` */
 
   /* Cream highlight card — Shore's "great news" tile (.village-rec). It stays the
    * one WARM surface in the app, which is the whole point of it: against a navy
    * field a warm tile is unmistakably "good news". At the old #2A2114 it measured
    * 1.00:1 on the navy card — identical luminance, so it disappeared entirely and
    * only its hue survived. Re-lifted to 1.10:1 on card / 1.21:1 on canvas. */
-  --color-cream: #332819;        /* ink on it 12.79:1 · ink-2 9.52:1 */
-  --color-cream-border: #3F3222; /* 1.16:1 on cream — matches light's border step exactly */
-  --color-cream-accent: #E0A44E; /* Shore name for `amber` — 6.58:1 on the dark cream */
+  --color-cream: #332819; /* ink on it 12.79:1 · ink-2 9.52:1 */
+  --color-cream-border: #3f3222; /* 1.16:1 on cream — matches light's border step exactly */
+  --color-cream-accent: #e0a44e; /* Shore name for `amber` — 6.58:1 on the dark cream */
 
   /* Tint chips — the warm-hued grounds (blue/yellow/red) compressed to 1.04–1.07:1
    * on the navy card and are re-lifted to their LIGHT-mode steps; green / teal /
@@ -412,18 +412,18 @@
    * gray 6.45:1 — every pair clears the 3:1 non-text floor for the icon it carries
    * with room to spare, but the light-mode rule still stands: a chip tone is never
    * small-text colour. */
-  --color-chip-blue: #202B4C;    /* 1.14:1 on card (was 1.04) */
-  --color-chip-blue-icon: #A3B6F0;
-  --color-chip-green: #16301F;   /* 1.11:1 — unchanged */
-  --color-chip-green-icon: #78C795;
-  --color-chip-yellow: #342B17;  /* 1.13:1 on card (was 1.06) */
-  --color-chip-yellow-icon: #DBA64F;
-  --color-chip-red: #422621;     /* 1.15:1 on card (was 1.07) */
-  --color-chip-red-icon: #E79F8E;
-  --color-chip-teal: #12302D;    /* 1.12:1 — unchanged */
-  --color-chip-teal-icon: #57BAB1;
-  --color-chip-gray: #262A31;    /* 1.10:1 — unchanged */
-  --color-chip-gray-icon: #A6AEBD;
+  --color-chip-blue: #202b4c; /* 1.14:1 on card (was 1.04) */
+  --color-chip-blue-icon: #a3b6f0;
+  --color-chip-green: #16301f; /* 1.11:1 — unchanged */
+  --color-chip-green-icon: #78c795;
+  --color-chip-yellow: #342b17; /* 1.13:1 on card (was 1.06) */
+  --color-chip-yellow-icon: #dba64f;
+  --color-chip-red: #422621; /* 1.15:1 on card (was 1.07) */
+  --color-chip-red-icon: #e79f8e;
+  --color-chip-teal: #12302d; /* 1.12:1 — unchanged */
+  --color-chip-teal-icon: #57bab1;
+  --color-chip-gray: #262a31; /* 1.10:1 — unchanged */
+  --color-chip-gray-icon: #a6aebd;
 
   /* Hairlines — the same cream alphas, which is why they need no new values: an
    * alpha edge re-composites against whatever ground it lands on, so the navy
@@ -439,12 +439,12 @@
    * modes — a surface phase, not a token swap. */
   --color-rule: rgb(246 241 231 / 0.12);
   --color-rule-strong: rgb(246 241 231 / 0.24);
-  --color-warm-border: rgb(246 241 231 / 0.12);  /* on chrome → #353A70, 1.39:1 — sidebar edge */
-  --color-warm-hover: rgb(246 241 231 / 0.12);  /* sidebar item hover — same cream lift as the frame divider on the dark chrome */
+  --color-warm-border: rgb(246 241 231 / 0.12); /* on chrome → #353A70, 1.39:1 — sidebar edge */
+  --color-warm-hover: rgb(246 241 231 / 0.12); /* sidebar item hover — same cream lift as the frame divider on the dark chrome */
   --color-hairline: rgb(246 241 231 / 0.08);
 
-  --color-on-spruce: #17294A;        /* legacy name for `on-ink` — 6.18:1 on the brand fill */
-  --color-on-spruce-soft: rgb(23 41 74 / 0.74);   /* composited on brand → 3.74:1, de-emphasised on-fill text */
+  --color-on-spruce: #17294a; /* legacy name for `on-ink` — 6.18:1 on the brand fill */
+  --color-on-spruce-soft: rgb(23 41 74 / 0.74); /* composited on brand → 3.74:1, de-emphasised on-fill text */
   --color-on-spruce-faint: rgb(23 41 74 / 0.55);
 
   /* Shore drops the card shadow on dark — "surfaces separate by lightness and
@@ -458,34 +458,6 @@
   --shadow-card-hover: none;
 
   color-scheme: dark;
-}
-
-/* ── Chrome anchor (dark only) ───────────────────────────────────────────── *
- * The app frame — sidebar + sticky mobile header + the off-canvas drawer — wears
- * the ladder's `raised` rung, so it separates from the content canvas purely by
- * LIGHTNESS (1.20:1) at the stage's own hue. The frame used to wear a 235° / 56%
- * indigo against the 219° / 53% stage: on a phone, where the drawer and the sticky
- * header sit right against the content, that read as a SECOND blue rather than a
- * step of the one palette.
- * We paint the frame with --color-chrome and locally re-point the "surface" tokens
- * nested controls lift onto (canvas / card), so a nav hover or theme-toggle thumb
- * steps UP from the navy frame instead of dropping back to the calm canvas —
- * keeping the frame's elevation self-consistent. Both names of each mirrored pair
- * are re-pointed together, so a descendant reads the same value whichever it asks
- * for. Light mode needs no override: --color-chrome is the warm #F7F5F0 the light
- * sidebar already paints. */
-.dark .sidebar,
-.dark .runninghead {
-  background: var(--color-chrome);
-  /* Lift surfaces, relative to the navy frame, for nested hover/active states.
-   * Cut on the ladder's OWN hue (219° / 53%), so no lift can reintroduce the indigo
-   * the frame just shed — each holds the step it has always held on the chrome:
-   * hover 1.25 · track 1.17 · active-pill 1.38. */
-  --color-canvas: #1F3866;       /* nav-item hover / theme-toggle thumb — 1.25:1 on chrome */
-  --color-card: #1D345E;         /* theme-toggle track / active-nav pill — 1.17:1; brand label on it 5.26:1 */
-  --color-linen: #1F3866;
-  --color-oat: #1D345E;
-  --color-alt-surface: #233E72;  /* selected switcher row — 1.38:1 on chrome; ink on it 9.31:1 */
 }
 
 html {
@@ -509,11 +481,15 @@ body {
 }
 
 @media (min-width: 1024px) {
-  body { font-size: 17px; }
+  body {
+    font-size: 17px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 /* Headlines: Fraunces, tight tracking, sentence-case, never all-caps.
@@ -536,7 +512,10 @@ body {
  * beats bare `h1` by specificity, so the authed stage keeps its tighter ceiling
  * for headings that carry no utility. */
 @layer base {
-  h1, h2, h3, h4 {
+  h1,
+  h2,
+  h3,
+  h4 {
     font-family: var(--font-display);
     font-optical-sizing: auto;
     font-synthesis-weight: none;
@@ -548,20 +527,40 @@ body {
     text-wrap: balance;
   }
 
-  h1 { font-size: clamp(2.6rem, 6vw, 4.75rem); }
-  h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
-  h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; font-weight: 500; }
+  h1 {
+    font-size: clamp(2.6rem, 6vw, 4.75rem);
+  }
+  h2 {
+    font-size: clamp(2rem, 4vw, 3.1rem);
+  }
+  h3 {
+    font-size: clamp(1.3rem, 2.2vw, 1.85rem);
+    line-height: 1.12;
+    font-weight: 500;
+  }
 
   /* Inside the authed main-stage the headings are the design system's, not the
    * marketing hero's: Shore sizes `display` at 34/40 (600, -0.02em) and `title`
    * at 22/28 (500), so the stage H1 tops out at 34px and the H2 at 22px. They
    * still scale down on a narrow column — a fixed 34px is fine on a phone (it is
    * what the mobile app ships) but the clamp keeps long titles from crowding. */
-  .main-stage h1 { font-size: clamp(1.75rem, 2.4vw, 2.125rem); line-height: 1.18; font-weight: 500; }
-  .main-stage h2 { font-size: clamp(1.25rem, 1.8vw, 1.375rem); line-height: 1.28; font-weight: 500; }
+  .main-stage h1 {
+    font-size: clamp(1.75rem, 2.4vw, 2.125rem);
+    line-height: 1.18;
+    font-weight: 500;
+  }
+  .main-stage h2 {
+    font-size: clamp(1.25rem, 1.8vw, 1.375rem);
+    line-height: 1.28;
+    font-weight: 500;
+  }
 
-  em { font-style: italic; }
-  strong { font-weight: 700; }
+  em {
+    font-style: italic;
+  }
+  strong {
+    font-weight: 700;
+  }
 }
 
 /* ── Type roles ────────────────────────────────────────────────────────── *
@@ -572,10 +571,19 @@ body {
  * font-weight beat `font-normal`. Layered, the utility wins — which is what every
  * one of those call sites already meant. See globals-layer.test.ts. */
 @layer components {
-  .font-display { font-family: var(--font-display); }
-  .font-body { font-family: var(--font-body); }
-  .font-mono { font-family: var(--font-mono); }
-  .tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .font-display {
+    font-family: var(--font-display);
+  }
+  .font-body {
+    font-family: var(--font-body);
+  }
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
 
   /* Shore's section-label eyebrow: 11.5px / 700 / uppercase / 0.07em.
    *
@@ -695,579 +703,6 @@ body {
   gap: 0.5rem;
 }
 
-/*
- * The app shell is a fixed-height frame, not a scrolling page. The sidebar and
- * the main stage each own their scroll, so the sticky header never drifts and
- * there is no whole-page scroll jank. Width tokens drive the rail collapse, so
- * one transition animates the grid.
- */
-.editorial-layout {
-  --sidebar-full: 14.375rem; /* 230px expanded (design handoff §3.1) */
-  --sidebar-rail: 4.75rem;   /* 76px icon rail collapsed */
-  --sidebar-w: var(--sidebar-full);
-  display: grid;
-  grid-template-columns: 1fr;
-  height: 100dvh;
-  overflow: hidden;
-  background: var(--color-canvas);
-}
-
-@media (min-width: 1024px) {
-  .editorial-layout {
-    /* minmax(0, 1fr) floor keeps a long word in a descendant H1 from
-     * blowing out the column and triggering horizontal scroll. */
-    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-    transition: grid-template-columns 0.2s var(--ease-breathe);
-  }
-  [data-shell-collapsed="1"] .editorial-layout { --sidebar-w: var(--sidebar-rail); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .editorial-layout { transition: none; }
-}
-
-/* The scrolling column: header pinned, main stage scrolls beneath it. */
-.shell-column {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* ── Sidebar dock — the grid cell on desktop, an off-canvas drawer below ── */
-
-.sidebar-dock {
-  display: none;
-}
-
-@media (min-width: 1024px) {
-  .sidebar-dock {
-    display: block;
-    min-height: 0;
-    overflow: hidden;
-  }
-}
-
-/* ── Sidebar — a soft Oat panel that stays out of the way ──────────────── */
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--color-chrome);
-  border-right: 1px solid var(--color-warm-border);
-  padding: 1.375rem 0.75rem 1rem;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* As the off-canvas drawer (mobile), stop an over-scroll from chaining to the
-   * page locked behind it. */
-  overscroll-behavior: contain;
-  color: var(--color-ink);
-}
-
-.sidebar-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  text-decoration: none;
-  color: var(--color-ink);
-  min-width: 0;
-}
-
-.sidebar-wordmark {
-  font-size: 1.5rem; /* 24px serif wordmark (design handoff §3.1) */
-  line-height: 1;
-  color: var(--color-brand);
-}
-
-.sidebar-top-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex-shrink: 0;
-}
-
-.sidebar-collapse,
-.sidebar-drawer-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border: 0;
-  border-radius: var(--r-full);
-  background: transparent;
-  color: var(--color-ink-3);
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
-}
-
-.sidebar-collapse:hover,
-.sidebar-drawer-close:hover { color: var(--color-ink); background: var(--color-canvas); }
-
-.sidebar-collapse:focus-visible,
-.sidebar-drawer-close:focus-visible {
-  outline: none;
-  color: var(--color-ink);
-  box-shadow: 0 0 0 2px var(--color-card), 0 0 0 4px var(--color-apricot-deep);
-}
-
-/* Dismiss (X) for an in-context upgrade invitation — a quiet, 44px tap target. */
-.upgrade-prompt-dismiss {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 2.75rem;
-  height: 2.75rem;
-  border: 0;
-  border-radius: var(--r-full);
-  background: transparent;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
-}
-
-.upgrade-prompt-dismiss:hover { background: var(--color-card); }
-
-.upgrade-prompt-dismiss:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
-}
-
-/* The collapse toggle is desktop-only; the close (X) is drawer-only. */
-.sidebar-drawer-close { display: none; }
-
-@media (max-width: 1023.98px) {
-  .sidebar-collapse { display: none; }
-  .sidebar-drawer-close { display: inline-flex; }
-}
-
-.sidebar-nav {
-  margin-top: 1.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.sidebar-foot {
-  margin-top: auto;
-  padding-top: 2.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.sidebar-foot-controls {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-/* ── Account chip + menu ────────────────────────────────────────────────── *
- * The signed-in parent and their family identity at the foot of the rail; the
- * chip is the trigger, the popover opens upward above it (the foot anchors the
- * bottom of the column). */
-.account-menu { position: relative; }
-
-.account-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  width: 100%;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.6rem;
-  border: 0;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--color-ink);
-  cursor: pointer;
-  text-align: left;
-  touch-action: manipulation;
-  transition: background 220ms var(--ease-breathe);
-}
-
-.account-chip:hover { background: var(--color-canvas); }
-
-.account-chip:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--color-apricot-deep);
-}
-
-.account-chip-identity {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.account-chip-name {
-  font-family: var(--font-body);
-  font-size: 0.95rem;
-  font-weight: 600;
-  line-height: 1.15;
-  color: var(--color-ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.account-chip-family {
-  line-height: 1.15;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.account-chip-caret { color: var(--color-ink-3); flex-shrink: 0; }
-
-.account-pop {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 0.5rem);
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  padding: 0.4rem;
-  border-radius: var(--r-md);
-  background: var(--color-raised);
-  box-shadow: var(--shadow-popover);
-}
-
-.account-pop-item {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  width: 100%;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.65rem;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--color-ink-2);
-  font-family: var(--font-body);
-  font-size: 0.95rem;
-  font-weight: 500;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
-}
-
-.account-pop-item:hover { color: var(--color-ink); background: var(--color-card); }
-
-.account-pop-item:focus-visible {
-  outline: none;
-  color: var(--color-ink);
-  box-shadow: 0 0 0 3px var(--color-apricot-deep);
-}
-
-.account-pop-signout { color: var(--color-berry); }
-.account-pop-signout:hover { color: var(--color-berry); background: var(--color-berry-tint); }
-
-.account-pop-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-  padding: 0.4rem 0.65rem;
-}
-
-.account-pop-row-label {
-  font-family: var(--font-body);
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--color-ink-2);
-}
-
-.account-pop-divider {
-  height: 1px;
-  margin: 0.25rem 0;
-  background: var(--color-rule);
-}
-
-/* ── Child switcher (sidebar foot) ─────────────────────────────────────── *
- * Reuses the account chip + popover shell (both live in .account-menu, so the
- * collapsed-rail folding rules apply for free); only the avatar and the selected
- * / add-child rows are its own. The avatar is a blue-tint initial disc. */
-.child-avatar {
-  display: inline-grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
-  border-radius: var(--r-full);
-  background: var(--color-apricot-tint);
-  color: var(--color-brand);
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-/* Shared people-avatar (components/ui/avatar.tsx): a photo when we have one, else a
- * tinted initials disc. `account` = navy disc + on-navy initials (the signed-in
- * parent); `child` = warm disc + navy initials (a child) — the two tones keep the
- * account chip and the child chip from reading as the same name row (§3.1). Sizing
- * is inline (per call site); the box only owns shape + type. */
-.avatar {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--r-full);
-  overflow: hidden;
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  font-weight: 700;
-  line-height: 1;
-}
-.avatar-image { object-fit: cover; }
-.avatar-account { background: var(--color-brand); color: var(--color-on-ink); }
-.avatar-child { background: var(--color-apricot-tint); color: var(--color-brand); }
-
-/* Selected child row inside the switcher popover. */
-.account-pop-item[aria-current="true"] {
-  background: var(--color-alt-surface);
-  color: var(--color-ink);
-}
-
-/* "Add child" — a blue text action set off from the child rows. */
-.account-pop-add { color: var(--color-apricot-deep); font-weight: 600; }
-.account-pop-add:hover { color: var(--color-apricot-deep); background: var(--color-apricot-tint); }
-
-/* The sign-in/out glyph is the collapsed-rail fallback only; the expanded
- * sidebar and the mobile drawer show the text label instead. */
-.auth-control-icon { display: none; }
-
-/* ── Collapsed rail — icons only, labels + chrome fold away, tips on hover ─ */
-
-@media (min-width: 1024px) {
-  /* The rail is short (a handful of icons), so it can drop its own scroll and
-   * let tooltips escape the panel edge instead of being clipped. */
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-dock { overflow: visible; }
-  [data-shell-collapsed="1"] .editorial-layout .sidebar {
-    padding-inline: 1rem;
-    align-items: stretch;
-    overflow: visible;
-  }
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-wordmark,
-  [data-shell-collapsed="1"] .editorial-layout .nav-label {
-    display: none;
-  }
-  /* The auth control survives the collapse as an icon-only affordance — its text
-   * label folds away (.nav-label above) but the glyph stays reachable, so a
-   * collapsed rail can still sign in/out. */
-  [data-shell-collapsed="1"] .editorial-layout .auth-control {
-    padding-inline: 0;
-    justify-content: center;
-    width: 2.5rem;
-    min-width: 2.5rem;
-  }
-  [data-shell-collapsed="1"] .editorial-layout .auth-control-icon { display: inline-flex; }
-  /* Stack the brand over the collapse toggle so the toggle stays reachable in
-   * the rail — without it, a collapsed sidebar could never be re-expanded. */
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-top {
-    flex-direction: column;
-    justify-content: center;
-    gap: 0.75rem;
-  }
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-brand { gap: 0; }
-  [data-shell-collapsed="1"] .editorial-layout .nav-item { justify-content: center; padding-inline: 0; }
-  [data-shell-collapsed="1"] .editorial-layout .nav-item .nav-folio { width: auto; }
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-foot-controls { justify-content: center; }
-  [data-shell-collapsed="1"] .editorial-layout .nav-tip { display: block; }
-  /* Collapsed: the chip folds to its avatar; identity text + caret hide, and the
-   * popover widens past the rail so its items stay readable when opened. */
-  [data-shell-collapsed="1"] .editorial-layout .account-chip {
-    justify-content: center;
-    padding-inline: 0;
-  }
-  [data-shell-collapsed="1"] .editorial-layout .account-chip-identity,
-  [data-shell-collapsed="1"] .editorial-layout .account-chip-caret {
-    display: none;
-  }
-  [data-shell-collapsed="1"] .editorial-layout .account-pop {
-    left: 0;
-    right: auto;
-    width: 13.25rem; /* 212px — design handoff §3.1 account-menu popover width */
-  }
-}
-
-/* ── Off-canvas drawer (below the desktop breakpoint) ──────────────────── */
-
-.drawer-scrim {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  border: 0;
-  padding: 0;
-  background: rgb(20 28 60 / 0.45);
-  opacity: 0;
-  cursor: pointer;
-  transition: opacity 240ms var(--ease-breathe);
-}
-
-@media (max-width: 1023.98px) {
-  .sidebar-dock {
-    display: block;
-    position: fixed;
-    inset: 0 auto 0 0;
-    z-index: 40;
-    width: min(20rem, 86vw);
-    transform: translateX(-100%);
-    transition: transform 260ms var(--ease-breathe);
-  }
-  .sidebar-dock[data-open] { transform: translateX(0); box-shadow: 0 0 48px rgb(20 28 60 / 0.28); }
-  .drawer-scrim[data-open] { display: block; opacity: 1; }
-}
-
-@media (max-width: 1023.98px) and (prefers-reduced-motion: reduce) {
-  .sidebar-dock, .drawer-scrim { transition: none; }
-}
-
-/* ── Running head — the sticky header frame above the scrolling stage ───── */
-
-.runninghead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-shrink: 0;
-  padding: 0.85rem var(--shell-pad-x);
-  background: var(--color-canvas);
-  border-bottom: 1px solid var(--color-rule);
-  position: sticky;
-  top: 0;
-  z-index: 20;
-}
-
-.runninghead-lead {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  min-width: 0;
-}
-
-.runninghead-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  text-decoration: none;
-  color: var(--color-ink);
-}
-
-.runninghead-menu {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 0;
-  border-radius: var(--r-full);
-  background: transparent;
-  color: var(--color-ink);
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: background 220ms var(--ease-breathe);
-}
-
-.runninghead-menu:hover { background: var(--color-card); }
-
-.runninghead-menu:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-apricot-deep);
-}
-
-/* On desktop the always-visible sidebar carries the brand, nav, and current
- * surface, so the running head is pure duplication; drop it and reclaim the
- * vertical space. It stays on mobile, where the hamburger opens the drawer. */
-@media (min-width: 1024px) {
-  .runninghead { display: none; }
-}
-
-/* ── Desktop top bar — inside the main column (design handoff §3.2) ─────── *
- * Left: the page-hero slot (h1 + subtitle, or breadcrumb + back) that pages fill
- * in later phases. Right: the family's real location pill + the notification bell
- * (a link into Messages; its dropdown lands in a later phase). Desktop-only; the
- * mobile sticky running head + hamburger still own the narrow-viewport frame. */
-.app-topbar { display: none; }
-
-@media (min-width: 1024px) {
-  .app-topbar {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1.5rem;
-    flex-shrink: 0;
-    padding: 1.625rem 2.25rem 0; /* 26px 36px 0 */
-  }
-}
-
-/* The left hero slot: empty until a page fills it, but it still holds the row's
- * height so the actions never collapse onto the top edge. */
-.app-topbar-hero { min-width: 0; flex: 1; }
-
-.app-topbar-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-shrink: 0;
-}
-
-/* Location pill — a static read-out of the family's current city (the interactive
- * saved-areas popover arrives with a later backend seam). */
-.location-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.85rem;
-  border: 1px solid var(--color-rule);
-  border-radius: var(--r-full);
-  background: var(--color-card);
-  color: var(--color-ink-2);
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.location-pill svg { color: var(--color-ink-3); }
-
-.topbar-bell {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 1px solid var(--color-rule);
-  border-radius: var(--r-full);
-  background: var(--color-card);
-  color: var(--color-ink-2);
-  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
-}
-
-.topbar-bell:hover { color: var(--color-ink); background: var(--color-tile); }
-
-.topbar-bell:focus-visible {
-  outline: none;
-  color: var(--color-ink);
-  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
-}
-
 .main-stage {
   flex: 1;
   min-height: 0;
@@ -1279,15 +714,9 @@ body {
 /* Contained content column (Notion/Linear-style) — content never stretches to the
  * full stage width; it sits in a centered ~58rem column so cards and rows keep a
  * comfortable density instead of spreading thin. The coach chat opts out (it owns
- * its own full-height surface); the Village board opts UP to a wider column
- * (.village-wide) so its 330|1fr|300 map board keeps a real centrepiece map (§4.5),
- * the same "wide surface opts out" pattern the coach chat uses. */
-.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.village-wide):not(.pp-portal) {
+ * its own full-height surface). */
+.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.pp-portal) {
   max-width: 58rem;
-  margin-inline: auto;
-}
-.main-stage > .village-wide {
-  max-width: 72rem;
   margin-inline: auto;
 }
 
@@ -1338,17 +767,29 @@ body {
  * two-column breakpoint up, size the hero off its own column width and let
  * long step titles wrap, so it can never overrun the content column. Stacked
  * (mobile/tablet) it keeps the global h1 scale. */
-.onboarding-hero h1 { overflow-wrap: break-word; }
+.onboarding-hero h1 {
+  overflow-wrap: break-word;
+}
 
 @media (min-width: 1024px) {
-  .onboarding-hero { container-type: inline-size; }
-  .onboarding-hero h1 { font-size: clamp(2rem, 18cqi, 3.25rem); }
+  .onboarding-hero {
+    container-type: inline-size;
+  }
+  .onboarding-hero h1 {
+    font-size: clamp(2rem, 18cqi, 3.25rem);
+  }
 }
 
 /* ── Hairline rule ─────────────────────────────────────────────────────── */
 
-.rule { border: 0; border-top: 1px solid var(--color-rule); }
-.rule-strong { border: 0; border-top: 1px solid var(--color-rule-strong); }
+.rule {
+  border: 0;
+  border-top: 1px solid var(--color-rule);
+}
+.rule-strong {
+  border: 0;
+  border-top: 1px solid var(--color-rule-strong);
+}
 
 /* ── Soft panels — read by tone, not by border (radius ≥ 8px) ──────────── */
 
@@ -1364,9 +805,20 @@ body {
   border-radius: var(--r-xl);
   padding: clamp(1.5rem, 2.4vw, 2.25rem) clamp(1.5rem, 3vw, 2.5rem);
 }
-.panel-oat { background: var(--color-card); border: 1px solid var(--color-rule); box-shadow: var(--shadow-card); border-radius: var(--r-xl); }
-.panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
-.panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
+.panel-oat {
+  background: var(--color-card);
+  border: 1px solid var(--color-rule);
+  box-shadow: var(--shadow-card);
+  border-radius: var(--r-xl);
+}
+.panel-sky-tint {
+  background: var(--color-sky-tint);
+  border-radius: var(--r-xl);
+}
+.panel-apricot-tint {
+  background: var(--color-apricot-tint);
+  border-radius: var(--r-xl);
+}
 
 /* ── Buttons — depress 1px + warm fill on press, no scale-bounce ───────── *
  * The label weight is 600, the top of Figtree's interactive band, not the 700 these
@@ -1393,8 +845,12 @@ body {
   transition: background 320ms var(--ease-breathe), transform 200ms var(--ease-breathe);
 }
 
-.btn-primary:hover { background: var(--color-brand-hover); }
-.btn-primary:active { transform: translateY(1px); }
+.btn-primary:hover {
+  background: var(--color-brand-hover);
+}
+.btn-primary:active {
+  transform: translateY(1px);
+}
 
 .btn-primary:focus-visible {
   outline: none;
@@ -1419,7 +875,10 @@ body {
   transition: border-color 280ms var(--ease-breathe), background 280ms var(--ease-breathe);
 }
 
-.btn-secondary:hover { border-color: var(--color-ink); background: var(--color-card); }
+.btn-secondary:hover {
+  border-color: var(--color-ink);
+  background: var(--color-card);
+}
 
 .btn-secondary:focus-visible {
   outline: none;
@@ -1448,7 +907,9 @@ body {
 .btn-ghost::after {
   content: "";
   position: absolute;
-  left: 0; right: 0; bottom: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: 2px;
   border-radius: 2px;
   background: var(--color-apricot-deep);
@@ -1457,10 +918,16 @@ body {
   transition: transform 360ms var(--ease-breathe);
 }
 
-.btn-ghost:hover::after { transform: scaleX(1); }
+.btn-ghost:hover::after {
+  transform: scaleX(1);
+}
 
-.btn-ghost[aria-pressed="true"] { color: var(--color-ink); }
-.btn-ghost[aria-pressed="true"]::after { transform: scaleX(1); }
+.btn-ghost[aria-pressed="true"] {
+  color: var(--color-ink);
+}
+.btn-ghost[aria-pressed="true"]::after {
+  transform: scaleX(1);
+}
 
 .btn-ghost:focus-visible {
   outline: none;
@@ -1479,7 +946,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn-ghost::after { transition: none; }
+  .btn-ghost::after {
+    transition: none;
+  }
 }
 
 /* ── Link underline — draws left-to-right in Apricot-deep ──────────────── */
@@ -1494,7 +963,9 @@ body {
 .link::after {
   content: "";
   position: absolute;
-  left: 0; right: 0; bottom: -2px;
+  left: 0;
+  right: 0;
+  bottom: -2px;
   height: 2px;
   border-radius: 2px;
   background: var(--color-ink);
@@ -1503,7 +974,9 @@ body {
   transition: transform 360ms var(--ease-breathe);
 }
 
-.link:hover::after { transform: scaleX(1); }
+.link:hover::after {
+  transform: scaleX(1);
+}
 
 .link:focus-visible {
   outline: none;
@@ -1511,10 +984,14 @@ body {
   border-radius: var(--r-sm);
 }
 
-.link:focus-visible::after { transform: scaleX(1); }
+.link:focus-visible::after {
+  transform: scaleX(1);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .link::after { transition: none; }
+  .link::after {
+    transition: none;
+  }
 }
 
 /* ── Pills ─────────────────────────────────────────────────────────────── *
@@ -1538,10 +1015,22 @@ body {
     letter-spacing: 0.04em;
   }
 
-  .pill-apricot { background: var(--color-apricot-tint); color: var(--color-ink); }
-  .pill-sky { background: var(--color-sky-tint); color: var(--color-ink); }
-  .pill-sage { background: var(--color-sage-tint); color: var(--color-ink); }
-  .pill-berry { background: var(--color-berry-tint); color: var(--color-ink); }
+  .pill-apricot {
+    background: var(--color-apricot-tint);
+    color: var(--color-ink);
+  }
+  .pill-sky {
+    background: var(--color-sky-tint);
+    color: var(--color-ink);
+  }
+  .pill-sage {
+    background: var(--color-sage-tint);
+    color: var(--color-ink);
+  }
+  .pill-berry {
+    background: var(--color-berry-tint);
+    color: var(--color-ink);
+  }
 
   .pill:focus-visible {
     outline: none;
@@ -1561,11 +1050,17 @@ body {
   .pill-action:not(:disabled):hover {
     box-shadow: inset 0 0 0 1.5px var(--color-rule-strong);
   }
-  .pill-action:not(:disabled):active { transform: translateY(1px); }
+  .pill-action:not(:disabled):active {
+    transform: translateY(1px);
+  }
 
   @media (prefers-reduced-motion: reduce) {
-    .pill-action { transition: none; }
-    .pill-action:not(:disabled):active { transform: none; }
+    .pill-action {
+      transition: none;
+    }
+    .pill-action:not(:disabled):active {
+      transform: none;
+    }
   }
 }
 
@@ -1608,10 +1103,18 @@ body {
  * `text-*` utility at a future call site can now win. */
 
 @layer components {
-  .tone-done { color: var(--color-sage); }
-  .tone-awaiting { color: var(--color-apricot-deep); }
-  .tone-coach { color: var(--color-sky-deep); }
-  .tone-needs-you { color: var(--color-berry); }
+  .tone-done {
+    color: var(--color-sage);
+  }
+  .tone-awaiting {
+    color: var(--color-apricot-deep);
+  }
+  .tone-coach {
+    color: var(--color-sky-deep);
+  }
+  .tone-needs-you {
+    color: var(--color-berry);
+  }
 }
 
 /* Native radio/checkbox tint — otherwise the UA default is browser-blue, the one raw
@@ -1637,11 +1140,15 @@ input[type="checkbox"] {
   transition: border-color 280ms var(--ease-breathe), box-shadow 280ms var(--ease-breathe);
 }
 
-.field::placeholder { color: var(--color-ink-3); }
+.field::placeholder {
+  color: var(--color-ink-3);
+}
 
 /* Search variant: clear the leading icon. .field is unlayered, so it overrides the
    Tailwind pl-* utility; set the larger padding-left here so it actually applies. */
-.field-search { padding-left: 2.75rem; }
+.field-search {
+  padding-left: 2.75rem;
+}
 
 .field:focus,
 .field:focus-visible {
@@ -1650,7 +1157,12 @@ input[type="checkbox"] {
   box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
 }
 
-textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-radius: var(--r-md); }
+textarea.field {
+  resize: vertical;
+  min-height: 6rem;
+  line-height: 1.55;
+  border-radius: var(--r-md);
+}
 
 /* A time / date / number control carries its own intrinsic content width — a
  * segmented clock, a picker, a spinner — so `.field`'s text-field `width: 100%`
@@ -1665,7 +1177,9 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 @layer components {
   input[type="time"].field,
   input[type="date"].field,
-  input[type="number"].field { max-width: max-content; }
+  input[type="number"].field {
+    max-width: max-content;
+  }
 }
 
 /* ── Ask Hale chat (the /coach transcript + composer) ──────────────────── *
@@ -1710,7 +1224,9 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   border-color: var(--color-rule-strong);
   box-shadow: 0 6px 18px rgba(13, 27, 61, 0.08);
 }
-.suggestion-row:not(:disabled):active { transform: translateY(1px); }
+.suggestion-row:not(:disabled):active {
+  transform: translateY(1px);
+}
 
 .suggestion-row:focus-visible {
   outline: none;
@@ -1718,8 +1234,12 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .suggestion-row { transition: none; }
-  .suggestion-row:not(:disabled):active { transform: none; }
+  .suggestion-row {
+    transition: none;
+  }
+  .suggestion-row:not(:disabled):active {
+    transform: none;
+  }
 }
 
 /* The composer row — a single rounded field that holds the textarea and the send
@@ -1755,8 +1275,13 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   color: var(--color-spruce);
 }
 
-.composer-input::placeholder { color: var(--color-faded-sage); }
-.composer-input:focus, .composer-input:focus-visible { outline: none; }
+.composer-input::placeholder {
+  color: var(--color-faded-sage);
+}
+.composer-input:focus,
+.composer-input:focus-visible {
+  outline: none;
+}
 
 .composer-send {
   display: inline-flex;
@@ -1772,8 +1297,12 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   transition: background 220ms var(--ease-breathe);
 }
 
-.composer-send:not(:disabled):hover { background: var(--color-apricot-deep); }
-.composer-send:not(:disabled):active { transform: translateY(1px); }
+.composer-send:not(:disabled):hover {
+  background: var(--color-apricot-deep);
+}
+.composer-send:not(:disabled):active {
+  transform: translateY(1px);
+}
 
 .composer-send:focus-visible {
   outline: none;
@@ -1796,7 +1325,10 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
 }
 
-.composer-mic:hover { color: var(--color-spruce); background: var(--color-oat); }
+.composer-mic:hover {
+  color: var(--color-spruce);
+  background: var(--color-oat);
+}
 
 .composer-mic:focus-visible {
   outline: none;
@@ -1811,8 +1343,13 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 }
 
 @keyframes mic-listening {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(20 28 60 / 0.35); }
-  50% { box-shadow: 0 0 0 6px rgb(20 28 60 / 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(20 28 60 / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(20 28 60 / 0);
+  }
 }
 
 /* One-time voice consent — a small popover above the mic (rule #1). */
@@ -1840,11 +1377,17 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .composer-mic-live { animation: none; }
+  .composer-mic-live {
+    animation: none;
+  }
 }
 
 /* The "Hale is thinking" bubble — three dots that breathe in sequence. */
-.typing-dots { display: inline-flex; align-items: center; gap: 0.3rem; }
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
 .typing-dots span {
   width: 0.45rem;
   height: 0.45rem;
@@ -1852,121 +1395,81 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   background: var(--color-faded-sage);
   animation: typing-dot 1.2s var(--ease-breathe) infinite;
 }
-.typing-dots span:nth-child(2) { animation-delay: 0.18s; }
-.typing-dots span:nth-child(3) { animation-delay: 0.36s; }
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.36s;
+}
 
 @keyframes typing-dot {
-  0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-0.18rem); }
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-0.18rem);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .typing-dots span { animation: none; opacity: 0.6; }
-  .composer-send:not(:disabled):active { transform: none; }
-}
-
-/* ── Nav (sidebar + mobile) ────────────────────────────────────────────── */
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 0.7rem;
-  color: var(--color-ink-3);
-  text-decoration: none;
-  border-radius: var(--r-md);
-  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
-  position: relative;
-}
-
-.nav-item:hover { color: var(--color-ink); background: var(--color-warm-hover); }
-
-.nav-item:focus-visible {
-  outline: none;
-  color: var(--color-ink);
-  box-shadow: 0 0 0 3px var(--color-apricot-deep);
-}
-
-.nav-item .nav-folio {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-ink-3);
-  width: 1.6rem;
-  flex-shrink: 0;
-}
-
-.nav-item .nav-label {
-  font-family: var(--font-sans);
-  font-size: 0.9rem;
-  line-height: 1.2;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.nav-item:hover .nav-folio { color: var(--color-ink); }
-
-/* Active nav = a white pill + brand-navy label (design handoff §3.1). */
-.nav-item[aria-current="page"] {
-  color: var(--color-brand);
-  background: var(--color-card);
-  box-shadow: var(--shadow-card);
-}
-.nav-item[aria-current="page"] .nav-label { font-weight: 700; }
-.nav-item[aria-current="page"] .nav-folio { color: var(--color-brand); }
-
-/* Tooltip shown only in the collapsed rail (toggled on by the rail rule). It
- * sits to the right of the icon and appears on hover/focus. */
-.nav-tip {
-  display: none;
-  position: absolute;
-  left: calc(100% + 0.5rem);
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 50;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--r-sm);
-  background: var(--color-ink);
-  color: var(--color-on-ink);
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 160ms var(--ease-breathe);
-}
-
-[data-shell-collapsed="1"] .editorial-layout .nav-item:hover .nav-tip,
-[data-shell-collapsed="1"] .editorial-layout .nav-item:focus-visible .nav-tip {
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .nav-tip { transition: none; }
+  .typing-dots span {
+    animation: none;
+    opacity: 0.6;
+  }
+  .composer-send:not(:disabled):active {
+    transform: none;
+  }
 }
 
 /* ── Breathing reveal — settle UP a few px and fade in, slowly ─────────── */
 
 @keyframes settle {
-  from { opacity: 0; transform: translateY(0.6rem); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .rise {
   opacity: 0;
   animation: settle 600ms var(--ease-breathe) forwards;
 }
-.rise-1 { animation-delay: 60ms; }
-.rise-2 { animation-delay: 160ms; }
-.rise-3 { animation-delay: 270ms; }
-.rise-4 { animation-delay: 390ms; }
-.rise-5 { animation-delay: 520ms; }
-.rise-6 { animation-delay: 640ms; }
-.rise-7 { animation-delay: 760ms; }
+.rise-1 {
+  animation-delay: 60ms;
+}
+.rise-2 {
+  animation-delay: 160ms;
+}
+.rise-3 {
+  animation-delay: 270ms;
+}
+.rise-4 {
+  animation-delay: 390ms;
+}
+.rise-5 {
+  animation-delay: 520ms;
+}
+.rise-6 {
+  animation-delay: 640ms;
+}
+.rise-7 {
+  animation-delay: 760ms;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .rise { animation: none; opacity: 1; transform: none; }
+  .rise {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ── Selection + scrollbar ─────────────────────────────────────────────── */
@@ -1976,28 +1479,54 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   color: var(--color-linen);
 }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-rule-strong); border-radius: var(--r-full); }
-::-webkit-scrollbar-thumb:hover { background: var(--color-faded-sage); }
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-rule-strong);
+  border-radius: var(--r-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-faded-sage);
+}
 
 /* ── Mobile safe-area helpers ──────────────────────────────────────────── */
 
-.pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 1rem);
+}
 
 @media (max-width: 768px) {
-  input, textarea, select { font-size: 16px !important; }
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }
 
 /* ── Theme switch — ease the color change, never the layout ─────────────── */
 
-html, body, .sidebar, .panel, .card, .field {
+html,
+body,
+.panel,
+.card,
+.field {
   transition: background-color 280ms var(--ease-breathe), color 280ms var(--ease-breathe),
     border-color 280ms var(--ease-breathe);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html, body, .sidebar, .panel, .card, .field { transition: none; }
+  html,
+  body,
+  .panel,
+  .card,
+  .field {
+    transition: none;
+  }
 }
 
 /* ── Theme toggle — a small segmented Light / Dark / System control ─────── */
@@ -2029,7 +1558,9 @@ html, body, .sidebar, .panel, .card, .field {
   transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
 }
 
-.theme-toggle-option:hover { color: var(--color-spruce); }
+.theme-toggle-option:hover {
+  color: var(--color-spruce);
+}
 
 .theme-toggle-option[aria-pressed="true"] {
   background: var(--color-linen);
@@ -2050,7 +1581,11 @@ html, body, .sidebar, .panel, .card, .field {
 
 /* ── Field group — label + control + hint/error (UI <Field>) ───────────── */
 
-.field-group { display: flex; flex-direction: column; gap: 0.45rem; }
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
 
 .field-label {
   font-family: var(--font-body);
@@ -2059,7 +1594,10 @@ html, body, .sidebar, .panel, .card, .field {
   color: var(--color-spruce);
 }
 
-.field-hint { font-size: 0.82rem; color: var(--color-faded-sage); }
+.field-hint {
+  font-size: 0.82rem;
+  color: var(--color-faded-sage);
+}
 
 .field-error {
   font-size: 0.82rem;
@@ -2083,12 +1621,26 @@ html, body, .sidebar, .panel, .card, .field {
   line-height: 1.65;
   color: var(--color-spruce);
 }
-.hale-markdown > * + * { margin-top: 0.7rem; }
-.hale-markdown strong { font-weight: 700; }
-.hale-markdown em { font-style: italic; }
-.hale-markdown ul { list-style: disc; padding-left: 1.3rem; }
-.hale-markdown ol { list-style: decimal; padding-left: 1.3rem; }
-.hale-markdown li + li { margin-top: 0.3rem; }
+.hale-markdown > * + * {
+  margin-top: 0.7rem;
+}
+.hale-markdown strong {
+  font-weight: 700;
+}
+.hale-markdown em {
+  font-style: italic;
+}
+.hale-markdown ul {
+  list-style: disc;
+  padding-left: 1.3rem;
+}
+.hale-markdown ol {
+  list-style: decimal;
+  padding-left: 1.3rem;
+}
+.hale-markdown li + li {
+  margin-top: 0.3rem;
+}
 .hale-markdown h1,
 .hale-markdown h2,
 .hale-markdown h3 {
@@ -2130,8 +1682,8 @@ html, body, .sidebar, .panel, .card, .field {
 .card-interactive {
   cursor: pointer;
   text-decoration: none;
-  transition: transform 220ms var(--ease-breathe), box-shadow 220ms var(--ease-breathe),
-    background 220ms var(--ease-breathe);
+  transition: transform 220ms var(--ease-breathe), box-shadow 220ms var(--ease-breathe), background
+    220ms var(--ease-breathe);
 }
 
 .card-interactive:hover {
@@ -2152,7 +1704,9 @@ html, body, .sidebar, .panel, .card, .field {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card-interactive:hover { transform: none; }
+  .card-interactive:hover {
+    transform: none;
+  }
 }
 
 /* Google Places Autocomplete (New) host. The gmp-place-autocomplete element is
@@ -2175,19 +1729,32 @@ html, body, .sidebar, .panel, .card, .field {
    the preview generation) — never as a gate in front of fast content. ─── */
 
 @keyframes turtle-enter {
-  0%   { opacity: 0; transform: scale(0.82); }
-  70%  { opacity: 1; transform: scale(1.06); }
-  100% { opacity: 1; transform: scale(1); }
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 @keyframes turtle-breathe {
-  0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.045); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.045);
+  }
 }
 
 .turtle-loader-mark {
-  animation:
-    turtle-enter 620ms var(--ease-breathe) both,
-    turtle-breathe 2.8s var(--ease-breathe) 620ms infinite;
+  animation: turtle-enter 620ms var(--ease-breathe) both, turtle-breathe 2.8s var(--ease-breathe)
+    620ms infinite;
 }
 .turtle-loader-text {
   opacity: 0;
@@ -2195,8 +1762,14 @@ html, body, .sidebar, .panel, .card, .field {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .turtle-loader-mark { animation: none; }
-  .turtle-loader-text { animation: none; opacity: 1; transform: none; }
+  .turtle-loader-mark {
+    animation: none;
+  }
+  .turtle-loader-text {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -2212,10 +1785,18 @@ html, body, .sidebar, .panel, .card, .field {
   overflow: hidden;
   transition: width 0.2s var(--ease-breathe);
 }
-.ask-rail-left { width: 222px; }
-.ask-rail-right { width: 320px; }
-:root[data-ask-rail-left="1"] .ask-rail-left { width: 44px; }
-:root[data-ask-rail-right="1"] .ask-rail-right { width: 44px; }
+.ask-rail-left {
+  width: 222px;
+}
+.ask-rail-right {
+  width: 320px;
+}
+:root[data-ask-rail-left="1"] .ask-rail-left {
+  width: 44px;
+}
+:root[data-ask-rail-right="1"] .ask-rail-right {
+  width: 44px;
+}
 
 .ask-rail__full {
   display: flex;
@@ -2231,9 +1812,13 @@ html, body, .sidebar, .panel, .card, .field {
   padding-top: 0.25rem;
 }
 :root[data-ask-rail-left="1"] .ask-rail-left .ask-rail__full,
-:root[data-ask-rail-right="1"] .ask-rail-right .ask-rail__full { display: none; }
+:root[data-ask-rail-right="1"] .ask-rail-right .ask-rail__full {
+  display: none;
+}
 :root[data-ask-rail-left="1"] .ask-rail-left .ask-rail__strip,
-:root[data-ask-rail-right="1"] .ask-rail-right .ask-rail__strip { display: flex; }
+:root[data-ask-rail-right="1"] .ask-rail-right .ask-rail__strip {
+  display: flex;
+}
 
 .ask-rail-scroll {
   flex: 1;
@@ -2244,7 +1829,9 @@ html, body, .sidebar, .panel, .card, .field {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ask-rail { transition: none; }
+  .ask-rail {
+    transition: none;
+  }
 }
 
 /* Small icon control (collapse / expand / strip actions) — a 32px hit target. */
@@ -2260,7 +1847,10 @@ html, body, .sidebar, .panel, .card, .field {
   color: var(--color-faded-sage);
   transition: background 160ms var(--ease-breathe), color 160ms var(--ease-breathe);
 }
-.ask-rail-icon-btn:hover { background: var(--color-warm-hover); color: var(--color-spruce); }
+.ask-rail-icon-btn:hover {
+  background: var(--color-warm-hover);
+  color: var(--color-spruce);
+}
 .ask-rail-icon-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
@@ -2295,8 +1885,12 @@ html, body, .sidebar, .panel, .card, .field {
   box-shadow: var(--shadow-card);
   transition: box-shadow 200ms var(--ease-breathe), transform 120ms var(--ease-breathe);
 }
-.ask-new-chat:hover { box-shadow: var(--shadow-card-hover); }
-.ask-new-chat:active { transform: translateY(1px); }
+.ask-new-chat:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+.ask-new-chat:active {
+  transform: translateY(1px);
+}
 .ask-new-chat:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
@@ -2308,7 +1902,9 @@ html, body, .sidebar, .panel, .card, .field {
   border-radius: var(--r-sm);
   transition: background 160ms var(--ease-breathe), box-shadow 160ms var(--ease-breathe);
 }
-.ask-session-row:hover { background: var(--color-warm-hover); }
+.ask-session-row:hover {
+  background: var(--color-warm-hover);
+}
 .ask-session-row[aria-current="true"] {
   background: var(--color-oat);
   box-shadow: inset 0 0 0 1px var(--color-rule);
@@ -2342,7 +1938,9 @@ html, body, .sidebar, .panel, .card, .field {
   border-color: var(--color-rule-strong);
   box-shadow: var(--shadow-card-hover);
 }
-.ask-suggestion-tile:not(:disabled):active { transform: translateY(1px); }
+.ask-suggestion-tile:not(:disabled):active {
+  transform: translateY(1px);
+}
 .ask-suggestion-tile:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
@@ -2350,9 +1948,13 @@ html, body, .sidebar, .panel, .card, .field {
 
 @media (prefers-reduced-motion: reduce) {
   .ask-new-chat:active,
-  .ask-suggestion-tile { transition: none; }
+  .ask-suggestion-tile {
+    transition: none;
+  }
   .ask-suggestion-tile:not(:disabled):active,
-  .ask-new-chat:active { transform: none; }
+  .ask-new-chat:active {
+    transform: none;
+  }
 }
 
 /* Composer attachment chip — name + size, a 4-tone cycle (design handoff §2.1
@@ -2370,10 +1972,22 @@ html, body, .sidebar, .panel, .card, .field {
 /* Text uses the accent INK (darker on light, restoring ≥4.5:1 on the tint wash;
  * the base accent hues only clear AA on white, not on their warmer tint). Apricot's
  * blue already clears 4.98:1 on its tint, so it keeps the base accent. */
-.attach-chip-berry { background: var(--color-berry-tint); color: var(--color-berry-ink); }
-.attach-chip-apricot { background: var(--color-apricot-tint); color: var(--color-apricot-deep); }
-.attach-chip-sage { background: var(--color-sage-tint); color: var(--color-sage-ink); }
-.attach-chip-amber { background: var(--color-amber-tint); color: var(--color-amber-ink); }
+.attach-chip-berry {
+  background: var(--color-berry-tint);
+  color: var(--color-berry-ink);
+}
+.attach-chip-apricot {
+  background: var(--color-apricot-tint);
+  color: var(--color-apricot-deep);
+}
+.attach-chip-sage {
+  background: var(--color-sage-tint);
+  color: var(--color-sage-ink);
+}
+.attach-chip-amber {
+  background: var(--color-amber-tint);
+  color: var(--color-amber-ink);
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    ONBOARDING — the 9-step conversational flow (Web Phase W4, handoff §4.1).
@@ -2395,7 +2009,12 @@ html, body, .sidebar, .panel, .card, .field {
   padding: 30px 24px 40px;
 }
 
-.ob-theme { position: absolute; top: 20px; right: 24px; z-index: 10; }
+.ob-theme {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 10;
+}
 
 .ob-chrome {
   width: 100%;
@@ -2420,26 +2039,42 @@ html, body, .sidebar, .panel, .card, .field {
   cursor: pointer;
   transition: color 0.2s var(--ease-breathe), background 0.2s var(--ease-breathe);
 }
-.ob-back:hover { color: var(--color-spruce); background: var(--color-warm-hover); }
+.ob-back:hover {
+  color: var(--color-spruce);
+  background: var(--color-warm-hover);
+}
 .ob-back:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
 }
 .ob-back-spacer,
-.ob-skip-spacer { flex: none; width: 36px; }
+.ob-skip-spacer {
+  flex: none;
+  width: 36px;
+}
 
-.ob-progress { flex: 1; display: flex; gap: 6px; }
+.ob-progress {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+}
 .ob-seg {
   flex: 1;
   height: 4px;
   border-radius: var(--r-full);
-  background: #E2DFD6; /* handoff: inactive segment */
+  background: #e2dfd6; /* handoff: inactive segment */
   transition: background 0.3s var(--ease-breathe);
 }
-.dark .ob-seg { background: var(--color-rule-strong); }
-.ob-seg-on { background: var(--color-brand); } /* handoff: filled #1B2160 (cream in dark) */
+.dark .ob-seg {
+  background: var(--color-rule-strong);
+}
+.ob-seg-on {
+  background: var(--color-brand);
+} /* handoff: filled #1B2160 (cream in dark) */
 /* Win over `.dark .ob-seg` (higher specificity) so filled segments stay bright in dark. */
-.dark .ob-seg-on { background: var(--color-brand); }
+.dark .ob-seg-on {
+  background: var(--color-brand);
+}
 
 .ob-skip {
   flex: none;
@@ -2456,383 +2091,10 @@ html, body, .sidebar, .panel, .card, .field {
   border-radius: var(--r-sm);
   transition: color 0.2s var(--ease-breathe);
 }
-.ob-skip:hover { color: var(--color-spruce); }
+.ob-skip:hover {
+  color: var(--color-spruce);
+}
 .ob-skip:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * WEB PHASE W2 — core-surface component classes (design handoff §3–§4)
- * Additive only; every value consumes a ROLE token so both themes derive for
- * free. Kept in one section to minimise collision with the parallel phases.
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Page hero (top-bar hero slot + narrow-viewport stage), §3.2 ─────────── */
-.page-hero { min-width: 0; }
-
-/* The page title treatment, on Shore's type scale: a tab root is `display`
- * (34/40, 600, -0.02em) and a drilled-in page is `title` (22/28, 500) — the same
- * two roles the mobile app renders, so a parent moving between the two surfaces
- * sees one hierarchy. The subtitle is Shore `meta` (13/18, 500) in ink-3, not
- * caption gray: it carries the child's age and what needs the parent this week,
- * which is information, not decoration. */
-.page-hero-title {
-  font-family: var(--font-display);
-  font-size: clamp(1.75rem, 2.4vw, 2.125rem); /* → 34px Shore display */
-  font-weight: 600;
-  line-height: 1.18;
-  letter-spacing: var(--tracking-display);
-  color: var(--color-ink);
-}
-
-.page-hero-sub {
-  margin-top: 0.35rem;
-  font-family: var(--font-body);
-  font-size: 0.8125rem; /* 13px Shore meta */
-  font-weight: 500;
-  color: var(--color-ink-3);
-}
-
-.page-hero-title-drill {
-  font-size: 1.375rem; /* 22px Shore title */
-  font-weight: 500;
-  line-height: 1.28;
-}
-
-.page-hero-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  margin-bottom: 0.15rem;
-  color: var(--color-faded-sage);
-  text-decoration: none;
-  transition: color 220ms var(--ease-breathe);
-}
-.page-hero-back:hover { color: var(--color-spruce); }
-.page-hero-back:focus-visible {
-  outline: none;
-  color: var(--color-spruce);
-  border-radius: var(--r-sm);
-  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
-}
-
-.page-hero-crumb {
-  font-family: var(--font-body);
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
-}
-
-/* The desktop top bar (≥1024px) owns the hero; the narrow stage hero is hidden
- * there and reappears below 1024px, so exactly one hero is ever visible. */
-.page-hero-stage { margin-bottom: clamp(1.15rem, 3vw, 1.75rem); }
-@media (min-width: 1024px) {
-  .page-hero-stage { display: none; }
-}
-
-/* ── Notification bell + dropdown, §3.2 ─────────────────────────────────── */
-.bell-root { position: relative; }
-
-.bell-dot {
-  position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: var(--r-full);
-  background: #E25C4A; /* bell dot, §2.1 notification dots */
-  box-shadow: 0 0 0 2px var(--color-oat);
-}
-
-.bell-pop {
-  position: absolute;
-  top: calc(100% + 0.55rem);
-  right: 0;
-  z-index: 50;
-  width: 21.5rem; /* 344px */
-  max-width: calc(100vw - 2rem);
-  display: flex;
-  flex-direction: column;
-  padding: 0.35rem;
-  border-radius: 18px;
-  background: var(--color-raised);
-  box-shadow: var(--shadow-popover);
-  animation: settle 0.18s var(--ease-breathe);
-}
-
-/* The top-bar popovers reuse the shared `settle` entrance (the referenced `fadeUp`
- * keyframes never existed — WEB-15); honour reduced-motion like the other animated
- * surfaces. */
-@media (prefers-reduced-motion: reduce) {
-  .bell-pop,
-  .loc-pop { animation: none; }
-}
-
-.bell-pop-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.6rem 0.7rem 0.5rem;
-  color: var(--color-spruce);
-}
-
-.bell-pop-clear {
-  border: 0;
-  background: transparent;
-  color: var(--color-apricot-deep);
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.bell-pop-clear:hover { text-decoration: underline; }
-
-.bell-pop-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.bell-pop-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.6rem 0.7rem;
-  border-radius: var(--r-sm);
-  text-decoration: none;
-  transition: background 220ms var(--ease-breathe);
-}
-.bell-pop-item:hover { background: var(--color-oat); }
-.bell-pop-item:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-apricot-deep);
-}
-
-.bell-pop-eyebrow { color: var(--color-muted); }
-
-.bell-pop-body {
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  line-height: 1.45;
-  color: var(--color-slate-green);
-}
-
-.bell-pop-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 1.4rem 1rem 1.6rem;
-  text-align: center;
-}
-.bell-pop-empty-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-spruce);
-}
-
-.bell-pop-foot {
-  margin-top: 0.2rem;
-  padding: 0.7rem;
-  border-top: 1px solid var(--color-rule);
-  text-align: center;
-  color: var(--color-apricot-deep);
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-.bell-pop-foot:hover { background: var(--color-oat); border-radius: 0 0 14px 14px; }
-
-/* ── Location switcher pill + popover, §3.2 / Interactions ──────────────── */
-.loc-root { position: relative; }
-
-.location-pill-button {
-  cursor: pointer;
-  transition: border-color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
-}
-.location-pill-button:hover { background: var(--color-tile); }
-.location-pill-button[data-open] { border-color: var(--color-brand); }
-.location-pill-button:focus-visible {
-  outline: none;
-  border-color: var(--color-brand);
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
-}
-.loc-caret { color: var(--color-faint); }
-
-.loc-pop {
-  position: absolute;
-  top: calc(100% + 0.55rem);
-  right: 0;
-  z-index: 50;
-  width: 19.5rem; /* 312px */
-  max-width: calc(100vw - 2rem);
-  display: flex;
-  flex-direction: column;
-  padding: 0.7rem;
-  border-radius: 18px;
-  background: var(--color-raised);
-  box-shadow: var(--shadow-popover);
-  animation: settle 0.18s var(--ease-breathe);
-}
-.loc-pop[data-pending] { opacity: 0.65; pointer-events: none; }
-
-.loc-pop-head { padding: 0.15rem 0.35rem 0.55rem; color: var(--color-muted); }
-
-.loc-search {
-  position: relative;
-  display: flex;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-.loc-search-icon {
-  position: absolute;
-  left: 0.7rem;
-  color: var(--color-faint);
-  pointer-events: none;
-}
-.loc-search-input {
-  width: 100%;
-  padding: 0.6rem 2rem 0.6rem 2.3rem;
-  border: 1px solid var(--color-rule-strong);
-  border-radius: var(--r-sm);
-  background: var(--color-hairline);
-  color: var(--color-spruce);
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-}
-.loc-search-input::placeholder { color: var(--color-faint); }
-.loc-search-input:focus { outline: none; border-color: var(--color-brand); }
-.loc-search-clear {
-  position: absolute;
-  right: 0.55rem;
-  display: inline-flex;
-  border: 0;
-  background: transparent;
-  color: var(--color-faint);
-  cursor: pointer;
-}
-.loc-search-clear:hover { color: var(--color-spruce); }
-
-.loc-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.loc-item {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  width: 100%;
-  padding: 0.55rem 0.5rem;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--color-slate-green);
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  text-align: left;
-  cursor: pointer;
-  transition: background 220ms var(--ease-breathe), color 220ms var(--ease-breathe);
-}
-.loc-item:hover:not(:disabled) { background: var(--color-oat); color: var(--color-spruce); }
-.loc-item:disabled { cursor: default; }
-.loc-item[aria-current="true"] { color: var(--color-spruce); font-weight: 600; }
-.loc-item:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--color-apricot-deep); }
-.loc-item-icon { color: var(--color-faint); flex-shrink: 0; }
-.loc-item-label { flex: 1; min-width: 0; }
-.loc-item-check { color: var(--color-brand); flex-shrink: 0; }
-
-/* A saved-area row: the activate button (flex-1) + a trailing control — the active
- * check, or the two-step remove affordance for a non-active area. */
-.loc-item-row { display: flex; align-items: center; gap: 0.15rem; }
-.loc-item-trail { margin-right: 0.35rem; }
-.loc-remove {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--color-faint);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 160ms var(--ease-breathe), background 220ms var(--ease-breathe),
-    color 220ms var(--ease-breathe);
-}
-/* Reveal the remove control on hover / keyboard focus within the row (quiet until
- * intended); it stays in the a11y tree so it is always reachable by Tab. */
-.loc-item-row:hover .loc-remove,
-.loc-item-row:focus-within .loc-remove { opacity: 1; }
-.loc-remove:hover { background: var(--color-berry-tint); color: var(--color-berry-ink); }
-.loc-remove:focus-visible {
-  opacity: 1;
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-apricot-deep);
-}
-.loc-remove-confirm {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding-right: 0.25rem;
-}
-.loc-remove-yes,
-.loc-remove-no {
-  border: 0;
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0.15rem 0.1rem;
-}
-.loc-remove-yes { color: var(--color-berry-ink); }
-.loc-remove-no { color: var(--color-slate-green); }
-.loc-remove-yes:disabled,
-.loc-remove-no:disabled { cursor: default; opacity: 0.6; }
-.loc-remove-yes:focus-visible,
-.loc-remove-no:focus-visible {
-  outline: none;
-  border-radius: var(--r-sm);
-  box-shadow: 0 0 0 2px var(--color-apricot-deep);
-}
-
-.loc-noresult { padding: 0.6rem 0.5rem 0.4rem; line-height: 1.5; }
-
-/* ── Home quick-link tiles (2×2) + Hale tip card, §4.2 ─────────────────── */
-.quick-link-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-height: 6rem;
-  padding: 0.7rem;
-  border-radius: var(--r-sm);
-  background: var(--color-chrome);
-  color: var(--color-spruce);
-  text-decoration: none;
-  /* The Home dashboard now opts up to the 72rem canvas (.village-wide on the home
-   * page), so the §4.2 four-column row gives each 2×2 tile real width and labels
-   * fit. `anywhere` is kept as a harmless safety net for the narrowest widths, so a
-   * long single-word label (documents / routines) can never spill past the card. */
-  overflow-wrap: anywhere;
-  transition: background 220ms var(--ease-breathe), transform 220ms var(--ease-breathe);
-}
-.quick-link-tile:hover { background: var(--color-warm-hover); }
-.quick-link-tile:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
 }
@@ -2845,24 +2107,38 @@ html, body, .sidebar, .panel, .card, .field {
 }
 
 /* A step column fades up on enter (handoff fadeUp ≈ settle). */
-.ob-step { animation: settle 0.45s var(--ease-breathe) both; }
+.ob-step {
+  animation: settle 0.45s var(--ease-breathe) both;
+}
 
 /* Hale's chat bubble — incoming shape 4/16/16/16, warm ground, with the logo
    avatar to its left. */
-.ob-bubble { display: flex; align-items: flex-start; gap: 12px; max-width: 500px; }
+.ob-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 500px;
+}
 .ob-bubble > p {
-  background: #F3F1EB; /* handoff: onboarding assistant bubble */
+  background: #f3f1eb; /* handoff: onboarding assistant bubble */
   color: var(--color-spruce);
   border-radius: 4px 16px 16px 16px;
   padding: 14px 18px;
   line-height: 1.5;
 }
-.dark .ob-bubble > p { background: var(--color-oat); }
-.ob-bubble-avatar { flex: none; margin-top: 2px; }
+.dark .ob-bubble > p {
+  background: var(--color-oat);
+}
+.ob-bubble-avatar {
+  flex: none;
+  margin-top: 2px;
+}
 
 /* Step 4's city search combobox: the Places-autocomplete predictions drop under the
    input as a listbox; the active option (keyboard or hover) lifts on the alt surface. */
-.ob-combobox { position: relative; }
+.ob-combobox {
+  position: relative;
+}
 .ob-combobox-list {
   position: absolute;
   left: 0;
@@ -2888,12 +2164,23 @@ html, body, .sidebar, .panel, .card, .field {
   color: var(--color-spruce);
   cursor: pointer;
 }
-.ob-combobox-option-active { background: var(--color-alt-surface); }
-.ob-combobox-note { margin-top: 8px; }
+.ob-combobox-option-active {
+  background: var(--color-alt-surface);
+}
+.ob-combobox-note {
+  margin-top: 8px;
+}
 
 /* Step 7's animated "getting ready" checklist: rows reveal one-by-one, each
    fading from 0.22 → 1 with its dot turning green. */
-.ob-ready-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.ob-ready-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 .ob-ready-item {
   display: flex;
   align-items: center;
@@ -2902,7 +2189,9 @@ html, body, .sidebar, .panel, .card, .field {
   color: var(--color-spruce);
   transition: opacity 0.45s var(--ease-breathe);
 }
-.ob-ready-on { opacity: 1; }
+.ob-ready-on {
+  opacity: 1;
+}
 .ob-ready-dot {
   flex: none;
   width: 24px;
@@ -2911,410 +2200,29 @@ html, body, .sidebar, .panel, .card, .field {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #C9CFDA; /* handoff: inactive ready dot */
+  background: #c9cfda; /* handoff: inactive ready dot */
   color: var(--color-on-spruce);
   transition: background 0.45s var(--ease-breathe);
 }
-.dark .ob-ready-dot { background: var(--color-rule-strong); }
-.ob-ready-on .ob-ready-dot { background: var(--color-success); } /* handoff: #2EA35E */
+.dark .ob-ready-dot {
+  background: var(--color-rule-strong);
+}
+.ob-ready-on .ob-ready-dot {
+  background: var(--color-success);
+} /* handoff: #2EA35E */
 
 @media (prefers-reduced-motion: reduce) {
-  .ob-step { animation: none; }
-  .ob-ready-item { transition: none; }
+  .ob-step {
+    animation: none;
+  }
+  .ob-ready-item {
+    transition: none;
+  }
   .ob-seg,
-  .ob-ready-dot { transition: none; }
-}
-
-.hale-tip {
-  position: relative;
-  padding: 1.15rem 1.25rem 1.25rem;
-  border-radius: var(--r-xl);
-  /* Design is light-only: a warm cream gradient. Dark mode uses the amber-tint
-   * role token so the card stays legible instead of glaring. Keyed to the `.dark`
-   * class (the app's only theme strategy — layout.tsx toggles it; `data-theme` and
-   * prefers-color-scheme are set NOWHERE), matching the sibling .village-rec. */
-  background: linear-gradient(180deg, #FFF9F1, #FBEDDC);
-}
-.dark .hale-tip { background: var(--color-amber-tint); }
-
-.hale-tip-mascot { position: absolute; top: 0.75rem; right: 0.85rem; opacity: 0.9; }
-/* Amber INK (not the base amber) so the eyebrow/link clear AA on the cream tip
- * gradient: base amber is only 3.6:1 on #FBEDDC; the ink is 5.5:1. */
-.hale-tip-eyebrow { color: var(--color-amber-ink); margin-bottom: 0.4rem; }
-.hale-tip-body {
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  line-height: 1.5;
-  color: var(--color-spruce);
-  max-width: 22ch;
-}
-.hale-tip-link {
-  display: inline-block;
-  margin-top: 0.7rem;
-  color: var(--color-amber-ink);
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-.hale-tip-link:hover { text-decoration: underline; }
-.hale-tip-dismiss {
-  position: absolute;
-  top: 0.6rem;
-  left: 0.6rem;
-  display: inline-flex;
-  padding: 0.2rem;
-  border: 0;
-  border-radius: var(--r-full);
-  background: transparent;
-  color: var(--color-amber);
-  cursor: pointer;
-  opacity: 0.7;
-}
-.hale-tip-dismiss:hover { opacity: 1; }
-
-/* ── Home §4.2 Row 1 — the row-of-3 grid (1.05fr 1fr 1.15fr), ending in a dedicated
- * "from your village" column. (The 4th column was the quick-links + Hale-tip stack;
- * every one of its links pointed at the retired /companion and /coach surfaces, so it
- * went with them in the receipts-room slimdown.) Collapses 3 → 2 → 1 at lg / md / sm
- * so nothing overflows below 1024px. Columns are TOP-aligned at their natural content
- * height (align-items: start): a sparse card — an empty village pick, a caught-up "up
- * next" — sizes to its content instead of being force-stretched to the tallest column,
- * which left tall empty voids. */
-.home-row1 {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 2rem 1.5rem;
-}
-@media (min-width: 768px) {
-  .home-row1 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (min-width: 1024px) {
-  .home-row1 { grid-template-columns: 1.05fr 1fr 1.15fr; }
-}
-/* A column is a flex stack sized to its content (no forced full-column height): the
- * eyebrow sits on top and the card sits below at its natural height. The two-card
- * column (quick links + Hale tip) keeps the tip directly under the links card with
- * the stack gap — no growth spacer that would strand the tip at the column foot. */
-.home-col { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-.home-col-stack { display: flex; flex-direction: column; gap: 2rem; min-width: 0; }
-.home-col-grow { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-.home-card-fill { display: flex; flex-direction: column; }
-
-/* ── Home §4.2 Row 2 — today's highlights / sleep / meals for the active child, at
- * 1.1fr 1fr 1fr. Sits under Row 1; collapses 3 → 1 below 1024px so nothing
- * overflows. Top-aligned at natural height, matching Row 1. ──────────────────── */
-.home-row2 {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 2rem 1.5rem;
-  margin-top: 2rem;
-}
-@media (min-width: 1024px) {
-  .home-row2 { grid-template-columns: 1.1fr 1fr 1fr; }
-}
-
-/* The Sleep mini bar chart: 7 daily-total bars (real logged nap minutes), oldest→
- * newest. Each column is a faint full-height track (the chart frame) with a
- * periwinkle fill whose height is the day's share of the week's max (inline style).
- * A day with no logged sleep shows an empty track — the honest "nothing logged"
- * state, never a fabricated bar. */
-.sleep-chart { display: flex; align-items: flex-end; gap: 0.4rem; height: 5rem; }
-.sleep-bar-col {
-  position: relative;
-  flex: 1;
-  height: 100%;
-  border-radius: var(--r-sm) var(--r-sm) 0 0;
-  background: var(--color-hairline);
-  overflow: hidden;
-}
-.sleep-bar-fill {
-  position: absolute;
-  inset: auto 0 0 0;
-  background: var(--color-sleep-bar);
-  border-radius: var(--r-sm) var(--r-sm) 0 0;
-}
-
-/* ── Messages master–detail (§4.6/§4.8): a 320px note list beside a 1fr detail pane.
- * Below lg the two panes stack (list, then the selected note) so nothing overflows.
- * (W2 QA fix: Messages previously stayed a 2-col card grid.)
- *
- * VIL-209 W3 — the list adopts Shore's FLUSH-ROW container (apps/mobile's
- * (details)/messages.tsx): one card-shaped surface holding rows divided by the
- * `hairline` token, last row undivided — rather than a stack of free-floating
- * rounded buttons. Each row is the conversation grammar: a tint-chip mark, the
- * note's label over a clamped preview, and a right column carrying the stamp.
- * Layered so a call site's utility wins; the focus ring turns INSET because the
- * container clips (an outer ring would be cut off by `overflow: hidden`). ── */
-@layer components {
-  .messages-md {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1.5rem;
-    align-items: start;
-  }
-  @media (min-width: 1024px) {
-    .messages-md { grid-template-columns: 320px minmax(0, 1fr); }
-  }
-  .messages-list { min-width: 0; }
-  .messages-detail { min-width: 0; }
-
-  /* The flush-row container — a card that owns no padding, so its rows can run
-   * edge to edge and their dividers reach both sides. */
-  .thread-list {
-    overflow: hidden;
-    background: var(--color-card);
-    border: 1px solid var(--color-rule);
-    border-radius: var(--r-lg);
-    box-shadow: var(--shadow-card);
-  }
-
-  .thread-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    width: 100%;
-    padding: 0.875rem 1rem;
-    border: 0;
-    border-bottom: 1px solid var(--color-hairline);
-    background: transparent;
-    text-align: left;
-    cursor: pointer;
-    transition: background 220ms var(--ease-breathe);
-  }
-  .thread-list li:last-child .thread-item { border-bottom: 0; }
-  .thread-item:hover { background: var(--color-canvas); }
-  .thread-item[aria-current="true"] { background: var(--color-alt-surface); }
-  .thread-item:focus-visible {
-    outline: none;
-    box-shadow: inset 0 0 0 2px var(--color-apricot-deep);
-  }
-
-  /* The row's text column — `min-width: 0` is what lets the clamped preview
-   * shrink instead of forcing the row wider than the rail. */
-  .thread-item-body { min-width: 0; flex: 1; }
-
-  .thread-item-snippet {
-    display: -webkit-box;
-    color: var(--color-ink-3);
-    font-family: var(--font-body);
-    font-size: 0.8125rem;
-    line-height: 1.38;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+  .ob-ready-dot {
+    transition: none;
   }
 }
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * WEB PHASE W2b — Village 3-column board (design handoff §4.5)
- * Additive only; every value consumes a ROLE token so both themes derive for
- * free. The single literal (the recommendation gradient) carries an explicit
- * .dark override, matching the shipped .hale-tip treatment. The board opts up to
- * the 72rem stage-wide canvas via .village-wide (not the 58rem editorial column),
- * so the columns are sized to fit that: full 330|1fr|300 only where the centred
- * column is wide enough (≥1280px),
- * a results+centre pair with the rail below at 1024–1279, and a list-first stack
- * with a collapsible map below 1024 — nothing overflows.
- *
- * VIL-209 W4 — MIGRATED into `@layer components` (globals-layer.test.ts ratchet)
- * with the surface's own visual QA. Audited before the move: the only Tailwind
- * utility that now outranks a rule here is one that already agreed with it
- * (`flex`/`items-center`/`gap-2` on .village-rail-row), and the one rule that
- * genuinely needed to beat the UNLAYERED .card — the selected-row highlight —
- * was rewritten to an outline, a property .card does not set at all.
- * ═══════════════════════════════════════════════════════════════════════════ */
-@layer components {
-  .village-3col {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1.5rem;
-    align-items: start;
-  }
-  /* 1024–1279: results + centre; the rail drops to a full-width row below them. */
-  @media (min-width: 1024px) {
-    .village-3col {
-      grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
-      column-gap: 1.5rem;
-    }
-    .village-rail { grid-column: 1 / -1; }
-  }
-  /* ≥1280: the full 330 | 1fr | 300 three-column layout (§4.5). */
-  @media (min-width: 1280px) {
-    .village-3col {
-      grid-template-columns: minmax(0, 330px) minmax(0, 1fr) minmax(0, 300px);
-    }
-    .village-rail { grid-column: auto; }
-  }
-
-  /* ── Right rail ─────────────────────────────────────────────────────────── */
-  .village-rail {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-  /* At the 2-column stage the rail sits full-width below, so its sections read as a
-   * row rather than a tall stack. */
-  @media (min-width: 1024px) and (max-width: 1279.98px) {
-    .village-rail { flex-direction: row; flex-wrap: wrap; }
-    .village-rail > * { flex: 1 1 220px; min-width: 0; }
-  }
-  .village-rail-section { min-width: 0; }
-
-  .village-rail-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.5rem 0.3rem;
-    border-radius: var(--r-sm);
-  }
-  .village-rail-row-button {
-    border: 0;
-    background: transparent;
-    text-align: left;
-    cursor: pointer;
-    transition: background 220ms var(--ease-breathe);
-  }
-  .village-rail-row-button:hover { background: var(--color-chrome); }
-  .village-rail-row-button:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--color-apricot-deep);
-  }
-  .village-rail-row-title {
-    display: block;
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    font-weight: 600;
-    line-height: 1.3;
-    color: var(--color-ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  /* ── One ranked recommendation — Shore's CREAM highlight card (§4.5) ───────
-   * W1 named `cream` / `cream-border` (DESIGN.md's "great news" tile) and shipped
-   * no consumer. This is it: the one warm card in the app, and the surface that
-   * used to carry the village block's ONLY colour literal — a hardcoded cream
-   * gradient plus a `.dark` override to keep it from glaring. Both are gone; the
-   * card now derives in each mode from the role token, like everything else.
-   * ink on cream 14.07 light / 12.79 dark, ink-2 8.05 / 9.52, border 1.16 / 1.16. */
-  .village-rec {
-    padding: 1.1rem 1.15rem 1.2rem;
-    border-radius: var(--r-xl);
-    background: var(--color-cream);
-    border: 1px solid var(--color-cream-border);
-  }
-  /* The tip INK, not the base accent: `cream-accent` (#B26B1F) is only 3.6–4.0:1
-   * on cream, so the eyebrow keeps the darker ink at 5.89:1 light / 6.58:1 dark —
-   * the same pair `.hale-tip-eyebrow` uses. */
-  .village-rec-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--color-amber-ink); }
-  /* Shore's title role (22/28, 500) — a recommendation is a card confirmation, the
-   * one place besides a page h1 where the serif carries. */
-  .village-rec-title { font-size: 1.375rem; font-weight: 500; line-height: 1.75rem; }
-  .village-rec-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    margin-top: 0.75rem;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    /* Brand on the warm card: navy in light (13.55:1 on cream), periwinkle in dark
-     * (6.15:1) — AA in both modes, unlike the sub-4.5 accent-on-cream a body link
-     * would be. */
-    color: var(--color-brand);
-    font-family: var(--font-body);
-    font-size: 0.85rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
-  .village-rec-link:hover { text-decoration: underline; }
-  .village-rec-link:focus-visible {
-    outline: none;
-    border-radius: var(--r-sm);
-    box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-apricot-deep);
-  }
-
-  /* ── Results-list row: a selectable title inside the card, and the selected
-   * card's highlight (mirrored by the map marker). ──────────────────────────── */
-  .village-row-title {
-    border: 0;
-    background: transparent;
-    padding: 0;
-    cursor: pointer;
-  }
-  .village-row-title:hover > span:first-child { color: var(--color-apricot-deep); }
-  .village-row-title:focus-visible {
-    outline: none;
-    border-radius: var(--r-sm);
-    box-shadow: 0 0 0 2px var(--color-card), 0 0 0 4px var(--color-apricot-deep);
-  }
-  /* The selected result, mirrored by the map marker. An OUTLINE rather than the
-   * border-colour + ring pair it used to be: `.card` is still unlayered and its
-   * `border` shorthand carries a border-colour, so inside a layer this rule could
-   * no longer win that property — and outline is a property .card never sets. It
-   * is also simply the better ring: one declaration, drawn outside the border box
-   * so it can't be clipped, and it takes no layout space. */
-  .village-row-selected {
-    outline: 2px solid var(--color-brand);
-    outline-offset: -1px;
-  }
-
-  /* ── Map panel (collapsible below 1024px) ───────────────────────────────── */
-  .village-map-panel { min-width: 0; }
-
-  /* The brand cast over the raster map. Light: a warm-linen multiply so it reads as part
-   * of the product. Dark: a dark ink cast (the map itself also switches to the dark style
-   * array) so it's not a bright block against the dark canvas (WEB-14). */
-  .village-map-tint { background: #f1eadb; mix-blend-mode: multiply; opacity: 0.5; }
-  .dark .village-map-tint { background: var(--color-canvas); mix-blend-mode: normal; opacity: 0.3; }
-  .village-map-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    width: 100%;
-    min-height: 44px;
-    padding: 0.6rem 1rem;
-    border: 1px solid var(--color-rule);
-    border-radius: var(--r-md);
-    background: var(--color-card);
-    color: var(--color-ink-2);
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 220ms var(--ease-breathe), color 220ms var(--ease-breathe);
-  }
-  .village-map-toggle:hover { background: var(--color-chrome); color: var(--color-ink); }
-  .village-map-toggle:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-apricot-deep);
-  }
-  .village-map-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    aspect-ratio: 4 / 3;
-    padding: 1.5rem;
-    text-align: center;
-  }
-  @media (min-width: 640px) {
-    .village-map-placeholder { aspect-ratio: 16 / 9; }
-  }
-  /* Desktop board: the map is a fixed 560px (§4.5), so the pre-mount placeholder
-   * matches that height — no layout jump when the real map replaces it. */
-  @media (min-width: 1024px) {
-    .village-map-placeholder { aspect-ratio: auto; height: 35rem; }
-  }
-}
-
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * W2b — Settings link rows + centered modals (desktop design handoff §4.7 & §4.8)
@@ -3334,7 +2242,9 @@ html, body, .sidebar, .panel, .card, .field {
   text-decoration: none;
   transition: color 220ms var(--ease-breathe);
 }
-.settings-link-row:hover { color: var(--color-apricot-deep); }
+.settings-link-row:hover {
+  color: var(--color-apricot-deep);
+}
 .settings-link-row:focus-visible {
   outline: none;
   border-radius: var(--r-sm);
@@ -3354,7 +2264,9 @@ html, body, .sidebar, .panel, .card, .field {
   cursor: pointer;
   transition: background 220ms var(--ease-breathe);
 }
-.toggle-switch[aria-checked="true"] { background: var(--color-brand); }
+.toggle-switch[aria-checked="true"] {
+  background: var(--color-brand);
+}
 .toggle-switch-knob {
   position: absolute;
   top: 3px;
@@ -3366,14 +2278,18 @@ html, body, .sidebar, .panel, .card, .field {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
   transition: transform 200ms var(--ease-breathe);
 }
-.toggle-switch[aria-checked="true"] .toggle-switch-knob { transform: translateX(18px); }
+.toggle-switch[aria-checked="true"] .toggle-switch-knob {
+  transform: translateX(18px);
+}
 .toggle-switch:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
 }
 @media (prefers-reduced-motion: reduce) {
   .toggle-switch,
-  .toggle-switch-knob { transition: none; }
+  .toggle-switch-knob {
+    transition: none;
+  }
 }
 
 /* ── Navy "your plan" card (§4.7 plan & billing) ─────────────────────────── *
@@ -3400,8 +2316,16 @@ html, body, .sidebar, .panel, .card, .field {
   gap: 1rem;
   margin-top: 0.5rem;
 }
-.plan-navy-name { font-size: 1.5rem; font-weight: 600; color: var(--color-on-spruce); }
-.plan-navy-price { font-size: 1.05rem; font-weight: 700; color: var(--color-on-spruce); }
+.plan-navy-name {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-on-spruce);
+}
+.plan-navy-price {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-on-spruce);
+}
 .plan-navy-tagline {
   margin-top: 0.35rem;
   font-size: 0.9rem;
@@ -3443,7 +2367,11 @@ html, body, .sidebar, .panel, .card, .field {
   gap: 1rem;
   padding: 1.4rem 1.5rem 0.5rem;
 }
-.hale-modal-title { font-size: 1.15rem; font-weight: 600; color: var(--color-spruce); }
+.hale-modal-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--color-spruce);
+}
 .hale-modal-close {
   display: inline-flex;
   align-items: center;
@@ -3457,15 +2385,23 @@ html, body, .sidebar, .panel, .card, .field {
   cursor: pointer;
   transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
 }
-.hale-modal-close:hover { color: var(--color-spruce); background: var(--color-chrome); }
+.hale-modal-close:hover {
+  color: var(--color-spruce);
+  background: var(--color-chrome);
+}
 .hale-modal-close:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
 }
-.hale-modal-body { padding: 0.5rem 1.5rem 1.5rem; }
+.hale-modal-body {
+  padding: 0.5rem 1.5rem 1.5rem;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .hale-modal { animation: none; opacity: 1; }
+  .hale-modal {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -3481,25 +2417,28 @@ html, body, .sidebar, .panel, .card, .field {
  * ════════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --domain-cognitive: #7BC894;
-  --domain-language: #F2C14E;
-  --domain-motor: #B9A7E8;
-  --domain-social: #F4A98A;
-  --domain-independence: #9DC3EE;
+  --domain-cognitive: #7bc894;
+  --domain-language: #f2c14e;
+  --domain-motor: #b9a7e8;
+  --domain-social: #f4a98a;
+  --domain-independence: #9dc3ee;
 }
 .dark {
-  --domain-cognitive: #5FA97A;
-  --domain-language: #C9A24A;
-  --domain-motor: #9C8AC9;
-  --domain-social: #C98A76;
-  --domain-independence: #7FA3CE;
+  --domain-cognitive: #5fa97a;
+  --domain-language: #c9a24a;
+  --domain-motor: #9c8ac9;
+  --domain-social: #c98a76;
+  --domain-independence: #7fa3ce;
 }
 
 /* Amber "worth a look" pill — the honest neutral caution for a WHO 'review' band.
  * Mirrors the existing .pill-* pattern (tint ground + spruce ink): contrast-safe in
  * both themes because BOTH tokens re-point in .dark (light #FEF0C7/#1F3A34 ≈ 9.9:1;
  * dark #372910/ink ≈ 12.5:1). */
-.pill-amber { background: var(--color-amber-tint); color: var(--color-spruce); }
+.pill-amber {
+  background: var(--color-amber-tint);
+  color: var(--color-spruce);
+}
 
 /* ── Child-hub header (.comp-hub): identity + up-to-three WHO percentile stats ── */
 .comp-hub {
@@ -3509,7 +2448,12 @@ html, body, .sidebar, .panel, .card, .field {
   justify-content: space-between;
   gap: 1.25rem 2rem;
 }
-.comp-hub-id { display: flex; align-items: center; gap: 1rem; min-width: 0; }
+.comp-hub-id {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
 .comp-hub-name {
   font-size: clamp(1.5rem, 2.5vw, 1.75rem);
   line-height: 1.15;
@@ -3518,9 +2462,22 @@ html, body, .sidebar, .panel, .card, .field {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.comp-hub-right { display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start; }
-.comp-hub-stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; }
-.comp-stat { display: flex; flex-direction: column; min-width: 4.25rem; }
+.comp-hub-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.comp-hub-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+}
+.comp-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 4.25rem;
+}
 
 /* ── Overview: equal-height 3-col grid (1.05fr 1.05fr 1fr) → 2 → 1 ────────── */
 .comp-overview {
@@ -3530,15 +2487,28 @@ html, body, .sidebar, .panel, .card, .field {
   align-items: stretch;
 }
 @media (min-width: 768px) {
-  .comp-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .comp-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (min-width: 1024px) {
-  .comp-overview { grid-template-columns: 1.05fr 1.05fr 1fr; }
+  .comp-overview {
+    grid-template-columns: 1.05fr 1.05fr 1fr;
+  }
 }
 /* The two single-card columns fill their grid cell's height so the row bottom-aligns;
  * the stack column lays its two cards out top-down. */
-.comp-ov-card { display: flex; flex-direction: column; height: 100%; }
-.comp-ov-stack { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+.comp-ov-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.comp-ov-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
 
 /* ── Development-snapshot donut (real per-domain milestone progress) ───────── */
 .comp-donut {
@@ -3564,7 +2534,10 @@ html, body, .sidebar, .panel, .card, .field {
   color: var(--color-spruce);
   font-variant-numeric: tabular-nums;
 }
-.comp-donut-total { font-size: 1rem; color: var(--color-faded-sage); }
+.comp-donut-total {
+  font-size: 1rem;
+  color: var(--color-faded-sage);
+}
 .comp-donut-label {
   display: block;
   margin-top: 0.15rem;
@@ -3594,7 +2567,9 @@ html, body, .sidebar, .panel, .card, .field {
     gap: 0.75rem;
   }
   @media (min-width: 768px) {
-    .care-team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .care-team {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
   }
   .care-chip {
     display: flex;
@@ -3646,13 +2621,15 @@ html, body, .sidebar, .panel, .card, .field {
     text-decoration: none;
     transition: background 220ms var(--ease-breathe), border-color 220ms var(--ease-breathe);
   }
-  .care-chip-add:hover { background: var(--color-tile); border-color: var(--color-apricot-deep); }
+  .care-chip-add:hover {
+    background: var(--color-tile);
+    border-color: var(--color-apricot-deep);
+  }
   .care-chip-add:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-apricot-deep);
   }
 }
-
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * WEB PHASE W3 — the receipts path on Hale Shore (approvals · trail · plan ·
@@ -3674,12 +2651,30 @@ html, body, .sidebar, .panel, .card, .field {
    * The tone is NEVER the carrier of meaning (DESIGN.md §Tint chips: "meaning is
    * the icon + label, never the tone"), and a chip ground is never the colour of
    * small text — the label beside a chip takes ink / ink-2 / ink-3. */
-  .chip-blue   { --chip-ground: var(--color-chip-blue);   --chip-mark: var(--color-chip-blue-icon); }
-  .chip-green  { --chip-ground: var(--color-chip-green);  --chip-mark: var(--color-chip-green-icon); }
-  .chip-yellow { --chip-ground: var(--color-chip-yellow); --chip-mark: var(--color-chip-yellow-icon); }
-  .chip-red    { --chip-ground: var(--color-chip-red);    --chip-mark: var(--color-chip-red-icon); }
-  .chip-teal   { --chip-ground: var(--color-chip-teal);   --chip-mark: var(--color-chip-teal-icon); }
-  .chip-gray   { --chip-ground: var(--color-chip-gray);   --chip-mark: var(--color-chip-gray-icon); }
+  .chip-blue {
+    --chip-ground: var(--color-chip-blue);
+    --chip-mark: var(--color-chip-blue-icon);
+  }
+  .chip-green {
+    --chip-ground: var(--color-chip-green);
+    --chip-mark: var(--color-chip-green-icon);
+  }
+  .chip-yellow {
+    --chip-ground: var(--color-chip-yellow);
+    --chip-mark: var(--color-chip-yellow-icon);
+  }
+  .chip-red {
+    --chip-ground: var(--color-chip-red);
+    --chip-mark: var(--color-chip-red-icon);
+  }
+  .chip-teal {
+    --chip-ground: var(--color-chip-teal);
+    --chip-mark: var(--color-chip-teal-icon);
+  }
+  .chip-gray {
+    --chip-ground: var(--color-chip-gray);
+    --chip-mark: var(--color-chip-gray-icon);
+  }
 
   /* Shore's 34×34 icon chip at radius 11 — the literal geometry of
    * apps/mobile/src/components/ui/tint-chip.tsx (a squircle, not a circle, and
@@ -3699,7 +2694,10 @@ html, body, .sidebar, .panel, .card, .field {
 
   /* A pill re-grounded in a tint tone. Text stays `ink` (12–15:1 on every chip
    * ground in light, 11–14:1 in dark) — the tone is the ground only. */
-  .pill-tint { background: var(--chip-ground); color: var(--color-ink); }
+  .pill-tint {
+    background: var(--chip-ground);
+    color: var(--color-ink);
+  }
 
   /* The RECESSED sub-panel — Shore's teen-redaction treatment
    * (apps/mobile/src/components/hale/approval-payload.tsx). Note the inversion:
@@ -3772,12 +2770,20 @@ html, body, .sidebar, .panel, .card, .field {
 
   /* The honest-failure affordance sits INSIDE the failed answer bubble, so a
    * retry is never mistaken for the next turn. */
-  .note-retry { display: block; margin-top: 0.35rem; font-size: 0.8125rem; }
+  .note-retry {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.8125rem;
+  }
 
   /* The reply row. Deliberately borderless itself — the input is the app's own
    * `.field`, so the field treatment (and the border-contrast gap VIL-273 tracks)
    * stays ONE decision in one place rather than being re-toned per surface. */
-  .note-composer { display: flex; align-items: center; gap: 0.5rem; }
+  .note-composer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
 
   .note-composer-send {
     flex: none;
@@ -3793,7 +2799,9 @@ html, body, .sidebar, .panel, .card, .field {
     cursor: pointer;
     transition: background 320ms var(--ease-breathe);
   }
-  .note-composer-send:hover { background: var(--color-brand-hover); }
+  .note-composer-send:hover {
+    background: var(--color-brand-hover);
+  }
   .note-composer-send:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
@@ -3827,9 +2835,13 @@ html, body, .sidebar, .panel, .card, .field {
      * by `.trace-caret`, which rides the time column instead. */
     list-style: none;
   }
-  .trace-summary::-webkit-details-marker { display: none; }
+  .trace-summary::-webkit-details-marker {
+    display: none;
+  }
   @media (min-width: 1024px) {
-    .trace-summary { padding-block: 2.5rem; }
+    .trace-summary {
+      padding-block: 2.5rem;
+    }
   }
   .trace-summary:focus-visible {
     outline: none;
@@ -3842,9 +2854,13 @@ html, body, .sidebar, .panel, .card, .field {
     color: var(--color-ink-3);
     transition: transform 260ms var(--ease-breathe);
   }
-  details[open] > .trace-summary .trace-caret { transform: rotate(90deg); }
+  details[open] > .trace-summary .trace-caret {
+    transform: rotate(90deg);
+  }
   @media (prefers-reduced-motion: reduce) {
-    .trace-caret { transition: none; }
+    .trace-caret {
+      transition: none;
+    }
   }
 
   /* The lifecycle, hung off one hairline so the steps read as belonging to the
@@ -3860,7 +2876,9 @@ html, body, .sidebar, .panel, .card, .field {
     gap: 1rem;
   }
   @media (min-width: 768px) {
-    .trace-steps { margin-left: calc((100% / 12) * 2); }
+    .trace-steps {
+      margin-left: calc((100% / 12) * 2);
+    }
   }
 
   /* Time · actor · what happened. Stacks on a phone, columns from md — the same
@@ -3871,7 +2889,10 @@ html, body, .sidebar, .panel, .card, .field {
     gap: 0.25rem 1rem;
   }
   @media (min-width: 768px) {
-    .trace-step { grid-template-columns: 4.5rem 6.5rem 1fr; align-items: baseline; }
+    .trace-step {
+      grid-template-columns: 4.5rem 6.5rem 1fr;
+      align-items: baseline;
+    }
   }
 }
 
@@ -3900,7 +2921,9 @@ html, body, .sidebar, .panel, .card, .field {
     padding: 0.25rem 1.5rem;
   }
   /* Row dividers fall out of adjacency, so reveal wrappers and blocks divide too. */
-  .settings-card > * + * { border-top: 1px solid var(--color-rule); }
+  .settings-card > * + * {
+    border-top: 1px solid var(--color-rule);
+  }
 
   .settings-flat-row {
     display: flex;
@@ -3920,7 +2943,9 @@ html, body, .sidebar, .panel, .card, .field {
     margin-top: 0.15rem;
     color: var(--color-faded-sage);
   }
-  .settings-flat-text { min-width: 0; }
+  .settings-flat-text {
+    min-width: 0;
+  }
   .settings-flat-label {
     display: block;
     font-weight: 600;
@@ -3934,9 +2959,13 @@ html, body, .sidebar, .panel, .card, .field {
     color: var(--color-slate-green);
     overflow-wrap: anywhere;
   }
-  .settings-flat-action { flex: none; }
+  .settings-flat-action {
+    flex: none;
+  }
   /* The revealed edit machinery hangs under its row, aligned past the icon gutter. */
-  .settings-flat-panel { padding: 0 0 1.25rem 2.4rem; }
+  .settings-flat-panel {
+    padding: 0 0 1.25rem 2.4rem;
+  }
 
   /* Consent ledger: a native details whose summary IS the row (keyboard for free). */
   .settings-flat-details > .settings-flat-summary {
@@ -3948,14 +2977,21 @@ html, body, .sidebar, .panel, .card, .field {
     cursor: pointer;
     list-style: none;
   }
-  .settings-flat-summary::-webkit-details-marker { display: none; }
+  .settings-flat-summary::-webkit-details-marker {
+    display: none;
+  }
   .settings-flat-summary:focus-visible {
     outline: none;
     border-radius: var(--r-sm);
     box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
   }
-  .settings-flat-summary > .settings-flat-text { flex: 1; min-width: 0; }
-  .settings-flat-cue { flex: none; }
+  .settings-flat-summary > .settings-flat-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .settings-flat-cue {
+    flex: none;
+  }
 
   @media (max-width: 479px) {
     .settings-flat-row,
@@ -3963,7 +2999,9 @@ html, body, .sidebar, .panel, .card, .field {
       flex-direction: column;
       align-items: stretch;
     }
-    .settings-flat-action { width: 100%; }
+    .settings-flat-action {
+      width: 100%;
+    }
     .settings-flat-action > a,
     .settings-flat-action > button,
     .settings-flat-cue {
@@ -3971,6 +3009,8 @@ html, body, .sidebar, .panel, .card, .field {
       justify-content: center;
       display: inline-flex;
     }
-    .settings-flat-panel { padding-left: 0; }
+    .settings-flat-panel {
+      padding-left: 0;
+    }
   }
 }

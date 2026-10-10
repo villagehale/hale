@@ -28,20 +28,11 @@ export interface DrillHero {
   backHref: Route;
 }
 
-export type HeroResolution =
-  | { kind: 'root'; hero: RootHero }
-  | { kind: 'drill'; hero: DrillHero };
+export type HeroResolution = { kind: 'root'; hero: RootHero } | { kind: 'drill'; hero: DrillHero };
 
 /** The tab-root routes, in nav order. A root's hero copy is provided by the
  * server (see buildRootHeroes) because some of it is interpolated. */
-export const ROOT_ROUTES = [
-  '/home',
-  '/companion',
-  '/coach',
-  '/village',
-  '/family',
-  '/settings',
-] as const;
+export const ROOT_ROUTES = ['/home', '/companion', '/coach', '/family', '/settings'] as const;
 
 export type RootRoute = (typeof ROOT_ROUTES)[number];
 
@@ -62,11 +53,9 @@ export const DRILL_HEROES: Record<string, DrillHero> = {
 };
 
 /**
- * VIL-244 · M9 — the surfaces the receipts-room nav re-registers. Under that IA
- * /approvals is the nav's "Home", /family is the editor (the hub died with the
- * Instinct-adapted refresh), and the demoted week/trail still render as roots rather
- * than drills with a back-to-Family breadcrumb pointing at a tab that is no longer a
- * stop. Static copy — nothing here is interpolated per request.
+ * Surfaces the receipts room treats as roots. /family is the editor, and the
+ * demoted week and trail still render as roots rather than drills with a
+ * back-to-Family breadcrumb. Static copy — nothing here is interpolated per request.
  */
 export const RECEIPTS_ROOT_HEROES: Record<string, RootHero> = {
   '/approvals': {
@@ -89,10 +78,9 @@ export const RECEIPTS_ROOT_HEROES: Record<string, RootHero> = {
 export function resolveHero(
   pathname: string | null,
   roots: Record<string, RootHero>,
-  receiptsIa = false,
 ): HeroResolution | null {
   if (!pathname) return null;
-  const promoted = receiptsIa ? RECEIPTS_ROOT_HEROES[pathname] : undefined;
+  const promoted = RECEIPTS_ROOT_HEROES[pathname];
   if (promoted) return { kind: 'root', hero: promoted };
   const drill = DRILL_HEROES[pathname];
   if (drill) return { kind: 'drill', hero: drill };
@@ -124,10 +112,6 @@ export function buildRootHeroes(params: {
     '/coach': {
       title: 'Hale',
       subtitle: 'Your AI parenting partner — always with your approval.',
-    },
-    '/village': {
-      title: 'Village',
-      subtitle: 'Find local support, activities, care and resources for your family.',
     },
     '/family': { title: 'Family', subtitle: 'Manage your family, inbox, plan and account.' },
     '/settings': {

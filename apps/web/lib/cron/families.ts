@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { asc, isNotNull, or, sql } from 'drizzle-orm';
+import { asc } from 'drizzle-orm';
 
 /**
  * Per-run family caps. A cron run iterates families, runs a real (token-spending)
@@ -8,11 +8,10 @@ import { asc, isNotNull, or, sql } from 'drizzle-orm';
  * caps each family; this caps how many families a single run touches at all).
  *
  * The caps are deliberately small: a scheduled run processes a bounded slice;
- * the next run picks up where it left off (ordered by creation, then by the
- * staleness predicate for discovery). Raising a cap is a one-line edit here.
+ * the next run picks up where it left off (ordered by creation). Raising a cap
+ * is a one-line edit here.
  */
 export const MAX_FAMILIES_PER_RUN = {
-  discovery: 50,
   inference: 100,
   pushReminders: 100,
   /** The civic sweep's per-run projection bound. Its INGEST cost is fixed (one
@@ -22,9 +21,6 @@ export const MAX_FAMILIES_PER_RUN = {
   /** Memory digests are deterministic, but a bad rule still has to be bounded. */
   memoryDigest: 50,
 } as const;
-
-/** Discovery only runs for families whose candidate pool is stale or empty. */
-const DISCOVERY_STALE_DAYS = 7;
 
 /**
  * The bounded set of families a digest/inference run processes: oldest-first,
@@ -38,63 +34,5 @@ export async function selectFamiliesForRun(database: Database, limit: number): P
     .from(schema.families)
     .orderBy(asc(schema.families.createdAt))
     .limit(limit);
-  return rows.map((r) => r.id);
-}
-
-/**
- * Families whose village discovery is stale (no candidate newer than
- * DISCOVERY_STALE_DAYS) or empty (never discovered), AND that have somewhere to
- * discover for (rule #1: no area → nothing to discover). Post-0051 that means a
- * legacy coarse area OR an ACTIVE saved area — resolveActiveAreaCoarse resolves
- * either, so gating on area_coarse alone would starve a family whose only area is
- * a saved active row. Bounded by `limit`. The LEFT JOIN + MAX(discovered_at)
- * grouping picks each family's freshest candidate; a family with none has a NULL
- * max and qualifies.
- */
-export async function selectFamiliesNeedingDiscovery(
-  database: Database,
-  limit: number,
-  now: Date = new Date(),
-): Promise<string[]> {
-  const staleBefore = new Date(now.getTime() - DISCOVERY_STALE_DAYS * 24 * 60 * 60 * 1000);
-  const lastDiscovered = sql<Date | null>`max(${schema.villageCandidates.discoveredAt})`;
-
-  const rows = await database
-    .select({
-      id: schema.families.id,
-      lastDiscovered,
-    })
-    .from(schema.families)
-    .leftJoin(
-      schema.villageCandidates,
-      // Civic rows (VIL-252 · M16) are EXCLUDED from this freshness read on
-      // purpose. They are written by their own weekly sweep, so counting them
-      // would make every family in a covered municipality look freshly discovered
-      // and silently starve the LLM discovery run that this query exists to
-      // schedule — a feed that quietly stops refreshing, with no error anywhere.
-      sql`${schema.villageCandidates.familyId} = ${schema.families.id}
-        and ${schema.villageCandidates.runType} is distinct from 'civic'`,
-    )
-    .where(
-      or(
-        isNotNull(schema.families.areaCoarse),
-        // A family whose only area is an active saved row (no legacy area_coarse)
-        // still has somewhere to discover for — correlated EXISTS over it.
-        sql`exists (select 1 from ${schema.familyAreas} where ${schema.familyAreas.familyId} = ${schema.families.id} and ${schema.familyAreas.isActive})`,
-      ),
-    )
-    .groupBy(schema.families.id, schema.families.createdAt)
-    .having(
-      or(
-        sql`${lastDiscovered} IS NULL`,
-        // Bind the cutoff as an ISO string + cast: the left side is a sql fragment
-        // (max(...)), so Drizzle can't infer the param type and would pass a raw
-        // Date to postgres.js (which throws). A string param casts cleanly.
-        sql`${lastDiscovered} < ${staleBefore.toISOString()}::timestamptz`,
-      ),
-    )
-    .orderBy(asc(schema.families.createdAt))
-    .limit(limit);
-
   return rows.map((r) => r.id);
 }

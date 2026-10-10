@@ -4,38 +4,26 @@ import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 import type { MessageView } from './mappers';
 
 /**
- * The web Messages page — the render contract mirrored from the mobile screen.
- * The loader owns the DB + rule-#1 redaction (covered in queries.test), so it's
- * stubbed here; this test asserts the presentation: a drafted row is the ONLY one
- * that links to /approvals (the parent decides there — rule #4), the rest are
- * plain notes, a redacted body is surfaced verbatim (never un-redacted), and the
- * empty feed shows the calm copy.
+ * The web Messages page renders the portal thread. Loaders own the DB; this
+ * asserts the presentation: a handled note shows its body, a draft is not
+ * repeated in the thread, and an empty feed shows the calm copy.
  */
 
 const loadMessagesMock = vi.fn<() => Promise<MessageView[]>>();
 vi.mock('~/lib/messages/queries', () => ({ loadMessages: () => loadMessagesMock() }));
-// W4: the detail pane's thread imports the note-thread server action, whose module
-// graph reaches Auth.js (and so `next/server`, unresolvable in this SSR test env).
-// It is a server edge like the loader above — stub it; the thread's own render
-// contract is asserted in components/hale/note-thread.test.ts.
-vi.mock('~/lib/messages/note-thread-action', () => ({
-  loadNoteThreadAction: async () => ({ conversationId: null, turns: [] }),
+vi.mock('~/lib/dashboard/queries', () => ({
+  loadTrail: async () => [],
+  loadPendingApprovals: async () => [],
+  loadFamilyTimezone: async () => 'America/Toronto',
 }));
+vi.mock('~/components/hale/approve-button', () => ({ ApproveButton: () => null }));
+vi.mock('~/components/hale/dismiss-button', () => ({ DismissButton: () => null }));
+vi.mock('~/components/hale/export-data-button', () => ({ ExportDataButton: () => null }));
 
 async function renderPage(): Promise<string> {
   const { default: MessagesPage } = await import('~/app/(authed)/messages/page');
   return renderToStaticMarkup(await MessagesPage());
 }
-
-const DRAFTED: MessageView = {
-  id: 'action-a1',
-  kind: 'action',
-  eyebrow: 'Reply to email',
-  body: 'Hale drafted "Reply to email" for your yes.',
-  when: 'Jun 20, 06:00',
-  actionState: 'drafted_for_approval',
-  teenRedacted: false,
-};
 
 const HANDLED: MessageView = {
   id: 'action-a2',
@@ -47,12 +35,14 @@ const HANDLED: MessageView = {
   teenRedacted: false,
 };
 
-const DIGEST: MessageView = {
-  id: 'digest-d1',
-  kind: 'digest',
-  eyebrow: 'Daily brief',
-  body: 'A calm day.',
-  when: 'Jun 18, 13:00',
+const DRAFTED: MessageView = {
+  id: 'action-a1',
+  kind: 'action',
+  eyebrow: 'Reply to email',
+  body: 'Hale drafted "Reply to email" for your yes.',
+  when: 'Jun 20, 06:00',
+  actionState: 'drafted_for_approval',
+  teenRedacted: false,
 };
 
 describe('MessagesPage rendering', () => {
@@ -64,19 +54,18 @@ describe('MessagesPage rendering', () => {
     vi.restoreAllMocks();
   });
 
-  it('links a drafted row to /approvals so the parent decides there', async () => {
-    loadMessagesMock.mockResolvedValue([DRAFTED]);
+  it('renders a handled note in the portal thread', async () => {
+    loadMessagesMock.mockResolvedValue([HANDLED]);
     const html = await renderPage();
-    expect(html).toContain('href="/approvals"');
-    expect(html).toContain('Hale drafted &quot;Reply to email&quot; for your yes.');
+    expect(html).toContain('Messages');
+    expect(html).toContain('Hale handled &quot;Add to calendar&quot;.');
   });
 
-  it('renders a non-drafted note as a plain card that never links to /approvals', async () => {
-    loadMessagesMock.mockResolvedValue([HANDLED, DIGEST]);
+  it('does not repeat a drafted note in the thread', async () => {
+    loadMessagesMock.mockResolvedValue([DRAFTED]);
     const html = await renderPage();
-    expect(html).toContain('Hale handled &quot;Add to calendar&quot;.');
-    expect(html).toContain('A calm day.');
-    expect(html).not.toContain('href="/approvals"');
+    expect(html).not.toContain('Hale drafted');
+    expect(html).toContain('Nothing here yet. Text Hale and it shows up here.');
   });
 
   it('surfaces a redacted body verbatim without un-redacting it (rule #1)', async () => {
@@ -86,20 +75,17 @@ describe('MessagesPage rendering', () => {
       eyebrow: 'Private',
       body: TEEN_REDACTED_PLACEHOLDER,
       when: 'Jun 20, 06:00',
-      actionState: 'drafted_for_approval',
+      actionState: 'autonomous',
       teenRedacted: true,
     };
     loadMessagesMock.mockResolvedValue([redacted]);
     const html = await renderPage();
     expect(html).toContain(TEEN_REDACTED_PLACEHOLDER);
-    // Still routes to Approvals — the lifecycle frame survives redaction.
-    expect(html).toContain('href="/approvals"');
   });
 
   it('shows the calm empty state when there are no messages', async () => {
     loadMessagesMock.mockResolvedValue([]);
     const html = await renderPage();
-    expect(html).toContain('Nothing new from Hale yet.');
-    expect(html).not.toContain('href="/approvals"');
+    expect(html).toContain('Nothing here yet. Text Hale and it shows up here.');
   });
 });

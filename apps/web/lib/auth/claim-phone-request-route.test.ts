@@ -106,7 +106,6 @@ async function shapeOf(res: Response): Promise<string> {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
-  process.env.F14_RECEIPTS_IA = 'true';
   sender = new FakeOtpSender();
   rows = {};
   authRateLimitedMock.mockResolvedValue(false);
@@ -115,13 +114,15 @@ beforeEach(() => {
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
-  process.env.F14_RECEIPTS_IA = '';
   vi.restoreAllMocks();
 });
 
 describe('POST /api/auth/claim-phone/request', () => {
   it('answers a parent, an unknown number and an opted-out number IDENTICALLY', async () => {
-    rows = { channels: [activeChannel()], members: [{ familyId: FAMILY_ID, userId: USER_ID, role: 'primary_parent' }] };
+    rows = {
+      channels: [activeChannel()],
+      members: [{ familyId: FAMILY_ID, userId: USER_ID, role: 'primary_parent' }],
+    };
     const parent = await shapeOf(await post({ phone: PHONE }));
     expect(sender.sent).toHaveLength(1); // the code went to the number, not the browser
 
@@ -168,26 +169,6 @@ describe('POST /api/auth/claim-phone/request', () => {
     expect(logged).toContain('sent');
     expect(logged).not.toContain('5195551234');
     expect(logged).not.toContain(sender.sent[0]?.code ?? 'no-code');
-  });
-
-  it('still accepts a request when the receipts flag is off or only looks true', async () => {
-    rows = {
-      channels: [activeChannel()],
-      members: [{ familyId: FAMILY_ID, userId: USER_ID, role: 'primary_parent' }],
-    };
-
-    process.env.F14_RECEIPTS_IA = '';
-    const off = await post({ phone: PHONE });
-    expect(off.status).toBe(200);
-    expect(sender.sent).toHaveLength(1);
-
-    sender = new FakeOtpSender();
-    // `vercel env add` fed from a piped echo stores a trailing newline. That
-    // still leaves the receipts shell off, and it must not close this door.
-    process.env.F14_RECEIPTS_IA = 'true\n';
-    const looksTrue = await post({ phone: PHONE });
-    expect(looksTrue.status).toBe(200);
-    expect(sender.sent).toHaveLength(1);
   });
 
   it('caps the sends per NUMBER, keyed on the blind index and never the number', async () => {

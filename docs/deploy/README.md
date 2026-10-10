@@ -163,7 +163,6 @@ The schedule lives in `apps/web/vercel.json` under
 |---|---|---|---|---|
 | `/api/cron/digest` | `0 12 * * *` | ~07:00 EST / 08:00 EDT | daily, morning | Composes each family's daily brief on the harness (companion health/milestones + this-week village), stores it in `daily_digests`, and emails it via Resend from `hello@villagehale.com`. |
 | `/api/cron/inference` | `0 6 * * *` | ~01:00 EST / 02:00 EDT | daily, overnight | Memory inference over each family's recent activity; saves ≥0.7-confidence facts through the guarded `save_memory` tool. |
-| `/api/cron/discovery` | `0 13 * * 1` | ~08:00 EST / 09:00 EDT, Mondays | weekly | Village discovery for families whose candidates are stale/empty (reuses `discoverForFamily`). |
 
 **Timezone note:** Vercel cron expressions are **UTC** (no per-cron timezone).
 The UTC times above are chosen to land in the Toronto morning/overnight

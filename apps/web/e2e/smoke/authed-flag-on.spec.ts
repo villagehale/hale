@@ -3,7 +3,7 @@ import { type Browser, type Page, expect, test } from '@playwright/test';
 import { encode } from 'next-auth/jwt';
 
 /**
- * The flag-on authed render walk — the lane that catches the #577 class: a server
+ * The authed render walk — the lane that catches the #577 class: a server
  * render crossing the RSC/client boundary with unserializable or broken data is
  * invisible to tsc and vitest, and only a real `next start` render sees it.
  *
@@ -85,23 +85,19 @@ async function assertHealthy(page: Page, errors: string[], shot: string) {
   expect(errors, `page/console errors on ${page.url()}`).toEqual([]);
 }
 
-test('sign-in renders the flag-on phone door (no cookie)', async ({ browser }) => {
+test('sign-in renders the phone door (no cookie)', async ({ browser }) => {
   const { page, errors } = await openPage(browser, 'anonymous');
   const response = await page.goto('/sign-in');
   expect(response?.status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
-  // Phone is the only door, flag on or off. The email form that used to sit behind the flag is gone.
   await expect(page.getByText('Use the number you text Hale from')).toBeVisible();
   await assertHealthy(page, errors, '01-sign-in');
 });
 
-test('/home is the portal landing — the middleware flag hinge (positive control that F14_RECEIPTS_IA is armed)', async ({
-  browser,
-}) => {
+test('/home is the portal landing', async ({ browser }) => {
   const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/home');
   expect(response?.status()).toBe(200);
-  // If the env were lost, /home would render the daily feed and this marker would be absent.
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByText('Waiting on you')).toBeVisible();
   await assertHealthy(page, errors, '02-home');
@@ -111,7 +107,6 @@ test('/family renders the seeded family (RSC + DB path executed)', async ({ brow
   const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/family');
   expect(response?.status()).toBe(200);
-  // .first(): the seeded child renders twice (sidebar switcher + the family editor).
   await expect(page.getByText('Juniper').first()).toBeVisible();
   await assertHealthy(page, errors, '03-family');
 });
@@ -128,7 +123,7 @@ test('/settings renders the reveal rows — the #577 page', async ({ browser }) 
   await assertHealthy(page, errors, '04-settings');
 });
 
-test('/approvals renders the flag-on landing surface', async ({ browser }) => {
+test('/approvals renders the queue', async ({ browser }) => {
   const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/approvals');
   expect(response?.status()).toBe(200);

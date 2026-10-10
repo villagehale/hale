@@ -4,7 +4,6 @@ import { ensureUserRow, resolveFamilyForUser, resolveUserIdForUser } from '~/lib
 import { assignFoundingNumber } from '~/lib/onboarding/founding';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import { completeOnboarding } from './complete-onboarding.js';
-import type { DiscoveryTrigger } from './trigger-discovery';
 import type { WelcomeEmailSender } from './welcome-email';
 
 // completeOnboarding reads the Auth.js session + the db at request time and reuses
@@ -96,7 +95,8 @@ function makeDb(
     if (table === schema.users) return [{ name: opts.userName ?? null }];
     if (table === schema.families)
       return [{ areaCoarse: opts.areaCoarse ?? null, city: opts.city ?? null }];
-    if (table === schema.children) return (opts.childDobs ?? []).map((dateOfBirth) => ({ dateOfBirth }));
+    if (table === schema.children)
+      return (opts.childDobs ?? []).map((dateOfBirth) => ({ dateOfBirth }));
     return [];
   }
 
@@ -161,7 +161,9 @@ afterEach(() => {
 describe('completeOnboarding', () => {
   it('provisions the family, captures the chosen plan, and audits ToS acceptance', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -223,7 +225,9 @@ describe('completeOnboarding', () => {
 
   it('provisions ALL children (multi-child) with their full DOBs through the audited path', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -251,9 +255,11 @@ describe('completeOnboarding', () => {
     );
   });
 
-  it('carries each child\'s last name and chosen gender through to provisioning (rule #1: optional)', async () => {
+  it("carries each child's last name and chosen gender through to provisioning (rule #1: optional)", async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -276,7 +282,9 @@ describe('completeOnboarding', () => {
 
   it('assigns the founding number after a FRESH provisioning commits (post-tx, top-level db)', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -293,7 +301,9 @@ describe('completeOnboarding', () => {
 
   it('does not assign a founding number when the family already existed', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
 
@@ -307,7 +317,9 @@ describe('completeOnboarding', () => {
 
   it('completes onboarding even when the founding assignment throws (badge never fails the meal)', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -327,7 +339,9 @@ describe('completeOnboarding', () => {
 
   it('writes the structured location and derives a coarse area from the postal code (rule #1)', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -339,7 +353,12 @@ describe('completeOnboarding', () => {
       children: PHASE_C_CHILDREN,
       planTier: 'plus',
       tosAccepted: true,
-      location: { country: 'Canada', province: 'Ontario', city: 'Toronto', postalCode: ' m5v 2t6 ' },
+      location: {
+        country: 'Canada',
+        province: 'Ontario',
+        city: 'Toronto',
+        postalCode: ' m5v 2t6 ',
+      },
     });
 
     expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
@@ -359,7 +378,9 @@ describe('completeOnboarding', () => {
 
   it('persists the chosen intents (validated + ordered) on the family', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -382,7 +403,9 @@ describe('completeOnboarding', () => {
 
   it('stores intents as null when none are chosen (optional, defaults to none)', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -402,7 +425,9 @@ describe('completeOnboarding', () => {
 
   it('updates the parent name when supplied (confirmed Google name) and audits with that actor', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -430,7 +455,9 @@ describe('completeOnboarding', () => {
 
   it('leaves the users name untouched when no parent name is supplied', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
@@ -452,19 +479,19 @@ describe('completeOnboarding', () => {
   // row already exists, so the send is a no-op (the ledger backstops it here too).
   it('skips every write for an existing family; the already-sent welcome is a no-op', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
     vi.mocked(resolveUserIdForUser).mockResolvedValue(USER_ID);
 
     const s = makeDb({ priorWelcome: true });
     fakeDbHandle = s.database;
     const { deps, send } = fakeWelcomeSender();
-    const trigger = vi.fn<DiscoveryTrigger>();
 
     const result = await completeOnboarding(
       { children: PHASE_C_CHILDREN, planTier: 'family', tosAccepted: true },
       deps,
-      trigger,
     );
 
     expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
@@ -480,7 +507,6 @@ describe('completeOnboarding', () => {
     expect(assignFoundingNumber).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
     expect(s.insertFor(schema.emailSends)).toBeUndefined();
-    expect(trigger).not.toHaveBeenCalled();
   });
 
   // The crash-window recovery Fix 1 leaves open: the first submit's tx committed but
@@ -490,7 +516,9 @@ describe('completeOnboarding', () => {
   // welcome — still writing nothing else (no family/consent/audit/founding/discovery).
   it('recovers the lost welcome for an existing family when no ledger row exists yet', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
     vi.mocked(resolveUserIdForUser).mockResolvedValue(USER_ID);
     // The CASL unsubscribe link must be mintable for the send to proceed.
@@ -500,12 +528,10 @@ describe('completeOnboarding', () => {
     const s = makeDb({ priorWelcome: false });
     fakeDbHandle = s.database;
     const { deps, send } = fakeWelcomeSender();
-    const trigger = vi.fn<DiscoveryTrigger>();
 
     const result = await completeOnboarding(
       { children: PHASE_C_CHILDREN, planTier: 'family', tosAccepted: true },
       deps,
-      trigger,
     );
 
     expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
@@ -514,7 +540,6 @@ describe('completeOnboarding', () => {
     expect(s.database.transaction).not.toHaveBeenCalled();
     expect(s.updateCount(schema.families)).toBe(0);
     expect(assignFoundingNumber).not.toHaveBeenCalled();
-    expect(trigger).not.toHaveBeenCalled();
     // The welcome DOES send (recovery) and records its ledger row for the existing
     // family + user, keyed to the same idempotency anchor.
     expect(send).toHaveBeenCalledTimes(1);
@@ -528,7 +553,9 @@ describe('completeOnboarding', () => {
 
   it('rejects when no children are supplied — nothing is written', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
 
     const result = await completeOnboarding({ children: [], planTier: 'plus', tosAccepted: true });
 
@@ -538,7 +565,9 @@ describe('completeOnboarding', () => {
 
   it('rejects when any child fails validation (e.g. a future DOB)', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
 
     const result = await completeOnboarding({
       children: [
@@ -555,7 +584,9 @@ describe('completeOnboarding', () => {
 
   it('rejects when ToS is not accepted — nothing is written', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
 
     const s = makeDb();
     fakeDbHandle = s.database;
@@ -573,7 +604,9 @@ describe('completeOnboarding', () => {
 
   it('rejects an unknown plan tier', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+    });
 
     const result = await completeOnboarding({
       children: PHASE_C_CHILDREN,
@@ -675,74 +708,5 @@ describe('completeOnboarding — welcome email', () => {
     expect(send).toHaveBeenCalledTimes(1);
     // No ledger row written, so a later attempt can still send.
     expect(s.insertFor(schema.emailSends)).toBeUndefined();
-  });
-});
-
-// On completion we kick off the REAL village discovery for the new family so the
-// village isn't blank on first view. The trigger is injected (the production one
-// runs discoverForFamily in the background); these tests assert the wiring — that
-// it fires for the resolved family, and that a failure cannot fail onboarding.
-describe('completeOnboarding — first-village discovery', () => {
-  const noopWelcome: { email: WelcomeEmailSender } = {
-    email: { sendWelcome: vi.fn(async () => ({ accepted: false, providerMessageId: null })) },
-  };
-
-  beforeEach(() => {
-    configureAuth(true);
-    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
-    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
-  });
-
-  it('triggers village discovery for the NEW family (engine reads coarse area only — rule #1)', async () => {
-    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
-    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
-
-    const s = makeDb();
-    fakeDbHandle = s.database;
-    const trigger = vi.fn<DiscoveryTrigger>();
-
-    const result = await completeOnboarding(
-      {
-        children: PHASE_C_CHILDREN,
-        planTier: 'plus',
-        tosAccepted: true,
-        // A precise postal code is supplied; only the DERIVED coarse FSA is stored
-        // on the family, and the trigger receives only the familyId — the precise
-        // address is never carried into discovery (rule #1).
-        location: { country: 'Canada', province: 'Ontario', city: 'Toronto', postalCode: 'M5V 2T6' },
-      },
-      noopWelcome,
-      trigger,
-    );
-
-    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
-    // Fired once, for the newly-provisioned family, with the db handle the engine
-    // reads the coarse area from. The precise postal code is NOT among the args.
-    expect(trigger).toHaveBeenCalledTimes(1);
-    expect(trigger).toHaveBeenCalledWith(NEW_FAMILY_ID, s.database);
-    expect(JSON.stringify(trigger.mock.calls[0])).not.toContain('M5V 2T6');
-    // The family row stored only the coarse FSA, never the full postal code in a
-    // field discovery would read.
-    expect(s.updateFor(schema.families)).toMatchObject({ areaCoarse: 'M5V' });
-  });
-
-  it('completes onboarding even when the discovery trigger throws (failure swallowed)', async () => {
-    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
-    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
-
-    const s = makeDb();
-    fakeDbHandle = s.database;
-    const trigger = vi.fn<DiscoveryTrigger>(() => {
-      throw new Error('discovery scheduling blew up');
-    });
-
-    const result = await completeOnboarding(
-      { children: PHASE_C_CHILDREN, planTier: 'plus', tosAccepted: true },
-      noopWelcome,
-      trigger,
-    );
-
-    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
-    expect(trigger).toHaveBeenCalledTimes(1);
   });
 });

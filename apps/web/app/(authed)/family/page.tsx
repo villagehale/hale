@@ -6,11 +6,9 @@ import { loadOpenJoinInviteForFamily } from '~/lib/channel/join/invites';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { interestPassportEnabled } from '~/lib/passport/flag';
 import { readPassportModel } from '~/lib/passport/read';
 import { listTeenAccessGrants } from '~/lib/teen-access';
-import { LegacyFamilyPage } from './legacy-family';
 
 export const metadata: Metadata = { title: 'Family' };
 
@@ -19,7 +17,6 @@ export default async function FamilyPage() {
     const model = await readPassportModel();
     return <PassportHomeScreen model={model} />;
   }
-  if (!receiptsIaEnabled()) return LegacyFamilyPage();
 
   const database = db();
   const [members, basics, familyId, userId] = await Promise.all([

@@ -21,7 +21,6 @@ export const PROTECTED_PREFIXES = [
   '/saved',
   '/settings',
   '/trail',
-  '/village',
 ];
 
 /** True when `pathname` is one of the gated routes, or sits underneath one. */

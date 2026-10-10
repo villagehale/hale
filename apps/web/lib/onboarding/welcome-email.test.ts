@@ -127,7 +127,7 @@ describe('createWelcomeEmailSender', () => {
     expect(payload.text).toContain('Hi Barton,');
     for (const part of [payload.html, payload.text]) {
       expect(part).toContain('https://app.villagehale.com/home');
-      expect(part).toContain('https://app.villagehale.com/village');
+      expect(part).not.toContain('https://app.villagehale.com/village');
       expect(part).toContain('https://app.villagehale.com/family');
     }
   });
@@ -203,7 +203,8 @@ describe('createWelcomeEmailSender', () => {
       expect(part).toContain('Hale is the quiet village around your family');
       expect(part).toContain('write back whenever — a person is always here');
       // The deterministic shell (step links) is unchanged.
-      expect(part).toContain('https://app.villagehale.com/village');
+      expect(part).toContain('https://app.villagehale.com/home');
+      expect(part).toContain('https://app.villagehale.com/family');
     }
     // The voice greeting REPLACES the deterministic "Hi Barton," line.
     expect(payload.text).not.toContain('Hi Barton,');
