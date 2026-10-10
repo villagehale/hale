@@ -104,7 +104,7 @@ jobs:
 
       # pnpm topo-order package scripts, NOT `pnpm build` (turbo): turbo v2 strict
       # env mode would strip F14_RECEIPTS_IA at build time (absent from turbo.json's
-      # build env allowlist), and this skips apps/site + apps/mobile entirely.
+      # build env allowlist), and this skips apps/site entirely.
       - name: Build web + workspace deps
         run: pnpm --filter @hale/web... build
         env:
