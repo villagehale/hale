@@ -106,8 +106,7 @@ async function renderShell(channel: LoadSmsChannelResult): Promise<string> {
 beforeEach(() => {
   // The layout renders its account chip in the dev-preview auth state, which keeps
   // the session/redirect chain out of a question that is only about the phone.
-  process.env.GOOGLE_OAUTH_CLIENT_ID = '';
-  process.env.GOOGLE_OAUTH_CLIENT_SECRET = '';
+  // AUTH_SECRET is the only switch for that gate.
   process.env.AUTH_SECRET = '';
   // The admin gate resolves not_configured, keeping the founder stop out of a
   // question that is only about the phone.

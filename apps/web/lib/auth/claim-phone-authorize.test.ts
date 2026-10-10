@@ -161,12 +161,14 @@ describe('authorizeClaimByPhone', () => {
     expect(await authorize(undefined)).toBeNull();
   });
 
-  it('is closed while the flag is dark, even with a perfect code', async () => {
+  it('still resolves the existing identity when the receipts flag is off', async () => {
     process.env.F14_RECEIPTS_IA = '';
     rows = claimableParent();
 
-    expect(await authorize({ phone: PHONE, code: CODE })).toBeNull();
-    expect(writes).toEqual([]); // dark means the code isn't even spent
+    expect(await authorize({ phone: PHONE, code: CODE })).toEqual({
+      id: EXISTING_IDENTITY(),
+      email: null,
+    });
   });
 
   it('is throttled by the shared per-IP auth window', async () => {

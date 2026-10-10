@@ -10,7 +10,8 @@ import { credentials } from './credentials.js';
  *
  * One row per issued token. `used_at` burns the token on redemption (single use);
  * `expires_at` bounds the window. A new request invalidates the credential's prior
- * unused tokens (see lib/auth/credentials.ts) so only the latest link works.
+ * unused tokens so only the latest link would have worked. The email door is
+ * gone; the table stays (no destructive migration).
  */
 export const passwordResetTokens = pgTable(
   'password_reset_tokens',

@@ -44,7 +44,6 @@ const SURFACES = [
   'components/hale/approvals-header.tsx',
   'components/hale/ask-hale-thread.tsx',
   'components/hale/getting-ready-checklist.tsx',
-  'components/hale/magic-link-request-form.tsx',
 ] as const;
 
 /**

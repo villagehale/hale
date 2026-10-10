@@ -6,7 +6,6 @@ import { authRateLimited } from '~/lib/auth/rate-limit';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { enforceRateLimit } from '~/lib/rate-limit/apply';
 
 export const runtime = 'nodejs';
@@ -22,17 +21,14 @@ export const runtime = 'nodejs';
  * an account would hand a stranger a household-membership oracle). The core's distinct
  * outcomes are logged server-side and collapse here.
  *
- * DARK BY DEFAULT with the sign-in page it belongs to: off, the route does not exist,
- * so the UI and the endpoint can never disagree about whether the door is open.
+ * Open whenever auth is configured. /sign-in always renders this door, including
+ * when F14_RECEIPTS_IA is off, so the route must not 404 in that case.
  *
  * TWO LIMITS, different jobs. Per-IP is the shared auth window — one source cannot walk
  * a list of numbers. Per-NUMBER (keyed on the blind index, never the raw number) is the
  * one that costs money: it bounds SMS-pumping at a number the caller may not even hold.
  */
 export async function POST(req: Request): Promise<Response> {
-  if (!receiptsIaEnabled()) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  }
   if (!authConfigured()) {
     return NextResponse.json({ error: 'unavailable' }, { status: 503 });
   }
