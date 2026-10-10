@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import { NextResponse } from 'next/server';
 import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
-import { ADMIN_PROBE_HEADER, isAdminPath, isProtectedPath } from '~/lib/auth/protected-routes';
+import { isProtectedPath } from '~/lib/auth/protected-routes';
 import { RETURN_PATH_HEADER, signInHref } from '~/lib/auth/redirect';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { PASSPORT_DEMO_HEADER, passportDemoBypassesAuth } from '~/lib/passport/demo';
@@ -72,15 +72,6 @@ export default auth((req) => {
     return NextResponse.redirect(new URL('/family', req.nextUrl), 308);
   }
 
-  // The founder portal answers a session-less probe with a 404, NEVER the
-  // sign-in redirect the rest of the gated app uses — a redirect would advertise
-  // that /admin exists. The rewrite target matches no route, so Next renders the
-  // not-found page with a real 404 status; an authed non-admin gets the same 404
-  // from the nested (authed)/admin layout itself.
-  if (isAdminPath(pathname) && (!authConfigured() || !req.auth)) {
-    return NextResponse.rewrite(new URL('/admin/__denied__/404', req.nextUrl));
-  }
-
   if (!authConfigured()) {
     if (process.env.NODE_ENV === 'production' && !passportDemoBypassesAuth(pathname)) {
       return redirectToSignIn(req);
@@ -110,22 +101,17 @@ function stampReturnPath(req: { headers: Headers; nextUrl: URL }) {
 }
 
 /**
- * Forwards the request with the admin and passport-demo headers rewritten.
- * A client-sent copy of either header is removed first. The passport demo
- * header is set only for the fixture family routes, and only when the preview
- * demo is on — production never reaches that branch. The return-path header
- * is overwritten here too, so a client cannot supply the value the layout reads.
+ * Forwards the request with the passport-demo header rewritten.
+ * A client-sent copy is removed first. The passport demo header is set only
+ * for the fixture family routes, and only when the preview demo is on —
+ * production never reaches that branch. The return-path header is overwritten
+ * here too, so a client cannot supply the value the layout reads.
  */
 function nextWithHeaders(req: { headers: Headers; nextUrl: URL }, pathname: string) {
   const requestHeaders = new Headers(req.headers);
   // Overwrite any client-sent copy. The layout trusts this header for the
   // signed-out return path, so only the middleware may write it.
   requestHeaders.set(RETURN_PATH_HEADER, `${req.nextUrl.pathname}${req.nextUrl.search}`);
-  if (isAdminPath(pathname)) {
-    requestHeaders.set(ADMIN_PROBE_HEADER, '1');
-  } else {
-    requestHeaders.delete(ADMIN_PROBE_HEADER);
-  }
   requestHeaders.delete(PASSPORT_DEMO_HEADER);
   if (passportDemoBypassesAuth(pathname)) {
     requestHeaders.set(PASSPORT_DEMO_HEADER, '1');

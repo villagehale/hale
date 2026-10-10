@@ -13,12 +13,7 @@ import {
   connectedStatus,
   withHaleSuffix,
 } from '~/lib/channel/connect/connect-page-copy';
-import {
-  ADMIN_TITLE,
-  DEMO_TITLE,
-  PORTAL_TITLE,
-  resolveDocumentTitle,
-} from '~/lib/portal/document-title';
+import { DEMO_TITLE, PORTAL_TITLE, resolveDocumentTitle } from '~/lib/portal/document-title';
 import { generateMetadata as connectMetadata } from './connect/page';
 import { generateMetadata as connectedMetadata } from './connected/page';
 import NotFound, { metadata as notFoundMetadata } from './not-found';
@@ -94,25 +89,7 @@ describe('portal title template', () => {
     }
   });
 
-  it('templates admin tabs under Admin · Hale and demo pages as previews', () => {
-    expect(ADMIN_TITLE).toEqual({ absolute: 'Admin · Hale', template: '%s · Admin · Hale' });
-    expect(pageSource('./(authed)/admin/layout.tsx')).toContain('title: ADMIN_TITLE');
-    expect(pageSource('./(authed)/admin/page.tsx')).not.toContain('export const metadata');
-    expect(
-      rendered('./(authed)/admin/engagement/page.tsx', ADMIN_TITLE.template, ADMIN_TITLE.absolute),
-    ).toBe('Engagement · Admin · Hale');
-    for (const [path, label] of [
-      ['./(authed)/admin/funnels/page.tsx', 'Funnels'],
-      ['./(authed)/admin/operations/page.tsx', 'Operations'],
-      ['./(authed)/admin/agents/page.tsx', 'Agents'],
-      ['./(authed)/admin/radar/page.tsx', 'Radar'],
-      ['./(authed)/admin/ledger/page.tsx', 'Ledger'],
-    ] as const) {
-      expect(rendered(path, ADMIN_TITLE.template, ADMIN_TITLE.absolute), path).toBe(
-        `${label} · Admin · Hale`,
-      );
-    }
-
+  it('templates demo pages as previews', () => {
     expect(DEMO_TITLE).toEqual({ absolute: 'Preview · Hale', template: '%s · Hale preview' });
     expect(pageSource('./demo/layout.tsx')).toContain('title: DEMO_TITLE');
     expect(pageSource('./demo/layout.tsx')).toContain("absolute: 'Page not found · Hale'");

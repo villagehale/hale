@@ -11,8 +11,8 @@ import { encode } from 'next-auth/jwt';
  *   1. status + a POSITIVE content marker (a blank 200 can never pass — the
  *      negative-assertion law), where /family's marker is the seeded child's name,
  *      proof the RSC + DB path actually executed;
- *   2. error-boundary text must be ABSENT (authed boundary, admin panel boundary,
- *      Next's prod root-crash fallback);
+ *   2. error-boundary text must be ABSENT (authed boundary, Next's prod
+ *      root-crash fallback);
  *   3. zero page errors / console errors.
  *
  * Sessions are MINTED (the hale-prod-qa trick, http cookie names): no login UI is
@@ -23,7 +23,6 @@ const SESSION_COOKIE = 'authjs.session-token'; // http ⇒ no __Secure- prefix; 
 
 const ERROR_MARKERS = [
   'we couldn’t load this just now', // app/(authed)/error.tsx
-  'didn’t load — check the logs', // components/admin/panel-boundary.tsx
   'Application error: a server-side exception', // Next prod root-crash fallback
 ];
 
@@ -52,7 +51,7 @@ async function mintSessionCookie(sub: string, email: string) {
   };
 }
 
-type Viewer = 'admin' | 'parent' | 'anonymous';
+type Viewer = 'member' | 'anonymous';
 
 async function openPage(
   browser: Browser,
@@ -62,9 +61,8 @@ async function openPage(
   // 760ms), so an un-reduced screenshot catches blank cards; the reduce arm in
   // globals.css renders everything settled — deterministic, eyeball-able artifacts.
   const context = await browser.newContext({ reducedMotion: 'reduce' });
-  if (viewer !== 'anonymous') {
-    const sub = viewer === 'admin' ? 'smoke-admin' : 'smoke-parent';
-    await context.addCookies([await mintSessionCookie(sub, `${sub}@example.test`)]);
+  if (viewer === 'member') {
+    await context.addCookies([await mintSessionCookie('smoke-admin', 'smoke-admin@example.test')]);
   }
   const page = await context.newPage();
   const errors: string[] = [];
@@ -100,7 +98,7 @@ test('sign-in renders the flag-on phone door (no cookie)', async ({ browser }) =
 test('/home is the portal landing — the middleware flag hinge (positive control that F14_RECEIPTS_IA is armed)', async ({
   browser,
 }) => {
-  const { page, errors } = await openPage(browser, 'admin');
+  const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/home');
   expect(response?.status()).toBe(200);
   // If the env were lost, /home would render the daily feed and this marker would be absent.
@@ -110,7 +108,7 @@ test('/home is the portal landing — the middleware flag hinge (positive contro
 });
 
 test('/family renders the seeded family (RSC + DB path executed)', async ({ browser }) => {
-  const { page, errors } = await openPage(browser, 'admin');
+  const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/family');
   expect(response?.status()).toBe(200);
   // .first(): the seeded child renders twice (sidebar switcher + the family editor).
@@ -119,7 +117,7 @@ test('/family renders the seeded family (RSC + DB path executed)', async ({ brow
 });
 
 test('/settings renders the reveal rows — the #577 page', async ({ browser }) => {
-  const { page, errors } = await openPage(browser, 'admin');
+  const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/settings');
   expect(response?.status()).toBe(200);
   // The SettingsRowReveal rows: a reintroduced RSC-serialization crash streams the
@@ -131,7 +129,7 @@ test('/settings renders the reveal rows — the #577 page', async ({ browser }) 
 });
 
 test('/approvals renders the flag-on landing surface', async ({ browser }) => {
-  const { page, errors } = await openPage(browser, 'admin');
+  const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/approvals');
   expect(response?.status()).toBe(200);
   // Fresh seed ⇒ nothing pending ⇒ the caught-up state is the honest marker.
@@ -140,109 +138,31 @@ test('/approvals renders the flag-on landing surface', async ({ browser }) => {
 });
 
 test('/trail renders the audit tally', async ({ browser }) => {
-  const { page, errors } = await openPage(browser, 'admin');
+  const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/trail');
   expect(response?.status()).toBe(200);
   await expect(page.getByText('actions recorded')).toBeVisible();
   await assertHealthy(page, errors, '06-trail');
 });
 
-test('/admin renders The Line + attention strip for the allowlisted phone', async ({ browser }) => {
-  const { page, errors } = await openPage(browser, 'admin');
-  const response = await page.goto('/admin');
-  expect(response?.status()).toBe(200);
-  await expect(page.getByText('families texting today')).toBeVisible();
-  await expect(page.getByText('failures today')).toBeVisible();
-  // The portal chrome: the tab bar and the sidebar's founder-only Admin stop.
-  await expect(page.getByRole('navigation', { name: 'Admin sections' })).toBeVisible();
-  await expect(
-    page.getByRole('complementary', { name: 'Portal' }).locator('a[href="/admin"]'),
-  ).toBeVisible();
-  // assertHealthy also proves no panel fell into its boundary ("didn’t load — check the logs").
-  await assertHealthy(page, errors, '07-admin');
-});
-
-// The six question tabs, walked with the same three trips (status + positive
-// marker + no boundary/console errors). Fresh seed ⇒ zero-data arms are the
-// honest markers — an empty panel that renders its named line, never a blank.
-const ADMIN_TAB_MARKERS: { path: string; marker: string; shot: string }[] = [
-  { path: '/admin/engagement', marker: 'No rows in this window.', shot: '10-admin-engagement' },
-  {
-    path: '/admin/funnels',
-    marker: 'No intake sessions in this window.',
-    shot: '11-admin-funnels',
-  },
-  { path: '/admin/operations', marker: 'No failures on record.', shot: '12-admin-operations' },
-  { path: '/admin/agents', marker: 'No runs in this window.', shot: '13-admin-agents' },
-  {
-    path: '/admin/radar',
-    marker: 'No upcoming registration windows on file.',
-    shot: '14-admin-radar',
-  },
-  { path: '/admin/ledger', marker: 'No audit rows in this window.', shot: '15-admin-ledger' },
-];
-
-for (const tab of ADMIN_TAB_MARKERS) {
-  test(`${tab.path} renders its panels`, async ({ browser }) => {
-    const { page, errors } = await openPage(browser, 'admin');
-    const response = await page.goto(tab.path);
-    expect(response?.status()).toBe(200);
-    await expect(page.getByText(tab.marker).first()).toBeVisible();
-    await assertHealthy(page, errors, tab.shot);
-  });
-}
-
-test('the dial rides the URL: ?w=365 deep-loads and survives a tab switch', async ({ browser }) => {
-  const { page, errors } = await openPage(browser, 'admin');
-  const response = await page.goto('/admin/operations?w=365');
-  expect(response?.status()).toBe(200);
-  // Cold load: the dial thumb sits on 365, not the 30 default. That thumb is
-  // in the server HTML, so it can be true before the client tab bar has hydrated.
-  await expect(page.getByRole('button', { name: '365d' })).toHaveAttribute('aria-pressed', 'true');
-  // Tab switch preserves the window. Wait until the tab bar has finished
-  // hydrating — a click before `data-ready` is dropped and the URL stays put.
-  const tabs = page.getByRole('navigation', { name: 'Admin sections' });
-  await expect(tabs).toHaveAttribute('data-ready', 'true');
-  const engagement = tabs.getByRole('link', { name: 'Engagement' });
-  await expect(engagement).toHaveAttribute('href', '/admin/engagement?w=365');
-  // App Router applies the click with history.pushState. waitForURL defaults to
-  // the document `load` event, which that navigation never fires, so the test
-  // budget dies on a URL that already moved. Poll the URL instead.
-  await engagement.click();
-  await expect(page).toHaveURL(/\/admin\/engagement\?w=365$/);
-  await expect(page.getByRole('button', { name: '365d' })).toHaveAttribute('aria-pressed', 'true');
-  await assertHealthy(page, errors, '16-admin-dial-deep-link');
-});
-
-test('a non-admin sidebar carries no Admin entry at all (server-conditional, not hidden)', async ({
-  browser,
-}) => {
-  const { page, errors } = await openPage(browser, 'parent');
-  const response = await page.goto('/family');
-  expect(response?.status()).toBe(200);
-  // The HTML itself must not contain the founder stop — the decision is made
-  // server-side in the layout, never a CSS hide.
-  await expect(page.locator('a[href="/admin"]')).toHaveCount(0);
-  await assertHealthy(page, errors, '17-parent-no-admin-entry');
-});
-
-test('/admin answers 404 for a signed-in non-admin (the layout notFound arm)', async ({
-  browser,
-}) => {
-  const { page, errors } = await openPage(browser, 'parent');
-  const response = await page.goto('/admin');
-  // The middleware only covers the session-less probe; this walks the authed
-  // non-admin arm — the (authed) layout's pre-flush notFound() (above the
-  // loading.tsx boundary, so the 404 is a real HTTP status, not a mid-stream
-  // UI swap), with the nested admin layout's gate behind it as defense in depth.
-  expect(response?.status()).toBe(404);
-  await page.screenshot({ path: path.join(SCREEN_DIR, '08-admin-denied.png'), fullPage: true });
-  // A 404 DOCUMENT always logs one resource console error in Chromium — expected
-  // here and only here, so it is filtered per-test rather than allowlisted globally.
-  const unexpected = errors.filter(
-    (line) => !/Failed to load resource: the server responded with a status of 404/.test(line),
-  );
-  expect(unexpected, `page/console errors on ${page.url()}`).toEqual([]);
+test('/admin is gone: a plain portal 404, and the address does not move', async ({ browser }) => {
+  const paths = ['/admin', '/admin/anything', '/admin/ledger/extra'];
+  for (const viewer of ['anonymous', 'member'] as const) {
+    for (const path of paths) {
+      const { page, errors } = await openPage(browser, viewer);
+      const response = await page.goto(path);
+      expect(response?.status(), `${viewer} ${path}`).toBe(404);
+      await expect(page, `${viewer} ${path}`).toHaveURL(new RegExp(`${path}$`));
+      await expect(page, `${viewer} ${path}`).toHaveTitle('Page not found · Hale');
+      await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+      // A 404 document logs one resource console error in Chromium.
+      const unexpected = errors.filter(
+        (line) => !/Failed to load resource: the server responded with a status of 404/.test(line),
+      );
+      expect(unexpected, `page/console errors on ${page.url()}`).toEqual([]);
+      await page.context().close();
+    }
+  }
 });
 
 test('/family redirects a cookie-less visitor to /sign-in (auth-gate positive control)', async ({

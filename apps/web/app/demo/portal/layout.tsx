@@ -10,13 +10,7 @@ export default function DemoPortalLayout({ children }: { children: ReactNode }) 
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
-      <PortalShell
-        showAdmin={false}
-        canSignOut={false}
-        signOutTo={DEMO_SIGN_IN}
-        basePath={DEMO_BASE}
-        roots={roots}
-      >
+      <PortalShell canSignOut={false} signOutTo={DEMO_SIGN_IN} basePath={DEMO_BASE} roots={roots}>
         {children}
       </PortalShell>
     </>

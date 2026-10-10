@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ADMIN_NAV,
   ALL_NAV,
   DEMOTED_NAV,
   HISTORY_NAV,
@@ -8,7 +7,6 @@ import {
   RECEIPTS_NAV,
   SETTINGS_NAV,
   allNav,
-  navWithAdmin,
   primaryNav,
 } from './nav';
 
@@ -135,54 +133,12 @@ describe('receipts-room nav (flag on)', () => {
       }
     }
   });
-});
 
-/**
- * The founder-only Admin stop. Server-conditional: the authed layout resolves
- * resolveAdminGate() and hands a boolean, so a non-admin's sidebar map never
- * contains the entry — but the eyebrow table names /admin unconditionally
- * (labels are not stops, the DEMOTED_NAV precedent).
- */
-describe('navWithAdmin', () => {
-  it('returns the stops untouched for a non-admin (no Admin <a> in the HTML)', () => {
-    expect(navWithAdmin(RECEIPTS_NAV, false)).toEqual(RECEIPTS_NAV);
-    expect(navWithAdmin(PRIMARY_NAV, false)).toEqual(PRIMARY_NAV);
-  });
-
-  it('splices Admin immediately before Settings under the receipts IA', () => {
-    expect(navWithAdmin(RECEIPTS_NAV, true).map((n) => n.label)).toEqual([
-      'Home',
-      'Messages',
-      'Family',
-      'Admin',
-      'Settings',
-    ]);
-  });
-
-  it('appends Admin last when the stops carry no Settings (flag-off IA)', () => {
-    expect(navWithAdmin(PRIMARY_NAV, true).map((n) => n.label)).toEqual([
-      'Home',
-      'Family',
-      'Admin',
-    ]);
-  });
-
-  it('never mutates the input stops and never enters RECEIPTS_NAV itself', () => {
-    navWithAdmin(RECEIPTS_NAV, true);
-    expect(RECEIPTS_NAV.map((n) => n.href)).toEqual(['/home', '/messages', '/family', '/settings']);
-  });
-
-  it('ADMIN_NAV points at the portal with a distinct glyph', () => {
-    expect(ADMIN_NAV.href).toBe('/admin');
-    for (const item of [...RECEIPTS_NAV, ...PRIMARY_NAV, ...DEMOTED_NAV]) {
-      expect(item.icon).not.toBe(ADMIN_NAV.icon);
-    }
-  });
-
-  it('allNav names /admin in BOTH IAs so the running-head eyebrow works for the founder', () => {
+  it('does not name /admin in either IA', () => {
     for (const receiptsIa of [true, false]) {
-      const admin = allNav(receiptsIa).find((n) => n.href === '/admin');
-      expect(admin?.label).toBe('Admin');
+      expect(allNav(receiptsIa).map((n) => n.href)).not.toContain('/admin');
+      expect(primaryNav(receiptsIa).map((n) => n.href)).not.toContain('/admin');
     }
+    expect(DEMOTED_NAV.map((n) => n.href)).not.toContain('/admin');
   });
 });

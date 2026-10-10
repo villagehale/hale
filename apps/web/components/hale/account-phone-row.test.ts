@@ -69,8 +69,8 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
   notFound: vi.fn(),
 }));
-// The layout reads the middleware's admin-probe header (a request store the
-// test render has none of); an empty header bag is the non-admin-path arm.
+// The layout reads request headers for the signed-out return path. This render
+// has no request store; an empty bag is enough.
 vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
 
 const { loadSmsChannel } = await import('~/lib/channels/sms-consent');
@@ -108,9 +108,6 @@ beforeEach(() => {
   // the session/redirect chain out of a question that is only about the phone.
   // AUTH_SECRET is the only switch for that gate.
   process.env.AUTH_SECRET = '';
-  // The admin gate resolves not_configured, keeping the founder stop out of a
-  // question that is only about the phone.
-  process.env.ADMIN_PHONES = '';
 });
 afterEach(() => {
   vi.mocked(loadSmsChannel).mockReset();
