@@ -13,11 +13,11 @@ export const runtime = 'nodejs';
 export const maxDuration = 800;
 
 /**
- * GET /api/cron/drain — drains the two hot worker queues (events.ingested,
- * actions.approved) through the SAME orchestrator pipeline, on every-minute
- * Vercel Cron. The Fly worker is not deployed, so this serverless drain is what
- * actually consumes those jobs; the after()-kick on the enqueue paths handles
- * the common case immediately and this cron is the safety-net reaper.
+ * GET /api/cron/drain — drains the hot worker queues (events.ingested,
+ * actions.approved, and the rest of the drain plan) through the orchestrator
+ * pipeline, on every-minute Vercel Cron (yul1). This serverless drain is what
+ * consumes those jobs; the after()-kick on the enqueue paths handles the
+ * common case immediately and this cron is the safety-net reaper.
  *
  * Cron auth is the gate: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and the drain does NOTHING —

@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -58,13 +57,5 @@ describe('worker config without DATABASE_URL', () => {
     process.env.DATABASE_URL = 'not-a-url';
     vi.resetModules();
     await expect(import('./config.js')).rejects.toThrow();
-  });
-
-  it('checks the URL at worker boot before the queue starts', () => {
-    const src = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
-    const check = src.indexOf('requireDatabaseUrl()');
-    const start = src.indexOf('startQueue()');
-    expect(check).toBeGreaterThan(-1);
-    expect(start).toBeGreaterThan(check);
   });
 });

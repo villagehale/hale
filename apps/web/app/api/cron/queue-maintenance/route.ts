@@ -17,8 +17,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 /**
- * GET /api/cron/queue-maintenance — the queue's own upkeep, on a schedule, because the
- * supervising Fly worker is not deployed. Cron-secret gated like every cron route.
+ * GET /api/cron/queue-maintenance — the queue's own upkeep, on a Vercel Cron
+ * schedule (yul1). Cron-secret gated like every cron route.
  *
  * Four jobs, all of the same kind: things a single request cannot finish for itself.
  *   1. pg-boss maintenance — expire stuck `active` jobs, archive completed (recipe #2).

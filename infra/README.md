@@ -7,7 +7,7 @@ Deployment configuration for Hale.
 | Service | Host | Region | Config |
 |---|---|---|---|
 | Web app (`apps/web`) | Vercel | yul1 functions | `apps/web/vercel.json` (project rootDirectory=`apps/web`) |
-| Agent Worker (`apps/worker`) | Fly.io | YYZ (Toronto) | `infra/fly.toml` + `apps/worker/Dockerfile` |
+| Agent worker code (`apps/worker`) | Vercel `/api/cron/drain` | yul1 | Imported by the web app; no separate host |
 | Postgres | Supabase | ca-central-1 (Toronto) | `infra/supabase/config.toml` (local emulator) |
 | Object storage | Supabase Storage | ca-central-1 | Configured in Supabase dashboard |
 | Secrets | Doppler | — | Set up per-environment via Doppler CLI |
@@ -34,23 +34,9 @@ vercel env pull .env.local         # pulls secrets
 vercel --prod                       # deploys
 ```
 
-The operative config is `apps/web/vercel.json` (picked up via the project's rootDirectory) — Montreal functions (`yul1`), Turbo-based build, and the cron schedule.
+The operative config is `apps/web/vercel.json` (picked up via the project's rootDirectory) — Montreal functions (`yul1`), Turbo-based build, and the cron schedule. Worker code runs inside `/api/cron/drain` on those functions. There is no separate worker host.
 
-### 3. Fly.io worker
-
-```bash
-fly launch --config infra/fly.toml --no-deploy
-fly secrets set DATABASE_URL=... ANTHROPIC_API_KEY=...
-fly deploy --config infra/fly.toml
-```
-
-Verify the worker is consuming the queue:
-
-```bash
-fly logs --app hale-worker
-```
-
-### 4. Doppler secrets
+### 3. Doppler secrets
 
 ```bash
 doppler setup
@@ -60,10 +46,10 @@ doppler secrets upload .env.local
 ## Health checks
 
 - Web: `GET https://hale.family/api/health`
-- Worker: `GET https://hale-worker.fly.dev/health` (via Fly's internal health check)
+- Queue drain: Vercel Cron `GET /api/cron/drain` (yul1), every minute
 
 ## Disaster recovery
 
 - Postgres: Supabase daily backups, 7-day retention, Toronto region.
-- Worker: Stateless; redeploy from `main`.
+- Worker code: ships with the Vercel web deploy (`/api/cron/drain`).
 - Vercel: Automatic rollback via dashboard.

@@ -19,7 +19,7 @@ This document describes how Hale deploys to production.
      └────────────────────┘    └────────────────────┘
 ```
 
-Production is two hosts. **Vercel** serves `hale-web` (the app) and the marketing site, and runs scheduled work as Cron jobs against `/api/cron/*`. **Supabase Toronto** is Postgres and object storage. There is no separate production worker. `apps/worker` stays for local and durable pg-boss runs.
+Production is two hosts. **Vercel** serves `hale-web` (the app) and the marketing site, and runs scheduled work as Cron jobs against `/api/cron/*`. **Supabase Toronto** is Postgres and object storage. There is no separate worker host. `apps/worker` is the library `/api/cron/drain` imports (yul1).
 
 Both hosts are in Canadian regions for PIPEDA / Quebec Law 25 data residency. `hale-web` functions are pinned to `yul1` (Montreal) in `apps/web/vercel.json`. Supabase is `ca-central-1` (Toronto).
 
@@ -27,7 +27,7 @@ Both hosts are in Canadian regions for PIPEDA / Quebec Law 25 data residency. `h
 
 | Env | Web | Scheduled work | DB | Branch |
 |---|---|---|---|---|
-| local | `localhost:3000` | `apps/worker` on `localhost:4000` | Supabase local | feature |
+| local | `localhost:3000` | same `/api/cron/*` routes on the web app | Supabase local | feature |
 | preview | `hale-<sha>.vercel.app` | crons do not run on preview | dev Supabase | feature PRs |
 | production | `hale.family` | Vercel Cron → `/api/cron/*` on `hale-web` | prod Supabase | `production` |
 
