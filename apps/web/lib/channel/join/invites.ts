@@ -22,7 +22,7 @@ import { joinTokenHash, mintJoinCode } from './code';
  * link exists rather than at the moment somebody opens it. That ordering matters — the
  * capability and the record of who authorised it are the same transaction.
  *
- * A SECOND LINK DOES NOT KILL THE FIRST. The magic-link table invalidates its
+ * A SECOND LINK DOES NOT KILL THE FIRST. A sign-in link used to invalidate its
  * predecessors because a stale sign-in link is pure risk; here the parent has usually
  * already forwarded it, and revoking it would strand the person holding it with an
  * ordinary greeting and a new household. What bounds the surface instead is what each

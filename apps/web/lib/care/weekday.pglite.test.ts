@@ -19,10 +19,10 @@ import {
  * fake cannot make.
  *
  * `loadWeekdayCare`'s whole safety property is a WHERE clause: `family_memory_facts`
- * is writable by the app coach's `save_memory` tool under any key a model likes, so a
- * reader that matched only the key would let one injected sentence change what Hale
- * offers a household for months. A fake returns whatever rows it was handed and would
- * pass with the pin removed.
+ * is writable under any key a writer chooses. `inferred_by: 'ask-hale'` is a legacy
+ * label still read for old rows, so a reader that matched only the key would let one
+ * injected sentence change what Hale offers a household for months. A fake returns
+ * whatever rows it was handed and would pass with the pin removed.
  *
  * `readCandidates` is here for the sibling reason (the "pin production wiring" rule):
  * the weekday claim rests on `village_candidates.source`, and a column the reader does
@@ -129,11 +129,11 @@ describe('loadWeekdayCare', () => {
   });
 
   /**
-   * THE WRITER PIN, with its decoy beside it. `ask-hale` is the app coach's memory
-   * tool, which chooses its own `fact_key` from a model's output — so the decoy row
-   * here is a row a single injected sentence could really produce.
+   * THE WRITER PIN, with its decoy beside it. `ask-hale` is a legacy writer label
+   * still read for old rows, and that writer chose its own `fact_key` — so the decoy
+   * row here is a row a single injected sentence could really have produced.
    */
-  it('is blind to a row written under the same key by the app coach', async () => {
+  it('is blind to a legacy ask-hale row under the same key', async () => {
     const { familyId, childId } = await seedFamily();
     const [other] = await db.database
       .insert(schema.children)

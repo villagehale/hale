@@ -42,7 +42,7 @@ const PROVIDER_TOKENS = [
   'api.linqapp.com',
 ] as const;
 
-/** Every file allowed to reach Twilio, each with the reason its sends are on the
+/** Every file allowed to reach Linq, each with the reason its sends are on the
  * record. "records its own rows" means a channel_messages insert sits beside the
  * transport.send in the same flow; "session transcript" is the intake convention —
  * pre-family sends live on the encrypted intake session and are replayed into
@@ -94,8 +94,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
 };
 
-/** The trees a send could hide in. Worker is scanned even though it has no Twilio
- * today — the day someone gives it a transport, this test is the reviewer. */
+/** The trees a send could hide in. Worker is scanned even though it has no phone
+ * transport today — the day someone gives it one, this test is the reviewer. */
 const SCAN_ROOTS = [
   'apps/web/app',
   'apps/web/lib',
@@ -149,7 +149,7 @@ describe('one door to the provider (rule #6)', () => {
     expect(found).toContain('apps/web/lib/channel/linq/transport.ts');
   });
 
-  it('no file reaches Twilio outside the allowlisted, ledger-accountable set', () => {
+  it('no file reaches Linq outside the allowlisted, ledger-accountable set', () => {
     const strangers = found.filter((file) => !(file in ONE_DOOR_ALLOWLIST));
     expect(
       strangers,

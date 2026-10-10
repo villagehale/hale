@@ -60,10 +60,9 @@ function ledgerRows(fake: FakeDb) {
 
 describe('the welcome contact card', () => {
   it('points at the vCard route apps/site actually serves', () => {
-    // The MediaUrl is fetched by TWILIO, from the public marketing origin — not the app
+    // The MediaUrl is fetched by Linq, from the public marketing origin — not the app
     // domain, and not the apex (which 308s). A route moved without this line moving is a
-    // media fetch that fails and takes the whole message down with it (verified live:
-    // an unfetchable MediaUrl fails the message at error_code 11200, body included).
+    // media fetch that fails and takes the whole message down with it.
     expect(CONTACT_CARD_URL).toBe(`${MARKETING_SITE_URL}/hale.vcf`);
     const route = readFileSync(new URL('../../../../site/app/hale.vcf/route.ts', import.meta.url));
     expect(route.toString()).toContain('text/vcard');

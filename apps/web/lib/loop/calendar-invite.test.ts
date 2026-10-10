@@ -190,7 +190,7 @@ beforeEach(async () => {
   db = await createTestDb();
   routeDb.current = db.database;
   email = fakeChannel('email', { status: 'sent', providerMessageId: 'resend-1' });
-  sms = fakeChannel('sms', { status: 'sent', providerMessageId: 'twilio-1' });
+  sms = fakeChannel('sms', { status: 'sent', providerMessageId: 'linq-1' });
   voice = scriptedVoice();
   vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);

@@ -29,7 +29,7 @@ const POISON = {
   parentText: 'Mia has a fever of 39 and I am scared, what do I do',
   childName: 'Mia',
   phone: '+16475551234',
-  twilioMessage: 'twilio send failed: HTTP 400, twilio code 21610',
+  providerMessage: 'provider send failed: HTTP 400, provider code 21610',
   familyId: FAMILY,
 };
 
@@ -140,11 +140,11 @@ describe('no free text can reach the payload (poisoned fixtures)', () => {
   it("the provider's own error string is dropped where only its code belongs", () => {
     const out = serialized({
       lane: 'transport',
-      code: POISON.twilioMessage,
+      code: POISON.providerMessage,
       retry: 'permanent',
       familyId: FAMILY,
     });
-    expect(out).not.toContain('twilio send failed');
+    expect(out).not.toContain('provider send failed');
     expect(out).toContain('unclassified');
   });
 
