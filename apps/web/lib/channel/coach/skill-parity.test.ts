@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { findActivitiesTool } from '~/lib/channel/activity/tools';
 import { smsUnitsBudget } from '~/lib/channel/sms-segments';
+import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { MAX_REPLY_SEGMENTS } from './reply';
@@ -108,7 +109,23 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).toContain('Their own day comes first');
     expect(skill.instructions).toContain('Do not mention the week');
     expect(skill.instructions).toContain('Then what checked out');
-    expect(skill.instructions).toContain('as a question they can answer by sending it');
+    // A missing course-page link is asked with a question mark, and a statement
+    // that you need the link is not an ask. The skill and the watch-tool prompt
+    // each keep that rule in the wording they have now.
+    const skillProse = skill.instructions.replace(/\s+/g, ' ');
+    const missingLinkAsk =
+      'The ask is a question, and the message contains a question mark. A statement that you need the link is not an ask: they have nothing to answer.';
+    expect(skillProse).toContain(missingLinkAsk);
+    expect(skillProse).toContain("Send me the link from that class's page?");
+    const watch = watchForOpeningTool({
+      fetchBody: {} as never,
+      reader: {} as never,
+      watchConsentGranted: {} as never,
+      onWatch: () => {},
+    });
+    expect(watch.description).toContain(
+      'ask for the link from the course page as a question with a question mark. A statement that you need the link is not an ask.',
+    );
     expect(skill.instructions).not.toContain('One checked find');
     expect(skill.instructions).not.toContain('Do not add a second outing');
     expect(skill.instructions).toContain('exactly one thing that fits');
