@@ -8,6 +8,7 @@ import { authConfigured, requireEmailVerification } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { MIN_PASSWORD_LENGTH } from './constants';
 import { registerCredential, verifyEmailToken } from './credentials';
+import { PASSWORD_RESET_INVALID, PASSWORD_RESET_UNAVAILABLE } from './door-messages';
 import { authRateLimited } from './rate-limit';
 import { safeInternalRedirect } from './redirect';
 import {
@@ -53,10 +54,7 @@ export type SignInState =
 
 const GENERIC_SIGNIN_ERROR = 'That email or password is incorrect.';
 
-export async function signUpAction(
-  _prev: SignUpState,
-  formData: FormData,
-): Promise<SignUpState> {
+export async function signUpAction(_prev: SignUpState, formData: FormData): Promise<SignUpState> {
   if (!authConfigured()) {
     return { status: 'error', message: 'Sign-up is not available right now.' };
   }
@@ -174,7 +172,7 @@ export async function requestPasswordResetAction(
   formData: FormData,
 ): Promise<ResetRequestState> {
   if (!authConfigured()) {
-    return { status: 'error', message: 'Password reset is not available right now.' };
+    return { status: 'error', message: PASSWORD_RESET_UNAVAILABLE };
   }
   if (await authRateLimited()) {
     return { status: 'error', message: 'Too many attempts. Please wait a minute and try again.' };
@@ -212,7 +210,7 @@ export async function resetPasswordAction(
   formData: FormData,
 ): Promise<ResetPasswordState> {
   if (!authConfigured()) {
-    return { status: 'error', message: 'Password reset is not available right now.' };
+    return { status: 'error', message: PASSWORD_RESET_UNAVAILABLE };
   }
   if (await authRateLimited()) {
     return { status: 'error', message: 'Too many attempts. Please wait a minute and try again.' };
@@ -231,7 +229,7 @@ export async function resetPasswordAction(
     // invalid_token (and the impossible invalid_email) → one generic message.
     return {
       status: 'error',
-      message: 'This reset link is invalid or has expired. Request a new one.',
+      message: PASSWORD_RESET_INVALID,
     };
   }
 
@@ -266,7 +264,10 @@ export async function confirmEmailAction(
   return redeemed ? { status: 'ok' } : { status: 'error' };
 }
 
-export type ResendState = { status: 'idle' } | { status: 'error'; message: string } | { status: 'sent' };
+export type ResendState =
+  | { status: 'idle' }
+  | { status: 'error'; message: string }
+  | { status: 'sent' };
 
 /**
  * Re-send the email-verification link. Anti-enumeration: an unverified account gets

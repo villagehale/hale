@@ -223,6 +223,57 @@
   text-align: left;
 }
 
+/* Notes under a door button stay .meta. Lines under the heading use .lede. */
+.stack > :global(.meta) {
+  margin-top: 12px;
+}
+
+/* Door errors only. Light #a8432f is 5.7:1 on the card; dark stays #e58c78.
+   16px when the error is the first line under the heading. */
+.stack :global(.field-error) {
+  margin-top: 12px;
+  color: #a8432f;
+}
+
+:global(.dark) .stack :global(.field-error) {
+  color: #e58c78;
+}
+
+.stack > .stack > :global(.field-error):first-child {
+  margin-top: 16px;
+}
+
+.stack :global(.panel-oat) {
+  margin-top: 16px;
+}
+
+/* `.stage .btn` sets 32px. This wins for Return to Hale only. */
+.returnHome {
+  margin-top: 24px !important;
+}
+
+/* Deny stays a submit button. It reads as the quiet underlined link in `.new a`:
+   full-width hit target, underline only as wide as the word. */
+.stack button.cancel {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--navy, #17294a);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: rgb(23 41 74 / 0.3);
+}
+
 /* Dark door. Hardcoded navy in this file was drawing on the navy card. */
 :global(.dark) .eyebrow,
 :global(.dark) .field label,
@@ -242,6 +293,11 @@
 :global(.dark) .alt button {
   color: #f7f4ec;
   border-bottom-color: rgb(247 244 236 / 0.45);
+}
+
+:global(.dark) .stack button.cancel {
+  color: #f7f4ec;
+  text-decoration-color: rgb(247 244 236 / 0.45);
 }
 
 :global(.dark) .muted,

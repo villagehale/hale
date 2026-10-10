@@ -4,9 +4,10 @@ import { describe, expect, it } from 'vitest';
 /**
  * Nothing gates a className against globals.css — a component can ship classes that
  * are defined NOWHERE and every other gate stays green. This closes that hole for
- * the auth surface (the split-card sign-in / sign-up frame): every bespoke `auth-`
- * class the frame, the magic-link form, and the two pages reference must have a
- * definition in globals.css. Sibling of companion-css-coverage.test.ts.
+ * the flag-off sign-in controls: every bespoke `auth-` class the magic-link form
+ * and the sign-in page reference must have a definition in globals.css. The shore
+ * door itself is ConnectStage, not an `auth-` class. Sibling of
+ * companion-css-coverage.test.ts.
  */
 
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -43,10 +44,12 @@ function definedInCss(cls: string): boolean {
 
 describe('auth surface CSS coverage (every bespoke class is defined)', () => {
   it('extracts a real class set (guards against a vacuous pass)', () => {
-    expect(used.size).toBeGreaterThanOrEqual(18);
-    expect(used).toContain('auth-card');
+    expect(used.size).toBeGreaterThanOrEqual(8);
+    expect(used).toContain('auth-google');
     expect(used).toContain('auth-submit');
     expect(used).toContain('auth-field');
+    expect(used).not.toContain('auth-stage');
+    expect(used).not.toContain('auth-backdrop');
   });
 
   it('defines every bespoke auth class the frame + pages use', () => {

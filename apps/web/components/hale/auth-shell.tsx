@@ -1,20 +1,15 @@
-import Image from 'next/image';
-import Link from 'next/link';
 import type { PropsWithChildren } from 'react';
-import { LogoMark } from '~/components/hale/logo-mark';
-import { ThemeToggle } from '~/components/hale/theme-toggle';
-import { PRIVACY_URL } from '~/lib/legal-links';
+import { ConnectStage } from '~/components/hale/connect/connect-stage';
+import stage from '~/components/hale/connect/connect.module.css';
+import door from '~/components/portal/signin.module.css';
 
 /**
- * The shared sign-in / sign-up frame: a centered split card floating on a
- * full-viewport Prussian-navy stage. The left panel is a deep-navy gradient stage
- * carrying the brand — the alpha-matted village illustration (decorative), the
- * serif wordmark, and the value copy in cream — and stays navy in BOTH themes (the
- * brand field is a navy stage regardless of light/dark). The right panel is the
- * form column on the app's token surfaces, so it flips warm-white → deep-navy-tinted
- * with the theme toggle (which stays). Below 900px the card stacks to a column: the
- * stage folds to a compact brand band (illustration + lede hidden) above the form,
- * so a phone shows the brand then the form with no horizontal overflow.
+ * Auth door for the pages that still collect an email or a password.
+ *
+ * Same frame as the phone /sign-in: ConnectStage (shore, wordmark, the
+ * approved footer) and the glass card. This page's own heading and form sit
+ * in the card. No second set of sentences, and no theme logic — light, dark,
+ * and auto come from the root `hale-theme` script.
  */
 export function AuthShell({
   heading,
@@ -22,54 +17,16 @@ export function AuthShell({
   children,
 }: PropsWithChildren<{ heading: string; subtitle?: string }>) {
   return (
-    <div className="auth-backdrop">
-      <main className="auth-card">
-        <section className="auth-stage">
-          <Link href="/" className="auth-stage-mark">
-            <LogoMark size={34} />
-            Hale
-          </Link>
-          <div className="auth-stage-art">
-            <Image
-              src="/village-illustration.png"
-              alt=""
-              aria-hidden="true"
-              fill
-              sizes="(max-width: 900px) 0px, 460px"
-              className="object-contain"
-            />
+    <ConnectStage>
+      <section className={`${stage.card} ${stage.door}`}>
+        <div className={stage.act}>
+          <div className={door.stack}>
+            <h1 className={stage.h1}>{heading}</h1>
+            {subtitle ? <p className={stage.lede}>{subtitle}</p> : null}
+            {children}
           </div>
-          <div className="auth-stage-copy">
-            <p className="auth-stage-eyebrow">For your neighborhood</p>
-            <p className="auth-stage-title">
-              The <span className="auth-stage-accent">village</span> every parent needs.
-            </p>
-            <p className="auth-stage-lede">
-              Real recommendations from real families near you, with Hale, a calm AI co-pilot that
-              finds and organizes it all — for every stage of childhood.
-            </p>
-          </div>
-        </section>
-
-        <section className="auth-panel">
-          <div className="auth-panel-head">
-            <ThemeToggle />
-          </div>
-          <h1 className="auth-heading">{heading}</h1>
-          {subtitle ? <p className="auth-subtitle">{subtitle}</p> : null}
-          {children}
-          <p className="meta">
-            Never sold.{' '}
-            <a href={PRIVACY_URL} className="underline underline-offset-2">
-              Privacy policy
-            </a>
-          </p>
-          {/* The one brand moment in the receipts room: the name, said out loud. The
-              marketing site closes every page on this line; the app earns it once, at
-              the door, and nowhere past it — inside, this is a utility. */}
-          <p className="auth-pronounce">Hale /HAH-leh/ &mdash; Hawaiian for home.</p>
-        </section>
-      </main>
-    </div>
+        </div>
+      </section>
+    </ConnectStage>
   );
 }

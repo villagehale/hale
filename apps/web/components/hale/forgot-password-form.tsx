@@ -2,6 +2,8 @@
 
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
+import stage from '~/components/hale/connect/connect.module.css';
+import door from '~/components/portal/signin.module.css';
 import { type ResetRequestState, requestPasswordResetAction } from '~/lib/auth/auth-actions';
 
 /**
@@ -9,15 +11,18 @@ import { type ResetRequestState, requestPasswordResetAction } from '~/lib/auth/a
  * "if that email has an account…" message — the form never reveals whether the
  * address is registered (anti-enumeration lives in the action, rule #1).
  */
-export function ForgotPasswordForm() {
-  const [state, formAction] = useActionState<ResetRequestState, FormData>(
-    requestPasswordResetAction,
-    { status: 'idle' },
-  );
+export function ForgotPasswordForm({
+  action = requestPasswordResetAction,
+  initialState = { status: 'idle' },
+}: {
+  action?: (prev: ResetRequestState, formData: FormData) => Promise<ResetRequestState>;
+  initialState?: ResetRequestState;
+} = {}) {
+  const [state, formAction] = useActionState<ResetRequestState, FormData>(action, initialState);
 
   if (state.status === 'sent') {
     return (
-      <output className="meta block max-w-sm">
+      <output className={stage.lede}>
         If that email has an account, we&rsquo;ve sent a link to reset your password. It expires in
         an hour.
       </output>
@@ -25,11 +30,9 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form action={formAction} className="flex w-full flex-col gap-4">
-      <div className="field-group">
-        <label htmlFor="forgot-email" className="field-label">
-          Email
-        </label>
+    <form action={formAction}>
+      <div className={door.field}>
+        <label htmlFor="forgot-email">Email</label>
         <input
           id="forgot-email"
           name="email"
@@ -38,7 +41,7 @@ export function ForgotPasswordForm() {
           spellCheck={false}
           autoCapitalize="none"
           required
-          className="field"
+          className={door.input}
         />
         <p className="field-hint">We&rsquo;ll email a link to set a new password.</p>
       </div>
@@ -55,7 +58,12 @@ export function ForgotPasswordForm() {
 function Submit() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className="btn-primary" disabled={pending} aria-live="polite">
+    <button
+      type="submit"
+      className={`${stage.btn} ${door.full}`}
+      disabled={pending}
+      aria-live="polite"
+    >
       {pending ? 'Sending…' : 'Send reset link'}
     </button>
   );
