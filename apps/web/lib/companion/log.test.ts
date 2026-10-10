@@ -98,7 +98,7 @@ describe('logQuickEpisode', () => {
       payload: { amountMl: 120 },
       occurredAt: NOW,
     });
-    expect(revalidateMock).toHaveBeenCalledWith('/companion');
+    expect(revalidateMock).toHaveBeenCalledWith('/home');
   });
 
   it('returns preview without writing when no family resolves', async () => {
@@ -173,7 +173,7 @@ describe('logQuickEpisode', () => {
       payload: { diaperKind: 'wet' },
       occurredAt: NOW,
     });
-    expect(revalidateMock).toHaveBeenCalledWith('/companion');
+    expect(revalidateMock).toHaveBeenCalledWith('/home');
   });
 
   it('round-trips a milestone note through to the persisted episode', async () => {
@@ -260,7 +260,7 @@ describe('markCompanionItemDone', () => {
       payload: { milestone: 'Walks independently' },
       occurredAt: NOW,
     });
-    expect(revalidateMock).toHaveBeenCalledWith('/companion');
+    expect(revalidateMock).toHaveBeenCalledWith('/home');
   });
 
   it('writes a health_done episode carrying the key when marking a checkup done', async () => {

@@ -36,12 +36,6 @@ import type { RateLimitOptions } from './limiter';
  *   even a parent tidying every child's photo in one sitting is a handful. 20/hour is
  *   far above that yet stops a script from running up storage/bandwidth on the private
  *   bucket. Per-user (the upload cost is the uploader's), on an HOUR window.
- * - village-ai-search (20/min/family): the natural-language search's cheap intent
- *   parse (one small model call per submit). It is a per-MINUTE bot guard, NOT the
- *   paid-run cooldown: the expensive discovery it may trigger on thin results is
- *   itself bounded by village-search (5/hour). A parent exploring types a couple of
- *   phrasings a minute; 20 is well above that yet stops a scripted loop from running
- *   up spend on the parse. Per-family (the search reads the family's village).
  * - sms-otp-send (5/hour/user): each send costs an SMS and texts a real number, so
  *   this is a genuine cap (fail-closed), not a bot guard. A parent enrolling retries
  *   a code once or twice; five per hour covers that while blunting SMS-pumping /
@@ -57,7 +51,6 @@ export const RATE_LIMITS = {
   preview: { limit: 10, windowSec: 60 },
   'village-search': { limit: 5, windowSec: 3600 },
   'avatar-upload': { limit: 20, windowSec: 3600 },
-  'village-ai-search': { limit: 20, windowSec: 60 },
   'sms-otp-send': { limit: 5, windowSec: 3600 },
   'sms-otp-verify': { limit: 10, windowSec: 3600 },
   // One MCP assistant grant can make quick read bursts, but no human-approved
