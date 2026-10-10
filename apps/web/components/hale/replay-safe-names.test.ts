@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { LogsPage } from '~/lib/companion/logs-view';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
-import { AttachmentChip } from './ask-hale-thread';
 import { LogsBrowser } from './logs-browser';
 import { AuthoredPlanCard } from './plan-cards';
 import { SharedLinkRow } from './shared-links';
@@ -125,16 +124,6 @@ describe('per-row controls still name their row (VIL-276)', () => {
       }),
     );
     expect(accessibleName(html, 'revoke')).toBe('revoke the Marisol week plan');
-  });
-
-  it('names the attachment chip’s remove control with the file it takes off the send', () => {
-    const html = renderToStaticMarkup(
-      h(AttachmentChip, {
-        attachment: { id: 'f1', name: 'Marisol-record.pdf', sizeBytes: 120_000, tone: 'sage' },
-        onRemove: () => {},
-      }),
-    );
-    expect(accessibleName(html, 'Remove')).toBe('Remove Marisol-record.pdf');
   });
 
   it('gives two rows on one page two different names, and two different references', () => {

@@ -6,9 +6,9 @@ import type { Route } from 'next';
  * breadcrumb + back button + a drill title. Both the desktop top bar and the
  * narrow-viewport hero read from here so the two can never disagree.
  *
- * The ROOT heroes carry interpolated copy (the home greeting, the companion
- * child's name) so they are built server-side and passed in as `roots`; the DRILL
- * heroes are static route → {crumb, title, backHref} and live here.
+ * The ROOT heroes carry interpolated copy (the home greeting) so they are built
+ * server-side and passed in as `roots`; the DRILL heroes are static route →
+ * {crumb, title, backHref} and live here.
  */
 
 export interface RootHero {
@@ -32,7 +32,7 @@ export type HeroResolution = { kind: 'root'; hero: RootHero } | { kind: 'drill';
 
 /** The tab-root routes, in nav order. A root's hero copy is provided by the
  * server (see buildRootHeroes) because some of it is interpolated. */
-export const ROOT_ROUTES = ['/home', '/companion', '/coach', '/family', '/settings'] as const;
+export const ROOT_ROUTES = ['/home', '/family', '/settings'] as const;
 
 export type RootRoute = (typeof ROOT_ROUTES)[number];
 
@@ -90,28 +90,15 @@ export function resolveHero(
 }
 
 /**
- * Build the root heroes map from the request's live values: the time-of-day
- * greeting (already warmed with the viewer's name) and the companion child's name
- * when the family has exactly one child (otherwise a family-wide subtitle — never a
- * fabricated single name, rule #1).
+ * Build the root heroes map from the request's live greeting (already warmed
+ * with the viewer's name).
  */
-export function buildRootHeroes(params: {
-  greeting: string;
-  childName: string | null;
-}): Record<RootRoute, RootHero> {
-  const companionSubtitle = params.childName
-    ? `Everything about ${params.childName}, all in one place.`
-    : 'Everything about your family, all in one place.';
+export function buildRootHeroes(params: { greeting: string }): Record<RootRoute, RootHero> {
   return {
     '/home': {
       title: params.greeting,
       subtitle: "Here's what's happening today.",
       emoji: '👋',
-    },
-    '/companion': { title: 'Companion', subtitle: companionSubtitle },
-    '/coach': {
-      title: 'Hale',
-      subtitle: 'Your AI parenting partner — always with your approval.',
     },
     '/family': { title: 'Family', subtitle: 'Manage your family, inbox, plan and account.' },
     '/settings': {

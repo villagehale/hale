@@ -40,7 +40,6 @@ const SURFACES = [
   'app/sign-up/page.tsx',
   'components/portal/shell.tsx',
   'components/hale/approvals-header.tsx',
-  'components/hale/ask-hale-thread.tsx',
   'components/hale/getting-ready-checklist.tsx',
 ] as const;
 

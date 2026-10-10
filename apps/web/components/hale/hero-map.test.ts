@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type RootHero, buildRootHeroes, resolveHero } from './hero-map';
 
-const roots = buildRootHeroes({ greeting: 'Good evening, Alex', childName: 'Sebastian' });
+const roots = buildRootHeroes({ greeting: 'Good evening, Alex' });
 
 describe('resolveHero', () => {
   it('resolves a tab root to its interpolated hero', () => {
@@ -59,18 +59,8 @@ describe('resolveHero promotes the receipts-room roots', () => {
 });
 
 describe('buildRootHeroes', () => {
-  it('interpolates the single child name into the companion subtitle', () => {
-    const withChild = buildRootHeroes({ greeting: 'Hi', childName: 'Aurora' });
-    expect(withChild['/companion'].subtitle).toBe('Everything about Aurora, all in one place.');
-  });
-
-  it('degrades to a family-wide subtitle when there is no single child (never a fabricated name)', () => {
-    const noChild = buildRootHeroes({ greeting: 'Hi', childName: null });
-    expect(noChild['/companion'].subtitle).toBe('Everything about your family, all in one place.');
-  });
-
   it('carries the live greeting into the home hero title', () => {
-    const built = buildRootHeroes({ greeting: 'Good morning, Barton', childName: null });
+    const built = buildRootHeroes({ greeting: 'Good morning, Barton' });
     expect(built['/home'].title).toBe('Good morning, Barton');
   });
 });

@@ -57,9 +57,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hale_smoke
       DATABASE_DIRECT_URL: postgresql://postgres:postgres@localhost:5432/hale_smoke
-      # Set via env block, never `echo |` (the trailing-\n landmine — the flag
-      # reader is strict equality on the literal 'true').
-      F14_RECEIPTS_IA: 'true'
 
     steps:
       - name: Checkout
@@ -99,9 +96,8 @@ jobs:
       - name: Install Playwright chromium
         run: pnpm --filter @hale/web exec playwright install --with-deps chromium
 
-      # pnpm topo-order package scripts, NOT `pnpm build` (turbo): turbo v2 strict
-      # env mode would strip F14_RECEIPTS_IA at build time (absent from turbo.json's
-      # build env allowlist), and this skips apps/site entirely.
+      # pnpm topo-order package scripts, NOT `pnpm build` (turbo): a workspace
+      # turbo build also builds apps/site, which this smoke does not need.
       - name: Build web + workspace deps
         run: pnpm --filter @hale/web... build
         env:

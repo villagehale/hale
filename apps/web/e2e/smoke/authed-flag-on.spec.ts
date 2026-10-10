@@ -115,8 +115,8 @@ test('/settings renders the reveal rows — the #577 page', async ({ browser }) 
   const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/settings');
   expect(response?.status()).toBe(200);
-  // The SettingsRowReveal rows: a reintroduced RSC-serialization crash streams the
-  // authed error boundary here instead of these controls.
+  // A reintroduced RSC-serialization crash streams the authed error boundary
+  // here instead of these controls.
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
   await expect(page.getByText('Texts from Hale')).toBeVisible();
   await expect(page.getByRole('link', { name: /Connections/ })).toBeVisible();

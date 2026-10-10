@@ -10,7 +10,6 @@ import type { TrailView } from '~/lib/dashboard/mappers';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
 import { ReviewNote } from './action-progress';
 import { ApprovalCard, ReversibleCard } from './approval-card';
-import { AttachmentChip } from './ask-hale-thread';
 import { ConnectorCard } from './connector-card';
 import { LogsBrowser } from './logs-browser';
 import { AuthoredPlanCard } from './plan-cards';
@@ -18,8 +17,8 @@ import { SharedLinkRow } from './shared-links';
 import { TeenAccessGrants } from './teen-access-grants';
 import { TrailTimeline } from './trail-timeline';
 
-// The logs browser and the Ask composer reach the 'use server' log module for their
-// writes; stub it so a static render doesn't drag the auth/db chain into the test.
+// The logs browser reaches the 'use server' log module for its writes; stub it so
+// a static render doesn't drag the auth/db chain into the test.
 vi.mock('~/lib/companion/log', () => ({
   markCompanionItemDone: vi.fn(),
   editQuickEpisode: vi.fn(),
@@ -497,7 +496,7 @@ describe('teen access grants mask the teen name and the parent\u2019s stated rea
  *
  * Adding a surface here is the cheap way to keep a new page inside the rule. A
  * surface qualifies when it renders from plain fixtures — state-gated leaves are
- * exported so they can (SharedLinkRow, AttachmentChip).
+ * exported so they can (SharedLinkRow).
  *
  * `maskAllInputs` covers <input>/<textarea> VALUES separately (posthog-provider),
  * so a form field holding what a parent typed is not this rule's business; every
@@ -507,7 +506,6 @@ const CHILD = 'Marisol';
 const PLAN_TITLE = 'Sign Marisol up for Saturday swim';
 const LOG_ROW = 'Fed 140 ml before the nap';
 const SHARE_TITLE = 'the Marisol week plan';
-const FILE_NAME = 'Marisol-immunization-record.pdf';
 const DRIVE_FILE = 'Custody-agreement-2026.pdf';
 const REVIEWER_RATIONALE = 'The swim school is already on Marisol’s recipient list.';
 const TRACE_STEP = 'put Marisol’s swim lesson on your calendar';
@@ -563,17 +561,6 @@ const SENTINEL_SURFACES: AttributeSurface[] = [
         h(SharedLinkRow, {
           link: { kind: 'activity', id: 's1', token: 'tok', title: SHARE_TITLE },
           onRevoked: () => {},
-        }),
-      ),
-  },
-  {
-    name: 'a staged chat attachment (remove control)',
-    sentinels: [FILE_NAME],
-    render: () =>
-      renderToStaticMarkup(
-        h(AttachmentChip, {
-          attachment: { id: 'f1', name: FILE_NAME, sizeBytes: 120_000, tone: 'sage' },
-          onRemove: () => {},
         }),
       ),
   },

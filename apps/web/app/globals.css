@@ -563,6 +563,50 @@ body {
   }
 }
 
+/* Dismiss (X) for an in-context upgrade invitation — a quiet, 44px tap target. */
+.upgrade-prompt-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+
+.upgrade-prompt-dismiss:hover { background: var(--color-card); }
+
+.upgrade-prompt-dismiss:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* Shared people-avatar (components/ui/avatar.tsx): a photo when we have one, else a
+ * tinted initials disc. `account` = navy disc + on-navy initials (the signed-in
+ * parent); `child` = warm disc + navy initials (a child) — the two tones keep the
+ * account chip and the child chip from reading as the same name row (§3.1). Sizing
+ * is inline (per call site); the box only owns shape + type. */
+.avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full);
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.avatar-image { object-fit: cover; }
+.avatar-account { background: var(--color-brand); color: var(--color-on-ink); }
+.avatar-child { background: var(--color-apricot-tint); color: var(--color-brand); }
+
 /* ── Type roles ────────────────────────────────────────────────────────── *
  * These sit in `@layer components` for the same reason the h1-h4 ladder sits in
  * `@layer base`: an UNLAYERED class rule outranks every Tailwind utility on layer

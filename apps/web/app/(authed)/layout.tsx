@@ -34,7 +34,7 @@ export default async function AuthedLayout({ children }: { children: React.React
           <a href="#main-content" className="skip-link">
             Skip to content
           </a>
-          <PortalShell canSignOut roots={buildRootHeroes({ greeting: 'Hi', childName: null })}>
+          <PortalShell canSignOut roots={buildRootHeroes({ greeting: 'Hi' })}>
             {children}
           </PortalShell>
         </>
@@ -64,13 +64,11 @@ export default async function AuthedLayout({ children }: { children: React.React
     after(() => markFamilyActiveToday(db(), familyId));
   }
 
-  const [basics, viewerName] = await Promise.all([loadFamilyBasics(), loadViewerName()]);
+  const [, viewerName] = await Promise.all([loadFamilyBasics(), loadViewerName()]);
 
-  // The greeting is warmed with the viewer's name, and the companion child's name
-  // only when the family has exactly one child (else a family-wide subtitle — never
-  // a fabricated single name, rule #1).
-  const singleChildName = basics.children.length === 1 ? (basics.children[0]?.name ?? null) : null;
-  const roots = buildRootHeroes({ greeting: homeGreeting(viewerName), childName: singleChildName });
+  // The greeting is warmed with the viewer's name. loadFamilyBasics stays in this
+  // pair so the page under the layout shares one per-request read.
+  const roots = buildRootHeroes({ greeting: homeGreeting(viewerName) });
 
   const shellBanner = !authEnabled ? (
     <output className="dev-preview-banner">
