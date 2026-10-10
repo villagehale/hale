@@ -3,7 +3,8 @@ import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 /**
  * OTP primitives for phone verification (VIL-212). We own the code (one vendor
  * path): generate a 6-digit code, store ONLY its SHA-256 hash (never the code —
- * rule #1, mirroring magic_link_tokens), and verify by constant-time hash compare.
+ * rule #1, the same hash-only rule the retired magic-link tokens used), and verify
+ * by constant-time hash compare.
  * The lifecycle math (expiry, lockout, resend cooldown) lives here as pure
  * predicates so it is unit-testable without a database.
  */

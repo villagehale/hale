@@ -1114,6 +1114,13 @@
       "when": 1781556201000,
       "tag": "0162_drop_voice_relay_claims",
       "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1781556202000,
+      "tag": "0163_drop_retired_auth_tables",
+      "breakpoints": true
     }
   ]
 }
