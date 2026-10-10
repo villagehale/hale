@@ -13,8 +13,8 @@ import {
 import { db } from '~/lib/db';
 
 /**
- * Server action for the /connect redeem page — the magic-link action's shape with a
- * destination the CALLER cannot write. The link was texted for exactly one reason
+ * Server action for the /connect redeem page, with a destination the CALLER
+ * cannot write. The link was texted for exactly one reason
  * (connecting an account), so redemption lands either on that connector's Google
  * consent or, when the link named none, on Settings -> Connected apps. There is still
  * no callbackUrl input: the provider is narrowed to the allowlist HERE, at the

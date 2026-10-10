@@ -1856,6 +1856,20 @@ describe('intake · guards', () => {
     expect(result).toEqual({ status: 'ignored', reason: 'invalid_number' });
     expect(transport.sent).toHaveLength(0);
   });
+
+  it('rejects an unsupported address format without a ledger write', async () => {
+    const { fake, transport, deps } = harness({});
+    const result = await handleInboundSms(
+      fake.db,
+      transport.inbound('whatsapp:+14165551234', 'hi'),
+      deps,
+    );
+    expect(result).toEqual({ status: 'ignored', reason: 'invalid_number' });
+    expect(transport.sent).toHaveLength(0);
+    expect(fake.writes).toHaveLength(0);
+    expect(fake.rows(schema.channelMessages)).toHaveLength(0);
+    expect(fake.rows(schema.auditLog)).toHaveLength(0);
+  });
 });
 
 /**

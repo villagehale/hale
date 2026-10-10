@@ -18,9 +18,8 @@ import type { IntakeKeyword } from './keywords';
 /** A normalized inbound message, already lifted out of whatever the provider posted. */
 export interface InboundMessage {
   /** The sender's number as the provider gave it — normalized by the caller, never
-   * stored raw (rule #1: it is hashed + encrypted the moment it is used). Always the
-   * BARE address. A `whatsapp:` prefix never reaches this object: the inbound
-   * webhook counts `whatsapp_dropped` first. */
+   * stored raw (rule #1: it is hashed + encrypted the moment it is used). An
+   * unsupported form is rejected by `normalizePhoneE164` before any ledger write. */
   from: string;
   body: string;
   /** The provider's own id for this inbound. The idempotency key: a carrier retry

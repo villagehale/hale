@@ -149,6 +149,41 @@ describe('declined events and passing questions', () => {
     expect(closed.some((row) => row.supersededBy === live[0]?.id)).toBe(true);
   });
 
+  it('lets a correction under a new key supersede the old fact', async () => {
+    const { familyId } = await seedFamily(db.database);
+    const save = toolNamed(buildInferenceTools(db.database, OCT_4), 'save_memory');
+    await save.handler(
+      {
+        factType: 'logistic',
+        factKey: 'kid_age',
+        factValue: 'three',
+        confidence: 1,
+        memoryClass: 'enduring',
+        disposition: 'confirmed',
+      },
+      ctx(familyId),
+    );
+    const corrected = (await save.handler(
+      {
+        factType: 'logistic',
+        factKey: 'age',
+        factValue: 'four',
+        confidence: 1,
+        memoryClass: 'enduring',
+        disposition: 'confirmed',
+        correctsKey: 'kid_age',
+      },
+      ctx(familyId),
+    )) as { factId: string };
+    const rows = await rowsFor(familyId);
+    const old = rows.find((row) => row.factKey === 'kid_age');
+    const next = rows.find((row) => row.factKey === 'age');
+    expect(old?.validUntil).not.toBeNull();
+    expect(old?.supersededBy).toBe(corrected.factId);
+    expect(next?.validUntil).toBeNull();
+    expect(next?.factValue).toBe('four');
+  });
+
   it('does not promote a curiosity filed under an identity-shaped key', async () => {
     const { familyId } = await seedFamily(db.database);
     const save = toolNamed(buildInferenceTools(db.database, OCT_4), 'save_memory');

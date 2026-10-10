@@ -61,8 +61,7 @@ export interface InboundRouteDeps {
    * Built LAZILY. Constructing the intake deps reaches for an Anthropic client and a
    * Linq transport; a forged request must never cause either, so nothing is built
    * until the signature has passed. Told which pipe the message arrived on so an
-   * iMessage turn can answer inside that Linq chat. A WhatsApp address never
-   * reaches the machine.
+   * iMessage turn can answer inside that Linq chat.
    */
   intake: (
     inboundTransport: MessageTransport,
@@ -143,11 +142,7 @@ export type InboundRouteOutcome =
   /** No open place-ask for this number. No text. */
   | 'location_not_waiting'
   /** The share started but Linq had no city locality yet. No nudge. */
-  | 'location_unread'
-  /** WhatsApp is retired. The prefix is still recognized so a leftover webhook
-   * from the former Twilio door is counted and dropped: no ledger row, no keyword,
-   * no SMS answer. */
-  | 'whatsapp_dropped';
+  | 'location_unread';
 
 /**
  * Route one authenticated inbound text. Exported so the routing decisions are testable
@@ -406,7 +401,7 @@ async function handOffToConversation(
       familyId: owner.familyId,
       parentUserId: owner.userId,
       // The pipe this turn arrived on. iMessage is its own ledger value; SMS is the
-      // rest. WhatsApp never reaches this insert.
+      // rest.
       channel: inbound.transport ?? 'sms',
       direction: 'in',
       category: 'reply',
