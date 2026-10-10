@@ -213,9 +213,6 @@
    * fixed over scrolling content and useless for a card. */
   --glass-panel-bg: light-dark(rgb(255 255 255 / 0.74), rgb(29 49 87 / 0.55));
 
-  /* One word of a pulled-up headline waits this long behind the one before it. */
-  --pull-stagger: 80ms;
-
   /* Film grain over a section ground — the INK the noise is printed in, not an
    * opacity. `light-dark()` only takes colours: as a bare number it is invalid
    * at computed-value time, and `opacity: var(--grain-alpha)` then falls back to
@@ -1439,83 +1436,17 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 @layer components {
 
 /* ══ The subpage language (2026-08) ═══════════════════════════════════════ *
- * The landing got a cinematic hero and the ten subpages behind it stayed a
+ * The landing got a cinematic hero and the subpages behind it stayed a
  * documentation site wearing the same tokens: eyebrow, heading, grey lede, card
- * grid. This block is the five devices that close that gap — and it is
- * deliberately five, not fifty. Every one of them is CSS the browser runs on its
- * own, because a marketing site whose argument is that Hale is faster than an
- * app cannot ship an animation library to make the argument.
+ * grid. What remains of that language is CSS the browser runs on its own,
+ * because a marketing site whose argument is that Hale is faster than an app
+ * cannot ship an animation library to make the argument.
  *
- *   1. .pull-word   — the headline arrives a word at a time.
- *   2. .accent      — one serif-italic segment per headline, lit. (Declared up
- *                     in the type utilities; every subpage h1 already wears it.)
- *   3. .char-reveal — one paragraph on /about that reads itself as you scroll.
- *   4. .glass-panel / .numbered-card — the card, given anatomy.
- *   5. .grain       — a section ground with tooth.
- *
- * Each has a static fallback, and prefers-reduced-motion turns all of them off.
+ *   .accent                     — one segment per headline. (Declared up in the
+ *                                 type utilities.)
+ *   .glass-panel / .numbered-card — the card, given anatomy.
+ *   .grain                      — a section ground with tooth.
  */
-
-/* ── 1 · The pulled-up headline ─────────────────────────────────────────── *
- * Words rise into place a beat apart. The reveal IS the landing's hero-word
- * animation (hale-hero-word) — same curve, same distance — so the subpages and
- * the homepage share one gesture rather than two that nearly match.
- *
- * Load-time rather than scroll-triggered, and that is the design rather than a
- * shortcut. Every headline wearing this is the first thing on its page, so "in
- * view" is settled before the reader can scroll; and a CSS animation runs with
- * no JavaScript at all, where an IntersectionObserver reveal leaves the page's
- * <h1> at opacity 0 for a reader whose JS never arrives. A heading never uses
- * that kind of reveal.
- *
- * --w is the word's index, set inline by components/words-pull-up.tsx. */
-.pull-word {
-  display: inline-block;
-  opacity: 0;
-  animation: hale-hero-word 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: calc(var(--w, 0) * var(--pull-stagger));
-}
-
-/* ── 3 · The scroll-read paragraph ──────────────────────────────────────── *
- * One paragraph on /about — the founder's own account — surfaces a character at
- * a time as it crosses the viewport, so it reads at the speed of the scroll
- * instead of arriving whole.
- *
- * Settled text is the DEFAULT here, not the fallback: a character is fully
- * opaque unless BOTH scroll-driven animations exist and the reader has not
- * asked for less motion. A browser without `animation-timeline` — and every
- * crawler — sees ordinary prose. The timeline is named on the paragraph so all
- * of its characters share one clock; each character driving its own `view()`
- * would reveal the paragraph line by line, since every glyph on a line crosses
- * the viewport at the same moment. */
-@keyframes char-lift {
-  from { opacity: 0.2; }
-  to   { opacity: 1; }
-}
-
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .char-reveal {
-      view-timeline-name: --char-reveal;
-      view-timeline-axis: block;
-    }
-    /* --c is the character's index and --n the paragraph's length, both set
-     * inline. The window is tuned against where a paragraph is actually READ,
-     * not where it fits: the last character finishes at 48% of the cover range,
-     * which puts the whole paragraph settled by the time its top sits ~40% down
-     * the viewport. The first tuning ran to 70% and measured 0.32 opacity on the
-     * closing characters at that same reading position — the reader had to keep
-     * scrolling to finish a sentence, which is the effect wearing the copy
-     * rather than carrying it. */
-    .char-reveal-char {
-      animation: char-lift linear both;
-      animation-timeline: --char-reveal;
-      animation-range:
-        cover calc(8% + (var(--c) / var(--n)) * 26%)
-        cover calc(22% + (var(--c) / var(--n)) * 26%);
-    }
-  }
-}
 
 /* ── 4 · Glass, and the card that has anatomy ───────────────────────────── *
  * The bar's recipe at card scale: a translucent surface, a short blur, an inset
@@ -1732,16 +1663,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pull-word { animation: none; opacity: 1; }
   .quiet-link svg,
   .disclosure-mark { transition: none; }
-}
-
-/* Paper has no scroll and no page-load, so both reveals resolve to their settled
- * state. Without this a printed /about carries a paragraph at 20% opacity. */
-@media print {
-  .pull-word,
-  .char-reveal-char { animation: none; opacity: 1; }
 }
 
 }
@@ -2655,16 +2578,4 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-chip { transition: none; }
   }
 
-  /* /about founder lines. 48px circle over a 96px face-centered asset (2×).
-     Same box for both portraits. No hover scale — the photo sits beside the line.
-     Inside @layer components so utilities still win. */
-  .founder-portrait {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    object-fit: cover;
-    object-position: center;
-    flex-shrink: 0;
-    display: block;
-  }
 }

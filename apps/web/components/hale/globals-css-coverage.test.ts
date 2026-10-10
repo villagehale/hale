@@ -111,7 +111,6 @@ describe('globals.css coverage — every bespoke class the authed surface uses i
     expect(usedBespoke.size).toBeGreaterThanOrEqual(25);
     expect(BESPOKE_PREFIXES.size).toBeGreaterThanOrEqual(30);
     // Anchors from distinct namespaces prove the scan reached each surface.
-    // (comp-hub / care-chip left with the retired companion-tabs component.)
     for (const anchor of ['panel-oat', 'btn-secondary', 'main-stage']) {
       expect(usedBespoke).toContain(anchor);
     }

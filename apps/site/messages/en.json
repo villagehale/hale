@@ -29,7 +29,6 @@
     "linkActivities": "Activities",
     "linkGuides": "Parenting guides",
     "linkAbout": "About",
-    "linkForCentres": "For centres",
     "linkContact": "Contact",
     "linkPrivacy": "Privacy policy",
     "linkTerms": "Terms of service",
@@ -53,20 +52,9 @@
     "toLight": "Switch to light mode",
     "toDark": "Switch to dark mode"
   },
-  "CopyNumber": {
-    "label": "Copy number",
-    "copied": "copied — text me from your phone",
-    "aria": "Copy Hale's phone number to your clipboard"
-  },
-  "EmailCta": {
-    "emailMe": "Email me",
-    "copy": "Copy {email}",
-    "copied": "Copied ✓"
-  },
   "About": {
     "metaTitle": "About · Hale",
     "metaDescription": "Hale is a planner for your kids’ year. Barton Dong, CEO, and Eugene Song, CTO, at Village Hale Technologies Inc.",
-    "eyebrow": "About Hale",
     "headline": [
       {
         "text": "A planner for your"
@@ -77,55 +65,6 @@
       }
     ],
     "lede": "What’s on near the kids gets missed; mornings fill in minutes; nobody asks how it went. Hale finds it, watches the date, asks after — by text.",
-    "missionEyebrow": "Our mission",
-    "mission": "Every parent should have someone who knows what’s on near them, remembers the date that fills in two minutes, and asks how it went. Across every stage of childhood, from the first months to almost grown.",
-    "howEyebrow": "How Hale works",
-    "howHeadline": [
-      {
-        "text": "It earns"
-      },
-      {
-        "text": "each rung.",
-        "accent": true
-      }
-    ],
-    "howLede": "Hale starts by finding what’s on and asking how it went. The ladder is the whole product: it climbs one rung at a time, and only when you let it.",
-    "ladder": [
-      {
-        "tag": "Recommend",
-        "title": "Hale suggests",
-        "line": "The thing worth knowing this week, and why it matters now.",
-        "checks": [
-          "Three things worth doing near you, not thirty",
-          "A heads-up the week a registration opens"
-        ],
-        "linkLabel": "Parenting guides"
-      },
-      {
-        "tag": "Prepare",
-        "title": "Hale gets it ready",
-        "line": "The shortlist, the links, the times — before the window opens, not after.",
-        "checks": [
-          "The plan the evening before",
-          "A nudge as it goes live",
-          "The links and the times"
-        ],
-        "linkLabel": "What it costs"
-      },
-      {
-        "tag": "Ask",
-        "title": "Hale asks how it went",
-        "line": "After it happens, one line back — Hale does not book it for you.",
-        "checks": [
-          "A check-in a few days after the first class",
-          "One line in the evening about how the day went",
-          "Consent you grant in a text and withdraw in a text"
-        ],
-        "linkLabel": "How your data is handled"
-      }
-    ],
-    "founderEyebrow": "The founders",
-    "founderLink": "LinkedIn",
     "founders": [
       {
         "name": "Barton Dong",
@@ -140,181 +79,18 @@
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Free, with unlimited chat. Plus is more done for you, all year. Max is the most Hale can do. Prices are in Canadian dollars.",
-    "eyebrow": "Pricing",
-    "headline": [
-      {
-        "text": "Free, with unlimited chat."
-      }
-    ],
-    "lede": "The whole core — every stage, every child — is free. Plus and Family add more of the year watched with you, as each part ships.",
-    "cta": "Start free today — and let Hale grow into the rest when you’re ready."
+    "metaDescription": "Free, with unlimited chat. Plus is more done for you, all year. Max is the most Hale can do. Prices are in Canadian dollars."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
-    "metaDescription": "Reach the team behind Hale. Email aloha@villagehale.com for anything; privacy@villagehale.com for privacy and data requests.",
-    "eyebrow": "Contact",
-    "headline": [
-      {
-        "text": "Say"
-      },
-      {
-        "text": "hello.",
-        "accent": true
-      }
-    ],
-    "lede": "We’re small, parent-built, and early — so a real person reads what you send. The fastest way to reach us is email.",
-    "emailButton": "Email aloha@villagehale.com",
-    "channels": {
-      "general": {
-        "eyebrow": "Anything at all",
-        "line": "Questions, feedback, a class your village should know about — we read every note."
-      },
-      "privacy": {
-        "eyebrow": "Privacy & your data",
-        "line": "Access, correction, or deletion requests, and anything about how we handle your family’s data."
-      }
-    },
-    "centresNote": "Work at a centre, a library, or a community program?",
-    "centresLink": "See what Hale means for the families you serve"
+    "metaDescription": "Reach the team behind Hale. Email aloha@villagehale.com for anything; privacy@villagehale.com for privacy and data requests."
   },
   "ForCentres": {
-    "metaTitle": "For centres and community partners · Hale",
-    "eyebrow": "For centres and partners",
-    "headline": [
-      {
-        "text": "For the people families"
-      },
-      {
-        "text": "already trust.",
-        "accent": true
-      }
-    ],
-    "townsLabel": "Towns watched",
-    "getEyebrow": "What a family gets",
-    "getHeadline": [
-      {
-        "text": "One text, and an answer"
-      },
-      {
-        "text": "the same minute.",
-        "accent": true
-      }
-    ],
-    "getLede": "A parent sends the first message — Hale never texts a family first. This is one of them, and what came back.",
-    "getAfter": "Between the things that matter it stays out of the way: the link the night before a registration opens, a nudge fifteen minutes out, and one line in the evening asking how the day went.",
-    "waysEyebrow": "How to point a family at Hale",
-    "waysHeadline": [
-      {
-        "text": "Three ways a family"
-      },
-      {
-        "text": "can start.",
-        "accent": true
-      }
-    ],
-    "waysLede": "Nothing to sign, nothing to install, and nothing for staff to keep track of.",
-    "ways": {
-      "number": {
-        "tag": "Hand it over",
-        "title": "Give them the number",
-        "body": "Copy it and put it where parents look — a whiteboard, a handout, the back of a room sheet. A parent texts it when they are ready."
-      },
-      "poster": {
-        "tag": "Print it",
-        "title": "Put up a poster",
-        "body": "This code opens the page that writes a parent’s first message for them. We print posters carrying your centre’s own code, so we can tell you how many families it brought — email us and we will send one."
-      },
-      "try": {
-        "tag": "Try it",
-        "title": "Text it yourself first",
-        "body": "Send the first message the way a parent would, and read what comes back, so you know what you are recommending. Reply STOP and it ends."
-      }
-    },
-    "numberPending": "The number is not announced yet. Email us and we will tell you when it is.",
-    "knowEyebrow": "What staff should know",
-    "knowHeadline": [
-      {
-        "text": "Plain answers about"
-      },
-      {
-        "text": "privacy.",
-        "accent": true
-      }
-    ],
-    "knowLede": "A family will ask you these before they ask us.",
-    "facts": [
-      {
-        "title": "What Hale asks for",
-        "body": "First names, ages, and a postal code. The first three characters are enough — they name a town, not a street."
-      },
-      {
-        "title": "Nothing is sold",
-        "body": "A family’s information is never sold, never shared for advertising, and never shown to another family."
-      },
-      {
-        "title": "STOP ends it",
-        "body": "A parent texts STOP and the messages stop. They can ask for their data, or for it to be deleted, at privacy@villagehale.com."
-      },
-      {
-        "title": "French, in French",
-        "body": "A parent can text Hale in French, and Hale answers in French."
-      },
-      {
-        "title": "A child’s words stay with their parent",
-        "body": "Hale talks to parents. For a child of 13 or older, a parent sees the topic and a summary rather than the words — unless there is a safety concern, and then the teen is told."
-      }
-    ],
-    "officialEyebrow": "If a family asks whether Hale is official",
-    "officialLine": "Hale is independent. It is not run by your centre, the town, the region, or the province. It checks every registration date against the town’s own page, and if the two ever disagree, the town’s page wins.",
-    "faqEyebrow": "Questions we get",
-    "faqHeadline": [
-      {
-        "text": "Four things staff"
-      },
-      {
-        "text": "ask first.",
-        "accent": true
-      }
-    ],
-    "faq": [
-      {
-        "question": "Does a family need an account?",
-        "answer": "No. A parent texts a number and Hale replies. There is no app to install, no password, and no sign-up page."
-      },
-      {
-        "question": "What does it cost a family?",
-        "answer": "Nothing to start. Watching the dates and answering questions is free, and families who join now keep the founding rate for good."
-      },
-      {
-        "question": "Do we have to sign anything?",
-        "answer": "No. There is no agreement, and nothing for staff to report or track. The only thing we would set up with you is a poster carrying your centre’s code."
-      },
-      {
-        "question": "What does Hale refuse to do?",
-        "answer": "It does not diagnose and it never names a dose — a medical question goes back to your care provider. It also never fills a registration form or holds a spot on a family’s behalf. It prepares and reminds; the parent registers."
-      }
-    ],
-    "ctaHeading": "Want a poster for your centre?",
-    "ctaSub": "Email us and we will send one with your centre’s own code on it. A real person answers.",
-    "ctaButton": "Email aloha@villagehale.com",
-    "ctaQuiet": "Other ways to reach us"
+    "metaTitle": "For centres and community partners · Hale"
   },
   "Faq": {
     "metaTitle": "Is Hale free, private, and right for your family? · Hale",
     "metaDescription": "Straight answers about Hale for parents: it's free with unlimited chat, works for kids 0–18, and never acts without you.",
-    "eyebrow": "Questions, answered",
-    "headline": [
-      {
-        "text": "Is Hale right for"
-      },
-      {
-        "text": "your family?",
-        "accent": true
-      }
-    ],
-    "lede": "The honest answers parents ask us most — about cost, privacy, and how Hale actually works.",
-    "ctaHeading": "Still wondering? Just ask me.",
     "items": [
       {
         "question": "What is Hale?",
@@ -389,30 +165,12 @@
   "Answers": {
     "metaTitle": "Parenting guides · Hale",
     "metaDescription": "Calm, cited parenting guides for the questions families search for — general guidance grounded in trusted frameworks, never a substitute for your provider.",
-    "eyebrow": "Parenting guides",
-    "headline": [
-      {
-        "text": "Calm, cited guidance for"
-      },
-      {
-        "text": "every stage.",
-        "accent": true
-      }
-    ],
-    "lede": "Practical guides for the questions parents actually search — each one grounded in trusted parenting-health frameworks and honest about its limits. General guidance, never a replacement for your provider.",
     "empty": "Our first parenting guides are in review. In the meantime, the fastest way to get guidance for your own child — with their age and your family in mind — is to ask Hale.",
     "countHeading": "{n} questions parents search.",
     "filterLabel": "Filter guides by stage",
     "filterStatus": "Showing {n} of {total} guides",
     "filterEmpty": "No guides for this stage yet.",
-    "filterSeeAll": "See all stages",
-    "ctaHeading": "Have a question about your own child?",
-    "stageLabels": {
-      "newborn": "Newborn · 0–11 months",
-      "toddler": "Toddler · 1–3 years",
-      "child": "School age · 4–12 years",
-      "teenager": "Teenager · 13+ years"
-    }
+    "filterSeeAll": "See all stages"
   },
   "AnswerArticle": {
     "breadcrumb": "Parenting guides",
@@ -426,7 +184,6 @@
     "disclaimerEyebrow": "Please read",
     "disclaimerHeading": "This is general guidance, not medical advice.",
     "disclaimerBody": "Hale summarizes widely recommended, cited parenting-health guidance. It cannot see your child, and it does not diagnose, prescribe, or interpret symptoms. For anything about your child’s health — including diagnosis, dosing, or symptoms — talk to your pediatrician or health provider. In an emergency, contact your local emergency services.",
-    "askCta": "Have a question about your own child? Hale answers with your child’s age and your family in mind.",
     "relatedGuides": "Related guides"
   },
   "Legal": {
@@ -437,16 +194,7 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids.",
-    "onLaptop": "On a laptop?",
-    "scanHint": "Scan the code with your phone’s camera, or copy the number and text it from your phone. Standard message rates apply; reply STOP any time.",
-    "qrAria": "QR code — scan to text Hale",
-    "chooserHeadline": "Welcome. Pick where we talk.",
-    "chooserLede": "Your first message is already written — you send it, I reply. I never message first.",
-    "continueMessages": "Continue in Messages",
-    "continueWhatsapp": "Continue on WhatsApp",
-    "orMessages": "Or use Messages",
-    "orWhatsapp": "Or use WhatsApp"
+    "metaDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids."
   },
   "Jsonld": {
     "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches for spots, and comes back to ask how it went.",

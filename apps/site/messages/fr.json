@@ -29,7 +29,6 @@
     "linkActivities": "Activités",
     "linkGuides": "Guides parentaux",
     "linkAbout": "À propos",
-    "linkForCentres": "Pour les centres",
     "linkContact": "Contact",
     "linkPrivacy": "Politique de confidentialité",
     "linkTerms": "Conditions d’utilisation",
@@ -53,20 +52,9 @@
     "toLight": "Passer en mode clair",
     "toDark": "Passer en mode sombre"
   },
-  "CopyNumber": {
-    "label": "Copier le numéro",
-    "copied": "copié — textez-moi depuis votre téléphone",
-    "aria": "Copier le numéro de téléphone de Hale dans votre presse-papiers"
-  },
-  "EmailCta": {
-    "emailMe": "Écrivez-moi",
-    "copy": "Copier {email}",
-    "copied": "Copié ✓"
-  },
   "About": {
     "metaTitle": "À propos · Hale",
     "metaDescription": "Hale est un planificateur pour l’année de tes enfants. Deux parents qui bâtissent l’aide qu’on aurait voulu avoir. Barton Dong, PDG, et Eugene Song, directeur technique, chez Village Hale Technologies Inc.",
-    "eyebrow": "À propos de Hale",
     "headline": [
       {
         "text": "Un planificateur pour"
@@ -77,55 +65,6 @@
       }
     ],
     "lede": "Ce qui se passe près des enfants passe à côté; les matins se remplissent en quelques minutes; personne ne demande comment ça s’est passé. Hale le trouve, surveille la date, demande ensuite — par texto.",
-    "missionEyebrow": "Notre mission",
-    "mission": "Chaque parent devrait avoir quelqu’un qui sait ce qui se passe près de chez lui, qui se souvient de la date qui se remplit en deux minutes, et qui demande comment ça s’est passé. À chaque étape de l’enfance, des premiers mois jusqu’à presque adulte.",
-    "howEyebrow": "Comment Hale fonctionne",
-    "howHeadline": [
-      {
-        "text": "Il gagne"
-      },
-      {
-        "text": "chaque échelon.",
-        "accent": true
-      }
-    ],
-    "howLede": "Hale commence par trouver ce qui se passe et demander comment ça s’est passé. L’échelle, c’est tout le produit : il monte un échelon à la fois, et seulement quand vous le permettez.",
-    "ladder": [
-      {
-        "tag": "Recommander",
-        "title": "Hale suggère",
-        "line": "Ce qui vaut la peine d’être su cette semaine, et pourquoi ça compte maintenant.",
-        "checks": [
-          "Trois choses à faire près de chez vous, pas trente",
-          "Un avis la semaine où une inscription ouvre"
-        ],
-        "linkLabel": "Guides parentaux"
-      },
-      {
-        "tag": "Préparer",
-        "title": "Hale prépare tout",
-        "line": "La sélection, les liens, les horaires — avant que la fenêtre s’ouvre, pas après.",
-        "checks": [
-          "Le plan la veille au soir",
-          "Une relance dès l’ouverture",
-          "Les liens et les horaires"
-        ],
-        "linkLabel": "Ce que ça coûte"
-      },
-      {
-        "tag": "Demander",
-        "title": "Hale demande comment ça s’est passé",
-        "line": "Après coup, une ligne en retour — Hale ne réserve rien pour vous.",
-        "checks": [
-          "Une nouvelle quelques jours après le premier cours",
-          "Une ligne le soir sur comment la journée s’est passée",
-          "Un consentement que vous accordez par texto et retirez par texto"
-        ],
-        "linkLabel": "Comment vos données sont traitées"
-      }
-    ],
-    "founderEyebrow": "Les fondateurs",
-    "founderLink": "LinkedIn",
     "founders": [
       {
         "name": "Barton Dong",
@@ -140,181 +79,18 @@
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Gratuit, textos illimités. Plus, c’est plus de choses faites pour toi, toute l’année. Max, c’est le maximum de ce que Hale peut faire.",
-    "eyebrow": "Tarifs",
-    "headline": [
-      {
-        "text": "Gratuit, textos illimités."
-      }
-    ],
-    "lede": "Tout l’essentiel — chaque étape, chaque enfant — est gratuit. Plus et Max ajoutent davantage de l’année suivie avec vous, à mesure que chaque partie arrive.",
-    "cta": "Commencez gratuitement aujourd’hui — et laissez Hale grandir vers le reste quand vous serez prêt."
+    "metaDescription": "Gratuit, textos illimités. Plus, c’est plus de choses faites pour toi, toute l’année. Max, c’est le maximum de ce que Hale peut faire."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
-    "metaDescription": "Joignez l’équipe derrière Hale. Écrivez à aloha@villagehale.com pour tout; privacy@villagehale.com pour la confidentialité et les demandes de données.",
-    "eyebrow": "Contact",
-    "headline": [
-      {
-        "text": "Dites"
-      },
-      {
-        "text": "bonjour.",
-        "accent": true
-      }
-    ],
-    "lede": "Nous sommes une petite équipe, bâtie par des parents, encore à nos débuts — alors une vraie personne lit ce que vous envoyez. Le moyen le plus rapide de nous joindre, c’est le courriel.",
-    "emailButton": "Écrire à aloha@villagehale.com",
-    "channels": {
-      "general": {
-        "eyebrow": "Absolument tout",
-        "line": "Questions, commentaires, un cours que votre village devrait connaître — nous lisons chaque message."
-      },
-      "privacy": {
-        "eyebrow": "Confidentialité et vos données",
-        "line": "Demandes d’accès, de correction ou de suppression, et tout ce qui touche la façon dont nous traitons les données de votre famille."
-      }
-    },
-    "centresNote": "Vous travaillez dans un centre, une bibliothèque ou un programme communautaire ?",
-    "centresLink": "Voyez ce que Hale change pour les familles que vous accueillez"
+    "metaDescription": "Joignez l’équipe derrière Hale. Écrivez à aloha@villagehale.com pour tout; privacy@villagehale.com pour la confidentialité et les demandes de données."
   },
   "ForCentres": {
-    "metaTitle": "Pour les centres et les partenaires · Hale",
-    "eyebrow": "Pour les centres et les partenaires",
-    "headline": [
-      {
-        "text": "Pour ceux à qui les familles"
-      },
-      {
-        "text": "font déjà confiance.",
-        "accent": true
-      }
-    ],
-    "townsLabel": "Villes surveillées",
-    "getEyebrow": "Ce qu’une famille reçoit",
-    "getHeadline": [
-      {
-        "text": "Un texto, et une réponse"
-      },
-      {
-        "text": "dans la minute.",
-        "accent": true
-      }
-    ],
-    "getLede": "C’est le parent qui envoie le premier message — Hale ne texte jamais une famille en premier. En voici un, et ce qui est revenu.",
-    "getAfter": "Entre les choses qui comptent, il se fait discret : le lien la veille de l’ouverture d’une inscription, un rappel quinze minutes avant, et une ligne le soir pour demander comment la journée s’est passée.",
-    "waysEyebrow": "Comment orienter une famille vers Hale",
-    "waysHeadline": [
-      {
-        "text": "Trois façons pour une famille"
-      },
-      {
-        "text": "de commencer.",
-        "accent": true
-      }
-    ],
-    "waysLede": "Rien à signer, rien à installer, et rien à suivre pour le personnel.",
-    "ways": {
-      "number": {
-        "tag": "Donnez-le",
-        "title": "Donnez-leur le numéro",
-        "body": "Copiez-le et mettez-le là où les parents regardent — un tableau, un feuillet, le verso d’une feuille de salle. Le parent le texte quand il est prêt."
-      },
-      "poster": {
-        "tag": "Imprimez-la",
-        "title": "Affichez une affiche",
-        "body": "Ce code ouvre la page qui rédige le premier message du parent à sa place. Nous imprimons des affiches portant le code de votre centre, pour que nous puissions vous dire combien de familles il a amenées — écrivez-nous et nous vous en enverrons une."
-      },
-      "try": {
-        "tag": "Essayez",
-        "title": "Textez-le vous-même d’abord",
-        "body": "Envoyez le premier message comme le ferait un parent, et lisez ce qui revient, pour savoir ce que vous recommandez. Répondez STOP et ça s’arrête."
-      }
-    },
-    "numberPending": "Le numéro n’est pas encore annoncé. Écrivez-nous et nous vous dirons quand il le sera.",
-    "knowEyebrow": "Ce que le personnel devrait savoir",
-    "knowHeadline": [
-      {
-        "text": "Des réponses claires sur"
-      },
-      {
-        "text": "la confidentialité.",
-        "accent": true
-      }
-    ],
-    "knowLede": "Une famille vous posera ces questions avant de nous les poser.",
-    "facts": [
-      {
-        "title": "Ce que Hale demande",
-        "body": "Les prénoms, les âges et un code postal. Les trois premiers caractères suffisent — ils nomment une ville, pas une rue."
-      },
-      {
-        "title": "Rien n’est vendu",
-        "body": "Les renseignements d’une famille ne sont jamais vendus, jamais partagés à des fins publicitaires, et jamais montrés à une autre famille."
-      },
-      {
-        "title": "STOP met fin à tout",
-        "body": "Un parent texte STOP et les messages cessent. Il peut demander ses données, ou leur suppression, à privacy@villagehale.com."
-      },
-      {
-        "title": "En français, en français",
-        "body": "Un parent peut texter Hale en français, et Hale répond en français."
-      },
-      {
-        "title": "Les mots d’un enfant restent à son parent",
-        "body": "Hale parle aux parents. Pour un enfant de 13 ans ou plus, le parent voit le sujet et un résumé plutôt que les mots — sauf s’il y a un enjeu de sécurité, et alors l’adolescent en est informé."
-      }
-    ],
-    "officialEyebrow": "Si une famille demande si Hale est officiel",
-    "officialLine": "Hale est indépendant. Il n’est géré ni par votre centre, ni par la ville, ni par la région, ni par la province. Il vérifie chaque date d’inscription sur la page de la ville, et si les deux divergent, c’est la page de la ville qui l’emporte.",
-    "faqEyebrow": "Les questions qu’on nous pose",
-    "faqHeadline": [
-      {
-        "text": "Quatre choses que le personnel"
-      },
-      {
-        "text": "demande en premier.",
-        "accent": true
-      }
-    ],
-    "faq": [
-      {
-        "question": "Une famille a-t-elle besoin d’un compte?",
-        "answer": "Non. Le parent texte un numéro et Hale répond. Pas d’appli à installer, pas de mot de passe, pas de page d’inscription."
-      },
-      {
-        "question": "Combien ça coûte à une famille?",
-        "answer": "Rien pour commencer. Surveiller les dates et répondre aux questions est gratuit, et les familles qui se joignent maintenant gardent le tarif fondateur pour de bon."
-      },
-      {
-        "question": "Devons-nous signer quelque chose?",
-        "answer": "Non. Il n’y a pas d’entente, et rien à déclarer ni à suivre pour le personnel. La seule chose que nous mettrions en place avec vous, c’est une affiche portant le code de votre centre."
-      },
-      {
-        "question": "Qu’est-ce que Hale refuse de faire?",
-        "answer": "Il ne pose pas de diagnostic et ne nomme jamais une dose — une question médicale retourne à votre professionnel de la santé. Il ne remplit jamais un formulaire d’inscription et ne réserve jamais une place à la place d’une famille. Il prépare et rappelle; c’est le parent qui inscrit."
-      }
-    ],
-    "ctaHeading": "Vous voulez une affiche pour votre centre?",
-    "ctaSub": "Écrivez-nous et nous vous en enverrons une portant le code de votre centre. Une vraie personne répond.",
-    "ctaButton": "Écrire à aloha@villagehale.com",
-    "ctaQuiet": "Autres façons de nous joindre"
+    "metaTitle": "Pour les centres et les partenaires · Hale"
   },
   "Faq": {
     "metaTitle": "Hale : gratuit, privé, fait pour ta famille? · Hale",
     "metaDescription": "Des réponses claires sur Hale pour les parents : gratuit, textos illimités, pour les enfants de 0 à 18 ans, et Hale n'agit jamais sans toi.",
-    "eyebrow": "Vos questions, nos réponses",
-    "headline": [
-      {
-        "text": "Hale est-il fait pour"
-      },
-      {
-        "text": "votre famille?",
-        "accent": true
-      }
-    ],
-    "lede": "Les réponses honnêtes aux questions que les parents nous posent le plus — sur le coût, la confidentialité et le fonctionnement réel de Hale.",
-    "ctaHeading": "Encore des doutes? Demandez-moi, tout simplement.",
     "items": [
       {
         "question": "Qu’est-ce que Hale?",
@@ -361,30 +137,12 @@
   "Answers": {
     "metaTitle": "Guides parentaux · Hale",
     "metaDescription": "Des guides parentaux calmes et documentés pour les questions que les familles recherchent — des conseils généraux fondés sur des cadres de référence fiables, jamais un substitut à votre professionnel de la santé.",
-    "eyebrow": "Guides parentaux",
-    "headline": [
-      {
-        "text": "Des conseils calmes et documentés pour"
-      },
-      {
-        "text": "chaque étape.",
-        "accent": true
-      }
-    ],
-    "lede": "Des guides pratiques pour les questions que les parents recherchent vraiment — chacun fondé sur des cadres de référence fiables en santé parentale et honnête quant à ses limites. Des conseils généraux, jamais un remplacement de votre professionnel de la santé.",
     "empty": "Nos premiers guides parentaux sont en révision. Entre-temps, le moyen le plus rapide d’obtenir des conseils pour votre propre enfant — en tenant compte de son âge et de votre famille — c’est de poser votre question à Hale.",
     "countHeading": "{n} questions que les parents cherchent.",
     "filterLabel": "Filtrer les guides par étape",
     "filterStatus": "{n} guides sur {total} affichés",
     "filterEmpty": "Pas encore de guide pour cette étape.",
-    "filterSeeAll": "Voir toutes les étapes",
-    "ctaHeading": "Vous avez une question sur votre propre enfant?",
-    "stageLabels": {
-      "newborn": "Nouveau-né · 0–11 mois",
-      "toddler": "Tout-petit · 1–3 ans",
-      "child": "Âge scolaire · 4–12 ans",
-      "teenager": "Adolescent · 13 ans et plus"
-    }
+    "filterSeeAll": "Voir toutes les étapes"
   },
   "AnswerArticle": {
     "breadcrumb": "Guides parentaux",
@@ -398,7 +156,6 @@
     "disclaimerEyebrow": "À lire",
     "disclaimerHeading": "Ceci est un conseil général, pas un avis médical.",
     "disclaimerBody": "Hale résume des conseils en santé parentale largement recommandés et documentés. Il ne peut pas voir votre enfant, et il ne pose pas de diagnostic, ne prescrit rien et n’interprète pas les symptômes. Pour tout ce qui touche la santé de votre enfant — y compris le diagnostic, le dosage ou les symptômes — parlez à votre pédiatre ou à votre professionnel de la santé. En cas d’urgence, communiquez avec les services d’urgence de votre région.",
-    "askCta": "Vous avez une question sur votre propre enfant? Hale répond en tenant compte de l’âge de votre enfant et de votre famille.",
     "relatedGuides": "Guides connexes"
   },
   "Legal": {
@@ -409,16 +166,7 @@
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "L’année de tes enfants, sans casse-tête. Ce qui vaut la peine avec les enfants.",
-    "onLaptop": "Sur un ordinateur portable?",
-    "scanHint": "Scannez le code avec l’appareil photo de votre téléphone, ou copiez le numéro et textez-le depuis votre téléphone. Les tarifs de messagerie habituels s’appliquent; répondez STOP en tout temps.",
-    "qrAria": "Code QR — scannez pour texter Hale",
-    "chooserHeadline": "Bienvenue. Choisissez où on se parle.",
-    "chooserLede": "Votre premier message est déjà écrit — vous l’envoyez, je réponds. Je n’écris jamais en premier.",
-    "continueMessages": "Continuer dans Messages",
-    "continueWhatsapp": "Continuer sur WhatsApp",
-    "orMessages": "Ou utiliser Messages",
-    "orWhatsapp": "Ou utiliser WhatsApp"
+    "metaDescription": "L’année de tes enfants, sans casse-tête. Ce qui vaut la peine avec les enfants."
   },
   "Jsonld": {
     "orgDescription": "Hale est un planificateur pour l’année de tes enfants — il trouve ce qui se passe, surveille les inscriptions et revient prendre des nouvelles.",
@@ -517,7 +265,6 @@
     "Free outings, parks and one‑time events, when you need an idea for Saturday.": "Des sorties gratuites, des parcs et des activités ponctuelles, quand tu cherches une idée pour samedi.",
     "Free. You text first; standard message rates apply, reply STOP any time.": "Gratuit. C’est toi qui textes en premier; les tarifs habituels s’appliquent, réponds STOP quand tu veux.",
     "Founding families get everything free until paid plans start.": "Les familles fondatrices ont tout gratuit jusqu’à ce que les forfaits payants commencent.",
-    "Founding families get every feature free until paid plans start.": "Les familles fondatrices ont chaque fonction gratuite jusqu’à ce que les forfaits payants commencent.",
     "Free, with unlimited chat.": "Gratuit, textos illimités.",
     "$0 CAD/mo": "0 $ CAD/mois",
     "$19 CAD/mo": "19 $ CAD/mois",

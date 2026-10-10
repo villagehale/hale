@@ -6,7 +6,7 @@
 // to Anthropic as `system=`. Callers include /api/events/ingest and the SMS
 // coach (apps/web/lib/channel/coach/runtime.ts). The worker's Langfuse drift-check only guards
 // apps/worker/prompts/* — it never sees these files. Without this gate a silent
-// on-disk edit to any skill (classify-event, draft-action, ask-hale, …)
+// on-disk edit to any skill (classify-event, draft-action, week-summary, …)
 // would ship to prod with no CI failure.
 //
 // `seed` records {file, sha256} for every skill into .skills-lock.json.

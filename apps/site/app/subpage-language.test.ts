@@ -97,17 +97,6 @@ describe('the guide headline', () => {
     expect(slugHtml).not.toContain('WordsPullUp');
   });
 
-  it('holds every word still under prefers-reduced-motion', () => {
-    const reduced = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/g;
-    const blocks = [...CSS.matchAll(reduced)].map((m) => m[1] ?? '');
-    const guard = blocks.find((block) => block.includes('.pull-word'));
-    expect(guard, '.pull-word must appear in a reduced-motion block').toBeDefined();
-    expect(guard).toMatch(/\.pull-word \{ animation: none; opacity: 1; \}/);
-    // Positive control: the same scan finds the landing's guard, so a match above
-    // means "the rule is there" rather than "the regex matches anything".
-    expect(blocks.some((block) => block.includes('.hale-hero-word'))).toBe(true);
-  });
-
   it('leaves the homepage on its own hero display, not the subpage reveal', () => {
     // Home is the liquid-glass shore: its hero display is set large
     // (.v4-display / .v4-hero-h1), not the subpage pulled-up reveal. The two
@@ -195,13 +184,6 @@ describe('/about — the locked page', () => {
       { width: 96, height: 96 },
       { width: 96, height: 96 },
     ]);
-    expect(CSS).toContain('.founder-portrait {');
-    expect(CSS).toMatch(/\.founder-portrait \{[^}]*width: 48px;/);
-    expect(CSS).toMatch(/\.founder-portrait \{[^}]*height: 48px;/);
-    expect(CSS).toMatch(/\.founder-portrait \{[^}]*border-radius: 50%;/);
-    expect(CSS).toMatch(/\.founder-portrait \{[^}]*object-fit: cover;/);
-    expect(CSS).toMatch(/\.founder-portrait \{[^}]*object-position: center;/);
-    expect(CSS).not.toMatch(/\.founder-portrait:hover/);
   });
 
   it('names Barton and Eugene in every locale, and never Anzhe or an ownership claim', () => {
@@ -226,45 +208,6 @@ describe('/about — the locked page', () => {
         /not another app|pas une autre appli|又一个应用/,
       );
     }
-  });
-
-  /**
-   * The fallback is the whole safety of this device. Full opacity is the DEFAULT
-   * declaration, and the dimming only ever exists inside BOTH guards — so a
-   * browser without scroll-driven animations, and a reader who asked for less
-   * motion, get settled prose rather than a paragraph frozen at 20%.
-   */
-  it('dims a character only where scroll-driven animation exists AND motion is welcome', () => {
-    const root = postcss.parse(CSS);
-    const dimming: string[] = [];
-    root.walkRules((rule) => {
-      if (!rule.selector.includes('.char-reveal-char')) return;
-      // Only the rule that turns the reveal ON — the print and reduced-motion
-      // guards also name .char-reveal-char, to switch it off.
-      const animates = rule.nodes.some(
-        (node) =>
-          node.type === 'decl' && node.prop === 'animation' && !node.value.startsWith('none'),
-      );
-      if (!animates) return;
-      const guards: string[] = [];
-      let parent: postcss.Container | postcss.Document | undefined = rule.parent;
-      while (parent) {
-        if (parent.type === 'atrule') {
-          const at = parent as postcss.AtRule;
-          guards.push(`@${at.name} ${at.params}`);
-        }
-        parent = parent.parent;
-      }
-      dimming.push(guards.join(' | '));
-    });
-
-    expect(dimming).toHaveLength(1);
-    expect(dimming[0]).toContain('@supports (animation-timeline: view())');
-    expect(dimming[0]).toContain('@media (prefers-reduced-motion: no-preference)');
-
-    // Positive control: the keyframe that does the dimming really is 0.2 → 1, so
-    // the guarded rule above is guarding something.
-    expect(CSS).toMatch(/@keyframes char-lift \{\s*from \{ opacity: 0\.2; \}/);
   });
 });
 
