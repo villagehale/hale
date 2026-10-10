@@ -15,7 +15,7 @@ import { pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core
  * provider id in its retention window, not just the last, closing the out-of-order
  * redelivery gap.
  *
- * Family-AGNOSTIC ops data, like voice_relay_claims beside it: a MessageSid is an opaque
+ * Family-AGNOSTIC ops data: a MessageSid is an opaque
  * provider handle with no number, no name and no family in it, and rows age out in a day
  * (the claim path deletes as it claims). Nothing here is reachable by, or in need of, a
  * right-to-erasure sweep. Rule #1.
