@@ -46,8 +46,7 @@ describe('POST /api/coach — rate limiting', () => {
     enforceRateLimitMock.mockReset();
     authMock.mockResolvedValue({ user: { id: 'ext-1' } });
     askHaleMock.mockResolvedValue({ conversationId: 'c1', actionIntents: [] });
-    vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'gid_test');
-    vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', 'gsecret_test');
+    vi.stubEnv('AUTH_SECRET', 'test-auth-secret');
   });
 
   afterEach(() => {

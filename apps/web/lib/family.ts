@@ -9,10 +9,10 @@ import { db as defaultDb } from '~/lib/db';
 /**
  * Resolves the current request's family from the Auth.js session.
  *
- * Auth lives in Auth.js (Google OAuth); `users.external_auth_id` mirrors the
- * Google account id (the OAuth `sub`), and `family_members` links a user to their
- * family. So the lookup is:
- *   session.user.id (Google sub) → users.external_auth_id → family_members.family_id
+ * Auth lives in Auth.js (phone code, or the texted /connect link).
+ * `session.user.id` is `users.external_auth_id`, and `family_members` links
+ * that user to their family. So the lookup is:
+ *   session.user.id → users.external_auth_id → family_members.family_id
  *
  * Degrades to null (never a fake id, never a throw) when the signed-in user has no
  * mirrored `users` row / family membership yet (onboarding incomplete). The caller

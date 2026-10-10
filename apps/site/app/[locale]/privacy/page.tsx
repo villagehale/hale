@@ -120,7 +120,7 @@ export default async function PrivacyPage({
       locale={locale}
       source={await pageSource(searchParams)}
       title="Privacy Policy"
-      lastUpdatedIso="2026-10-07"
+      lastUpdatedIso="2026-10-09"
       intro={
         <p>
           Hale is a texted assistant for parents. It handles kids&rsquo; activities, reminders,
@@ -169,10 +169,9 @@ export default async function PrivacyPage({
         </p>
         <ul>
           <li>
-            <strong>Your contact details.</strong> The phone number you text from; and, if you sign
-            in to the web app, your name and email address — provided through Google sign-in or the
-            email address and password you register. Plus basic preferences such as language and
-            time zone.
+            <strong>Your contact details.</strong> The phone number you text from, which is also how
+            you sign in to the web app with a one-time code. Plus basic preferences such as language
+            and time zone.
           </li>
           <li>
             <strong>Your children&rsquo;s profiles.</strong> Each child&rsquo;s first name (and last

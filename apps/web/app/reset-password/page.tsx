@@ -1,55 +1,9 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import { AuthShell } from '~/components/hale/auth-shell';
-import stage from '~/components/hale/connect/connect.module.css';
-import { ResetPasswordForm } from '~/components/hale/reset-password-form';
-import door from '~/components/portal/signin.module.css';
-import { credentialsConfigured } from '~/lib/auth-config';
-
-export const metadata: Metadata = { title: 'New password' };
-
-export const dynamic = 'force-dynamic';
-
-interface PageProps {
-  searchParams: Promise<{ token?: string }>;
-}
+import { permanentRedirect } from 'next/navigation';
 
 /**
- * Set-a-new-password landing for /reset-password?token=…. The token is validated
- * (single-use, expiring, hashed at rest) only when the form is SUBMITTED, in the
- * server action — this page render never consumes it, so a link-prefetch can't
- * spend the token. A missing token shows a calm path back to request a fresh one.
+ * Retired email door. The middleware 308s first and drops any query. This page
+ * is the second gate, so the form cannot render if that rule is bypassed.
  */
-export default async function ResetPasswordPage({ searchParams }: PageProps) {
-  const { token } = await searchParams;
-
-  if (!credentialsConfigured()) {
-    return (
-      <AuthShell heading="Choose a new password">
-        <p className={stage.lede}>Password reset isn&rsquo;t available in this preview.</p>
-      </AuthShell>
-    );
-  }
-
-  if (!token) {
-    return (
-      <AuthShell heading="Choose a new password">
-        <p className={stage.lede}>
-          This reset link is missing or incomplete. Request a fresh one and try again.
-        </p>
-        <Link href="/forgot-password" className={`${stage.btn} ${door.full}`}>
-          Request a new link
-        </Link>
-      </AuthShell>
-    );
-  }
-
-  return (
-    <AuthShell heading="Choose a new password">
-      <ResetPasswordForm token={token} />
-      <p className={door.new}>
-        <Link href="/forgot-password">Need a new link? Start over &rarr;</Link>
-      </p>
-    </AuthShell>
-  );
+export default function Page(): never {
+  permanentRedirect('/sign-in');
 }

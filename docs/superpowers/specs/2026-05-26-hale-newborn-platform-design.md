@@ -81,7 +81,7 @@ The product brand is comprehensive newborn support; the build sequence is platfo
                              │                    ▼
                              │      ┌─────────────────────────┐
                              │      │  Agent Worker Service   │
-                             │      │  (Fly.io YYZ Toronto)   │
+                             │      │  (Vercel drain, yul1)   │
                              │      │                         │
                              │      │  ┌───────────────────┐  │
                              │      │  │ Orchestrator      │  │
@@ -752,7 +752,7 @@ Browser auto:   Claude Computer Use via Agent SDK
 Observability:  Sentry (errors) + Langfuse (LLM traces) + Vercel Analytics
 Email send:     Postmark
 Payments:       Stripe
-Deployments:    Vercel (Next.js) + Fly.io YYZ Toronto (Agent Worker)
+Deployments:    Vercel (Next.js). Agent worker code runs inside Vercel /api/cron/drain (yul1)
 Storage:        Supabase Storage OR Cloudflare R2
 Secrets:        Doppler
 Testing:        Vitest (unit) + Playwright (E2E) + Anthropic eval framework
@@ -777,8 +777,7 @@ hale/
 │       │   ├── agents/           # Classifier, Drafter, Coach, Reviewer, Inferencer
 │       │   ├── services/         # Orchestrator, MemoryWriter, Executor
 │       │   ├── tools/            # Reviewer verification tools + Executor adapters
-│       │   ├── queue/            # pg-boss consumers
-│       │   └── index.ts
+│       │   └── orchestrator/     # imported by Vercel /api/cron/drain
 │       └── package.json
 │
 ├── packages/
@@ -795,7 +794,6 @@ hale/
 │
 ├── infra/                        # Deployment configs
 │   ├── vercel.json
-│   ├── fly.toml
 │   └── supabase/
 │
 ├── .github/
@@ -870,7 +868,7 @@ WORKER_URL=
 | Service | Host | Why |
 |---|---|---|
 | Next.js web app | Vercel | Native Next.js, zero ops, global edge |
-| Agent Worker | Fly.io (YYZ Toronto) | Long-running Node process, Canadian region for data residency |
+| Agent Worker | Vercel `/api/cron/drain` (yul1) | Worker package imported by the Montreal cron function; no separate host |
 | Postgres | Supabase (Toronto region) | Managed Postgres + auth + storage + vector ext, ca-central-1 |
 | Object storage | Supabase Storage or Cloudflare R2 | User photos, PDFs, voice samples |
 | Secrets | Doppler | Cross-env secrets sync, audit log |
@@ -944,7 +942,7 @@ WORKER_URL=
 2. **CRA/ESDC API availability for parental benefits.** Some flows have APIs (limited); most don't. Mix of API + browser automation + user-uploaded confirmation.
 3. **Auth provider final choice.** Clerk vs Supabase Auth. Clerk easier multi-tenant; Supabase Auth keeps stack uniform.
 4. **Storage final choice.** Supabase Storage (uniform) vs Cloudflare R2 (cheaper at scale).
-5. **Worker host final choice.** Fly.io YYZ Toronto preferred; Render Toronto-adjacent fallback.
+5. **Worker host final choice.** Settled: worker code runs inside Vercel `/api/cron/drain` (yul1). No separate worker host.
 6. **Project name domain availability.** hearth.ai, tryhearth.com, gethearth.com, hearth.family — to be verified.
 7. **Pricing for paid tiers.** $19 / $49 are placeholders; real numbers come from design-partner WTP signal.
 8. **Co-parenting (separated/divorced) support.** Deferred to v2 per scope decisions.
@@ -957,5 +955,5 @@ WORKER_URL=
 1. User reviews this spec doc, requests changes if any
 2. Invoke `superpowers:writing-plans` to create detailed implementation plan
 3. Scaffold the Turborepo monorepo
-4. Configure deployments (Vercel + Fly.io + Supabase)
+4. Configure deployments (Vercel + Supabase). Worker code runs inside Vercel `/api/cron/drain` (yul1)
 5. Begin Month 1-2 foundation work

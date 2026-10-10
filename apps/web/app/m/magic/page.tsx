@@ -1,51 +1,9 @@
-import type { Metadata } from 'next';
-import { AuthShell } from '~/components/hale/auth-shell';
-import stage from '~/components/hale/connect/connect.module.css';
-import door from '~/components/portal/signin.module.css';
-
-export const metadata: Metadata = { title: { absolute: 'Open Hale' } };
-
-export const dynamic = 'force-dynamic';
-
-// The native app's URL scheme — source of truth is apps/mobile/app.json
-// (expo.scheme). The link hands the token to the app, which POSTs it to
-// /api/mobile/auth/magic-link/verify for a Bearer session.
-const HALE_APP_SCHEME = 'hale';
-
-interface PageProps {
-  searchParams: Promise<{ token?: string }>;
-}
+import { permanentRedirect } from 'next/navigation';
 
 /**
- * Deep-link hand-off for a mobile magic link. The email lands here (a web page,
- * always openable) with ?token=…; the button opens the native app via its scheme,
- * carrying the token. Deliberately minimal — the real redemption happens in the app
- * against /api/mobile/auth/magic-link/verify, not here.
+ * Retired email door. The middleware 308s first and drops any query. This page
+ * is the second gate, so the form cannot render if that rule is bypassed.
  */
-export default async function MobileMagicPage({ searchParams }: PageProps) {
-  const { token } = await searchParams;
-
-  if (!token) {
-    return (
-      <AuthShell heading="Open Hale">
-        <p className={stage.lede}>
-          This sign-in link is missing or incomplete. Request a fresh one.
-        </p>
-      </AuthShell>
-    );
-  }
-
-  const appUrl = `${HALE_APP_SCHEME}://magic-link?token=${encodeURIComponent(token)}`;
-
-  return (
-    <AuthShell heading="Open Hale">
-      <a href={appUrl} className={`${stage.btn} ${door.full}`}>
-        Open the Hale app
-      </a>
-      <p className="meta">
-        Continue on this device isn&rsquo;t available &mdash; open the link on your phone with Hale
-        installed.
-      </p>
-    </AuthShell>
-  );
+export default function Page(): never {
+  permanentRedirect('/sign-in');
 }

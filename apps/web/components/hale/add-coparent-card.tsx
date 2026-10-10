@@ -28,8 +28,8 @@ type MintState =
  * "Add your co-parent" (the /family people card), on the SMS join rail: the mint
  * server action revokes-then-mints (one live link), and the raw link is shown ONCE,
  * here in the modal — only its digest is stored, so the persistent card can render
- * status + Revoke but never the link again (magic-link semantics). A clipboard-blocked
- * browser still sees the link to copy by hand, the same honesty invite-coparent kept.
+ * status + Revoke but never the link again. A clipboard-blocked browser still
+ * sees the link to copy by hand.
  */
 export function AddCoParentCard({
   openInvite,
