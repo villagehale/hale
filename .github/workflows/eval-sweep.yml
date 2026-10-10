@@ -1,9 +1,9 @@
 name: Eval sweep
 
 # CI names each eval gate by hand, so a suite that ships without being added to
-# ci.yml is a gate nobody runs — run-memory-cost-eval / run-vil143-eval sat red for
-# nine days that way (VIL-290). This job discovers the runners instead of listing
-# them: every apps/worker/evals/run-*.mjs, replayed from the committed cache.
+# ci.yml is a gate nobody runs (VIL-290). This job discovers the runners instead
+# of listing them: every apps/worker/evals/run-*.mjs, replayed from the committed
+# cache.
 #
 # Cached-only means zero API calls (a cache miss FAILS LOUDLY instead of spending),
 # so this job needs no secrets. Do not add any — an eval that can reach the API is

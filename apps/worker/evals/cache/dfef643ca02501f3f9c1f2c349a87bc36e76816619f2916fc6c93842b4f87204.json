@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The assistant's answer correctly identifies the pediatric office as Riverdale Pediatrics and accurately states that evening appointments are preferred. This matches the reference answer perfectly. The assistant also correctly draws from the known family history which confirms the pediatric office name and booking preference. No contradictory or fabricated information is present.",
-    "score": 5
-  }
-}

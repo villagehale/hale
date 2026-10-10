@@ -61,8 +61,8 @@ function rowChip(actionType: string, teenRedacted: boolean) {
 }
 
 /**
- * Shore's teen-redaction treatment, ported from apps/mobile's ApprovalPayloadBlock:
- * a RECESSED sub-panel (canvas inside a card) carrying the privacy mark and the one
+ * Shore's teen-redaction treatment: a RECESSED sub-panel (canvas inside a card)
+ * carrying the privacy mark and the one
  * line that says what a parent can do about it. The recess is the point — a held-back
  * payload reads as something set aside, not as an alert.
  */

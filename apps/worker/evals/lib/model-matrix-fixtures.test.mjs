@@ -10,7 +10,7 @@ import {
 const fixtureDir = join(import.meta.dirname, '..', 'fixtures', 'model-matrix');
 
 describe('expanded model-matrix fixtures', () => {
-  for (const role of ['classify', 'draft', 'review', 'coach']) {
+  for (const role of ['classify', 'draft', 'review']) {
     it(`${role} has at least ${MATRIX_SAMPLE_TARGET} unique model-visible samples`, async () => {
       const fixture = JSON.parse(await readFile(join(fixtureDir, `${role}.json`), 'utf8'));
       const cases = expandMatrixCases(role, fixture.cases);

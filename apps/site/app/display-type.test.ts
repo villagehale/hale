@@ -750,8 +750,7 @@ describe('the accent is neither slant nor colour', () => {
     root.walkDecls('font-style', (decl) => {
       if (decl.value.trim() !== 'italic') return;
       const selector = (decl.parent as postcss.Rule | undefined)?.selector ?? '';
-      if (/\.(v4-|legal-title|accent|v3-accent|pull-word|wordmark)/.test(selector))
-        italicised.push(selector);
+      if (/\.(v4-|legal-title|accent|v3-accent|wordmark)/.test(selector)) italicised.push(selector);
     });
     expect(italicised).toEqual([]);
     // Positive control: the scan does see the one italic the site keeps — <em>
@@ -771,7 +770,7 @@ describe('the accent is neither slant nor colour', () => {
       if (!decl.value.includes('--color-amber')) return;
       const selector = (decl.parent as postcss.Rule | undefined)?.selector ?? '';
       if (
-        /\.(v4-display|v4-hero-h1|v4-h2|v4-lede|v4-hero-sub|v4-accent|legal-title|pull-word|wordmark)\b/.test(
+        /\.(v4-display|v4-hero-h1|v4-h2|v4-lede|v4-hero-sub|v4-accent|legal-title|wordmark)\b/.test(
           selector,
         )
       ) {

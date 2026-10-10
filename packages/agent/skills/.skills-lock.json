@@ -223,10 +223,6 @@
     "file": "week-summary.md",
     "sha256": "2a01ea52cfc2cd1268bc23c60f15fbbc11e95eab00365169f9164a6e06331e50"
   },
-  "welcome-voice.md": {
-    "file": "welcome-voice.md",
-    "sha256": "de89851d9163a632d8b4dc0c0662f0f78b8d815df80862b13f5796b33a38d302"
-  },
   "workstream-followup.md": {
     "file": "workstream-followup.md",
     "sha256": "96ee07a5fe9a4a28029ef04a79880f2bf59af03a9eb4c25dab10dbcbbf2f9b8a"

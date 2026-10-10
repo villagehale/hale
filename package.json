@@ -20,7 +20,6 @@
     "test:scripts": "vitest run",
     "smoke": "bash scripts/smoke.sh",
     "eval:agents": "pnpm --filter @hale/worker eval:agents",
-    "eval:vil143": "pnpm --filter @hale/worker eval:vil143",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "db:generate": "pnpm --filter @hale/db generate",
     "db:migrate": "pnpm --filter @hale/db migrate",

@@ -54,25 +54,7 @@
   },
   "About": {
     "metaTitle": "关于 · Hale",
-    "metaDescription": "Hale 是孩子这一年的规划。两个家长，在做我们想要的帮手。Barton Dong，首席执行官；Eugene Song，首席技术官。Village Hale Technologies Inc.",
-    "headline": [
-      {
-        "text": "孩子这一年的规划。",
-        "accent": true
-      }
-    ],
-    "lede": "孩子附近有什么，很容易被错过；早晨几分钟就满了；也没人问后来怎么样。Hale 把它找出来，盯着那个日期，事后问一句——靠短信。",
-    "founders": [
-      {
-        "name": "Barton Dong",
-        "role": "首席执行官"
-      },
-      {
-        "name": "Eugene Song",
-        "role": "首席技术官"
-      }
-    ],
-    "cta": "一切从名字、年龄和一个邮编开始。不用装应用，不用注册账号。"
+    "metaDescription": "Hale 是孩子这一年的规划。两个家长，在做我们想要的帮手。Barton Dong，首席执行官；Eugene Song，首席技术官。Village Hale Technologies Inc."
   },
   "Pricing": {
     "metaTitle": "价格 · Hale",
@@ -82,50 +64,9 @@
     "metaTitle": "联系我们 · Hale",
     "metaDescription": "联系 Hale 背后的团队。任何事都可以发邮件到 aloha@villagehale.com；隐私和数据相关请求发到 privacy@villagehale.com。"
   },
-  "ForCentres": {
-    "metaTitle": "给中心与社区伙伴 · Hale"
-  },
   "Faq": {
     "metaTitle": "Hale 是否免费、私密，又是否适合你家？ · Hale",
-    "metaDescription": "给家长的 Hale 常见问题：免费、聊天不限量，适合 0–18 岁的孩子，没有你的同意绝不擅自行动。",
-    "items": [
-      {
-        "question": "Hale 是什么？",
-        "answer": "Hale 是孩子这一年的规划。它帮你找到孩子附近真正在办的活动——游泳课、营队、随到随玩、街那头的 EarlyON 亲子中心——盯着你所在地区的报名开放日，前一晚把市政官方链接递到你手上，之后再回来问问进展如何。它也回答育儿问题。没有应用要装，也没有账号要注册。"
-      },
-      {
-        "question": "我要怎么开始？",
-        "answer": "你给这个号码发短信，问附近有什么值得和孩子一起做的。Hale 会问你孩子的名字和年龄，还有你的邮编，这就是全部的设置了——其余的它以后需要时才会问。Hale 从不给没有先发过消息的号码发短信。"
-      },
-      {
-        "question": "Hale 会不问就擅自做事吗？",
-        "answer": "不会。Hale 找附近有什么，再问进展如何——它不代订课程，也不替你报名。每条消息说明它找到了什么，Hale 还会保留谁问了、发了什么、什么时候的完整记录。"
-      },
-      {
-        "question": "Hale 会多久给我发一次短信？",
-        "answer": "报名开放那一周的提前知会、前一晚的方案，以及上线时的一记提醒。到了晚上，Hale 会用一句话问你今天过得如何——回复 LESS 就改成每周一次，回复 NO 就不再发。随时回复 STOP 都有效。"
-      },
-      {
-        "question": "Hale 能回答育儿问题，还是只管日程安排？",
-        "answer": "都可以。问它睡眠、开始添加辅食、如厕训练、挑食、发脾气、屏幕时间或日常节奏，你会得到一个贴着你孩子年龄的答案，外加一份完整方案的邀约——两三条你今晚就能开始的短信。过几天 Hale 会来问问进展如何。它从不诊断，也绝不给出剂量。"
-      },
-      {
-        "question": "Hale 免费吗？",
-        "answer": "是的。Hale 免费，聊天不限量。现在加入的家庭，在付费方案开始前，每项功能都免费。"
-      },
-      {
-        "question": "我需要用网站吗？",
-        "answer": "不需要。找活动和事后的问候都发生在短信对话里。Hale 发过的内容的完整记录，随时都是你的——在对话里要一份，或者用你的手机号登录在那里查看。"
-      },
-      {
-        "question": "你会告诉我某个班好不好吗？",
-        "answer": "还不行。今天 Hale 会问你进展如何。把其他家庭的看法告诉下一位家长，是 Hale 接下来想做的事——真做出来的时候，它会是一个数字和一句结论，绝不会是谁的原话。"
-      },
-      {
-        "question": "你能告诉我还有谁会去吗？",
-        "answer": "还不行。今天我只跟你说你自己家的事，绝不说别人家的。"
-      }
-    ]
+    "metaDescription": "给家长的 Hale 常见问题：免费、聊天不限量，适合 0–18 岁的孩子，没有你的同意绝不擅自行动。"
   },
   "Activities": {
     "metaTitle": "陪孩子做的事，就在附近 · Hale",

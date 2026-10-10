@@ -6,8 +6,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Hale — product-app design system, on "Hale Shore" (apps/mobile/DESIGN.md is the
- * authoritative doc; apps/mobile/src/global.css is the reference token file).
+ * Hale — product-app design system, on "Hale Shore". The tokens in this file are
+ * the source the product app renders.
  *
  * A warm, calm world: the Shore warm-white canvas (#FDFCFA) behind pure-white
  * cards, a warm sidebar (#F7F5F0) as the desktop frame, brand navy (#1B2160) for
@@ -247,10 +247,8 @@
   --r-full: 9999px;
 
   /* ── Shadows (design handoff §2.4; ink-based rgba 23,41,74) ──────────── *
-   * `--shadow-card` is Shore's card lift, ported from apps/mobile's Card
-   * (`shadowOffset {0,8}` / `shadowRadius 20` / `shadowOpacity 0.08` over the ink
-   * token) using this file's own RN→CSS mapping — the same one that makes
-   * `--shadow-menu` and mobile's MENU_SHADOW the identical 0 12px 32px / 0.14.
+   * `--shadow-card` is Shore's card lift: 0 8px 20px at 0.08 over the ink token.
+   * `--shadow-menu` is the next rung, 0 12px 32px at 0.14.
    * On the Shore warm white a white card is held by a 1.24:1 hairline alone,
    * which reads as calm at 390px but goes soft at 1280px; the lift is the
    * system's own answer, so it replaces the near-invisible 1px/4% it had.
@@ -277,7 +275,7 @@
  * and the whole surface ladder is that same 219° hue walked down in lightness —
  * so the app reads as one deep navy field rather than a neutral dark chrome that
  * happens to have a blue logo in it. It replaces the warm near-black #14120E
- * ladder (VIL-209 W2), which converged on apps/mobile but read as plain black.
+ * ladder (VIL-209 W2), which read as plain black.
  *
  * The ladder climbs canvas → card → raised and LANDS ON THE BRAND: `raised` is
  * #17294A exactly, so "surfaces step toward the brand ink" is literal, not a
@@ -447,8 +445,8 @@
   --color-on-spruce-soft: rgb(23 41 74 / 0.74); /* composited on brand → 3.74:1, de-emphasised on-fill text */
   --color-on-spruce-faint: rgb(23 41 74 / 0.55);
 
-  /* Shore drops the card shadow on dark — "surfaces separate by lightness and
-   * shadows don't render" (apps/mobile/src/components/ui/card.tsx). The elevation
+  /* Shore drops the card shadow on dark — surfaces separate by lightness and
+   * shadows don't render. The elevation
    * ladder above does that work here; a 4%-ink shadow on a deep navy ground is
    * invisible anyway, and the light-mode lift would be pure noise. The HOVER lift
    * goes with it: `.dark .card-interactive:hover` already climbs card → raised,
@@ -2108,9 +2106,8 @@ body,
     --chip-mark: var(--color-chip-gray-icon);
   }
 
-  /* Shore's 34×34 icon chip at radius 11 — the literal geometry of
-   * apps/mobile/src/components/ui/tint-chip.tsx (a squircle, not a circle, and
-   * not the card's 20). The glyph inside inherits `currentColor`, which is what
+  /* Shore's 34×34 icon chip at radius 11 — a squircle, not a circle, and
+   * not the card's 20. The glyph inside inherits `currentColor`, which is what
    * `--chip-mark` sets, so a Lucide icon tints without a colour prop. */
   .tint-chip {
     display: inline-flex;
@@ -2131,8 +2128,8 @@ body,
     color: var(--color-ink);
   }
 
-  /* The RECESSED sub-panel — Shore's teen-redaction treatment
-   * (apps/mobile/src/components/hale/approval-payload.tsx). Note the inversion:
+  /* The RECESSED sub-panel — Shore's teen-redaction treatment.
+   * Note the inversion:
    * canvas INSIDE a card is a recess, not a lift, which is how "this content is
    * held back" reads as calm rather than as an alert. DESIGN.md principle 3 names
    * this pattern "the model" for turning a privacy rule into visible reassurance. */
@@ -2153,7 +2150,7 @@ body,
 @layer components {
   /* ── The note thread (Messages detail) ────────────────────────────────────
    * A Hale note read as the two-way exchange it already is on the backend. Shore's
-   * bubble grammar, ported from apps/mobile's thread screen: Hale on the left in
+   * bubble grammar: Hale on the left in
    * the neutral chip ground with the top-left corner tightened, the parent on the
    * right in brand with the bottom-right tightened — the tightened corner is what
    * points a bubble at its sender. No iMessage blue anywhere. */

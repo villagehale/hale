@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The assistant correctly identified and reported Mira's egg allergy with the exact severity (mild hives) and confirmation source (pediatric office), matching the reference answer. The response goes beyond by adding practical guidance for a new caregiver (avoiding egg in baked goods and shared utensils, watching for skin reactions, sharing the pediatrician's contact), which aligns with the known family history and demonstrates proper allergy communication without contradicting the reference. This is accurate recall with helpful context appropriate to the question.",
-    "score": 5
-  }
-}

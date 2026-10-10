@@ -35,14 +35,6 @@ export interface VillageCandidateView {
   summary: string;
   coverageNote: string | null;
   sourceUrl: string | null;
-  /** The accept action POSTs here. */
-  acceptHref: string;
-  /** The endorse action POSTs here (the trusted-parent half of hybrid trust). */
-  endorseHref: string;
-  /** The private-save ("I'm interested") toggle POSTs here. */
-  saveHref: string;
-  /** The per-activity public-share mint POSTs here. */
-  shareHref: string;
   /** Aggregate distinct-family endorsements (a count, never an identity — rule #1). */
   endorsementCount: number;
   /** Whether THIS family has already endorsed — drives the button's state. */
@@ -144,12 +136,7 @@ export function toVillageCandidateView(
   teenAttributed: boolean,
   engagement: CandidateEngagement = NO_ENGAGEMENT,
 ): VillageCandidateView {
-  const acceptHref = `/api/village/${candidate.id}/accept`;
-  const endorseHref = `/api/village/${candidate.id}/endorse`;
-  const saveHref = `/api/village/${candidate.id}/save`;
-  const shareHref = `/api/village/${candidate.id}/share`;
-  // The aggregate count is identity-free, so it is safe even on a teen row; the
-  // renderer still blocks endorse/share on teen-attributed cards (rule #1).
+  // The aggregate count is identity-free, so it is safe even on a teen row (rule #1).
   const { endorsementCount, endorsedByFamily, accepted, saved } = engagement;
   if (teenAttributed) {
     return {
@@ -164,10 +151,6 @@ export function toVillageCandidateView(
       summary: '',
       coverageNote: null,
       sourceUrl: null,
-      acceptHref,
-      endorseHref,
-      saveHref,
-      shareHref,
       endorsementCount,
       endorsedByFamily,
       saved,
@@ -197,10 +180,6 @@ export function toVillageCandidateView(
     summary: candidate.summary,
     coverageNote: candidate.coverageNote,
     sourceUrl: candidate.sourceUrl,
-    acceptHref,
-    endorseHref,
-    saveHref,
-    shareHref,
     endorsementCount,
     endorsedByFamily,
     saved,
@@ -268,5 +247,4 @@ export function filterCandidatesByCadence(
   const wanted = CADENCE_FILTER_MATCH[filter];
   return candidates.filter((c) => c.cadence === wanted);
 }
-
 
