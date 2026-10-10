@@ -283,8 +283,8 @@ async function main() {
   // convenience. What the 2026-08-13 audit actually found was that all six cached asks
   // were the skill's own quoted sample with a few words moved — a composer that has
   // stopped composing, and the thing the parrot check exists for. The REFERENCE_ASK joins
-  // the samples for the same reason welcome-voice's fallback lines do: reproducing the
-  // hand-written line this stage replaced is the most expensive possible way to send it.
+  // the samples: reproducing the hand-written line this stage replaced is the most
+  // expensive possible way to send it.
   //
   // Pairwise AND the opener floor are both left off, for one reason that applies to both:
   // these three fixtures are not three messages. They are ONE standing ask — sent once

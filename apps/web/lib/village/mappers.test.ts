@@ -189,8 +189,7 @@ describe('toVillageCandidateView', () => {
     expect(teen.endorsementCount).toBe(5);
     expect(teen.endorsedByFamily).toBe(true);
     expect(open.endorsementCount).toBe(5);
-    expect(open.endorseHref).toBe('/api/village/cand-1/endorse');
-    expect(open.shareHref).toBe('/api/village/cand-1/share');
+    expect(open.endorsedByFamily).toBe(true);
   });
 
   it('folds the family-accepted flag through so the accept button can render "added" on load', () => {
@@ -203,9 +202,9 @@ describe('toVillageCandidateView', () => {
     expect(notAccepted.accepted).toBe(false);
   });
 
-  it('folds the private saved flag through and always resolves the saveHref (both teen and non-teen)', () => {
-    // A save is PRIVATE (only ever this family's own), so the flag and the toggle
-    // href are safe even on a teen-attributed card — its content stays redacted.
+  it('folds the private saved flag through on both teen and non-teen views', () => {
+    // A save is PRIVATE (only ever this family's own), so the flag is safe even
+    // on a teen-attributed card — its content stays redacted.
     const saved = { endorsementCount: 0, endorsedByFamily: false, accepted: false, saved: true };
 
     const teen = toVillageCandidateView(candidate(), true, saved);
@@ -215,8 +214,6 @@ describe('toVillageCandidateView', () => {
     expect(open.saved).toBe(true);
     expect(teen.saved).toBe(true);
     expect(unsaved.saved).toBe(false);
-    expect(open.saveHref).toBe('/api/village/cand-1/save');
-    expect(teen.saveHref).toBe('/api/village/cand-1/save');
   });
 });
 

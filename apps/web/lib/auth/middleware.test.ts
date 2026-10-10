@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The middleware is wrapped by Auth.js's auth(); mock NextAuth so auth() just
 // returns the callback, letting the test drive the middleware body directly with a
-// fake request. Cookie / session auth is the only remaining path — the Expo
-// Authorization: Bearer rewrite is gone (VIL-318).
+// fake request. Paths below are routes the app still serves.
 vi.mock('next-auth', () => ({
   default: () => ({ auth: (cb: unknown) => cb }),
 }));
@@ -35,7 +34,7 @@ async function loadMiddleware(): Promise<(req: FakeReq) => Promise<Response> | R
   return mod.default as unknown as (req: FakeReq) => Promise<Response> | Response;
 }
 
-describe('middleware cookie / session auth (no Bearer bridge)', () => {
+describe('middleware session auth', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv('NODE_ENV', 'production');
@@ -53,7 +52,7 @@ describe('middleware cookie / session auth (no Bearer bridge)', () => {
 
     await middleware(
       fakeReq({
-        pathname: '/api/village/preview',
+        pathname: '/api/health',
         headers: { authorization: 'Bearer tok-abc.def', 'x-forwarded-proto': 'https' },
       }),
     );
@@ -67,7 +66,7 @@ describe('middleware cookie / session auth (no Bearer bridge)', () => {
     const { NextResponse } = await import('next/server');
     const nextSpy = vi.spyOn(NextResponse, 'next');
 
-    await middleware(fakeReq({ pathname: '/api/village/preview' }));
+    await middleware(fakeReq({ pathname: '/api/health' }));
 
     expect(nextSpy).toHaveBeenCalledTimes(1);
     expect(nextSpy.mock.calls[0]?.[0]).toBeUndefined();
@@ -78,7 +77,7 @@ describe('middleware cookie / session auth (no Bearer bridge)', () => {
     const { NextResponse } = await import('next/server');
     const redirectSpy = vi.spyOn(NextResponse, 'redirect');
 
-    await middleware(fakeReq({ pathname: '/api/village/preview', auth: null }));
+    await middleware(fakeReq({ pathname: '/api/village/shares', auth: null }));
 
     expect(redirectSpy).not.toHaveBeenCalled();
   });

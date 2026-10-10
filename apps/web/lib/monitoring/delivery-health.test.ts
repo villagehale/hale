@@ -16,10 +16,9 @@ import {
 
 /**
  * The alerting half of the delivery-truth invariant: once failed statuses actually
- * land in the ledger (the sweep's job), a failure rate above threshold — or a single
- * registration-class refusal, which means EVERY send to that class of destination is
- * dying — is a pageable incident, not a row someone might notice in an admin table.
- * Prod motivation: 42/177 sends failed over 30d (8 of them 30034) and nothing paged.
+ * land in the ledger (the sweep's job), a failure rate above threshold is a pageable
+ * incident, not a row someone might notice in an admin table.
+ * Prod motivation: 42/177 sends failed over 30d and nothing paged.
  */
 
 const NOW = new Date('2026-09-03T12:00:00.000Z');
@@ -36,15 +35,13 @@ function stats(over: Partial<DeliveryStats> = {}): DeliveryStats {
 }
 
 describe('evaluateDeliveryHealth', () => {
-  it('reports a registration incident on ANY 30034-class failure — one is already too many', () => {
-    const incident = evaluateDeliveryHealth(
-      stats({ failed: 1, codes: [{ code: '30034', count: 1 }] }),
-    );
-
-    expect(incident).toEqual({ kind: 'registration_error', code: '30034', count: 1 });
+  it('does not give a lone 30034 its own incident — below the rate bar it is quiet', () => {
+    expect(
+      evaluateDeliveryHealth(stats({ failed: 1, codes: [{ code: '30034', count: 1 }] })),
+    ).toBeNull();
   });
 
-  it('registration outranks the rate: a mixed failure wave names the registration problem first', () => {
+  it('a mixed failure wave that includes 30034 is still the rate incident', () => {
     const incident = evaluateDeliveryHealth(
       stats({
         attempted: 10,
@@ -56,7 +53,15 @@ describe('evaluateDeliveryHealth', () => {
       }),
     );
 
-    expect(incident).toMatchObject({ kind: 'registration_error', count: 2 });
+    expect(incident).toEqual({
+      kind: 'failure_rate',
+      failed: 9,
+      attempted: 10,
+      codes: [
+        { code: '30006', count: 7 },
+        { code: '30034', count: 2 },
+      ],
+    });
   });
 
   it('reports a failure-rate incident at the threshold, carrying the code breakdown', () => {
@@ -100,16 +105,6 @@ describe('evaluateDeliveryHealth', () => {
 });
 
 describe('composeDeliveryAlert', () => {
-  it('the registration page is one GSM-7 segment and carries the class, never a number a parent owns', () => {
-    const body = composeDeliveryAlert({ kind: 'registration_error', code: '30034', count: 8 });
-
-    expect(gsm7SingleSegment(body)).toBe(true);
-    expect(body).toContain('30034');
-    expect(body).toContain('8');
-    // Rule #1, structurally: nothing that could be a phone number.
-    expect(body).not.toMatch(/\d{7,}/);
-  });
-
   it('the rate page is one GSM-7 segment and carries counts plus the top error codes only', () => {
     const body = composeDeliveryAlert({
       kind: 'failure_rate',
@@ -146,23 +141,18 @@ describe('composeDeliveryAlert', () => {
     expect(gsm7SingleSegment(body)).toBe(true);
   });
 
-  it('both pages point ops at Linq and the receipts ledger, not Twilio', () => {
-    const bodies = [
-      composeDeliveryAlert({ kind: 'registration_error', code: '30034', count: 1 }),
-      composeDeliveryAlert({
-        kind: 'failure_rate',
-        failed: 10,
-        attempted: 10,
-        codes: [{ code: 'send_retries_exhausted', count: 10 }],
-      }),
-    ];
+  it('the rate page points ops at Linq and the receipts ledger', () => {
+    const body = composeDeliveryAlert({
+      kind: 'failure_rate',
+      failed: 10,
+      attempted: 10,
+      codes: [{ code: 'send_retries_exhausted', count: 10 }],
+    });
 
-    for (const body of bodies) {
-      expect(body).not.toMatch(/twilio/i);
-      expect(body).toContain('Linq');
-      expect(body).toContain('channel_messages');
-      expect(gsm7SingleSegment(body)).toBe(true);
-    }
+    expect(body).not.toMatch(/twilio/i);
+    expect(body).toContain('Linq');
+    expect(body).toContain('channel_messages');
+    expect(gsm7SingleSegment(body)).toBe(true);
   });
 });
 
@@ -247,10 +237,8 @@ describe('loadDeliveryStats (real DDL)', () => {
   });
 
   it('one page per incident kind per window: the claim is atomic and the second claimer loses', async () => {
-    expect(await claimDeliveryIncident(db.database, 'registration_error', NOW)).toBe(true);
-    expect(await claimDeliveryIncident(db.database, 'registration_error', NOW)).toBe(false);
-    // A different kind is a different incident.
     expect(await claimDeliveryIncident(db.database, 'failure_rate', NOW)).toBe(true);
+    expect(await claimDeliveryIncident(db.database, 'failure_rate', NOW)).toBe(false);
   });
 });
 
@@ -312,54 +300,61 @@ describe('checkDeliveryHealth', () => {
     expect(sent).toEqual([]);
   });
 
-  it('the 15-minute page floor holds across incident kinds (the alert.ts convention)', async () => {
+  it('the 15-minute page floor holds for a later rate incident (the alert.ts convention)', async () => {
+    const rate = () =>
+      stats({
+        attempted: 10,
+        failed: 5,
+        codes: [{ code: SEND_RETRIES_EXHAUSTED, count: 5 }],
+      });
     const first = fakes({
       stats: stats({ attempted: 10, failed: 5, codes: [{ code: '30006', count: 5 }] }),
     });
     await checkDeliveryHealth(database, first.deps, NOW);
 
-    const second = fakes({
-      stats: stats({ failed: 1, codes: [{ code: '30034', count: 1 }] }),
-    });
+    const second = fakes({ stats: rate() });
     const outcome = await checkDeliveryHealth(
       database,
       second.deps,
       new Date(NOW.getTime() + 60_000),
     );
 
-    expect(outcome).toEqual({ outcome: 'suppressed_instance_window', kind: 'registration_error' });
+    expect(outcome).toEqual({ outcome: 'suppressed_instance_window', kind: 'failure_rate' });
     expect(second.sent).toEqual([]);
 
     // And it is a WINDOW, not a latch: past 15 minutes the page goes out.
-    const third = fakes({
-      stats: stats({ failed: 1, codes: [{ code: '30034', count: 1 }] }),
-    });
+    const third = fakes({ stats: rate() });
     const later = await checkDeliveryHealth(
       database,
       third.deps,
       new Date(NOW.getTime() + 16 * 60_000),
     );
-    expect(later).toEqual({ outcome: 'alerted', kind: 'registration_error' });
+    expect(later).toEqual({ outcome: 'alerted', kind: 'failure_rate' });
   });
 
   it('a refused or unconfigured Slack leg is a named outcome, never a silent success', async () => {
+    const rate = stats({
+      attempted: 10,
+      failed: 5,
+      codes: [{ code: SEND_RETRIES_EXHAUSTED, count: 5 }],
+    });
     const failed = fakes({
-      stats: stats({ failed: 1, codes: [{ code: '30034', count: 1 }] }),
+      stats: rate,
       sms: 'failed',
     });
     expect(await checkDeliveryHealth(database, failed.deps, NOW)).toEqual({
       outcome: 'alert_send_failed',
-      kind: 'registration_error',
+      kind: 'failure_rate',
     });
 
     resetDeliveryAlertWindowForTests();
     const dark = fakes({
-      stats: stats({ failed: 1, codes: [{ code: '30034', count: 1 }] }),
+      stats: rate,
       sms: 'skipped_not_configured',
     });
     expect(await checkDeliveryHealth(database, dark.deps, NOW)).toEqual({
       outcome: 'skipped_not_configured',
-      kind: 'registration_error',
+      kind: 'failure_rate',
     });
   });
 

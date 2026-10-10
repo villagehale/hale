@@ -14,7 +14,7 @@ export const maxDuration = 30;
  * mattered stamped its heartbeat on COMPLETION: a drain whose every inbound job
  * threw looked exactly like a clean run, so nothing paged for six hours
  * (#617/#622). The read-side lane (deadman.ts) closes that hole for real
- * traffic; this closes it when there is none, by posting a Twilio-signed inbound
+ * traffic; this closes it when there is none, by posting a Linq-signed inbound
  * to the real door and verifying the PREVIOUS tick's far-side artifact.
  *
  * Nothing is caught here on purpose. `cronRoute` stamps only when the handler

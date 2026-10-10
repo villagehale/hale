@@ -5,12 +5,8 @@ import type { ChipTone } from '~/components/ui/tint-chip';
  * two-kid family can scan "whose is this" down a week of plan lanes without
  * reading every name.
  *
- * DEVIATION, named for review: apps/mobile has no per-child tint — every child
- * there is the same ink disc / blue chip. The one index-cycled tint in the whole
- * app is `attachmentTone(index)` (apps/mobile/src/lib/ask-attachments.ts), which
- * cycles four tones; this mirrors that idiom, keyed on the child's id instead of
- * a position so the same child keeps the same tone on every surface and across
- * sessions. Reverting is one line: return `'gray'` unconditionally.
+ * Four tones, keyed on the child's id so the same child keeps the same tone
+ * on every surface and across sessions.
  *
  * `red` is excluded from the rotation — Shore already spends it on privacy /
  * redaction (`shield` + red is the teen-redaction mark), and a child whose tag

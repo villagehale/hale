@@ -7,16 +7,12 @@ import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
  * ledger from the queue-maintenance cron and pages Slack #ops.
  *
  * Prod motivation (2026-09-03 audit): 42 of 177 outbound texts failed over 30 days
- * — 8 of them 30034, a registration refusal that fails EVERY send to its destination
- * class — and nothing paged, because delivery failures only ever landed (when they
- * landed at all) in a table read by pull-based admin pages.
+ * and nothing paged, because delivery failures only ever landed (when they landed
+ * at all) in a table read by pull-based admin pages.
  *
- * Two shapes of incident, in strict order of severity:
- *   - `registration_error` — any 30034-class failure at all. One is already proof
- *     the sender's registration is broken for a whole destination class; there is
- *     no threshold to wait for.
- *   - `failure_rate` — the failed share of attempted sends over the trailing
- *     window crossed the threshold on a sample big enough to mean something.
+ * The incident is `failure_rate`: the failed share of attempted sends over the
+ * trailing window crossed the threshold on a sample big enough to mean something.
+ * Provider error codes are named on the page. None of them is its own incident.
  *
  * The alert leg follows the webhook-alert/triage machinery, not provider-health's
  * email: a delivery outage is the same "families are not receiving Hale" class as a
@@ -40,13 +36,6 @@ export const DELIVERY_RATE_THRESHOLD = 0.25;
  * landline must not page anybody. */
 export const DELIVERY_RATE_MIN_ATTEMPTED = 5;
 
-/** The registration/A2P class: refusals that mean the SENDER is misconfigured for a
- * whole destination class, so every send that way dies until a human fixes the
- * console. 30034 = US A2P 10DLC unregistered long code — the code that burned 8
- * prod sends unseen. A single occurrence pages. These are Twilio codes, so this can
- * only fire on legacy Twilio-era sms rows; Linq (imessage) sends never write them. */
-export const REGISTRATION_ERROR_CODES = new Set(['30034']);
-
 /** What the ledger says about the trailing window: sends that reached the provider
  * (suppressions deliberately excluded — a message Hale CHOSE not to send is not a
  * delivery attempt, the msgsOut-dilution lesson), and the failed slice by code. */
@@ -57,17 +46,16 @@ export interface DeliveryStats {
   codes: Array<{ code: string; count: number }>;
 }
 
-export type DeliveryIncident =
-  | { kind: 'registration_error'; code: string; count: number }
-  | { kind: 'failure_rate'; failed: number; attempted: number; codes: DeliveryStats['codes'] };
+export type DeliveryIncident = {
+  kind: 'failure_rate';
+  failed: number;
+  attempted: number;
+  codes: DeliveryStats['codes'];
+};
 
 export type DeliveryIncidentKind = DeliveryIncident['kind'];
 
 export function evaluateDeliveryHealth(stats: DeliveryStats): DeliveryIncident | null {
-  const registration = stats.codes.find((c) => REGISTRATION_ERROR_CODES.has(c.code));
-  if (registration) {
-    return { kind: 'registration_error', code: registration.code, count: registration.count };
-  }
   if (
     stats.attempted >= DELIVERY_RATE_MIN_ATTEMPTED &&
     stats.failed / stats.attempted >= DELIVERY_RATE_THRESHOLD
@@ -136,9 +124,6 @@ function alertCode(code: string): string {
 /** The Slack #ops page. Counts and provider error codes only — an error code is
  * a provider enum, never a parent's number or words (rule #1). ASCII on purpose. */
 export function composeDeliveryAlert(incident: DeliveryIncident): string {
-  if (incident.kind === 'registration_error') {
-    return `Hale: text delivery failing. A2P/registration error ${alertCode(incident.code)} on ${incident.count} send(s) in 24h - sender registration broken. Check Linq dashboard, channel_messages receipts.`;
-  }
   const top = incident.codes
     .slice(0, ALERT_TOP_CODES)
     .map((c) => `${alertCode(c.code)} x${c.count}`)

@@ -7,6 +7,7 @@ import { SiteFooter } from '~/components/site-footer.js';
 import { buildAlternates } from '~/i18n/metadata.js';
 import { LOCALE_NAMES, localeHref, stripLocalePrefix } from '~/i18n/navigation.js';
 import { routing } from '~/i18n/routing.js';
+import { FAQ } from '~/lib/faq/index.js';
 import AboutPage from './[locale]/about/page.js';
 import { generateMetadata as aboutMetadata } from './[locale]/about/page.js';
 
@@ -108,7 +109,9 @@ describe('the footer language selector', () => {
 describe('the phone number is never literal text — messages included (hard rule #1)', () => {
   const files = ['en', 'fr', 'zh'].map((l) => ({
     locale: l,
-    raw: readFileSync(fileURLToPath(new URL(`../messages/${l}.json`, import.meta.url)), 'utf8'),
+    raw: `${readFileSync(fileURLToPath(new URL(`../messages/${l}.json`, import.meta.url)), 'utf8')}${
+      l === 'en' ? `\n${FAQ.map((i) => `${i.question}\n${i.answer}`).join('\n')}` : ''
+    }`,
   }));
 
   it('has substantial message bundles (positive control for the absence checks)', () => {
@@ -122,7 +125,10 @@ describe('the phone number is never literal text — messages included (hard rul
     // are gone from the homepage, including FR/ZH mirrors. An empty chips
     // array would still be a clickable row if the UI read it.
     for (const { locale, raw } of files) {
-      const bundle = JSON.parse(raw) as { Landing?: { chips?: unknown } };
+      // English `raw` also carries the live FAQ copy, which is not part of the JSON.
+      const bundle = JSON.parse(
+        readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+      ) as { Landing?: { chips?: unknown } };
       expect(bundle.Landing?.chips, `${locale}.json must not keep Landing.chips`).toBeUndefined();
       expect(raw, `${locale}.json must not keep swim-registration chip copy`).not.toContain(
         'When does swim registration open near me?',
@@ -153,10 +159,10 @@ describe('the phone number is never literal text — messages included (hard rul
 describe('no bundle promises quiet, in any locale', () => {
   const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
     locale,
-    raw: readFileSync(
+    raw: `${readFileSync(
       fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)),
       'utf8',
-    ),
+    )}${locale === 'en' ? `\n${FAQ.map((i) => `${i.question}\n${i.answer}`).join('\n')}` : ''}`,
   }));
 
   /**
@@ -227,10 +233,10 @@ describe('no bundle promises quiet, in any locale', () => {
 describe('the positioning noun is gone from every bundle', () => {
   const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
     locale,
-    raw: readFileSync(
+    raw: `${readFileSync(
       fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)),
       'utf8',
-    ),
+    )}${locale === 'en' ? `\n${FAQ.map((i) => `${i.question}\n${i.answer}`).join('\n')}` : ''}`,
   }));
 
   /**
@@ -263,6 +269,8 @@ describe('the positioning noun is gone from every bundle', () => {
   it('positive control: the anti-scam line the ban must not erase is still there', () => {
     const en = files.find((f) => f.locale === 'en')?.raw ?? '';
     expect(en).toContain('a planner for your kids’ year');
+    expect(en).toContain('it never pretends to be');
+    expect(en).toContain('a real person reads it');
     for (const locale of ['fr', 'zh'] as const) {
       const raw = files.find((f) => f.locale === locale)?.raw ?? '';
       expect(raw).toContain('it never pretends to be');
