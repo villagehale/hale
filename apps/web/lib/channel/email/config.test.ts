@@ -30,7 +30,7 @@ describe('emailInboundConfig', () => {
   });
 
   /**
-   * ALL-OR-NOTHING, mirroring twilioConfig(). The webhook does not merely read mail, it
+   * ALL-OR-NOTHING. The webhook does not merely read mail, it
    * must FETCH the body with the API key and judge the sender against the MTA id — so a
    * deployment holding the signing secret alone would authenticate a parent's message
    * and then be unable to read or trust it. Half-present config is the same 503 as

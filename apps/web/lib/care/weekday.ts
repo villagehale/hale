@@ -23,9 +23,9 @@ import { writeFact } from '~/lib/memory/facts';
  * September wants `writeFact`'s bi-temporal supersede rather than an overwrite on a
  * table with no history.
  *
- * WHICH MAKES THE WRITER PIN LOAD-BEARING. `fact_key` is free text with no registry
- * and the app coach's `save_memory` tool lets a model choose any key it likes under
- * `inferred_by: 'ask-hale'`, so the key alone proves nothing. Every reader here
+ * WHICH MAKES THE WRITER PIN LOAD-BEARING. `fact_key` is free text with no registry.
+ * `inferred_by: 'ask-hale'` is a legacy writer label still read for old rows, so the
+ * key alone proves nothing. Every reader here
  * matches the WRITER as well as the key, for the reason the registration ladder
  * states verbatim: "The WRITER is what makes a row trustworthy, never the key."
  */
@@ -138,7 +138,7 @@ function parseFactValue(value: unknown): { care: WeekdayCare; provider: string |
  *
  * Three predicates, and dropping any one of them changes what it means: the KEY says
  * which question, the WRITER says whose answer to trust, and `valid_until IS NULL`
- * says the parent has not superseded it. A row written by `ask-hale` under the same
+ * says the parent has not superseded it. A legacy `ask-hale` row under the same
  * key is invisible here, and a test asserts exactly that.
  *
  * Family-wide rows (`child_id IS NULL`) are skipped rather than coerced: this fact is

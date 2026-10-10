@@ -132,8 +132,8 @@ const MAX_STEPS = 6;
  */
 const MAX_TOKENS = 400;
 
-/** The agent_runs name for a texted turn (migration 0075). Separate from 'ask-hale'
- * because the two surfaces have different latency and cost shapes over one brain. */
+/** The agent_runs name for a texted turn (migration 0075). The texted coach is the
+ * live surface, with its own latency and cost shape. */
 export const CHANNEL_AGENT_NAME = 'coach-channel-sms';
 
 export interface ChannelRunRecord {
