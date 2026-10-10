@@ -56,8 +56,8 @@ export default auth((req) => {
   }
 
   // The receipts portal's landing IS /home. /family is the editor, so
-  // /family/members has nothing of its own left to show. A real 308, for the
-  // streaming-layout reason; the page also permanentRedirects (defense in depth).
+  // /family/members has nothing of its own left to show. next.config also
+  // 308s this path; this is the Edge answer if a request reaches here.
   if (pathname === '/family/members' || pathname.startsWith('/family/members/')) {
     return NextResponse.redirect(new URL('/family', req.nextUrl), 308);
   }

@@ -6,13 +6,12 @@
  * none of those — the web chat that competed with the product (Hale is a number you
  * text), the newborn-era logging surface, and village-era browsing.
  *
- * Every one answers with a PERMANENT redirect to /home. The forward is served from the
- * middleware rather than only from the page, because a page-level `redirect()` under
- * the streaming `force-dynamic` (authed) layout resolves as a mid-stream client
- * navigation — a 200 plus a soft push — not a redirect a browser, a crawler or a
- * link-checker can see. That is the same reason the /home demotion lives there. The
- * pages ALSO permanentRedirect, so a retired surface cannot render even if this gate is
- * bypassed — defense in depth, the way PROTECTED_PREFIXES backs the layout's own check.
+ * Every one answers with a PERMANENT redirect to /home. The forward is declared in
+ * next.config `redirects()` (308, before the auth middleware — the same seam as
+ * /onboarding). The page files are gone. The middleware still answers with the same
+ * 308, ahead of the auth gate, for a request that reaches the Edge: a page-level
+ * `redirect()` under the streaming `(authed)` layout is a soft client navigation, not
+ * a redirect a browser or a crawler can see, so the gate cannot live only in a page.
  *
  * Their API routes are NOT retired, and must never be added here: /api/coach/* backs
  * the SMS coach. Matching is prefix-on-segment, so an /api/* path never matches one of

@@ -12,13 +12,10 @@
  */
 export const PROTECTED_PREFIXES = [
   '/approvals',
-  '/coach',
-  '/companion',
   '/family',
   '/home',
   '/messages',
   '/plan',
-  '/saved',
   '/settings',
   '/trail',
 ];

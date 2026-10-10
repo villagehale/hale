@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { WeekPlan } from '@hale/db';
 import { createElement as h } from 'react';
@@ -266,9 +266,25 @@ describe('the family editor moved up a level (Instinct refresh)', () => {
     );
   });
 
-  it('the page itself permanentRedirects — defense in depth, the retired-routes pattern', () => {
-    const page = app('(authed)/family/members/page.tsx');
-    expect(page).toContain("permanentRedirect('/family')");
+  it('the members page is gone; next.config 308s it to /family', async () => {
+    expect(
+      existsSync(
+        fileURLToPath(new URL('../../app/(authed)/family/members/page.tsx', import.meta.url)),
+      ),
+    ).toBe(false);
+    const { default: nextConfig } = await import('~/next.config');
+    if (typeof nextConfig.redirects !== 'function')
+      throw new Error('next.config has no redirects()');
+    const rules = await nextConfig.redirects();
+    for (const source of ['/family/members', '/family/members/:path*']) {
+      expect(
+        rules.find((r) => r.source === source),
+        source,
+      ).toMatchObject({
+        destination: '/family',
+        permanent: true,
+      });
+    }
   });
 
   it('/family renders the editor content the members page used to own', () => {
