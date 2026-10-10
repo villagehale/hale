@@ -860,7 +860,6 @@ INTERNAL_API_SHARED_SECRET=
 # Misc
 NODE_ENV=
 APP_URL=
-WORKER_URL=
 ```
 
 ### 8.4 Deployment targets
