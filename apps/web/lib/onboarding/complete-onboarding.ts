@@ -5,8 +5,8 @@ import { type PlanTier, parseIntents } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
-import { db as defaultDb } from '~/lib/db';
 import { recordConsent } from '~/lib/consent';
+import { db as defaultDb } from '~/lib/db';
 import {
   EmailInUseError,
   ensureUserRow,
@@ -22,7 +22,6 @@ import { type ChildInput, type ValidatedChild, validateChild } from './children'
 import { assignFoundingNumber } from './founding';
 import { provisionAndWriteChildren } from './persist';
 import { type WelcomeDeps, sendWelcomeEmail } from './send-welcome';
-import { type DiscoveryTrigger, defaultDiscoveryTrigger } from './trigger-discovery';
 
 /**
  * The intake-first onboarding completion (Phase C). Runs only AFTER Google
@@ -87,7 +86,6 @@ export type CompleteOnboardingResult =
 export async function completeOnboarding(
   input: CompleteOnboardingInput,
   welcomeDeps?: WelcomeDeps,
-  discoveryTrigger: DiscoveryTrigger = defaultDiscoveryTrigger(),
 ): Promise<CompleteOnboardingResult> {
   if (!input.tosAccepted) {
     return { status: 'invalid', error: 'tos_required' };
@@ -191,47 +189,44 @@ export async function completeOnboarding(
   let userId: string;
   try {
     ({ familyId, userId } = await database.transaction(async (tx) => {
-    const executor = tx as unknown as Database;
-    const { familyId } = await provisionAndWriteChildren(
-      executor,
-      identity,
-      validated.map((child) => ({
-        name: child.name,
-        lastName: child.lastName,
-        dateOfBirth: child.dateOfBirth,
-        gender: child.gender,
-      })),
-    );
+      const executor = tx as unknown as Database;
+      const { familyId } = await provisionAndWriteChildren(
+        executor,
+        identity,
+        validated.map((child) => ({
+          name: child.name,
+          lastName: child.lastName,
+          dateOfBirth: child.dateOfBirth,
+          gender: child.gender,
+        })),
+      );
 
-    const userId = await ensureUserRow(identity, executor);
+      const userId = await ensureUserRow(identity, executor);
 
-    await tx.update(schema.families).set(familyUpdate).where(eq(schema.families.id, familyId));
+      await tx.update(schema.families).set(familyUpdate).where(eq(schema.families.id, familyId));
 
-    if (parentName && parentName.length > 0) {
-      await tx
-        .update(schema.users)
-        .set({ name: parentName })
-        .where(eq(schema.users.id, userId));
-    }
+      if (parentName && parentName.length > 0) {
+        await tx.update(schema.users).set({ name: parentName }).where(eq(schema.users.id, userId));
+      }
 
-    await tx.insert(schema.auditLog).values({
-      familyId,
-      actor: userId,
-      actionTaken: 'tos_accepted',
-      targetTable: 'families',
-      targetId: familyId,
-      after: { planTier: input.planTier },
-    });
+      await tx.insert(schema.auditLog).values({
+        familyId,
+        actor: userId,
+        actionTaken: 'tos_accepted',
+        targetTable: 'families',
+        targetId: familyId,
+        after: { planTier: input.planTier },
+      });
 
-    // The consents the user gives at sign-up, each stamped with the policy
-    // version + time (the Privacy Policy promises a verifiable record). Sign-up
-    // is where we ask for terms + privacy, and — because all sensitive
-    // processing runs on US AI infra — cross-border + LLM processing too.
-    for (const consentType of CONSENTS_AT_SIGNUP) {
-      await recordConsent(tx, { userId, familyId, consentType, granted: true });
-    }
+      // The consents the user gives at sign-up, each stamped with the policy
+      // version + time (the Privacy Policy promises a verifiable record). Sign-up
+      // is where we ask for terms + privacy, and — because all sensitive
+      // processing runs on US AI infra — cross-border + LLM processing too.
+      for (const consentType of CONSENTS_AT_SIGNUP) {
+        await recordConsent(tx, { userId, familyId, consentType, granted: true });
+      }
 
-    return { familyId, userId };
+      return { familyId, userId };
     }));
   } catch (err) {
     // A second provider with an email that already has an account (rule #8:
@@ -260,20 +255,6 @@ export async function completeOnboarding(
     await sendWelcomeEmail(database, { userId, familyId, email, name: identity.name }, welcomeDeps);
   } catch (err) {
     console.error('welcome email failed (onboarding unaffected)', err);
-  }
-
-  // Populate the family's village NOW (in the background) so it isn't blank on
-  // first view — the engine reads only the coarse area just written (rule #1) and
-  // runs the same discovery the cron does. Scheduling must not throw into the
-  // completion path; a failure degrades to the existing empty state (rule #8).
-  // Populate the family's village NOW (in the background) so it isn't blank on
-  // first view — the engine reads only the coarse area just written (rule #1) and
-  // runs the same discovery the cron does. Scheduling must not throw into the
-  // completion path; a failure degrades to the existing empty state (rule #8).
-  try {
-    discoveryTrigger(familyId, database);
-  } catch (err) {
-    console.error('first-village discovery trigger failed (onboarding unaffected)', err);
   }
 
   return { status: 'completed', familyId };

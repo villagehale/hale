@@ -1,11 +1,9 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import { ConnectionsView } from '~/components/portal/connections-view';
 import { loadSmsChannel } from '~/lib/channels/sms-consent';
 import { loadFamilyTimezone } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
 import { listMcpConnectionsForUser } from '~/lib/mcp/oauth-store';
 
@@ -21,8 +19,6 @@ function monthDay(value: Date | undefined, timeZone: string): string | null {
 }
 
 export default async function ConnectionsPage() {
-  if (!receiptsIaEnabled()) redirect('/settings#apps');
-
   const database = db();
   const [connections, timeZone, smsChannel, familyId, userId] = await Promise.all([
     loadFamilyConnectors(),

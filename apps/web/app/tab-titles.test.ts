@@ -79,7 +79,6 @@ describe('portal title template', () => {
       ['./(authed)/approvals/page.tsx', 'Approvals · Hale'],
       ['./(authed)/trail/page.tsx', 'History · Hale'],
       ['./(authed)/plan/page.tsx', 'Week · Hale'],
-      ['./(authed)/village/page.tsx', 'Village · Hale'],
       ['./unsubscribe/page.tsx', 'Unsubscribe · Hale'],
       ['./rsvp/[token]/page.tsx', "You're invited · Hale"],
     ];

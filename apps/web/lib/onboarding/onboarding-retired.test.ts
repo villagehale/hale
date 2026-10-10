@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import config from '~/next.config';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
+import config from '~/next.config';
 
 /**
  * /onboarding is retired (F14). Not hidden behind a flag — DELETED, because the web
@@ -41,6 +41,9 @@ describe('the /onboarding surface is gone', () => {
     'lib/onboarding/sign-in-action.ts',
     'lib/onboarding/complete-onboarding-copy.ts',
     'lib/onboarding/invite-gate.ts',
+    'lib/onboarding/load-places.ts',
+    'lib/onboarding/city-search.ts',
+    'lib/onboarding/parse-place.ts',
   ])('%s no longer exists', (rel) => {
     expect(existsSync(webPath(rel))).toBe(false);
   });
@@ -55,10 +58,6 @@ describe('the /onboarding surface is gone', () => {
     'lib/onboarding/trigger-discovery.ts',
     'lib/onboarding/welcome-email.ts',
     'lib/onboarding/send-welcome.ts',
-    // Still read by live surfaces: the village map, and the area switcher's city
-    // lookup.
-    'lib/onboarding/load-places.ts',
-    'lib/onboarding/city-search.ts',
   ])('%s survives — it was never the wizard’s', (rel) => {
     expect(existsSync(webPath(rel))).toBe(true);
   });

@@ -1,13 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * /sign-in is the phone door, with the receipts flag on or off. The flag still
- * chooses the receipts shell. It no longer chooses a second sign-in: the
- * flag-off branch was a Google button plus a magic-link form, and that form
- * posted to an email sender that is gone.
+ * /sign-in is the phone door. It does not read F14_RECEIPTS_IA. The flag-off
+ * branch was a Google button plus a magic-link form, and that form posted to
+ * an email sender that is gone.
  */
 
 vi.mock('~/auth', () => ({ signIn: vi.fn() }));
@@ -25,10 +24,6 @@ async function renderSignIn(): Promise<string> {
 
 beforeEach(() => {
   process.env.AUTH_SECRET = 'test-auth-secret';
-  process.env.F14_RECEIPTS_IA = '';
-});
-afterEach(() => {
-  process.env.F14_RECEIPTS_IA = '';
 });
 
 describe('/sign-in is the phone door', () => {
@@ -52,8 +47,7 @@ describe('/sign-in is the phone door', () => {
     expect(src).not.toContain('type="password"');
   });
 
-  it.each(['', 'true'])('renders the phone field when F14_RECEIPTS_IA is %j', async (flag) => {
-    process.env.F14_RECEIPTS_IA = flag;
+  it('renders the phone field', async () => {
     const html = await renderSignIn();
     expect(html).toContain('claim-phone');
     expect(html).toMatch(/type="tel"/);

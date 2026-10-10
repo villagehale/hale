@@ -27,7 +27,12 @@ vi.mock('~/lib/auth/rate-limit', () => ({
   authRateLimited: () => authRateLimitedMock(),
 }));
 
-let rows: { channels?: unknown[]; members?: unknown[]; verifications?: unknown[]; users?: unknown[] } = {};
+let rows: {
+  channels?: unknown[];
+  members?: unknown[];
+  verifications?: unknown[];
+  users?: unknown[];
+} = {};
 const writes: Array<{ table: unknown }> = [];
 
 function thenable(result: unknown[], table: unknown) {
@@ -99,7 +104,6 @@ async function authorize(raw: Record<string, unknown> | undefined) {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
-  process.env.F14_RECEIPTS_IA = 'true';
   rows = {};
   writes.length = 0;
   authRateLimitedMock.mockResolvedValue(false);
@@ -107,7 +111,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
-  process.env.F14_RECEIPTS_IA = '';
   vi.restoreAllMocks();
 });
 
@@ -159,16 +162,6 @@ describe('authorizeClaimByPhone', () => {
     expect(await authorize({ phone: PHONE })).toBeNull();
     expect(await authorize({ code: CODE })).toBeNull();
     expect(await authorize(undefined)).toBeNull();
-  });
-
-  it('still resolves the existing identity when the receipts flag is off', async () => {
-    process.env.F14_RECEIPTS_IA = '';
-    rows = claimableParent();
-
-    expect(await authorize({ phone: PHONE, code: CODE })).toEqual({
-      id: EXISTING_IDENTITY(),
-      email: null,
-    });
   });
 
   it('is throttled by the shared per-IP auth window', async () => {

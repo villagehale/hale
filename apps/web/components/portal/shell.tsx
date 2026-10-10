@@ -43,7 +43,7 @@ export function PortalShell({
   signOutTo?: string;
 }) {
   const pathname = usePathname() ?? portalHref(basePath, '/home');
-  const stops = primaryNav(true);
+  const stops = primaryNav();
   const homeHref = portalHref(basePath, '/home');
 
   return (
@@ -135,7 +135,7 @@ export function PortalShell({
 function FallbackHero({ roots }: { roots: Record<RootRoute, RootHero> }) {
   const pathname = usePathname() ?? '';
   if (portalOwnsHeading(pathname)) return null;
-  const resolved = resolveHero(pathname, roots, true);
+  const resolved = resolveHero(pathname, roots);
   if (!resolved) return null;
   if (resolved.kind === 'drill') {
     const { crumb, title, backHref } = resolved.hero;

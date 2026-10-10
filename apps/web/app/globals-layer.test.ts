@@ -29,8 +29,10 @@ import { describe, expect, it } from 'vitest';
  */
 
 /** Unlayered class rules remaining in globals.css. LOWER THIS as surfaces migrate;
- * never raise it. Any new component class goes inside `@layer components`. */
-const UNLAYERED_BASELINE = 426;
+ * never raise it for new CSS. Any new component class goes inside `@layer components`.
+ * 245 puts back the people-avatar and upgrade-dismiss rules the shell deletion
+ * removed while /family and /approvals still render them. */
+const UNLAYERED_BASELINE = 245;
 
 const CSS = readFileSync(fileURLToPath(new URL('./globals.css', import.meta.url)), 'utf8');
 const root = postcss.parse(CSS);
@@ -81,7 +83,15 @@ describe('globals.css — @layer discipline (VIL-209)', () => {
 
   it('wraps the shared type roles inside @layer so a text-*/font-* utility wins', () => {
     const layered = layeredClassNames();
-    for (const cls of ['eyebrow', 'meta', 'folio', 'tabular', 'font-display', 'font-body', 'font-mono']) {
+    for (const cls of [
+      'eyebrow',
+      'meta',
+      'folio',
+      'tabular',
+      'font-display',
+      'font-body',
+      'font-mono',
+    ]) {
       expect(layered.has(cls), `.${cls} must be inside @layer`).toBe(true);
     }
   });

@@ -9,10 +9,8 @@
  *
  * Preview env that turns the REAL door on (set on the Vercel Preview
  * environment only — never Production). The demo route does not read these.
+ * The sign-in page is the phone door; it does not read `F14_RECEIPTS_IA`.
  *
- * - `F14_RECEIPTS_IA` = `true` with no trailing newline (`printf '%s' true`).
- *   That is the receipts shell. Anything else, including `true\n`, leaves the
- *   shell off. /sign-in is the phone door either way.
  * - `AUTH_SECRET` = a Preview-only random string (`openssl rand -base64 33`).
  *   Auth.js uses it to sign the session JWT. Without it, Preview (NODE_ENV
  *   production) fail-closes every authed route to `/sign-in`. It is the only

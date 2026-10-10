@@ -9,17 +9,13 @@ import {
   loadTrail,
 } from '~/lib/dashboard/queries';
 import { loadViewerName } from '~/lib/family';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
 import { loadMessages } from '~/lib/messages/queries';
 import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
-import { LegacyHomePage } from './legacy-home';
 
 export const metadata: Metadata = { title: 'Home' };
 
 export default async function HomePage() {
-  if (!receiptsIaEnabled()) return LegacyHomePage();
-
   const [name, approvals, messages, trail, basics, connections, loop, timeZone] = await Promise.all(
     [
       loadViewerName(),

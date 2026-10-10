@@ -1,4 +1,3 @@
-import { ArrowRight } from 'lucide-react';
 import type { Metadata } from 'next';
 import { AddPlan } from '~/components/hale/add-plan';
 import { scopeChildren } from '~/components/hale/child-scope-core';
@@ -11,12 +10,10 @@ import {
   itemNeedsOk,
 } from '~/components/hale/week-plan-card';
 import { Card } from '~/components/ui/card';
-import { Icon } from '~/components/ui/icon';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadFamilyTimezone, loadViewerTeenUnlocks } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { currentFamilyId, loadViewerProfile } from '~/lib/family';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { villageKindLabel } from '~/lib/format/labels';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { loadAuthoredPlans } from '~/lib/plan/authored';
@@ -62,12 +59,10 @@ export default async function PlanPage() {
 
   const kids = scopeChildren(children);
 
-  // VIL-244 · M9 (D4/D20): under the receipts-room IA this page IS the landing surface,
-  // so it leads with a compact Today strip (the demoted feed's job, cut to one day of the
-  // SAME artifact) and arranges the week day-first then by kid, oldest first. Item titles
-  // are untouched — already teen-gated at compose time — and the who-labels are derived
-  // from each child's live stage, so a 13+ child is never named (rule #1).
-  const receiptsIa = receiptsIaEnabled();
+  // The week page leads with a compact Today strip and arranges the week day-first
+  // then by kid, oldest first. Item titles are untouched — already teen-gated at
+  // compose time — and the who-labels are derived from each child's live stage, so a
+  // 13+ child is never named (rule #1).
   const planKids: WeekPlanKid[] = children.map((child) => ({
     id: child.id,
     name: child.name ?? 'your child',
@@ -81,7 +76,7 @@ export default async function PlanPage() {
       {/* Title + back-to-Family breadcrumb live in the shell top bar (§3.2). */}
 
       {/* ── Today — the compact strip that replaces the demoted daily feed ─ */}
-      {receiptsIa && weekPlan ? (
+      {weekPlan ? (
         <section className="rise rise-1 mb-8">
           <WeekPlanToday plan={weekPlan} kids={planKids} todayKey={todayKey} />
         </section>
@@ -96,7 +91,7 @@ export default async function PlanPage() {
               ? ` · ${weekPlanNeedsOk} ${weekPlanNeedsOk === 1 ? 'needs' : 'need'} your OK`
               : ''}
           </SectionLabel>
-          <WeekPlanCard plan={weekPlan} kids={receiptsIa ? planKids : undefined} />
+          <WeekPlanCard plan={weekPlan} kids={planKids} />
         </section>
       ) : null}
 
@@ -155,13 +150,9 @@ export default async function PlanPage() {
             {addedActivities.map((candidate) => {
               const kindLabel = villageKindLabel(candidate.kind);
               return (
-                <Card key={candidate.id} href="/village">
+                <Card key={candidate.id}>
                   {kindLabel ? <span className="eyebrow text-ink">{kindLabel}</span> : null}
                   <p className="text-lg text-ink leading-relaxed mt-3">{candidate.title}</p>
-                  <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
-                    open in village
-                    <Icon as={ArrowRight} size={14} />
-                  </span>
                 </Card>
               );
             })}

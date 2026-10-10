@@ -6,6 +6,7 @@ import {
   formatCalendarDayLabel,
   formatDateTime,
   formatDayHeading,
+  formatDurationMinutes,
   formatLongDate,
   formatTime,
   formatWhenPhrase,
@@ -170,9 +171,7 @@ describe('formatDayHeading — the human day heading for a grouped section', () 
 
   it('honours the render zone near the UTC boundary — 1am ET is the local day', () => {
     // 2026-06-12 05:00 UTC is Jun 12 (1am) in Toronto but Jun 11 in Vancouver.
-    expect(formatDayHeading('2026-06-12T05:00:00Z', 'America/Toronto', NOW)).toBe(
-      'Friday, Jun 12',
-    );
+    expect(formatDayHeading('2026-06-12T05:00:00Z', 'America/Toronto', NOW)).toBe('Friday, Jun 12');
     expect(formatDayHeading('2026-06-12T05:00:00Z', 'America/Vancouver', NOW)).toBe(
       'Thursday, Jun 11',
     );
@@ -201,6 +200,16 @@ describe('foundStamp — a run-freshness phrase in local days', () => {
     const boundary = '2026-07-03T03:30:00Z';
     expect(foundStamp(boundary, 'America/Toronto', NOW)).toBe('found 2 days ago');
     expect(foundStamp(boundary, 'UTC', NOW)).toBe('found yesterday');
+  });
+});
+
+describe('formatDurationMinutes', () => {
+  it('writes hours and leftover minutes, hours alone, or minutes alone', () => {
+    expect(formatDurationMinutes(135)).toBe('2h 15m');
+    expect(formatDurationMinutes(90)).toBe('1h 30m');
+    expect(formatDurationMinutes(60)).toBe('1h');
+    expect(formatDurationMinutes(45)).toBe('45m');
+    expect(formatDurationMinutes(0)).toBe('0m');
   });
 });
 

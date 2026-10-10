@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import nextConfig from '~/next.config';
 import { RETIRED_PREFIXES, RETIRED_TARGET, isRetiredPath } from './retired';
 
 /**
@@ -19,8 +20,8 @@ const middleware = readFileSync(
   'utf8',
 );
 
-const page = (rel: string) =>
-  readFileSync(fileURLToPath(new URL(`../../app/(authed)/${rel}`, import.meta.url)), 'utf8');
+const pagePath = (rel: string) =>
+  fileURLToPath(new URL(`../../app/(authed)/${rel}`, import.meta.url));
 
 describe('isRetiredPath', () => {
   it('matches every retired surface and anything underneath it', () => {
@@ -31,7 +32,7 @@ describe('isRetiredPath', () => {
   });
 
   it('leaves the surfaces that DO earn their place alone', () => {
-    for (const live of ['/approvals', '/trail', '/settings', '/family', '/plan', '/village']) {
+    for (const live of ['/approvals', '/trail', '/settings', '/family', '/plan', '/home']) {
       expect(isRetiredPath(live), live).toBe(false);
     }
   });
@@ -41,7 +42,12 @@ describe('isRetiredPath', () => {
    * must never retire the API that shares its noun.
    */
   it('never matches an API route that shares a retired page’s noun', () => {
-    for (const api of ['/api/coach', '/api/coach/action', '/api/coach/attachments', '/api/companion']) {
+    for (const api of [
+      '/api/coach',
+      '/api/coach/action',
+      '/api/coach/attachments',
+      '/api/companion',
+    ]) {
       expect(isRetiredPath(api), api).toBe(false);
     }
   });
@@ -77,19 +83,34 @@ describe('the middleware serves the forward', () => {
   });
 });
 
-describe('the pages themselves cannot render (defense in depth)', () => {
+describe('the page stubs are gone; next.config serves the 308', () => {
   it.each([
     ['coach/page.tsx'],
     ['companion/page.tsx'],
     ['companion/logs/page.tsx'],
     ['saved/page.tsx'],
-  ])('%s is a permanent redirect and nothing else', (rel) => {
-    const src = page(rel);
-    expect(src).toContain("import { permanentRedirect } from 'next/navigation'");
-    expect(src).toContain(`permanentRedirect('${RETIRED_TARGET}')`);
-    // No surviving surface: a retired page that still imported its old tree would keep
-    // that code reachable the moment the middleware rule was touched.
-    expect(src).not.toContain('~/components/');
-    expect(src).not.toContain('~/lib/');
+  ])('%s no longer exists', (rel) => {
+    expect(existsSync(pagePath(rel))).toBe(false);
+  });
+
+  it('forwards each surface, and anything under it, permanently to /home', async () => {
+    if (typeof nextConfig.redirects !== 'function')
+      throw new Error('next.config has no redirects()');
+    const rules = await nextConfig.redirects();
+    for (const prefix of RETIRED_PREFIXES) {
+      for (const source of [prefix, `${prefix}/:path*`]) {
+        const rule = rules.find((r) => r.source === source);
+        expect(rule, source).toMatchObject({ destination: RETIRED_TARGET, permanent: true });
+      }
+    }
+  });
+
+  it('does not forward /api/coach or /api/companion', async () => {
+    if (typeof nextConfig.redirects !== 'function')
+      throw new Error('next.config has no redirects()');
+    const sources = (await nextConfig.redirects()).map((r) => r.source);
+    for (const source of sources) {
+      expect(source.startsWith('/api')).toBe(false);
+    }
   });
 });

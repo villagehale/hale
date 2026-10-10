@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * discovery/inference unit tests); this asserts the gate.
  */
 
-const runDiscoveryCronMock = vi.fn();
 const runInferenceCronMock = vi.fn();
 const runWeekPlanCronMock = vi.fn();
 const sweepAttachmentsMock = vi.fn();
@@ -33,9 +32,6 @@ vi.mock('~/lib/cron/kick-drain', () => ({ kickDrain: vi.fn() }));
 vi.mock('next/server', async (importActual) => ({
   ...(await importActual<typeof import('next/server')>()),
   after: (fn: () => void) => fn(),
-}));
-vi.mock('~/lib/cron/discovery', () => ({
-  runDiscoveryCron: (...a: unknown[]) => runDiscoveryCronMock(...a),
 }));
 vi.mock('~/lib/cron/inference', () => ({
   runInferenceCron: (...a: unknown[]) => runInferenceCronMock(...a),
@@ -90,7 +86,6 @@ function request(authHeader?: string): Request {
 }
 
 const ROUTES = [
-  { name: 'discovery', path: '~/app/api/cron/discovery/route', mock: runDiscoveryCronMock },
   { name: 'inference', path: '~/app/api/cron/inference/route', mock: runInferenceCronMock },
   {
     name: 'attachment-sweep',
@@ -109,7 +104,6 @@ const ROUTES = [
 describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock }) => {
   beforeEach(() => {
     vi.resetModules();
-    runDiscoveryCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runInferenceCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runWeekPlanCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });

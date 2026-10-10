@@ -33,10 +33,6 @@ vi.mock('~/lib/dashboard/queries', () => ({
   })),
   loadFamilyMembers: vi.fn(async () => ({ primary: null, coParent: null })),
 }));
-vi.mock('~/lib/dashboard/notifications', () => ({ loadNotifications: vi.fn(async () => []) }));
-vi.mock('~/lib/village/switcher', () => ({
-  loadAreaSwitcher: vi.fn(async () => ({ areas: [], activeLabel: null })),
-}));
 vi.mock('~/lib/integrations/load', () => ({ loadFamilyConnectors: vi.fn(async () => []) }));
 vi.mock('~/lib/mcp/oauth-store', () => ({ listMcpConnectionsForUser: vi.fn(async () => []) }));
 vi.mock('~/lib/consent-records', () => ({ listConsentRecordsForViewer: vi.fn(async () => []) }));
@@ -75,7 +71,6 @@ vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
 
 const { loadSmsChannel } = await import('~/lib/channels/sms-consent');
 const { default: SettingsPage } = await import('~/app/(authed)/settings/page');
-const { default: AuthedLayout } = await import('~/app/(authed)/layout');
 
 function enrolled(): LoadSmsChannelResult {
   return {
@@ -98,11 +93,6 @@ async function renderSettings(channel: LoadSmsChannelResult): Promise<string> {
   return renderToStaticMarkup(await SettingsPage());
 }
 
-async function renderShell(channel: LoadSmsChannelResult): Promise<string> {
-  vi.mocked(loadSmsChannel).mockResolvedValue(channel);
-  return renderToStaticMarkup(await AuthedLayout({ children: null }));
-}
-
 beforeEach(() => {
   // The layout renders its account chip in the dev-preview auth state, which keeps
   // the session/redirect chain out of a question that is only about the phone.
@@ -118,39 +108,16 @@ describe('the Settings Account card’s Phone row', () => {
     const html = await renderSettings(enrolled());
 
     expect(html).toContain(MASKED);
-    expect(html).toContain('the number you text Hale from');
-    // Enrolled → the row offers a change, and its value line is PII (replay masking).
-    expect(html).toContain('>Change<');
+    expect(html).toContain('how you sign in');
+    expect(html).toContain('Mobile number');
     expect(html).toContain('data-hale-pii');
-    expect(html).not.toContain('No number linked yet');
   });
 
   it('says no number is linked yet, and offers the link, when the parent has not enrolled', async () => {
     const html = await renderSettings(notEnrolled());
 
-    expect(html).toContain('No number linked yet');
-    expect(html).toContain('>Link<');
-    // Positive control: the row really rendered, so the absence below isn't vacuous.
-    expect(html).toContain('Phone');
-    expect(html).not.toContain(MASKED);
-  });
-});
-
-describe('the sidebar account chip’s secondary line', () => {
-  it('is the masked number once the parent’s channel is live', async () => {
-    const html = await renderShell(enrolled());
-
-    expect(html).toContain('account-chip-family');
-    expect(html).toContain(MASKED);
-    // One secondary line, never both — the number replaces the plan label.
-    expect(html).not.toContain('Free plan');
-  });
-
-  it('falls back to the plan label while no number is enrolled', async () => {
-    const html = await renderShell(notEnrolled());
-
-    expect(html).toContain('account-chip-family');
-    expect(html).toContain('Free plan');
+    expect(html).toContain('how you sign in');
+    expect(html).toContain('Mobile number');
     expect(html).not.toContain(MASKED);
   });
 });

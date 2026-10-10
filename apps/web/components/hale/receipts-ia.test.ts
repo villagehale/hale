@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { WeekPlan } from '@hale/db';
 import { createElement as h } from 'react';
@@ -7,12 +7,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { ApprovalCard } from './approval-card';
-import { brandHref } from './nav';
 import { TrailTimeline } from './trail-timeline';
 import { WeekPlanCard, type WeekPlanKid, WeekPlanToday } from './week-plan-card';
 
 /**
- * VIL-244 · M9 — the receipts-room reframe (D4/D20), behind F14_RECEIPTS_IA.
+ * VIL-244 · M9 — the receipts-room reframe (D4/D20). The receipts IA is unconditional;
+ * the F14_RECEIPTS_IA reader is gone.
  *
  * Two lanes, because the surfaces split two ways. The rows a channel message deep-links
  * (Trail) and the week arrangement are RENDERED here, so the assertions are about real
@@ -240,17 +240,15 @@ describe('the demoted daily feed', () => {
   const page = app('(authed)/home/page.tsx');
 
   it('leaves /home as the portal landing, and no longer forwards it to the week view', () => {
-    expect(middleware).toContain('receiptsIaEnabled()');
+    expect(middleware).not.toContain('receiptsIaEnabled');
     expect(middleware).not.toContain("pathname === '/home'");
     expect(middleware).not.toContain("new URL('/plan'");
   });
 
-  it('leaves the daily feed intact for flag-off, and the page branches to the portal when the flag is on', () => {
-    const legacy = app('(authed)/home/legacy-home.tsx');
-    expect(legacy).toContain('HomeChildPanels');
-    expect(page).toContain('receiptsIaEnabled');
-    expect(page).toContain('LegacyHomePage');
+  it('renders the portal home', () => {
     expect(page).toContain('PortalHome');
+    expect(page).not.toContain('LegacyHomePage');
+    expect(page).not.toContain('receiptsIaEnabled');
   });
 });
 
@@ -260,18 +258,33 @@ describe('the family editor moved up a level (Instinct refresh)', () => {
     'utf8',
   );
 
-  it('forwards /family/members to /family as a real 308, sub-paths included, flag-gated', () => {
-    // Positive control: the hinge really reads the flag (same guard the /home test keeps).
-    expect(middleware).toContain('receiptsIaEnabled()');
+  it('forwards /family/members to /family as a real 308, sub-paths included', () => {
+    expect(middleware).not.toContain('receiptsIaEnabled');
     expect(middleware).toContain("NextResponse.redirect(new URL('/family', req.nextUrl), 308)");
     expect(middleware).toContain(
       "pathname === '/family/members' || pathname.startsWith('/family/members/')",
     );
   });
 
-  it('the page itself permanentRedirects — defense in depth, the retired-routes pattern', () => {
-    const page = app('(authed)/family/members/page.tsx');
-    expect(page).toContain("permanentRedirect('/family')");
+  it('the members page is gone; next.config 308s it to /family', async () => {
+    expect(
+      existsSync(
+        fileURLToPath(new URL('../../app/(authed)/family/members/page.tsx', import.meta.url)),
+      ),
+    ).toBe(false);
+    const { default: nextConfig } = await import('~/next.config');
+    if (typeof nextConfig.redirects !== 'function')
+      throw new Error('next.config has no redirects()');
+    const rules = await nextConfig.redirects();
+    for (const source of ['/family/members', '/family/members/:path*']) {
+      expect(
+        rules.find((r) => r.source === source),
+        source,
+      ).toMatchObject({
+        destination: '/family',
+        permanent: true,
+      });
+    }
   });
 
   it('/family renders the editor content the members page used to own', () => {
@@ -280,9 +293,8 @@ describe('the family editor moved up a level (Instinct refresh)', () => {
       fileURLToPath(new URL('../portal/family-view.tsx', import.meta.url)),
       'utf8',
     );
-    const legacy = app('(authed)/family/legacy-family.tsx');
     expect(page).toContain('PortalFamily');
-    expect(page).toContain('LegacyFamilyPage');
+    expect(page).not.toContain('LegacyFamilyPage');
     for (const editor of ['FamilyChildren', 'PortalIntents', 'AddCoParentCard']) {
       expect(portal).toContain(editor);
     }
@@ -290,9 +302,6 @@ describe('the family editor moved up a level (Instinct refresh)', () => {
     expect(portal).not.toMatch(/foundingNumber|Founding family · #/);
     expect(portal).toContain('PostalEditor');
     expect(portal).not.toContain('FamilyLocation');
-    for (const editor of ['FamilyChildren', 'FamilyLocation', 'FamilyIntents', 'AddCoParentCard']) {
-      expect(legacy).toContain(editor);
-    }
     expect(page).not.toContain('FamilyHubCard');
   });
 });
@@ -307,52 +316,31 @@ describe('sign-in under the flag', () => {
    * which affordances actually appear.
    */
   it('shows the phone path and does not branch on the receipts flag', () => {
-    expect(src).not.toContain('receiptsIaEnabled');
     expect(src).toContain('<ClaimByPhoneForm');
     expect(src).toContain('callbackUrl={redirectTo}');
     expect(src).toContain('smsNumber={haleTextsNumber()}');
     expect(src).toContain('source={parsePortalSourceCode(s)}');
+    expect(src).not.toContain('receiptsIaEnabled');
+    expect(src).not.toContain('Continue with Google');
     expect(src).not.toContain('linkFirst');
     expect(src).not.toContain("signIn('google'");
     expect(src).not.toContain('type="password"');
   });
 });
 
-describe('the brand mark follows the demotion (VIL-256)', () => {
-  it('lands on /home under the reframe, so a logo click costs no 302 hop', () => {
-    expect(brandHref(true)).toBe('/home');
-  });
-
-  it('still lands on the daily feed with the flag off', () => {
-    expect(brandHref(false)).toBe('/home');
-  });
-
-  it('matches the middleware, which no longer forwards /home away', () => {
-    const middleware = readFileSync(
-      fileURLToPath(new URL('../../middleware.ts', import.meta.url)),
-      'utf8',
-    );
-    expect(middleware).not.toContain(`new URL('${brandHref(true)}'`);
-    expect(middleware).not.toContain("pathname === '/home'");
-  });
-});
-
-describe('the authed shell resolves the flag server-side', () => {
+describe('the authed shell is the receipts portal', () => {
   const src = app('(authed)/layout.tsx');
 
-  it('reads it once and hands both nav consumers the same boolean', () => {
-    expect(src).toContain('const receiptsIa = receiptsIaEnabled();');
-    expect(src).toContain('receiptsIa={receiptsIa}');
-    expect(src).toContain('<TopHeader receiptsIa={receiptsIa} />');
+  it('renders PortalShell and does not read the receipts flag', () => {
+    expect(src).toContain('<PortalShell');
+    expect(src).not.toContain('receiptsIaEnabled');
+    expect(src).not.toContain('AppShell');
+    expect(src).not.toContain('TopHeader');
   });
 
-  it('keeps the flag out of the client modules that render the nav', () => {
-    for (const rel of ['sidebar.tsx', 'top-header.tsx', 'nav.ts']) {
-      const client = readFileSync(fileURLToPath(new URL(`./${rel}`, import.meta.url)), 'utf8');
-      // A server-only variable read from a client module resolves to undefined in the
-      // browser bundle, so the two renders would disagree.
-      expect(client).not.toContain('process.env');
-      expect(client).not.toContain('receiptsIaEnabled');
-    }
+  it('keeps the flag out of the client nav module', () => {
+    const client = readFileSync(fileURLToPath(new URL('./nav.ts', import.meta.url)), 'utf8');
+    expect(client).not.toContain('process.env');
+    expect(client).not.toContain('receiptsIaEnabled');
   });
 });

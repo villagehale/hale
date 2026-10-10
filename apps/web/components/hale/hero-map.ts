@@ -6,9 +6,9 @@ import type { Route } from 'next';
  * breadcrumb + back button + a drill title. Both the desktop top bar and the
  * narrow-viewport hero read from here so the two can never disagree.
  *
- * The ROOT heroes carry interpolated copy (the home greeting, the companion
- * child's name) so they are built server-side and passed in as `roots`; the DRILL
- * heroes are static route → {crumb, title, backHref} and live here.
+ * The ROOT heroes carry interpolated copy (the home greeting) so they are built
+ * server-side and passed in as `roots`; the DRILL heroes are static route →
+ * {crumb, title, backHref} and live here.
  */
 
 export interface RootHero {
@@ -28,20 +28,11 @@ export interface DrillHero {
   backHref: Route;
 }
 
-export type HeroResolution =
-  | { kind: 'root'; hero: RootHero }
-  | { kind: 'drill'; hero: DrillHero };
+export type HeroResolution = { kind: 'root'; hero: RootHero } | { kind: 'drill'; hero: DrillHero };
 
 /** The tab-root routes, in nav order. A root's hero copy is provided by the
  * server (see buildRootHeroes) because some of it is interpolated. */
-export const ROOT_ROUTES = [
-  '/home',
-  '/companion',
-  '/coach',
-  '/village',
-  '/family',
-  '/settings',
-] as const;
+export const ROOT_ROUTES = ['/home', '/family', '/settings'] as const;
 
 export type RootRoute = (typeof ROOT_ROUTES)[number];
 
@@ -62,11 +53,9 @@ export const DRILL_HEROES: Record<string, DrillHero> = {
 };
 
 /**
- * VIL-244 · M9 — the surfaces the receipts-room nav re-registers. Under that IA
- * /approvals is the nav's "Home", /family is the editor (the hub died with the
- * Instinct-adapted refresh), and the demoted week/trail still render as roots rather
- * than drills with a back-to-Family breadcrumb pointing at a tab that is no longer a
- * stop. Static copy — nothing here is interpolated per request.
+ * Surfaces the receipts room treats as roots. /family is the editor, and the
+ * demoted week and trail still render as roots rather than drills with a
+ * back-to-Family breadcrumb. Static copy — nothing here is interpolated per request.
  */
 export const RECEIPTS_ROOT_HEROES: Record<string, RootHero> = {
   '/approvals': {
@@ -89,10 +78,9 @@ export const RECEIPTS_ROOT_HEROES: Record<string, RootHero> = {
 export function resolveHero(
   pathname: string | null,
   roots: Record<string, RootHero>,
-  receiptsIa = false,
 ): HeroResolution | null {
   if (!pathname) return null;
-  const promoted = receiptsIa ? RECEIPTS_ROOT_HEROES[pathname] : undefined;
+  const promoted = RECEIPTS_ROOT_HEROES[pathname];
   if (promoted) return { kind: 'root', hero: promoted };
   const drill = DRILL_HEROES[pathname];
   if (drill) return { kind: 'drill', hero: drill };
@@ -102,32 +90,15 @@ export function resolveHero(
 }
 
 /**
- * Build the root heroes map from the request's live values: the time-of-day
- * greeting (already warmed with the viewer's name) and the companion child's name
- * when the family has exactly one child (otherwise a family-wide subtitle — never a
- * fabricated single name, rule #1).
+ * Build the root heroes map from the request's live greeting (already warmed
+ * with the viewer's name).
  */
-export function buildRootHeroes(params: {
-  greeting: string;
-  childName: string | null;
-}): Record<RootRoute, RootHero> {
-  const companionSubtitle = params.childName
-    ? `Everything about ${params.childName}, all in one place.`
-    : 'Everything about your family, all in one place.';
+export function buildRootHeroes(params: { greeting: string }): Record<RootRoute, RootHero> {
   return {
     '/home': {
       title: params.greeting,
       subtitle: "Here's what's happening today.",
       emoji: '👋',
-    },
-    '/companion': { title: 'Companion', subtitle: companionSubtitle },
-    '/coach': {
-      title: 'Hale',
-      subtitle: 'Your AI parenting partner — always with your approval.',
-    },
-    '/village': {
-      title: 'Village',
-      subtitle: 'Find local support, activities, care and resources for your family.',
     },
     '/family': { title: 'Family', subtitle: 'Manage your family, inbox, plan and account.' },
     '/settings': {

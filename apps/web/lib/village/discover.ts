@@ -1,5 +1,4 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type ModelId, estimateCostUsd } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { FAMILY_STAGES, type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
@@ -7,6 +6,7 @@ import { and, eq, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { recordAgentRun } from '~/lib/agent-run';
 import { loadCoachModel } from '~/lib/coach/model';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { resolveActiveAreaCoarse } from './areas';
 import { loadDiscoveryPrompt } from './discovery-prompt';
@@ -14,11 +14,11 @@ import { type GeocodeResult, type LatLng, geocodeArea, geocodeVenue } from './ge
 import type { Season } from './visibility';
 
 /**
- * Web-side village discovery. The weekly run is Vercel `/api/cron/discovery`
- * (yul1), which calls `discoverForFamily` directly. We mirror the worker
- * package's discovery flow so a signed-in family can populate `/village`. We
- * replicate the worker's flow (read coarse area, derive non-teen stages, call
- * the model, persist + audit) rather than import it: the worker's agent and
+ * Web-side village discovery. Intake calls `discoverForFamily` directly
+ * (`trigger-discovery.ts`). We mirror the worker package's discovery flow so a
+ * family can be seeded with candidates. We replicate the worker's flow (read
+ * coarse area, derive non-teen stages, call the model, persist + audit) rather
+ * than import it: the worker's agent and
  * memory-writer reach into its own internal modules, neither exported nor
  * importable across the process boundary. The two things that COULD drift — the
  * discovery prompt and the model id — are read from the worker's own files at
@@ -168,11 +168,7 @@ export interface DiscoverDeps {
    * an online / no-venue activity or an unresolved lookup. `bias` is the coarse
    * area centre, biasing the lookup so a same-named venue in another city doesn't
    * win the pin. Never throws. */
-  geocode: (
-    title: string,
-    areaCoarse: string,
-    bias?: LatLng,
-  ) => Promise<GeocodeResult | null>;
+  geocode: (title: string, areaCoarse: string, bias?: LatLng) => Promise<GeocodeResult | null>;
   /** Best-effort centroid of the COARSE area (rule #1) used to bias venue
    * lookups, or null when it can't be resolved (then geocode falls back to the
    * text-only search). Never throws. */
@@ -466,9 +462,8 @@ export async function discoverForFamily(
 let anthropicClient: Anthropic | undefined;
 
 export function defaultDiscoverDeps(): DiscoverDeps {
-  // Hosted by the /village Server Action and the weekly discovery cron
-  // (maxDuration 300): the sweep budget keeps one stalled request from
-  // outliving either wall (audit P1-7).
+  // Intake is the remaining caller (trigger-discovery.ts). The sweep budget
+  // keeps one stalled request from outliving that wall (audit P1-7).
   anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return {
     client: anthropicClient,

@@ -2,39 +2,21 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 import { auth } from '~/auth';
-import { AppShell } from '~/components/hale/app-shell';
-import { AppTopBar } from '~/components/hale/app-topbar';
 import { buildRootHeroes } from '~/components/hale/hero-map';
-import { PageHero } from '~/components/hale/page-hero';
-import { ScrollReset } from '~/components/hale/scroll-reset';
-import { Sidebar } from '~/components/hale/sidebar';
-import { TopHeader } from '~/components/hale/top-header';
 import { PortalShell } from '~/components/portal/shell';
 import { IdentifyUser } from '~/lib/analytics/posthog-provider';
 import { authConfigured } from '~/lib/auth-config';
 import { RETURN_PATH_HEADER, signInHref } from '~/lib/auth/redirect';
-import { loadSmsChannel } from '~/lib/channels/sms-consent';
-import { loadNotifications } from '~/lib/dashboard/notifications';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { loadViewerName, resolveFamilyForUser } from '~/lib/family';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { homeGreeting } from '~/lib/home/greeting';
 import { markFamilyActiveToday } from '~/lib/metrics/activity';
 import { PASSPORT_DEMO_HEADER, interestPassportDemo } from '~/lib/passport/demo';
-import { SHELL_COLLAPSED_KEY } from '~/lib/shell';
-import { loadAreaSwitcher } from '~/lib/village/switcher';
 
 // authConfigured()/auth() read runtime secrets and the live session — never bake
 // them at build time, or every authed page freezes to the build-time auth state.
 export const dynamic = 'force-dynamic';
-
-// Runs before first paint to mirror the stored sidebar-collapse choice onto the
-// root element, so the rail never flashes full-width before hydration. Mirrors
-// AppShell; kept inline because it must execute before React mounts.
-const NO_FLASH_COLLAPSE = `(function(){try{document.documentElement.dataset.shellCollapsed=localStorage.getItem(${JSON.stringify(
-  SHELL_COLLAPSED_KEY,
-)})==='1'?'1':'0';}catch(e){}})();`;
 
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
   // Preview demo of the Mia/Leo passport. The middleware is the only writer of
@@ -52,7 +34,7 @@ export default async function AuthedLayout({ children }: { children: React.React
           <a href="#main-content" className="skip-link">
             Skip to content
           </a>
-          <PortalShell canSignOut roots={buildRootHeroes({ greeting: 'Hi', childName: null })}>
+          <PortalShell canSignOut roots={buildRootHeroes({ greeting: 'Hi' })}>
             {children}
           </PortalShell>
         </>
@@ -71,9 +53,8 @@ export default async function AuthedLayout({ children }: { children: React.React
   // writes the users/families rows, and a bare Google sign-in never does. That used
   // to mean "send them to the wizard to finish"; since F14 deleted the wizard it
   // means the account is one no front door produces any more (an old test login, a
-  // half-finished web signup). /sign-in is the honest landing: under the flag it is
-  // the phone door that CAN reach a real family, and it renders rather than
-  // redirecting, so this cannot become a loop.
+  // half-finished web signup). /sign-in is the phone door that can reach a real
+  // family, and it renders rather than redirecting, so this cannot become a loop.
   if (authEnabled && session?.user?.id) {
     const familyId = await resolveFamilyForUser(session.user.id, db());
     if (!familyId) {
@@ -83,44 +64,11 @@ export default async function AuthedLayout({ children }: { children: React.React
     after(() => markFamilyActiveToday(db(), familyId));
   }
 
-  // The foot child switcher + top-bar hero/bell/location read the same family-scoped
-  // queries the authed pages use; every one degrades to an empty/absent state (no fake
-  // child, no fake city, no fabricated notification) when there is no resolved family.
-  const [basics, notifications, areaData, viewerName, smsChannel] = await Promise.all([
-    loadFamilyBasics(),
-    loadNotifications(),
-    loadAreaSwitcher(),
-    loadViewerName(),
-    loadSmsChannel(),
-  ]);
+  const [, viewerName] = await Promise.all([loadFamilyBasics(), loadViewerName()]);
 
-  // The account chip's secondary line (Instinct-style name + phone): the parent's
-  // MASKED number when their SMS channel is enrolled, else null → the plan label.
-  const maskedPhone =
-    smsChannel.status === 'ready' && smsChannel.channel.enrolled
-      ? smsChannel.channel.maskedPhone
-      : null;
-  const kids = basics.children.map((child) => ({
-    id: child.id,
-    name: child.name,
-    lastName: child.lastName,
-    ageLabel: child.stageLabel,
-    // The signed avatar URL (or null → initials) so the sidebar switcher shows the
-    // child's photo — resolved once in loadFamilyBasics, shared with every surface.
-    avatarUrl: child.avatarUrl,
-  }));
-
-  // The top-bar hero copy is built server-side from live values: the time-of-day
-  // greeting warmed with the viewer's name, and the companion child's name only when
-  // the family has exactly one child (else a family-wide subtitle — never a fabricated
-  // single name, rule #1).
-  const singleChildName = basics.children.length === 1 ? (basics.children[0]?.name ?? null) : null;
-  const roots = buildRootHeroes({ greeting: homeGreeting(viewerName), childName: singleChildName });
-
-  // VIL-244 · M9: the IA flag is a server-read variable, so it is resolved here once
-  // and handed to the two client nav consumers as a boolean — the sidebar and the
-  // running head can never disagree about which IA they are rendering.
-  const receiptsIa = receiptsIaEnabled();
+  // The greeting is warmed with the viewer's name. loadFamilyBasics stays in this
+  // pair so the page under the layout shares one per-request read.
+  const roots = buildRootHeroes({ greeting: homeGreeting(viewerName) });
 
   const shellBanner = !authEnabled ? (
     <output className="dev-preview-banner">
@@ -129,69 +77,16 @@ export default async function AuthedLayout({ children }: { children: React.React
     </output>
   ) : null;
 
-  if (receiptsIa) {
-    return (
-      <>
-        <a href="#main-content" className="skip-link">
-          Skip to content
-        </a>
-        {session?.user?.id ? <IdentifyUser userId={session.user.id} /> : null}
-        <PortalShell canSignOut={authEnabled} roots={roots}>
-          {shellBanner}
-          {children}
-        </PortalShell>
-      </>
-    );
-  }
-
   return (
     <>
-      {/* biome-ignore lint/security/noDangerouslySetInnerHtml: pre-paint collapse script must run before hydration to avoid a rail flash */}
-      <script dangerouslySetInnerHTML={{ __html: NO_FLASH_COLLAPSE }} />
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
       {session?.user?.id ? <IdentifyUser userId={session.user.id} /> : null}
-      <AppShell
-        sidebar={
-          <Sidebar
-            authControls={authEnabled}
-            signedIn={Boolean(session?.user?.id)}
-            parentName={session?.user?.name ?? null}
-            parentImage={session?.user?.image ?? null}
-            planTier={basics.planTier}
-            maskedPhone={maskedPhone}
-            kids={kids}
-            receiptsIa={receiptsIa}
-          />
-        }
-        header={
-          <>
-            <TopHeader receiptsIa={receiptsIa} />
-            <AppTopBar
-              roots={roots}
-              notifications={notifications}
-              areaData={areaData}
-              receiptsIa={receiptsIa}
-            />
-          </>
-        }
-      >
-        <main id="main-content" className="main-stage">
-          <ScrollReset />
-          {/* Narrow-viewport hero: the desktop top bar is hidden < 1024px, so the same
-           * PageHero renders inline at the top of the stage there (CSS shows exactly
-           * one). Pages carry no header of their own. */}
-          <PageHero roots={roots} variant="stage" receiptsIa={receiptsIa} />
-          {!authEnabled && (
-            <output className="dev-preview-banner">
-              Auth disabled — development preview. This route group is unprotected because Google
-              OAuth is not configured.
-            </output>
-          )}
-          {children}
-        </main>
-      </AppShell>
+      <PortalShell canSignOut={authEnabled} roots={roots}>
+        {shellBanner}
+        {children}
+      </PortalShell>
     </>
   );
 }

@@ -9,8 +9,6 @@ import { db } from '~/lib/db';
  * the mapping to an Auth.js identity.
  *
  * Phone sign-in is the only portal door, so it does not read F14_RECEIPTS_IA.
- * That flag still chooses the receipts shell. Gating this chokepoint on it would
- * leave /sign-in showing a form that can never complete.
  *
  * It is a separate module for one reason: authorize is the chokepoint for EVERY
  * claim — the /sign-in form AND a direct POST to /api/auth/callback/claim-phone — so

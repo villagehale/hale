@@ -1,28 +1,24 @@
+import type { ToolCard } from '@hale/agent';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { ToolCard } from '@hale/agent';
 import type { LogsPage } from '~/lib/companion/logs-view';
 import type { ActionReview } from '~/lib/dashboard/action-review';
 import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { HistoryView } from '~/lib/dashboard/history';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
-import { AccountMenuView } from './account-menu-view';
 import { ReviewNote } from './action-progress';
 import { ApprovalCard, ReversibleCard } from './approval-card';
-import { AttachmentChip } from './ask-hale-thread';
-import { ChildSwitcherView } from './child-switcher-view';
 import { ConnectorCard } from './connector-card';
-import { AreaRemoveControl } from './location-switcher';
 import { LogsBrowser } from './logs-browser';
 import { AuthoredPlanCard } from './plan-cards';
 import { SharedLinkRow } from './shared-links';
 import { TeenAccessGrants } from './teen-access-grants';
 import { TrailTimeline } from './trail-timeline';
 
-// The logs browser and the Ask composer reach the 'use server' log module for their
-// writes; stub it so a static render doesn't drag the auth/db chain into the test.
+// The logs browser reaches the 'use server' log module for its writes; stub it so
+// a static render doesn't drag the auth/db chain into the test.
 vi.mock('~/lib/companion/log', () => ({
   markCompanionItemDone: vi.fn(),
   editQuickEpisode: vi.fn(),
@@ -38,12 +34,6 @@ vi.mock('~/lib/plan/plan-actions', () => ({
   completePlan: vi.fn(),
   deletePlan: vi.fn(),
   createPlan: vi.fn(),
-}));
-vi.mock('~/lib/village/areas-action', () => ({
-  activateAreaAction: vi.fn(),
-  deleteAreaAction: vi.fn(),
-  relocateToCityAction: vi.fn(),
-  searchCitiesAction: vi.fn(),
 }));
 
 /**
@@ -124,31 +114,6 @@ describe('stripMaskedSubtrees (the test harness itself)', () => {
     const residue = stripMaskedSubtrees(html);
     expect(residue).not.toContain('SECRET');
     expect(residue).toContain('visible');
-  });
-});
-
-describe('account chip (every authed page) masks the parent identity', () => {
-  const PARENT = 'Priya Raman';
-
-  const html = renderToStaticMarkup(
-    h(AccountMenuView, {
-      open: false,
-      parentName: PARENT,
-      planTier: 'free',
-      canSignOut: true,
-      menuId: 'm',
-      onToggle: () => {},
-      onSignOut: () => {},
-    }),
-  );
-
-  it('renders the identity at all (guards against a vacuous pass)', () => {
-    expect(html).toContain(PARENT);
-  });
-
-  it('keeps the parent name inside a [data-hale-pii] subtree', () => {
-    const residue = stripMaskedSubtrees(html);
-    expect(residue).not.toContain(PARENT);
   });
 });
 
@@ -452,7 +417,9 @@ describe('the still-reversible row is masked for replay', () => {
   });
 
   it('leaves no preview or child name in a text node outside a masked subtree', () => {
-    const residue = visibleText(stripMaskedSubtrees(renderToStaticMarkup(h(ReversibleCard, { done }))));
+    const residue = visibleText(
+      stripMaskedSubtrees(renderToStaticMarkup(h(ReversibleCard, { done }))),
+    );
     expect(residue).not.toContain(PREVIEW);
     expect(residue).not.toContain('Maya');
   });
@@ -529,7 +496,7 @@ describe('teen access grants mask the teen name and the parent\u2019s stated rea
  *
  * Adding a surface here is the cheap way to keep a new page inside the rule. A
  * surface qualifies when it renders from plain fixtures — state-gated leaves are
- * exported so they can (SharedLinkRow, AreaRemoveControl, AttachmentChip).
+ * exported so they can (SharedLinkRow).
  *
  * `maskAllInputs` covers <input>/<textarea> VALUES separately (posthog-provider),
  * so a form field holding what a parent typed is not this rule's business; every
@@ -539,9 +506,6 @@ const CHILD = 'Marisol';
 const PLAN_TITLE = 'Sign Marisol up for Saturday swim';
 const LOG_ROW = 'Fed 140 ml before the nap';
 const SHARE_TITLE = 'the Marisol week plan';
-const FILE_NAME = 'Marisol-immunization-record.pdf';
-const AREA = 'Riverdale, Ontario';
-const PARENT = 'Priya Raman';
 const DRIVE_FILE = 'Custody-agreement-2026.pdf';
 const REVIEWER_RATIONALE = 'The swim school is already on Marisol’s recipient list.';
 const TRACE_STEP = 'put Marisol’s swim lesson on your calendar';
@@ -579,22 +543,6 @@ interface AttributeSurface {
 
 const SENTINEL_SURFACES: AttributeSurface[] = [
   {
-    name: 'the child switcher (sidebar, every authed page)',
-    sentinels: [CHILD],
-    render: () =>
-      renderToStaticMarkup(
-        h(ChildSwitcherView, {
-          open: true,
-          kids: [{ id: 'c1', name: CHILD, lastName: null, ageLabel: 'toddler', avatarUrl: null }],
-          activeId: 'c1',
-          menuId: 'kids',
-          addHref: '/family',
-          onToggle: () => {},
-          onSelect: () => {},
-        }),
-      ),
-  },
-  {
     name: 'a parent-authored plan card (done + remove controls)',
     sentinels: [PLAN_TITLE, CHILD],
     render: () => renderToStaticMarkup(h(AuthoredPlanCard, { plan: PLAN })),
@@ -613,39 +561,6 @@ const SENTINEL_SURFACES: AttributeSurface[] = [
         h(SharedLinkRow, {
           link: { kind: 'activity', id: 's1', token: 'tok', title: SHARE_TITLE },
           onRevoked: () => {},
-        }),
-      ),
-  },
-  {
-    name: 'a staged chat attachment (remove control)',
-    sentinels: [FILE_NAME],
-    render: () =>
-      renderToStaticMarkup(
-        h(AttachmentChip, {
-          attachment: { id: 'f1', name: FILE_NAME, sizeBytes: 120_000, tone: 'sage' },
-          onRemove: () => {},
-        }),
-      ),
-  },
-  {
-    name: 'a saved family area (remove control)',
-    sentinels: [AREA],
-    render: () =>
-      renderToStaticMarkup(h(AreaRemoveControl, { areaId: 'ar1', label: AREA, onRemoved: () => {} })),
-  },
-  {
-    name: 'the account chip (sidebar, every authed page)',
-    sentinels: [PARENT],
-    render: () =>
-      renderToStaticMarkup(
-        h(AccountMenuView, {
-          open: false,
-          parentName: PARENT,
-          planTier: 'free',
-          canSignOut: true,
-          menuId: 'm',
-          onToggle: () => {},
-          onSignOut: () => {},
         }),
       ),
   },

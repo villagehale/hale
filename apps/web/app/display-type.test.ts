@@ -224,12 +224,7 @@ describe('the body and UI face is Figtree (WEB-TYPE)', () => {
 
   it('sets body copy at 400 and the buttons and nav at 500–600', () => {
     expect(weightOf('body')).toBe(400);
-    for (const selector of [
-      '.btn-primary',
-      '.btn-secondary',
-      '.btn-ghost',
-      '.nav-item .nav-label',
-    ]) {
+    for (const selector of ['.btn-primary', '.btn-secondary', '.btn-ghost']) {
       const weight = weightOf(selector);
       expect(weight, `${selector} asks for ${weight}`).toBeGreaterThanOrEqual(500);
       expect(weight, `${selector} asks for ${weight}`).toBeLessThanOrEqual(600);

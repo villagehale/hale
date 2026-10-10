@@ -2,7 +2,7 @@
  * The Settings taxonomy (Instinct-adapted one-column refresh) and the deep-link
  * resolver that keeps every OLD link working. The page is a single centered column
  * of flat cards again, so the ids are real in-page ANCHORS rather than switcher
- * state: SettingsColumn resolves the URL hash — the seven pre-hub anchors and the
+ * state. `resolveSection` maps the URL hash — the seven pre-hub anchors and the
  * hub's six section ids included — to the section it should scroll to. `family` has
  * no section left on this page (the family editor moved to /family), and a hash
  * resolver cannot leave the page, so it falls to Account — whose card carries the

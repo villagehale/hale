@@ -12,16 +12,12 @@
  */
 export const PROTECTED_PREFIXES = [
   '/approvals',
-  '/coach',
-  '/companion',
   '/family',
   '/home',
   '/messages',
   '/plan',
-  '/saved',
   '/settings',
   '/trail',
-  '/village',
 ];
 
 /** True when `pathname` is one of the gated routes, or sits underneath one. */

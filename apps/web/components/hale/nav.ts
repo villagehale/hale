@@ -5,18 +5,14 @@ import {
   ListChecks,
   MessageSquare,
   Settings,
-  Users,
   UsersRound,
 } from 'lucide-react';
 import type { Route } from 'next';
 
 /**
- * The single source of truth for the app's navigation, imported by BOTH the
- * sidebar and the top header so the two can never disagree on the route list or
- * its labels. `PRIMARY_NAV` is the daily product surfaces. History (the audit
- * trail) and Settings (configuration) are kept separate: the sidebar files both
- * quietly at the foot, near the user, rather than alongside the primary stops —
- * the header still finds them via `ALL_NAV` for the eyebrow.
+ * The receipts-room stops. The parent portal is Home, Messages, Family, and
+ * Settings. Approvals, the trail, and the week still render by URL but are not
+ * stops (DEMOTED_NAV).
  */
 
 export interface NavItem {
@@ -24,11 +20,6 @@ export interface NavItem {
   label: string;
   icon: typeof House;
 }
-
-export const PRIMARY_NAV = [
-  { href: '/home', label: 'Home', icon: House },
-  { href: '/family', label: 'Family', icon: UsersRound },
-] as const satisfies ReadonlyArray<NavItem>;
 
 export const HISTORY_NAV = {
   href: '/trail',
@@ -42,14 +33,6 @@ export const SETTINGS_NAV = {
   icon: Settings,
 } as const satisfies NavItem;
 
-export const ALL_NAV = [...PRIMARY_NAV, SETTINGS_NAV] as const satisfies ReadonlyArray<NavItem>;
-
-/**
- * VIL-244 · M9 — the receipts-room stops, behind F14_RECEIPTS_IA. The parent portal
- * is Home (the landing), Messages (the thread, what Hale did, and what's waiting),
- * Family, and Settings. Approvals, the trail, the week and the village still render
- * by URL but are not stops (DEMOTED_NAV).
- */
 export const RECEIPTS_NAV = [
   { href: '/home', label: 'Home', icon: House },
   { href: '/messages', label: 'Messages', icon: MessageSquare },
@@ -58,44 +41,17 @@ export const RECEIPTS_NAV = [
 ] as const satisfies ReadonlyArray<NavItem>;
 
 /**
- * Reachable by direct URL, but no longer a nav destination. These are LABELS ONLY —
- * neither the sidebar nor the drawer renders them. They exist so the running-head
- * eyebrow can still name the page a parent is looking at: a demoted route still
- * RENDERS (unlike a retired one, which permanently redirects), and a page with no
- * label loses its eyebrow.
+ * Reachable by direct URL, but no longer a nav destination. Labels only — the
+ * portal shell does not render them as stops. A demoted route still renders
+ * (unlike a retired one, which permanently redirects).
  */
 export const DEMOTED_NAV = [
   { href: '/approvals', label: 'Approvals', icon: ListChecks },
   { href: '/trail', label: 'Trail', icon: History },
   { href: '/plan', label: 'Week', icon: CalendarDays },
-  { href: '/village', label: 'Village', icon: Users },
 ] as const satisfies ReadonlyArray<NavItem>;
 
-/**
- * The sidebar's stops for the resolved flag. Pure and env-free by construction: the IA
- * flag is a server-read variable (no NEXT_PUBLIC_ prefix), so the authed layout resolves
- * it once and hands the boolean down. Reading it here — in a module the client bundle
- * pulls in — would resolve to undefined in the browser and desync the two renders.
- */
-export function primaryNav(receiptsIa: boolean): ReadonlyArray<NavItem> {
-  return receiptsIa ? RECEIPTS_NAV : PRIMARY_NAV;
-}
-
-/**
- * Where the brand mark goes. Both IAs land on `/home`: flag-off is the daily feed,
- * and the receipts portal's home is the landing itself (no redirect hop).
- */
-export function brandHref(receiptsIa: boolean): Route {
-  return receiptsIa ? '/home' : '/home';
-}
-
-/**
- * The label table the running-head eyebrow resolves the current route against: the
- * stops for the resolved flag lead (so a shared route reads its own label), then the
- * demoted-but-still-reachable routes follow so their pages keep an eyebrow.
- */
-export function allNav(receiptsIa: boolean): ReadonlyArray<NavItem> {
-  const stops = receiptsIa ? RECEIPTS_NAV : ALL_NAV;
-  const seen = new Set<string>(stops.map((item) => item.href));
-  return [...stops, ...DEMOTED_NAV.filter((item) => !seen.has(item.href))];
+/** The portal's stops. The receipts room is the only IA. */
+export function primaryNav(): ReadonlyArray<NavItem> {
+  return RECEIPTS_NAV;
 }

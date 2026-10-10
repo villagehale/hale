@@ -447,15 +447,9 @@ describe('/sign-in has no toggle', () => {
 
   beforeEach(() => {
     process.env.AUTH_SECRET = 'test-auth-secret';
-    process.env.F14_RECEIPTS_IA = '';
-  });
-
-  afterEach(() => {
-    process.env.F14_RECEIPTS_IA = '';
   });
 
   it('offers neither the portal control nor a theme toggle on the phone door', async () => {
-    process.env.F14_RECEIPTS_IA = 'true';
     const html = await renderSignIn();
 
     expect(html).not.toContain('aria-label="Appearance"');
@@ -463,16 +457,6 @@ describe('/sign-in has no toggle', () => {
     expect(html).not.toContain('>Auto<');
     expect(html).not.toContain('>Light<');
     expect(html).not.toContain('theme-toggle');
-    expect(html).toContain('claim-phone');
-  });
-
-  it('keeps the flag-off door on the phone form, with no portal control', async () => {
-    const html = await renderSignIn();
-
-    expect(html).not.toContain('aria-label="Appearance"');
-    expect(html).not.toContain(NOTE);
-    expect(html).not.toContain('>Auto<');
-    expect(html).not.toContain('Continue with Google');
     expect(html).toContain('claim-phone');
   });
 

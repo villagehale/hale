@@ -59,7 +59,8 @@ function sources(root: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const full = `${root}/${entry.name}`;
     if (entry.isDirectory()) sources(full, acc);
-    else if (/\.(tsx?|jsx?)$/.test(entry.name) && !/\.(test|spec)\./.test(entry.name)) acc.push(full);
+    else if (/\.(tsx?|jsx?)$/.test(entry.name) && !/\.(test|spec)\./.test(entry.name))
+      acc.push(full);
   }
   return acc;
 }
@@ -102,14 +103,16 @@ for (const file of FILES) {
 
 describe('globals.css coverage — every bespoke class the authed surface uses is defined', () => {
   it('extracts a real, broad class set (guards against a vacuous pass)', () => {
-    // Floors well below the current reality (511 usages / 236 distinct across 55
-    // namespaces): a big regression here means the extractor silently broke.
-    expect(totalUsages).toBeGreaterThanOrEqual(350);
-    expect(usedBespoke.size).toBeGreaterThanOrEqual(120);
-    expect(BESPOKE_PREFIXES.size).toBeGreaterThanOrEqual(40);
+    // Floors well below the current reality. A big regression here means the
+    // extractor silently broke. The legacy shell, the village board, and the
+    // retired ask/settings components leaving the scan dropped the count; the
+    // floors sit under what remains.
+    expect(totalUsages).toBeGreaterThanOrEqual(150);
+    expect(usedBespoke.size).toBeGreaterThanOrEqual(50);
+    expect(BESPOKE_PREFIXES.size).toBeGreaterThanOrEqual(30);
     // Anchors from distinct namespaces prove the scan reached each surface.
     // (comp-hub / care-chip left with the retired companion-tabs component.)
-    for (const anchor of ['panel-oat', 'btn-secondary', 'village-3col', 'home-col']) {
+    for (const anchor of ['panel-oat', 'btn-secondary', 'main-stage']) {
       expect(usedBespoke).toContain(anchor);
     }
   });

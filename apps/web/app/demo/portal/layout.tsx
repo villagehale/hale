@@ -4,7 +4,7 @@ import { PortalShell } from '~/components/portal/shell';
 import { DEMO_BASE, DEMO_SIGN_IN } from '~/lib/portal/demo-fixture';
 
 export default function DemoPortalLayout({ children }: { children: ReactNode }) {
-  const roots = buildRootHeroes({ greeting: 'Hi, Pat', childName: 'Wren' });
+  const roots = buildRootHeroes({ greeting: 'Hi, Pat' });
   return (
     <>
       <a href="#main-content" className="skip-link">

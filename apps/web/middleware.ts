@@ -4,7 +4,6 @@ import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
 import { isProtectedPath } from '~/lib/auth/protected-routes';
 import { RETURN_PATH_HEADER, signInHref } from '~/lib/auth/redirect';
-import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { PASSPORT_DEMO_HEADER, passportDemoBypassesAuth } from '~/lib/passport/demo';
 import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
 import { isRetiredAuthPath, retiredAuthRedirectUrl } from '~/lib/routes/retired-auth';
@@ -56,19 +55,10 @@ export default auth((req) => {
     return stampReturnPath(req);
   }
 
-  // The receipts portal's landing IS /home (the parent home). It used to 302 to
-  // /family under F14_RECEIPTS_IA; that forward is gone so the home page can render.
-  // Flag-off /home is still the daily feed — the page branches, the URL does not.
-
-  // Under the same reframe the family EDITOR moved up a level: /family is the editor
-  // now, so /family/members has nothing of its own left to show. A real 308 beside the
-  // /home hinge, for the same streaming-layout reason; the page also permanentRedirects
-  // (defense in depth, the retired-routes pattern). Flag-conditional so the flag-off IA
-  // keeps its hub → editor split untouched.
-  if (
-    receiptsIaEnabled() &&
-    (pathname === '/family/members' || pathname.startsWith('/family/members/'))
-  ) {
+  // The receipts portal's landing IS /home. /family is the editor, so
+  // /family/members has nothing of its own left to show. next.config also
+  // 308s this path; this is the Edge answer if a request reaches here.
+  if (pathname === '/family/members' || pathname.startsWith('/family/members/')) {
     return NextResponse.redirect(new URL('/family', req.nextUrl), 308);
   }
 

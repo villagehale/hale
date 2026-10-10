@@ -38,8 +38,6 @@ vi.mock('~/lib/dashboard/queries', () => ({
     throw new Error('GATE_PASSED');
   },
 }));
-vi.mock('~/lib/dashboard/notifications', () => ({ loadNotifications: async () => ({}) }));
-vi.mock('~/lib/village/switcher', () => ({ loadAreaSwitcher: async () => ({}) }));
 
 import AuthedLayout from '~/app/(authed)/layout';
 import { RETURN_PATH_HEADER } from '~/lib/auth/redirect';

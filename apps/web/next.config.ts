@@ -38,6 +38,21 @@ const config: NextConfig = {
       // rule; the explicit slash source is the same forward if that hop is skipped.
       { source: '/signin', destination: '/sign-in', permanent: true },
       { source: '/signin/', destination: '/sign-in', permanent: true },
+      // Receipts-room stubs. The browser pages are gone; these forwards are
+      // permanent (308) and kept for bookmarks. Bare and :path* are both
+      // listed — :path* does not match zero segments. Sources are the page
+      // paths, so /api/coach/* and /api/companion/* are not forwarded.
+      // Next appends the request query when the destination has none (same
+      // as /signin). The email doors are NOT here: a token must not ride
+      // along, and this seam cannot drop one.
+      { source: '/coach', destination: '/home', permanent: true },
+      { source: '/coach/:path*', destination: '/home', permanent: true },
+      { source: '/companion', destination: '/home', permanent: true },
+      { source: '/companion/:path*', destination: '/home', permanent: true },
+      { source: '/saved', destination: '/home', permanent: true },
+      { source: '/saved/:path*', destination: '/home', permanent: true },
+      { source: '/family/members', destination: '/family', permanent: true },
+      { source: '/family/members/:path*', destination: '/family', permanent: true },
     ];
   },
   transpilePackages: [

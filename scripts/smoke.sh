@@ -75,7 +75,6 @@ export DATABASE_DIRECT_URL="$DB_URL"
 AUTH_SECRET="$(openssl rand -base64 32)"
 APP_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 export AUTH_SECRET APP_ENCRYPTION_KEY
-export F14_RECEIPTS_IA=true
 
 # Blank every real service key .env/.env.local could otherwise hand the server.
 # Two need syntactically VALID throwaway values, not empty: the worker env schema
