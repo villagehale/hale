@@ -140,15 +140,9 @@ describe('selectReplayCandidates', () => {
 
 describe('replay helper is not on a schedule', () => {
   const root = fileURLToPath(new URL('../../../../', import.meta.url));
-  const watched = [
-    'apps/worker/src/index.ts',
-    'apps/worker/src/consumers/index.ts',
-    'apps/worker/src/consumers/retention-fanout.ts',
-    'apps/web/lib/cron/drain.ts',
-    'apps/web/app/api/cron/drain/route.ts',
-  ];
+  const watched = ['apps/web/lib/cron/drain.ts', 'apps/web/app/api/cron/drain/route.ts'];
 
-  it('is not imported by the worker boot path or the drain cron', () => {
+  it('is not imported by the drain cron', () => {
     for (const relative of watched) {
       const source = readFileSync(`${root}${relative}`, 'utf8');
       expect(source).not.toContain('replay-spend-ceiling');

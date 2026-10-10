@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
   "exports": {
     "./orchestrator": "./src/orchestrator/index.ts",
     "./reviewer": "./src/agents/reviewer.ts",
@@ -14,9 +13,7 @@
     "./gmail-drafts": "./src/services/gmail-drafts.ts"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
     "build": "tsc -b",
-    "start": "node dist/index.js",
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
