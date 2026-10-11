@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import { laneEnabled } from '~/lib/channel/lanes';
 import {
   type FamilyRole,
   classifyFamilyEvent,
@@ -395,6 +396,9 @@ export interface ReminderRunResult {
   fired: number;
   suppressed: number;
   cancelled: number;
+  /** Due reminders on a mirrored Google event left 'scheduled' because the
+   * parent_calendar_mirror lane is off. They are classified again once it is on. */
+  heldLaneOff: number;
   sendEnabled: boolean;
 }
 
@@ -555,9 +559,15 @@ export async function runReminderCron(
   const firing: FiringRow[] = [];
   let suppressed = 0;
   let cancelled = 0;
+  let heldLaneOff = 0;
+  const mirrorLaneOn = laneEnabled('parent_calendar_mirror');
 
   for (const row of due) {
     const event = await deps.loadEvent(db, row.eventRef);
+    if (event?.googleEventId && !mirrorLaneOn) {
+      heldLaneOff += 1;
+      continue;
+    }
     const interacted = await deps.recentInteraction(db, {
       parentUserId: row.parentUserId,
       eventRef: row.eventRef,
@@ -766,5 +776,5 @@ export async function runReminderCron(
     }
   }
 
-  return { converged, due: due.length, fired, suppressed, cancelled, sendEnabled };
+  return { converged, due: due.length, fired, suppressed, cancelled, heldLaneOff, sendEnabled };
 }

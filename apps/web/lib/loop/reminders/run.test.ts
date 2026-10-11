@@ -383,6 +383,63 @@ describe('runReminderCron — batching + compose-not-send', () => {
   });
 });
 
+describe('runReminderCron — the parent_calendar_mirror lane', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const mirror = liveEvent({
+    id: 'gcal-1',
+    title: 'Swim',
+    childId: null,
+    googleEventId: 'ev-swim',
+    createdBy: 'p1',
+  });
+  const placement = liveEvent();
+  const events = new Map<string, LiveEvent>([
+    ['gcal-1', mirror],
+    ['e1', placement],
+  ]);
+  const due = () => [
+    dueRow({ id: 'r-mirror', eventRef: 'gcal-1' }),
+    dueRow({ id: 'r-placement', eventRef: 'e1' }),
+  ];
+
+  it('HOLDS a due reminder on a mirrored event while the lane is off and still sends the placement one', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', undefined);
+    const { deps, enqueued, marked, reanchored } = makeDeps({
+      loadDueReminders: async () => due(),
+      loadEvent: async (_db, ref) => events.get(ref) ?? null,
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued.map((job) => job.dedupeKey)).toEqual(['reminder:-PT1H:fam-1:p1:e1']);
+    // The held row is not marked, cancelled or re-anchored: it is still 'scheduled'.
+    expect(marked).toEqual([{ id: 'r-placement', status: 'sent', reason: null }]);
+    expect(reanchored).toEqual([]);
+    expect(result).toMatchObject({ due: 2, fired: 1, heldLaneOff: 1, cancelled: 0 });
+  });
+
+  it('sends the mirrored reminder too once the lane is exactly true', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const { deps, enqueued, marked } = makeDeps({
+      loadDueReminders: async () => due(),
+      loadEvent: async (_db, ref) => events.get(ref) ?? null,
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued.map((job) => job.dedupeKey).sort()).toEqual([
+      'reminder:-PT1H:fam-1:p1:e1',
+      'reminder:-PT1H:fam-1:p1:gcal-1',
+    ]);
+    expect(marked.map((m) => [m.id, m.status]).sort()).toEqual([
+      ['r-mirror', 'sent'],
+      ['r-placement', 'sent'],
+    ]);
+    expect(result).toMatchObject({ due: 2, fired: 2, heldLaneOff: 0 });
+  });
+});
+
 describe('runReminderCron — VIL-229 voice wiring (fail-open, rule #8)', () => {
   afterEach(() => vi.unstubAllEnvs());
 
