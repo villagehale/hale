@@ -276,7 +276,8 @@ describe('judgeKidRelevance', () => {
         'Wren swim': { verdict: 'kid', reason: 'Wren Swim, a lesson' },
         Gymnastics: { verdict: 'kid', reason: 'a class at maple grove  POOL' },
         'Rhyme time': { verdict: 'kid', reason: 'a library session from Willowbank Library' },
-        Drop: { verdict: 'kid', reason: `a drop-in ${'and more '.repeat(20)}` },
+        // Long, and shares no words with its title: only the length bound drops it.
+        Drop: { verdict: 'kid', reason: `a class ${'and more '.repeat(20)}` },
         'J.': { verdict: 'kid', reason: 'a jumping class for a toddler' },
       }),
     );
