@@ -77,6 +77,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
   const marked: { id: string; status: ReminderStatus; reason: SuppressReason | null }[] = [];
   const upserts: { eventRef: string; parentUserId: string; offset: string }[] = [];
   const captures: { event: string; distinctId: string; props: Record<string, unknown> }[] = [];
+  const audited: Parameters<ReminderRunDeps['auditSuppressed']>[1][] = [];
   const deps: ReminderRunDeps = {
     selectReminderParents: async () => [],
     selectReminderCaregivers: async () => [GRANDMA],
@@ -91,7 +92,9 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     markStatus: async (_db, id, status, reason) => {
       marked.push({ id, status, reason });
     },
-    auditSuppressed: async () => {},
+    auditSuppressed: async (_db, row) => {
+      audited.push(row);
+    },
     reanchor: async () => {},
     loadChildren: async () => [TODDLER, TEEN],
     enqueue: async (job) => {
@@ -105,7 +108,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     loadNameLevel: async () => 'first_name',
     ...over,
   };
-  return { deps, enqueued, marked, upserts, captures };
+  return { deps, enqueued, marked, upserts, captures, audited };
 }
 
 const db = {} as Database;
@@ -155,7 +158,10 @@ describe('converge — which events a caregiver seat materializes at all', () =>
 });
 
 describe('fire — what actually reaches a caregiver', () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
 
   it('texts the time and the address, on the caregiver template, pinned to sms', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
@@ -259,6 +265,21 @@ describe('fire — what actually reaches a caregiver', () => {
     await runReminderCron(db, deps, NOW);
     expect(enqueued.map((j) => j.parentUserId)).toEqual(['g1']);
     expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
+  });
+
+  it('logs and audits an out_of_scope drop the same way as any other dropped reminder', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { deps, enqueued, audited } = makeDeps({
+      loadDueReminders: async () => [dueRow({ smsChannelActive: false })],
+      loadEvent: async () => event(),
+    });
+    await runReminderCron(db, deps, NOW);
+
+    const dropped = { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'out_of_scope' };
+    expect(enqueued).toEqual([]);
+    expect(audited).toEqual([dropped]);
+    expect(info).toHaveBeenCalledWith(dropped, 'reminder: dropped, not sent');
   });
 
   it('suppresses a row whose recipient holds no seat in the family any more', async () => {

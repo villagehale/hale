@@ -591,6 +591,14 @@ export async function runReminderCron(
   let cancelled = 0;
   let heldLaneOff = 0;
 
+  const drop = async (row: DueReminder, reason: SuppressReason): Promise<void> => {
+    await deps.markStatus(db, row.id, 'suppressed', reason);
+    const dropped = { familyId: row.familyId, reminderId: row.id, offset: row.offset, reason };
+    console.info(dropped, 'reminder: dropped, not sent');
+    await deps.auditSuppressed(db, dropped);
+    suppressed += 1;
+  };
+
   for (const row of due) {
     const event = await deps.loadEvent(db, row.eventRef);
     if (event?.googleEventId && !mirrorLaneOn) {
@@ -617,19 +625,9 @@ export async function runReminderCron(
         await deps.markStatus(db, row.id, 'cancelled', null);
         cancelled += 1;
         break;
-      case 'suppress': {
-        await deps.markStatus(db, row.id, 'suppressed', decision.reason);
-        const dropped = {
-          familyId: row.familyId,
-          reminderId: row.id,
-          offset: row.offset,
-          reason: decision.reason,
-        };
-        console.info(dropped, 'reminder: dropped, not sent');
-        await deps.auditSuppressed(db, dropped);
-        suppressed += 1;
+      case 'suppress':
+        await drop(row, decision.reason);
         break;
-      }
       case 'stale':
         // event is non-null for every non-cancel decision; the guard narrows the type.
         if (event)
@@ -638,8 +636,7 @@ export async function runReminderCron(
       case 'fire':
         if (event) {
           if (!(await recipientMaySee(row, event))) {
-            await deps.markStatus(db, row.id, 'suppressed', 'out_of_scope');
-            suppressed += 1;
+            await drop(row, 'out_of_scope');
             break;
           }
           firing.push({
