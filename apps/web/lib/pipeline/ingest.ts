@@ -2,18 +2,11 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import {
   type ActionType,
-  type PlanTier,
   deriveStage,
   gcalItemAlreadyEnded,
   gcalPastClassifySkipEnabled,
-  hardCeilingUsd,
-  isOverHardCeiling,
-  spendCeilingDay,
-  spendCeilingEnforced,
-  spendCeilingWarnText,
 } from '@hale/types';
-import { and, count, eq, sql } from 'drizzle-orm';
-import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { and, eq } from 'drizzle-orm';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ClassifyResult, classifyEvent } from './classify';
 import { draftAction } from './draft';
@@ -23,8 +16,6 @@ import {
   recordEvent,
   recordVerdict,
   writeAutonomyGate,
-  writeSpendCeilingDrop,
-  writeSpendCeilingWarn,
 } from './record';
 import { reviewAction } from './review';
 
@@ -93,50 +84,6 @@ export type IngestOutcome =
   | { status: 'drafted_for_approval'; eventId: string; actionId: string; verdict: string }
   | { status: 'dropped'; eventId: string | null; reason: string };
 
-/** The three inputs the HARD cost ceiling is computed from — read together so a
- * test injects a single fake instead of stubbing the DB (rule #8: the point is to
- * NOT reach the model, no LLM stub needed). */
-export interface CeilingInputs {
-  spentUsd: number;
-  planTier: PlanTier;
-  childCount: number;
-}
-
-export type ReadCeilingInputs = (database: Database, familyId: string) => Promise<CeilingInputs>;
-
-/**
- * Default reader for the HARD ceiling. Sums the family's month-to-date
- * `agent_runs.cost_usd` (mirroring the worker's loadFamilyMonthToDateCostUsd),
- * reads the plan tier, and counts the family's children — no LLM call. A missing
- * family row fails closed to the most restrictive state (free tier), so a family
- * that cannot be read cannot spin billable stages.
- */
-export const readCeilingInputs: ReadCeilingInputs = async (database, familyId) => {
-  const costRows = await database
-    .select({ total: sql<string>`COALESCE(SUM(${schema.agentRuns.costUsd}), 0)` })
-    .from(schema.agentRuns)
-    .where(
-      sql`${schema.agentRuns.familyId} = ${familyId} AND ${schema.agentRuns.startedAt} >= date_trunc('month', now())`,
-    );
-
-  const familyRows = await database
-    .select({ planTier: schema.families.planTier })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId))
-    .limit(1);
-
-  const childRows = await database
-    .select({ value: count() })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-
-  return {
-    spentUsd: Number(costRows[0]?.total ?? 0),
-    planTier: familyRows[0]?.planTier ?? 'free',
-    childCount: childRows[0]?.value ?? 0,
-  };
-};
-
 const ZERO_USAGE = {
   promptTokens: 0,
   completionTokens: 0,
@@ -153,54 +100,8 @@ export async function ingestEvent(
   database: Database,
   client: AgentClient,
   now: Date = new Date(),
-  readCeiling: ReadCeilingInputs = readCeilingInputs,
-  notifySpendCeiling: (text: string) => Promise<unknown> = (text) => postOpsSlack(text),
 ): Promise<IngestOutcome> {
   const familyId = input.familyId;
-
-  // HARD monthly LLM-cost ceiling. The cost is always read. Dropping before
-  // classify happens only when SPEND_CEILING_ENFORCED is the literal 'true'.
-  // Otherwise we warn once per family per UTC day, page Slack #ops, and continue.
-  // Chat turns do not enter this function.
-  const ceiling = await readCeiling(database, familyId);
-  if (isOverHardCeiling(ceiling.spentUsd, ceiling.planTier, ceiling.childCount)) {
-    const ceilingUsd = hardCeilingUsd(ceiling.planTier, ceiling.childCount);
-    const detail = {
-      planTier: ceiling.planTier,
-      childCount: ceiling.childCount,
-      monthToDateCostUsd: ceiling.spentUsd,
-      ceilingUsd,
-    };
-    if (spendCeilingEnforced()) {
-      await writeSpendCeilingDrop(database, { familyId, detail });
-      return { status: 'dropped', eventId: null, reason: 'spend_ceiling' };
-    }
-    const day = spendCeilingDay(now);
-    try {
-      const noted = await writeSpendCeilingWarn(database, {
-        familyId,
-        day,
-        detail: { ...detail, day, enforced: false },
-      });
-      if (noted.recorded) {
-        await notifySpendCeiling(
-          spendCeilingWarnText({
-            familyId,
-            planTier: ceiling.planTier,
-            childCount: ceiling.childCount,
-            monthToDateCostUsd: ceiling.spentUsd,
-            ceilingUsd,
-            day,
-          }),
-        );
-      }
-    } catch (err) {
-      console.error('ingest: spend-ceiling warn failed; continuing', {
-        familyId,
-        err: err instanceof Error ? err.name : 'unknown',
-      });
-    }
-  }
 
   const payload = {
     subject: input.subject,
