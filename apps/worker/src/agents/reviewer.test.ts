@@ -217,6 +217,26 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
     expect(JSON.stringify(req.messages)).toContain(draftId);
   });
 
+  it('hands the model the checks this action type requires, as data beside the draft', async () => {
+    // The tools offered are scoped to REQUIRED_CHECKS (checkTools). Without the list the
+    // model reads the prompt's all-actions examples as obligations it cannot meet with
+    // the tools it was given, and Sonnet 5.5 flags every add_to_routine for a human.
+    const create = vi.fn(
+      async (_req: Anthropic.MessageCreateParamsNonStreaming) => assistantMessage([]),
+    );
+    const client = { messages: { create } } as unknown as ReviewerAnthropicClient;
+
+    await runReviewer({ familyId, draft: draft('add_to_routine') }, { client });
+
+    const req = create.mock.calls[0]?.[0] as Anthropic.MessageCreateParamsNonStreaming;
+    const sent = JSON.parse(req.messages[0]?.content as string);
+    expect(sent.required_checks).toEqual(['check_action_idempotency']);
+    expect(sent.required_checks).toEqual(REQUIRED_CHECKS.add_to_routine);
+    expect(req.tools?.map((tool) => tool.name).sort()).toEqual(
+      [...REQUIRED_CHECKS.add_to_routine, VERDICT_TOOL].sort(),
+    );
+  });
+
   it('passes a reject verdict through unchanged', async () => {
     const client = scriptedClient([
       [

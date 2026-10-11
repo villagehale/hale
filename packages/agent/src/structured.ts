@@ -8,6 +8,7 @@ import {
   type LaneRequestFields,
   laneRequestFields,
   structuredToolChoice,
+  withoutThinking,
 } from './model.js';
 
 /**
@@ -262,10 +263,47 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
     usage = sumUsage(usage, response.usage);
   }
 
+  // THE TURN THAT SPENT ITS WHOLE BUDGET THINKING, ASKED AGAIN WITH THINKING OFF, AT THE
+  // SAME BUDGET — runAgent's rule (agent.ts), for the same reason: `max_tokens` caps
+  // thinking plus answer, the 5.5 tiers have no field that bounds the thinking half, and
+  // Sonnet 5.5 at `high` thinks longer than Sonnet 5 did, so small-budget structured
+  // stages that never truncated started to (the activity follow-up note, 400 tokens, all
+  // of them thinking). The room belongs to the turn that proved it needed it, so the lane
+  // keeps its budget. A turn cut off while WRITING its answer is not re-asked: the same
+  // answer would be cut again.
+  const lessThinking = withoutThinking(args.lane);
+  if (lessThinking && spentBudgetThinking(response)) {
+    console.warn(
+      JSON.stringify({
+        event: 'structured_reask_thinking_off',
+        stage: args.toolName,
+        model: request.model,
+      }),
+    );
+    const retry = structuredRequest({ ...args, lane: lessThinking });
+    response = await send(retry);
+    usage = sumUsage(usage, response.usage);
+    return {
+      value: args.schema.parse(readStructuredAnswer(retry, response, args.toolName)),
+      usage,
+    };
+  }
+
   return {
     value: args.schema.parse(readStructuredAnswer(request, response, args.toolName)),
     usage,
   };
+}
+
+/** Cut off at the ceiling with nothing but thinking to show for it. */
+function spentBudgetThinking(response: Anthropic.Message): boolean {
+  return (
+    response.stop_reason === 'max_tokens' &&
+    response.content.length > 0 &&
+    response.content.every(
+      (block) => block.type === 'thinking' || block.type === 'redacted_thinking',
+    )
+  );
 }
 
 // --- the strict wire subset -------------------------------------------------

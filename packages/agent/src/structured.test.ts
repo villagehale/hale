@@ -301,6 +301,42 @@ describe('forceToolJson — every failure is reported as itself', () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
+  it('re-asks a turn that spent its whole budget thinking with thinking off, at the same budget', async () => {
+    const thoughtOut = message(
+      [{ type: 'thinking', thinking: '', signature: 'sig' }],
+      'max_tokens',
+    );
+    const { client, create } = fakeClient(thoughtOut, ANSWER);
+    const result = await call(client, 'classify');
+    expect(create).toHaveBeenCalledTimes(2);
+    const [first, second] = create.mock.calls.map(
+      ([req]) => req as unknown as Record<string, unknown>,
+    );
+    expect(first?.thinking).toEqual({ type: 'adaptive' });
+    expect(second?.thinking).toEqual({ type: 'between_tools' });
+    expect(second?.max_tokens).toBe(first?.max_tokens);
+    expect(second?.messages).toEqual(first?.messages);
+    expect(result.value).toEqual({ found: true, confidence: 0.9 });
+    expect(result.usage.output_tokens).toBe(10);
+  });
+
+  it('does not re-ask a turn cut off while writing its answer', async () => {
+    const cut = message([{ type: 'text', text: '{"found":tr' }], 'max_tokens');
+    const { client, create } = fakeClient(cut);
+    await expect(call(client, 'classify')).rejects.toMatchObject({ outcome: 'truncated' });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-ask a lane that was not thinking', async () => {
+    const thoughtOut = message(
+      [{ type: 'thinking', thinking: '', signature: 'sig' }],
+      'max_tokens',
+    );
+    const { client, create } = fakeClient(thoughtOut);
+    await expect(call(client, 'screen')).rejects.toMatchObject({ outcome: 'truncated' });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
   it('names a refusal with its category and never re-asks it', async () => {
     const refusal = message([], 'refusal', { stop_details: { category: 'general_harms' } });
     const { client, create } = fakeClient(refusal);
