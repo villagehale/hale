@@ -327,17 +327,18 @@ export async function alertParentForCalendarChanges(
 ): Promise<CalendarAlertSweep> {
   const { familyId, parentUserId, integrationId, changes, now } = input;
   if (parentUserId === null) return { changes: changes.map(() => 'no_parent_user'), reoffers: [] };
+  const laneOn = laneEnabled('calendar_alert');
   if (input.seeding) {
-    await rememberOnly(database, input, parentUserId, ports);
-    return { changes: changes.map(() => 'seeding_run'), reoffers: [] };
+    await rememberOnly(database, input, parentUserId, ports, { passport: laneOn });
+    const seeded = changes.map((): CalendarAlertOutcome => 'seeding_run');
+    if (laneOn) return { changes: seeded, reoffers: [] };
+    logPassportLaneOff(input);
+    return { changes: seeded, reoffers: [], passport: 'lane_off' };
   }
-  if (!laneEnabled('calendar_alert')) {
+  if (!laneOn) {
     const reoffers = await expireStaleDebts(database, input, parentUserId, ports);
     await rememberOnly(database, input, parentUserId, ports, { passport: false });
-    console.info(
-      { familyId, integrationId, changes: changes.length, passport: 'lane_off' },
-      'calendar alert: lane off, no passport stamps from these changes',
-    );
+    logPassportLaneOff(input);
     return { changes: changes.map(() => 'lane_off'), reoffers, passport: 'lane_off' };
   }
   // The flag is a pure function of the family id, so nothing above it costs a query and a
@@ -458,6 +459,19 @@ export async function alertParentForCalendarChanges(
     now,
   });
   return { changes: changeOutcomes, reoffers: reofferOutcomes };
+}
+
+function logPassportLaneOff(input: CalendarAlertInput): void {
+  console.info(
+    {
+      familyId: input.familyId,
+      integrationId: input.integrationId,
+      changes: input.changes.length,
+      seeding: input.seeding,
+      passport: 'lane_off',
+    },
+    'calendar alert: lane off, no passport stamps from these changes',
+  );
 }
 
 /**

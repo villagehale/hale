@@ -745,6 +745,35 @@ describe('passport stamps from calendar changes follow the calendar_alert lane',
       ['Swim lessons', 'calendar'],
     ]);
   });
+
+  it('writes no calendar stamp on a seeding run while the lane is off, and names it', async () => {
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', undefined);
+
+    await expect(sweepBoth(harness(), { seeding: true, changes: WEEKLY })).resolves.toEqual({
+      changes: ['seeding_run', 'seeding_run', 'seeding_run'],
+      reoffers: [],
+      passport: 'lane_off',
+    });
+
+    await expect(stampRows()).resolves.toEqual([]);
+    expect((await snapshotRows()).map((row) => row.eventId).sort()).toEqual([
+      'class-0',
+      'class-1',
+      'class-2',
+    ]);
+  });
+
+  it('writes the stamp on a seeding run once the lane is on', async () => {
+    await expect(sweepBoth(harness(), { seeding: true, changes: WEEKLY })).resolves.toEqual({
+      changes: ['seeding_run', 'seeding_run', 'seeding_run'],
+      reoffers: [],
+    });
+
+    const rows = await stampRows();
+    expect(rows.map((row) => [row.activity, row.sourceType])).toEqual([
+      ['Swim lessons', 'calendar'],
+    ]);
+  });
 });
 
 describe('a change that MOVED says so', () => {
