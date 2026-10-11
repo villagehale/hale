@@ -3,7 +3,7 @@ import { safeInternalRedirect, signInHref } from './redirect';
 
 describe('safeInternalRedirect', () => {
   it('passes through an app-internal path', () => {
-    expect(safeInternalRedirect('/village')).toBe('/village');
+    expect(safeInternalRedirect('/family')).toBe('/family');
     expect(safeInternalRedirect('/onboarding?step=setup')).toBe('/onboarding?step=setup');
   });
 

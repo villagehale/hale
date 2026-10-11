@@ -184,7 +184,7 @@ describe('POST /api/rights/delete', () => {
       outcome: 'co_parent_departed',
       departure: { outcome: 'departed', membershipRemoved: true },
     });
-    tellStayingParentMock.mockRejectedValue(new Error('twilio down'));
+    tellStayingParentMock.mockRejectedValue(new Error('provider down'));
 
     const res = await callDelete({ confirm: true });
 

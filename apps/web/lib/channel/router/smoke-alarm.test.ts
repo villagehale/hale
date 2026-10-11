@@ -315,11 +315,11 @@ describe('the smoke alarm', () => {
     const failing = alarm({
       claim,
       say: async () => {
-        throw new Error('twilio is down too');
+        throw new Error('provider is down too');
       },
     });
 
-    await expect(failing.run()).rejects.toThrow('twilio is down too');
+    await expect(failing.run()).rejects.toThrow('provider is down too');
     expect(claim.recorded).toEqual([]);
 
     const retry = alarm({ claim });

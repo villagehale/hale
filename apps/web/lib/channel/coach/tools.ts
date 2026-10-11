@@ -679,8 +679,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   /**
    * WHY THERE IS NO WRITE VERB HERE, measured rather than assumed (VIL-294, 2026-08-24).
    *
-   * The obvious way to let a texted turn keep what a parent tells it is to register the
-   * app coach's `save_memory` on this surface too. It was built, wired, skill-documented,
+   * The obvious way to let a texted turn keep what a parent tells it is to register a
+   * `save_memory` verb on this surface too. That verb was built, wired, skill-documented,
    * and then declined on evidence: an eleventh verb in this allowlist costs TOOL REACH on
    * the two fixtures that most depend on it. Three fresh samples per cell, same nonces,
    * apps/worker/evals/run-coach-channel-eval.mjs:
