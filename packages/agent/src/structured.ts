@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import type { AgentClient } from './agent.js';
 import type { JsonSchemaNode } from './json-schema.js';
 import {
+  type Effort,
   type LaneConfig,
   type LaneRequestFields,
   laneRequestFields,
@@ -10,23 +11,27 @@ import {
 } from './model.js';
 
 /**
- * Single-shot structured output: ONE output tool whose input is validated against the
- * caller's Zod schema. The one seam every structured call in both processes goes
- * through, because the request shape is now model-specific and two copies of it
- * disagreed (the worker's forced every call, which Sonnet 5.5 and Opus 5.5 reject).
+ * Single-shot structured output, validated against the caller's Zod schema. The one
+ * seam every structured call in both processes goes through, because the request shape
+ * is now model-specific and two copies of it disagreed (the worker's forced every call,
+ * which Sonnet 5.5 and Opus 5.5 reject with a 400).
  *
- * Three things make the answer reliable on the 5.5 generation:
+ * The answer is asked for as a JSON OUTPUT (`output_config.format`), not a tool call,
+ * whenever the schema can be compiled to a grammar (see strictToolSchema) — the shape
+ * the API documents for "the forced call only existed to get JSON back", and the same
+ * on all three 5.5 tiers. Measured live 2026-10-11:
  *
- *  - `tool_choice` is forced only where the model accepts it (Haiku 5.5); elsewhere it
- *    is `auto` with at most one call, and a reply that answered in prose is asked again
- *    ONCE, because `auto` does not guarantee a call.
- *  - The tool is sent with `strict: true`, so the API constrains the arguments to the
- *    schema with a grammar. Without it, Haiku 5.5 returned a list field as a JSON
- *    STRING and added keys the schema seals, in 4 of 6 live calls on the kid-relevance
- *    batch (2026-10-11); with it, 6 of 6 parsed. Zod stays the gate for everything the
- *    grammar cannot express (see strictToolSchema).
- *  - Truncation, refusal and a missing call are each a named {@link StructuredOutputError}
- *    rather than a ZodError over an empty object.
+ *  - a non-strict forced tool on Haiku 5.5 returned a list field as a JSON STRING, or
+ *    added keys the schema seals, in 4 of 6 calls on the kid-relevance batch;
+ *  - an `auto` tool on Sonnet 5.5 (the only tool_choice it accepts) answered the
+ *    intro-voice ask in prose and never called the tool;
+ *  - a JSON output parsed 6 of 6 on Haiku 5.5 and 3 of 3 on Sonnet 5.5.
+ *
+ * A schema the grammar cannot express (an object open to any key) goes out as a plain
+ * tool: forced where the model accepts it (Haiku 5.5), otherwise `auto` with one call
+ * and ONE identical re-ask when the reply came back in prose. Truncation, refusal, a
+ * missing answer and unparseable JSON are each a named {@link StructuredOutputError};
+ * Zod stays the gate for every bound the grammar does not carry.
  *
  * The client is injected so tests drive the mechanics with a fake; answer QUALITY is
  * the cached eval against real Claude (rule #8).
@@ -64,7 +69,7 @@ export interface ForceToolJsonResult<TValue> {
   usage: Anthropic.Usage;
 }
 
-export type StructuredOutcome = 'truncated' | 'refusal' | 'no_tool_call';
+export type StructuredOutcome = 'truncated' | 'refusal' | 'no_answer' | 'unparseable';
 
 /** A structured call that produced no answer to parse, named by why. */
 export class StructuredOutputError extends Error {
@@ -91,36 +96,47 @@ export function cachedSystem(instructions: string): Anthropic.TextBlockParam[] {
 
 /**
  * The request body. The pinned SDK (0.41.0) types neither the current `thinking` shapes,
- * `output_config`, `strict` nor `disable_parallel_tool_use` with `auto`; all are plain
- * body fields it serialises as given, so the body is widened rather than cast field by
- * field.
+ * `output_config` nor `disable_parallel_tool_use` with `auto`; all are plain body fields
+ * it serialises as given, so the body is widened rather than cast field by field.
  */
-export type StructuredRequest = LaneRequestFields & {
+export type StructuredRequest = Omit<LaneRequestFields, 'output_config'> & {
   max_tokens: number;
   system: Anthropic.TextBlockParam[];
-  tools: (Anthropic.Tool & { strict?: true })[];
-  tool_choice: ReturnType<typeof structuredToolChoice>;
+  output_config?: {
+    effort?: Effort;
+    format?: { type: 'json_schema'; schema: JsonSchemaNode };
+  };
+  tools?: Anthropic.Tool[];
+  tool_choice?: ReturnType<typeof structuredToolChoice>;
   messages: Anthropic.MessageParam[];
 };
 
 export function structuredRequest(args: StructuredRequestArgs): StructuredRequest {
-  const strict = strictToolSchema(args.inputJsonSchema as JsonSchemaNode);
-  const fields = laneRequestFields(args.lane);
-  return {
+  const grammar = strictToolSchema(args.inputJsonSchema as JsonSchemaNode);
+  const { output_config, ...fields } = laneRequestFields(args.lane);
+  const common = {
     ...fields,
     max_tokens: args.maxTokens,
     system: cachedSystem(args.system),
+    messages: [{ role: 'user' as const, content: args.userMessage }],
+  };
+  if (grammar) {
+    return {
+      ...common,
+      output_config: { ...output_config, format: { type: 'json_schema', schema: grammar } },
+    };
+  }
+  return {
+    ...common,
+    ...(output_config ? { output_config } : {}),
     tools: [
       {
         name: args.toolName,
         description: args.toolDescription,
-        ...(strict
-          ? { input_schema: strict as Anthropic.Tool.InputSchema, strict: true as const }
-          : { input_schema: args.inputJsonSchema }),
+        input_schema: args.inputJsonSchema,
       },
     ],
     tool_choice: structuredToolChoice(fields.model, args.toolName),
-    messages: [{ role: 'user', content: args.userMessage }],
   };
 }
 
@@ -146,48 +162,64 @@ function stopDetailsCategory(response: Anthropic.Message): string | null {
   return typeof details?.category === 'string' ? details.category : null;
 }
 
-/**
- * The tool input of a finished structured call, or the named reason there is none.
- * Shared with the eval harness so a recorded answer passes the same guards.
- */
-export function readToolInput(
+function fail(
+  stage: string,
+  outcome: StructuredOutcome,
   response: Anthropic.Message,
-  toolName: string,
-  maxTokens: number,
+  detail: string,
+  category: string | null = null,
+): never {
+  throw new StructuredOutputError(
+    stage,
+    outcome,
+    response.stop_reason as string | null,
+    category,
+    `${stage}: ${detail}`,
+  );
+}
+
+/**
+ * The answer of a finished structured call — the JSON output, or the tool input when the
+ * request went out as a tool — or the named reason there is none. Shared with the eval
+ * harness so a recorded answer passes the same guards.
+ */
+export function readStructuredAnswer(
+  request: StructuredRequest,
+  response: Anthropic.Message,
+  stage: string,
 ): unknown {
   const stopReason = response.stop_reason as string | null;
-  // A cut-off call usually arrives as `input: {}`, which would parse to an
-  // every-field-Required ZodError indistinguishable from a bad-shape answer.
+  // A cut-off answer is never an answer: a truncated tool call usually arrives as
+  // `input: {}`, which would parse to an every-field-Required ZodError indistinguishable
+  // from a bad-shape answer, and truncated JSON is half an object.
   if (stopReason === 'max_tokens') {
-    throw new StructuredOutputError(
-      toolName,
+    fail(
+      stage,
       'truncated',
-      stopReason,
-      null,
-      `${toolName}: tool call truncated at max_tokens (${maxTokens})`,
+      response,
+      `tool call truncated at max_tokens (${request.max_tokens}); ${response.usage.output_tokens} output tokens over [${response.content.map((block) => block.type).join(', ')}]`,
     );
   }
   if (stopReason === 'refusal') {
     const category = stopDetailsCategory(response);
-    throw new StructuredOutputError(
-      toolName,
-      'refusal',
-      stopReason,
-      category,
-      `${toolName}: the model declined (${category ?? 'no category'})`,
-    );
+    fail(stage, 'refusal', response, `the model declined (${category ?? 'no category'})`, category);
   }
-  const toolUse = findToolUse(response, toolName);
-  if (!toolUse) {
-    throw new StructuredOutputError(
-      toolName,
-      'no_tool_call',
-      stopReason,
-      null,
-      `${toolName}: model returned no ${toolName} tool call`,
-    );
+  if (request.tools) {
+    const toolUse = findToolUse(response, stage);
+    if (!toolUse) fail(stage, 'no_answer', response, `model returned no ${stage} tool call`);
+    return toolUse.input;
   }
-  return toolUse.input;
+  const text = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+    .trim();
+  if (text === '') fail(stage, 'no_answer', response, 'model returned no JSON output');
+  try {
+    return JSON.parse(text);
+  } catch {
+    return fail(stage, 'unparseable', response, 'the JSON output did not parse');
+  }
 }
 
 function sumUsage(a: Anthropic.Usage, b: Anthropic.Usage): Anthropic.Usage {
@@ -210,10 +242,10 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   let response = await send(request);
   let usage = response.usage;
 
-  // `auto` may answer in prose. One identical re-ask, logged so a lane that needs it
-  // often shows up; a second miss is the named no_tool_call below.
+  // An `auto` tool may be answered in prose. One identical re-ask, logged so a lane that
+  // needs it often shows up; a second miss is the named no_answer below.
   if (
-    request.tool_choice.type === 'auto' &&
+    request.tool_choice?.type === 'auto' &&
     response.stop_reason !== 'max_tokens' &&
     (response.stop_reason as string) !== 'refusal' &&
     !findToolUse(response, args.toolName)
@@ -231,7 +263,7 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   }
 
   return {
-    value: args.schema.parse(readToolInput(response, args.toolName, args.maxTokens)),
+    value: args.schema.parse(readStructuredAnswer(request, response, args.toolName)),
     usage,
   };
 }

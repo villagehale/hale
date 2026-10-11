@@ -48,8 +48,22 @@ function message(
   } as unknown as Anthropic.Message;
 }
 
+/** The JSON-output answer: the grammar-constrained JSON in a text block. */
 const ANSWER = message(
-  [{ type: 'tool_use', id: 'tu_0', name: TOOL, input: { found: true, confidence: 0.9 } }],
+  [
+    { type: 'thinking', thinking: '', signature: 'sig' },
+    { type: 'text', text: '{"found":true,"confidence":0.9}' },
+  ],
+  'end_turn',
+);
+/** An open schema has no grammar, so it goes out as a tool. */
+const OPEN_SCHEMA = {
+  type: 'object',
+  properties: { payload: { type: 'object', additionalProperties: true } },
+  required: ['payload'],
+} as const;
+const OPEN_ANSWER = message(
+  [{ type: 'tool_use', id: 'tu_0', name: TOOL, input: { payload: { a: 1 } } }],
   'tool_use',
 );
 const TEXT_ONLY = message([{ type: 'text', text: 'Here you go.' }], 'end_turn');
@@ -77,6 +91,20 @@ function call(client: AgentClient, task: Parameters<typeof pickLane>[0] = 'class
   });
 }
 
+function callOpen(client: AgentClient, task: Parameters<typeof pickLane>[0] = 'draft') {
+  return forceToolJson({
+    client,
+    lane: pickLane(task),
+    system: 'sys',
+    userMessage: 'msg',
+    toolName: TOOL,
+    toolDescription: 'desc',
+    inputJsonSchema: OPEN_SCHEMA,
+    schema: z.object({ payload: z.record(z.unknown()) }),
+    maxTokens: 20,
+  });
+}
+
 describe('structuredRequest — the shape each 5.5 tier accepts', () => {
   const base = {
     system: 'sys',
@@ -87,36 +115,43 @@ describe('structuredRequest — the shape each 5.5 tier accepts', () => {
     maxTokens: 20,
   };
 
-  it('forces the tool on Haiku 5.5, with thinking off and a strict schema', () => {
-    const req = structuredRequest({ ...base, lane: pickLane('screen') });
-    expect(req).toMatchObject({
-      model: HAIKU_MODEL,
-      thinking: { type: 'disabled' },
-      output_config: { effort: 'low' },
-      tool_choice: { type: 'tool', name: TOOL },
-    });
-    expect(req.tools[0]).toMatchObject({ name: TOOL, strict: true });
-  });
-
   it.each([
-    ['classify', SONNET_MODEL],
-    ['high-stakes-judgment', OPUS_MODEL],
-  ] as const)('never forces the tool on the %s lane (%s rejects it with a 400)', (task, model) => {
-    const req = structuredRequest({ ...base, lane: pickLane(task) });
-    expect(req.model).toBe(model);
-    expect(req.tool_choice).toEqual({ type: 'auto', disable_parallel_tool_use: true });
-    expect(req.tools[0]).toMatchObject({ strict: true });
+    ['screen', HAIKU_MODEL, { type: 'disabled' }, 'low'],
+    ['classify', SONNET_MODEL, { type: 'adaptive' }, 'high'],
+    ['high-stakes-judgment', OPUS_MODEL, { type: 'adaptive' }, 'xhigh'],
+  ] as const)(
+    'asks the %s lane (%s) for a JSON output, with no tool to escape into',
+    (task, model, thinking, effort) => {
+      const req = structuredRequest({ ...base, lane: pickLane(task) });
+      expect(req).toMatchObject({ model, thinking });
+      expect(req.output_config).toEqual({
+        effort,
+        format: { type: 'json_schema', schema: strictToolSchema(JSON_SCHEMA) },
+      });
+      expect(req).not.toHaveProperty('tools');
+      expect(req).not.toHaveProperty('tool_choice');
+    },
+  );
+
+  it('sends a schema the grammar cannot compile as a plain tool: forced on Haiku', () => {
+    const req = structuredRequest({
+      ...base,
+      inputJsonSchema: OPEN_SCHEMA,
+      lane: pickLane('screen'),
+    });
+    expect(req.tools).toEqual([{ name: TOOL, description: 'desc', input_schema: OPEN_SCHEMA }]);
+    expect(req.tool_choice).toEqual({ type: 'tool', name: TOOL });
+    expect(req.output_config).toEqual({ effort: 'low' });
   });
 
-  it('sends a schema the grammar cannot compile WITHOUT strict, rather than a 400', () => {
-    const open = {
-      type: 'object',
-      properties: { payload: { type: 'object', additionalProperties: true } },
-      required: ['payload'],
-    } as const;
-    const req = structuredRequest({ ...base, inputJsonSchema: open, lane: pickLane('draft') });
-    expect(req.tools[0]).not.toHaveProperty('strict');
-    expect(req.tools[0]?.input_schema).toEqual(open);
+  it('and auto with one call on the tiers that reject a forced tool_choice', () => {
+    const req = structuredRequest({
+      ...base,
+      inputJsonSchema: OPEN_SCHEMA,
+      lane: pickLane('draft'),
+    });
+    expect(req.tools?.[0]).not.toHaveProperty('strict');
+    expect(req.tool_choice).toEqual({ type: 'auto', disable_parallel_tool_use: true });
   });
 });
 
@@ -227,27 +262,42 @@ describe('forceToolJson — every failure is reported as itself', () => {
     });
   });
 
+  it('names an answer that is not JSON instead of throwing a bare SyntaxError', async () => {
+    const { client } = fakeClient(TEXT_ONLY);
+    await expect(call(client)).rejects.toMatchObject({ outcome: 'unparseable', stage: TOOL });
+  });
+
+  it('names a reply with no answer block at all', async () => {
+    const { client } = fakeClient(message([], 'end_turn'));
+    await expect(call(client)).rejects.toMatchObject({ outcome: 'no_answer' });
+  });
+
+  it('parses an open-schema answer from its tool call (positive control)', async () => {
+    const { client } = fakeClient(OPEN_ANSWER);
+    await expect(callOpen(client)).resolves.toMatchObject({ value: { payload: { a: 1 } } });
+  });
+
   it('re-asks once when an auto tool_choice answered in prose, and sums the usage', async () => {
-    const { client, create } = fakeClient(TEXT_ONLY, ANSWER);
-    const result = await call(client, 'classify');
+    const { client, create } = fakeClient(TEXT_ONLY, OPEN_ANSWER);
+    const result = await callOpen(client, 'draft');
     expect(create).toHaveBeenCalledTimes(2);
     expect(create.mock.calls[1]?.[0]).toEqual(create.mock.calls[0]?.[0]);
-    expect(result.value).toEqual({ found: true, confidence: 0.9 });
+    expect(result.value).toEqual({ payload: { a: 1 } });
     expect(result.usage.input_tokens).toBe(20);
     expect(result.usage.output_tokens).toBe(10);
   });
 
-  it('names no_tool_call after the one re-ask also answers in prose', async () => {
+  it('names no_answer after the one re-ask also answers in prose', async () => {
     const { client, create } = fakeClient(TEXT_ONLY, TEXT_ONLY);
-    const error = await call(client, 'classify').catch((e: unknown) => e);
+    const error = await callOpen(client, 'draft').catch((e: unknown) => e);
     expect(create).toHaveBeenCalledTimes(2);
     expect(error).toBeInstanceOf(StructuredOutputError);
-    expect(error).toMatchObject({ outcome: 'no_tool_call', stage: TOOL });
+    expect(error).toMatchObject({ outcome: 'no_answer', stage: TOOL });
   });
 
   it('does not re-ask a forced tool_choice that came back without the tool', async () => {
     const { client, create } = fakeClient(TEXT_ONLY);
-    await expect(call(client, 'screen')).rejects.toMatchObject({ outcome: 'no_tool_call' });
+    await expect(callOpen(client, 'screen')).rejects.toMatchObject({ outcome: 'no_answer' });
     expect(create).toHaveBeenCalledTimes(1);
   });
 
@@ -262,7 +312,7 @@ describe('forceToolJson — every failure is reported as itself', () => {
   });
 
   it('reports truncation as truncation, not as the missing-field ZodError it would parse to', async () => {
-    const cut = message([{ type: 'tool_use', id: 'tu_0', name: TOOL, input: {} }], 'max_tokens');
+    const cut = message([{ type: 'text', text: '{"found":tr' }], 'max_tokens');
     const { client } = fakeClient(cut);
     const error = await call(client).catch((e: unknown) => e);
     expect(error).toMatchObject({ outcome: 'truncated' });
@@ -273,10 +323,7 @@ describe('forceToolJson — every failure is reported as itself', () => {
   it('still lets the caller schema reject a value the wire schema could not bound', async () => {
     const bounded = z.object({ line: z.string().max(5) });
     const { client } = fakeClient(
-      message(
-        [{ type: 'tool_use', id: 'tu_0', name: TOOL, input: { line: 'far too long' } }],
-        'tool_use',
-      ),
+      message([{ type: 'text', text: '{"line":"far too long"}' }], 'end_turn'),
     );
     await expect(
       forceToolJson({
@@ -321,7 +368,9 @@ describe('prompt caching', () => {
     const req = create.mock.calls[0]?.[0];
     expect(req?.system).toEqual(cachedSystem('STABLE AGENT INSTRUCTIONS'));
     expect(JSON.stringify(req?.system)).not.toContain('VARIABLE PER-RUN PAYLOAD');
-    expect(JSON.stringify(req?.tools)).not.toContain('cache_control');
+    expect(JSON.stringify((req as { output_config?: unknown })?.output_config)).not.toContain(
+      'VARIABLE PER-RUN PAYLOAD',
+    );
     expect(req?.messages).toEqual([{ role: 'user', content: 'VARIABLE PER-RUN PAYLOAD' }]);
   });
 
@@ -342,6 +391,8 @@ describe('prompt caching', () => {
       transport: 'stream',
     });
     expect(result.value).toEqual({ found: true, confidence: 0.9 });
-    expect(stream.mock.calls[0]?.[0]).toMatchObject({ tool_choice: { type: 'auto' } });
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({
+      output_config: { format: { type: 'json_schema' } },
+    });
   });
 });
