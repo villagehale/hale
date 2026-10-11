@@ -76,7 +76,11 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `PARENT_CALENDAR_MIRROR_ENABLED` | `true` (trimmed) | off unless set | unset | Barton |
 | `EMAIL_ALERT_ENABLED` | `true` (trimmed) | off unless set | unset | Barton |
 
-The three lane switches (VIL-226) hold work while they are off. They do not delete it. With `CALENDAR_ALERT_ENABLED` unset, a calendar text Hale already owes stays owed and is offered again when the lane is back on, unless it ages out first. With `PARENT_CALENDAR_MIRROR_ENABLED` unset, mirrored `family_events` rows stay in the database, and their reminders stay `scheduled` and are counted as `heldLaneOff` in the reminders cron response. `EMAIL_ALERT_ENABLED` does not gate the silent booked-detection backfill. That pass has its own switch, `BOOKED_DETECTION_BACKFILL_ENABLED`.
+The three lane switches (VIL-226) hold work while they are off. They do not delete it. Unlike most `true` flags above, their value is trimmed first, so `true` followed by a newline also turns a lane on.
+
+- With `CALENDAR_ALERT_ENABLED` unset, both the 1:1 calendar text and the Linq household calendar notice are off. The sweep still remembers each change. A calendar text Hale already owes stays owed and is offered again when the lane is back on, unless it ages out first. Kid events not yet told to the group stay unannounced until then.
+- With `PARENT_CALENDAR_MIRROR_ENABLED` unset, mirrored `family_events` rows stay in the database and no new reminders are created for them (counted as `notScheduledLaneOff` in the reminders cron response). Reminders already scheduled stay `scheduled` and are counted as `heldLaneOff`. When the lane is back on, a held reminder whose moment passed by more than the usual late-reminder grace is marked `suppressed` with reason `missed` (or `started` once the event has begun) and is never sent late. The connector sync logs the held window with `heldReason: 'lane_off'`.
+- `EMAIL_ALERT_ENABLED` does not gate the silent booked-detection backfill. That pass sends no text and has its own switch, `BOOKED_DETECTION_BACKFILL_ENABLED`, so it keeps running while the email lane is off.
 
 Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns those families on while the global flag is off. Two exceptions: `VILLAGE_INTROS_FAMILY_ALLOWLIST` only narrows a flag that is already `true`, and `MEMORY_DIGEST_FAMILY_ALLOWLIST` applies only together with `MEMORY_DIGEST_APPLY=true`. Live contents are unconfirmed, verify in Vercel env.
 
