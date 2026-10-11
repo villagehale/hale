@@ -10,6 +10,8 @@ import { integrations } from './integrations.js';
  * The item is named by its connector key only (a Google series or event id, a Gmail
  * message id, a hash of a group title), never by its title, place or sender (rule #1).
  * `reason` is kept only for a non-teen kid verdict; the CHECK makes that a fact.
+ * `hint` is the kind of thing a parent said is theirs, kept only on that parent `adult`
+ * row and read only by the judge - never a family memory fact (second CHECK).
  *
  * `inputHash` is the cache key: a model verdict is reused while the hash matches. A
  * `parent` row is the parent's own word and a model upsert never overwrites it.
@@ -37,6 +39,7 @@ export const kidRelevanceVerdicts = pgTable(
     childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
     teen: boolean('teen').notNull().default(false),
     reason: text('reason'),
+    hint: text('hint'),
     decidedBy: text('decided_by').$type<'model' | 'parent'>().notNull(),
     model: text('model'),
     skillHash: text('skill_hash'),
@@ -58,6 +61,10 @@ export const kidRelevanceVerdicts = pgTable(
     reasonCheck: check(
       'kid_relevance_verdicts_reason_chk',
       sql`${table.reason} IS NULL OR (${table.verdict} = 'kid' AND NOT ${table.teen})`,
+    ),
+    hintCheck: check(
+      'kid_relevance_verdicts_hint_chk',
+      sql`${table.hint} IS NULL OR (${table.decidedBy} = 'parent' AND ${table.verdict} = 'adult')`,
     ),
   }),
 );

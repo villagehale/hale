@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { type AgentClient, type LaneConfig, pickLane, withoutThinking } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, eq, inArray, isNull, like, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { loadKidItemClassifierSkill } from '~/lib/cron/skill';
 import { StructuredRefusalError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import {
@@ -71,9 +71,6 @@ export interface KidJudgePorts {
   /** Kinds of thing the parent said are theirs (see untrack.ts). */
   notMineHints: readonly string[];
 }
-
-/** The fact key prefix a parent's "that's mine" is remembered under. */
-export const NOT_KIDS_FACT_PREFIX = 'not-kids/';
 
 type VerdictRow = typeof schema.kidRelevanceVerdicts.$inferSelect;
 
@@ -371,20 +368,22 @@ export async function loadKidRelevanceChildren(
   return rows.filter((row) => row.name.trim().length > 0);
 }
 
-/** The kinds of thing this parent has said are theirs, from the live not-kids facts. */
+/** The kinds of thing this parent has said are theirs, from their own adult verdicts. */
 export async function loadNotMineHints(database: Database, familyId: string): Promise<string[]> {
+  const table = schema.kidRelevanceVerdicts;
   const rows = await database
-    .select({ value: schema.familyMemoryFacts.factValue })
-    .from(schema.familyMemoryFacts)
+    .select({ hint: table.hint })
+    .from(table)
     .where(
       and(
-        eq(schema.familyMemoryFacts.familyId, familyId),
-        like(schema.familyMemoryFacts.factKey, `${NOT_KIDS_FACT_PREFIX}%`),
-        isNull(schema.familyMemoryFacts.validUntil),
+        eq(table.familyId, familyId),
+        eq(table.decidedBy, 'parent'),
+        eq(table.verdict, 'adult'),
+        isNotNull(table.hint),
       ),
     );
   const kinds = rows
-    .map((row) => (row.value as { kind?: unknown } | null)?.kind)
-    .filter((kind): kind is string => typeof kind === 'string' && kind.trim().length > 0);
+    .map((row) => row.hint)
+    .filter((kind): kind is string => kind !== null && kind.trim().length > 0);
   return [...new Set(kinds)].sort();
 }

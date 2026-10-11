@@ -1,8 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { SuppressReason } from '~/lib/loop/reminders/schedule';
-import { writeFact } from '~/lib/memory/facts';
-import { NOT_KIDS_FACT_PREFIX, seriesKeyForEvent } from './judge';
+import { seriesKeyForEvent } from './judge';
 import type { KidRelevanceSource } from './skill-contract';
 
 /**
@@ -11,11 +10,11 @@ import type { KidRelevanceSource } from './skill-contract';
  *
  * The target resolves to the item Hale tracks: a calendar SERIES (an instance alert goes
  * through its snapshot's series), or a Gmail message. Then, in one transaction:
- *   - a `parent` verdict of `adult`, which no model re-judge overwrites;
+ *   - a `parent` verdict of `adult`, which no model re-judge overwrites, holding the
+ *     kind of thing it was as the judge's hint next time - never the title, and never a
+ *     family memory fact, which the coach, the digest and a co-parent would read;
  *   - every future copy on the family calendar soft-deleted;
  *   - their scheduled reminders cancelled with `parent_untracked`;
- *   - a `not-kids/<source>/<itemKey>` fact holding the kind of thing it was, so the
- *     judge reads it as a hint next time - never the title;
  *   - one audit row with the verdict, the source and the counts (rule #6).
  *
  * It returns facts only; the caller writes any reply. It has no caller until the intent
@@ -142,21 +141,15 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
             )
             .returning({ id: schema.eventReminders.id });
 
-    await writeFact(tx, {
-      familyId: input.familyId,
-      childId: null,
-      factType: 'preference',
-      factKey: `${NOT_KIDS_FACT_PREFIX}${item.source}/${item.itemKey}`,
-      factValue: {
-        kind: safeKind(input.kind, [
+    await tx
+      .update(table)
+      .set({
+        hint: safeKind(input.kind, [
           ...matching.map((row) => row.title),
           ...(await titlesSeen(tx, item)),
         ]),
-      },
-      confidence: 1,
-      inferredBy: 'kid_relevance_untrack',
-      validFrom: input.now,
-    });
+      })
+      .where(eq(table.id, verdict.id));
 
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,

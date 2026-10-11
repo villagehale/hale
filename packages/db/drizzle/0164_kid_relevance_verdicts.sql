@@ -9,7 +9,10 @@
 -- named only by its connector key. `reason` is the model's one-line why, kept only for
 -- a non-teen kid verdict, so a parent's own appointment and a teenager's item leave no
 -- words behind. A parent's "that's mine" is a `parent` row and a model re-judge never
--- overwrites it. The family cascade is the erasure path.
+-- overwrites it. `hint` is the kind of thing a parent said is theirs ("a hotel stay"),
+-- kept only on that parent row and read only by the judge, so it never becomes family
+-- memory the coach, the digest or a co-parent would see. The family cascade is the
+-- erasure path.
 CREATE TABLE IF NOT EXISTS "kid_relevance_verdicts" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "family_id" uuid NOT NULL REFERENCES "families"("id") ON DELETE cascade,
@@ -21,6 +24,7 @@ CREATE TABLE IF NOT EXISTS "kid_relevance_verdicts" (
   "child_id" uuid REFERENCES "children"("id") ON DELETE set null,
   "teen" boolean NOT NULL DEFAULT false,
   "reason" text,
+  "hint" text,
   "decided_by" text NOT NULL,
   "model" text,
   "skill_hash" text,
@@ -30,6 +34,9 @@ CREATE TABLE IF NOT EXISTS "kid_relevance_verdicts" (
   CONSTRAINT "kid_relevance_verdicts_decided_by_chk" CHECK ("decided_by" IN ('model', 'parent')),
   CONSTRAINT "kid_relevance_verdicts_reason_chk" CHECK (
     "reason" IS NULL OR ("verdict" = 'kid' AND NOT "teen")
+  ),
+  CONSTRAINT "kid_relevance_verdicts_hint_chk" CHECK (
+    "hint" IS NULL OR ("decided_by" = 'parent' AND "verdict" = 'adult')
   )
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "kid_relevance_verdicts_item_uniq"

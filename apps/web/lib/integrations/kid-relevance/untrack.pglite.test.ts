@@ -110,6 +110,25 @@ async function liveEvents() {
   return rows.filter((row) => row.deletedAt === null).map((row) => row.googleEventId);
 }
 
+async function memoryFacts() {
+  return db.database
+    .select()
+    .from(schema.familyMemoryFacts)
+    .where(eq(schema.familyMemoryFacts.familyId, familyId));
+}
+
+async function parentVerdicts() {
+  return db.database
+    .select()
+    .from(schema.kidRelevanceVerdicts)
+    .where(
+      and(
+        eq(schema.kidRelevanceVerdicts.familyId, familyId),
+        eq(schema.kidRelevanceVerdicts.decidedBy, 'parent'),
+      ),
+    );
+}
+
 async function reminders() {
   return db.database
     .select()
@@ -187,7 +206,8 @@ describe('untrackItem', () => {
     expect(JSON.stringify(audit[0])).not.toContain('Choir');
   });
 
-  it('remembers the kind as a not-kids hint the judge reads, and never the title', async () => {
+  it('keeps the kind on the parent verdict as the hint the judge reads, and never the title', async () => {
+    const factsBefore = await memoryFacts();
     const event = await mirror('one-off', NEXT_WEEK, 'Harbour Inn check-in');
     await untrack({ kind: 'family_event', id: event }, 'a hotel stay');
     expect(await loadNotMineHints(db.database, familyId)).toEqual(['a hotel stay']);
@@ -195,15 +215,15 @@ describe('untrackItem', () => {
     const second = await mirror('another', NEXT_WEEK, 'Dentist cleaning');
     await untrack({ kind: 'family_event', id: second }, 'Dentist cleaning');
     expect(await loadNotMineHints(db.database, familyId)).toEqual(['a hotel stay']);
-    const facts = await db.database
-      .select()
-      .from(schema.familyMemoryFacts)
-      .where(eq(schema.familyMemoryFacts.familyId, familyId));
-    expect(facts.map((fact) => fact.factKey).sort()).toEqual([
-      'not-kids/google_calendar/another',
-      'not-kids/google_calendar/one-off',
+
+    const verdicts = await parentVerdicts();
+    expect(verdicts.map((row) => [row.itemKey, row.hint]).sort()).toEqual([
+      ['another', null],
+      ['one-off', 'a hotel stay'],
     ]);
-    expect(JSON.stringify(facts)).not.toContain('Dentist');
+    expect(JSON.stringify(verdicts)).not.toContain('Dentist');
+    // No family memory fact: those reach the coach, the digest and the co-parent.
+    expect(await memoryFacts()).toEqual(factsBefore);
   });
 
   it('refuses a kind that repeats the title Hale saw, even with no calendar copy', async () => {
@@ -219,12 +239,8 @@ describe('untrackItem', () => {
     });
     const message = await alertMessage(calendarAlertDedupeKey(integrationId, 'yoga_1018', 'u1'));
     await untrack({ kind: 'channel_message', id: message }, 'sunrise yoga');
-    const facts = await db.database
-      .select()
-      .from(schema.familyMemoryFacts)
-      .where(eq(schema.familyMemoryFacts.familyId, familyId));
-    expect(facts).toHaveLength(1);
-    expect(facts[0]?.factValue).toEqual({ kind: null });
+    expect((await parentVerdicts()).map((row) => row.hint)).toEqual([null]);
+    expect(await memoryFacts()).toEqual([]);
   });
 
   it('refuses a kind that repeats a Gmail offer title the parent never added', async () => {
@@ -241,11 +257,7 @@ describe('untrackItem', () => {
       expiresAt: NEXT_WEEK,
     });
     await untrack({ kind: 'channel_message', id: message }, 'Book club');
-    const facts = await db.database
-      .select()
-      .from(schema.familyMemoryFacts)
-      .where(eq(schema.familyMemoryFacts.familyId, familyId));
-    expect(facts.map((fact) => fact.factValue)).toEqual([{ kind: null }]);
+    expect((await parentVerdicts()).map((row) => row.hint)).toEqual([null]);
   });
 
   it('keeps the parent verdict when the model judges the same item again', async () => {

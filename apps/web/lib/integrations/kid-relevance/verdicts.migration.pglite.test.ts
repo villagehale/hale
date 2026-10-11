@@ -98,6 +98,25 @@ describe('0164 kid_relevance_verdicts', () => {
     expect(kid?.reason).toBe('a toddler swim class');
   });
 
+  it("keeps a hint only on a parent's own adult verdict", async () => {
+    const family = await seedFamily(db.database);
+    await expect(
+      db.database.insert(schema.kidRelevanceVerdicts).values({
+        ...verdictRow(family.familyId, null, 'model-with-hint'),
+        hint: 'a hotel stay',
+      }),
+    ).rejects.toThrow();
+    const [parent] = await db.database
+      .insert(schema.kidRelevanceVerdicts)
+      .values({
+        ...verdictRow(family.familyId, null, 'parent-with-hint'),
+        decidedBy: 'parent',
+        hint: 'a hotel stay',
+      })
+      .returning();
+    expect(parent?.hint).toBe('a hotel stay');
+  });
+
   it('links a family event to its verdict and survives the verdict going away', async () => {
     const family = await seedFamily(db.database);
     const [verdict] = await db.database
