@@ -77,9 +77,9 @@ body
 });
 
 describe('loadSkill', () => {
-  it('loads the bundled week-summary skill by bare name', async () => {
-    const skill = await loadSkill('week-summary');
-    expect(skill.meta.name).toBe('week-summary');
+  it('loads the bundled reminder-voice skill by bare name', async () => {
+    const skill = await loadSkill('reminder-voice');
+    expect(skill.meta.name).toBe('reminder-voice');
     expect(skill.meta.task).toBe('draft');
     expect(skill.meta.tools).toEqual([]);
     expect(skill.instructions.length).toBeGreaterThan(0);

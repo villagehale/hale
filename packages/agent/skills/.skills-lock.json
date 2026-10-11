@@ -231,10 +231,6 @@
     "file": "voice-register.md",
     "sha256": "30fa3a658249ac041d8899d54836e36a9a88177bf5219e564c973d807b77f4f3"
   },
-  "week-summary.md": {
-    "file": "week-summary.md",
-    "sha256": "2a01ea52cfc2cd1268bc23c60f15fbbc11e95eab00365169f9164a6e06331e50"
-  },
   "weekday-care-ask.md": {
     "file": "weekday-care-ask.md",
     "sha256": "23bb36d6742a1cd4de4ce837b11358ed1eeb5b53c4d394961700fc7e0ac1a8cb"
