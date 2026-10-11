@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier correctly identifies this as an adult social arrangement, noting the item is a coffee plan from someone named Sebastian — and the rule explicitly states an adult who shares a child's first name is still an adult, so the verdict is sound and the reason is a clear, single-clause explanation.",
-    "score": 5
-  }
-}

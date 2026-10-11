@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A bare appointment reminder naming no person or purpose makes it impossible to assign to parent or child, correctly supporting an unsure verdict.",
-    "score": 5
-  }
-}

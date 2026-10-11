@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A clinic appointment reminder naming no child or adult-specific context is genuinely ambiguous, making \"unsure\" the correct call, and the reason correctly identifies it as a bare appointment with no indicator of whose it is.",
-    "score": 5
-  }
-}

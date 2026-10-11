@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A daily standup is a work meeting, and since no child is named, it is correctly treated as the parent's own appointment per the rule that a meeting with no child named belongs to the adult.",
+    "score": 5
+  }
+}

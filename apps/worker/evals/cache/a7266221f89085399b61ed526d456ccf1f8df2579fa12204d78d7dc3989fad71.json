@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a bare appointment reminder with no named child or adult context, directly justifying the unsure verdict in one plain clause.",
-    "score": 5
-  }
-}

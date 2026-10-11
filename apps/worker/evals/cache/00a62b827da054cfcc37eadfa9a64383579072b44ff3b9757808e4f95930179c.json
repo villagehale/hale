@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as an activity class but doesn't explain why it leads to a kid verdict — it only echoes the title without noting it matches a known kid activityTitle or that Tot Swim suits a toddler-aged child.",
+    "score": 2
+  }
+}

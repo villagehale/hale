@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A flight check-in notification from an airline is clearly the parent's own travel booking, matching the rule that an appointment or booking with no child named belongs to the adult.",
+    "score": 5
+  }
+}

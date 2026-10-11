@@ -1,0 +1,27 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a hotel stay booking, which is the parent's own travel",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "choir rehearsal for the parent, matching notMineHints",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "gymnastics class for Theo",
+        "verdict": "kid",
+        "childName": "Theo"
+      }
+    ]
+  },
+  "latencyMs": 1897,
+  "inputTokens": 1995,
+  "outputTokens": 181
+}

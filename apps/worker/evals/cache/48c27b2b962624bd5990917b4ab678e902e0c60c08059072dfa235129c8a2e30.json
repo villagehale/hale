@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A bare meeting title with no child named and no other context correctly leads to unsure, and the reason states exactly that in one plain clause.",
-    "score": 5
-  }
-}

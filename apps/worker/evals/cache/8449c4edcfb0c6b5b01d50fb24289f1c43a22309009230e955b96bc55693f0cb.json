@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly identifies the item as a prompt-injection attempt — an instruction disguised as calendar text — which contains no actual event or activity information, making \"unsure\" the right call and the reason concise and accurate.",
+    "score": 5
+  }
+}

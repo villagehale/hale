@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A car service appointment names no child and matches the rule that an appointment with no child named is the parent's own, making \"adult\" correct — but the reason is very thin, simply restating the item without explaining the \"why\" (the no-child-named rule or the appointment rule).",
-    "score": 3
-  }
-}

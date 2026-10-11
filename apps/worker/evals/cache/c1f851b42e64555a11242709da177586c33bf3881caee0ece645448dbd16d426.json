@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single word \"Busy\" is a bare calendar block with no named person, activity, or context, making it impossible to classify, which correctly supports the unsure verdict.",
+    "score": 5
+  }
+}

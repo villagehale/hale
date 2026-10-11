@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies this as a preschool swim class registration and ties it to a child, supporting the kid verdict; however, it invents a specific match to Theo by name when the item names no child, which is an unsupported fact per the rules.",
-    "score": 3
-  }
-}

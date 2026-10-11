@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel booking confirmation, which matches the notMineHints entry \"a hotel stay,\" making it the parent's own — a clean, rule-grounded one-clause explanation that fits the adult verdict.",
+    "score": 5
+  }
+}

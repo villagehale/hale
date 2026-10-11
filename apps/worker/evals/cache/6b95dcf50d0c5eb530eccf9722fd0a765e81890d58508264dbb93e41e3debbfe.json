@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A single initial provides no context to determine whether this is a kid or adult item, correctly leading to unsure.",
+    "score": 5
+  }
+}

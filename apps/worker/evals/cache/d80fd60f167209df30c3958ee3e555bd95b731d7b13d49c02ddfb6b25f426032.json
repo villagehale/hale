@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A single bare word with no names, activity, or any other context makes classification impossible, correctly supporting an unsure verdict.",
-    "score": 5
-  }
-}

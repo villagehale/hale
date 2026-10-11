@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the child by name and notes it's a checkup, but it just echoes the item title without explaining why that leads to the \"kid\" verdict (e.g., that it's a medical appointment explicitly for the named child Wren).",
-    "score": 2
-  }
-}

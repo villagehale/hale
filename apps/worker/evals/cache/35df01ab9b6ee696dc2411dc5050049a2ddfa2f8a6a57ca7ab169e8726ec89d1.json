@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly identifies this as a coffee invitation from an adult named Sebastian, applying the rule that an adult sharing a child's first name is still an adult, making this a social item belonging to the parent.",
+    "score": 5
+  }
+}

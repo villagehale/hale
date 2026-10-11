@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Single bare word \"Hold\" gives no context about who or what it concerns, making unsure the correct call, and the reason correctly identifies it as a bare item with no actionable detail.",
-    "score": 5
-  }
-}

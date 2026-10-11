@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a bare appointment reminder with no named person, no subject, and no other detail, so it cannot be assigned to a child or the parent — correctly calling it unsure.",
+    "score": 5
+  }
+}

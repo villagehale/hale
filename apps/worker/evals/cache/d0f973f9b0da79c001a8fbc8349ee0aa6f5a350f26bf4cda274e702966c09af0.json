@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A bare \"Call\" with no named party, topic, or child is genuinely ambiguous, correctly making it unsure.",
+    "score": 5
+  }
+}

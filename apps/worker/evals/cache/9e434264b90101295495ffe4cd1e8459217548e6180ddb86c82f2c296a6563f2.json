@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A single word with no subject, activity, or person named makes the item genuinely ambiguous, correctly leading to unsure.",
-    "score": 5
-  }
-}

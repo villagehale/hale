@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A hotel reservation email is an adult travel booking with no child named, correctly classified as the parent's own.",
-    "score": 5
-  }
-}

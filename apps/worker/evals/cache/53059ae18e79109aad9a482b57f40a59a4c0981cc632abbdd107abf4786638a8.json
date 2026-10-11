@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a baby shower for someone named Dana, a social event for another adult, which correctly leads to an adult verdict — but the classifier's reason doesn't explain why it's the parent's own item rather than a kid item; a baby shower is an adult social event the parent attends, making it an adult calendar entry, and that logic is implied but not fully articulated. Still, it is one short clause identifying what the item is and why it maps to the verdict.",
-    "score": 3
-  }
-}

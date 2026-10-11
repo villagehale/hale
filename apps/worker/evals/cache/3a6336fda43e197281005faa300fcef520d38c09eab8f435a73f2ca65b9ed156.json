@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a known kid activity by name and applies the rule that a kid activity with no child named is still a kid item, supporting the kid verdict in one plain clause.",
-    "score": 5
-  }
-}

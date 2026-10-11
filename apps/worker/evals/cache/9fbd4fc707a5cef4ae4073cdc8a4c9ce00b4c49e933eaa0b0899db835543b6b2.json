@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier correctly identifies this as an adult social arrangement, and explains that \"Sebastian\" here is the adult sender (not the 15-month-old child), which aligns with the rule that an adult sharing a child's first name is still an adult — a clear, accurate one-clause justification for the adult verdict.",
-    "score": 5
-  }
-}

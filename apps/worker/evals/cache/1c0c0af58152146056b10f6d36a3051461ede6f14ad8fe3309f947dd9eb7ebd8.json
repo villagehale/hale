@@ -1,0 +1,51 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a swimming class for Lina",
+        "verdict": "kid",
+        "childName": "Lina"
+      },
+      {
+        "ref": "i1",
+        "reason": "the parent's own dentist appointment",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "a music class for Lina",
+        "verdict": "kid",
+        "childName": "Lina"
+      },
+      {
+        "ref": "i3",
+        "reason": "the parent's own company quarterly meeting",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "a birthday party for Lina",
+        "verdict": "kid",
+        "childName": "Lina"
+      },
+      {
+        "ref": "i5",
+        "reason": "a dinner with work friends, the parent's own social plan",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a bare meeting with no indication of who it is for",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 2771,
+  "inputTokens": 2386,
+  "outputTokens": 319
+}

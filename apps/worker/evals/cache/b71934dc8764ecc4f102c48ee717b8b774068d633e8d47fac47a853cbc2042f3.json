@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A hotel reservation email with no child named is correctly treated as the parent's own, and the reason identifies what the item is and why it leads to the adult verdict.",
-    "score": 5
-  }
-}

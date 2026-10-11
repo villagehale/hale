@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Library storytime is a classic kid activity, so this should be \"kid\" not \"unsure\" — the classifier's own rule states a kid activity with no child named is still a kid item, making the unsure verdict unsupported by the reason given.",
+    "score": 2
+  }
+}

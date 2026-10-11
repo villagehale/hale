@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A generic clinic appointment reminder names no child and no adult-specific context, so it correctly cannot be attributed to either, supporting the unsure verdict in one clean clause.",
+    "score": 5
+  }
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Daycare pickup is a child-care task, correctly linking it to a kid verdict, but the reason just restates the item title and labels it \"a child care arrangement\" without explaining what makes it a kid item (e.g., that daycare is a facility for young children like 18-month-old Wren or 50-month-old Theo) — it's borderline generic with no real \"why.\"",
-    "score": 3
-  }
-}

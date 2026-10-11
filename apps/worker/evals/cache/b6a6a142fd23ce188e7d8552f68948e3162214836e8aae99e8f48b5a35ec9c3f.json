@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A single word \"Hold\" on a calendar is a bare time block with no named activity, person, or child, making the verdict unsure correct and well-supported by this concise explanation.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A car service appointment belongs to the parent, not the children, making this clearly an adult item — but the reason is too bare, just restating the title without explaining the \"why\" (e.g., no child is named and it matches the rule that an appointment with no child named is the parent's own).",
+    "score": 3
+  }
+}

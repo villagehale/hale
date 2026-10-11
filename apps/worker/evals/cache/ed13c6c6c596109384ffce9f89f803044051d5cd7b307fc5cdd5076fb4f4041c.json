@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a known kid activity (matching an activityTitles entry) and notes it is an availability notice, which is exactly what the item is and why it leads to the kid verdict.",
-    "score": 5
-  }
-}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly identifies this as a bare appointment with no name or context linking it to Wren or the parent, making \"unsure\" the right call, and the reason states exactly what the item is and why it leads to that verdict in one plain clause.",
+    "score": 5
+  }
+}

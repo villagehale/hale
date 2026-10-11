@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a prompt-injection attempt embedded in the text rather than a genuine calendar entry about a person, which squarely supports the unsure verdict—there is no real subject to classify.",
+    "score": 5
+  }
+}

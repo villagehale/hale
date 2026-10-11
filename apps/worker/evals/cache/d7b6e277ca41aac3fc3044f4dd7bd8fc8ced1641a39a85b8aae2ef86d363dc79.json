@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A bare meeting title with no further detail cannot be tied to the child or confirmed as adult-only, so \"unsure\" is correct and the reason correctly identifies it as a bare item with no child link.",
-    "score": 5
-  }
-}

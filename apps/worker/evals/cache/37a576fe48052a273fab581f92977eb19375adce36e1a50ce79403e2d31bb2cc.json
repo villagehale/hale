@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies this as a medical checkup for Wren, but it only restates the item title without explaining why that leads to the \"kid\" verdict (i.e., that Wren is a named child in the family).",
+    "score": 3
+  }
+}

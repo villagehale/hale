@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A hotel reservation confirmation is an appointment/booking with no child named, making it the parent's own item.",
+    "score": 5
+  }
+}

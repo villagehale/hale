@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A calendar event titled only \"Call\" is a bare item with no name, subject, or other context, so unsure is correct and the reason correctly identifies it as such.",
+    "score": 5
+  }
+}

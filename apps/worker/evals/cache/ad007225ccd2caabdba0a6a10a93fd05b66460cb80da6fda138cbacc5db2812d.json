@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel booking confirmation, which directly matches the \"hotel stay\" notMineHints entry, correctly leading to the adult verdict.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A single word with no context is a bare placeholder, correctly leaving the verdict as unsure.",
+    "score": 5
+  }
+}

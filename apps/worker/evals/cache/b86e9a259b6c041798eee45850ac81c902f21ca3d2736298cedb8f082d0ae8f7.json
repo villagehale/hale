@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A birthday party for a named child who is not one of the family's children is correctly identified as a kid item per the party/play-date rule, and the reasoning states exactly that in one clear clause.",
-    "score": 5
-  }
-}

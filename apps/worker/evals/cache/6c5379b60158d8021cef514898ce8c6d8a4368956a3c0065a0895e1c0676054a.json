@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies it as a parent-and-tot swim activity and names Wren, but it omits why this leads to a kid verdict (Wren is a named child, and parent-and-tot swim is a child activity), making it slightly incomplete in its explanation.",
+    "score": 3
+  }
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A single-word calendar entry with no names, activity, or any other context is genuinely ambiguous, correctly flagged as unsure.",
-    "score": 5
-  }
-}

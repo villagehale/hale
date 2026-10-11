@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A physio appointment with no child named matches the rule that an appointment with no child named is the parent's own, making \"adult\" correct; the reason is a concise, accurate single clause.",
+    "score": 4
+  }
+}

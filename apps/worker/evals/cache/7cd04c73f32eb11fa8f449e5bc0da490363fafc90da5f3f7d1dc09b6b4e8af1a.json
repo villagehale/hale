@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a medical checkup for Wren but simply restates the title without explaining why that leads to a \"kid\" verdict (i.e., that Wren is a named child aged 18 months, making this clearly a child's appointment).",
+    "score": 2
+  }
+}

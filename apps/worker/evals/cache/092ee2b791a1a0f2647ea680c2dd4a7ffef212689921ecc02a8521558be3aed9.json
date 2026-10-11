@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Daycare pickup is a child-care logistics task, which correctly points to a kid verdict, but the reason vaguely says \"the kids\" without grounding it in the item or the children present (Wren, Theo)—it's essentially just a restatement of the title with a thin gloss.",
-    "score": 3
-  }
-}

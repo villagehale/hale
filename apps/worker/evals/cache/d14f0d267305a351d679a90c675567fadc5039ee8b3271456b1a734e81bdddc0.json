@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A standup is a work meeting with no child named, so the appointment-with-no-child rule correctly points to the parent's own life.",
+    "score": 5
+  }
+}

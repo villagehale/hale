@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A baby shower for a named adult (Dana) is a social event for another adult, but the verdict should be \"kid\" territory — actually, baby showers are adult social events the parent attends, so \"adult\" is defensible, yet the classifier's own rule says a party for another person is a kid item only if it's a child's party/play date. However, Dana is explicitly an adult here, so \"adult\" is a reasonable verdict. The reason correctly identifies it as a baby shower for another adult and ties that to the verdict cleanly in one clause.",
+    "score": 4
+  }
+}

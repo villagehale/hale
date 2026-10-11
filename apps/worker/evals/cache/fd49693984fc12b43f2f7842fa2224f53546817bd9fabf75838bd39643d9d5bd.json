@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A single-word calendar entry with no names, topic, or other context is genuinely ambiguous, making \"unsure\" the correct call, and the reason correctly identifies it as a bare time block with nothing to settle the verdict.",
+    "score": 5
+  }
+}

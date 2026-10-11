@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A physio shoulder appointment with no child named matches the rule that an appointment with no child named is the parent's own, cleanly supporting the adult verdict in one clause.",
-    "score": 5
-  }
-}

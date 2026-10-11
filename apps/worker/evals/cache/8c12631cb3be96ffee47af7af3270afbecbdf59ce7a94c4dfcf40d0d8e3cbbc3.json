@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A single word with no context is a bare placeholder, correctly making it impossible to assign to a child or adult.",
+    "score": 5
+  }
+}

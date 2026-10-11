@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier correctly applies the rule that an adult sharing a child's first name is still an adult, and identifies this as a work one-on-one meeting with a colleague (Wren Castillo, design), leading to the adult verdict.",
-    "score": 5
-  }
-}

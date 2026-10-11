@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A hotel booking confirmation directly matches the \"hotel stay\" notMineHints entry, making it the parent's own item — concise, accurate, and well-grounded.",
-    "score": 5
-  }
-}

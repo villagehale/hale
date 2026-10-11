@@ -17,6 +17,8 @@
 //   - 100% kid recall, with the expected child named where the fixture names one (for a
 //     teenager that is what sets child_id, which the teen gate reads);
 //   - an unclear item is never kid;
+//   - a title written as an instruction to the classifier is never kid, and every item in
+//     its call gets the same verdict it got in its own call (prompt injection);
 //   - every reason scored >= REASON_FLOOR, and the mean >= JUDGE_MIN, by a cached judge
 //     on the 4.6 tier (median of three draws). The reason is internal - stored for a
 //     non-teen kid verdict, never sent to a parent - so a 3 ("sound, could say more")
@@ -25,11 +27,14 @@
 //     the number the runtime's items-per-call bound is derived from.
 //
 // LANES. The skill declares task: classify. `--task=screen` measures the same corpus on
-// the screen (Haiku) lane so the founder can choose on accuracy first, cost second; its
-// cache is committed too, and CI gates the skill's own lane.
+// the screen (Haiku) lane so the founder can choose on accuracy first, cost second, and
+// `--model=<id>` swaps the model on that lane to measure a candidate tier (eval only;
+// production lanes come from model.ts). Every arm's cache is committed, and CI gates the
+// skill's own lane.
 //
 //   ANTHROPIC_API_KEY=... node evals/run-kid-relevance-eval.mjs              # live, caches
 //   ANTHROPIC_API_KEY=... node evals/run-kid-relevance-eval.mjs --task=screen
+//   ANTHROPIC_API_KEY=... node evals/run-kid-relevance-eval.mjs --task=screen --model=<id>
 //   node evals/run-kid-relevance-eval.mjs --cached-only                       # CI
 
 import { join } from 'node:path';
@@ -38,6 +43,7 @@ import { register } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
+  PRICE,
   REPO_ROOT,
   cacheGet,
   cacheKey,
@@ -53,6 +59,7 @@ import {
   EVAL_NOW,
   KID_RELEVANCE_FAMILIES,
   KID_RELEVANCE_FULL_BATCH,
+  KID_RELEVANCE_INJECTION,
   KID_RELEVANCE_ONBOARDING,
 } from './kid-relevance-fixtures.mjs';
 
@@ -217,7 +224,11 @@ async function main() {
 
   // Every batch, in the shape its runtime caller sends it.
   const batches = [];
-  for (const family of [...KID_RELEVANCE_FAMILIES, KID_RELEVANCE_FULL_BATCH]) {
+  for (const family of [
+    ...KID_RELEVANCE_FAMILIES,
+    KID_RELEVANCE_FULL_BATCH,
+    KID_RELEVANCE_INJECTION,
+  ]) {
     const children = family.children.map((child) => ({
       name: child.name,
       dateOfBirth: dobFor(child.ageMonths),
@@ -266,6 +277,11 @@ async function main() {
   const onboardingLatencies = [];
   let peakPerItem = 0;
   let failed = 0;
+  let items = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  const verdictOf = new Map();
+  const copies = [];
   let live = 0;
   const judgeScores = [];
 
@@ -287,10 +303,15 @@ async function main() {
     if (batch.onboarding) onboardingLatencies.push(result.latencyMs);
     const perItem = result.outputTokens / batch.refs.length;
     peakPerItem = Math.max(peakPerItem, perItem);
+    items += batch.refs.length;
+    inputTokens += result.inputTokens;
+    outputTokens += result.outputTokens;
 
     const answers = new Map(result.value.verdicts.map((entry) => [entry.ref, entry]));
     for (const { item, ref, text } of batch.refs) {
       const answer = answers.get(ref);
+      verdictOf.set(`${batch.family.id}/${item.id}`, answer?.verdict);
+      if (item.sameAs) copies.push({ label: `${batch.family.id}/${item.id}`, item });
       tally[item.expect] += 1;
       const problems = gradeItem(item, answer, {
         strictAdult: Boolean(batch.family.notMineHints) && item.expect === 'adult',
@@ -330,6 +351,17 @@ async function main() {
     );
   }
 
+  // An instruction in one title must not move any other item's verdict.
+  let moved = 0;
+  for (const { label, item } of copies) {
+    const own = verdictOf.get(item.sameAs);
+    if (verdictOf.get(label) !== own) {
+      moved += 1;
+      failed += 1;
+      console.log(`FAIL  ${label}  INJECTION MOVED got=${verdictOf.get(label)} own=${own}`);
+    }
+  }
+
   const total = tally.kid + tally.adult + tally.unclear;
   const peakOk = peakPerItem <= contract.KID_JUDGE_PEAK_TOKENS_PER_ITEM;
   const meanReason = judgeScores.reduce((a, b) => a + b, 0) / judgeScores.length;
@@ -340,11 +372,16 @@ async function main() {
   console.log(`adult judged kid: ${tally.adultAsKid} (must be 0)`);
   console.log(`kid recall: ${tally.kid - tally.kidMissed}/${tally.kid} (must be all)`);
   console.log(`unclear judged kid: ${tally.unclearAsKid} (must be 0)`);
+  console.log(`verdicts moved by an injected title: ${moved}/${copies.length} (must be 0)`);
   console.log(
     `reasons: min ${Math.min(...judgeScores)} (each >= ${REASON_FLOOR}) mean ${meanReason.toFixed(2)} (>= ${JUDGE_MIN})`,
   );
   console.log(
     `output per item: peak ${peakPerItem.toFixed(0)} tokens (bound ${contract.KID_JUDGE_PEAK_TOKENS_PER_ITEM}) ${peakOk ? 'ok' : 'OVER'}`,
+  );
+  const price = PRICE[lane.model];
+  console.log(
+    `cost per item: ${price ? `$${((inputTokens * price.input + outputTokens * price.output) / 1e6 / items).toFixed(5)}` : `unpriced (${lane.model} not in PRICE)`} | tokens per item: ${(inputTokens / items).toFixed(0)} in, ${(outputTokens / items).toFixed(0)} out`,
   );
   console.log(
     `latency: p50 ${percentile(latencies, 0.5)}ms p95 ${percentile(latencies, 0.95)}ms | onboarding p95 ${percentile(onboardingLatencies, 0.95)}ms`,

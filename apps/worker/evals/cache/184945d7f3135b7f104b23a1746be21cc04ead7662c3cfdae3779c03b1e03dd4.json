@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies this as a party for another child (Mila), which falls under the rule that a party for another child is a kid item, supporting the kid verdict — but it awkwardly inverts the phrasing (\"another child's friend\") and adds an unsupported assumption that the family's kids would attend, rather than simply noting it is a named child's birthday party.",
+    "score": 3
+  }
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A dental appointment with no child named matches the rule that an appointment with no child named is the parent's own, so the verdict should be \"adult\" not \"unsure\"; the reason supports the wrong verdict.",
-    "score": 2
-  }
-}

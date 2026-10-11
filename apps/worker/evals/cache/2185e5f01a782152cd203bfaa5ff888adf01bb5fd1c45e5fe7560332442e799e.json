@@ -1,0 +1,57 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "c0",
+        "reason": "Mia's swim class at a pool",
+        "verdict": "kid",
+        "childName": "Mia"
+      },
+      {
+        "ref": "c1",
+        "reason": "1:1 meeting with a colleague named Mia Chen in Product role",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "c2",
+        "reason": "Mia's birthday party",
+        "verdict": "kid",
+        "childName": "Mia"
+      },
+      {
+        "ref": "c3",
+        "reason": "the parent's own alumni event dinner",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e0",
+        "reason": "Sebastian's 15-month checkup with doctor",
+        "verdict": "kid",
+        "childName": "Sebastian"
+      },
+      {
+        "ref": "e1",
+        "reason": "coffee social plan with a person named Sebastian",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e2",
+        "reason": "parent's own library hold for an adult novel",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e3",
+        "reason": "Parent and Tot Swim activity class",
+        "verdict": "kid",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 3509,
+  "inputTokens": 2100,
+  "outputTokens": 414
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A hotel reservation confirmation addressed to the parent is an adult booking, matching the rule that an appointment or booking with no child named belongs to the parent.",
-    "score": 5
-  }
-}

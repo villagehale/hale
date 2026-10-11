@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A car service appointment belongs to the parent, not the children, which correctly leads to the adult verdict — but the reason is a bare label with no \"what it is\" clause explaining the item is an email reminder about a vehicle maintenance appointment.",
-    "score": 3
-  }
-}

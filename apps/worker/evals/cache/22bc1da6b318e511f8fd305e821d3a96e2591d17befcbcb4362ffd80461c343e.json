@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A bare meeting title with no details, child name, or other context makes it impossible to classify, correctly supporting the unsure verdict.",
-    "score": 5
-  }
-}

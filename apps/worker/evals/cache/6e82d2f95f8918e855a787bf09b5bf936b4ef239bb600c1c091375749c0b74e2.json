@@ -1,0 +1,39 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a parent-and-tot swim class for Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i1",
+        "reason": "the parent's own work standup",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "text giving an instruction to the classifier, not about any activity",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i3",
+        "reason": "a music class for Theo",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i4",
+        "reason": "an 18-month checkup for Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      }
+    ]
+  },
+  "latencyMs": 2541,
+  "inputTokens": 2054,
+  "outputTokens": 281
+}

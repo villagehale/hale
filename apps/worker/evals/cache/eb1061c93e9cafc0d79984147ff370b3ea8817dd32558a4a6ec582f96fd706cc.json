@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A bare calendar entry (\"Réunion\") names no child and gives no other context, so unsure is the correct call and the reason correctly identifies it as a context-free meeting.",
+    "score": 5
+  }
+}

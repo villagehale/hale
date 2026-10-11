@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a bare, vague task with no child named and no other context linking it to kids or the parent specifically, making \"unsure\" the correct call — and the reason correctly identifies it as vague with no child mentioned.",
+    "score": 5
+  }
+}
