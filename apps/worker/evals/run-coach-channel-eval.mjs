@@ -2024,7 +2024,7 @@ async function main() {
   // replies that differed by a comma. A grader that noisy makes a 100% gate unreachable
   // for reasons that have nothing to do with the agent. The run is cached, so the tier
   // costs once.
-  const judgeModel = (await readModelIds()).sonnet;
+  const judgeModel = (await readModelIds()).judge;
   // MEDIAN OF THREE, not one draw. The per-fixture floor is a hard gate and the judge is a
   // sampled model: `capability-park-nearby-again` failed CI at 2 on a committed draw while
   // the round-1 reply — the same text, unchanged by the branch — also drew 2 under a fresh

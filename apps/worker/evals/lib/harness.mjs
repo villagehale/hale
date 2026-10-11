@@ -17,17 +17,21 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
+import { tsImport } from 'tsx/esm/api';
+import { z } from 'zod';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const WORKER_ROOT = join(HERE, '..', '..');
 export const REPO_ROOT = join(WORKER_ROOT, '..', '..');
 export const CACHE_DIR = join(HERE, '..', 'cache');
 const MODEL_TS = join(REPO_ROOT, 'packages', 'agent', 'src', 'model.ts');
+const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const CONTEXT_TS = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 
-// List prices, USD per 1M tokens. Source: Anthropic pricing via the claude-api
-// skill. The same three tiers the codebase routes across (model.ts).
+// List prices, USD per 1M tokens. Source: platform.claude.com/docs/en/about-claude/pricing
+// (read 2026-10-11). Haiku 5.5 is the ≤100K-token prompt card; no eval prompt is longer.
 export const PRICE = {
+  'claude-haiku-5-5': { input: 0.1, output: 0.5 },
   'claude-haiku-4-5': { input: 1.0, output: 5.0 },
   'claude-sonnet-4-6': { input: 3.0, output: 15.0 },
   'claude-sonnet-5': { input: 3.0, output: 15.0 },
@@ -66,9 +70,18 @@ export async function readModelIds() {
   return {
     haiku: grab('HAIKU_MODEL'),
     sonnet: grab('SONNET_MODEL'),
-    sonnet5: grab('SONNET5_MODEL'),
     opus: grab('OPUS_MODEL'),
+    judge: grab('JUDGE_MODEL'),
   };
+}
+
+let agentModule;
+
+/** packages/agent from source — the same seam production sends through. Loaded only for
+ * a live call, so a --cached-only run never compiles it. */
+export async function loadAgent() {
+  agentModule ??= await tsImport(AGENT_SRC, import.meta.url);
+  return agentModule;
 }
 
 // The bounded memory_slice limits the live coach actually applies, read straight
@@ -90,26 +103,19 @@ export async function readMemoryLimits() {
  * `'haiku'` is the default and stays the default: most rubrics in this directory are
  * short, and a cheap judge run over a small corpus is the point of the harness.
  *
- * `'sonnet'` is for the rubrics that have outgrown it. Measured 2026-08-25 on the activity
- * suites, whose rubric runs to about four thousand characters: Haiku marked a message down
- * for attributing a find to the venue's own site, and again for dropping a second find to
- * fit the first complete — both of which the rubric states IN SO MANY WORDS are correct and
- * must never be marked down. Those are not harsh readings, they are the grader not holding
- * the instructions, and no amount of median sampling fixes a judge that cannot read the
- * rubric it was given.
+ * `'sonnet'` (the name predates the 5.5 move) is for the rubrics that have outgrown it.
+ * Measured 2026-08-25 on the activity suites, whose rubric runs to about four thousand
+ * characters: Haiku marked a message down for things the rubric states IN SO MANY WORDS
+ * are correct — not a harsh reading, the grader not holding the instructions.
  *
- * IT IS THE 4.6 TIER AND NOT SONNET 5, DELIBERATELY. These suites run their SUBJECT on
- * Sonnet 5 — the composer and the research legs both — and a model grading its own output
- * is not a second opinion. model.ts reserves SONNET_MODEL as the judge rung for exactly
- * that reason and says so. The step that was needed here is Haiku → something that can hold
- * the rubric, not Haiku → the model under test.
- *
- * Read out of packages/agent's model.ts rather than pinned here, so a re-tier moves the
- * evals with production instead of leaving them grading against a retired id.
+ * It reads JUDGE_MODEL, which is NOT the Sonnet tier: these suites run their SUBJECT on
+ * Sonnet, and a model grading its own output is not a second opinion. Read out of
+ * packages/agent's model.ts rather than pinned here, so a re-tier moves the evals with
+ * production instead of leaving them grading against a retired id.
  */
 export async function readJudgeModel(tier = 'haiku') {
   const src = await readFile(MODEL_TS, 'utf8');
-  const symbol = tier === 'sonnet' ? 'SONNET_MODEL' : 'HAIKU_MODEL';
+  const symbol = tier === 'sonnet' ? 'JUDGE_MODEL' : 'HAIKU_MODEL';
   const m = src.match(new RegExp(`${symbol}\\s*=\\s*'([^']+)'`));
   if (!m) throw new Error(`could not parse ${symbol} from ${MODEL_TS}`);
   return m[1];
@@ -263,10 +269,43 @@ function failCachedMiss(tag, key) {
   process.exit(1);
 }
 
-// --- cached one-shot tool-forced JSON call ----------------------------------
-// For the structured agents (classify / draft / review-verdict) and the judge:
-// a single messages.create with tool_choice forcing one tool. Returns the tool
-// input plus measured latency. Replays exactly from cache on a hit.
+// --- cached one-shot structured call ----------------------------------------
+// For the structured agents (classify / draft / review-verdict) and the judge. With a
+// `lane` the live call goes through packages/agent's forceToolJson — the production seam,
+// so the eval records exactly the request shape, strict schema, re-ask and failure
+// guards production sends. Replays exactly from cache on a hit.
+
+/** The seam validates against a Zod schema; the eval grades the raw input itself. */
+const ANY_INPUT = z.any();
+
+/**
+ * A Claude subject must say which LANE it runs on: on the 5.5 generation an omitted
+ * `thinking` is not "no thinking" (Haiku 5.5 thinks by default), so a bare model id
+ * records a request production never sends.
+ */
+function requireLane(tag, model, opts) {
+  if (opts.lane || opts.thinking || !model.startsWith('claude-')) return;
+  throw new Error(`${tag}: pass the subject's lane (agent.pickLane(task)), not a bare model id`);
+}
+
+/**
+ * One live structured call through the production seam, for the evals that keep their
+ * own cache. Same request shape, strict schema, re-ask and failure guards as runtime.
+ */
+export async function liveStructuredCall({ client, lane, system, userMessage, toolName, toolDescription, toolSchema, maxTokens }) {
+  const agent = await loadAgent();
+  return agent.forceToolJson({
+    client,
+    lane,
+    system,
+    userMessage,
+    toolName,
+    toolDescription,
+    inputJsonSchema: toolSchema,
+    schema: ANY_INPUT,
+    maxTokens,
+  });
+}
 
 export async function cachedToolCall(opts) {
   const gatewayModel = opts.gatewayModel ?? process.env.EVAL_GATEWAY_MODEL;
@@ -278,25 +317,9 @@ export async function cachedToolCall(opts) {
       model: gatewayModel,
     });
   }
-  const { tag, model, system, userMessage, toolName, toolSchema, cachedOnly, getClient, cost } =
-    opts;
-  const request = evalAnthropicRequest({
-    model,
-    max_tokens: opts.maxTokens ?? 1024,
-    system,
-    tools: [
-      {
-        name: toolName,
-        description: opts.toolDescription ?? 'Return the result.',
-        input_schema: toolSchema,
-        ...(opts.strictTool ? { strict: true } : {}),
-      },
-    ],
-    tool_choice: opts.toolChoice ?? { type: 'tool', name: toolName },
-    ...(opts.thinking ? { thinking: opts.thinking } : {}),
-    ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  const { tag, system, userMessage, toolName, toolSchema, cachedOnly, getClient, cost } = opts;
+  const model = opts.lane?.model ?? opts.model;
+  const maxTokens = opts.maxTokens ?? 1024;
   const canonical = JSON.stringify({ model, system, userMessage, toolName, toolSchema });
   const key = cacheKey(tag, canonical);
 
@@ -308,28 +331,62 @@ export async function cachedToolCall(opts) {
   }
 
   if (cachedOnly) failCachedMiss(tag, key);
+  requireLane(tag, model, opts);
 
   const startedAt = Date.now();
-  const response = await getClient().messages.create(request);
-  const latencyMs = Date.now() - startedAt;
-  // TRUNCATION IS NOT AN ANSWER, and it must never be CACHED as one. A response cut at
-  // max_tokens leaves the forced tool call incomplete — usually `input: {}` — which reads
-  // downstream as a model that looked and found nothing. The runtime has guarded this for
-  // months (pipeline/structured.ts); the harness did not, so on 2026-08-24 the deep eval
-  // recorded a `{"slots":[]}` for a fixture whose notes plainly listed four programmes,
-  // cached it forever, and reported it as "a real page answered with a shrug".
-  if (response.stop_reason === 'max_tokens') {
-    throw new Error(
-      `${tag}: tool call truncated at max_tokens (${opts.maxTokens ?? 1024}) - raise the budget; nothing cached`,
-    );
+  let value;
+  let usage;
+  if (opts.lane) {
+    // TRUNCATION, REFUSAL AND A MISSING CALL ARE NOT ANSWERS, and must never be CACHED as
+    // one: the seam throws a named StructuredOutputError for each, so nothing is written.
+    const agent = await loadAgent();
+    const result = await agent.forceToolJson({
+      client: getClient(),
+      lane: opts.lane,
+      system,
+      userMessage,
+      toolName,
+      toolDescription: opts.toolDescription ?? 'Return the result.',
+      inputJsonSchema: toolSchema,
+      schema: ANY_INPUT,
+      maxTokens,
+    });
+    value = result.value;
+    usage = result.usage;
+  } else {
+    // A candidate arm that sets its own knobs (not a production lane).
+    const request = evalAnthropicRequest({
+      model,
+      max_tokens: maxTokens,
+      system,
+      tools: [
+        {
+          name: toolName,
+          description: opts.toolDescription ?? 'Return the result.',
+          input_schema: toolSchema,
+          ...(opts.strictTool ? { strict: true } : {}),
+        },
+      ],
+      tool_choice: opts.toolChoice ?? { type: 'tool', name: toolName },
+      ...(opts.thinking ? { thinking: opts.thinking } : {}),
+      ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
+      messages: [{ role: 'user', content: userMessage }],
+    });
+    const response = await getClient().messages.create(request);
+    if (response.stop_reason === 'max_tokens') {
+      throw new Error(`${tag}: tool call truncated at max_tokens (${maxTokens}) - nothing cached`);
+    }
+    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === toolName);
+    if (!toolUse) throw new Error(`${tag}: model returned no ${toolName} tool call`);
+    value = toolUse.input;
+    usage = response.usage;
   }
-  const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === toolName);
-  if (!toolUse) throw new Error(`${tag}: model returned no ${toolName} tool call`);
-  noteUsage(cost, model, response.usage);
-  await cachePut(key, { value: toolUse.input, latencyMs });
+  const latencyMs = Date.now() - startedAt;
+  noteUsage(cost, model, usage);
+  await cachePut(key, { value, latencyMs });
   noteLatency(model, latencyMs);
   if (Array.isArray(cost.latencies)) cost.latencies.push(latencyMs);
-  return { value: toolUse.input, latencyMs, cached: false };
+  return { value, latencyMs, cached: false };
 }
 
 // --- cached free-text call (for the coach answer arm) -----------------------
@@ -344,15 +401,8 @@ export async function cachedTextCall(opts) {
       model: gatewayModel,
     });
   }
-  const { tag, model, system, userMessage, cachedOnly, getClient, cost } = opts;
-  const request = evalAnthropicRequest({
-    model,
-    max_tokens: opts.maxTokens ?? 1024,
-    system,
-    ...(opts.thinking ? { thinking: opts.thinking } : {}),
-    ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  const { tag, system, userMessage, cachedOnly, getClient, cost } = opts;
+  const model = opts.lane?.model ?? opts.model;
   const canonical = JSON.stringify({ model, system, userMessage });
   const key = cacheKey(tag, canonical);
 
@@ -369,10 +419,23 @@ export async function cachedTextCall(opts) {
   }
 
   if (cachedOnly) failCachedMiss(tag, key);
+  requireLane(tag, model, opts);
 
+  const laneFields = opts.lane ? (await loadAgent()).laneRequestFields(opts.lane) : null;
+  const request = evalAnthropicRequest({
+    ...(laneFields ?? { model }),
+    max_tokens: opts.maxTokens ?? 1024,
+    system,
+    ...(!laneFields && opts.thinking ? { thinking: opts.thinking } : {}),
+    ...(!laneFields && opts.effort ? { output_config: { effort: opts.effort } } : {}),
+    messages: [{ role: 'user', content: userMessage }],
+  });
   const startedAt = Date.now();
   const response = await getClient().messages.create(request);
   const latencyMs = Date.now() - startedAt;
+  if (response.stop_reason === 'refusal') {
+    throw new Error(`${tag}: the model declined (refusal) - nothing cached`);
+  }
   const text = response.content
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
@@ -596,6 +659,21 @@ export function isVerdict(parsed) {
   return typeof parsed?.score === 'number';
 }
 
+/**
+ * The judge's lane. A judge reads and scores; it does not need to deliberate at length,
+ * so a non-Haiku grader runs adaptive at `medium` (Opus 5.5 cannot disable thinking).
+ */
+function judgeLane(agent, model) {
+  return model === agent.HAIKU_MODEL
+    ? { model, thinking: 'disabled', effort: 'medium' }
+    : { model, thinking: 'adaptive', effort: 'medium' };
+}
+
+/** The same judge lane, for the suites that keep a judge of their own. */
+export async function judgeLaneFor(model) {
+  return judgeLane(await loadAgent(), model);
+}
+
 export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, cost, options) {
   const samples = options?.samples ?? 1;
 
@@ -607,54 +685,55 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     if (cached && isVerdict(cached.parsed)) return cached.parsed;
     if (cachedOnly) failCachedMiss(sampleTag, key);
 
-    const response = await getClient().messages.create({
-      model,
-      // 1024, not 256. At 256 a judge writing a thorough reason ran out of tokens
-      // MID-STRING, and because Anthropic does not hard-enforce a tool's input schema
-      // the partial call still arrived as a well-formed object — `{ score: 2 }` with the
-      // `reason` the schema marks required simply absent. Nothing here validated it, so
-      // a truncated verdict was cached and replayed as a real one, and a per-fixture
-      // floor then failed CI on a score with no argument attached to inspect. That is
-      // the "one low score came back with no reason at all" the coach-channel eval's own
-      // header records as unexplained; this is the explanation. The key does not include
-      // max_tokens, so raising it leaves every cached verdict valid and only affects
-      // calls that are actually made.
-      // 4096, and the ceiling has now been raised twice by the same failure. At 256 a
-      // thorough judge ran out MID-STRING; at 1024 the deep lane's four-slot fixture did
-      // the same, live, on 2026-08-24 — its surviving draws argue for 2800+ characters
-      // before they reach a number. The shared schema puts `reason` BEFORE `score` on
-      // purpose (a score emitted first is a score reasoned backwards from), which makes
-      // `score` precisely the field a truncation eats, so the budget has to clear the
-      // longest honest argument rather than the average one. A suite that passes
-      // `toolSchema` from `scoreFirstJudgeSchema` and `keepTruncatedScore` puts the
-      // number first and keeps a draw whose score already landed. The key does not
-      // include max_tokens, so raising it leaves every committed verdict valid and only
-      // touches calls actually made — and `isVerdict` above means a draw that still
-      // runs out before the number is loud, not a zero.
-      max_tokens: options?.maxTokens ?? 4096,
-      system: judgeSystem,
-      tools: [
-        {
-          name: 'score',
-          description: 'Return the score.',
-          input_schema: options?.toolSchema ?? JUDGE_SCHEMA,
-        },
-      ],
-      tool_choice: { type: 'tool', name: 'score' },
-      messages: [{ role: 'user', content: userMessage }],
-    });
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'score');
-    if (!toolUse) throw new Error(`judge (${tag}) returned no score tool call`);
-    const truncated = response.stop_reason === 'max_tokens';
-    const scored = isVerdict(toolUse.input);
-    if (!scored || (truncated && options?.keepTruncatedScore !== true)) {
-      throw new Error(
-        `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
-      );
+    const agent = await loadAgent();
+    let result;
+    try {
+      result = await agent.forceToolJson({
+        client: getClient(),
+        lane: judgeLane(agent, model),
+        // 1024, not 256. At 256 a judge writing a thorough reason ran out of tokens
+        // MID-STRING, and because Anthropic does not hard-enforce a tool's input schema
+        // the partial call still arrived as a well-formed object — `{ score: 2 }` with the
+        // `reason` the schema marks required simply absent. Nothing here validated it, so
+        // a truncated verdict was cached and replayed as a real one, and a per-fixture
+        // floor then failed CI on a score with no argument attached to inspect. That is
+        // the "one low score came back with no reason at all" the coach-channel eval's own
+        // header records as unexplained; this is the explanation. The key does not include
+        // max_tokens, so raising it leaves every cached verdict valid and only affects
+        // calls that are actually made.
+        // 4096, and the ceiling has now been raised twice by the same failure. At 256 a
+        // thorough judge ran out MID-STRING; at 1024 the deep lane's four-slot fixture did
+        // the same, live, on 2026-08-24 — its surviving draws argue for 2800+ characters
+        // before they reach a number. `reason` comes BEFORE `score` on purpose (a score
+        // emitted first is a score reasoned backwards from), which makes `score` precisely
+        // the field a truncation eats, so the budget has to clear the longest honest
+        // argument rather than the average one. The key does not include max_tokens, so
+        // raising it leaves every committed verdict valid and only touches calls actually
+        // made — and `isVerdict` above means a draw that still runs out is loud, not a zero.
+        // On the 5.5 generation a non-Haiku judge thinks first (Opus 5.5 cannot turn it
+        // off), and `max_tokens` caps the thinking too, so it gets twice the room.
+        maxTokens: model === agent.HAIKU_MODEL ? 4096 : 8192,
+        system: judgeSystem,
+        userMessage,
+        toolName: 'score',
+        toolDescription: 'Return the score.',
+        inputJsonSchema: JUDGE_SCHEMA,
+        schema: ANY_INPUT,
+      });
+    } catch (err) {
+      if (err?.outcome === 'truncated') {
+        throw new Error(
+          `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
+        );
+      }
+      throw err;
     }
-    if (!response.capBooked) noteUsage(cost, model, response.usage);
-    await cachePut(key, { parsed: toolUse.input });
-    return toolUse.input;
+    if (!isVerdict(result.value)) {
+      throw new Error(`judge (${sampleTag}) returned no score; nothing cached`);
+    }
+    noteUsage(cost, model, result.usage);
+    await cachePut(key, { parsed: result.value });
+    return result.value;
   }
 
   return async function judge(tag, payload) {

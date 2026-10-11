@@ -405,6 +405,8 @@ async function main() {
   const medicalSkill = await agent.loadSkill(MEDICAL_SKILL);
   const sanitizeModel = candidateModel ?? agent.pickModel(sanitizeSkill.meta.task);
   const medicalModel = candidateModel ?? agent.pickModel(medicalSkill.meta.task);
+  const sanitizeLane = candidateModel ? null : agent.pickLane(sanitizeSkill.meta.task);
+  const medicalLane = candidateModel ? null : agent.pickLane(medicalSkill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'medical-symptom', cachedOnly, getClient, cost);
   const allFixtures =
@@ -456,6 +458,7 @@ async function main() {
           await cachedToolCall({
             tag: evalRunTag(`medical-sanitize:${fixture.id}`),
             model: sanitizeModel,
+            lane: sanitizeLane,
             system: sanitizeSkill.instructions,
             userMessage: sanitizeUserMessage(fixture.text),
             toolName: 'sanitize',
@@ -521,6 +524,7 @@ async function main() {
           await cachedToolCall({
             tag: evalRunTag(`medical-symptom:${fixture.id}`),
             model: medicalModel,
+            lane: medicalLane,
             system: medicalSkill.instructions,
             userMessage: composeUserMessage({ ...query, language, researchNotes: ground.notes }),
             toolName: 'medical_answer',

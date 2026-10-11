@@ -318,6 +318,7 @@ async function main() {
 
   const skill = await agent.loadSkill(NUDGE_SKILL_PATH);
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
+  const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'nudge', cachedOnly, getClient, cost);
 
@@ -356,6 +357,7 @@ async function main() {
       const { text } = await cachedTextCall({
         tag: evalRunTag(`nudge:compose:${fixture.id}`),
         model,
+        lane: subjectLane,
         system: `${skill.instructions}\n\n## Context\n\n${JSON.stringify(context)}`,
         userMessage: JSON.stringify(context),
         maxTokens: MAX_TOKENS,

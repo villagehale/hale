@@ -215,6 +215,7 @@ async function main() {
 
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
+  const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   const fixtures =
     minSamples === null
       ? PARTY_FIXTURES
@@ -244,6 +245,7 @@ async function main() {
           await cachedToolCall({
             tag: evalRunTag(`rsvp:extract:${fixture.id}`),
             model,
+            lane: subjectLane,
             system: skill.instructions,
             userMessage: partyUserMessage(fixture),
             toolName: 'party',

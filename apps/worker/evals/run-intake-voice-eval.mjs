@@ -280,6 +280,7 @@ async function main() {
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
+  const subjectLane = agent.pickLane(skill.meta.task);
   // The Sonnet tier, NOT the shared Haiku judge the other suites use. This corpus is
   // eight one-line sentences whose differences are stylistic, and the Haiku judge scored
   // semantically identical constructions 2 and 5 across runs ("Zoe is 5 and Andre is 7"
@@ -315,6 +316,7 @@ async function main() {
       const { value } = await cachedToolCall({
         tag: `intake-voice:ack:${fixture.id}`,
         model,
+        lane: subjectLane,
         system: skill.instructions,
         userMessage: JSON.stringify(fixture.context),
         toolName: 'ack',

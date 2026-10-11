@@ -193,6 +193,8 @@ async function main() {
   const noteSamples = await skillSampleSentences(NOTE_SKILL);
   const askModel = agent.pickModel(askSkill.meta.task);
   const noteModel = agent.pickModel(noteSkill.meta.task);
+  const askLane = agent.pickLane(askSkill.meta.task);
+  const noteLane = agent.pickLane(noteSkill.meta.task);
   const judgeModel = await readJudgeModel();
   const judgeAsk = makeJudge(judgeModel, JUDGE_ASK, 'calendar-ask', cachedOnly, getClient, cost);
   const judgeNote = makeJudge(judgeModel, JUDGE_NOTE, 'calendar-note', cachedOnly, getClient, cost);
@@ -215,6 +217,7 @@ async function main() {
           await cachedToolCall({
             tag: `calendar-ask:${fixture.id}`,
             model: askModel,
+            lane: askLane,
             system: askSkill.instructions,
             userMessage,
             toolName: 'ask',
@@ -246,6 +249,7 @@ async function main() {
           await cachedToolCall({
             tag: `calendar-note:${fixture.id}`,
             model: noteModel,
+            lane: noteLane,
             system: noteSkill.instructions,
             userMessage,
             toolName: 'note',

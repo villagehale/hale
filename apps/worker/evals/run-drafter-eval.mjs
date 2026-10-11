@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
+import { PRICE as LIST_PRICE, judgeLaneFor, liveStructuredCall } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -37,11 +38,11 @@ const MODEL_TS_PATH = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 
 const FIXTURE_DIR = join(HERE, 'fixtures', 'drafter');
 const CACHE_DIR = join(HERE, 'cache');
 
-// List prices (USD per 1M tokens). Source: Anthropic pricing, claude-api skill.
-// Sonnet = drafter; Haiku = judge.
+// List prices (USD per 1M tokens), read from the harness table so a re-tier cannot
+// leave this suite pricing a retired model. Sonnet = drafter; Haiku = judge.
 const PRICE = {
-  sonnet: { input: 3.0, output: 15.0 },
-  haiku: { input: 1.0, output: 5.0 },
+  sonnet: LIST_PRICE['claude-sonnet-5-5'],
+  haiku: LIST_PRICE['claude-haiku-5-5'],
 };
 
 // Gate thresholds.
@@ -60,11 +61,11 @@ const PLACEHOLDER_PATTERNS = [
 // --- read the single sources of truth from worker source -------------------
 
 async function readModelIds() {
-  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
+  const { pickLane } = await tsImport(AGENT_SRC, import.meta.url);
   const src = await readFile(MODEL_TS_PATH, 'utf8');
   const haiku = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
   if (!haiku) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS_PATH}`);
-  return { drafter: pickModel('draft'), judge: haiku[1] };
+  return { drafter: pickLane('draft'), judge: haiku[1] };
 }
 
 // The tool-forced JSON schema MUST mirror drafterOutputJsonSchema in
@@ -128,7 +129,8 @@ async function cachePut(key, value) {
 
 // --- the real drafter path (replicated forceToolJson) -----------------------
 
-function makeRealDrafter(model, prompt, cachedOnly, cost) {
+function makeRealDrafter(lane, prompt, cachedOnly, cost) {
+  const model = lane.model;
   let client;
   return async function draft(fixture) {
     const userMessage = userMessageFor(fixture);
@@ -145,28 +147,23 @@ function makeRealDrafter(model, prompt, cachedOnly, cost) {
     }
 
     client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model,
-      max_tokens: 1024,
+    // The production budget (apps/worker/src/agents/drafter.ts), through the same seam.
+    const response = await liveStructuredCall({
+      client,
+      lane,
       system: prompt,
-      tools: [
-        {
-          name: DRAFTER_TOOL,
-          description: 'Return the structured draft of the proposed action.',
-          input_schema: DRAFTER_JSON_SCHEMA,
-        },
-      ],
-      tool_choice: { type: 'tool', name: DRAFTER_TOOL },
-      messages: [{ role: 'user', content: userMessage }],
+      userMessage,
+      toolName: DRAFTER_TOOL,
+      toolDescription: 'Return the structured draft of the proposed action.',
+      toolSchema: DRAFTER_JSON_SCHEMA,
+      maxTokens: 4096,
     });
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === DRAFTER_TOOL);
-    if (!toolUse) throw new Error(`${fixture.id}: model returned no ${DRAFTER_TOOL} tool call`);
 
     cost.liveCalls += 1;
     cost.sonnetIn += response.usage.input_tokens;
     cost.sonnetOut += response.usage.output_tokens;
-    await cachePut(key, { parsed: toolUse.input });
-    return toolUse.input;
+    await cachePut(key, { parsed: response.value });
+    return response.value;
   };
 }
 
@@ -203,11 +200,12 @@ const JUDGE_SYSTEM = [
 const JUDGE_TOOL = 'score';
 const JUDGE_JSON_SCHEMA = {
   type: 'object',
+  // Reason BEFORE score: a score emitted first is a score reasoned backwards from.
   properties: {
-    score: { type: 'integer', minimum: 1, maximum: 5 },
     reason: { type: 'string' },
+    score: { type: 'integer', minimum: 1, maximum: 5 },
   },
-  required: ['score', 'reason'],
+  required: ['reason', 'score'],
 };
 
 function makeJudge(model, cachedOnly, cost) {
@@ -231,24 +229,22 @@ function makeJudge(model, cachedOnly, cost) {
     }
 
     client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model,
-      max_tokens: 256,
+    const response = await liveStructuredCall({
+      client,
+      lane: await judgeLaneFor(model),
       system: JUDGE_SYSTEM,
-      tools: [
-        { name: JUDGE_TOOL, description: 'Return the tone score.', input_schema: JUDGE_JSON_SCHEMA },
-      ],
-      tool_choice: { type: 'tool', name: JUDGE_TOOL },
-      messages: [{ role: 'user', content: userMessage }],
+      userMessage,
+      toolName: JUDGE_TOOL,
+      toolDescription: 'Return the tone score.',
+      toolSchema: JUDGE_JSON_SCHEMA,
+      maxTokens: 1024,
     });
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === JUDGE_TOOL);
-    if (!toolUse) throw new Error(`${fixture.id}: judge returned no ${JUDGE_TOOL} tool call`);
 
     cost.liveCalls += 1;
     cost.haikuIn += response.usage.input_tokens;
     cost.haikuOut += response.usage.output_tokens;
-    await cachePut(key, { parsed: toolUse.input });
-    return toolUse.input;
+    await cachePut(key, { parsed: response.value });
+    return response.value;
   };
 }
 
@@ -350,13 +346,14 @@ async function main() {
   const mode = arg ? arg.split('=')[1] : 'real';
   const cachedOnly = process.argv.includes('--cached-only');
 
-  const { drafter: drafterModel, judge: judgeModel } = await readModelIds();
+  const { drafter: drafterLane, judge: judgeModel } = await readModelIds();
+  const drafterModel = drafterLane.model;
   const prompt = await readFile(PROMPT_PATH, 'utf8');
   const fixtures = await loadFixtures(FIXTURE_DIR);
 
   const cost = { liveCalls: 0, sonnetIn: 0, sonnetOut: 0, haikuIn: 0, haikuOut: 0 };
   const draft =
-    mode === 'broken' ? makeBrokenDrafter() : makeRealDrafter(drafterModel, prompt, cachedOnly, cost);
+    mode === 'broken' ? makeBrokenDrafter() : makeRealDrafter(drafterLane, prompt, cachedOnly, cost);
   const judge = makeJudge(judgeModel, cachedOnly, cost);
 
   console.log(
