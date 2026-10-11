@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TRAVEL_BRIEF_ENABLED_ENV } from '../travel/flag';
 import { LANE_ENV, type ProactiveLane, laneEnabled } from './lanes';
 
-const LANES: ProactiveLane[] = ['calendar_alert', 'parent_calendar_mirror', 'email_alert'];
+const LANES: ProactiveLane[] = [
+  'calendar_alert',
+  'parent_calendar_mirror',
+  'email_alert',
+  'travel_brief',
+];
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -13,14 +19,24 @@ describe('laneEnabled', () => {
       calendar_alert: 'CALENDAR_ALERT_ENABLED',
       parent_calendar_mirror: 'PARENT_CALENDAR_MIRROR_ENABLED',
       email_alert: 'EMAIL_ALERT_ENABLED',
+      travel_brief: 'TRAVEL_BRIEF_ENABLED',
     });
   });
 
-  it.each(LANES)('%s is on for exactly true, surrounding whitespace trimmed', (lane) => {
+  it('the travel brief lane reads the travel flag module’s own variable name', () => {
+    expect(LANE_ENV.travel_brief).toBe(TRAVEL_BRIEF_ENABLED_ENV);
+  });
+
+  it.each(LANES)('%s is on for exactly true', (lane) => {
     vi.stubEnv(LANE_ENV[lane], 'true');
     expect(laneEnabled(lane)).toBe(true);
-    vi.stubEnv(LANE_ENV[lane], ' true ');
-    expect(laneEnabled(lane)).toBe(true);
+  });
+
+  it.each(LANES)('%s fails closed on surrounding whitespace and a trailing newline', (lane) => {
+    for (const value of [' true ', ' true', 'true ', 'true\n']) {
+      vi.stubEnv(LANE_ENV[lane], value);
+      expect(laneEnabled(lane), JSON.stringify(value)).toBe(false);
+    }
   });
 
   it.each(LANES)('%s is off when unset, empty, or any other spelling', (lane) => {
@@ -32,10 +48,11 @@ describe('laneEnabled', () => {
     }
   });
 
-  it('turning one lane on leaves the other two off', () => {
+  it('turning one lane on leaves the others off', () => {
     vi.stubEnv(LANE_ENV.calendar_alert, 'true');
     vi.stubEnv(LANE_ENV.parent_calendar_mirror, undefined);
     vi.stubEnv(LANE_ENV.email_alert, undefined);
-    expect(LANES.map(laneEnabled)).toEqual([true, false, false]);
+    vi.stubEnv(LANE_ENV.travel_brief, undefined);
+    expect(LANES.map(laneEnabled)).toEqual([true, false, false, false]);
   });
 });
