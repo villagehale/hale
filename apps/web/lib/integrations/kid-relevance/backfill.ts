@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { SuppressReason } from '~/lib/loop/reminders/schedule';
 import {
   type KidJudgement,
@@ -28,8 +29,11 @@ import { CLEARED_EVENT_TEXT } from './untrack';
  * again on its own terms.
  *
  * A dry run changes no tracking state and writes no audit row. It does store the verdicts
- * themselves, so the apply that follows judges nothing again and acts on exactly the
- * verdicts the dry run counted. It returns counts only (rule #1).
+ * themselves (the judge's cache), so the apply that follows judges nothing again and acts
+ * on exactly the verdicts the dry run counted. It returns counts only (rule #1).
+ *
+ * Skipped, and counted (rule #11): a copy whose connection is gone, and every family with
+ * an erasure scheduled - their titles are not sent to the model again.
  */
 
 export interface BackfillInput {
@@ -52,6 +56,10 @@ export interface BackfillCounts {
   remindersCancelled: number;
   blocksCleared: number;
   adultBookings: number;
+  /** Copies whose connection is gone: not judged, not touched. */
+  skippedDisconnected: number;
+  /** Families with an erasure scheduled: nothing of theirs is sent to the model again. */
+  skippedFamiliesPendingErasure: number;
 }
 
 const BACKFILL_REASON: SuppressReason = 'kid_relevance_backfill';
@@ -83,9 +91,16 @@ export async function runKidRelevanceBackfill(
     remindersCancelled: 0,
     blocksCleared: 0,
     adultBookings: 0,
+    skippedDisconnected: 0,
+    skippedFamiliesPendingErasure: 0,
   };
 
-  const byFamily = await loadCandidates(database, input.familyIds);
+  const { byFamily, skippedDisconnected, skippedFamiliesPendingErasure } = await loadCandidates(
+    database,
+    input.familyIds,
+  );
+  counts.skippedDisconnected = skippedDisconnected;
+  counts.skippedFamiliesPendingErasure = skippedFamiliesPendingErasure;
   for (const [familyId, candidates] of byFamily) {
     counts.families += 1;
     const judged = await judgeKidRelevance(
@@ -237,18 +252,46 @@ export async function runKidRelevanceBackfill(
 async function loadCandidates(
   database: Database,
   familyIds: readonly string[] | undefined,
-): Promise<Map<string, Candidate[]>> {
+): Promise<{
+  byFamily: Map<string, Candidate[]>;
+  skippedDisconnected: number;
+  skippedFamiliesPendingErasure: number;
+}> {
   const byFamily = new Map<string, Candidate[]>();
+  let skippedDisconnected = 0;
+  const pendingErasureSkipped = new Set<string>();
+  if (familyIds?.length === 0) {
+    return { byFamily, skippedDisconnected, skippedFamiliesPendingErasure: 0 };
+  }
+  // Every read below is scoped in SQL, so a run for one family never loads another's rows.
+  const scoped = (column: AnyPgColumn) =>
+    familyIds ? inArray(column, [...familyIds]) : undefined;
+
   // An offer or a booking names its connection without a foreign key, so it can outlive
   // a disconnect; a verdict cannot, because its integration_id cascades.
   const connected = new Set(
-    (await database.select({ id: schema.integrations.id }).from(schema.integrations)).map(
-      (row) => row.id,
-    ),
+    (
+      await database
+        .select({ id: schema.integrations.id })
+        .from(schema.integrations)
+        .where(scoped(schema.integrations.familyId))
+    ).map((row) => row.id),
+  );
+  const pendingErasure = new Set(
+    (
+      await database
+        .select({ id: schema.families.id })
+        .from(schema.families)
+        .where(and(isNotNull(schema.families.scheduledDeletionAt), scoped(schema.families.id)))
+    ).map((row) => row.id),
   );
   const add = (familyId: string, candidate: Candidate) => {
-    if (familyIds && !familyIds.includes(familyId)) return;
+    if (pendingErasure.has(familyId)) {
+      pendingErasureSkipped.add(familyId);
+      return;
+    }
     if (candidate.item.integrationId !== null && !connected.has(candidate.item.integrationId)) {
+      skippedDisconnected += 1;
       return;
     }
     const list = byFamily.get(familyId) ?? [];
@@ -272,6 +315,7 @@ async function loadCandidates(
         isNotNull(schema.familyEvents.googleEventId),
         isNotNull(schema.familyEvents.integrationId),
         isNull(schema.familyEvents.deletedAt),
+        scoped(schema.familyEvents.familyId),
       ),
     );
   for (const row of mirrors) {
@@ -304,7 +348,11 @@ async function loadCandidates(
     .from(schema.emailAlertOffers)
     .innerJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.emailAlertOffers.eventId))
     .where(
-      and(eq(schema.emailAlertOffers.resolution, 'added'), isNull(schema.familyEvents.deletedAt)),
+      and(
+        eq(schema.emailAlertOffers.resolution, 'added'),
+        isNull(schema.familyEvents.deletedAt),
+        scoped(schema.familyEvents.familyId),
+      ),
     );
   for (const row of offers) {
     add(row.familyId, {
@@ -329,6 +377,7 @@ async function loadCandidates(
       and(
         eq(schema.parentCalendarBlocks.kidRelated, true),
         isNotNull(schema.parentCalendarBlocks.title),
+        scoped(schema.parentCalendarBlocks.familyId),
       ),
     );
   for (const row of blocks) {
@@ -351,7 +400,9 @@ async function loadCandidates(
   const bookings = await database
     .select()
     .from(schema.activityBookings)
-    .where(isNull(schema.activityBookings.cancelledAt));
+    .where(
+      and(isNull(schema.activityBookings.cancelledAt), scoped(schema.activityBookings.familyId)),
+    );
   for (const row of bookings) {
     add(row.familyId, {
       target: { kind: 'booking', id: row.id },
@@ -368,5 +419,9 @@ async function loadCandidates(
     });
   }
 
-  return byFamily;
+  return {
+    byFamily,
+    skippedDisconnected,
+    skippedFamiliesPendingErasure: pendingErasureSkipped.size,
+  };
 }

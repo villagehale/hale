@@ -40,6 +40,11 @@ try {
     { client: budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS) },
   );
   console.info(JSON.stringify(counts, null, 2));
+  if (!apply) {
+    console.info(
+      `Dry run: ${counts.kid + counts.adult + counts.unsure} verdicts are stored (the judge's cache, which an apply reuses at no model cost); nothing else changed.`,
+    );
+  }
   process.exit(0);
 } catch (err) {
   const name = err instanceof Error ? err.constructor.name : 'unknown';

@@ -26,6 +26,7 @@ let parentUserId: string;
 let gcal: string;
 let gmail: string;
 let modelCalls: number;
+let seenTexts: string[];
 
 const ADULT = ['Standup', 'Dentist', 'Team dinner', 'Harbour Inn', 'Pottery for grown-ups'];
 const UNSURE = ['Mystery meetup'];
@@ -41,6 +42,7 @@ const client = {
     create: async (request: { messages: { content: string }[] }) => {
       modelCalls += 1;
       const input = JSON.parse(request.messages[0]?.content ?? '{}') as KidSkillInput;
+      seenTexts.push(...input.items.map((item) => item.text));
       return {
         content: [
           {
@@ -76,6 +78,7 @@ beforeEach(async () => {
   process.env.APP_ENCRYPTION_KEY = INPUT_KEY;
   process.env.HALE_LLM_NO_STREAM = '1';
   modelCalls = 0;
+  seenTexts = [];
   const family = await seedFamily(db.database);
   familyId = family.familyId;
   parentUserId = family.parentUserId;
@@ -189,7 +192,11 @@ async function state() {
     .select()
     .from(schema.auditLog)
     .where(eq(schema.auditLog.familyId, familyId));
-  return { events, reminders, blocks, bookings, audit };
+  const verdicts = await db.database
+    .select()
+    .from(schema.kidRelevanceVerdicts)
+    .where(eq(schema.kidRelevanceVerdicts.familyId, familyId));
+  return { events, reminders, blocks, bookings, audit, verdicts };
 }
 
 function run(apply: boolean) {
@@ -201,7 +208,7 @@ function run(apply: boolean) {
 }
 
 describe('runKidRelevanceBackfill', () => {
-  it('a dry run counts what it would do and changes no tracking state', async () => {
+  it('a dry run counts what it would do, stores only the verdicts it judged, and changes nothing else', async () => {
     await seed();
     const before = await state();
 
@@ -219,8 +226,63 @@ describe('runKidRelevanceBackfill', () => {
       remindersCancelled: 4,
       blocksCleared: 1,
       adultBookings: 1,
+      skippedDisconnected: 0,
+      skippedFamiliesPendingErasure: 0,
     });
-    expect(await state()).toEqual(before);
+    const { verdicts, ...rest } = await state();
+    const { verdicts: verdictsBefore, ...restBefore } = before;
+    expect(verdictsBefore).toEqual([]);
+    expect(verdicts).toHaveLength(counts.judged);
+    expect(rest).toEqual(restBefore);
+  });
+
+  it('counts and skips a copy whose connection is gone, without judging it', async () => {
+    await db.database.insert(schema.activityBookings).values({
+      familyId,
+      parentUserId,
+      integrationId: '00000000-0000-4000-8000-000000000001',
+      messageId: 'msg-gone',
+      providerHost: 'example.test',
+      title: 'Orphaned booking',
+      firstSessionAt: NEXT_WEEK,
+    });
+    await mirror('ev-swim', 'Wren swim');
+    const counts = await run(false);
+    expect(counts).toMatchObject({ judged: 1, kid: 1, skippedDisconnected: 1 });
+    expect(seenTexts.some((text) => text.includes('Orphaned'))).toBe(false);
+  });
+
+  it('counts and skips a family whose erasure is scheduled, sending nothing to the model', async () => {
+    await seed();
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: NEXT_WEEK })
+      .where(eq(schema.families.id, familyId));
+    const counts = await run(true);
+    expect(counts).toMatchObject({
+      families: 0,
+      judged: 0,
+      eventsDropped: 0,
+      skippedFamiliesPendingErasure: 1,
+    });
+    expect(modelCalls).toBe(0);
+  });
+
+  it('a run scoped to one family hands the model nothing from another', async () => {
+    await mirror('ev-swim', 'Wren swim');
+    const other = await seedFamily(db.database);
+    const otherGcal = await seedIntegration(db.database, other.familyId, other.parentUserId, 'gcal');
+    await db.database.insert(schema.familyEvents).values({
+      familyId: other.familyId,
+      title: 'Other household standup',
+      startsAt: NEXT_WEEK,
+      source: 'parent',
+      googleEventId: 'ev-other',
+      integrationId: otherGcal,
+    });
+    const counts = await run(false);
+    expect(counts).toMatchObject({ families: 1, judged: 1 });
+    expect(seenTexts).toEqual(['Wren swim at Community hall']);
   });
 
   it('apply drops adult copies, cancels their reminders with the reason and audits each', async () => {
