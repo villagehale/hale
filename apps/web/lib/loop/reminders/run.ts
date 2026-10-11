@@ -397,8 +397,12 @@ export interface ReminderRunResult {
   suppressed: number;
   cancelled: number;
   /** Due reminders on a mirrored Google event left 'scheduled' because the
-   * parent_calendar_mirror lane is off. They are classified again once it is on. */
+   * parent_calendar_mirror lane is off. They are classified again once it is on, and
+   * one whose moment passed beyond the grace is suppressed as 'missed', never sent late. */
   heldLaneOff: number;
+  /** Reminder rows not created for a mirrored Google event because the
+   * parent_calendar_mirror lane is off. They are created on the first run after it is on. */
+  notScheduledLaneOff: number;
   sendEnabled: boolean;
 }
 
@@ -486,6 +490,8 @@ export async function runReminderCron(
   }
 
   let converged = 0;
+  let notScheduledLaneOff = 0;
+  const mirrorLaneOn = laneEnabled('parent_calendar_mirror');
   for (const familyId of new Set([...familyParents.keys(), ...familyCaregivers.keys()])) {
     const events = await deps.loadHorizonEvents(db, familyId, now);
     const materialize = async (userId: string, timezone: string, event: LiveEvent) => {
@@ -506,6 +512,10 @@ export async function runReminderCron(
         // A Google mirror is that parent's own calendar. The other parent already
         // has a reminder when Hale itself placed the event (googleEventId null).
         if (event.googleEventId && event.createdBy !== parent.userId) continue;
+        if (event.googleEventId && !mirrorLaneOn) {
+          notScheduledLaneOff += REMINDER_OFFSETS.length;
+          continue;
+        }
         await materialize(parent.userId, parent.timezone, event);
       }
     }
@@ -560,7 +570,6 @@ export async function runReminderCron(
   let suppressed = 0;
   let cancelled = 0;
   let heldLaneOff = 0;
-  const mirrorLaneOn = laneEnabled('parent_calendar_mirror');
 
   for (const row of due) {
     const event = await deps.loadEvent(db, row.eventRef);
@@ -776,5 +785,14 @@ export async function runReminderCron(
     }
   }
 
-  return { converged, due: due.length, fired, suppressed, cancelled, heldLaneOff, sendEnabled };
+  return {
+    converged,
+    due: due.length,
+    fired,
+    suppressed,
+    cancelled,
+    heldLaneOff,
+    notScheduledLaneOff,
+    sendEnabled,
+  };
 }

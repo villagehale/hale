@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ReminderStatus, SuppressReason } from './schedule';
+import { REMINDER_MISS_GRACE_MS, type ReminderStatus, type SuppressReason } from './schedule';
 
 // VIL-229: the voice stage is a mocked module boundary (mirrors cron.test.ts's
 // composeWeekVoice mock) — these tests drive the WIRING (called/not-called, fail-open
@@ -32,6 +32,8 @@ const TZ = 'America/Toronto';
 const SUMMER_START = new Date('2026-07-25T14:00:00Z');
 const T1H_FIRE = new Date('2026-07-25T13:00:00Z');
 const NOW_T1H = new Date('2026-07-25T13:00:00Z');
+// Its T-24h fire moment: 18:00 EDT the day before.
+const T1D_FIRE = new Date('2026-07-24T22:00:00Z');
 
 function dueRow(over: Partial<DueReminder> = {}): DueReminder {
   return {
@@ -158,6 +160,7 @@ describe('runReminderCron — Phase A converge', () => {
       childId: null,
     });
     const hale = liveEvent({ id: 'hale-1', title: 'Checkup', childId: 'c1' });
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
     const { deps, upserts } = makeDeps({
       selectReminderParents: async () => [owner, coparent],
       selectReminderCaregivers: async () => [caregiver],
@@ -437,6 +440,61 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
       ['r-placement', 'sent'],
     ]);
     expect(result).toMatchObject({ due: 2, fired: 2, heldLaneOff: 0 });
+  });
+
+  const owner: ReminderParent = { familyId: 'fam-1', userId: 'p1', timezone: TZ };
+
+  it('creates no reminder rows for a mirrored event while the lane is off, and counts them', async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', undefined);
+    const { deps, upserts } = makeDeps({
+      selectReminderParents: async () => [owner],
+      loadHorizonEvents: async () => [mirror, placement],
+    });
+    const result = await runReminderCron({} as never, deps, new Date('2026-07-20T12:00:00Z'));
+
+    expect(upserts.map((u) => [u.eventRef, u.offset])).toEqual([
+      ['e1', '-P1D'],
+      ['e1', '-PT1H'],
+    ]);
+    expect(result).toMatchObject({ converged: 2, notScheduledLaneOff: 2 });
+  });
+
+  it('creates the mirrored rows as before once the lane is exactly true', async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const { deps, upserts } = makeDeps({
+      selectReminderParents: async () => [owner],
+      loadHorizonEvents: async () => [mirror, placement],
+    });
+    const result = await runReminderCron({} as never, deps, new Date('2026-07-20T12:00:00Z'));
+
+    expect(upserts.map((u) => [u.eventRef, u.offset])).toEqual([
+      ['gcal-1', '-P1D'],
+      ['gcal-1', '-PT1H'],
+      ['e1', '-P1D'],
+      ['e1', '-PT1H'],
+    ]);
+    expect(result).toMatchObject({ converged: 4, notScheduledLaneOff: 0 });
+  });
+
+  it('on relight, marks a held reminder whose moment passed beyond the grace as missed and still fires one inside it', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const relightAt = new Date(T1H_FIRE.getTime() + REMINDER_MISS_GRACE_MS / 2);
+    const { deps, enqueued, marked } = makeDeps({
+      loadDueReminders: async () => [
+        dueRow({ id: 'r-day-before', eventRef: 'gcal-1', offset: '-P1D', fireAt: T1D_FIRE }),
+        dueRow({ id: 'r-hour-before', eventRef: 'gcal-1' }),
+      ],
+      loadEvent: async (_db, ref) => events.get(ref) ?? null,
+    });
+    const result = await runReminderCron({} as never, deps, relightAt);
+
+    expect(enqueued.map((job) => job.dedupeKey)).toEqual(['reminder:-PT1H:fam-1:p1:gcal-1']);
+    expect(marked).toEqual([
+      { id: 'r-day-before', status: 'suppressed', reason: 'missed' },
+      { id: 'r-hour-before', status: 'sent', reason: null },
+    ]);
+    expect(result).toMatchObject({ fired: 1, suppressed: 1, heldLaneOff: 0 });
   });
 });
 
