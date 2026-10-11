@@ -106,6 +106,9 @@ vi.mock('../services/memory-writer.js', () => ({
     rationale: 'stored',
   })),
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
+  // The human-approve path's own seams are passed explicitly in the test that uses it.
+  loadActionForApproval: vi.fn(async () => null),
+  recordHumanApproval: vi.fn(async () => ({ claimed: false, eventStatus: null })),
   loadActionApprovalHistory: vi.fn(async () =>
     Array.from({ length: 5 }, () => ({ actionType: 'calendar_add', humanApproved: true })),
   ),
@@ -122,7 +125,9 @@ vi.mock('../services/memory-writer.js', () => ({
   })),
 }));
 
-const { runOrchestrator } = await import('./index.js');
+const { defaultExecuteApprovedDeps, executeApprovedAction, runOrchestrator } = await import(
+  './index.js'
+);
 
 const job: IngestedEventPayload = {
   family_id: 'fam-1',
@@ -201,20 +206,62 @@ describe('runOrchestrator — no plan gate; the execute lane is the only added b
     expect(runExecutor).not.toHaveBeenCalled();
   });
 
-  it('lane unset + an approved_pending_execute checkpoint on resume → lane_off, executor not called', async () => {
+  it('lane set to true with a trailing newline → held as lane_off (the value is not trimmed)', async () => {
+    vi.stubEnv(LANE, 'true\n');
+    await runOrchestrator(job);
+
+    expect(recordActionGate).toHaveBeenCalledWith(expect.objectContaining({ reason: 'lane_off' }));
+    expect(runExecutor).not.toHaveBeenCalled();
+  });
+
+  it('lane unset + an approved_pending_execute checkpoint → resumes into the executor, never demoted', async () => {
+    // The checkpoint may be a human approval's claim (recordHumanApproval writes the
+    // same status), so the lane must not hold or rewind it: resume is unchanged.
     vi.stubEnv(LANE, '');
     resumePoint = { eventId: 'evt-1', status: 'approved_pending_execute', teenContent: false };
     await runOrchestrator(job);
 
-    expect(recordActionGate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        familyId: 'fam-1',
-        actionId: 'action-1',
-        actionType: 'calendar_add',
-        reason: 'lane_off',
-      }),
-    );
-    expect(markEventStage).toHaveBeenCalledWith('fam-1', 'evt-1', 'reviewed');
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+    expect(recordActionGate).not.toHaveBeenCalled();
+    expect(markEventStage).not.toHaveBeenCalledWith('fam-1', 'evt-1', 'reviewed');
+  });
+
+  it('a lane_off action is still claimable by a human approval and executes through the normal path', async () => {
+    vi.stubEnv(LANE, '');
+    await runOrchestrator(job);
     expect(runExecutor).not.toHaveBeenCalled();
+    const stagesWritten = markEventStage.mock.calls.map((call) => (call as unknown[])[2]);
+    const lastStage = stagesWritten[stagesWritten.length - 1];
+
+    // recordHumanApproval admits a claim only FROM 'reviewed' (proved against real DDL
+    // in human-approval-claim.pglite.test.ts); this mirrors that predicate.
+    const recordApproval = vi.fn(async () =>
+      lastStage === 'reviewed'
+        ? { claimed: true as const }
+        : { claimed: false as const, eventStatus: String(lastStage) },
+    );
+    await executeApprovedAction(
+      { actionId: 'action-1', familyId: 'fam-1', approvedBy: 'parent-1' },
+      {
+        ...defaultExecuteApprovedDeps(),
+        loadAction: async () => ({
+          eventId: 'evt-1',
+          actionType: 'calendar_add',
+          payload: {},
+          userVisibleState: 'drafted_for_approval',
+          verdict: { kind: 'approve', toolResults: CALENDAR_ADD_COVERAGE, rationale: 'stored' },
+        }),
+        loadConsent: async () => ({ hasCoParent: false, coParentConsentGranted: false }),
+        recordApproval,
+        recordGate: vi.fn(async () => {}),
+      },
+    );
+
+    expect(lastStage).toBe('reviewed');
+    expect(recordApproval).toHaveBeenCalledTimes(1);
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+    expect(recordExecution).toHaveBeenCalledWith(
+      expect.objectContaining({ actionId: 'action-1', ok: true }),
+    );
   });
 });

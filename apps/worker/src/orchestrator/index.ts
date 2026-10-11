@@ -59,13 +59,14 @@ const CONFIDENCE_HUMAN_THRESHOLD = 0.7;
 
 /**
  * Kill switch for AUTONOMOUS execution only (a human approval is not braked). Off
- * unless the variable is exactly `true`; off holds the action for approval with the
- * named outcome `lane_off`. Same reading as the web proactive-send lanes.
+ * unless the variable is exactly `true`, untrimmed; off holds the action for approval
+ * with the named outcome `lane_off`. Checked before the execute checkpoint, never on
+ * resume: an `approved_pending_execute` checkpoint may be a human approval's claim.
  */
 const AUTONOMOUS_EXECUTE_ENV = 'AUTONOMOUS_EXECUTE_ENABLED';
 
 function autonomousExecuteEnabled(): boolean {
-  return (process.env[AUTONOMOUS_EXECUTE_ENV] ?? '').trim() === 'true';
+  return process.env[AUTONOMOUS_EXECUTE_ENV] === 'true';
 }
 
 // An accepted village item is a KNOWN, user-initiated intent — the parent tapped
@@ -757,22 +758,6 @@ async function resumeIntoExecutor(
       actionType: existing.actionType,
       reason: 'teen_redaction',
       detail: { stages, resumed: true },
-    });
-    return;
-  }
-
-  if (!autonomousExecuteEnabled()) {
-    await markEventStage(familyId, eventId, 'reviewed');
-    logger.info(
-      { familyId, eventId, actionId: existing.actionId, actionType: existing.actionType },
-      'orchestrator: autonomous execute lane off at approved_pending_execute — held on resume (executor not reached)',
-    );
-    await recordActionGate({
-      familyId,
-      actionId: existing.actionId,
-      actionType: existing.actionType,
-      reason: 'lane_off',
-      detail: { lane: AUTONOMOUS_EXECUTE_ENV, resumed: true },
     });
     return;
   }
