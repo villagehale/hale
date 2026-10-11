@@ -11,7 +11,11 @@ import {
 } from './booked';
 import type { CalendarAlertOutcome, CalendarAlertSweep, CalendarChange } from './calendar-alert';
 import type { CalendarMirrorCounts } from './calendar-mirror';
-import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
+import {
+  EMAIL_ALERT_MAX_PER_SWEEP,
+  type EmailAlertResult,
+  type GmailAlertEnvelope,
+} from './email-alert';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
 import { type ConnectorErrorCode, ConnectorSyncError, classifyConnectorError } from './sync-error';
@@ -166,19 +170,30 @@ export interface SyncConnectionResult {
  * THE EMAIL ALERT'S WATERMARK, beside the ingest's `historyId`. While EMAIL_ALERT_ENABLED
  * is off every live envelope is answered `lane_off`, and the ingest cursor still advances
  * past it — so without a second watermark that mail is dropped, not held. `alertHistoryId`
- * is where the alert pass last read to; it exists only while the lane holds it.
+ * is where the alert pass last read to; it exists only while held mail remains.
+ * `alertPendingIds` are held ids already read from that history and not yet handed over —
+ * the backfill's saved-cursor pattern, so a bound on one run cannot skip a message.
  *
  * - `advanced`: lane on and nothing held, the ordinary run.
  * - `held_lane_off`: lane off; the alert watermark stays where the lane went off.
- * - `released`: lane back on; the mail since the held watermark was handed to the alert
- *   pass once, and the watermark is dropped.
+ * - `releasing`: lane back on; the oldest slice of held mail (at most the alert sweep's own
+ *   bound) was handed to the alert pass, and the rest is still held for the next run.
+ * - `released`: lane back on; the last held slice was handed over and nothing is held.
+ * - `release_failed`: the alert pass threw on the held slice; the watermark and the held
+ *   ids are left exactly where they were, and the next run hands the same slice over.
  * - `held_expired`: lane back on, but Gmail no longer has history from the held watermark
  *   (or this run re-seeded); the watermark is dropped and that mail is not alerted.
  *
  * Only the ALERT pass re-reads: the ingest enqueue and the travel pass already saw the held
  * mail when it arrived, and neither is idempotent on a message id.
  */
-export type GmailCursorOutcome = 'advanced' | 'held_lane_off' | 'released' | 'held_expired';
+export type GmailCursorOutcome =
+  | 'advanced'
+  | 'held_lane_off'
+  | 'releasing'
+  | 'released'
+  | 'release_failed'
+  | 'held_expired';
 
 const GONE = 410;
 const NOT_FOUND = 404;
@@ -201,9 +216,10 @@ interface ProviderResult {
   gmail?: {
     seeding: boolean;
     envelopes: GmailAlertEnvelope[];
-    /** Mail since the held alert watermark, for the alert pass only. */
-    heldEnvelopes: GmailAlertEnvelope[];
     cursor: GmailCursorOutcome;
+    /** One slice of held mail, for the alert pass only, and the cursor to save once that
+     * pass has handled it. `nextMetadata` above still carries the old hold. */
+    release?: { envelopes: GmailAlertEnvelope[]; nextMetadata: Record<string, unknown> };
   };
   /** Calendar only: the raw changes of this run, INCLUDING the cancelled items the ingest
    * drops. A tombstone is the single most useful thing the alert path says and the one
@@ -245,6 +261,7 @@ export async function syncConnection(
     }
     // Advance the cursor ONLY after the whole batch is enqueued (no partial cursor).
     await deps.saveCursor(connection.id, result.nextMetadata);
+    let savedMetadata = result.nextMetadata;
     // AFTER the cursor, deliberately: the ingest contract is the thing this sweep owes,
     // and a text is a bonus on top of it. Were the order reversed, a slow alert pass
     // that timed out would re-enqueue the whole batch on the next run.
@@ -255,21 +272,14 @@ export async function syncConnection(
     // would otherwise reach the catch below, mark the CONNECTION errored and stop the
     // INGEST as well, so a bug in the bonus would silently end the contract.
     if (result.gmail) {
-      const { seeding, envelopes, heldEnvelopes } = result.gmail;
+      const { seeding, envelopes, release } = result.gmail;
       gmailCursor = result.gmail.cursor;
-      if (gmailCursor !== 'advanced') {
-        (gmailCursor === 'held_expired' ? console.warn : console.info)(
-          { connectionId: connection.id, gmailCursor, lane: 'email_alert' },
-          'connector sync: gmail alert watermark',
-        );
-      }
-      const alertEnvelopes = [...envelopes, ...heldEnvelopes];
       try {
         emailAlerts = await deps.alertGmailEnvelopes({
           connection,
           accessToken,
           seeding,
-          envelopes: alertEnvelopes,
+          envelopes,
         });
       } catch (err) {
         // The class only: an alert-path rejection can carry a subject line (rule #1).
@@ -284,11 +294,59 @@ export async function syncConnection(
         // neither the booking decision nor the count was ever reached - which is a
         // different fact from a booking that was refused or a count that was below the
         // floor.
-        emailAlerts = alertEnvelopes.map(() => ({
+        emailAlerts = envelopes.map(() => ({
           alert: 'alert_failed' as const,
           booking: null,
           going: null,
         }));
+      }
+      // THE HELD SLICE, on its own call so the live sweep's bound cannot cap it away, and
+      // the hold is advanced only AFTER the pass has handled it: a pass that throws leaves
+      // the watermark and the held ids where they were, and the next run hands the same
+      // slice over (the dedupe key answers anything that did go `already_sent`).
+      if (release) {
+        let released: readonly EmailAlertResult[] | null = null;
+        try {
+          released =
+            release.envelopes.length > 0
+              ? await deps.alertGmailEnvelopes({
+                  connection,
+                  accessToken,
+                  seeding: false,
+                  envelopes: release.envelopes,
+                })
+              : [];
+        } catch (err) {
+          console.error(
+            {
+              connectionId: connection.id,
+              err: err instanceof Error ? err.constructor.name : 'unknown',
+            },
+            'connector sync: the held email alert slice threw - the hold stays for the next run',
+          );
+          gmailCursor = 'release_failed';
+          emailAlerts = [
+            ...emailAlerts,
+            ...release.envelopes.map(() => ({
+              alert: 'alert_failed' as const,
+              booking: null,
+              going: null,
+            })),
+          ];
+        }
+        if (released !== null) {
+          await deps.saveCursor(connection.id, release.nextMetadata);
+          savedMetadata = release.nextMetadata;
+          emailAlerts = [...emailAlerts, ...released];
+        }
+      }
+      if (gmailCursor !== 'advanced') {
+        (gmailCursor === 'held_expired' || gmailCursor === 'release_failed'
+          ? console.warn
+          : console.info)(
+          { connectionId: connection.id, gmailCursor, lane: 'email_alert' },
+          'connector sync: gmail alert watermark',
+        );
       }
       // THE TRAVEL PASS, after the alert pass and behind its OWN boundary, for exactly the
       // reason the alert pass has one: a bug in Hale's travel path must not mark the
@@ -313,7 +371,7 @@ export async function syncConnection(
         );
         travelDetections = envelopes.map(() => 'detect_failed' as const);
       }
-      const backfill = await backfillBookedMail(connection, accessToken, deps, result.nextMetadata);
+      const backfill = await backfillBookedMail(connection, accessToken, deps, savedMetadata);
       if (backfill.status === 'saved') emailAlerts = [...emailAlerts, ...backfill.alerts];
     }
     if (result.calendar) {
@@ -725,7 +783,7 @@ interface GmailListResponse {
 export const BOOKED_BACKFILL_QUERY =
   'newer_than:90d (receipt OR invoice OR confirmation OR registration)';
 interface GmailHistoryResponse {
-  history?: Array<{ messagesAdded?: Array<{ message?: { id?: string } }> }>;
+  history?: Array<{ id?: string; messagesAdded?: Array<{ message?: { id?: string } }> }>;
   nextPageToken?: string;
   historyId?: string;
 }
@@ -741,7 +799,14 @@ interface GmailMessageResponse {
 
 type GmailHistoryDrain =
   | { stale: true }
-  | { stale: false; messageIds: string[]; nextHistoryId: string };
+  | {
+      stale: false;
+      messageIds: string[];
+      nextHistoryId: string;
+      /** Set only when MAX_PAGES stopped the drain: the last history record it reached,
+       * so a held watermark can resume there instead of dropping the rest. */
+      truncatedAt?: string;
+    };
 
 async function syncGmail(
   connection: ActiveConnectorConnection,
@@ -785,33 +850,55 @@ async function syncGmail(
   const seeding = startHistoryId === undefined || reseeded;
   // Preserve bookedBackfill (and any other cursor key) across the history advance.
   // A fresh {historyId} object would wipe an in-progress backfill page.
-  const { alertHistoryId, ...kept } = connection.providerMetadata;
+  const { alertHistoryId, alertPendingIds, ...kept } = connection.providerMetadata;
   const heldFrom = readString(alertHistoryId);
+  const pending = Array.isArray(alertPendingIds)
+    ? alertPendingIds.filter((id): id is string => readString(id) !== undefined)
+    : [];
   const nextMetadata: Record<string, unknown> = { ...kept, historyId: nextHistoryId };
+  const holding = (from: string | undefined, ids: string[]): Record<string, unknown> => ({
+    ...nextMetadata,
+    ...(from === undefined ? {} : { alertHistoryId: from }),
+    ...(ids.length > 0 ? { alertPendingIds: ids } : {}),
+  });
 
   const withoutReplay = (cursor: GmailCursorOutcome, meta = nextMetadata): ProviderResult => ({
     events,
     nextMetadata: meta,
-    gmail: { seeding, envelopes, heldEnvelopes: [], cursor },
+    gmail: { seeding, envelopes, cursor },
   });
 
   if (!laneEnabled('email_alert')) {
     const holdAt = heldFrom ?? (seeding ? undefined : startHistoryId);
-    if (holdAt === undefined) return withoutReplay('advanced');
-    return withoutReplay('held_lane_off', { ...nextMetadata, alertHistoryId: holdAt });
+    if (holdAt === undefined && pending.length === 0) return withoutReplay('advanced');
+    return withoutReplay('held_lane_off', holding(holdAt, pending));
   }
-  if (heldFrom === undefined) return withoutReplay('advanced');
-  const replay: GmailHistoryDrain = seeding
-    ? { stale: true }
-    : await drainGmailHistory(googleFetch, accessToken, heldFrom);
-  if (replay.stale) return withoutReplay('held_expired');
-  const read = new Set(messageIds);
-  const heldIds = [...new Set(replay.messageIds)].filter((id) => !read.has(id));
-  const held = await readGmailMessageBatch(googleFetch, accessToken, connection, heldIds);
+  if (heldFrom === undefined && pending.length === 0) return withoutReplay('advanced');
+  // Held ids already read come first, as the backfill's pendingIds do: they are older than
+  // anything a drain from the watermark can return.
+  let queue = pending;
+  let carry = heldFrom;
+  if (pending.length === 0 && heldFrom !== undefined) {
+    const replay: GmailHistoryDrain = seeding
+      ? { stale: true }
+      : await drainGmailHistory(googleFetch, accessToken, heldFrom);
+    if (replay.stale) return withoutReplay('held_expired');
+    const read = new Set(messageIds);
+    queue = [...new Set(replay.messageIds)].filter((id) => !read.has(id));
+    carry = replay.truncatedAt;
+  }
+  const slice = queue.slice(0, EMAIL_ALERT_MAX_PER_SWEEP);
+  const rest = queue.slice(EMAIL_ALERT_MAX_PER_SWEEP);
+  const held = await readGmailMessageBatch(googleFetch, accessToken, connection, slice);
   return {
     events,
-    nextMetadata,
-    gmail: { seeding, envelopes, heldEnvelopes: held.envelopes, cursor: 'released' },
+    nextMetadata: holding(heldFrom, pending),
+    gmail: {
+      seeding,
+      envelopes,
+      cursor: carry === undefined && rest.length === 0 ? 'released' : 'releasing',
+      release: { envelopes: held.envelopes, nextMetadata: holding(carry, rest) },
+    },
   };
 }
 
@@ -1094,6 +1181,8 @@ async function drainGmailHistory(
   const messageIds: string[] = [];
   let nextHistoryId: string | undefined;
   let pageToken: string | undefined;
+  let lastRecordId: string | undefined;
+  let complete = false;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     let url = `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded`;
     if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
@@ -1102,6 +1191,7 @@ async function drainGmailHistory(
     });
     if (status === NOT_FOUND) return { stale: true };
     for (const h of data.history ?? []) {
+      lastRecordId = h.id ?? lastRecordId;
       for (const m of h.messagesAdded ?? []) {
         if (m.message?.id) messageIds.push(m.message.id);
       }
@@ -1111,6 +1201,7 @@ async function drainGmailHistory(
       pageToken = data.nextPageToken;
       continue;
     }
+    complete = true;
     break;
   }
   if (nextHistoryId === undefined) {
@@ -1118,7 +1209,12 @@ async function drainGmailHistory(
     // {historyId: undefined} would make the next run re-seed and double-enqueue.
     throw new ConnectorSyncError('cursor_missing');
   }
-  return { stale: false, messageIds, nextHistoryId };
+  return {
+    stale: false,
+    messageIds,
+    nextHistoryId,
+    ...(complete ? {} : { truncatedAt: lastRecordId ?? startHistoryId }),
+  };
 }
 
 /** First run, and the re-seed an expired historyId forces. getProfile is the

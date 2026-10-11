@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarChange } from './calendar-alert';
-import type { GmailAlertEnvelope } from './email-alert';
+import { EMAIL_ALERT_MAX_PER_SWEEP, type GmailAlertEnvelope } from './email-alert';
 import type { ActiveConnectorConnection } from './store';
 import {
   BOOKED_BACKFILL_MAX_PER_SWEEP,
@@ -1214,6 +1214,160 @@ describe('syncConnection — the gmail alert watermark under the email lane', ()
       { connectionId: 'i1', gmailCursor: 'held_expired', lane: 'email_alert' },
       'connector sync: gmail alert watermark',
     );
+  });
+
+  /** Mail held since 9002, one history record per message, oldest first; nothing new
+   * since 9100. `endless` makes every held history page point at another one. */
+  function backlog(count: number, options: { endless?: boolean } = {}) {
+    const ids = Array.from({ length: count }, (_, i) => `h${String(i + 1).padStart(2, '0')}`);
+    let served = 0;
+    const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+    const fetchImpl: GoogleFetch = async (url) => {
+      const messageId = /\/messages\/([^?]+)/.exec(url)?.[1];
+      if (messageId !== undefined) {
+        return ok({
+          id: messageId,
+          snippet: `snippet ${messageId}`,
+          internalDate: String(1789000000000 + Number(messageId.slice(1)) * 60_000),
+          payload: { headers: [{ name: 'Subject', value: `Subject ${messageId}` }] },
+        });
+      }
+      if (url.includes('startHistoryId=9002')) {
+        if (options.endless) {
+          served += 1;
+          return ok({
+            history: [
+              { id: String(9002 + served), messagesAdded: [{ message: { id: `e${served}` } }] },
+            ],
+            nextPageToken: `page-${served}`,
+            historyId: '9999',
+          });
+        }
+        return ok({
+          history: ids.map((id, i) => ({
+            id: String(9003 + i),
+            messagesAdded: [{ message: { id } }],
+          })),
+          historyId: '9200',
+        });
+      }
+      if (url.includes('startHistoryId=9100') || url.includes('startHistoryId=9200')) {
+        return ok({ history: [], historyId: '9200' });
+      }
+      throw new Error(`no route for ${url}`);
+    };
+    return {
+      fetchImpl,
+      ids,
+      get served() {
+        return served;
+      },
+    };
+  }
+
+  it('a held backlog larger than one slice is released over two runs, oldest first, each message once', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const sent: string[] = [];
+    const mail = backlog(EMAIL_ALERT_MAX_PER_SWEEP + 2);
+    const { deps, cap } = stubDeps({
+      googleFetch: mail.fetchImpl,
+      alertGmailEnvelopes: laneAwarePort(sent),
+    });
+
+    const first = await syncConnection(
+      connection('gmail', { historyId: '9100', alertHistoryId: '9002' }),
+      deps,
+    );
+    expect(first.gmailCursor).toBe('releasing');
+    expect(sent).toEqual(mail.ids.slice(0, EMAIL_ALERT_MAX_PER_SWEEP));
+    expect(cap.cursor).toEqual({
+      historyId: '9200',
+      alertPendingIds: mail.ids.slice(EMAIL_ALERT_MAX_PER_SWEEP),
+    });
+
+    const second = await syncConnection(connection('gmail', cap.cursor ?? {}), deps);
+    expect(second.gmailCursor).toBe('released');
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+    expect(sent).toEqual(mail.ids);
+  });
+
+  it('an alert pass that throws on the release leaves the held watermark, and the next run releases it', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sent: string[] = [];
+    const mail = backlog(3);
+    const port = laneAwarePort(sent);
+    let failing = true;
+    const { deps, cap } = stubDeps({
+      googleFetch: mail.fetchImpl,
+      alertGmailEnvelopes: async (batch) => {
+        if (failing && batch.envelopes.length > 0) throw new Error('boom');
+        return port(batch);
+      },
+    });
+
+    const failed = await syncConnection(
+      connection('gmail', { historyId: '9100', alertHistoryId: '9002' }),
+      deps,
+    );
+    expect(failed.gmailCursor).toBe('release_failed');
+    expect(failed.emailAlerts.map((result) => result.alert)).toEqual([
+      'alert_failed',
+      'alert_failed',
+      'alert_failed',
+    ]);
+    expect(cap.cursor).toEqual({ historyId: '9200', alertHistoryId: '9002' });
+    expect(cap.errored).toBe(false);
+
+    failing = false;
+    const retried = await syncConnection(connection('gmail', cap.cursor ?? {}), deps);
+    // The positive control: a backlog of one slice is released in one run.
+    expect(retried.gmailCursor).toBe('released');
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+    expect(sent).toEqual(mail.ids);
+  });
+
+  it('a held drain that hits the page cap carries the last history record it reached forward', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const sent: string[] = [];
+    const mail = backlog(0, { endless: true });
+    const { deps, cap } = stubDeps({
+      googleFetch: mail.fetchImpl,
+      alertGmailEnvelopes: laneAwarePort(sent),
+    });
+
+    const result = await syncConnection(
+      connection('gmail', { historyId: '9100', alertHistoryId: '9002' }),
+      deps,
+    );
+
+    expect(result.gmailCursor).toBe('releasing');
+    expect(sent).toEqual(Array.from({ length: EMAIL_ALERT_MAX_PER_SWEEP }, (_, i) => `e${i + 1}`));
+    expect(cap.cursor?.alertHistoryId).toBe(String(9002 + mail.served));
+    expect(cap.cursor?.alertPendingIds).toHaveLength(mail.served - EMAIL_ALERT_MAX_PER_SWEEP);
+  });
+
+  it('the lane going off mid-release keeps the ids still owed beside a new held watermark', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { fetchImpl } = backlog(0);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+
+    const result = await syncConnection(
+      connection('gmail', { historyId: '9100', alertPendingIds: ['h11', 'h12'] }),
+      deps,
+    );
+
+    expect(result.gmailCursor).toBe('held_lane_off');
+    expect(cap.cursor).toEqual({
+      historyId: '9200',
+      alertHistoryId: '9100',
+      alertPendingIds: ['h11', 'h12'],
+    });
   });
 });
 
