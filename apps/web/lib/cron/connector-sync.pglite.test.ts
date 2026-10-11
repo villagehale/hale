@@ -49,6 +49,7 @@ beforeEach(async () => {
   family = await seedFamily(db.database);
   CONNECTION = await seedIntegration(db.database, family.familyId, family.parentUserId);
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
   vi.stubEnv('CALENDAR_ALERT_ENABLED', 'true');
   // Belt and braces for a wiring that regresses PAST the early outcomes: the alert would
   // then reach the real classifier. Both make that a loud failure rather than a live call.
