@@ -380,9 +380,12 @@ async function softDeleteMirror(
   input: { familyId: string; now: Date },
   id: string,
 ): Promise<void> {
+  // The title and location are the parent's own calendar words, and a removed mirror has
+  // no reader that needs them: a later sighting rewrites both from Google. `title` is NOT
+  // NULL, so it is emptied rather than nulled.
   await database
     .update(schema.familyEvents)
-    .set({ deletedAt: input.now })
+    .set({ deletedAt: input.now, title: '', location: null })
     .where(and(eq(schema.familyEvents.id, id), isNull(schema.familyEvents.deletedAt)));
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,

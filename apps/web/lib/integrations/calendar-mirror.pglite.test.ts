@@ -175,6 +175,38 @@ describe('reconcileCalendarMirrors', () => {
     expect((await audits()).map((row) => row.actionTaken)).toContain('calendar_mirror_removed');
   });
 
+  it("a removed mirror keeps none of the parent's words, and a live one is untouched", async () => {
+    const piano = swim({
+      id: 'ev-piano',
+      summary: 'Piano',
+      start: { dateTime: '2026-10-06T15:00:00.000Z' },
+      end: { dateTime: '2026-10-06T16:00:00.000Z' },
+    });
+    await reconcile([swim(), piano]);
+
+    await expect(reconcile([piano])).resolves.toMatchObject({ removed: 1 });
+
+    const stored = await rows();
+    expect(stored.find((row) => row.googleEventId === 'ev-swim')).toMatchObject({
+      title: '',
+      location: null,
+      deletedAt: NOW,
+    });
+    expect(stored.find((row) => row.googleEventId === 'ev-piano')).toMatchObject({
+      title: 'Piano',
+      location: 'The pool',
+      deletedAt: null,
+    });
+
+    // The calendar listing it again brings the words back from Google, not from the row.
+    await reconcile([swim(), piano]);
+    expect((await rows()).find((row) => row.googleEventId === 'ev-swim')).toMatchObject({
+      title: 'Swim',
+      location: 'The pool',
+      deletedAt: null,
+    });
+  });
+
   it('does not delete a mirror the truncated window did not happen to include', async () => {
     await reconcile([swim()]);
     const held = await reconcile(
