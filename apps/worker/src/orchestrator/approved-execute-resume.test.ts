@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ClassifierSuggestion } from '@hale/types';
@@ -99,7 +99,6 @@ vi.mock('../services/memory-writer.js', () => ({
   recordReviewerVerdict: vi.fn(async () => {}),
   recordReviewerRejection: vi.fn(async () => {}),
   recordExecution: vi.fn(async () => {}),
-  recordEntitlementGate: vi.fn(async () => {}),
   recordDrop: vi.fn(async () => {}),
   markEventStage: vi.fn(async (_fam: string, _evt: string, stage: string) => {
     const ev = store.get('fixed-hash');
@@ -122,8 +121,6 @@ vi.mock('../services/memory-writer.js', () => ({
     ],
     rationale: 'all green',
   })),
-  loadFamilyPlanTier: vi.fn(async () => 'family' as const),
-  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
   recordActionGate: vi.fn(async () => {}),
   // Fix-wave B gates all cleared so the FIX 1 resume path still executes:
   // old family, full send_email streak, single-parent, newborn stage.
@@ -154,7 +151,12 @@ const job: IngestedEventPayload = {
 };
 
 describe('runOrchestrator — FIX 1 approved-pre-execute crash-resume', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
+    vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', 'true');
     store.clear();
     runClassifier.mockClear();
     runDrafter.mockClear();

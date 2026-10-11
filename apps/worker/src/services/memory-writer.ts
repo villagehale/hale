@@ -5,8 +5,6 @@ import type {
   ActionType,
   ReviewerVerdict,
   ClassifierSuggestion,
-  PlanTier,
-  Entitlement,
   FamilyStage,
 } from '@hale/types';
 import { ageInMonths, deriveStage } from '@hale/types';
@@ -159,14 +157,6 @@ interface RecordReviewerRejectionInput {
   actionId: string;
   verdictKind: ReviewerVerdict['kind'];
   rationale: string;
-}
-
-interface RecordEntitlementGateInput {
-  familyId: string;
-  actionId: string;
-  actionType: ActionType;
-  planTier: PlanTier;
-  requiredEntitlement: Entitlement;
 }
 
 /**
@@ -482,79 +472,6 @@ export async function recordDrop(
   }, database);
 }
 
-interface RecordSpendCeilingDropInput {
-  familyId: string;
-  detail: Record<string, unknown>;
-}
-
-/**
- * Records the HARD monthly LLM-cost ceiling short-circuit when
- * `SPEND_CEILING_ENFORCED=true`: the pipeline returned BEFORE any billable stage
- * ran because the family is far past its budget (the runaway breaker, distinct
- * from the soft over-allowance autonomy valve). No event row exists yet — the
- * classifier never fired — so this writes only the immutable, family-scoped audit
- * row (hard rule #6). The audit targets the family; there is no event/action to
- * update. While enforcement is off the caller uses {@link recordSpendCeilingExceeded}
- * instead and keeps going.
- */
-export async function recordSpendCeilingDrop(
-  input: RecordSpendCeilingDropInput,
-  database: Database = db(),
-): Promise<void> {
-  await recordTransition(async () => {
-    return {
-      value: undefined,
-      audit: {
-        familyId: input.familyId,
-        actor: 'system',
-        actionTaken: 'event.dropped.spend_ceiling',
-        targetTable: 'families',
-        targetId: input.familyId,
-        after: input.detail,
-      },
-    };
-  }, database);
-}
-
-/**
- * Non-blocking note that the family is over the hard ceiling while enforcement
- * is off. One audit row per family per UTC `day` (a second event the same day
- * returns `{ recorded: false }` and writes nothing). The pipeline keeps going
- * either way — this row is the trail, not a gate.
- */
-export async function recordSpendCeilingExceeded(
-  input: { familyId: string; day: string; detail: Record<string, unknown> },
-  database: Database = db(),
-): Promise<{ recorded: boolean }> {
-  const existing = await database
-    .select({ id: schema.auditLog.id })
-    .from(schema.auditLog)
-    .where(
-      and(
-        eq(schema.auditLog.familyId, input.familyId),
-        eq(schema.auditLog.actionTaken, 'spend_ceiling_exceeded_warn'),
-        sql`${schema.auditLog.after}->>'day' = ${input.day}`,
-      ),
-    )
-    .limit(1);
-  if (existing.length > 0) return { recorded: false };
-
-  await recordTransition(async () => {
-    return {
-      value: undefined,
-      audit: {
-        familyId: input.familyId,
-        actor: 'system',
-        actionTaken: 'spend_ceiling_exceeded_warn',
-        targetTable: 'families',
-        targetId: input.familyId,
-        after: { ...input.detail, day: input.day },
-      },
-    };
-  }, database);
-  return { recorded: true };
-}
-
 /**
  * Records a Reviewer non-approval (reject / flag_for_human) at the orchestrator
  * gate. recordReviewerVerdict already audited the verdict against the action;
@@ -585,40 +502,6 @@ export async function recordReviewerRejection(
 }
 
 /**
- * Records the B18 entitlement gate: an approved action that would have gone
- * autonomous, blocked because the family's tier lacks the required entitlement.
- * The action stays at its drafted_for_approval default — drafting/review of paid
- * features is allowed on every tier; only autonomous EXECUTION is gated. The
- * audit `after` carries the upgrade hint for the UI to surface (hard rule #6).
- */
-export async function recordEntitlementGate(
-  input: RecordEntitlementGateInput,
-  database: Database = db(),
-): Promise<void> {
-  await recordTransition(async () => {
-    return {
-      value: undefined,
-      audit: {
-        familyId: input.familyId,
-        actor: 'system',
-        actionTaken: 'action.entitlement_gated',
-        targetTable: 'actions',
-        targetId: input.actionId,
-        after: {
-          actionType: input.actionType,
-          planTier: input.planTier,
-          requiredEntitlement: input.requiredEntitlement,
-          upgradeHint:
-            input.requiredEntitlement === 'autonomy_l3'
-              ? 'Upgrade to Plus to let Hale act autonomously.'
-              : 'Upgrade to Family to let Hale act autonomously on commerce and portal actions.',
-        },
-      },
-    };
-  }, database);
-}
-
-/**
  * The rule-#4 / #5 / teen structural gates that block autonomous execution but
  * leave the action at its drafted_for_approval default (surfaced to the user,
  * not executed). Each maps to a distinct audit action_taken so PIPEDA
@@ -629,8 +512,8 @@ export type ActionGateReason =
   | 'streak'
   | 'cross_parent_consent'
   | 'teen_redaction'
-  | 'over_allowance'
-  | 'autonomy_not_opted_in';
+  | 'autonomy_not_opted_in'
+  | 'lane_off';
 
 interface RecordActionGateInput {
   familyId: string;
@@ -889,49 +772,6 @@ export async function loadApprovedVerdictForAction(
     toolResults: row.toolResults.map((r) => ({ tool: r.tool, ok: r.ok, result: r.result })),
     rationale: 'resumed from stored approved verdict',
   };
-}
-
-/** Loads a family's billing tier — drives the B18 entitlement gate on autonomy. */
-export async function loadFamilyPlanTier(
-  familyId: string,
-  database: Database = db(),
-): Promise<PlanTier> {
-  const rows = await database
-    .select({ planTier: schema.families.planTier })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId))
-    .limit(1);
-
-  const row = rows[0];
-  if (!row) {
-    throw new Error(`loadFamilyPlanTier: no family row for ${familyId}`);
-  }
-  return row.planTier;
-}
-
-/**
- * Sums a family's month-to-date LLM spend (USD) — drives the per-child fairness
- * valve (over-allowance autonomy gate). Sums `agent_runs.cost_usd` for runs
- * STARTED on/after the first of the current month; the `agent_runs_family_cost_idx`
- * (family_id, started_at, cost_usd) serves this scan. `cost_usd` is a numeric
- * column that Postgres SUMs as text, and is null for runs that recorded no cost,
- * so COALESCE(SUM(...), 0) and a Number() parse give a plain USD float. The month
- * boundary is computed in the DB's clock (now()) to match `started_at`.
- */
-export async function loadFamilyMonthToDateCostUsd(
-  familyId: string,
-  database: Database = db(),
-): Promise<number> {
-  const rows = await database
-    .select({
-      total: sql<string>`COALESCE(SUM(${schema.agentRuns.costUsd}), 0)`,
-    })
-    .from(schema.agentRuns)
-    .where(
-      sql`${schema.agentRuns.familyId} = ${familyId} AND ${schema.agentRuns.startedAt} >= date_trunc('month', now())`,
-    );
-
-  return Number(rows[0]?.total ?? 0);
 }
 
 /**

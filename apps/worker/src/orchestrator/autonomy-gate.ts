@@ -2,7 +2,7 @@ import type { ActionType, FamilyStage } from '@hale/types';
 
 /**
  * Rule #4 autonomy gates, as pure functions. The orchestrator gates autonomous
- * EXECUTION on confidence + plan tier (fix-wave A / B18); these add the two
+ * EXECUTION on confidence (fix-wave A); these add the two
  * missing structural gates the hard rule names: the 7-day observe window and the
  * per-action-type 5-streak. Data (families.createdAt, action history) is supplied
  * by injected db lookups in memory-writer — these functions do no I/O.

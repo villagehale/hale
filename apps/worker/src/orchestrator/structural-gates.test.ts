@@ -1,12 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ClassifierSuggestion, FamilyStage } from '@hale/types';
 
 /**
- * Fix-wave B structural gates wired into the orchestrator AFTER the entitlement
- * gate: rule #4 (7-day observe window + per-action-type 5-streak), rule #5
- * (cross-parent consent), and the teen-redaction cap. Each gated outcome stays
+ * Fix-wave B structural gates wired into the orchestrator: rule #4 (7-day
+ * observe window + per-action-type 5-streak), rule #5 (cross-parent consent),
+ * and the teen-redaction cap. Each gated outcome stays
  * drafted_for_approval, never executes, and writes a distinct action.gated.*
  * audit. We inject the family/consent/history/stage lookups and a high-confidence
  * approved action so the ONLY remaining brake is the gate under test.
@@ -98,14 +98,11 @@ vi.mock('../services/memory-writer.js', () => ({
   recordAction: vi.fn(async () => ({ actionId: 'action-1', drafterRunId: 'run-1' })),
   recordReviewerVerdict: vi.fn(async () => {}),
   recordReviewerRejection: vi.fn(async () => {}),
-  recordEntitlementGate: vi.fn(async () => {}),
   recordActionGate: (...args: unknown[]) => recordActionGate(...(args as [])),
   recordExecution: (...args: unknown[]) => recordExecution(...(args as [])),
   recordDrop: vi.fn(async () => {}),
   markEventStage: vi.fn(async () => {}),
   loadActionForEvent: vi.fn(async () => null),
-  loadFamilyPlanTier: vi.fn(async () => 'family' as const),
-  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
   loadActionApprovalHistory: vi.fn(async () => approvalHistory),
   loadCrossParentConsent: vi.fn(async () => crossParent),
@@ -128,7 +125,12 @@ const job: IngestedEventPayload = {
 };
 
 describe('runOrchestrator — fix-wave B structural gates', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
+    vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', 'true');
     recordActionGate.mockClear();
     recordExecution.mockClear();
     runExecutor.mockClear();
