@@ -350,7 +350,7 @@ describe('untrackItem', () => {
       .select()
       .from(schema.emailAlertOffers)
       .where(eq(schema.emailAlertOffers.messageId, 'msg-2'));
-    expect(offer).toMatchObject({ expiresAt: NOW, resolvedAt: null });
+    expect(offer).toMatchObject({ expiresAt: NOW, resolvedAt: null, title: '', location: null });
   });
 
   it('keeps the parent verdict when the model judges the same item again', async () => {

@@ -267,7 +267,7 @@ export async function dropOwedTexts(
     const offers = schema.emailAlertOffers;
     const withdrawn = await database
       .update(offers)
-      .set({ expiresAt: now })
+      .set({ expiresAt: now, title: '', location: null })
       .where(
         and(
           eq(offers.integrationId, item.integrationId),
