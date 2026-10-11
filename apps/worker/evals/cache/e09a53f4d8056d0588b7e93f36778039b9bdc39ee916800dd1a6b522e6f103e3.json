@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Fall swim registration closes Friday - worth grabbing a spot before the window shuts: https://rec.example.test/swim-registration. Also, the Elm Street library has a Paper Lantern Craft on Saturday if you're looking for something that afternoon: https://library.example.test/programs"
+  },
+  "stopReason": "tool_use"
+}

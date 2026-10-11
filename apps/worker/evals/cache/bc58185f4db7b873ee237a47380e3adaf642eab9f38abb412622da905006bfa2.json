@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reason": "It is Thursday 6:00 PM local — the last good pre-weekend evening — so weekend finds go out now; sat-lib is dropped because Saturday is an all-day commitment with no fitting free window, and sun-lib fits the Sunday afternoon free window (12:30–20:00 on Sunday, after the morning study block ends) so it is sent now.",
+    "action": "send_now",
+    "item_ids": [
+      "sun-lib"
+    ],
+    "hold_until": null,
+    "frequency_preference": null
+  },
+  "stopReason": "tool_use"
+}

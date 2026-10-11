@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reason": "The parent explicitly asked to be texted less, and this candidate (Sunday craft hour) was not parent-requested and has no deadline; respecting their stated preference, dropping it now.",
+    "action": "drop",
+    "item_ids": [
+      "extra-idea"
+    ],
+    "hold_until": null,
+    "frequency_preference": {
+      "direction": "less",
+      "note": "Parent said \"Can you text me less?\" on 2026-10-08."
+    }
+  },
+  "stopReason": "tool_use"
+}

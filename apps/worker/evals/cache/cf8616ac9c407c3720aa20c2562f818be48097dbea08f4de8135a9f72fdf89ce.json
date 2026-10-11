@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reason": "Three consecutive texts unanswered and the parent did not request this item, so the weekend swim find is not sent; dropping it until engagement resumes.",
+    "action": "drop",
+    "item_ids": [
+      "weekend-swim"
+    ],
+    "hold_until": null,
+    "frequency_preference": null
+  },
+  "stopReason": "tool_use"
+}

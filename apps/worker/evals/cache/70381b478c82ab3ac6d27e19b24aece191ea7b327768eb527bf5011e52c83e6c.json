@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reason": "It is Thursday 6 PM local — the last good pre-weekend evening — and the Saturday craft find fits the free window on Saturday; the worthless-after deadline is Saturday 2 PM ET, so sending now gives the parent the lead time to plan.",
+    "action": "send_now",
+    "item_ids": [
+      "sat-find"
+    ],
+    "hold_until": null,
+    "frequency_preference": null
+  },
+  "stopReason": "tool_use"
+}
