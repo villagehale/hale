@@ -8,6 +8,7 @@ import { StructuredRefusalError, forceToolJson, llmTransport } from '~/lib/pipel
 import {
   KID_JUDGE_ITEMS_PER_CALL,
   KID_JUDGE_MAX_TOKENS,
+  KID_REASON_MAX_CHARS,
   KID_VERDICT_TOOL,
   KID_VERDICT_TOOL_DESCRIPTION,
   type KidRelevanceChild,
@@ -18,6 +19,7 @@ import {
   kidSkillInputFor,
   kidSkillMessage,
   kidVerdictsContract,
+  repeatsAny,
 } from './skill-contract';
 
 /**
@@ -33,7 +35,8 @@ import {
  * re-judged or overwritten by a model upsert.
  *
  * Privacy (rule #1): the model sees titles, places and senders; the table stores none of
- * them. A reason is stored only for a non-teen kid verdict. A teenager's item carries
+ * them. A reason is stored only for a non-teen kid verdict, and not when it is long or
+ * repeats the item's title, place or sender. A teenager's item carries
  * its child id and no reason; a kid item tied to no named child keeps no reason when the
  * family has a teenager.
  *
@@ -303,8 +306,18 @@ function verdictRowFor(
     verdict: 'kid',
     childId: child?.id ?? null,
     teen,
-    reason: mayBeTeen ? null : answer.reason.trim() || null,
+    reason: mayBeTeen ? null : storedReason(answer.reason, entry.item),
   };
+}
+
+/** The reason, unless it is empty, long, or repeats the item's title, place or sender. */
+function storedReason(
+  reason: string,
+  item: Pick<KidRelevanceItem, 'title' | 'place' | 'sender'>,
+): string | null {
+  const trimmed = reason.trim();
+  if (trimmed.length === 0 || trimmed.length > KID_REASON_MAX_CHARS) return null;
+  return repeatsAny(trimmed, [item.title, item.place, item.sender]) ? null : trimmed;
 }
 
 async function upsertModelVerdicts(

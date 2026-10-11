@@ -32,6 +32,34 @@ export const KID_JUDGE_ITEMS_PER_CALL = Math.floor(
   KID_JUDGE_MAX_TOKENS / KID_JUDGE_PEAK_TOKENS_PER_ITEM,
 );
 
+/**
+ * The longest reason stored for a kid verdict. The recorded eval's longest reason was 81
+ * characters (2026-10-11); a longer one is dropped at storage, never at the wire, so a
+ * verbose answer still counts as a verdict.
+ */
+export const KID_REASON_MAX_CHARS = 120;
+
+/** The longest not-mine hint kept: the kind of thing it was, in a few words. */
+export const KID_HINT_MAX_CHARS = 48;
+
+/** Lowercased words only, so "Wren Swim," and "wren swim" compare equal. */
+function foldWords(text: string): string {
+  return text
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/** True when `text` carries any of `own` as a whole run of words. */
+export function repeatsAny(text: string, own: readonly (string | null)[]): boolean {
+  const folded = ` ${foldWords(text)} `;
+  return own.some((value) => {
+    const words = value === null ? '' : foldWords(value);
+    return words.length > 0 && folded.includes(` ${words} `);
+  });
+}
+
 export const KID_VERDICTS = ['kid', 'adult', 'unsure'] as const;
 export type KidVerdictValue = (typeof KID_VERDICTS)[number];
 

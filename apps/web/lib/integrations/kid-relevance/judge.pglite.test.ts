@@ -65,13 +65,15 @@ function scriptedClient(...steps: Scripted[]) {
 }
 
 /** Answers every item by a substring of its text; anything unmatched is unsure. */
-function byText(rules: Record<string, { verdict: Verdict; childName?: string }>): Scripted {
+function byText(
+  rules: Record<string, { verdict: Verdict; childName?: string; reason?: string }>,
+): Scripted {
   return (input) => ({
     verdicts: input.items.map((item) => {
       const hit = Object.entries(rules).find(([needle]) => item.text.includes(needle));
       return {
         ref: item.ref,
-        reason: hit ? `about ${hit[0]}` : 'unclear',
+        reason: hit ? (hit[1].reason ?? `about ${hit[0]}`) : 'unclear',
         verdict: hit ? hit[1].verdict : 'unsure',
         childName: hit?.[1].childName ?? null,
       };
@@ -141,7 +143,10 @@ beforeEach(async () => {
 describe('judgeKidRelevance', () => {
   it('stores a kid verdict with its child and reason, and an adult one with no reason', async () => {
     const { client } = scriptedClient(
-      byText({ 'Wren swim': { verdict: 'kid', childName: 'Wren' }, Standup: { verdict: 'adult' } }),
+      byText({
+        'Wren swim': { verdict: 'kid', childName: 'Wren', reason: 'a toddler swim class' },
+        Standup: { verdict: 'adult' },
+      }),
     );
     const judged = await judge(client, [item('a', 'Wren swim'), item('b', 'Standup')]);
 
@@ -154,7 +159,7 @@ describe('judgeKidRelevance', () => {
     const adultRow = stored.find((row) => row.itemKey === 'key-b');
     expect(kidRow).toMatchObject({
       verdict: 'kid',
-      reason: 'about Wren swim',
+      reason: 'a toddler swim class',
       decidedBy: 'model',
       source: 'google_calendar',
       integrationId,
@@ -243,10 +248,43 @@ describe('judgeKidRelevance', () => {
   it('an unattributed kid item keeps its reason when no child is a teenager', async () => {
     await db.database.delete(schema.children).where(eq(schema.children.id, children[1]?.id ?? ''));
     children = children.slice(0, 1);
-    const { client } = scriptedClient(byText({ 'Bake sale': { verdict: 'kid' } }));
+    const { client } = scriptedClient(
+      byText({ 'Bake sale': { verdict: 'kid', reason: 'a school fundraiser' } }),
+    );
     await judge(client, [item('a', 'Bake sale')]);
     const [row] = await storedVerdicts();
-    expect(row).toMatchObject({ verdict: 'kid', childId: null, reason: 'about Bake sale' });
+    expect(row).toMatchObject({ verdict: 'kid', childId: null, reason: 'a school fundraiser' });
+  });
+
+  it('stores no reason that repeats the title, place or sender, or runs long', async () => {
+    await db.database.delete(schema.children).where(eq(schema.children.id, children[1]?.id ?? ''));
+    children = children.slice(0, 1);
+    const { client } = scriptedClient(
+      byText({
+        'Wren swim': { verdict: 'kid', reason: 'Wren Swim, a lesson' },
+        Gymnastics: { verdict: 'kid', reason: 'a class at maple grove  POOL' },
+        'Rhyme time': { verdict: 'kid', reason: 'a library session from Willowbank Library' },
+        Drop: { verdict: 'kid', reason: `a drop-in ${'and more '.repeat(20)}` },
+        'J.': { verdict: 'kid', reason: 'a jumping class for a toddler' },
+      }),
+    );
+    const judged = await judge(client, [
+      item('a', 'Wren swim'),
+      item('b', 'Gymnastics', { place: 'Maple Grove pool' }),
+      item('c', 'Rhyme time', { sender: 'Willowbank Library' }),
+      item('d', 'Drop-in'),
+      item('e', 'J.'),
+    ]);
+    expect(judged.map((row) => row.verdict)).toEqual(['kid', 'kid', 'kid', 'kid', 'kid']);
+    const stored = await storedVerdicts();
+    expect(stored.map((row) => [row.itemKey, row.reason]).sort()).toEqual([
+      ['key-a', null],
+      ['key-b', null],
+      ['key-c', null],
+      ['key-d', null],
+      // "J." is not a word of this reason, so the reason stays.
+      ['key-e', 'a jumping class for a toddler'],
+    ]);
   });
 
   it("marks a teenager's item as teen with the child set and stores no reason", async () => {

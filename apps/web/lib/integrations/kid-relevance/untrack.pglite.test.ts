@@ -241,6 +241,17 @@ describe('untrackItem', () => {
     expect(await memoryFacts()).toEqual(factsBefore);
   });
 
+  it('keeps a hint to one plain line of a few words', async () => {
+    const first = await mirror('one-off', NEXT_WEEK, 'Harbour Inn check-in');
+    await untrack({ kind: 'family_event', id: first }, 'a hotel\nstay\u0007');
+    const second = await mirror('another', NEXT_WEEK, 'Quarterly review');
+    await untrack({ kind: 'family_event', id: second }, `a work thing ${'with detail '.repeat(10)}`);
+    expect((await parentVerdicts()).map((row) => [row.itemKey, row.hint]).sort()).toEqual([
+      ['another', null],
+      ['one-off', 'a hotel stay'],
+    ]);
+  });
+
   it('refuses a kind that repeats the title Hale saw, even with no calendar copy', async () => {
     await db.database.insert(schema.calendarEventSnapshots).values({
       integrationId,

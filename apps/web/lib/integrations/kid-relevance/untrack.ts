@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { SuppressReason } from '~/lib/loop/reminders/schedule';
 import { seriesKeyForEvent } from './judge';
-import type { KidRelevanceSource } from './skill-contract';
+import { KID_HINT_MAX_CHARS, type KidRelevanceSource } from './skill-contract';
 
 /**
  * "That's mine" (VIL-226 item 3, for the VIL-413 router). The parent's word that a
@@ -297,10 +297,10 @@ async function titlesSeen(
   return [];
 }
 
-/** The kind, unless it is empty or carries the item's own title. */
+/** The kind as one plain line, unless it is empty, long, or carries the item's own title. */
 function safeKind(kind: string | null, titles: readonly string[]): string | null {
-  const trimmed = kind?.trim() ?? '';
-  if (trimmed.length === 0) return null;
+  const trimmed = (kind ?? '').replace(/[\p{Cc}\s]+/gu, ' ').trim();
+  if (trimmed.length === 0 || trimmed.length > KID_HINT_MAX_CHARS) return null;
   const folded = trimmed.toLowerCase();
   const leaks = titles.some((title) => {
     const own = title.trim().toLowerCase();
