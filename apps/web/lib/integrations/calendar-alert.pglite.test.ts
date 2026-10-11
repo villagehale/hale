@@ -166,6 +166,7 @@ beforeEach(async () => {
   family = await seedFamily(db.database);
   INTEGRATION = await seedIntegration(db.database, family.familyId, family.parentUserId);
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('CALENDAR_ALERT_ENABLED', 'true');
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -233,6 +234,46 @@ describe('alertParentForCalendarChanges', () => {
     const quiet = harness();
     await expect(sweep(quiet, { changes: [] })).resolves.toEqual([]);
     expect(quiet.timeZoneReads).toEqual([]);
+  });
+
+  it('sends nothing while the calendar_alert lane is off, and names it lane_off', async () => {
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', undefined);
+    const h = harness();
+
+    await expect(sweepBoth(h)).resolves.toEqual({ changes: ['lane_off'], reoffers: [] });
+
+    expect(h.transport.sent).toEqual([]);
+    expect(h.threaded).toEqual([]);
+    await expect(ledgerRows()).resolves.toEqual([]);
+    await expect(auditRows()).resolves.toEqual([]);
+  });
+
+  it('holds a text it owes while the lane is off and sends it once the lane is back on', async () => {
+    await expect(
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } })),
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
+    const owed = await snapshotOf(TIMED.eventId);
+    expect(owed?.pendingSince).not.toBeNull();
+
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', 'false');
+    const off = harness();
+    await expect(sweepBoth(off, { changes: [] })).resolves.toEqual({
+      changes: [],
+      reoffers: [],
+    });
+    expect(off.transport.sent).toEqual([]);
+    expect(await snapshotOf(TIMED.eventId)).toMatchObject({
+      pendingSince: owed?.pendingSince,
+      heldTitle: 'Cartwheels Gym',
+    });
+
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', 'true');
+    const on = harness();
+    await expect(sweepBoth(on, { changes: [] })).resolves.toEqual({
+      changes: [],
+      reoffers: ['sent'],
+    });
+    expect(on.transport.sent).toHaveLength(1);
   });
 
   it('REMEMBERS the shape while it is dark, so the first change after the flip is a move', async () => {

@@ -3,6 +3,7 @@ import { and, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { laneEnabled } from '~/lib/channel/lanes';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -148,6 +149,10 @@ export const CALENDAR_ALERT_OUTCOMES = [
    * household notice. This SMS path stays quiet so a non-kid title never
    * reaches the group and nothing is retried as a 1:1. */
   'group_home',
+  /** CALENDAR_ALERT_ENABLED is not `true`. The shape is remembered and a text already
+   * owed is left as it was: re-offered once the lane is back on, unless it has aged out
+   * at {@link CALENDAR_ALERT_PENDING_MAX_DAYS} by then. */
+  'lane_off',
 ] as const;
 
 export type CalendarAlertOutcome = (typeof CALENDAR_ALERT_OUTCOMES)[number];
@@ -322,6 +327,10 @@ export async function alertParentForCalendarChanges(
   if (input.seeding) {
     await rememberOnly(database, input, parentUserId, ports);
     return { changes: changes.map(() => 'seeding_run'), reoffers: [] };
+  }
+  if (!laneEnabled('calendar_alert')) {
+    await rememberOnly(database, input, parentUserId, ports);
+    return { changes: changes.map(() => 'lane_off'), reoffers: [] };
   }
   // The flag is a pure function of the family id, so nothing above it costs a query and a
   // dark sweep of an empty page is the cheapest thing this module does. A dark sweep with

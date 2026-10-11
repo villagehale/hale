@@ -1,4 +1,5 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import type PgBoss from 'pg-boss';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -48,6 +49,7 @@ beforeEach(async () => {
   family = await seedFamily(db.database);
   CONNECTION = await seedIntegration(db.database, family.familyId, family.parentUserId);
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('CALENDAR_ALERT_ENABLED', 'true');
   // Belt and braces for a wiring that regresses PAST the early outcomes: the alert would
   // then reach the real classifier. Both make that a loud failure rather than a live call.
   vi.stubEnv('ANTHROPIC_API_KEY', '');
@@ -211,5 +213,86 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
         changes: [{ ...moved, updated: '2026-09-17T15:40:00.000Z' }],
       }),
     ).resolves.toEqual({ changes: ['gate_refused:not_enrolled'], reoffers: [] });
+  });
+});
+
+describe('connectorSyncDeps — the calendar mirror wiring', () => {
+  const NOW = new Date('2026-10-03T16:00:00.000Z');
+
+  function mirrorPort() {
+    return connectorSyncDeps(db.database, {} as PgBoss).buildDeps().mirrorCalendarWindow;
+  }
+
+  function swim(): Record<string, unknown> {
+    return {
+      id: 'ev-swim',
+      status: 'confirmed',
+      summary: 'Swim',
+      start: { dateTime: '2026-10-04T15:00:00.000Z' },
+      end: { dateTime: '2026-10-04T16:00:00.000Z' },
+    };
+  }
+
+  function familyEventRows() {
+    return db.database
+      .select()
+      .from(schema.familyEvents)
+      .where(eq(schema.familyEvents.familyId, family.familyId));
+  }
+
+  it('writes no family_events and reports the window held while the mirror lane is off', async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', undefined);
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const counts = await mirrorPort()({
+      connection: connection({ provider: 'gcal' }),
+      items: [swim()],
+      trustWindow: true,
+      now: NOW,
+    });
+
+    expect(counts).toEqual({
+      mirrored: 0,
+      updated: 0,
+      removed: 0,
+      alreadyKnown: 0,
+      skipped: 0,
+      held: true,
+    });
+    await expect(familyEventRows()).resolves.toEqual([]);
+    expect(info).toHaveBeenCalledWith(
+      { integrationId: CONNECTION },
+      'calendar mirror: parent_calendar_mirror lane off, skipped',
+    );
+  });
+
+  it('mirrors the window as before when the lane is exactly true', async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+
+    const counts = await mirrorPort()({
+      connection: connection({ provider: 'gcal' }),
+      items: [swim()],
+      trustWindow: true,
+      now: NOW,
+    });
+
+    expect(counts).toMatchObject({ mirrored: 1, held: false });
+    const rows = await familyEventRows();
+    expect(rows.map((row) => [row.source, row.googleEventId])).toEqual([['parent', 'ev-swim']]);
+  });
+
+  it('leaves mirrors already written in place when the lane goes off', async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const conn = connection({ provider: 'gcal' });
+    await mirrorPort()({ connection: conn, items: [swim()], trustWindow: true, now: NOW });
+
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', undefined);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    await expect(
+      mirrorPort()({ connection: conn, items: [], trustWindow: true, now: NOW }),
+    ).resolves.toMatchObject({ removed: 0, held: true });
+
+    const rows = await familyEventRows();
+    expect(rows.map((row) => [row.googleEventId, row.deletedAt])).toEqual([['ev-swim', null]]);
   });
 });

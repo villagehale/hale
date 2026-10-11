@@ -5,6 +5,7 @@ import { ageInMonths } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import type PgBoss from 'pg-boss';
 import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import { laneEnabled } from '~/lib/channel/lanes';
 import {
   narrateHouseholdMailbox,
   rememberAndNarrateCalendar,
@@ -315,13 +316,21 @@ function travelDetectPorts(
 
 /**
  * The sweep's half of the reminder mirror. The connecting parent's timezone places
- * an all-day occasion on their local midnight. No user means nobody to remind:
- * that absence is logged and the window is held (rule #11).
+ * an all-day occasion on their local midnight. No user means nobody to remind, and
+ * the lane switch off means nothing may be mirrored: either absence is logged and the
+ * window is held, so mirrors already written stay in place (rule #11).
  */
 async function mirrorCalendarWindow(
   database: Database,
   batch: CalendarMirrorBatch,
 ): Promise<CalendarMirrorCounts> {
+  if (!laneEnabled('parent_calendar_mirror')) {
+    console.info(
+      { integrationId: batch.connection.id },
+      'calendar mirror: parent_calendar_mirror lane off, skipped',
+    );
+    return emptyCalendarMirrorCounts(true);
+  }
   const userId = batch.connection.userId;
   if (!userId) {
     console.info(
