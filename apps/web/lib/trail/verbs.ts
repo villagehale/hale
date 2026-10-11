@@ -261,6 +261,10 @@ export const AUDIT_VERBS = [
   'calendar_mirror_added',
   'calendar_mirror_moved',
   'calendar_mirror_removed',
+  // VIL-226 · kid relevance (integrations/kid-relevance/).
+  'kid_relevance_untracked',
+  'kid_relevance_event_dropped',
+  'kid_relevance_reminder_cancelled',
   'group_decision_sync_sent',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
@@ -972,6 +976,21 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   calendar_mirror_removed: {
     sentence: 'Hale dropped something that left your calendar',
+    family: 'note',
+  },
+  // VIL-226. Pending Sloane's review. Each row carries a verdict, a source and counts;
+  // never a title. The parent said a connector item is theirs, so Hale stopped tracking it.
+  kid_relevance_untracked: {
+    sentence: 'Hale stopped tracking something you said is yours',
+    family: 'done',
+  },
+  // The judge read a connector copy as the parent's own, so it left the family calendar.
+  kid_relevance_event_dropped: {
+    sentence: 'Hale took one of your own events off the family calendar',
+    family: 'note',
+  },
+  kid_relevance_reminder_cancelled: {
+    sentence: 'Hale cancelled a reminder for one of your own events',
     family: 'note',
   },
   // A decision the parent made in a 1:1 thread, repeated once in the household
