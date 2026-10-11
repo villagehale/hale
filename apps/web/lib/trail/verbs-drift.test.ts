@@ -131,8 +131,8 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'action.gated.streak',
     'action.gated.cross_parent_consent',
     'action.gated.teen_redaction',
-    'action.gated.over_allowance',
     'action.gated.autonomy_not_opted_in',
+    'action.gated.lane_off',
     'event.stage.classified',
     'event.stage.drafted',
     'event.stage.reviewed',
@@ -231,13 +231,6 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   'apps/web/lib/channel/intake/watch-consent.ts': [
     'proactive_watch_granted',
     'proactive_watch_declined',
-  ],
-  // closeOffer takes the verb as a parameter: decline, the year link, or
-  // "already paid". The ask and the group-sync writes are string literals.
-  'apps/web/lib/billing/upgrade-ask.ts': [
-    'upgrade_declined',
-    'upgrade_link_sent',
-    'upgrade_already_paid',
   ],
   'apps/web/lib/integrations/store.ts': ['integration_connected', 'integration_revoked'],
   // The placement and draft services forward the verb they already chose. The

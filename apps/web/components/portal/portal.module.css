@@ -294,6 +294,17 @@
   padding-bottom: 0;
 }
 
+.rowOff {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Among link rows this div is its own :first-of-type, which would strip its divider. */
+.rowOff:first-of-type:not(:first-child):not(.tag + .rowOff) {
+  border-top: 1px solid var(--line);
+  padding-top: var(--s4);
+}
+
 .tight {
   grid-template-columns: minmax(0, 1fr) auto;
 }

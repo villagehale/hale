@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { type PlanTier, hasEntitlement } from '@hale/types';
+import type { PlanTier } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { applyStripeBillingEvent } from './stripe-billing-apply.js';
 import type { PriceTierMap } from './stripe-billing.js';
@@ -128,10 +128,6 @@ describe('applyStripeBillingEvent', () => {
       actionTaken: 'family_plan_updated',
       after: { planTier: 'plus', source: 'stripe', stripeEventId: 'evt_1' },
     });
-    // write → entitlement: the tier the event wrote actually unlocks L3 autonomy.
-    expect(hasEntitlement(result.status === 'applied' ? result.tier : 'free', 'autonomy_l3')).toBe(
-      true,
-    );
   });
 
   it('is idempotent: a redelivered event id claims nothing, writes no tier, audits nothing', async () => {
@@ -181,7 +177,6 @@ describe('applyStripeBillingEvent', () => {
 
     expect(result).toEqual({ status: 'applied', tier: 'free' });
     expect(rec.planWrites).toEqual([{ tier: 'free' }]);
-    expect(hasEntitlement('free', 'autonomy_l3')).toBe(false);
   });
 
   it('writes nothing for a subscription on an unknown price id (no silent tier grant)', async () => {

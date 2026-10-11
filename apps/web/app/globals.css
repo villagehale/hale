@@ -561,29 +561,6 @@ body {
   }
 }
 
-/* Dismiss (X) for an in-context upgrade invitation — a quiet, 44px tap target. */
-.upgrade-prompt-dismiss {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 2.75rem;
-  height: 2.75rem;
-  border: 0;
-  border-radius: var(--r-full);
-  background: transparent;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
-}
-
-.upgrade-prompt-dismiss:hover { background: var(--color-card); }
-
-.upgrade-prompt-dismiss:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
-}
-
 /* Shared people-avatar (components/ui/avatar.tsx): a photo when we have one, else a
  * tinted initials disc. `account` = navy disc + on-navy initials (the signed-in
  * parent); `child` = warm disc + navy initials (a child) — the two tones keep the

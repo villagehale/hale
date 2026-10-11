@@ -3,12 +3,7 @@ import Link from 'next/link';
 import { ApprovalCard, ReversibleCard } from '~/components/hale/approval-card';
 import { ApprovalsHeader } from '~/components/hale/approvals-header';
 import { HISTORY_NAV } from '~/components/hale/nav';
-import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
-import {
-  loadFamilyBasics,
-  loadPendingApprovals,
-  loadResolvedActions,
-} from '~/lib/dashboard/queries';
+import { loadPendingApprovals, loadResolvedActions } from '~/lib/dashboard/queries';
 
 export const metadata: Metadata = { title: 'Approvals' };
 
@@ -25,11 +20,7 @@ export const metadata: Metadata = { title: 'Approvals' };
  * loading, the sectioning, and nothing else.
  */
 export default async function ApprovalsPage() {
-  const [approvals, basics, resolved] = await Promise.all([
-    loadPendingApprovals(),
-    loadFamilyBasics(),
-    loadResolvedActions(),
-  ]);
+  const [approvals, resolved] = await Promise.all([loadPendingApprovals(), loadResolvedActions()]);
   const reversible = resolved.filter((row) => row.undoable);
 
   return (
@@ -59,15 +50,6 @@ export default async function ApprovalsPage() {
               <ReversibleCard key={done.id} done={done} />
             ))}
           </ul>
-        </div>
-      ) : null}
-
-      {approvals.length > 0 ? (
-        <div className="rise rise-3 mt-8">
-          <UpgradePrompt planTier={basics.planTier} entitlement="autonomy_l3">
-            Want Hale to handle the routine ones on its own? Plus lets it act for you, once
-            you&rsquo;ve approved the kind.
-          </UpgradePrompt>
         </div>
       ) : null}
 
