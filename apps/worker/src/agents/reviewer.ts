@@ -179,6 +179,8 @@ export async function runReviewer(
           recipient_visibility: input.draft.recipientVisibility,
           family_id: input.familyId,
         },
+        // The checks this action type requires — exactly the check tools offered above.
+        required_checks: REQUIRED_CHECKS[input.draft.actionType],
       }),
     },
   ];
