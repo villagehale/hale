@@ -149,7 +149,7 @@ describe('one door to the provider (rule #6)', () => {
     expect(found).toContain('apps/web/lib/channel/linq/transport.ts');
   });
 
-  it('no file reaches Linq outside the allowlisted, ledger-accountable set', () => {
+  it('no file reaches Twilio or Linq outside the allowlisted, ledger-accountable set', () => {
     const strangers = found.filter((file) => !(file in ONE_DOOR_ALLOWLIST));
     expect(
       strangers,
