@@ -4,6 +4,7 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { loadKidItemClassifierSkill } from '~/lib/cron/skill';
+import { kidRelevanceInputIndex } from '~/lib/crypto/blind-index';
 import { StructuredRefusalError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import {
   KID_JUDGE_ITEMS_PER_CALL,
@@ -30,8 +31,8 @@ import {
  * `unsure` and every failure mean the item is not tracked. A failure is never a verdict:
  * it comes back `held` with why, nothing is written, and the next tick asks again.
  *
- * Verdicts are cached in `kid_relevance_verdicts` by input hash, so an unchanged item
- * costs nothing. A `parent` row is the parent's own word ("that's mine") and is never
+ * Verdicts are cached in `kid_relevance_verdicts` by a keyed hash of the input, so an
+ * unchanged item costs nothing and the stored hash confirms no guessed title. A `parent` row is the parent's own word ("that's mine") and is never
  * re-judged or overwritten by a model upsert.
  *
  * Privacy (rule #1): the model sees titles, places and senders; the table stores none of
@@ -116,7 +117,7 @@ export async function judgeKidRelevance(
   const model = lane.model;
   const context = kidSkillInputFor([], ports.children, ports.notMineHints, input.now);
   const hashOf = (item: KidRelevanceItem) =>
-    sha256(
+    kidRelevanceInputIndex(
       JSON.stringify({
         model,
         skillHash,

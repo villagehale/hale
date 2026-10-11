@@ -20,6 +20,7 @@ import {
  */
 
 let db: TestDb;
+const INPUT_KEY = Buffer.alloc(32, 7).toString('base64');
 const NOW = new Date('2026-10-11T15:00:00.000Z');
 const LATER = new Date('2099-01-01T00:00:00.000Z');
 
@@ -123,6 +124,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  process.env.APP_ENCRYPTION_KEY = INPUT_KEY;
   process.env.HALE_LLM_NO_STREAM = '1';
   const family = await seedFamily(db.database);
   familyId = family.familyId;
@@ -182,6 +184,16 @@ describe('judgeKidRelevance', () => {
     const changed = scriptedClient(byText({ 'Physio moved': { verdict: 'adult' } }));
     await judge(changed.client, [item('a', 'Physio moved')]);
     expect(changed.calls).toHaveLength(1);
+  });
+
+  it('re-judges every item when the hashing key rotates', async () => {
+    await judge(scriptedClient(byText({ Physio: { verdict: 'adult' } })).client, [
+      item('a', 'Physio'),
+    ]);
+    process.env.APP_ENCRYPTION_KEY = Buffer.alloc(32, 8).toString('base64');
+    const rotated = scriptedClient(byText({ Physio: { verdict: 'adult' } }));
+    await judge(rotated.client, [item('a', 'Physio')]);
+    expect(rotated.calls).toHaveLength(1);
   });
 
   it('re-judges a group item with no integration in place, one row per item', async () => {

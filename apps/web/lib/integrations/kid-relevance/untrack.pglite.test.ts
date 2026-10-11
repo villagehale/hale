@@ -20,6 +20,7 @@ import { untrackItem } from './untrack';
  */
 
 let db: TestDb;
+const INPUT_KEY = Buffer.alloc(32, 7).toString('base64');
 const NOW = new Date('2026-10-11T15:00:00.000Z');
 const PAST = new Date('2026-10-04T15:00:00.000Z');
 const NEXT_WEEK = new Date('2026-10-18T15:00:00.000Z');
@@ -39,6 +40,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  process.env.APP_ENCRYPTION_KEY = INPUT_KEY;
   const family = await seedFamily(db.database);
   familyId = family.familyId;
   parentUserId = family.parentUserId;

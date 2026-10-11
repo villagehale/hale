@@ -16,6 +16,7 @@ import { KID_VERDICT_TOOL, type KidSkillInput } from './skill-contract';
  */
 
 let db: TestDb;
+const INPUT_KEY = Buffer.alloc(32, 7).toString('base64');
 const NOW = new Date('2026-10-11T15:00:00.000Z');
 const NEXT_WEEK = new Date('2026-10-18T15:00:00.000Z');
 const NO_DEADLINE = new Date('2099-01-01T00:00:00.000Z');
@@ -72,6 +73,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  process.env.APP_ENCRYPTION_KEY = INPUT_KEY;
   process.env.HALE_LLM_NO_STREAM = '1';
   modelCalls = 0;
   const family = await seedFamily(db.database);

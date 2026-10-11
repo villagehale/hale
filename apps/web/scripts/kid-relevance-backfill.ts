@@ -5,7 +5,7 @@
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts            # dry run
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts --apply    # write
 //
-// Needs DATABASE_URL and ANTHROPIC_API_KEY. A dry run changes no tracking state; it does
+// Needs DATABASE_URL, APP_ENCRYPTION_KEY and ANTHROPIC_API_KEY. A dry run changes no tracking state; it does
 // store the verdicts, so the apply acts on exactly what the dry run counted. Run the dry
 // run first and read the counts.
 
@@ -19,6 +19,10 @@ const NO_DEADLINE = new Date(8.64e15);
 const url = process.env.DATABASE_URL;
 if (!url) {
   console.error('DATABASE_URL is not set.');
+  process.exit(1);
+}
+if (!process.env.APP_ENCRYPTION_KEY) {
+  console.error('APP_ENCRYPTION_KEY is not set. The verdict cache is keyed on it.');
   process.exit(1);
 }
 if (!process.env.ANTHROPIC_API_KEY) {
