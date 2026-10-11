@@ -11,13 +11,15 @@ export type ProactiveLane =
   | 'calendar_alert'
   | 'parent_calendar_mirror'
   | 'email_alert'
-  | 'travel_brief';
+  | 'travel_brief'
+  | 'registration_ladder';
 
 export const LANE_ENV: Record<ProactiveLane, string> = {
   calendar_alert: 'CALENDAR_ALERT_ENABLED',
   parent_calendar_mirror: 'PARENT_CALENDAR_MIRROR_ENABLED',
   email_alert: 'EMAIL_ALERT_ENABLED',
   travel_brief: 'TRAVEL_BRIEF_ENABLED',
+  registration_ladder: 'REGISTRATION_LADDER_ENABLED',
 };
 
 export function laneEnabled(lane: ProactiveLane): boolean {

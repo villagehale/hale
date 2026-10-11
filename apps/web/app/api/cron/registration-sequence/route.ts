@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { LANE_ENV, laneEnabled } from '~/lib/channel/lanes';
 import { flushGroupDecisionSyncs } from '~/lib/channel/linq/family-outbound';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
@@ -26,13 +27,26 @@ export const maxDuration = 300;
  * one: different cadence, different failure budget, and different logs for what are
  * genuinely different risks.
  *
- * Two gates, both fail-closed. Cron auth is the spend gate: a request without
- * `Authorization: Bearer <CRON_SECRET>` gets 401 and NOTHING runs. F14_ENABLED /
- * F14_FAMILY_ALLOWLIST is the D21 dark-launch gate: unarmed, the sweep does not even
- * select a family.
+ * Three gates, all fail-closed. Cron auth is the spend gate: a request without
+ * `Authorization: Bearer <CRON_SECRET>` gets 401 and NOTHING runs. The
+ * `registration_ladder` lane (VIL-226) is the kill switch: unless
+ * REGISTRATION_LADDER_ENABLED is exactly `true` the ladder runs nothing and the sequence
+ * rows are left as they are, so a leg whose window is still open goes out once it is
+ * back on. F14_ENABLED / F14_FAMILY_ALLOWLIST is the D21 dark-launch gate: unarmed, the
+ * sweep does not even select a family. The group-decision flush is not the ladder and
+ * runs either way.
  */
 export const GET = cronRoute('registration-sequence', async () => {
   try {
+    if (!laneEnabled('registration_ladder')) {
+      const off = { lane: 'registration_ladder', outcome: 'lane_off' } as const;
+      console.info(
+        { ...off, env: LANE_ENV.registration_ladder },
+        'registration ladder: lane off, nothing run',
+      );
+      const sync = await flushGroupDecisionSyncs(db(), { now: new Date() });
+      return NextResponse.json({ ok: true, ...off, groupSync: sync }, { status: 200 });
+    }
     const summary = await runRegistrationSequenceCron(db());
     const sync = await flushGroupDecisionSyncs(db(), { now: new Date() });
     return NextResponse.json({ ok: true, ...summary, groupSync: sync }, { status: 200 });

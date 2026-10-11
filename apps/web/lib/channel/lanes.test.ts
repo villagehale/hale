@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TRAVEL_BRIEF_ENABLED_ENV } from '../travel/flag';
 import { LANE_ENV, type ProactiveLane, laneEnabled } from './lanes';
@@ -7,6 +9,7 @@ const LANES: ProactiveLane[] = [
   'parent_calendar_mirror',
   'email_alert',
   'travel_brief',
+  'registration_ladder',
 ];
 
 afterEach(() => {
@@ -20,6 +23,7 @@ describe('laneEnabled', () => {
       parent_calendar_mirror: 'PARENT_CALENDAR_MIRROR_ENABLED',
       email_alert: 'EMAIL_ALERT_ENABLED',
       travel_brief: 'TRAVEL_BRIEF_ENABLED',
+      registration_ladder: 'REGISTRATION_LADDER_ENABLED',
     });
   });
 
@@ -53,6 +57,22 @@ describe('laneEnabled', () => {
     vi.stubEnv(LANE_ENV.parent_calendar_mirror, undefined);
     vi.stubEnv(LANE_ENV.email_alert, undefined);
     vi.stubEnv(LANE_ENV.travel_brief, undefined);
-    expect(LANES.map(laneEnabled)).toEqual([true, false, false, false]);
+    vi.stubEnv(LANE_ENV.registration_ladder, undefined);
+    expect(LANES.map(laneEnabled)).toEqual([true, false, false, false, false]);
+  });
+});
+
+describe('the rollout checklist', () => {
+  const checklist = readFileSync(
+    join(__dirname, '../../../../docs/flag-rollout-checklist.md'),
+    'utf8',
+  );
+
+  it('has a row for a flag it is known to list (positive control)', () => {
+    expect(checklist).toMatch(/^\| `LOOP_SEND_ENABLED` \|/m);
+  });
+
+  it.each(LANES)('has a row for the %s lane variable', (lane) => {
+    expect(checklist).toMatch(new RegExp(`^\\| \`${LANE_ENV[lane]}\` \\|`, 'm'));
   });
 });
