@@ -1,8 +1,10 @@
 import { schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import type PgBoss from 'pg-boss';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { POLICY_VERSION } from '~/lib/consent';
+import { connectorSyncDeps } from '~/lib/cron/connector-sync';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
@@ -1042,3 +1044,64 @@ function pollWire(): {
     urls: () => urls,
   };
 }
+
+describe("the connector sweep's group notice under the calendar_alert lane", () => {
+  async function sweep(seeded: Awaited<ReturnType<typeof seedPair>>) {
+    vi.useFakeTimers({ toFake: ['Date'], now: DAY });
+    try {
+      const deps = connectorSyncDeps(db.database, {} as PgBoss).buildDeps();
+      return await deps.alertCalendarChanges({
+        connection: {
+          id: seeded.primaryIntegrationId,
+          familyId: seeded.familyId,
+          userId: seeded.primaryUserId,
+          provider: 'gcal',
+          providerMetadata: {},
+          tokens: { accessToken: 'ya29.test' },
+        },
+        seeding: false,
+        changes: [change({ eventId: 'gym', title: 'Maya gymnastics' })],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  async function groupNotices(familyId: string) {
+    return db.database
+      .select({ templateKey: schema.channelMessages.templateKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, familyId));
+  }
+
+  it('remembers the change but sends no group notice while the lane is off', async () => {
+    const seeded = await seedPair();
+    const wire = groupWire();
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    await sweep(seeded);
+    expect(wire.linqUrls()).toEqual([]);
+    expect(await groupNotices(seeded.familyId)).toEqual([]);
+    const [block] = await db.database
+      .select({
+        title: schema.parentCalendarBlocks.title,
+        kidRelated: schema.parentCalendarBlocks.kidRelated,
+        announcedAt: schema.parentCalendarBlocks.announcedAt,
+      })
+      .from(schema.parentCalendarBlocks)
+      .where(eq(schema.parentCalendarBlocks.eventId, 'gym'));
+    expect(block).toEqual({ title: 'Maya gymnastics', kidRelated: true, announcedAt: null });
+    expect(info).toHaveBeenCalledWith(
+      { integrationId: seeded.primaryIntegrationId, groupNotice: 'lane_off' },
+      'household calendar: calendar_alert lane off, notice skipped',
+    );
+  });
+
+  it('sends the group notice once the lane is exactly true', async () => {
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', 'true');
+    const seeded = await seedPair();
+    const wire = groupWire();
+    await sweep(seeded);
+    expect(wire.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(await groupNotices(seeded.familyId)).toEqual([{ templateKey: 'linq:group_kid_event' }]);
+  });
+});

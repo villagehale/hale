@@ -9,6 +9,7 @@ import { laneEnabled } from '~/lib/channel/lanes';
 import {
   narrateHouseholdMailbox,
   rememberAndNarrateCalendar,
+  rememberHouseholdCalendar,
 } from '~/lib/channel/linq/household-calendar';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
@@ -394,14 +395,25 @@ async function alertCalendarSweep(database: Database, batch: CalendarAlertBatch)
     proactiveSendPorts(database),
   );
   try {
-    await rememberAndNarrateCalendar(database, {
+    const household = {
       integrationId: batch.connection.id,
       familyId: batch.connection.familyId,
       userId: batch.connection.userId,
       changes: batch.changes,
       seeding: batch.seeding,
       now: new Date(),
-    });
+    };
+    if (laneEnabled('calendar_alert')) {
+      await rememberAndNarrateCalendar(database, household);
+    } else {
+      // The group notice is a calendar alert too, so the lane holds it: the changes are
+      // remembered and stay unannounced until the lane is back on (rule #11).
+      await rememberHouseholdCalendar(database, household);
+      console.info(
+        { integrationId: batch.connection.id, groupNotice: 'lane_off' },
+        'household calendar: calendar_alert lane off, notice skipped',
+      );
+    }
   } catch (err) {
     console.warn(
       { reason: err instanceof Error ? err.name : 'unknown' },
