@@ -6,7 +6,13 @@ import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
-import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
+import {
+  type TestDb,
+  createTestDb,
+  seedChild,
+  seedFamily,
+  seedIntegration,
+} from '~/lib/testing/pglite';
 import {
   CALENDAR_ALERT_MAX_PER_SWEEP,
   CALENDAR_ALERT_PENDING_MAX_DAYS,
@@ -240,7 +246,11 @@ describe('alertParentForCalendarChanges', () => {
     vi.stubEnv('CALENDAR_ALERT_ENABLED', undefined);
     const h = harness();
 
-    await expect(sweepBoth(h)).resolves.toEqual({ changes: ['lane_off'], reoffers: [] });
+    await expect(sweepBoth(h)).resolves.toEqual({
+      changes: ['lane_off'],
+      reoffers: [],
+      passport: 'lane_off',
+    });
 
     expect(h.transport.sent).toEqual([]);
     expect(h.threaded).toEqual([]);
@@ -260,6 +270,7 @@ describe('alertParentForCalendarChanges', () => {
     await expect(sweepBoth(off, { changes: [] })).resolves.toEqual({
       changes: [],
       reoffers: [],
+      passport: 'lane_off',
     });
     expect(off.transport.sent).toEqual([]);
     expect(await snapshotOf(TIMED.eventId)).toMatchObject({
@@ -688,6 +699,51 @@ describe('alertParentForCalendarChanges', () => {
       expect(body).not.toContain('Bring Leo');
       expect(body).not.toContain('@');
     }
+  });
+});
+
+describe('passport stamps from calendar changes follow the calendar_alert lane', () => {
+  /** Three Tuesdays of one weekly class: the shape a calendar stamp is inferred from. */
+  const WEEKLY: CalendarChange[] = ['2026-09-22', '2026-09-29', '2026-10-06'].map((day, i) => ({
+    ...TIMED,
+    eventId: `class-${i}`,
+    recurringEventId: 'class-master',
+    title: 'Swim lessons',
+    start: { dateTime: `${day}T21:00:00.000Z` },
+    end: { dateTime: `${day}T21:45:00.000Z` },
+  }));
+
+  function stampRows() {
+    return db.database
+      .select()
+      .from(schema.kidInterests)
+      .where(eq(schema.kidInterests.familyId, family.familyId));
+  }
+
+  beforeEach(async () => {
+    vi.stubEnv('INTEREST_PASSPORT_ENABLED', 'true');
+    await seedChild(db.database, family.familyId, 'Robin', 60, undefined, NOW);
+  });
+
+  it('writes no calendar stamp while the lane is off, and names it', async () => {
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', undefined);
+
+    await expect(sweepBoth(harness(), { changes: WEEKLY })).resolves.toEqual({
+      changes: ['lane_off', 'lane_off', 'lane_off'],
+      reoffers: [],
+      passport: 'lane_off',
+    });
+
+    await expect(stampRows()).resolves.toEqual([]);
+  });
+
+  it('writes the stamp as before once the lane is on', async () => {
+    await sweep(harness(), { changes: WEEKLY });
+
+    const rows = await stampRows();
+    expect(rows.map((row) => [row.activity, row.sourceType])).toEqual([
+      ['Swim lessons', 'calendar'],
+    ]);
   });
 });
 
@@ -1320,7 +1376,7 @@ describe('a change the gate held is offered again', () => {
     const off = harness();
     await expect(
       sweepBoth(off, { changes: [], now: afterDays(CALENDAR_ALERT_PENDING_MAX_DAYS) }),
-    ).resolves.toEqual({ changes: [], reoffers: ['pending_expired'] });
+    ).resolves.toEqual({ changes: [], reoffers: ['pending_expired'], passport: 'lane_off' });
 
     expect(off.transport.sent).toEqual([]);
     expect(await snapshotOf(OLD.eventId)).toMatchObject({

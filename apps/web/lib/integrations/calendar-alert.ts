@@ -175,6 +175,9 @@ export interface CalendarAlertSweep {
   changes: readonly CalendarAlertOutcome[];
   /** One per pending snapshot this sweep picked back up, oldest debt first. */
   reoffers: readonly CalendarAlertOutcome[];
+  /** Set when the calendar_alert lane is off: no passport stamp was inferred from these
+   * changes, whatever INTEREST_PASSPORT_ENABLED says. Calendar stamps follow this lane. */
+  passport?: 'lane_off';
 }
 
 /** At most this many ALERTABLE texts per connection per sweep, oldest debt first and then
@@ -330,8 +333,12 @@ export async function alertParentForCalendarChanges(
   }
   if (!laneEnabled('calendar_alert')) {
     const reoffers = await expireStaleDebts(database, input, parentUserId, ports);
-    await rememberOnly(database, input, parentUserId, ports);
-    return { changes: changes.map(() => 'lane_off'), reoffers };
+    await rememberOnly(database, input, parentUserId, ports, { passport: false });
+    console.info(
+      { familyId, integrationId, changes: changes.length, passport: 'lane_off' },
+      'calendar alert: lane off, no passport stamps from these changes',
+    );
+    return { changes: changes.map(() => 'lane_off'), reoffers, passport: 'lane_off' };
   }
   // The flag is a pure function of the family id, so nothing above it costs a query and a
   // dark sweep of an empty page is the cheapest thing this module does. A dark sweep with
@@ -476,6 +483,7 @@ async function rememberOnly(
   input: CalendarAlertInput,
   parentUserId: string,
   ports: CalendarAlertPorts,
+  opts: { passport: boolean } = { passport: true },
 ): Promise<void> {
   const { integrationId, changes, now } = input;
   if (changes.length === 0) return;
@@ -492,6 +500,7 @@ async function rememberOnly(
     if (span !== null) remember(writes, { change, span }, null);
   }
   await writeSnapshots(database, integrationId, writes, now);
+  if (!opts.passport) return;
   const { syncPassportFromCalendarChanges } = await import('~/lib/passport/ingest');
   await syncPassportFromCalendarChanges(database, {
     familyId: input.familyId,
