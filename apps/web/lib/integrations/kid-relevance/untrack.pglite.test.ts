@@ -473,7 +473,7 @@ describe('untrackItem', () => {
     expect(await writes()).toEqual(before);
   });
 
-  it('refuses a caregiver in the family and writes nothing; the decision is a parent\'s', async () => {
+  it("refuses a caregiver in the family and writes nothing; the decision is a parent's", async () => {
     const event = await mirror('one-off', NEXT_WEEK);
     const nanny = await memberOfThisFamily('nanny');
     const before = await writes();

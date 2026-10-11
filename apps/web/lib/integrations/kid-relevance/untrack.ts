@@ -43,7 +43,7 @@ export type UntrackResult =
     }
   | { outcome: 'not_found' | 'not_provider_item' | 'already_untracked' };
 
-interface ProviderItem {
+export interface ProviderItem {
   source: KidRelevanceSource;
   integrationId: string | null;
   itemKey: string;
@@ -228,13 +228,15 @@ function eventsOf(item: ProviderItem) {
 }
 
 /**
- * What Hale still owes the parent about this item. A held calendar alert is dropped the way
+ * What Hale still owes the parent about this item, dropped when the item is judged the
+ * parent's own - here and in the backfill's apply, so both leave nothing that names it.
+ * A held calendar alert is dropped the way
  * the alert path drops an expired hold - the snapshot stays, so the next change is read
  * against the start Hale last saw, and only the held words go. An open Gmail offer is
  * withdrawn the way `withdrawEmailAlertOffer` does it (it stops being answerable); its
  * title is NOT NULL and is the text the parent already holds.
  */
-async function dropOwedTexts(
+export async function dropOwedTexts(
   database: Pick<Database, 'update'>,
   item: ProviderItem,
   now: Date,

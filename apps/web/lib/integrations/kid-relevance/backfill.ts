@@ -10,8 +10,8 @@ import {
   loadNotMineHints,
   seriesKeyForEvent,
 } from './judge';
-import type { KidRelevanceItem, KidRelevanceSource } from './skill-contract';
-import { CLEARED_EVENT_TEXT } from './untrack';
+import type { KidRelevanceItem } from './skill-contract';
+import { CLEARED_EVENT_TEXT, dropOwedTexts } from './untrack';
 
 /**
  * The one-off kid-relevance backfill (VIL-226 item 5).
@@ -32,8 +32,10 @@ import { CLEARED_EVENT_TEXT } from './untrack';
  * themselves (the judge's cache), so the apply that follows judges nothing again and acts
  * on exactly the verdicts the dry run counted. It returns counts only (rule #1).
  *
- * Skipped, and counted (rule #11): a copy whose connection is gone, and every family with
- * an erasure scheduled - their titles are not sent to the model again.
+ * Skipped, and counted (rule #11): a copy whose connection is gone or no longer active, and
+ * every family with an erasure scheduled - their titles are not sent to the model again.
+ * The erasure check is read again inside each family's write, so a family that schedules
+ * one while the run is judging gets nothing written.
  */
 
 export interface BackfillInput {
@@ -59,9 +61,10 @@ export interface BackfillCounts {
   remindersCancelled: number;
   blocksCleared: number;
   adultBookings: number;
-  /** Copies whose connection is gone: not judged, not touched. */
+  /** Copies whose connection is gone or not active: not judged, not touched. */
   skippedDisconnected: number;
-  /** Families with an erasure scheduled: nothing of theirs is sent to the model again. */
+  /** Families with an erasure scheduled: nothing of theirs is sent to the model again, or,
+   * when it was scheduled while the run was judging, written. */
   skippedFamiliesPendingErasure: number;
 }
 
@@ -117,9 +120,8 @@ export async function runKidRelevanceBackfill(
     );
     const verdictByRef = new Map(judged.map((judgement) => [judgement.ref, judgement]));
 
-    const adultEvents: { id: string; source: KidRelevanceSource }[] = [];
-    const adultBlocks: { integrationId: string; eventId: string; source: KidRelevanceSource }[] =
-      [];
+    const adultEvents: { id: string; item: KidRelevanceItem }[] = [];
+    const adultBlocks: { integrationId: string; eventId: string; item: KidRelevanceItem }[] = [];
     const links: { eventId: string; judgement: Extract<KidJudgement, { verdictId: string }> }[] =
       [];
     for (const candidate of candidates) {
@@ -135,11 +137,11 @@ export async function runKidRelevanceBackfill(
       if (candidate.target.kind === 'event') {
         links.push({ eventId: candidate.target.id, judgement });
         if (judgement.verdict === 'adult') {
-          adultEvents.push({ id: candidate.target.id, source: candidate.item.source });
+          adultEvents.push({ id: candidate.target.id, item: candidate.item });
         }
       } else if (candidate.target.kind === 'block') {
         if (judgement.verdict === 'adult') {
-          adultBlocks.push({ ...candidate.target, source: candidate.item.source });
+          adultBlocks.push({ ...candidate.target, item: candidate.item });
         }
       } else if (judgement.verdict === 'adult') {
         counts.adultBookings += 1;
@@ -161,12 +163,18 @@ export async function runKidRelevanceBackfill(
                 eq(schema.eventReminders.status, 'scheduled'),
               ),
             );
-    counts.eventsDropped += adultEvents.length;
-    counts.remindersCancelled += scheduled.length;
-    counts.blocksCleared += adultBlocks.length;
-    if (!input.apply) continue;
+    const tally = () => {
+      counts.eventsDropped += adultEvents.length;
+      counts.remindersCancelled += scheduled.length;
+      counts.blocksCleared += adultBlocks.length;
+    };
+    if (!input.apply) {
+      tally();
+      continue;
+    }
 
-    await database.transaction(async (tx) => {
+    const applied = await database.transaction(async (tx) => {
+      if ((await lockFamiliesUnderErasure(tx, [familyId])).size > 0) return false;
       for (const link of links) {
         await tx
           .update(schema.familyEvents)
@@ -193,8 +201,10 @@ export async function runKidRelevanceBackfill(
               adultEvents.map((event) => event.id),
             ),
           );
+        const owed = [];
+        for (const event of adultEvents) owed.push(await dropOwedTexts(tx, event.item, input.now));
         await tx.insert(schema.auditLog).values(
-          adultEvents.map((event) => ({
+          adultEvents.map((event, index) => ({
             familyId,
             actor: 'system',
             actionTaken: 'kid_relevance_event_dropped',
@@ -202,9 +212,10 @@ export async function runKidRelevanceBackfill(
             targetId: event.id,
             after: {
               verdict: 'adult',
-              source: event.source,
+              source: event.item.source,
               reason: BACKFILL_REASON,
               runId: input.runId,
+              ...owed[index],
             },
             occurredAt: input.now,
           })),
@@ -242,6 +253,7 @@ export async function runKidRelevanceBackfill(
               eq(schema.parentCalendarBlocks.eventId, block.eventId),
             ),
           );
+        const owed = await dropOwedTexts(tx, block.item, input.now);
         await tx.insert(schema.auditLog).values({
           familyId,
           actor: 'system',
@@ -250,14 +262,18 @@ export async function runKidRelevanceBackfill(
           targetId: `${block.integrationId}:${block.eventId}`,
           after: {
             verdict: 'adult',
-            source: block.source,
+            source: block.item.source,
             reason: BACKFILL_REASON,
             runId: input.runId,
+            ...owed,
           },
           occurredAt: input.now,
         });
       }
+      return true;
     });
+    if (applied) tally();
+    else counts.skippedFamiliesPendingErasure += 1;
   }
   return counts;
 }
@@ -269,13 +285,16 @@ export interface RevertCounts {
   eventsRestored: number;
   remindersRescheduled: number;
   verdictsCleared: number;
+  /** Families with an erasure scheduled: nothing of theirs is restored. */
+  skippedFamiliesPendingErasure: number;
 }
 
 /**
  * Undo one apply, found by its run id in the audit rows it wrote.
  *
  * Each family event that run dropped comes back live and unlinked, unless it has been
- * dropped again since (its `deleted_at` no longer matches the run's). Its reminders that
+ * dropped again since (its `deleted_at` no longer matches the run's) or its family has an
+ * erasure scheduled (read inside the restore's own transaction). Its reminders that
  * run cancelled and that are still ahead are scheduled again. The model verdicts for the
  * restored items are deleted so the next judge asks again; a parent's own verdict stays.
  * One audit row per restored event (rule #6).
@@ -294,6 +313,7 @@ export async function revertKidRelevanceBackfill(
     eventsRestored: 0,
     remindersRescheduled: 0,
     verdictsCleared: 0,
+    skippedFamiliesPendingErasure: 0,
   };
   const audit = schema.auditLog;
   const ofRun = await database
@@ -338,9 +358,14 @@ export async function revertKidRelevanceBackfill(
       })
       .from(schema.familyEvents)
       .where(inArray(schema.familyEvents.id, [...droppedAt.keys()]));
-    const restore = dropped.filter(
+    const ofThisRun = dropped.filter(
       (row) => row.deletedAt !== null && row.deletedAt.getTime() === droppedAt.get(row.id),
     );
+    const erasing = await lockFamiliesUnderErasure(tx, [
+      ...new Set(ofThisRun.map((row) => row.familyId)),
+    ]);
+    counts.skippedFamiliesPendingErasure = erasing.size;
+    const restore = ofThisRun.filter((row) => !erasing.has(row.familyId));
     if (restore.length === 0) return;
     const restoreIds = restore.map((row) => row.id);
 
@@ -400,6 +425,27 @@ export async function revertKidRelevanceBackfill(
   return counts;
 }
 
+/** The one erasure predicate: a family with a deletion scheduled. */
+const erasureScheduled = () => isNotNull(schema.families.scheduledDeletionAt);
+
+/**
+ * Which of these families have an erasure scheduled, read inside the transaction that
+ * writes for them. FOR SHARE holds their rows until it commits, so an erasure cannot be
+ * scheduled between this read and those writes.
+ */
+async function lockFamiliesUnderErasure(
+  tx: Pick<Database, 'select'>,
+  familyIds: readonly string[],
+): Promise<Set<string>> {
+  if (familyIds.length === 0) return new Set();
+  const rows = await tx
+    .select({ id: schema.families.id, erasing: sql<boolean>`${erasureScheduled()}` })
+    .from(schema.families)
+    .where(inArray(schema.families.id, [...familyIds]))
+    .for('share');
+  return new Set(rows.filter((row) => row.erasing).map((row) => row.id));
+}
+
 async function loadCandidates(
   database: Database,
   familyIds: readonly string[] | undefined,
@@ -418,13 +464,15 @@ async function loadCandidates(
   const scoped = (column: AnyPgColumn) => (familyIds ? inArray(column, [...familyIds]) : undefined);
 
   // An offer or a booking names its connection without a foreign key, so it can outlive
-  // a disconnect; a verdict cannot, because its integration_id cascades.
+  // a disconnect; a verdict cannot, because its integration_id cascades. A connection the
+  // parent revoked, or one that expired or errored, is not live either: the same
+  // `active` status the connector reads gate on.
   const connected = new Set(
     (
       await database
         .select({ id: schema.integrations.id })
         .from(schema.integrations)
-        .where(scoped(schema.integrations.familyId))
+        .where(and(eq(schema.integrations.status, 'active'), scoped(schema.integrations.familyId)))
     ).map((row) => row.id),
   );
   const pendingErasure = new Set(
@@ -432,7 +480,7 @@ async function loadCandidates(
       await database
         .select({ id: schema.families.id })
         .from(schema.families)
-        .where(and(isNotNull(schema.families.scheduledDeletionAt), scoped(schema.families.id)))
+        .where(and(erasureScheduled(), scoped(schema.families.id)))
     ).map((row) => row.id),
   );
   const add = (familyId: string, candidate: Candidate) => {

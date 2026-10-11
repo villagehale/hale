@@ -29,6 +29,8 @@ let gmail: string;
 let modelCalls: number;
 let seenTexts: string[];
 let runId: string;
+/** Runs inside the model call: after the run read its candidates, before it writes. */
+let duringJudge: (() => Promise<void>) | undefined;
 
 const ADULT = ['Standup', 'Dentist', 'Team dinner', 'Harbour Inn', 'Pottery for grown-ups'];
 const UNSURE = ['Mystery meetup'];
@@ -43,6 +45,7 @@ const client = {
   messages: {
     create: async (request: { messages: { content: string }[] }) => {
       modelCalls += 1;
+      await duringJudge?.();
       const input = JSON.parse(request.messages[0]?.content ?? '{}') as KidSkillInput;
       seenTexts.push(...input.items.map((item) => item.text));
       return {
@@ -82,6 +85,7 @@ beforeEach(async () => {
   modelCalls = 0;
   seenTexts = [];
   runId = randomUUID();
+  duringJudge = undefined;
   const family = await seedFamily(db.database);
   familyId = family.familyId;
   parentUserId = family.parentUserId;
@@ -255,6 +259,18 @@ describe('runKidRelevanceBackfill', () => {
     expect(seenTexts.some((text) => text.includes('Orphaned'))).toBe(false);
   });
 
+  it('counts and skips a copy on a revoked connection, and judges one on an active one', async () => {
+    await mirror('ev-standup', 'Standup');
+    await acceptedOffer('msg-dinner', 'Team dinner');
+    await db.database
+      .update(schema.integrations)
+      .set({ status: 'revoked' })
+      .where(eq(schema.integrations.id, gcal));
+    const counts = await run(false);
+    expect(counts).toMatchObject({ judged: 1, adult: 1, skippedDisconnected: 1 });
+    expect(seenTexts).toEqual(['Team dinner']);
+  });
+
   it('counts and skips a family whose erasure is scheduled, sending nothing to the model', async () => {
     await seed();
     await db.database
@@ -368,6 +384,56 @@ describe('runKidRelevanceBackfill', () => {
     ]);
   });
 
+  it("apply drops a held alert for an adult item, and keeps a kid item's", async () => {
+    await mirror('ev-standup', 'Standup');
+    await mirror('ev-swim', 'Wren swim');
+    await db.database.insert(schema.calendarEventSnapshots).values(
+      ['ev-standup', 'ev-swim'].map((eventId) => ({
+        integrationId: gcal,
+        eventId,
+        updatedStamp: 'u1',
+        status: 'confirmed',
+        startAt: NEXT_WEEK,
+        pendingSince: NOW,
+        heldTitle: eventId === 'ev-swim' ? 'Wren swim' : 'Standup',
+      })),
+    );
+
+    await run(true);
+
+    const snapshots = await db.database
+      .select()
+      .from(schema.calendarEventSnapshots)
+      .where(eq(schema.calendarEventSnapshots.integrationId, gcal));
+    const held = (eventId: string) => snapshots.find((row) => row.eventId === eventId);
+    expect(held('ev-standup')).toMatchObject({ pendingSince: null, heldTitle: null });
+    expect(held('ev-swim')).toMatchObject({ pendingSince: NOW, heldTitle: 'Wren swim' });
+    const { audit } = await state();
+    const drop = audit.find((row) => row.actionTaken === 'kid_relevance_event_dropped');
+    expect(drop?.after).toMatchObject({ heldAlertsCleared: 1, offersWithdrawn: 0 });
+  });
+
+  it('apply writes nothing for a family that scheduled its erasure after the run read it', async () => {
+    await seed();
+    duringJudge = async () => {
+      await db.database
+        .update(schema.families)
+        .set({ scheduledDeletionAt: NEXT_WEEK })
+        .where(eq(schema.families.id, familyId));
+    };
+    const before = await state();
+    const counts = await run(true);
+    expect(counts).toMatchObject({
+      eventsDropped: 0,
+      remindersCancelled: 0,
+      blocksCleared: 0,
+      skippedFamiliesPendingErasure: 1,
+    });
+    const { verdicts: _verdicts, ...after } = await state();
+    const { verdicts: _before, ...unchanged } = before;
+    expect(after).toEqual(unchanged);
+  });
+
   it('apply leaves an unsure copy alone: live, unlinked, its reminders still scheduled', async () => {
     const unsure = await mirror('ev-mystery', 'Mystery meetup');
     const counts = await run(true);
@@ -404,6 +470,7 @@ describe('runKidRelevanceBackfill', () => {
       eventsRestored: 3,
       remindersRescheduled: 4,
       verdictsCleared: 3,
+      skippedFamiliesPendingErasure: 0,
     });
 
     const after = await state();
@@ -462,6 +529,26 @@ describe('runKidRelevanceBackfill', () => {
       eventsRestored: 0,
       remindersRescheduled: 0,
       verdictsCleared: 0,
+      skippedFamiliesPendingErasure: 0,
+    });
+    expect(await state()).toEqual(before);
+  });
+
+  it('a revert brings nothing back for a family whose erasure is scheduled, and counts it', async () => {
+    await seed();
+    await run(true);
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: NEXT_WEEK })
+      .where(eq(schema.families.id, familyId));
+    const before = await state();
+    expect(await revertKidRelevanceBackfill(db.database, { runId, now: NOW })).toEqual({
+      runId,
+      found: true,
+      eventsRestored: 0,
+      remindersRescheduled: 0,
+      verdictsCleared: 0,
+      skippedFamiliesPendingErasure: 1,
     });
     expect(await state()).toEqual(before);
   });
