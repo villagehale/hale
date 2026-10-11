@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { revertKidRelevanceBackfill, runKidRelevanceBackfill } from './backfill';
@@ -411,12 +411,17 @@ describe('runKidRelevanceBackfill', () => {
     const { audit } = await state();
     const drop = audit.find((row) => row.actionTaken === 'kid_relevance_event_dropped');
     expect(drop?.after).toMatchObject({ heldAlertsCleared: 1, offersWithdrawn: 0 });
-    // The resolved offer the adult event came from keeps none of its words either.
-    const [resolvedOffer] = await db.database
+  });
+
+  it('apply clears the words of the resolved offer an adult event came from', async () => {
+    await seed();
+    await run(true);
+    const [offer] = await db.database
       .select({ title: schema.emailAlertOffers.title, location: schema.emailAlertOffers.location })
       .from(schema.emailAlertOffers)
-      .where(eq(schema.emailAlertOffers.resolution, 'added'));
-    expect(resolvedOffer).toEqual({ title: '', location: null });
+      // The pglite database is not reset between tests, so scope to this seed's connection.
+      .where(and(eq(schema.emailAlertOffers.messageId, 'msg-dinner'), eq(schema.emailAlertOffers.integrationId, gmail)));
+    expect(offer).toEqual({ title: '', location: null });
   });
 
   it('apply writes nothing for a family that scheduled its erasure after the run read it', async () => {
