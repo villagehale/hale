@@ -66,21 +66,24 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `ORPHAN_USER_SWEEP_ENABLED` | `true` | off | `false` | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `true` | off | `false` | Noah |
 | `SOCIAL_WATCHLIST` | `on` | off | empty, or `off` | Noah |
-| `TRAVEL_BRIEF_ENABLED` | `true` | off | `false` | Sloane |
+| `TRAVEL_BRIEF_ENABLED` | `true` | on, `true` in production since Oct 2 (Barton, 2026-10-11); read through the VIL-226 lane helper as `travel_brief`, no action | `false` | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `true` | off | `false` | Noah |
 | `WATCHED_SPOTS_ENABLED` | `true` | off | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | `true` | off | `false` | Sloane |
 | `WORKSTREAMS_ENABLED` | `true` | off | `false` | Noah |
 | `INTEREST_PASSPORT_ENABLED` | `true` | off | `false` | Noah |
-| `CALENDAR_ALERT_ENABLED` | `true` (trimmed) | off unless set | unset | Barton |
-| `PARENT_CALENDAR_MIRROR_ENABLED` | `true` (trimmed) | off unless set | unset | Barton |
-| `EMAIL_ALERT_ENABLED` | `true` (trimmed) | off unless set | unset | Barton |
+| `CALENDAR_ALERT_ENABLED` | `true` | off unless set | unset | Barton |
+| `PARENT_CALENDAR_MIRROR_ENABLED` | `true` | off unless set | unset | Barton |
+| `EMAIL_ALERT_ENABLED` | `true` | off unless set | unset | Barton |
 
-The three lane switches (VIL-226) hold work while they are off. They do not delete it. Unlike most `true` flags above, their value is trimmed first, so `true` followed by a newline also turns a lane on.
+The three lane switches (VIL-226) hold work while they are off. They do not delete it. Like every other `true` flag above, the value must be exactly `true`: a piped `echo` stores `true` followed by a newline, which keeps the lane off. Set it with `printf '%s' true`, then redeploy. `TRAVEL_BRIEF_ENABLED` is read through the same helper under its own name.
 
 - With `CALENDAR_ALERT_ENABLED` unset, both the 1:1 calendar text and the Linq household calendar notice are off. The sweep still remembers each change. A calendar text Hale already owes stays owed and is offered again when the lane is back on, unless it ages out first. Kid events not yet told to the group stay unannounced until then.
+- Merging VIL-226 with `PARENT_CALENDAR_MIRROR_ENABLED` unset pauses the 8 calendar-mirror reminders scheduled in production on 2026-10-11. They are held, not cancelled. Any whose moment passes while held is marked `missed` once the lane is back on.
 - With `PARENT_CALENDAR_MIRROR_ENABLED` unset, mirrored `family_events` rows stay in the database and no new reminders are created for them (counted as `notScheduledLaneOff` in the reminders cron response). Reminders already scheduled stay `scheduled` and are counted as `heldLaneOff`. When the lane is back on, a held reminder whose moment passed by more than the usual late-reminder grace is marked `suppressed` with reason `missed` (or `started` once the event has begun) and is never sent late. The connector sync logs the held window with `heldReason: 'lane_off'`.
-- `EMAIL_ALERT_ENABLED` does not gate the silent booked-detection backfill. That pass sends no text and has its own switch, `BOOKED_DETECTION_BACKFILL_ENABLED`, so it keeps running while the email lane is off.
+- `EMAIL_ALERT_ENABLED` also holds the silent booked-detection backfill. That pass sends no text, but its `activity_bookings` rows feed how-it-went texts. With the lane off it does not start a page, logs `booked detection backfill: email lane off, page not started`, and stamps nothing, so the page is read when the lane is back. `BOOKED_DETECTION_BACKFILL_ENABLED` keeps its own meaning. This coupling stays until the VIL-226 kid check runs in the backfill path.
+- With `EMAIL_ALERT_ENABLED` unset, the Gmail ingest cursor (`historyId`) still advances, and a second watermark, `alertHistoryId`, stays where the lane went off. The sync logs `connector sync: gmail alert watermark` with `gmailCursor: 'held_lane_off'`. When the lane is back on, the next sweep hands the mail since that watermark to the alert pass once (`released`), newest first under the usual per-sweep bound. If Gmail no longer has history that far back, the watermark is dropped as `held_expired` and that mail is not alerted.
+- Two options for `EMAIL_ALERT_ENABLED` at merge, Barton decides. Set it to exactly `true` before merge: email alerts and the silent backfill keep running, and the Gmail cursor behaves as today. Leave it unset: both pause with named `lane_off` outcomes, and the Gmail alert watermark is held until the lane is lit.
 
 Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns those families on while the global flag is off. Two exceptions: `VILLAGE_INTROS_FAMILY_ALLOWLIST` only narrows a flag that is already `true`, and `MEMORY_DIGEST_FAMILY_ALLOWLIST` applies only together with `MEMORY_DIGEST_APPLY=true`. Live contents are unconfirmed, verify in Vercel env.
 
