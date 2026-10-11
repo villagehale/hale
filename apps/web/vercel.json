@@ -3,9 +3,7 @@
   "buildCommand": "cd ../.. && pnpm --filter @hale/db exec node scripts/vercel-production-migrate.mjs && rm -rf packages/*/dist packages/*/*.tsbuildinfo packages/*/tsconfig.tsbuildinfo && pnpm turbo build --filter=@hale/web --force",
   "regions": ["yul1"],
   "crons": [
-    { "path": "/api/cron/week-plan", "schedule": "2 * * * *" },
     { "path": "/api/cron/intake-sitting-reminder", "schedule": "8 * * * *" },
-    { "path": "/api/cron/sunday-send", "schedule": "7 * * * *" },
     { "path": "/api/cron/reminders", "schedule": "12 * * * *" },
     { "path": "/api/cron/registration-sequence", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/nudge", "schedule": "17 * * * *" },

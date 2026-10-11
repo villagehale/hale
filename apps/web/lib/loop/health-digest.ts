@@ -101,7 +101,6 @@ export interface LoopHealthSummary {
   windowEnd: Date;
   messageCounts: MessageCountRow[];
   stopCount: number;
-  weekPlansComposed: number;
   providerIncidents: ProviderIncidentRow[];
   /** X1 · the F14 intake-funnel scoreboard for the same window. */
   scoreboard: FunnelScoreboard;
@@ -165,9 +164,8 @@ const HALE_INITIATED_CATEGORIES: MessageCategory[] =
     (category) => !PARENT_STARTED_CATEGORIES.includes(category),
   );
 
-/** Sums channel_messages by channel/direction/category/status, the loop_stop count
- * (email_opt_outs rows landed on a loop stream), and week_plans composed — all
- * within [windowStart, windowEnd). */
+/** Sums channel_messages by channel/direction/category/status and the loop_stop count
+ * (email_opt_outs rows landed on a loop stream) — both within [windowStart, windowEnd). */
 export async function aggregateLoopHealth(
   database: Database,
   windowStart: Date,
@@ -205,11 +203,6 @@ export async function aggregateLoopHealth(
         inArray(schema.emailOptOuts.emailType, [...LOOP_EMAIL_TYPES]),
       ),
     );
-
-  const [plansRow] = await database
-    .select({ count: count() })
-    .from(schema.weekPlans)
-    .where(and(gte(schema.weekPlans.composedAt, windowStart), lt(schema.weekPlans.composedAt, windowEnd)));
 
   // VIL-255: the provider incidents already claimed in this window. Read back from the
   // dedupe claims themselves, so the weekly line costs no extra probe and can only ever
@@ -266,7 +259,6 @@ export async function aggregateLoopHealth(
     windowEnd,
     messageCounts,
     stopCount: stopRow?.count ?? 0,
-    weekPlansComposed: plansRow?.count ?? 0,
     providerIncidents: incidentRows.map((row) => ({
       kind: providerIncidentKind(row.identifier),
       at: row.at,
@@ -626,7 +618,6 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
     'SCORECARD · every threshold is a named constant in lib/loop/scorecard-rubric.ts',
     ...scorecardLines(buildScorecard(summary)),
     '',
-    `Weekly plans composed: ${summary.weekPlansComposed}`,
     `STOPs (loop unsubscribes): ${summary.stopCount}`,
     openLoopsLine(summary.commitmentDebt),
     providerHealthLine(summary.providerIncidents),

@@ -166,9 +166,9 @@ describe('providerIncidentKey', () => {
     });
     // The same billing outage seen from a DIFFERENT window is the SAME incident —
     // the founder gets one email, not one per cron.
-    const billingFromWeekly = providerIncidentKey({
+    const billingFromInference = providerIncidentKey({
       kind: 'preflight',
-      window: 'weekly_plan',
+      window: 'memory_inference',
       failure: 'billing',
       detail: 'y',
     });
@@ -186,7 +186,7 @@ describe('providerIncidentKey', () => {
       windowEnd: new Date('2026-08-01T13:00:00Z'),
     });
 
-    expect(billing).toBe(billingFromWeekly);
+    expect(billing).toBe(billingFromInference);
     expect(new Set([billing, auth, spike]).size).toBe(3);
   });
 
@@ -213,15 +213,15 @@ describe('formatProviderAlert', () => {
     const { subject, text } = formatProviderAlert(
       {
         kind: 'preflight',
-        window: 'weekly_plan',
+        window: 'nudge_sweep',
         failure: 'billing',
         detail: 'Your credit balance is too low to access the Anthropic API.',
       },
       AT,
     );
 
-    expect(subject).toBe('Hale ops: weekly plan did not send — Anthropic billing');
-    expect(text).toContain("this hour's weekly-plan compose did not run.");
+    expect(subject).toBe('Hale ops: nudge sweep did not send — Anthropic billing');
+    expect(text).toContain("this hour's nudge sweep did not run.");
     expect(text).toContain('credit balance is too low');
     expect(text).toContain('2026-08-01T12:00:00.000Z');
     // The honest part: nothing was composed and nothing was charged.
@@ -338,7 +338,7 @@ function deps(over: Partial<ProviderHealthDeps> = {}): ProviderHealthDeps {
 
 const BILLING_INCIDENT: ProviderIncident = {
   kind: 'preflight',
-  window: 'weekly_plan',
+  window: 'nudge_sweep',
   failure: 'billing',
   detail: 'Your credit balance is too low.',
 };
@@ -386,7 +386,7 @@ describe('providerPreflight', () => {
       probe: vi.fn(async () => ({ ok: false, failure: 'billing', detail: 'no credit' }) as const),
     });
 
-    const result = await providerPreflight({} as Database, 'weekly_plan', client, NOW, d);
+    const result = await providerPreflight({} as Database, 'nudge_sweep', client, NOW, d);
 
     expect(result).toEqual({
       proceed: false,
@@ -400,7 +400,7 @@ describe('providerPreflight', () => {
       probe: vi.fn(async () => ({ ok: false, failure: 'transient', detail: '529' }) as const),
     });
 
-    const result = await providerPreflight({} as Database, 'weekly_plan', client, NOW, d);
+    const result = await providerPreflight({} as Database, 'nudge_sweep', client, NOW, d);
 
     expect(result.proceed).toBe(true);
     expect(d.sender.send).not.toHaveBeenCalled();
@@ -409,7 +409,7 @@ describe('providerPreflight', () => {
   it('proceeds and never probes when the cron has no LLM client this run', async () => {
     const d = deps();
 
-    const result = await providerPreflight({} as Database, 'weekly_plan', null, NOW, d);
+    const result = await providerPreflight({} as Database, 'nudge_sweep', null, NOW, d);
 
     expect(result).toEqual({ proceed: true, health: null });
     expect(d.probe).not.toHaveBeenCalled();

@@ -196,12 +196,10 @@ describe('no bundle promises quiet, in any locale', () => {
     }
   });
 
-  it('claims no Sunday brief in any locale — that one needs a SECOND flag', () => {
-    // Same shape as the quiet promise, same reason: the Sunday text's SEND is
-    // gated by LOOP_SEND_ENABLED (default OFF) on top of F14, so it is a
-    // separate release event and no surface may describe it in the present
-    // tense yet. Named per locale because "Sunday" is not the word in two of
-    // the three.
+  it('claims no Sunday brief in any locale — the Sunday text is retired', () => {
+    // Same shape as the quiet promise: Hale sends no Sunday text, so no surface
+    // may describe one. Named per locale because "Sunday" is not the word in two
+    // of the three.
     const SUNDAY: Record<string, string[]> = {
       en: ['sunday'],
       fr: ['dimanche'],

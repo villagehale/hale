@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 
 /**
  * GET /api/cron/loop-health-digest — X1 (VIL-227) weekly founder digest: sends,
- * failures/suppressions, STOPs, and week_plans composed over the trailing 7 days,
+ * failures/suppressions and STOPs over the trailing 7 days,
  * emailed to the founder (aloha@ → FOUNDER_ALERT_EMAIL/WELCOME_BCC). Un-gated by a
  * send flag (unlike the parent-facing digest/loop sends) — it degrades to a clean
  * no-op via its own sender guards when no founder address/Resend key is set.

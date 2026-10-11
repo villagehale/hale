@@ -103,8 +103,8 @@ export async function composeReminderVoice(
   client: AgentClient,
   now: Date = new Date(),
 ): Promise<ComposedVoice<ReminderVoice>> {
-  // A batch always has ≥1 event in practice; guarded for the same reason week-voice
-  // guards an empty item list — nothing to voice, not a failure.
+  // A batch always has ≥1 event in practice; guarded because an empty batch has
+  // nothing to voice, which is not a failure.
   if (events.length === 0) return { voice: null, degraded: false, reason: null };
 
   let skill: Awaited<ReturnType<typeof loadReminderVoiceSkill>>;

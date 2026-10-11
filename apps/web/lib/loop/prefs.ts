@@ -40,14 +40,12 @@ export async function loadLoopPrefsView(
   const rows = await database
     .select({
       loopChannel: schema.loopPrefs.loopChannel,
-      catWeeklyPlan: schema.loopPrefs.catWeeklyPlan,
       catReminder: schema.loopPrefs.catReminder,
       catApproval: schema.loopPrefs.catApproval,
       catAlert: schema.loopPrefs.catAlert,
       quietHoursStart: schema.loopPrefs.quietHoursStart,
       quietHoursEnd: schema.loopPrefs.quietHoursEnd,
       urgentBypassQuietHours: schema.loopPrefs.urgentBypassQuietHours,
-      weeklyPlanSendTime: schema.loopPrefs.weeklyPlanSendTime,
       childNameLevel: schema.loopPrefs.childNameLevel,
     })
     .from(schema.loopPrefs)
@@ -72,14 +70,12 @@ export async function loadLoopPrefsViewsByUserIds(
     .select({
       userId: schema.loopPrefs.userId,
       loopChannel: schema.loopPrefs.loopChannel,
-      catWeeklyPlan: schema.loopPrefs.catWeeklyPlan,
       catReminder: schema.loopPrefs.catReminder,
       catApproval: schema.loopPrefs.catApproval,
       catAlert: schema.loopPrefs.catAlert,
       quietHoursStart: schema.loopPrefs.quietHoursStart,
       quietHoursEnd: schema.loopPrefs.quietHoursEnd,
       urgentBypassQuietHours: schema.loopPrefs.urgentBypassQuietHours,
-      weeklyPlanSendTime: schema.loopPrefs.weeklyPlanSendTime,
       childNameLevel: schema.loopPrefs.childNameLevel,
     })
     .from(schema.loopPrefs)
@@ -92,7 +88,6 @@ export async function loadLoopPrefsViewsByUserIds(
 }
 
 const CATEGORY_FLAG: Record<LoopCategory, keyof LoopPrefsView> = {
-  weekly_plan: 'catWeeklyPlan',
   reminder: 'catReminder',
   approval: 'catApproval',
   alert: 'catAlert',
@@ -163,7 +158,7 @@ export function loopChildName(
   return renderChildName(child, resolveChildNameLevel(child.dateOfBirth, prefLevel, now));
 }
 
-// ── Quiet hours + weekly send time (wall-clock in the parent's timezone) ──────
+// ── Quiet hours (wall-clock in the parent's timezone) ─────────────────────────
 
 /** 'HH:MM' or 'HH:MM:SS' → minutes since local midnight. */
 function timeToMinutes(hms: string): number {
@@ -234,36 +229,6 @@ export function deliverableNow(
   return timeSensitive && view.urgentBypassQuietHours;
 }
 
-/**
- * The local weekday the weekly brief is sent on: the MORNING the parent's week
- * starts (users.weekStartDay, 0=Sun/1=Mon — same convention as localParts /
- * Date.getUTCDay(), never 7). Identity: a Sunday-start week → Sunday. The
- * product default is Sunday (VIL-319 / F11 / VIL-218); a Monday-start week
- * still sends Monday.
- */
-export function weeklyPlanWeekday(weekStartDay: number): number {
-  return weekStartDay % 7;
-}
-
-/**
- * Whether `now` is exactly the parent's weekly-plan send moment — their local
- * send weekday at their local send time. Two parents in different timezones each
- * match at their own UTC instant (their local Sunday 19:30), DST-correctly. The
- * A2 cron chooses how to align its cadence to this moment.
- */
-export function isWeeklyPlanMoment(
-  view: LoopPrefsView,
-  now: Date,
-  timeZone: string,
-  weekStartDay: number,
-): boolean {
-  const { weekday, minutes } = localParts(now, timeZone);
-  return (
-    weekday === weeklyPlanWeekday(weekStartDay) &&
-    minutes === timeToMinutes(view.weeklyPlanSendTime)
-  );
-}
-
 // ── Writes (validation + the audited upsert) ─────────────────────────────────
 // These live here, free of the auth/session imports, so the round-trip + audit
 // shape is unit-testable; lib/settings/loop-prefs.ts wraps them with the
@@ -274,34 +239,27 @@ export function isWeeklyPlanMoment(
 export type LoopPrefUpdate =
   | { field: 'loopChannel'; value: LoopChannel }
   | {
-      field:
-        | 'catWeeklyPlan'
-        | 'catReminder'
-        | 'catApproval'
-        | 'catAlert'
-        | 'urgentBypassQuietHours';
+      field: 'catReminder' | 'catApproval' | 'catAlert' | 'urgentBypassQuietHours';
       value: boolean;
     }
-  | { field: 'quietHoursStart' | 'quietHoursEnd' | 'weeklyPlanSendTime'; value: string }
+  | { field: 'quietHoursStart' | 'quietHoursEnd'; value: string }
   | { field: 'childNameLevel'; value: ChildNameLevel };
 
 const LOOP_CHANNELS: readonly LoopChannel[] = ['email', 'sms'];
 const CHILD_NAME_LEVELS: readonly ChildNameLevel[] = ['first_name', 'relation', 'generic'];
-// 24h wall-clock 'HH:MM' or 'HH:MM:SS'; the send day/zone come from the user row.
+// 24h wall-clock 'HH:MM' or 'HH:MM:SS'; the zone comes from the user row.
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 
 /** The only columns a preference update may write — nothing else (e.g. userId,
  * timestamps) can be reached through the untrusted (field, value) edge. */
 const WRITABLE_FIELDS = new Set<LoopPrefUpdate['field']>([
   'loopChannel',
-  'catWeeklyPlan',
   'catReminder',
   'catApproval',
   'catAlert',
   'urgentBypassQuietHours',
   'quietHoursStart',
   'quietHoursEnd',
-  'weeklyPlanSendTime',
   'childNameLevel',
 ]);
 
@@ -316,7 +274,6 @@ export function isValidLoopPrefUpdate(update: LoopPrefUpdate): boolean {
       return CHILD_NAME_LEVELS.includes(update.value);
     case 'quietHoursStart':
     case 'quietHoursEnd':
-    case 'weeklyPlanSendTime':
       return typeof update.value === 'string' && TIME_RE.test(update.value);
     default:
       return typeof update.value === 'boolean';

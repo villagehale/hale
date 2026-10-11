@@ -1,4 +1,4 @@
-import type { WeekPlanItem, schema } from '@hale/db';
+import type { schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 
 /**
@@ -23,12 +23,12 @@ import { deriveStage } from '@hale/types';
  * carry. A sender that passes the budget and skips this one sends a grandmother a
  * teenager's week.
  *
- * WHICH BUDGET depends on which pipe the sender rides, and the first two senders ride the
- * LOOP: the caregiver weekly plan and the caregiver event reminders go through the A2
- * dispatch (channel/dispatch.ts), whose `CATEGORY_CAPS` + quiet hours + live-consent gate
- * + ledger + audit are per RECIPIENT and therefore already meter a caregiver. They do not
- * add a `ProactiveSendKind`, and adding one would have given them a second, differently
- * shaped meter for the same texts. A future caregiver sender on the F14 outbound-gate
+ * WHICH BUDGET depends on which pipe the sender rides, and the first sender rides the
+ * LOOP: the caregiver event reminders go through the A2 dispatch (channel/dispatch.ts),
+ * whose `CATEGORY_CAPS` + quiet hours + live-consent gate + ledger + audit are per
+ * RECIPIENT and therefore already meter a caregiver. It does not add a
+ * `ProactiveSendKind`, and adding one would have given it a second, differently shaped
+ * meter for the same texts. A future caregiver sender on the F14 outbound-gate
  * path (outbound-gate.ts) still takes `PROACTIVE_CAP` — the rule is one meter per pipe,
  * not one meter per role.
  *
@@ -44,8 +44,8 @@ import { deriveStage } from '@hale/types';
  * child is `teen_content`, which no caregiver role allows, so a teen's week never
  * reaches a third party at all: not genericized, not summarized — absent.
  *
- * FAIL CLOSED. `classifyWeekItem` treats a child it cannot age as a teen. An item
- * referencing a child the caller did not load is an item we cannot prove is safe, and
+ * FAIL CLOSED. `classifyFamilyEvent` treats a child it cannot age as a teen. An event
+ * referencing a child the caller did not load is an event we cannot prove is safe, and
  * the only safe reading of "cannot prove" is "do not send".
  */
 
@@ -53,8 +53,8 @@ export type FamilyRole = (typeof schema.familyRoleEnum.enumValues)[number];
 
 /**
  * The classes of household content a message can carry. This taxonomy is the matrix's
- * column headings — the senders classify their own content into it (the week-plan
- * senders via `classifyWeekItem` below; the radar / registration and settings senders
+ * column headings — the senders classify their own content into it (the reminder
+ * senders via `classifyFamilyEvent` below; the radar / registration and settings senders
  * classify at their own boundary), and the matrix decides who may receive each.
  */
 export const CONTENT_CLASSES = [
@@ -164,18 +164,6 @@ export function teenChildIds(children: readonly ScopeChild[], now: Date): Set<st
 }
 
 /**
- * The content class a composed week item belongs to. Order matters and is the policy:
- * teen involvement decides first (it outranks everything, including a cheerful-looking
- * item), then health, then the one suggestion, and only what is left is schedule.
- */
-export function classifyWeekItem(item: WeekPlanItem, teenIds: ReadonlySet<string>): ContentClass {
-  if (item.childIds.some((id) => teenIds.has(id))) return 'teen_content';
-  if (item.kind === 'appointment' || item.privacySensitive) return 'health';
-  if (item.kind === 'suggestion') return 'village_suggestion';
-  return 'schedule';
-}
-
-/**
  * The fields a `family_events` row must show before this file will say who may see it.
  * Declared narrowly (the reminder run's `LiveEvent` satisfies it structurally) so a
  * caller holding a live event does not have to build a fake week item to ask.
@@ -188,14 +176,12 @@ export interface ScopeEvent {
 }
 
 /**
- * The content class of a placed `family_events` row — the sibling of
- * {@link classifyWeekItem} for the pipeline that does not go through a week plan.
+ * The content class of a placed `family_events` row.
  *
  * It lives here rather than in the reminder run for the reason the module header gives:
- * the matrix is only auditable while every classification is on one page. Same policy
- * order as the week-item classifier, so the two cannot drift: teen involvement decides
- * first, then health, and what is left is logistics (a child's event) or the household's
- * plain schedule (a family-wide one).
+ * the matrix is only auditable while every classification is on one page. Teen
+ * involvement decides first, then health, and what is left is logistics (a child's
+ * event) or the household's plain schedule (a family-wide one).
  *
  * FAIL CLOSED, identically: an event naming a child the caller did not load is an event
  * we cannot prove is safe, so it is treated as a teen's.
@@ -211,39 +197,4 @@ export function classifyFamilyEvent(
   }
   if (event.sensitive) return 'health';
   return event.childId === null ? 'schedule' : 'event_logistics';
-}
-
-export interface ScopeWeekInput {
-  role: FamilyRole;
-  items: readonly WeekPlanItem[];
-  /** Every child the items may reference. A referenced child MISSING from this list
-   * is treated as a teen — see the fail-closed note in the module header. */
-  children: readonly ScopeChild[];
-  now: Date;
-}
-
-/**
- * The week a given role may actually be sent. Items only — child NAMING stays with the
- * renderer, which already resolves the family's `child_name_level`; duplicating that
- * here would give a caregiver a second, drifting answer to "what may I call this kid".
- *
- * TWO QUESTIONS, and the second one is not about privacy. A parent's week is the week
- * plus what it COULD be: `compose.ts` writes a dated village activity as
- * `needs: 'calendar_add'` — a draft the placement mint holds for their one-word YES —
- * and the parents' renderer prints it under an approval ask that says so. Nobody else
- * gets that ask (the caregiver templates deliberately drop it), so the same row read to
- * a caregiver becomes a booking nobody made, on a day they may now plan to be somewhere.
- * Only what the household has actually settled (`needs === 'none'`) leaves for a third
- * party, and the test is written on the PARENT roles so a role with no decided scope
- * fails closed here too.
- */
-export function scopeWeekItemsForRole(input: ScopeWeekInput): WeekPlanItem[] {
-  const teenIds = teenChildIds(input.children, input.now);
-  const known = new Set(input.children.map((c) => c.id));
-  const settledOnly = !isParentRole(input.role);
-  return input.items.filter((item) => {
-    if (settledOnly && item.needs !== 'none') return false;
-    if (item.childIds.some((id) => !known.has(id))) return roleAllows(input.role, 'teen_content');
-    return roleAllows(input.role, classifyWeekItem(item, teenIds));
-  });
 }

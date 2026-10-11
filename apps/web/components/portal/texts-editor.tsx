@@ -29,12 +29,7 @@ export function TextsEditor({
   const [note, setNote] = useState<string | null>(null);
 
   async function save<
-    K extends
-      | 'catWeeklyPlan'
-      | 'catReminder'
-      | 'catApproval'
-      | 'catAlert'
-      | 'urgentBypassQuietHours',
+    K extends 'catReminder' | 'catApproval' | 'catAlert' | 'urgentBypassQuietHours',
   >(field: K, value: boolean) {
     const previous = view[field];
     setView({ ...view, [field]: value });
@@ -80,12 +75,6 @@ export function TextsEditor({
     <div className={styles.one}>
       <section className={`${styles.card} ${styles.span}`}>
         <span className={styles.tag}>What Hale sends</span>
-        <Toggle
-          title="Weekly plan"
-          meta="Your look-ahead, Sunday at 6 PM."
-          on={view.catWeeklyPlan}
-          onToggle={() => save('catWeeklyPlan', !view.catWeeklyPlan)}
-        />
         <Toggle
           title="Reminders"
           meta="Nudges before the things that matter."

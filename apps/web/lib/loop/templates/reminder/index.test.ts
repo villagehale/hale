@@ -394,24 +394,4 @@ describe('registry routing by templateKey', () => {
     const r = loopTemplateRenderer.render(msg(batch), 'sms', 'first_name');
     expect(r.kind === 'sms' && TOMORROW_LEADS.test(r.text)).toBe(true);
   });
-
-  it('still routes a weekly_plan message to its own renderer (not the reminder one)', () => {
-    const weekly: LoopMessage = {
-      templateKey: 'weekly_plan',
-      familyId: 'fam-1',
-      parentUserId: 'user-1',
-      category: 'weekly_plan',
-      urgency: 'normal',
-      payload: {
-        weekStart: '2026-07-20',
-        summary: null,
-        items: [],
-        children: [],
-        deepLink: DEEP_LINK,
-        unsubscribeUrl: UNSUB,
-      },
-    };
-    const r = loopTemplateRenderer.render(weekly, 'email', 'generic');
-    expect(r.kind === 'email' && r.subject).toBe('Your week ahead');
-  });
 });
