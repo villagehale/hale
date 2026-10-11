@@ -372,9 +372,12 @@ describe('sendConnectorConnectedText', () => {
       async classify(input: KidItemsInput) {
         asked.push(input);
         return {
-          kidItemIds: input.items
-            .filter((item) => /\bmaya\b|\bswim\b/i.test(item.text))
-            .map((item) => item.id),
+          verdicts: input.items.map((item) => ({
+            ref: item.id,
+            reason: 'scripted',
+            verdict: /\bmaya\b|\bswim\b/i.test(item.text) ? 'kid' : 'adult',
+            childName: null,
+          })),
         };
       },
     };
