@@ -1,9 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import { pickLane } from '@hale/agent';
+import { forceToolJson, pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
 import { anthropicClient } from '../anthropic/client.js';
-import { forceToolJson } from './structured.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { dedupHashFor } from './dedup.js';
 import { loadPrompt } from '../prompts/loader.js';
@@ -191,6 +190,7 @@ export async function runClassifier(
     toolDescription: 'Return the structured classification of the inbound signal.',
     inputJsonSchema: classifierOutputJsonSchema,
     schema: classifierOutputSchema,
+    maxTokens: 4096,
   });
 
   return {

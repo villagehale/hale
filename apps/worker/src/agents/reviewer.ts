@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { pickModel } from '@hale/agent';
+import { cachedSystem, laneRequestFields, pickLane } from '@hale/agent';
 import {
   REQUIRED_CHECKS,
   type ReviewerToolName,
@@ -13,7 +13,6 @@ import { loadPrompt } from '../prompts/loader.js';
 import { loadChildNames } from '../services/memory-writer.js';
 import { invokeReviewerTool } from '../tools/registry.js';
 import { type AgentRunMetrics, metricsFromUsage } from './run-metrics.js';
-import { cachedSystem } from './structured.js';
 
 export { invokeReviewerTool } from '../tools/registry.js';
 
@@ -135,7 +134,8 @@ export async function runReviewer(
   // loop; caching the system block once lets each turn read the stable
   // tools+system prefix instead of reprocessing it.
   const system = cachedSystem(await loadPrompt('reviewer'));
-  const model = pickModel('review');
+  const lane = laneRequestFields(pickLane('review'));
+  const model = lane.model;
   const collected: ToolResult[] = [];
 
   // The model cannot know the family's child names; check_pii_leak needs them to
@@ -185,7 +185,9 @@ export async function runReviewer(
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     const response = await client.messages.create({
-      model,
+      // The pinned SDK types neither `thinking`'s current shapes nor `output_config`;
+      // narrow to `model` and let the rest ride along on the wire.
+      ...(lane as Pick<Anthropic.MessageCreateParams, 'model'>),
       max_tokens: 4096,
       system,
       tools,

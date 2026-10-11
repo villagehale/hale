@@ -90,13 +90,13 @@ function makeClient(
       messages: {
         // biome-ignore lint/suspicious/noExplicitAny: a fake driving the request mechanics
         async create(req: any) {
-          const isSanitize = req.tool_choice?.name === 'sanitize';
-          const isCompose = req.tool_choice?.name === 'medical_answer';
+          const isSanitize = req.tools?.[0]?.name === 'sanitize';
+          const isCompose = req.tools?.[0]?.name === 'medical_answer';
           const isGround =
             Array.isArray(req.tools) && req.tools[0]?.type === 'web_search_20250305';
           seen.push({
             system: req.system,
-            toolChoice: req.tool_choice?.name,
+            toolChoice: req.tools?.[0]?.name,
             tools: req.tools,
             userMessage: req.messages?.[0]?.content,
           });

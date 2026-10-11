@@ -1,19 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { agentRunCostUsd, estimateCostUsd } from './cost.js';
-import {
-  DEEPSEEK_MODEL,
-  HAIKU_MODEL,
-  OPUS_MODEL,
-  SONNET5_MODEL,
-  SONNET55_MODEL,
-  SONNET_MODEL,
-} from './model.js';
+import { DEEPSEEK_MODEL, HAIKU_MODEL, OPUS_MODEL, SONNET_MODEL } from './model.js';
 
 /**
- * Expected values are derived from the published per-MTok rates and the cache
- * multipliers, never copied from what the code emits:
- *   Sonnet 4.6/5 $3 in / $15 out · Sonnet 5.5 $2 / $10 · Haiku 4.5 $1 / $5 · Opus 5 $5 / $25
- *   cache read = 0.1x input · cache write (5m) = 1.25x input
+ * Expected values are derived from the published per-MTok rates
+ * (platform.claude.com/docs/en/about-claude/pricing, read 2026-10-11), never copied
+ * from what the code emits:
+ *   Sonnet 5.5 $2 in / $10 out, cache read $0.10 (0.05x), 5m write $2.50 (1.25x)
+ *   Opus 5.5 $4 / $20, cache read $0.20 (0.05x), 5m write $5
+ *   Haiku 5.5, prompt ≤100K tokens: $0.10 / $0.50, read $0.01, write $0.125
+ *   Haiku 5.5, prompt >100K tokens: $0.50 / $2.50, read $0.05, write $0.625
  */
 
 function tiers(over: Partial<Parameters<typeof estimateCostUsd>[1]> = {}) {
@@ -28,27 +24,43 @@ function tiers(over: Partial<Parameters<typeof estimateCostUsd>[1]> = {}) {
 
 describe('estimateCostUsd', () => {
   it('prices each tier at its published base rate', () => {
-    // 1M in + 1M out: Sonnet 4.6/5 = $18; Sonnet 5.5 = $12; Haiku = $6; Opus = $30.
+    // 50K in + 1M out: Sonnet 5.5 = 0.1 + 10; Opus 5.5 = 0.2 + 20; Haiku 5.5 = 0.005 + 0.5.
+    const short = tiers({ inputTokens: 50_000, outputTokens: 1_000_000 });
+    expect(estimateCostUsd(SONNET_MODEL, short)).toBeCloseTo(10.1, 6);
+    expect(estimateCostUsd(OPUS_MODEL, short)).toBeCloseTo(20.2, 6);
+    expect(estimateCostUsd(HAIKU_MODEL, short)).toBeCloseTo(0.505, 6);
     const million = tiers({ inputTokens: 1_000_000, outputTokens: 1_000_000 });
-    expect(estimateCostUsd(SONNET_MODEL, million)).toBeCloseTo(18, 6);
-    expect(estimateCostUsd(SONNET5_MODEL, million)).toBeCloseTo(18, 6);
-    expect(estimateCostUsd(SONNET55_MODEL, million)).toBeCloseTo(12, 6);
-    expect(estimateCostUsd(HAIKU_MODEL, million)).toBeCloseTo(6, 6);
-    expect(estimateCostUsd(OPUS_MODEL, million)).toBeCloseTo(30, 6);
     expect(estimateCostUsd(DEEPSEEK_MODEL, million)).toBeCloseTo(0.75, 6);
   });
 
+  it('moves a Haiku 5.5 call to the long-prompt card above 100K prompt tokens', () => {
+    // The prompt is every input token, cache reads and writes included: 100K exactly is
+    // the short card, one token more is the long one for the WHOLE call.
+    expect(
+      estimateCostUsd(HAIKU_MODEL, tiers({ inputTokens: 100_000, outputTokens: 1_000 })),
+    ).toBeCloseTo(0.01 + 0.0005, 9);
+    expect(
+      estimateCostUsd(
+        HAIKU_MODEL,
+        tiers({ inputTokens: 1, cacheReadTokens: 100_000, outputTokens: 1_000 }),
+      ),
+    ).toBeCloseTo(0.0000005 + 0.005 + 0.0025, 9);
+  });
+
   it('bills cache writes at 1.25x the input rate', () => {
-    // 1M cache-creation on Sonnet = $3 * 1.25 = $3.75.
+    // 1M cache-creation on Sonnet 5.5 = $2 * 1.25 = $2.50.
     expect(estimateCostUsd(SONNET_MODEL, tiers({ cacheCreationTokens: 1_000_000 }))).toBeCloseTo(
-      3.75,
+      2.5,
       6,
     );
   });
 
-  it('bills cache reads at 0.1x the input rate', () => {
-    // 1M cache-read on Haiku = $1 * 0.1 = $0.10.
-    expect(estimateCostUsd(HAIKU_MODEL, tiers({ cacheReadTokens: 1_000_000 }))).toBeCloseTo(0.1, 6);
+  it('bills cache reads at the published per-model rate', () => {
+    // 50K cache-read: Sonnet 5.5 $0.10/M, Opus 5.5 $0.20/M, Haiku 5.5 $0.01/M.
+    const reads = tiers({ cacheReadTokens: 50_000 });
+    expect(estimateCostUsd(SONNET_MODEL, reads)).toBeCloseTo(0.005, 9);
+    expect(estimateCostUsd(OPUS_MODEL, reads)).toBeCloseTo(0.01, 9);
+    expect(estimateCostUsd(HAIKU_MODEL, reads)).toBeCloseTo(0.0005, 9);
   });
 
   it('uses the Gateway cached-input rate for DeepSeek', () => {
@@ -59,7 +71,7 @@ describe('estimateCostUsd', () => {
   });
 
   it('sums all four tiers for a cached turn', () => {
-    // Sonnet: 200*3 + 1024*3*1.25 + 5303*3*0.1 + 90*15 = 7380.9 / 1e6.
+    // Sonnet 5.5: 200*2 + 1024*2.5 + 5303*0.1 + 90*10 = 4390.3 / 1e6.
     const cost = estimateCostUsd(
       SONNET_MODEL,
       tiers({
@@ -69,7 +81,7 @@ describe('estimateCostUsd', () => {
         outputTokens: 90,
       }),
     );
-    expect(cost).toBeCloseTo(0.0073809, 9);
+    expect(cost).toBeCloseTo(0.0043903, 9);
   });
 
   it('throws on an unpriced model rather than guessing a rate', () => {
@@ -89,6 +101,6 @@ describe('agentRunCostUsd', () => {
       cacheReadTokens: 5303,
       completionTokens: 90,
     });
-    expect(cost).toBeCloseTo(0.0073809, 9);
+    expect(cost).toBeCloseTo(0.0043903, 9);
   });
 });

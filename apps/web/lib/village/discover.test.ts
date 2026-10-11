@@ -292,8 +292,8 @@ describe('discoverForFamily', () => {
     expect(run.modelUsed).toBe(SONNET_MODEL);
     expect(run.promptTokens).toBe(10);
     expect(run.completionTokens).toBe(20);
-    // Sonnet 4.6 $3 in / $15 out per MTok: 10 * 3e-6 + 20 * 15e-6 = $0.00033.
-    expect(run.costUsd).toBe('0.000330');
+    // Sonnet 5.5 $2 in / $10 out per MTok: 10 * 2e-6 + 20 * 10e-6 = $0.00022.
+    expect(run.costUsd).toBe('0.000220');
     expect(typeof run.latencyMs).toBe('number');
     expect(run.status).toBe('completed');
   });

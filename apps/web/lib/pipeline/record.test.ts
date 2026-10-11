@@ -79,8 +79,9 @@ describe('pipeline cost accounting', () => {
       suggestion: { kind: 'autonomous_action', actionType: 'send_email' },
       teenContent: false,
       childId: null,
+      // Haiku 5.5, short-prompt card: 50k in at $0.10/M + 1M out at $0.50/M.
       usage: {
-        promptTokens: 1_000_000,
+        promptTokens: 50_000,
         completionTokens: 1_000_000,
         cacheCreationTokens: 0,
         cacheReadTokens: 0,
@@ -89,7 +90,7 @@ describe('pipeline cost accounting', () => {
     });
 
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.costUsd).toBe('6.000000');
+    expect(runs[0]?.costUsd).toBe('0.505000');
     expect(runs[0]?.promptCacheHit).toBe(false);
   });
 
@@ -143,9 +144,9 @@ describe('pipeline cost accounting', () => {
   });
 
   it('bills the drafter run for its cache tiers instead of dropping them', async () => {
-    // Sonnet 4.6, one call split across every tier: 100k fresh input ($0.30),
-    // 200k cache writes at 1.25x ($0.75), 700k cache reads at 0.1x ($0.21),
-    // 50k output ($0.75) = $2.01. promptTokens is the merged full-rate total
+    // Sonnet 5.5, one call split across every tier: 100k fresh input ($0.20),
+    // 200k cache writes at 1.25x ($0.50), 700k cache reads at $0.10/M ($0.07),
+    // 50k output ($0.50) = $1.27. promptTokens is the merged full-rate total
     // (fresh + writes) the agent_runs row records.
     const runs: Record<string, unknown>[] = [];
     await recordDraft(fakeDb(runs), {
@@ -162,7 +163,7 @@ describe('pipeline cost accounting', () => {
     });
 
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.costUsd).toBe('2.010000');
+    expect(runs[0]?.costUsd).toBe('1.270000');
     expect(runs[0]?.promptCacheHit).toBe(true);
   });
 

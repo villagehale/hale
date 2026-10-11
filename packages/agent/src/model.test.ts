@@ -4,74 +4,17 @@ import {
   type AgentTask,
   DEEPSEEK_MODEL,
   HAIKU_MODEL,
+  JUDGE_MODEL,
+  type LaneConfig,
   OPUS_MODEL,
-  SONNET5_MODEL,
-  SONNET55_MODEL,
   SONNET_MODEL,
   isAgentTask,
   laneRequestFields,
   pickLane,
   pickModel,
+  structuredToolChoice,
   withoutThinking,
 } from './model.js';
-
-describe('pickModel', () => {
-  it.each<[AgentTask, string]>([
-    ['classify', SONNET5_MODEL],
-    ['simple-lookup', HAIKU_MODEL],
-    ['converse', SONNET5_MODEL],
-    ['draft', SONNET_MODEL],
-    ['review', SONNET5_MODEL],
-    ['infer', SONNET_MODEL],
-    ['discover', SONNET5_MODEL],
-    ['high-stakes-judgment', OPUS_MODEL],
-    ['triage', HAIKU_MODEL],
-    ['extract', SONNET5_MODEL],
-    ['acknowledge', HAIKU_MODEL],
-    ['screen', HAIKU_MODEL],
-    ['answer', HAIKU_MODEL],
-    ['speak', HAIKU_MODEL],
-  ])('maps %s → %s', (task, expected) => {
-    expect(pickModel(task)).toBe(expected);
-  });
-
-  it('pins the model ids', () => {
-    expect(HAIKU_MODEL).toBe('claude-haiku-4-5');
-    expect(SONNET5_MODEL).toBe('claude-sonnet-5');
-    expect(SONNET55_MODEL).toBe('claude-sonnet-5-5');
-    expect(OPUS_MODEL).toBe('claude-opus-5');
-    expect(DEEPSEEK_MODEL).toBe('deepseek/deepseek-v4.1-flash');
-  });
-
-  it('pins the 4.6 tier and the lanes still held on it', () => {
-    // draft and infer are held here pending the prompt/schema work Sonnet 5 needs
-    // (see TASK_LANE). When they migrate, this list shrinks to empty — it exists so
-    // that happens deliberately rather than by drift.
-    expect(SONNET_MODEL).toBe('claude-sonnet-4-6');
-    expect(AGENT_TASKS.filter((t) => pickModel(t) === SONNET_MODEL).sort()).toEqual([
-      'draft',
-      'infer',
-    ]);
-  });
-
-  it('reproduces pre-re-tier behaviour on the lanes held at 4.6', () => {
-    // An omitted `thinking` means NO thinking on 4.6, which is what main sent. If a
-    // future edit flips these to adaptive, the eval cache cannot see it (the key
-    // covers neither knob), so this is the only thing standing between a silent
-    // behaviour change and prod.
-    for (const task of ['draft', 'infer'] as AgentTask[]) {
-      expect(laneRequestFields(pickLane(task))).toEqual({
-        model: SONNET_MODEL,
-        thinking: { type: 'disabled' },
-        output_config: { effort: 'high' },
-      });
-    }
-  });
-
-  it('throws on an unknown task', () => {
-    expect(() => pickModel('nope' as AgentTask)).toThrow(/unknown task/);
-  });
-});
 
 const HAIKU_TASKS: AgentTask[] = [
   'simple-lookup',
@@ -82,6 +25,43 @@ const HAIKU_TASKS: AgentTask[] = [
   'speak',
 ];
 
+describe('pickModel', () => {
+  it.each<[AgentTask, string]>([
+    ['classify', 'claude-sonnet-5-5'],
+    ['simple-lookup', 'claude-haiku-5-5'],
+    ['converse', 'claude-sonnet-5-5'],
+    ['draft', 'claude-sonnet-5-5'],
+    ['review', 'claude-sonnet-5-5'],
+    ['infer', 'claude-sonnet-5-5'],
+    ['discover', 'claude-sonnet-5-5'],
+    ['high-stakes-judgment', 'claude-opus-5-5'],
+    ['triage', 'claude-haiku-5-5'],
+    ['extract', 'claude-sonnet-5-5'],
+    ['acknowledge', 'claude-haiku-5-5'],
+    ['screen', 'claude-haiku-5-5'],
+    ['answer', 'claude-haiku-5-5'],
+    ['speak', 'claude-haiku-5-5'],
+  ])('maps %s → %s', (task, expected) => {
+    expect(pickModel(task)).toBe(expected);
+  });
+
+  it('pins the model ids, the eval judge included', () => {
+    expect(HAIKU_MODEL).toBe('claude-haiku-5-5');
+    expect(SONNET_MODEL).toBe('claude-sonnet-5-5');
+    expect(OPUS_MODEL).toBe('claude-opus-5-5');
+    expect(JUDGE_MODEL).toBe('claude-opus-5-5');
+    expect(DEEPSEEK_MODEL).toBe('deepseek/deepseek-v4.1-flash');
+  });
+
+  it('runs every lane on the 5.5 generation', () => {
+    expect(AGENT_TASKS.filter((t) => !pickModel(t).endsWith('-5-5'))).toEqual([]);
+  });
+
+  it('throws on an unknown task', () => {
+    expect(() => pickModel('nope' as AgentTask)).toThrow(/unknown task/);
+  });
+});
+
 describe('laneRequestFields', () => {
   it('disables Gateway reasoning, requires ZDR, and omits Claude effort', () => {
     expect(laneRequestFields({ model: DEEPSEEK_MODEL, thinking: 'disabled' })).toEqual({
@@ -91,93 +71,109 @@ describe('laneRequestFields', () => {
     });
   });
 
-  it.each(HAIKU_TASKS)('sends %s with no reasoning knobs at all', (task) => {
-    // Verified against the live API 2026-08-21: Haiku 4.5 rejects BOTH knobs with
-    // a 400 ("This model does not support the effort parameter" / "adaptive
-    // thinking is not supported on this model"). `speak` is a live phone call, so
-    // a 400 here is dead air on the line — the absence is the whole point.
-    const fields = laneRequestFields(pickLane(task));
-    expect(fields).toEqual({ model: HAIKU_MODEL });
-  });
-
-  it('sends the reasoning lanes with an explicit thinking mode and effort', () => {
-    // The positive control for the assertion above: the same function DOES emit
-    // both keys when the lane has them, so the Haiku cases are proving absence
-    // rather than proving the function never sets anything.
-    expect(laneRequestFields(pickLane('converse'))).toEqual({
-      model: SONNET5_MODEL,
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'high' },
-    });
-    expect(laneRequestFields(pickLane('high-stakes-judgment'))).toEqual({
-      model: OPUS_MODEL,
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'xhigh' },
+  it.each<[AgentTask, string]>([
+    ['simple-lookup', 'low'],
+    ['triage', 'low'],
+    ['screen', 'low'],
+    ['acknowledge', 'medium'],
+    ['answer', 'medium'],
+    ['speak', 'medium'],
+  ])('sends the %s Haiku lane with thinking off at %s effort', (task, effort) => {
+    // Haiku 5.5 thinks by default (adaptive, medium). These lanes are budgeted in tens
+    // of tokens or sit on a live call, so the default would truncate or stall them.
+    expect(laneRequestFields(pickLane(task))).toEqual({
+      model: 'claude-haiku-5-5',
+      thinking: { type: 'disabled' },
+      output_config: { effort },
     });
   });
 
-  it('pins the per-lane effort the re-tier chose', () => {
+  it('sends draft and infer thinking-off in the only shape Sonnet 5.5 accepts', () => {
+    for (const task of ['draft', 'infer'] as AgentTask[]) {
+      expect(laneRequestFields(pickLane(task))).toEqual({
+        model: 'claude-sonnet-5-5',
+        thinking: { type: 'between_tools' },
+        output_config: { effort: 'high' },
+      });
+    }
+  });
+
+  it('pins the per-lane effort of the reasoning lanes', () => {
     const effortOf = (task: AgentTask) => laneRequestFields(pickLane(task)).output_config?.effort;
-    // The inline chat lane a parent waits on, versus the run-rarely one.
-    // `high`, not the doctrine's `low`: below it Sonnet 5 stops calling
-    // find_activities on the flagship both-halves fixture (live n=3: low 0/3,
-    // medium 2/3, high 3/3).
     expect(effortOf('converse')).toBe('high');
-    expect(effortOf('draft')).toBe('high');
-    expect(effortOf('infer')).toBe('high');
     expect(effortOf('discover')).toBe('medium');
     expect(effortOf('high-stakes-judgment')).toBe('xhigh');
-    // The rule-#1 teen_content lanes keep the API defaults, written out.
     expect(effortOf('classify')).toBe('high');
     expect(effortOf('extract')).toBe('high');
     expect(effortOf('review')).toBe('high');
   });
 
-  it('never disables thinking above high effort', () => {
-    // `thinking: disabled` + `effort: xhigh` is a 400 on Opus 5 (verified live).
-    // The LaneConfig union makes it unrepresentable; this asserts the table has
-    // not been widened past the type in some future edit.
+  it('never sends a thinking shape the lane model rejects', () => {
+    // `disabled` is a 400 on Sonnet 5.5 and Opus 5.5, `between_tools` on everything but
+    // Sonnet 5.5, and either thinking-off shape is a 400 above `high`.
     for (const task of AGENT_TASKS) {
-      const lane = pickLane(task);
-      if ('thinking' in lane && lane.thinking === 'disabled') {
-        expect('effort' in lane ? lane.effort : undefined).not.toBe('xhigh');
-      }
+      const { model, thinking, output_config } = laneRequestFields(pickLane(task));
+      if (thinking?.type === 'disabled') expect(model).toBe(HAIKU_MODEL);
+      if (thinking?.type === 'between_tools') expect(model).toBe(SONNET_MODEL);
+      if (thinking?.type !== 'adaptive') expect(output_config?.effort).not.toBe('xhigh');
     }
+  });
+
+  it('makes Opus with thinking disabled a type error', () => {
+    // @ts-expect-error — Opus 5.5 cannot disable thinking at any effort.
+    const lane: LaneConfig = { model: OPUS_MODEL, thinking: 'disabled', effort: 'low' };
+    expect(lane.model).toBe(OPUS_MODEL);
+  });
+});
+
+describe('structuredToolChoice', () => {
+  it('forces the tool only where the model accepts it', () => {
+    expect(structuredToolChoice(HAIKU_MODEL, 'x')).toEqual({ type: 'tool', name: 'x' });
+    expect(structuredToolChoice(SONNET_MODEL, 'x')).toEqual({
+      type: 'auto',
+      disable_parallel_tool_use: true,
+    });
+    expect(structuredToolChoice(OPUS_MODEL, 'x')).toEqual({
+      type: 'auto',
+      disable_parallel_tool_use: true,
+    });
   });
 });
 
 describe('withoutThinking', () => {
-  it('keeps the model and the effort and only flips the mode off', () => {
-    // The one request shape on which `max_tokens` is a REPLY ceiling: Sonnet 5 has no
-    // field that bounds the thinking half (`budget_tokens` is a 400), so the re-ask
-    // changes the mode rather than the number. Effort survives because it is the knob
-    // that governs tool reach on this lane (see TASK_LANE's converse note).
+  it('turns Sonnet 5.5 thinking off with between_tools, keeping the effort', () => {
     expect(withoutThinking(pickLane('converse'))).toEqual({
-      model: SONNET5_MODEL,
-      thinking: 'disabled',
+      model: SONNET_MODEL,
+      thinking: 'between_tools',
       effort: 'high',
     });
     expect(withoutThinking(pickLane('discover'))).toEqual({
-      model: SONNET5_MODEL,
-      thinking: 'disabled',
+      model: SONNET_MODEL,
+      thinking: 'between_tools',
       effort: 'medium',
     });
   });
 
-  it('clamps xhigh to high, because disabled + xhigh is a 400', () => {
-    expect(withoutThinking(pickLane('high-stakes-judgment'))).toEqual({
-      model: OPUS_MODEL,
+  it('turns Haiku 5.5 thinking off with disabled, clamping xhigh to high', () => {
+    expect(withoutThinking({ model: HAIKU_MODEL, thinking: 'adaptive', effort: 'xhigh' })).toEqual({
+      model: HAIKU_MODEL,
       thinking: 'disabled',
       effort: 'high',
     });
   });
 
+  it('drops Opus 5.5 to low effort, since it cannot turn thinking off', () => {
+    expect(withoutThinking(pickLane('high-stakes-judgment'))).toEqual({
+      model: OPUS_MODEL,
+      thinking: 'adaptive',
+      effort: 'low',
+    });
+    expect(withoutThinking({ model: OPUS_MODEL, thinking: 'adaptive', effort: 'low' })).toBeNull();
+  });
+
   it.each<AgentTask>(['draft', 'infer', ...HAIKU_TASKS])(
-    'has no thinking-off form for %s',
+    'has no less-thinking form for %s',
     (task) => {
-      // A lane that was not thinking has nothing to turn off: re-asking it at the same
-      // shape buys the same completion twice. Null is the named absence, and runAgent
-      // reads it as "no re-ask on this lane" rather than sending a second identical ask.
       expect(withoutThinking(pickLane(task))).toBeNull();
     },
   );

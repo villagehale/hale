@@ -14,29 +14,29 @@ function usage(input: number, output: number): Anthropic.Usage {
 }
 
 describe('estimateCostUsd', () => {
-  // Expected values derived from the published rates, NOT from code output:
-  // Sonnet 4.6 = $3/MTok in, $15/MTok out. 1M in + 1M out = $3 + $15 = $18.
-  it('prices Sonnet at $3 in / $15 out per MTok', () => {
-    expect(estimateCostUsd(SONNET_MODEL, usage(1_000_000, 1_000_000))).toBeCloseTo(18, 6);
+  // Expected values derived from the published rates (pricing page, 2026-10-11), NOT
+  // from code output.
+  // Sonnet 5.5 = $2/MTok in, $10/MTok out. 1M in + 1M out = $2 + $10 = $12.
+  it('prices Sonnet 5.5 at $2 in / $10 out per MTok', () => {
+    expect(estimateCostUsd(SONNET_MODEL, usage(1_000_000, 1_000_000))).toBeCloseTo(12, 6);
   });
 
-  // Haiku 4.5 = $1/MTok in, $5/MTok out. 500k in + 200k out = $0.5 + $1.0 = $1.5.
-  it('prices Haiku at $1 in / $5 out per MTok', () => {
-    expect(estimateCostUsd(HAIKU_MODEL, usage(500_000, 200_000))).toBeCloseTo(1.5, 6);
+  // Haiku 5.5, prompt ≤100K = $0.10/MTok in, $0.50/MTok out. 50k in + 200k out = $0.105.
+  it('prices Haiku 5.5 at $0.10 in / $0.50 out per MTok on a short prompt', () => {
+    expect(estimateCostUsd(HAIKU_MODEL, usage(50_000, 200_000))).toBeCloseTo(0.105, 6);
   });
 
   it('prices cache-creation tokens at 1.25x the input rate', () => {
     const u = usage(1_000_000, 0);
     u.cache_creation_input_tokens = 1_000_000;
-    // 1M fresh @ $3/MTok + 1M cache-write @ $3 * 1.25 = $3 + $3.75 = $6.75.
-    expect(estimateCostUsd(SONNET_MODEL, u)).toBeCloseTo(6.75, 6);
+    // 1M fresh @ $2/MTok + 1M cache-write @ $2 * 1.25 = $2 + $2.50 = $4.50.
+    expect(estimateCostUsd(SONNET_MODEL, u)).toBeCloseTo(4.5, 6);
   });
 
-  it('prices cache-read tokens at 0.1x the input rate', () => {
+  it('prices Sonnet 5.5 cache reads at the published $0.10/MTok', () => {
     const u = usage(0, 0);
     u.cache_read_input_tokens = 1_000_000;
-    // 1M cache-read @ $3/MTok * 0.1 = $0.30.
-    expect(estimateCostUsd(SONNET_MODEL, u)).toBeCloseTo(0.3, 6);
+    expect(estimateCostUsd(SONNET_MODEL, u)).toBeCloseTo(0.1, 6);
   });
 
   it('throws on an unpriced model rather than guessing a rate', () => {
