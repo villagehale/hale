@@ -201,7 +201,7 @@ export async function runKidRelevanceBackfill(
               adultEvents.map((event) => event.id),
             ),
           );
-        const owed = [];
+        const owed: Awaited<ReturnType<typeof dropOwedTexts>>[] = [];
         for (const event of adultEvents) owed.push(await dropOwedTexts(tx, event.item, input.now));
         await tx.insert(schema.auditLog).values(
           adultEvents.map((event, index) => ({
