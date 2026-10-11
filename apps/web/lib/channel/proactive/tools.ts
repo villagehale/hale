@@ -1,0 +1,155 @@
+import type Anthropic from '@anthropic-ai/sdk';
+import { z } from 'zod';
+import { findInventedFacts } from '../../loop/voice/facts-lint';
+
+/**
+ * VIL-226 · the decider's and the writer's tool contracts, and the checks on what comes
+ * back. Relative imports only, so the evals in apps/worker/evals load this exact file and
+ * grade the model against the runtime's own schema, parse and link rule.
+ */
+
+export const DECIDER_TOOL = 'proactive_decision';
+export const DECIDER_MAX_TOKENS = 600;
+export const WRITER_TOOL = 'proactive_text';
+export const WRITER_MAX_TOKENS = 400;
+
+/** A word shorter than this ("the", "at") says nothing about which activity was named. */
+const NAMING_WORD_MIN = 4;
+
+export interface ToolCandidate {
+  id: string;
+  what: string;
+  why: string;
+  sourceUrl: string | null;
+  worthlessAfter: string | null;
+  parentRequested: boolean;
+}
+
+export type DeciderAction = 'send_now' | 'hold' | 'drop';
+
+export interface DeciderDecision {
+  reason: string;
+  action: DeciderAction;
+  itemIds: string[];
+  holdUntil: string | null;
+  frequencyPreference: { direction: 'less' | 'more'; note: string } | null;
+}
+
+/** The reason comes first so the model commits to one before it picks an action. */
+export const DECIDER_TOOL_SCHEMA = {
+  type: 'object' as const,
+  additionalProperties: false,
+  properties: {
+    reason: {
+      type: 'string',
+      description: 'One sentence for the audit trail: why this action, for these items.',
+    },
+    action: { type: 'string', enum: ['send_now', 'hold', 'drop'] },
+    item_ids: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Ids of queued candidates from the snapshot, and only those.',
+    },
+    hold_until: {
+      type: ['string', 'null'],
+      description: 'ISO time to look again when holding; null otherwise or with no clock.',
+    },
+    frequency_preference: {
+      type: ['object', 'null'],
+      additionalProperties: false,
+      properties: {
+        direction: { type: 'string', enum: ['less', 'more'] },
+        note: { type: 'string' },
+      },
+      required: ['direction', 'note'],
+      description: "Set only when the parent's own words asked for a different pace.",
+    },
+  },
+  required: ['reason', 'action', 'item_ids', 'hold_until', 'frequency_preference'],
+} satisfies Anthropic.Tool.InputSchema;
+
+const decisionSchema = z
+  .object({
+    reason: z.string().refine((value) => value.trim().length > 0),
+    action: z.enum(['send_now', 'hold', 'drop']),
+    item_ids: z.array(z.string()),
+    hold_until: z
+      .string()
+      .refine((value) => !Number.isNaN(Date.parse(value)))
+      .nullable(),
+    frequency_preference: z
+      .object({ direction: z.enum(['less', 'more']), note: z.string() })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
+export function parseDeciderDecision(value: unknown): DeciderDecision | null {
+  const parsed = decisionSchema.safeParse(value);
+  if (!parsed.success) return null;
+  return {
+    reason: parsed.data.reason.trim(),
+    action: parsed.data.action,
+    itemIds: parsed.data.item_ids,
+    holdUntil: parsed.data.hold_until,
+    frequencyPreference: parsed.data.frequency_preference,
+  };
+}
+
+export const WRITER_TOOL_SCHEMA = {
+  type: 'object' as const,
+  additionalProperties: false,
+  properties: {
+    message: { type: 'string', description: 'The one text Hale sends for the whole batch.' },
+  },
+  required: ['message'],
+} satisfies Anthropic.Tool.InputSchema;
+
+const textSchema = z
+  .object({ message: z.string().refine((value) => value.trim().length > 0) })
+  .strict();
+
+export type WriterSkip = 'no_client' | 'model_failed' | 'unparsed' | 'invented';
+export type WriterResult = { message: string } | { skipped: WriterSkip };
+
+function slotsOf(items: readonly ToolCandidate[]): string[] {
+  return items.flatMap((item) =>
+    [item.what, item.why, item.sourceUrl, item.worthlessAfter].filter(
+      (part): part is string => typeof part === 'string' && part.length > 0,
+    ),
+  );
+}
+
+/** Append each activity URL the text named but did not link. */
+export function withActivityLinks(message: string, items: readonly ToolCandidate[]): string {
+  let next = message;
+  for (const item of items) {
+    if (!item.sourceUrl || next.includes(item.sourceUrl)) continue;
+    const words = item.what
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((word) => word.length >= NAMING_WORD_MIN);
+    if (words.length === 0) continue;
+    const body = next.toLowerCase();
+    if (!words.every((word) => body.includes(word))) continue;
+    next = `${next} ${item.sourceUrl}`;
+  }
+  return next;
+}
+
+/**
+ * The writer's tool input, checked and finished: one non-empty message, nothing
+ * invented, and the link appended for an activity it named without one.
+ */
+export function readWriterText(value: unknown, items: readonly ToolCandidate[]): WriterResult {
+  const parsed = textSchema.safeParse(value);
+  if (!parsed.success) return { skipped: 'unparsed' };
+  const message = parsed.data.message.trim();
+  if (findInventedFacts(message, slotsOf(items)).length > 0) return { skipped: 'invented' };
+  return { message: withActivityLinks(message, items) };
+}
+
+/** The writer's user message: the chosen items, and the parent's cadence note if any. */
+export function writerContext(items: readonly ToolCandidate[], cadenceNote: string | null): string {
+  return JSON.stringify({ items, ...(cadenceNote ? { note: cadenceNote } : {}) });
+}
