@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarChange } from './calendar-alert';
 import type { GmailAlertEnvelope } from './email-alert';
 import type { ActiveConnectorConnection } from './store';
@@ -1324,6 +1324,10 @@ describe('syncConnection — booked-detection backfill', () => {
       .filter((url) => url.includes('/messages?'))
       .map((url) => new URL(url).searchParams.get('q') ?? '');
   }
+
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  });
 
   afterEach(() => {
     vi.unstubAllEnvs();

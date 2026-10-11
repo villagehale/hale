@@ -1,5 +1,6 @@
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { redactEventPayload } from '@hale/worker/redaction';
+import { laneEnabled } from '~/lib/channel/lanes';
 import { REMINDER_HORIZON_MS } from '~/lib/loop/reminders/schedule';
 import type { TravelDetectOutcome } from '~/lib/travel/detect';
 import {
@@ -813,6 +814,7 @@ interface BookedBackfillCursor {
 
 export type BookedBackfillRun =
   | { status: 'off' }
+  | { status: 'lane_off' }
   | { status: 'quota' }
   | { status: 'saved'; alerts: readonly EmailAlertResult[]; complete: boolean };
 
@@ -837,9 +839,12 @@ function readBookedBackfill(meta: Record<string, unknown>): BookedBackfillCursor
  * handed over with `pass: 'backfill'`, which records a booking and sends no text.
  *
  * `off` stamps nothing, so a flag that is not exactly `true` can still be turned
- * on later. `quota` stamps nothing either — the same page is listed again. A
- * `saved` cursor keeps every id this sweep did not finish (`pendingIds`) beside
- * the next list token, so a time budget cannot skip a message by advancing the page.
+ * on later. `lane_off` is the same hold under EMAIL_ALERT_ENABLED: the rows this pass
+ * writes feed how-it-went texts, so it stops with the email lane until the kid check
+ * reaches this path, and the page is read when the lane is back. `quota` stamps
+ * nothing either — the same page is listed again. A `saved` cursor keeps every id
+ * this sweep did not finish (`pendingIds`) beside the next list token, so a time
+ * budget cannot skip a message by advancing the page.
  */
 export async function backfillBookedMail(
   connection: ActiveConnectorConnection,
@@ -863,6 +868,13 @@ export async function backfillBookedMail(
   }
   const prior = readBookedBackfill(connection.providerMetadata);
   if (prior.backfilledAt !== undefined) return { status: 'off' };
+  if (!laneEnabled('email_alert')) {
+    console.info(
+      { integrationId: connection.id, lane: 'email_alert' },
+      'booked detection backfill: email lane off, page not started',
+    );
+    return { status: 'lane_off' };
+  }
 
   const budgetMs = options?.budgetMs ?? deps.backfillBudgetMs ?? BOOKED_BACKFILL_BUDGET_MS;
   const clock = options?.now ?? deps.backfillNow ?? Date.now;

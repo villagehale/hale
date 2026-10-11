@@ -565,7 +565,7 @@ describe('the email_alert lane', () => {
     await expect(offerRows()).resolves.toEqual([]);
   });
 
-  it('alertParentForGmailSweep: the silent backfill pass is not this lane', async () => {
+  it('alertParentForGmailSweep: the backfill pass is held by its caller (backfillBookedMail), not per envelope here', async () => {
     vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
     vi.stubEnv('BOOKED_DETECTION_ENABLED', 'false');
     const h = harness({ classification: offerable() });

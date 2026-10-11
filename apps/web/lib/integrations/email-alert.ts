@@ -1090,8 +1090,8 @@ export async function alertParentForGmailSweep(
     return outcomes;
   }
 
-  // Below the backfill pass on purpose: that pass never texts and has its own switch,
-  // BOOKED_DETECTION_BACKFILL_ENABLED.
+  // Below the backfill pass on purpose: that pass never texts, and it is held under this
+  // lane by backfillBookedMail (sync.ts), where its page cursor lives.
   if (!laneEnabled('email_alert')) {
     const outcomes = envelopes.map(
       (): EmailAlertResult => ({ alert: 'lane_off', booking: null, going: null }),
