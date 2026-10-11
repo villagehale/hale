@@ -72,6 +72,11 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `WEEKDAY_CARE_ENABLED` | `true` | off | `false` | Sloane |
 | `WORKSTREAMS_ENABLED` | `true` | off | `false` | Noah |
 | `INTEREST_PASSPORT_ENABLED` | `true` | off | `false` | Noah |
+| `CALENDAR_ALERT_ENABLED` | `true` (trimmed) | off unless set | unset | Barton |
+| `PARENT_CALENDAR_MIRROR_ENABLED` | `true` (trimmed) | off unless set | unset | Barton |
+| `EMAIL_ALERT_ENABLED` | `true` (trimmed) | off unless set | unset | Barton |
+
+The three lane switches (VIL-226) hold work while they are off. They do not delete it. With `CALENDAR_ALERT_ENABLED` unset, a calendar text Hale already owes stays owed and is offered again when the lane is back on, unless it ages out first. With `PARENT_CALENDAR_MIRROR_ENABLED` unset, mirrored `family_events` rows stay in the database, and their reminders stay `scheduled` and are counted as `heldLaneOff` in the reminders cron response. `EMAIL_ALERT_ENABLED` does not gate the silent booked-detection backfill. That pass has its own switch, `BOOKED_DETECTION_BACKFILL_ENABLED`.
 
 Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns those families on while the global flag is off. Two exceptions: `VILLAGE_INTROS_FAMILY_ALLOWLIST` only narrows a flag that is already `true`, and `MEMORY_DIGEST_FAMILY_ALLOWLIST` applies only together with `MEMORY_DIGEST_APPLY=true`. Live contents are unconfirmed, verify in Vercel env.
 
