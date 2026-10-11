@@ -21,7 +21,7 @@ import {
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT_PHONE = '+14165550111';
-const COPARENT_PHONE = '+19059629821';
+const COPARENT_PHONE = '+19055550182';
 const FROM = '+16462352164';
 const NOW = new Date('2026-09-24T03:55:00.000Z');
 const CHAT = 'chat-parent-1';
@@ -99,7 +99,7 @@ async function seedAsk(
       providerMessageId: `in-${channel}-${seeded.parentUserId}`,
       providerChatId: channel === 'imessage' ? CHAT : null,
       status: 'delivered',
-      body: '9059629821',
+      body: '9055550182',
       sentAt: NOW,
     })
     .returning({ id: schema.channelMessages.id });
@@ -134,11 +134,11 @@ async function groupChatId(): Promise<string | null> {
 
 describe('parseCoParentNumberReply', () => {
   it('reads the sandbox number and a name in front of one', () => {
-    expect(parseCoParentNumberReply('9059629821')).toEqual({
+    expect(parseCoParentNumberReply('9055550182')).toEqual({
       phoneE164: COPARENT_PHONE,
       name: null,
     });
-    expect(parseCoParentNumberReply('Sam 905-962-9821')).toEqual({
+    expect(parseCoParentNumberReply('Sam 905-555-0182')).toEqual({
       phoneE164: COPARENT_PHONE,
       name: 'Sam',
     });
@@ -146,7 +146,7 @@ describe('parseCoParentNumberReply', () => {
 
   it('leaves a name and a sentence for the other handlers', () => {
     expect(parseCoParentNumberReply('Jimmy')).toBeNull();
-    expect(parseCoParentNumberReply('the school line is 9059629821')).toBeNull();
+    expect(parseCoParentNumberReply('the school line is 9055550182')).toBeNull();
   });
 });
 
@@ -158,7 +158,7 @@ describe('a number on the Linq door', () => {
 
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
-      body: '9059629821',
+      body: '9055550182',
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,
@@ -190,7 +190,7 @@ describe('a number on the Linq door', () => {
       status: 'not_pending',
     });
     vi.stubEnv('F14_ENABLED', '');
-    expect(await deliverCoParentNumberInvite(db.database, { ...send, body: '9059629821' })).toEqual(
+    expect(await deliverCoParentNumberInvite(db.database, { ...send, body: '9055550182' })).toEqual(
       { status: 'not_pending' },
     );
     expect(await inviteStates()).toEqual([]);
@@ -206,7 +206,7 @@ describe('a number on the SMS door', () => {
     const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_invite_flag' }));
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
-      body: '9059629821',
+      body: '9055550182',
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,
@@ -227,7 +227,7 @@ describe('a number on the SMS door', () => {
     const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_invite' }));
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
-      body: '9059629821',
+      body: '9055550182',
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,
@@ -272,7 +272,7 @@ describe('a number on the SMS door', () => {
     const sendSms = vi.fn();
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
-      body: '9059629821',
+      body: '9055550182',
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,
@@ -289,7 +289,7 @@ describe('a number on the SMS door', () => {
     const sendSms = vi.fn();
     const outcome = await deliverCoParentNumberInvite(db.database, {
       ...seeded,
-      body: '9059629821',
+      body: '9055550182',
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,

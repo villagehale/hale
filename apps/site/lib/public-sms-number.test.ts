@@ -11,7 +11,7 @@ import { HALE_PUBLIC_SMS_DISPLAY, HALE_PUBLIC_SMS_E164 } from './text-entry.js';
 const REPO = fileURLToPath(new URL('../../..', import.meta.url));
 
 const RETIRED_TWILIO = ['2892172279', '289-217-2279', '(289) 217-2279', '+12892172279'];
-const PERSONAL_CELL = ['4167027089', '416-702-7089', '+14167027089', '(416) 702-7089'];
+const PERSONAL_CELL = ['4165550182', '416-555-0182', '+14165550182', '(416) 555-0182'];
 
 function filesUnder(root: string): string[] {
   const found: string[] = [];
