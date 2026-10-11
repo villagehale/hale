@@ -88,10 +88,10 @@ function makeClient(
     const messages = {
       // biome-ignore lint/suspicious/noExplicitAny: a fake driving the request mechanics
       async create(req: any) {
-        const isCompose = req.tool_choice?.name === 'activity_picks';
+        const isCompose = req.tools?.[0]?.name === 'activity_picks';
         seen.push({
           tools: req.tools,
-          toolChoice: req.tool_choice?.name,
+          toolChoice: req.tools?.[0]?.name,
           userMessage: req.messages?.[0]?.content,
         });
         const pick = isCompose ? script.compose : script.ground;
@@ -489,8 +489,8 @@ describe('the ground turn does not use the 50s non-stream path', () => {
       () =>
         ({
           messages: {
-            async create(req: { tool_choice?: { name?: string } }) {
-              if (req.tool_choice?.name !== 'activity_picks') {
+            async create(req: { tools?: { name?: string }[] }) {
+              if (req.tools?.[0]?.name !== 'activity_picks') {
                 throw new Error('Request timed out.');
               }
               return composeResult({ picks: [WHOLE_PICK] });

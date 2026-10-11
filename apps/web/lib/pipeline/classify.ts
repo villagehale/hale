@@ -1,5 +1,5 @@
 import type { AgentClient, AgentUsage, LaneConfig, ModelId } from '@hale/agent';
-import { SONNET55_MODEL, pickLane } from '@hale/agent';
+import { SONNET_MODEL, pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType } from '@hale/types';
 import { redactEventPayload } from '@hale/worker/redaction';
 import { z } from 'zod';
@@ -18,7 +18,7 @@ import { forceToolJson } from './structured';
 
 const MAX_TOKENS = 1024;
 const CANDIDATE_LANE: LaneConfig = {
-  model: SONNET55_MODEL,
+  model: SONNET_MODEL,
   thinking: 'adaptive',
   effort: 'high',
 };

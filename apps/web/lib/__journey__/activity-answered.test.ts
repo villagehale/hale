@@ -209,7 +209,7 @@ describe('the activity question is answered', () => {
     let call = -1;
     // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
     async function turn(req: any) {
-      if (req.tool_choice?.name === 'activity_picks') {
+      if (req.tools?.[0]?.name === 'activity_picks') {
         return {
           content: [
             { type: 'tool_use', name: 'activity_picks', input: { picks: picksByCall[call] ?? [] } },

@@ -3,33 +3,30 @@
  *
  * Before this package, model ids lived in apps/worker/src/anthropic/client.ts
  * and apps/web/lib/coach/model.ts read them back across the process boundary.
- * Both should import HAIKU_MODEL / SONNET5_MODEL / OPUS_MODEL from here instead,
+ * Both should import HAIKU_MODEL / SONNET_MODEL / OPUS_MODEL from here instead,
  * so a model bump is one edit, not a readFileSync-parse that can silently drift.
  */
 
-export const HAIKU_MODEL = 'claude-haiku-4-5';
 /**
- * The 4.6 tier: the eval judge, the middle rung of run-model-matrix-eval's ladder,
- * and — until they migrate — the `draft` and `infer` lanes (see TASK_LANE).
- *
- * Kept at 4.6 deliberately through the Sonnet-5 re-tier. Moving the judge in the
- * same change that moves the subject would re-grade every fixture against a
- * different marker, so a regression and a re-calibration would be
- * indistinguishable — and it would needlessly invalidate every cached judge
- * verdict. No suite both judges with this tier and runs its subject on it.
- * Change this only to deliberately re-baseline grading.
+ * Every lane runs on the Claude 5.5 generation (founder directive 2026-10-11: no
+ * exceptions, no fallback to an older model). The ids are tier names, not version
+ * names, so the next generation is again one edit here.
  */
-export const SONNET_MODEL = 'claude-sonnet-4-6';
-export const SONNET5_MODEL = 'claude-sonnet-5';
-export const SONNET55_MODEL = 'claude-sonnet-5-5';
-export const OPUS_MODEL = 'claude-opus-5';
+export const HAIKU_MODEL = 'claude-haiku-5-5';
+export const SONNET_MODEL = 'claude-sonnet-5-5';
+export const OPUS_MODEL = 'claude-opus-5-5';
 export const DEEPSEEK_MODEL = 'deepseek/deepseek-v4.1-flash';
+
+/**
+ * The eval grader for rubrics Haiku cannot hold. Not a lane: no production call uses
+ * it. Opus rather than Sonnet because those suites run their subject on Sonnet, and a
+ * model grading its own output is not a second opinion.
+ */
+export const JUDGE_MODEL = 'claude-opus-5-5';
 
 export type ModelId =
   | typeof HAIKU_MODEL
   | typeof SONNET_MODEL
-  | typeof SONNET5_MODEL
-  | typeof SONNET55_MODEL
   | typeof OPUS_MODEL
   | typeof DEEPSEEK_MODEL;
 
@@ -57,11 +54,10 @@ export type ModelId =
  *    to first token is the whole experience and a tier that thinks for two seconds is
  *    worse at this job than one that starts talking. It calls no tools and writes about
  *    forty words, which is the shape Haiku is best at)
- *  - classify / review / extract → Sonnet 5  (eval-proven; classify and extract both
- *    carry teen_content — a rule-#1 safety call, gated on teenAccuracy in the model
- *    matrix)
- *  - converse / draft / infer / discover → Sonnet 5
- *  - high-stakes-judgment → Opus 5  (run-rarely, judgment-dense)
+ *  - classify / review / extract → Sonnet  (classify and extract both carry
+ *    teen_content — a rule-#1 safety call, gated on teenAccuracy in the model matrix)
+ *  - converse / draft / infer / discover → Sonnet
+ *  - high-stakes-judgment → Opus  (run-rarely, judgment-dense)
  */
 export type AgentTask =
   | 'classify'
@@ -90,99 +86,65 @@ export type Effort = 'low' | 'medium' | 'high' | 'xhigh';
 /**
  * A lane: the model plus the reasoning knobs that belong to it.
  *
- * The union is the point. Two shapes are 400s at the API and both are now
- * unrepresentable rather than merely discouraged (each verified against the live
- * API, 2026-08-21):
+ * The union is the point: each 5.5 tier accepts a different thinking-off shape, and
+ * the wrong one is a 400, so every 400 shape is unrepresentable rather than merely
+ * discouraged (claude-api docs, Claude 5.5 migration guides, 2026-10):
  *
- *  - Haiku 4.5 accepts NEITHER knob — `output_config.effort` returns "This model
- *    does not support the effort parameter" and `thinking` returns "adaptive
- *    thinking is not supported on this model". The Haiku arm therefore has no
- *    knob fields at all, so a well-meant `effort: 'low'` on the phone-call lane
- *    is a compile error instead of a 400 mid-call.
- *  - `thinking: 'disabled'` with `effort: 'xhigh'` returns "output_config.effort
- *    'xhigh' is not supported when thinking is disabled on this model" (Opus 5).
- *    The disabled arm therefore stops at `high`.
+ *  - Haiku 5.5 accepts `thinking: disabled`, but only at effort `high` or below.
+ *  - Sonnet 5.5 rejects `disabled`; its thinking-off shape is `between_tools`, also
+ *    `high` or below, and no other model accepts `between_tools`.
+ *  - Opus 5.5 cannot turn thinking off at all; effort is its only control.
  *
- * Thinking is spelled out on every reasoning lane rather than left to the model
- * default, because the default flipped underneath us: on Sonnet 4.6 an omitted
- * `thinking` meant no thinking, on Sonnet 5 and Opus 5 it means adaptive. Since
- * `max_tokens` caps thinking AND reply text together, inheriting that default on
- * a lane budgeted at 128 tokens is how a reply silently truncates. Naming it per
- * lane makes the choice reviewable.
+ * Thinking is spelled out on every lane rather than left to the model default,
+ * because on Haiku 5.5 an omitted `thinking` means adaptive at `medium` — and since
+ * `max_tokens` caps thinking AND reply text together, inheriting that on a lane
+ * budgeted at 128 tokens is how a reply silently truncates.
  */
 export type LaneConfig =
-  | { model: typeof HAIKU_MODEL }
   | { model: typeof DEEPSEEK_MODEL; thinking: 'disabled' }
-  | { model: ReasoningModelId; thinking: 'adaptive'; effort: Effort }
-  | { model: ReasoningModelId; thinking: 'disabled'; effort: Exclude<Effort, 'xhigh'> };
+  | { model: typeof HAIKU_MODEL; thinking: 'adaptive'; effort: Effort }
+  | { model: typeof HAIKU_MODEL; thinking: 'disabled'; effort: ThinkingOffEffort }
+  | { model: typeof SONNET_MODEL; thinking: 'adaptive'; effort: Effort }
+  | { model: typeof SONNET_MODEL; thinking: 'between_tools'; effort: ThinkingOffEffort }
+  | { model: typeof OPUS_MODEL; thinking: 'adaptive'; effort: Effort };
 
-/** The tiers that accept the reasoning knobs — everything except Haiku. */
-export type ReasoningModelId =
-  | typeof SONNET_MODEL
-  | typeof SONNET5_MODEL
-  | typeof SONNET55_MODEL
-  | typeof OPUS_MODEL;
+/** Thinking-off shapes are a 400 above `high` on every tier that has one. */
+type ThinkingOffEffort = Exclude<Effort, 'xhigh'>;
 
 /**
  * The lane matrix.
  *
- * `effort` is set explicitly on every reasoning lane because the API default is
- * `high`, which is the wrong default for a parent watching three dots. The
- * classify / review / extract lanes keep `adaptive` + `high` — the API's own
- * defaults written out, so their wire behaviour is unchanged by this table while
- * still being stated rather than inherited. They carry teen_content (rule #1) and
- * are not re-tuned here.
+ * `effort` is set explicitly on every lane. The classify / review / extract lanes keep
+ * `adaptive` + `high`; they carry teen_content (rule #1) and are not re-tuned without
+ * re-running the teenAccuracy gate.
  */
 const TASK_LANE: Record<AgentTask, LaneConfig> = {
-  // Rule-#1 safety lanes: the API defaults, made explicit. Do not re-tune without
-  // re-running the teenAccuracy gate.
-  classify: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'high' },
-  review: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'high' },
-  extract: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'high' },
+  classify: { model: SONNET_MODEL, thinking: 'adaptive', effort: 'high' },
+  review: { model: SONNET_MODEL, thinking: 'adaptive', effort: 'high' },
+  extract: { model: SONNET_MODEL, thinking: 'adaptive', effort: 'high' },
 
-  // The inline chat lane, and the one place the doctrine's `low` turned out to be
-  // wrong. Effort governs how readily Sonnet 5 reaches for a tool, and on the
-  // flagship both-halves fixture (a verified registration date AND a live web find
-  // in one reply) it silently stopped calling find_activities: measured live n=3
-  // per level, `low` called it 0/3, `medium` 2/3, `high` 3/3. A parent then gets
-  // the date and never the thing they can do before it — the exact regression #522
-  // exists to prevent — with no error anywhere. `high` is therefore the floor here,
-  // not a tuning preference.
-  converse: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'high' },
+  // `high` is the floor on the inline chat lane, not a tuning preference: effort governs
+  // how readily the model reaches for a tool, and below `high` it stopped calling
+  // find_activities on the flagship both-halves fixture (measured on Sonnet 5).
+  converse: { model: SONNET_MODEL, thinking: 'adaptive', effort: 'high' },
 
-  discover: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'medium' },
+  discover: { model: SONNET_MODEL, thinking: 'adaptive', effort: 'medium' },
 
-  // PENDING MIGRATION — held on 4.6 with the knobs set to reproduce exactly what
-  // that model did before the re-tier (an omitted `thinking` is no thinking on 4.6,
-  // and `high` is the API default; verified live, 0 thinking blocks either way).
-  //
-  // Sonnet 5 is a quality REGRESSION on these two lanes, and it is not a knob
-  // problem: drafter, identity-ask, intro-voice, radar, reminder-voice and memory
-  // were re-recorded live at effort medium AND high AND with thinking disabled, and
-  // failed under all three. Two distinct causes, both needing work this change
-  // deliberately does not do:
-  //   - drafter ships `payload: {type:'object', additionalProperties:true}`, an
-  //     unconstrained node with no grammar. 4.6 filled it with an object; Sonnet 5
-  //     fills it with a stringified JSON blob that duplicates the envelope, so
-  //     to/subject/body all read empty — on emails to real recipients.
-  //   - the short-copy lanes collapse to one template: two different reminders
-  //     produced a byte-identical line (similarity 1.00 against a 0.75 ceiling) and
-  //     all four intro asks opened the same way (1 distinct opener, 2 required).
-  // Move these once the payload schema is constrained and the skills get a variety
-  // pass — not by loosening either grader.
-  draft: { model: SONNET_MODEL, thinking: 'disabled', effort: 'high' },
-  infer: { model: SONNET_MODEL, thinking: 'disabled', effort: 'high' },
+  // The two lanes that ran with thinking off before the move keep it off.
+  draft: { model: SONNET_MODEL, thinking: 'between_tools', effort: 'high' },
+  infer: { model: SONNET_MODEL, thinking: 'between_tools', effort: 'high' },
 
   // Run-rarely and judgment-dense: the one lane worth `xhigh`.
   'high-stakes-judgment': { model: OPUS_MODEL, thinking: 'adaptive', effort: 'xhigh' },
 
-  // Haiku lanes — no knob exists on this tier (see LaneConfig).
-  'simple-lookup': { model: HAIKU_MODEL },
-  triage: { model: HAIKU_MODEL },
-  acknowledge: { model: HAIKU_MODEL },
-  screen: { model: HAIKU_MODEL },
-  answer: { model: HAIKU_MODEL },
-  speak: { model: HAIKU_MODEL },
+  // Haiku lanes: thinking off, because these are latency-bound or budgeted in tens of
+  // tokens. `low` where the answer is a bool or a pick, `medium` where it is a sentence.
+  'simple-lookup': { model: HAIKU_MODEL, thinking: 'disabled', effort: 'low' },
+  triage: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'low' },
+  screen: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'low' },
+  acknowledge: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'medium' },
+  answer: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'medium' },
+  speak: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'medium' },
 };
 
 /** The set of valid task names — used by the skill loader to validate frontmatter. */
@@ -205,23 +167,19 @@ export function pickModel(task: AgentTask): ModelId {
 /**
  * The lane, as the wire wants it.
  *
- * The pinned SDK (0.41.0) types neither `thinking`, `output_config`, nor Gateway
- * `providerOptions`; they are plain top-level body fields needing no beta header,
- * so this widens the request rather than waiting on a version bump — the same
- * tactic as `WireTool` in agent.ts. A Haiku lane spreads to `{ model }` alone,
- * which is the only shape that tier accepts.
+ * The pinned SDK (0.41.0) types neither `thinking`'s current shapes, nor
+ * `output_config`, nor Gateway `providerOptions`; they are plain top-level body fields
+ * needing no beta header, so this widens the request rather than waiting on a version
+ * bump — the same tactic as `WireTool` in agent.ts.
  */
 export interface LaneRequestFields {
   model: ModelId;
-  thinking?: { type: 'adaptive' | 'disabled' };
+  thinking?: { type: 'adaptive' | 'disabled' | 'between_tools' };
   output_config?: { effort: Effort };
   providerOptions?: { gateway: { zeroDataRetention: true } };
 }
 
 export function laneRequestFields(lane: LaneConfig): LaneRequestFields {
-  if (!('thinking' in lane)) {
-    return { model: lane.model };
-  }
   if (lane.model === DEEPSEEK_MODEL) {
     return {
       model: lane.model,
@@ -237,21 +195,45 @@ export function laneRequestFields(lane: LaneConfig): LaneRequestFields {
 }
 
 /**
- * The same lane with thinking off.
+ * Whether the model accepts a forced `tool_choice` (`tool` / `any`). Sonnet 5.5 and
+ * Opus 5.5 return a 400 for both; Haiku 5.5 accepts them.
+ */
+export function acceptsForcedToolChoice(model: ModelId): boolean {
+  return model === HAIKU_MODEL;
+}
+
+/**
+ * The tool_choice that makes a single structured answer as close to guaranteed as the
+ * model allows: the named tool where forcing is accepted, otherwise `auto` with at most
+ * one call — and then the caller must check that the call happened (see forceToolJson).
+ */
+export function structuredToolChoice(
+  model: ModelId,
+  toolName: string,
+): { type: 'tool'; name: string } | { type: 'auto'; disable_parallel_tool_use: true } {
+  return acceptsForcedToolChoice(model)
+    ? { type: 'tool', name: toolName }
+    : { type: 'auto', disable_parallel_tool_use: true };
+}
+
+/**
+ * The same lane with as little thinking as the tier allows.
  *
- * On Sonnet 5 and Opus 5 this is the one request shape on which `max_tokens` cannot be
- * spent reasoning: there is no thinking budget on these models (`budget_tokens` is a
- * 400) and `effort` is a hint, not a bound. Null when the lane was not thinking in the
- * first place — a re-ask at the same shape buys the same completion twice. `xhigh`
- * clamps to `high` because disabled + xhigh is a 400 (see LaneConfig).
+ * The re-ask shape for a step that spent its whole `max_tokens` thinking: on Haiku 5.5
+ * that is `disabled` and on Sonnet 5.5 `between_tools`, the shapes on which the budget
+ * cannot be spent reasoning (`xhigh` clamps to `high`, because both are a 400 above it).
+ * Opus 5.5 cannot turn thinking off, so its least-thinking form is effort `low`. Null
+ * when the lane is already there — a re-ask at the same shape buys the same completion
+ * twice.
  */
 export function withoutThinking(lane: LaneConfig): LaneConfig | null {
-  if (!('thinking' in lane) || lane.thinking === 'disabled') return null;
-  return {
-    model: lane.model,
-    thinking: 'disabled',
-    effort: lane.effort === 'xhigh' ? 'high' : lane.effort,
-  };
+  if (lane.model === DEEPSEEK_MODEL || lane.thinking !== 'adaptive') return null;
+  const effort = lane.effort === 'xhigh' ? 'high' : lane.effort;
+  if (lane.model === HAIKU_MODEL) return { model: lane.model, thinking: 'disabled', effort };
+  if (lane.model === SONNET_MODEL) {
+    return { model: lane.model, thinking: 'between_tools', effort };
+  }
+  return lane.effort === 'low' ? null : { model: lane.model, thinking: 'adaptive', effort: 'low' };
 }
 
 /** Type guard: is `value` a known AgentTask? Lets the skill loader fail loudly on a typo. */

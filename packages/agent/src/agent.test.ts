@@ -427,11 +427,12 @@ describe('runAgent when a step is truncated before it says anything', () => {
     expect(result.answer).toBe('Around 18 months, once he is walking outside.');
     // ONE re-ask, at the SAME budget with the mode flipped off. A bigger number is the
     // same bet with more chips — `max_tokens` bounds thinking plus text together and
-    // Sonnet 5 has no field that bounds the thinking half, so only `disabled` makes the
-    // 400 a reply ceiling again. Same messages: this is a re-ask, not a next step.
+    // Sonnet 5.5 has no field that bounds the thinking half, so only its thinking-off
+    // shape (`between_tools`; `disabled` is a 400 there) makes the 400 a reply ceiling
+    // again. Same messages: this is a re-ask, not a next step.
     expect(requests).toHaveLength(2);
     expect(requests[1]?.max_tokens).toBe(400);
-    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'disabled' });
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
     // Effort survives the flip — it is the knob that governs tool reach on this lane.
     expect((requests[1] as unknown as WireShape).output_config).toEqual({ effort: 'high' });
     expect((requests[0] as unknown as WireShape).thinking).toEqual({ type: 'adaptive' });
@@ -463,7 +464,7 @@ describe('runAgent when a step is truncated before it says anything', () => {
     // The handler never ran: a clipped call is re-drawn whole, not half-run.
     expect(read).toEqual([]);
     expect(requests).toHaveLength(2);
-    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'disabled' });
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
     expect(result.answer).toBe('He is five months old.');
     expect(result.truncatedRetries).toBe(1);
   });
@@ -503,7 +504,7 @@ describe('runAgent when a step is truncated before it says anything', () => {
   });
 
   it('does not re-ask a lane that was not thinking', async () => {
-    // `draft` is `thinking: 'disabled'` already, so there is no second shape to buy:
+    // `draft` is `thinking: 'between_tools'` already, so there is no second shape to buy:
     // no text and a clipped call there means the REPLY did not fit the budget, which is
     // a lane constant to fix, not a turn to re-draw. Named rather than silent (rule #11).
     const draftSkill: Skill = { ...skill, meta: { ...skill.meta, task: 'draft' } };
@@ -560,7 +561,7 @@ describe('runAgent when a step is truncated before it says anything', () => {
     // a parent is waiting on is worse than saying nothing.
     expect(requests).toHaveLength(2);
     expect(requests[1]?.max_tokens).toBe(400);
-    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'disabled' });
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
     expect(read).toEqual([]);
     expect(result.answer).toBeNull();
     // The outcome has a NAME now: this is not "ran out of steps" and not "said nothing
@@ -1647,17 +1648,17 @@ describe('lane fields on the wire', () => {
     // Without this the `...lane` spread could silently collapse to {model} and
     // every other test here would still pass — the effort would just never ship.
     const req = await runWithTask('converse');
-    expect(req.model).toBe('claude-sonnet-5');
+    expect(req.model).toBe('claude-sonnet-5-5');
     expect(req.thinking).toEqual({ type: 'adaptive' });
     expect(req.output_config).toEqual({ effort: 'high' });
   });
 
-  it('sends the phone-call lane no reasoning knobs', async () => {
-    // Haiku 4.5 rejects both knobs with a 400 (verified live). On `speak` that
-    // 400 is dead air on an open call, so their absence is load-bearing.
+  it('sends the phone-call lane with thinking off', async () => {
+    // Haiku 5.5 thinks by default. On `speak` time to first token is the whole
+    // experience, so the lane's explicit `disabled` is load-bearing.
     const req = await runWithTask('speak');
-    expect(req.model).toBe('claude-haiku-4-5');
-    expect(req).not.toHaveProperty('thinking');
-    expect(req).not.toHaveProperty('output_config');
+    expect(req.model).toBe('claude-haiku-5-5');
+    expect(req.thinking).toEqual({ type: 'disabled' });
+    expect(req.output_config).toEqual({ effort: 'medium' });
   });
 });

@@ -150,7 +150,7 @@ describe('the deep answer arrives at question time', () => {
   function inlineWeb(): () => AgentClient {
     // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
     async function turn(req: any) {
-      if (req.tool_choice?.name === 'activity_picks') {
+      if (req.tools?.[0]?.name === 'activity_picks') {
         return {
           content: [
             {

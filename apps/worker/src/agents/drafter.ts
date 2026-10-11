@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import type { ActionType, DraftedAction } from '@hale/types';
-import { pickLane } from '@hale/agent';
+import { forceToolJson, pickLane } from '@hale/agent';
 import { anthropicClient } from '../anthropic/client.js';
-import { forceToolJson } from './structured.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { loadPrompt } from '../prompts/loader.js';
 
@@ -67,6 +66,7 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
     toolDescription: 'Return the structured draft of the proposed action.',
     inputJsonSchema: drafterOutputJsonSchema,
     schema: drafterOutputSchema,
+    maxTokens: 4096,
   });
 
   return {

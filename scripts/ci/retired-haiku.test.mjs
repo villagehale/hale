@@ -33,7 +33,7 @@ describe('retired Haiku 3.5 alias', () => {
     const hits = retiredHaikuHits();
     expect(
       hits,
-      `Retired Haiku 3.5 is still named. Use HAIKU_MODEL from packages/agent/src/model.ts (claude-haiku-4-5).\n${hits.join('\n')}`,
+      `Retired Haiku 3.5 is still named. Use HAIKU_MODEL from packages/agent/src/model.ts (claude-haiku-5-5).\n${hits.join('\n')}`,
     ).toEqual([]);
   });
 });
