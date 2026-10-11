@@ -14,7 +14,8 @@ import { KID_HINT_MAX_CHARS, type KidRelevanceSource } from './skill-contract';
  *   - a `parent` verdict of `adult`, which no model re-judge overwrites, holding the
  *     kind of thing it was as the judge's hint next time - never the title, and never a
  *     family memory fact, which the coach, the digest and a co-parent would read;
- *   - every future copy on the family calendar soft-deleted, its title and place cleared;
+ *   - every live copy on the family calendar, past and future, soft-deleted, its title
+ *     and place cleared, as the backfill drops an adult copy;
  *   - a held calendar alert for it dropped, and an open Gmail offer for it withdrawn, so
  *     nothing Hale still owes can name it later;
  *   - their scheduled reminders cancelled with `parent_untracked`;
@@ -30,7 +31,7 @@ export interface UntrackInput {
   target: { kind: 'channel_message' | 'family_event'; id: string };
   now: Date;
   /** What kind of thing it was, as the router's model put it. Refused (stored as null)
-   * when it repeats the item's own title. */
+   * when it repeats the item's own title or place. */
   kind: string | null;
 }
 
@@ -132,7 +133,7 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
       .select({
         id: schema.familyEvents.id,
         title: schema.familyEvents.title,
-        startsAt: schema.familyEvents.startsAt,
+        location: schema.familyEvents.location,
         deletedAt: schema.familyEvents.deletedAt,
       })
       .from(schema.familyEvents)
@@ -142,9 +143,7 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
           or(eq(schema.familyEvents.kidVerdictId, verdict.id), eventsOf(item)),
         ),
       );
-    const removed = matching
-      .filter((row) => row.deletedAt === null && row.startsAt >= input.now)
-      .map((row) => row.id);
+    const removed = matching.filter((row) => row.deletedAt === null).map((row) => row.id);
 
     if (removed.length > 0) {
       await tx
@@ -170,8 +169,8 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
       .update(table)
       .set({
         hint: safeKind(input.kind, [
-          ...matching.map((row) => row.title),
-          ...(await titlesSeen(tx, item)),
+          ...matching.flatMap((row) => [row.title, row.location].filter((text) => text !== null)),
+          ...(await textsSeen(tx, item)),
         ]),
       })
       .where(eq(table.id, verdict.id));
@@ -283,15 +282,18 @@ export async function dropOwedTexts(
   return { heldAlertsCleared: 0, offersWithdrawn: 0 };
 }
 
-/** The titles Hale held for this item outside the family calendar. */
-async function titlesSeen(
+/** The titles and places Hale held for this item outside the family calendar. */
+async function textsSeen(
   database: Pick<Database, 'select'>,
   item: ProviderItem,
 ): Promise<string[]> {
   if (item.integrationId === null) return [];
   if (item.source === 'google_calendar') {
     const rows = await database
-      .select({ title: schema.calendarEventSnapshots.heldTitle })
+      .select({
+        title: schema.calendarEventSnapshots.heldTitle,
+        location: schema.calendarEventSnapshots.heldLocation,
+      })
       .from(schema.calendarEventSnapshots)
       .where(
         and(
@@ -302,11 +304,14 @@ async function titlesSeen(
           ),
         ),
       );
-    return rows.flatMap((row) => (row.title === null ? [] : [row.title]));
+    return rows.flatMap((row) => [row.title, row.location].filter((text) => text !== null));
   }
   if (item.source === 'gmail') {
     const rows = await database
-      .select({ title: schema.emailAlertOffers.title })
+      .select({
+        title: schema.emailAlertOffers.title,
+        location: schema.emailAlertOffers.location,
+      })
       .from(schema.emailAlertOffers)
       .where(
         and(
@@ -314,18 +319,19 @@ async function titlesSeen(
           eq(schema.emailAlertOffers.messageId, item.itemKey),
         ),
       );
-    return rows.map((row) => row.title);
+    return rows.flatMap((row) => [row.title, row.location].filter((text) => text !== null));
   }
   return [];
 }
 
-/** The kind as one plain line, unless it is empty, long, or carries the item's own title. */
-function safeKind(kind: string | null, titles: readonly string[]): string | null {
+/** The kind as one plain line, unless it is empty, long, or carries the item's own title
+ * or place. */
+function safeKind(kind: string | null, texts: readonly string[]): string | null {
   const trimmed = (kind ?? '').replace(/[\p{Cc}\s]+/gu, ' ').trim();
   if (trimmed.length === 0 || trimmed.length > KID_HINT_MAX_CHARS) return null;
   const folded = trimmed.toLowerCase();
-  const leaks = titles.some((title) => {
-    const own = title.trim().toLowerCase();
+  const leaks = texts.some((text) => {
+    const own = text.trim().toLowerCase();
     return own.length > 0 && (folded === own || folded.includes(own) || own.includes(folded));
   });
   return leaks ? null : trimmed;
@@ -391,14 +397,18 @@ async function resolveTarget(
     const [verdict] = await database
       .select()
       .from(schema.kidRelevanceVerdicts)
-      .where(eq(schema.kidRelevanceVerdicts.id, event.kidVerdictId));
-    if (verdict) {
-      return {
-        source: verdict.source,
-        integrationId: verdict.integrationId,
-        itemKey: verdict.itemKey,
-      };
-    }
+      .where(
+        and(
+          eq(schema.kidRelevanceVerdicts.id, event.kidVerdictId),
+          eq(schema.kidRelevanceVerdicts.familyId, input.familyId),
+        ),
+      );
+    if (!verdict) return 'not_found';
+    return {
+      source: verdict.source,
+      integrationId: verdict.integrationId,
+      itemKey: verdict.itemKey,
+    };
   }
   return 'not_provider_item';
 }

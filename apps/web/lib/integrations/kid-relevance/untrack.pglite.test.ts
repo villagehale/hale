@@ -13,8 +13,8 @@ import { KID_VERDICT_TOOL } from './skill-contract';
 import { UntrackActorNotParentError, untrackItem } from './untrack';
 
 /**
- * "That's mine." The parent's word becomes an `adult` verdict for the whole series, the
- * future copies leave the family calendar, their reminders are cancelled with a named
+ * "That's mine." The parent's word becomes an `adult` verdict for the whole series, every
+ * copy of it, past and future, leaves the family calendar, their reminders are cancelled with a named
  * reason, the kind is remembered as a hint for the judge, and one audit row records it
  * with counts and no title. Every title here is invented.
  */
@@ -155,16 +155,17 @@ describe('untrackItem', () => {
     expect(result).toEqual({
       outcome: 'untracked',
       seenIn: 'google_calendar',
-      cancelledReminders: 4,
-      removedEvents: 2,
+      cancelledReminders: 6,
+      removedEvents: 3,
     });
-    expect((await liveEvents()).sort()).toEqual(['choir_1004', 'unrelated']);
+    expect(await liveEvents()).toEqual(['unrelated']);
     const events = await db.database
       .select()
       .from(schema.familyEvents)
       .where(eq(schema.familyEvents.familyId, familyId));
     const removed = events.filter((row) => row.deletedAt !== null);
     expect(removed.map((row) => [row.googleEventId, row.title, row.location]).sort()).toEqual([
+      ['choir_1004', '', null],
       ['choir_1018', '', null],
       ['choir_1025', '', null],
     ]);
@@ -188,11 +189,11 @@ describe('untrackItem', () => {
     });
 
     const cancelled = (await reminders()).filter((row) => row.status === 'cancelled');
-    expect(cancelled).toHaveLength(4);
+    expect(cancelled).toHaveLength(6);
     expect(new Set(cancelled.map((row) => row.suppressReason))).toEqual(
       new Set(['parent_untracked']),
     );
-    expect((await reminders()).filter((row) => row.status === 'scheduled')).toHaveLength(4);
+    expect((await reminders()).filter((row) => row.status === 'scheduled')).toHaveLength(2);
   });
 
   it('writes one audit row with the verdict, source and counts and no title', async () => {
@@ -241,6 +242,50 @@ describe('untrackItem', () => {
     expect(JSON.stringify(verdicts)).not.toContain('Dentist');
     // No family memory fact: those reach the coach, the digest and the co-parent.
     expect(await memoryFacts()).toEqual(factsBefore);
+  });
+
+  it('refuses a kind that repeats a place Hale holds for the item', async () => {
+    const mirrored = await mirror('one-off', NEXT_WEEK, 'Check-in');
+    await untrack({ kind: 'family_event', id: mirrored }, 'community hall');
+
+    await db.database.insert(schema.calendarEventSnapshots).values({
+      integrationId,
+      eventId: 'stay_1018',
+      recurringEventId: 'stay-series',
+      updatedStamp: 'u1',
+      status: 'confirmed',
+      startAt: NEXT_WEEK,
+      pendingSince: NOW,
+      heldTitle: 'Arrival',
+      heldLocation: 'Lakeside Clinic',
+    });
+    const held = await alertMessage(calendarAlertDedupeKey(integrationId, 'stay_1018', 'u1'));
+    await untrack({ kind: 'channel_message', id: held }, 'the lakeside clinic');
+
+    const offered = await alertMessage(emailAlertDedupeKey(gmailIntegrationId, 'msg-3'));
+    await db.database.insert(schema.emailAlertOffers).values({
+      familyId,
+      parentUserId,
+      integrationId: gmailIntegrationId,
+      messageId: 'msg-3',
+      kind: 'event',
+      title: 'Booking confirmed',
+      startsAt: NEXT_WEEK,
+      location: 'Harbour Inn',
+      channelMessageId: offered,
+      expiresAt: NEXT_WEEK,
+    });
+    await untrack({ kind: 'channel_message', id: offered }, 'Harbour Inn');
+
+    const plain = await mirror('trip', NEXT_WEEK, 'Flight out');
+    await untrack({ kind: 'family_event', id: plain }, 'a work trip');
+
+    expect((await parentVerdicts()).map((row) => [row.itemKey, row.hint]).sort()).toEqual([
+      ['msg-3', null],
+      ['one-off', null],
+      ['stay-series', null],
+      ['trip', 'a work trip'],
+    ]);
   });
 
   it('keeps a hint to one plain line of a few words', async () => {
@@ -488,6 +533,72 @@ describe('untrackItem', () => {
       outcome: 'untracked',
       removedEvents: 1,
     });
+  });
+
+  it("never resolves through another family's verdict, and writes nothing", async () => {
+    const other = await seedFamily(db.database);
+    const theirGmail = await seedIntegration(
+      db.database,
+      other.familyId,
+      other.parentUserId,
+      'gmail',
+    );
+    const [theirVerdict] = await db.database
+      .insert(schema.kidRelevanceVerdicts)
+      .values({
+        familyId: other.familyId,
+        source: 'gmail',
+        integrationId: theirGmail,
+        itemKey: 'their-msg',
+        inputHash: 'h',
+        verdict: 'kid',
+        decidedBy: 'model',
+      })
+      .returning({ id: schema.kidRelevanceVerdicts.id });
+    const [theirMessage] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: other.familyId,
+        parentUserId: other.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'alert',
+        status: 'sent',
+        sentAt: NOW,
+      })
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.emailAlertOffers).values({
+      familyId: other.familyId,
+      parentUserId: other.parentUserId,
+      integrationId: theirGmail,
+      messageId: 'their-msg',
+      kind: 'event',
+      title: 'Theirs',
+      startsAt: NEXT_WEEK,
+      channelMessageId: theirMessage?.id ?? '',
+      expiresAt: NEXT_WEEK,
+    });
+    const [ours] = await db.database
+      .insert(schema.familyEvents)
+      .values({
+        familyId,
+        title: 'Ours',
+        startsAt: NEXT_WEEK,
+        source: 'parent',
+        kidVerdictId: theirVerdict?.id,
+      })
+      .returning({ id: schema.familyEvents.id });
+    const before = await writes();
+
+    expect(await untrack({ kind: 'family_event', id: ours?.id ?? '' })).toEqual({
+      outcome: 'not_found',
+    });
+    expect(await writes()).toEqual(before);
+    const [theirOffer] = await db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.messageId, 'their-msg'));
+    expect(theirOffer?.expiresAt).toEqual(NEXT_WEEK);
   });
 
   it('a second untrack of the same series is already_untracked and writes nothing more', async () => {
