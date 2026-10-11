@@ -158,9 +158,12 @@ const oracle: KidItemClassifier = {
   async classify(input) {
     const kid = [...LIVE_KID_MAIL, ...LIVE_KID_CALENDAR];
     return {
-      kidItemIds: input.items
-        .filter((item) => kid.some((title) => item.text.includes(title)))
-        .map((item) => item.id),
+      verdicts: input.items.map((item) => ({
+        ref: item.id,
+        reason: 'oracle',
+        verdict: kid.some((title) => item.text.includes(title)) ? 'kid' : 'adult',
+        childName: null,
+      })),
     };
   },
 };

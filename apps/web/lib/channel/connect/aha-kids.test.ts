@@ -8,6 +8,21 @@ import {
 } from './aha-kids';
 import type { AhaSnapshot } from './aha-read';
 
+/** The skill's answer shape: one verdict per offered ref. */
+function verdicts(kid: readonly string[], others: readonly string[] = []) {
+  return {
+    verdicts: [
+      ...kid.map((ref) => ({ ref, reason: 'a kid item', verdict: 'kid', childName: null })),
+      ...others.map((ref) => ({
+        ref,
+        reason: 'the parent own',
+        verdict: 'adult',
+        childName: null,
+      })),
+    ],
+  };
+}
+
 const context = {
   children: [
     { name: 'Sebastian', ageMonths: 15 },
@@ -64,11 +79,28 @@ describe('kidItemsFor', () => {
 });
 
 describe('acceptKidItemIds', () => {
-  it('keeps only ids that were offered, and nothing from a malformed answer', () => {
-    expect([...acceptKidItemIds({ kidItemIds: ['c0', 'e9', 'x'] }, ['c0', 'e1'])]).toEqual(['c0']);
-    expect(acceptKidItemIds({ kidItemIds: 'c0' }, ['c0']).size).toBe(0);
+  it('keeps only kid verdicts on ids that were offered, and nothing from a malformed answer', () => {
+    expect([...acceptKidItemIds(verdicts(['c0', 'e9', 'x'], ['e1']), ['c0', 'e1'])]).toEqual([
+      'c0',
+    ]);
+    expect(acceptKidItemIds({ verdicts: 'c0' }, ['c0']).size).toBe(0);
     expect(acceptKidItemIds(null, ['c0']).size).toBe(0);
     expect(acceptKidItemIds('c0', ['c0']).size).toBe(0);
+  });
+
+  it('an unsure or adult verdict is never kept', () => {
+    const answer = {
+      verdicts: [
+        { ref: 'c0', reason: 'could be either', verdict: 'unsure', childName: null },
+        { ref: 'c1', reason: 'a work meeting', verdict: 'adult', childName: null },
+        { ref: 'c2', reason: 'toddler swim', verdict: 'kid', childName: 'Mia' },
+      ],
+    };
+    expect([...acceptKidItemIds(answer, ['c0', 'c1', 'c2'])]).toEqual(['c2']);
+  });
+
+  it('the old id-list answer keeps nothing', () => {
+    expect(acceptKidItemIds({ kidItemIds: ['c0'] }, ['c0']).size).toBe(0);
   });
 });
 
@@ -93,7 +125,7 @@ describe('kidRelatedAha', () => {
         { earlier: 'Mia swim', later: 'Mia birthday party' },
       ],
     };
-    const { classifier, calls } = scripted(() => ({ kidItemIds: ['c0', 'c2'] }));
+    const { classifier, calls } = scripted(() => verdicts(['c0', 'c2'], ['c1', 'c3']));
     const kept = await kidRelatedAha(snapshot, context, classifier);
     expect(calls).toHaveLength(1);
     expect(kept.read).toBe('ok');
@@ -115,7 +147,7 @@ describe('kidRelatedAha', () => {
       ],
       overlaps: [],
     };
-    const { classifier } = scripted(() => ({ kidItemIds: [] }));
+    const { classifier } = scripted(() => verdicts([]));
     const kept = await kidRelatedAha(snapshot, context, classifier);
     expect(kept.read).toBe('none_for_kids');
     expect(kept.kidFilter).toBe('none_for_kids');
@@ -130,13 +162,13 @@ describe('kidRelatedAha', () => {
       email: [email('Music festival with friends')],
       overlaps: [],
     };
-    const { classifier } = scripted(() => ({ kidItemIds: ['e4', 'c0'] }));
+    const { classifier } = scripted(() => verdicts(['e4', 'c0'], ['e0']));
     const kept = await kidRelatedAha(snapshot, context, classifier);
     expect(kept.read).toBe('none_for_kids');
   });
 
   it('a read that already failed or was withheld passes through without a classifier call', async () => {
-    const { classifier, calls } = scripted(() => ({ kidItemIds: [] }));
+    const { classifier, calls } = scripted(() => verdicts([]));
     const failed: AhaSnapshot = {
       provider: 'gmail',
       read: 'failed',

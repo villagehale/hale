@@ -2,8 +2,15 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { z } from 'zod';
 import { loadKidItemClassifierSkill } from '~/lib/cron/skill';
+import {
+  KID_JUDGE_MAX_TOKENS,
+  KID_VERDICT_TOOL,
+  KID_VERDICT_TOOL_DESCRIPTION,
+  kidSkillMessage,
+  kidVerdictsJsonSchema,
+  kidVerdictsSchema,
+} from '~/lib/integrations/kid-relevance/skill-contract';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { type AhaSnapshot, calendarOverlaps } from './aha-read';
 
@@ -13,7 +20,7 @@ import { type AhaSnapshot, calendarOverlaps } from './aha-read';
  * The connect-time read returns whatever the parent's calendar or mailbox
  * holds: their meetings, appointments, receipts, newsletters. None of that is
  * Hale's to mention. Before the snapshot reaches the model that writes the
- * wow line, a small fast-lane classifier reads every item with the kids'
+ * wow line, a classifier reads every item with the kids'
  * names, nicknames and ages and says which ones are about the kids. Code
  * validates the answer against the ids it sent, keeps only those items, and
  * recomputes overlaps from that subset so a clash is a clash between kid
@@ -22,7 +29,8 @@ import { type AhaSnapshot, calendarOverlaps } from './aha-read';
  *
  * A keyword list did this before and got it wrong both ways ("Coffee with
  * Sebastian" from a colleague passed; "Seb 15-month checkup" did not). The
- * classifier is a port: tests inject a scripted one, production asks Haiku.
+ * classifier is a port: tests inject a scripted one, production asks the
+ * kid-item-classifier skill on its own lane.
  * No classifier, or a classifier that fails, keeps nothing: the receipt is
  * plain and the reason is logged (rule #11).
  */
@@ -51,16 +59,6 @@ export type KidFilterReason =
   | 'classifier_unavailable'
   | 'classifier_failed';
 
-const verdictSchema = z.object({ kidItemIds: z.array(z.string()).default([]) }).strict();
-
-const verdictJsonSchema = {
-  type: 'object',
-  properties: { kidItemIds: { type: 'array', items: { type: 'string' } } },
-  required: ['kidItemIds'],
-} as const;
-
-const CLASSIFIER_MAX_TOKENS = 300;
-
 export function createKidItemClassifier(client: AgentClient): KidItemClassifier {
   return {
     async classify(input) {
@@ -69,12 +67,16 @@ export function createKidItemClassifier(client: AgentClient): KidItemClassifier 
         client,
         lane: pickLane(skill.meta.task),
         system: skill.instructions,
-        userMessage: JSON.stringify(input),
-        toolName: 'kid_items',
-        toolDescription: 'Return the ids of the items that are about the children.',
-        inputJsonSchema: verdictJsonSchema,
-        schema: verdictSchema,
-        maxTokens: CLASSIFIER_MAX_TOKENS,
+        userMessage: kidSkillMessage({
+          children: input.children,
+          activityTitles: input.activityTitles,
+          items: input.items.map((item) => ({ ref: item.id, text: item.text })),
+        }),
+        toolName: KID_VERDICT_TOOL,
+        toolDescription: KID_VERDICT_TOOL_DESCRIPTION,
+        inputJsonSchema: kidVerdictsJsonSchema,
+        schema: kidVerdictsSchema,
+        maxTokens: KID_JUDGE_MAX_TOKENS,
         transport: llmTransport(),
       });
       return value;
@@ -82,15 +84,20 @@ export function createKidItemClassifier(client: AgentClient): KidItemClassifier 
   };
 }
 
-/** Only ids the classifier was handed count. Anything else in the answer is dropped. */
+/**
+ * Only ids the classifier was handed count, and only a `kid` verdict keeps one. An
+ * `unsure` is left out, the same as an `adult`: when in doubt, Hale says nothing.
+ */
 export function acceptKidItemIds(raw: unknown, offered: readonly string[]): Set<string> {
   const kept = new Set<string>();
   if (!raw || typeof raw !== 'object') return kept;
-  const ids = (raw as { kidItemIds?: unknown }).kidItemIds;
-  if (!Array.isArray(ids)) return kept;
+  const verdicts = (raw as { verdicts?: unknown }).verdicts;
+  if (!Array.isArray(verdicts)) return kept;
   const allowed = new Set(offered);
-  for (const id of ids) {
-    if (typeof id === 'string' && allowed.has(id)) kept.add(id);
+  for (const entry of verdicts) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { ref, verdict } = entry as { ref?: unknown; verdict?: unknown };
+    if (verdict === 'kid' && typeof ref === 'string' && allowed.has(ref)) kept.add(ref);
   }
   return kept;
 }
