@@ -259,6 +259,7 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
       alreadyKnown: 0,
       skipped: 0,
       held: true,
+      heldReason: 'lane_off',
     });
     await expect(familyEventRows()).resolves.toEqual([]);
     expect(info).toHaveBeenCalledWith(

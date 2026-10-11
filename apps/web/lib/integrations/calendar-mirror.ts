@@ -63,12 +63,27 @@ export interface CalendarMirrorCounts {
   removed: number;
   alreadyKnown: number;
   skipped: number;
-  /** The window was empty and not trustworthy, so nothing was written or deleted. */
+  /** Nothing was written or deleted for this window; {@link heldReason} names why. */
   held: boolean;
+  /** Set exactly when `held` is: the window was empty and not trustworthy, the connection
+   * has no parent user, or the parent_calendar_mirror lane is off. */
+  heldReason?: CalendarMirrorHeldReason;
 }
 
-export function emptyCalendarMirrorCounts(held = false): CalendarMirrorCounts {
-  return { mirrored: 0, updated: 0, removed: 0, alreadyKnown: 0, skipped: 0, held };
+export type CalendarMirrorHeldReason = 'untrusted_window' | 'no_parent_user' | 'lane_off';
+
+export function emptyCalendarMirrorCounts(
+  heldReason?: CalendarMirrorHeldReason,
+): CalendarMirrorCounts {
+  return {
+    mirrored: 0,
+    updated: 0,
+    removed: 0,
+    alreadyKnown: 0,
+    skipped: 0,
+    held: heldReason !== undefined,
+    ...(heldReason ? { heldReason } : {}),
+  };
 }
 
 interface GoogleTime {
@@ -206,10 +221,12 @@ export async function reconcileCalendarMirrors(
     trustWindow: boolean;
   },
 ): Promise<CalendarMirrorCounts> {
-  if (!input.trustWindow && input.items.length === 0) return emptyCalendarMirrorCounts(true);
+  if (!input.trustWindow && input.items.length === 0) {
+    return emptyCalendarMirrorCounts('untrusted_window');
+  }
   const allowRemoval = input.trustWindow;
 
-  const counts = emptyCalendarMirrorCounts(false);
+  const counts = emptyCalendarMirrorCounts();
   const horizonEnd = new Date(input.now.getTime() + REMINDER_HORIZON_MS);
   const eligible: CalendarMirrorCandidate[] = [];
   for (const item of input.items) {

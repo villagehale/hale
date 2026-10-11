@@ -300,12 +300,18 @@ export async function syncConnection(
         calendarAlerts = changes.map(() => 'alert_failed' as const);
       }
       try {
-        await deps.mirrorCalendarWindow({
+        const mirror = await deps.mirrorCalendarWindow({
           connection,
           items: result.calendar.windowItems,
           trustWindow: result.calendar.trustWindow,
           now: new Date(result.calendar.windowAt),
         });
+        if (mirror.heldReason) {
+          console.info(
+            { connectionId: connection.id, heldReason: mirror.heldReason },
+            'connector sync: calendar mirror held',
+          );
+        }
       } catch (err) {
         console.error(
           {

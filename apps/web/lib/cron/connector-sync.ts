@@ -330,7 +330,7 @@ async function mirrorCalendarWindow(
       { integrationId: batch.connection.id },
       'calendar mirror: parent_calendar_mirror lane off, skipped',
     );
-    return emptyCalendarMirrorCounts(true);
+    return emptyCalendarMirrorCounts('lane_off');
   }
   const userId = batch.connection.userId;
   if (!userId) {
@@ -338,7 +338,7 @@ async function mirrorCalendarWindow(
       { integrationId: batch.connection.id },
       'calendar mirror: no parent user, skipped',
     );
-    return emptyCalendarMirrorCounts(true);
+    return emptyCalendarMirrorCounts('no_parent_user');
   }
   const [parent] = await database
     .select({ timezone: schema.users.timezone })
