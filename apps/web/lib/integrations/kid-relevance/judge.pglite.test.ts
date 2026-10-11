@@ -179,6 +179,20 @@ describe('judgeKidRelevance', () => {
     expect(changed.calls).toHaveLength(1);
   });
 
+  it('re-judges a group item with no integration in place, one row per item', async () => {
+    const group = (title: string) =>
+      item('g', title, { source: 'group', integrationId: null, itemKey: 'title-hash' });
+    await judge(scriptedClient(byText({ Brunch: { verdict: 'adult' } })).client, [group('Brunch')]);
+    const second = await judge(
+      scriptedClient(byText({ 'Brunch moved': { verdict: 'unsure' } })).client,
+      [group('Brunch moved')],
+    );
+    expect(second[0]).toMatchObject({ verdict: 'unsure' });
+    const stored = await storedVerdicts();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ source: 'group', integrationId: null, verdict: 'unsure' });
+  });
+
   it("never re-judges or overwrites a parent's own verdict", async () => {
     await db.database.insert(schema.kidRelevanceVerdicts).values({
       familyId,
