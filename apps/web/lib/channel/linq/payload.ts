@@ -1,3 +1,4 @@
+import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { LINQ_WEBHOOK_VERSION } from './signature';
 
 /**
@@ -101,12 +102,19 @@ export interface LinqLocationSignal {
   eventId: string | null;
 }
 
+/** VIL-226 · Linq's status for one of Hale's own sending lines. */
+export interface LinqLineHealthEvent {
+  phoneNumber: string;
+  status: string;
+}
+
 export type LinqParsedWebhook =
   | { kind: 'message'; message: LinqInboundText }
   | { kind: 'group'; message: LinqInboundText }
   | { kind: 'receipt'; receipt: LinqDeliveryReceipt }
   | { kind: 'signal'; signal: LinqSignal }
   | { kind: 'location'; location: LinqLocationSignal }
+  | { kind: 'line_health'; line: LinqLineHealthEvent }
   | { kind: 'ignored'; reason: LinqIgnoreReason };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -158,6 +166,14 @@ function parseLocation(
   return { kind: 'location', location: { event, chatId, sharedBy, beganAt, eventId } };
 }
 
+function parseLineHealth(payload: Record<string, unknown>): LinqParsedWebhook {
+  if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
+  const phoneNumber = stringField(payload.data.phone_number);
+  const status = stringField(payload.data.status);
+  if (!phoneNumber || !status) return { kind: 'ignored', reason: 'malformed' };
+  return { kind: 'line_health', line: { phoneNumber, status } };
+}
+
 function isSignalEvent(value: unknown): value is LinqSignalEvent {
   return typeof value === 'string' && (SIGNAL_EVENTS as readonly string[]).includes(value);
 }
@@ -178,6 +194,10 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
   if (isReceiptEvent(payload.event_type)) return parseReceipt(payload, payload.event_type);
   if (isLocationEvent(payload.event_type)) return parseLocation(payload, payload.event_type);
   if (isSignalEvent(payload.event_type)) return parseSignal(payload, payload.event_type);
+  // VIL-226 · read only while PROACTIVE_CADENCE is armed; unset, it stays an ignored event.
+  if (payload.event_type === 'phone_number.status_updated' && proactiveCadence() !== 'off') {
+    return parseLineHealth(payload);
+  }
   if (payload.event_type !== 'message.received') {
     return { kind: 'ignored', reason: 'not_message_received' };
   }

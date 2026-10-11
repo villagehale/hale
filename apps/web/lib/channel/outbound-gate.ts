@@ -2,9 +2,11 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
+import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
+import { capDefersToDecider, proactiveCadence } from './proactive/flag';
+import { quietStartForPhone } from './proactive/quiet';
 
 /**
  * F14 · THE OUTBOUND CHOKEPOINT (VIL-239 · M4 opens it).
@@ -441,6 +443,12 @@ export interface OutboundGatePorts {
    */
   proactiveSentSince(parentUserId: string, since: Date): Promise<boolean>;
   parentTimeZone(parentUserId: string): Promise<string>;
+  /**
+   * VIL-226 · the parent's sendable number, read only while PROACTIVE_CADENCE is armed,
+   * to start quiet hours at 20:00 for a Florida or Oklahoma line. Absent means the
+   * 21:00 floor.
+   */
+  parentPhone?(parentUserId: string): Promise<string | null>;
 }
 
 export interface ProactiveSendRequest {
@@ -473,7 +481,10 @@ export async function assertProactiveSendAllowed(
     return { allowed: false, reason: 'no_watch_consent' };
   }
 
-  const cap = PROACTIVE_CAP[request.kind];
+  // VIL-226 · for a class the decider sees, live cadence reads the counter as context,
+  // not a hold. The Record stays so every class still names its budget; off and shadow
+  // keep it, and so does every class that still sends on its own.
+  const cap = capDefersToDecider(request.kind) ? null : PROACTIVE_CAP[request.kind];
   if (cap !== null) {
     const since = new Date(request.now.getTime() - cap.windowHours * 3_600_000);
     if ((await ports.countProactiveSends(request.familyId, request.kind, since)) >= cap.max) {
@@ -489,14 +500,11 @@ export async function assertProactiveSendAllowed(
   }
 
   const timeZone = await ports.parentTimeZone(request.parentUserId);
-  if (
-    isWithinQuietHours(
-      request.now,
-      timeZone,
-      PROACTIVE_QUIET_HOURS.start,
-      PROACTIVE_QUIET_HOURS.end,
-    )
-  ) {
+  const quietStart =
+    proactiveCadence() !== 'off' && ports.parentPhone
+      ? quietStartForPhone(await ports.parentPhone(request.parentUserId))
+      : PROACTIVE_QUIET_HOURS.start;
+  if (isWithinQuietHours(request.now, timeZone, quietStart, PROACTIVE_QUIET_HOURS.end)) {
     return { allowed: false, reason: 'quiet_hours' };
   }
 
@@ -743,5 +751,6 @@ export function buildOutboundGatePorts(database: Database): OutboundGatePorts {
       if (!row) throw new Error(`buildOutboundGatePorts: no users row for ${parentUserId}`);
       return row.timezone;
     },
+    parentPhone: (parentUserId) => resolveSendablePhone(database, parentUserId),
   };
 }

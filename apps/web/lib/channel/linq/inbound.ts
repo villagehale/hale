@@ -13,8 +13,10 @@ import {
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { loadOpenSession } from '~/lib/channel/intake/session';
+import { lineStatusPauses } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
@@ -230,6 +232,7 @@ export async function handleLinqInboundRequest(
     return json({ outcome });
   }
   if (parsed.kind === 'signal') return handleLinqSignal(deps, parsed.signal);
+  if (parsed.kind === 'line_health') return handleLinqLineHealth(deps, parsed.line);
   if (parsed.kind === 'location') return handleLinqLocation(deps, parsed.location);
   if (parsed.kind === 'group') return handleLinqGroup(deps, parsed.message);
 
@@ -1283,6 +1286,37 @@ async function familyIdForClaimedChat(
     .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
     .from(schema.families);
   return rows.find((row) => row.linqGroupChatId === chatId)?.id ?? null;
+}
+
+/**
+ * VIL-226 · Linq's status for one of Hale's sending lines. Flagged or throttled is
+ * stored as paused, which the hourly decider reads before it sends anything nobody
+ * asked for, and #ops is paged. A healthy status lifts the pause. The line's number
+ * stays out of the log and the page.
+ */
+async function handleLinqLineHealth(
+  deps: LinqDoorDeps,
+  line: { phoneNumber: string; status: string },
+): Promise<Response> {
+  const paused = lineStatusPauses(line.status);
+  const updatedAt = deps.now?.() ?? new Date();
+  await deps.database
+    .insert(schema.linqLineHealth)
+    .values({ phoneNumber: line.phoneNumber, status: line.status, paused, updatedAt })
+    .onConflictDoUpdate({
+      target: schema.linqLineHealth.phoneNumber,
+      set: { status: line.status, paused, updatedAt },
+    });
+  if (paused) {
+    const page = await postOpsSlack(
+      `Linq reports a Hale sending line as ${line.status}. Unrequested proactive sends are held until it clears.`,
+    );
+    deps.log.error({ status: line.status, page }, 'linq line health: unrequested sends paused');
+  } else {
+    deps.log.info({ status: line.status }, 'linq line health: line is clear');
+  }
+  await deps.countOutcome('line_health');
+  return json({ outcome: 'line_health', paused });
 }
 
 /** What the HTTP response and the log line call each decline. Finer than the
