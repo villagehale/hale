@@ -265,17 +265,16 @@ export async function dropOwedTexts(
   }
   if (item.source === 'gmail') {
     const offers = schema.emailAlertOffers;
+    const ofItem = and(
+      eq(offers.integrationId, item.integrationId),
+      eq(offers.messageId, item.itemKey),
+    );
+    // Every offer of the item loses its words, resolved or not; only an open one is withdrawn.
+    await database.update(offers).set({ title: '', location: null }).where(ofItem);
     const withdrawn = await database
       .update(offers)
-      .set({ expiresAt: now, title: '', location: null })
-      .where(
-        and(
-          eq(offers.integrationId, item.integrationId),
-          eq(offers.messageId, item.itemKey),
-          isNull(offers.resolvedAt),
-          gt(offers.expiresAt, now),
-        ),
-      )
+      .set({ expiresAt: now })
+      .where(and(ofItem, isNull(offers.resolvedAt), gt(offers.expiresAt, now)))
       .returning({ id: offers.id });
     return { heldAlertsCleared: 0, offersWithdrawn: withdrawn.length };
   }

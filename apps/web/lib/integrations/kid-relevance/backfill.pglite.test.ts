@@ -411,6 +411,12 @@ describe('runKidRelevanceBackfill', () => {
     const { audit } = await state();
     const drop = audit.find((row) => row.actionTaken === 'kid_relevance_event_dropped');
     expect(drop?.after).toMatchObject({ heldAlertsCleared: 1, offersWithdrawn: 0 });
+    // The resolved offer the adult event came from keeps none of its words either.
+    const [resolvedOffer] = await db.database
+      .select({ title: schema.emailAlertOffers.title, location: schema.emailAlertOffers.location })
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.resolution, 'added'));
+    expect(resolvedOffer).toEqual({ title: '', location: null });
   });
 
   it('apply writes nothing for a family that scheduled its erasure after the run read it', async () => {
