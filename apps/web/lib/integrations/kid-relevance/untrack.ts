@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { SuppressReason } from '~/lib/loop/reminders/schedule';
 import { seriesKeyForEvent } from './judge';
 import type { KidRelevanceSource } from './skill-contract';
@@ -13,7 +13,9 @@ import type { KidRelevanceSource } from './skill-contract';
  *   - a `parent` verdict of `adult`, which no model re-judge overwrites, holding the
  *     kind of thing it was as the judge's hint next time - never the title, and never a
  *     family memory fact, which the coach, the digest and a co-parent would read;
- *   - every future copy on the family calendar soft-deleted;
+ *   - every future copy on the family calendar soft-deleted, its title and place cleared;
+ *   - a held calendar alert for it dropped, and an open Gmail offer for it withdrawn, so
+ *     nothing Hale still owes can name it later;
  *   - their scheduled reminders cancelled with `parent_untracked`;
  *   - one audit row with the verdict, the source and the counts (rule #6).
  *
@@ -49,6 +51,9 @@ interface ProviderItem {
 /** A parent row is never matched against an input; it records who decided, not what. */
 const PARENT_INPUT_HASH = 'parent';
 const UNTRACK_REASON: SuppressReason = 'parent_untracked';
+
+/** A removed copy keeps no parent words. `title` is NOT NULL, so it is emptied. */
+export const CLEARED_EVENT_TEXT = { title: '', location: null, dutyOwnerLabel: null } as const;
 
 const SERIES_ALERT_KEY = /^calendar_alert:([0-9a-f-]{36}):series:[^:]+:([^:]+):/;
 const INSTANCE_ALERT_KEY = /^calendar_alert:([0-9a-f-]{36}):([^:]+):/;
@@ -124,7 +129,7 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
     if (removed.length > 0) {
       await tx
         .update(schema.familyEvents)
-        .set({ deletedAt: input.now })
+        .set({ deletedAt: input.now, ...CLEARED_EVENT_TEXT })
         .where(inArray(schema.familyEvents.id, removed));
     }
     const cancelled =
@@ -150,6 +155,7 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
         ]),
       })
       .where(eq(table.id, verdict.id));
+    const { heldAlertsCleared, offersWithdrawn } = await dropOwedTexts(tx, item, input.now);
 
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
@@ -162,6 +168,8 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
         source: item.source,
         cancelledReminders: cancelled.length,
         removedEvents: removed.length,
+        heldAlertsCleared,
+        offersWithdrawn,
       },
       occurredAt: input.now,
     });
@@ -197,6 +205,60 @@ function eventsOf(item: ProviderItem) {
       and ${schema.emailAlertOffers.eventId} is not null)`;
   }
   return sql`false`;
+}
+
+/**
+ * What Hale still owes the parent about this item. A held calendar alert is dropped the way
+ * the alert path drops an expired hold - the snapshot stays, so the next change is read
+ * against the start Hale last saw, and only the held words go. An open Gmail offer is
+ * withdrawn the way `withdrawEmailAlertOffer` does it (it stops being answerable); its
+ * title is NOT NULL and is the text the parent already holds.
+ */
+async function dropOwedTexts(
+  database: Pick<Database, 'update'>,
+  item: ProviderItem,
+  now: Date,
+): Promise<{ heldAlertsCleared: number; offersWithdrawn: number }> {
+  if (item.integrationId === null) return { heldAlertsCleared: 0, offersWithdrawn: 0 };
+  if (item.source === 'google_calendar') {
+    const snapshots = schema.calendarEventSnapshots;
+    const cleared = await database
+      .update(snapshots)
+      .set({
+        pendingSince: null,
+        heldTitle: null,
+        heldLocation: null,
+        heldMovedFromAt: null,
+        heldMovedFromAllDay: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(snapshots.integrationId, item.integrationId),
+          or(eq(snapshots.eventId, item.itemKey), eq(snapshots.recurringEventId, item.itemKey)),
+          isNotNull(snapshots.pendingSince),
+        ),
+      )
+      .returning({ eventId: snapshots.eventId });
+    return { heldAlertsCleared: cleared.length, offersWithdrawn: 0 };
+  }
+  if (item.source === 'gmail') {
+    const offers = schema.emailAlertOffers;
+    const withdrawn = await database
+      .update(offers)
+      .set({ expiresAt: now })
+      .where(
+        and(
+          eq(offers.integrationId, item.integrationId),
+          eq(offers.messageId, item.itemKey),
+          isNull(offers.resolvedAt),
+          gt(offers.expiresAt, now),
+        ),
+      )
+      .returning({ id: offers.id });
+    return { heldAlertsCleared: 0, offersWithdrawn: withdrawn.length };
+  }
+  return { heldAlertsCleared: 0, offersWithdrawn: 0 };
 }
 
 /** The titles Hale held for this item outside the family calendar. */

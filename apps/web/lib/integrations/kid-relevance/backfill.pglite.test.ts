@@ -88,6 +88,7 @@ async function mirror(googleEventId: string, title: string) {
       familyId,
       title,
       startsAt: NEXT_WEEK,
+      location: 'Community hall',
       source: 'parent',
       createdBy: parentUserId,
       googleEventId,
@@ -231,10 +232,14 @@ describe('runKidRelevanceBackfill', () => {
     expect(event(ids.adultA)?.deletedAt).toEqual(NOW);
     expect(event(ids.adultB)?.deletedAt).toEqual(NOW);
     expect(event(ids.offer)?.deletedAt).toEqual(NOW);
+    for (const id of [ids.adultA, ids.adultB, ids.offer]) {
+      expect(event(id)).toMatchObject({ title: '', location: null, dutyOwnerLabel: null });
+    }
 
     const kid = event(ids.kid);
     expect(kid?.deletedAt).toBeNull();
     expect(kid?.title).toBe('Wren swim');
+    expect(kid?.location).toBe('Community hall');
     expect(kid?.kidVerdictId).not.toBeNull();
     const kidReminders = after.reminders.filter((row) => row.eventRef === ids.kid);
     expect(kidReminders.map((row) => row.status)).toEqual(['scheduled', 'scheduled']);

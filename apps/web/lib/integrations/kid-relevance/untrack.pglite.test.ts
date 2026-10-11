@@ -63,6 +63,7 @@ async function mirror(googleEventId: string, startsAt: Date, title = 'Choir rehe
       familyId,
       title,
       startsAt,
+      location: 'Community hall',
       source: 'parent',
       createdBy: parentUserId,
       googleEventId,
@@ -156,6 +157,20 @@ describe('untrackItem', () => {
       removedEvents: 2,
     });
     expect((await liveEvents()).sort()).toEqual(['choir_1004', 'unrelated']);
+    const events = await db.database
+      .select()
+      .from(schema.familyEvents)
+      .where(eq(schema.familyEvents.familyId, familyId));
+    const removed = events.filter((row) => row.deletedAt !== null);
+    expect(removed.map((row) => [row.googleEventId, row.title, row.location]).sort()).toEqual([
+      ['choir_1018', '', null],
+      ['choir_1025', '', null],
+    ]);
+    const kid = events.find((row) => row.googleEventId === 'unrelated');
+    expect(kid).toMatchObject({ deletedAt: null, title: 'Wren swim', location: 'Community hall' });
+    expect(
+      (await reminders()).filter((row) => row.eventRef === kid?.id).map((row) => row.status),
+    ).toEqual(['scheduled', 'scheduled']);
 
     const [verdict] = await db.database
       .select()
@@ -241,6 +256,17 @@ describe('untrackItem', () => {
     await untrack({ kind: 'channel_message', id: message }, 'sunrise yoga');
     expect((await parentVerdicts()).map((row) => row.hint)).toEqual([null]);
     expect(await memoryFacts()).toEqual([]);
+    // The held alert is dropped the way an expired hold is: no title left, nothing owed.
+    const [held] = await db.database
+      .select()
+      .from(schema.calendarEventSnapshots)
+      .where(eq(schema.calendarEventSnapshots.eventId, 'yoga_1018'));
+    expect(held).toMatchObject({
+      pendingSince: null,
+      heldTitle: null,
+      heldLocation: null,
+      startAt: NEXT_WEEK,
+    });
   });
 
   it('refuses a kind that repeats a Gmail offer title the parent never added', async () => {
@@ -258,6 +284,12 @@ describe('untrackItem', () => {
     });
     await untrack({ kind: 'channel_message', id: message }, 'Book club');
     expect((await parentVerdicts()).map((row) => row.hint)).toEqual([null]);
+    // The open offer is withdrawn: a later "yes" can no longer put it on the week.
+    const [offer] = await db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.messageId, 'msg-2'));
+    expect(offer).toMatchObject({ expiresAt: NOW, resolvedAt: null });
   });
 
   it('keeps the parent verdict when the model judges the same item again', async () => {

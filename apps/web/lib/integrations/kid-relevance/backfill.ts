@@ -10,6 +10,7 @@ import {
   seriesKeyForEvent,
 } from './judge';
 import type { KidRelevanceItem, KidRelevanceSource } from './skill-contract';
+import { CLEARED_EVENT_TEXT } from './untrack';
 
 /**
  * The one-off kid-relevance backfill (VIL-226 item 5).
@@ -17,8 +18,8 @@ import type { KidRelevanceItem, KidRelevanceSource } from './skill-contract';
  * Judges what Hale already holds from connectors - mirrored Google events, family events
  * a parent added from a Gmail offer, parent calendar blocks flagged as kid-related, and
  * live activity bookings - and, with `apply`:
- *   - soft-deletes every adult family event and cancels its scheduled reminders with
- *     `kid_relevance_backfill`, one audit row each (rule #6);
+ *   - soft-deletes every adult family event, clearing its title and place, and cancels
+ *     its scheduled reminders with `kid_relevance_backfill`, one audit row each (rule #6);
  *   - clears `kid_related` and the title on an adult parent block;
  *   - links each judged event to its verdict (and its child when the event had none), so
  *     the reminder gate can read it.
@@ -167,7 +168,7 @@ export async function runKidRelevanceBackfill(
       if (adultEvents.length > 0) {
         await tx
           .update(schema.familyEvents)
-          .set({ deletedAt: input.now })
+          .set({ deletedAt: input.now, ...CLEARED_EVENT_TEXT })
           .where(
             inArray(
               schema.familyEvents.id,
