@@ -276,7 +276,12 @@ describe('fire — what actually reaches a caregiver', () => {
     });
     await runReminderCron(db, deps, NOW);
 
-    const dropped = { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'out_of_scope' };
+    const dropped = {
+      familyId: 'fam-1',
+      reminderId: 'r1',
+      offset: '-PT1H',
+      reason: 'out_of_scope',
+    };
     expect(enqueued).toEqual([]);
     expect(audited).toEqual([dropped]);
     expect(info).toHaveBeenCalledWith(dropped, 'reminder: dropped, not sent');
