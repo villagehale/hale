@@ -59,7 +59,23 @@ const SERIES_ALERT_KEY = /^calendar_alert:([0-9a-f-]{36}):series:[^:]+:([^:]+):/
 const INSTANCE_ALERT_KEY = /^calendar_alert:([0-9a-f-]{36}):([^:]+):/;
 const EMAIL_ALERT_KEY = /^email_alert:([0-9a-f-]{36}):(.+)$/;
 
+/** The actor is not a member of the family it asked to untrack for. Nothing is written. */
+export class UntrackActorNotMemberError extends Error {
+  override name = 'UntrackActorNotMemberError';
+}
+
 export async function untrackItem(database: Database, input: UntrackInput): Promise<UntrackResult> {
+  const [member] = await database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, input.familyId),
+        eq(schema.familyMembers.userId, input.actorUserId),
+      ),
+    );
+  if (!member) throw new UntrackActorNotMemberError('untrackItem: actor is not a family member');
+
   const found = await resolveTarget(database, input);
   if (found === 'not_found' || found === 'not_provider_item') return { outcome: found };
   const item = found;

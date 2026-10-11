@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   calendarAlertDedupeKey,
@@ -10,7 +10,7 @@ import { emailAlertDedupeKey } from '~/lib/integrations/email-alert';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { judgeKidRelevance, loadNotMineHints } from './judge';
 import { KID_VERDICT_TOOL } from './skill-contract';
-import { untrackItem } from './untrack';
+import { UntrackActorNotMemberError, untrackItem } from './untrack';
 
 /**
  * "That's mine." The parent's word becomes an `adult` verdict for the whole series, the
@@ -419,6 +419,38 @@ describe('untrackItem', () => {
     expect(await untrack({ kind: 'family_event', id: theirs?.id ?? '' })).toEqual({
       outcome: 'not_found',
     });
+  });
+
+  it('refuses an actor who is not a member of the family and writes nothing', async () => {
+    const event = await mirror('one-off', NEXT_WEEK);
+    const outsider = await seedFamily(db.database);
+    const counts = async () => ({
+      verdicts: (await db.database.select().from(schema.kidRelevanceVerdicts)).length,
+      events: (
+        await db.database
+          .select()
+          .from(schema.familyEvents)
+          .where(isNull(schema.familyEvents.deletedAt))
+      ).length,
+      scheduled: (
+        await db.database
+          .select()
+          .from(schema.eventReminders)
+          .where(eq(schema.eventReminders.status, 'scheduled'))
+      ).length,
+      audit: (await db.database.select().from(schema.auditLog)).length,
+    });
+    const before = await counts();
+    await expect(
+      untrackItem(db.database, {
+        familyId,
+        actorUserId: outsider.parentUserId,
+        target: { kind: 'family_event', id: event },
+        now: NOW,
+        kind: 'a choir',
+      }),
+    ).rejects.toBeInstanceOf(UntrackActorNotMemberError);
+    expect(await counts()).toEqual(before);
   });
 
   it('a second untrack of the same series is already_untracked and writes nothing more', async () => {
