@@ -115,7 +115,7 @@ function fakeDb(
 }
 
 describe('applyStripeBillingEvent', () => {
-  it('applies a Plus checkout: writes plan_tier=plus + one audit row, and the tier grants L3', async () => {
+  it('applies a Plus checkout: writes plan_tier=plus + one audit row', async () => {
     const { db, rec } = fakeDb({ existingTier: 'free' });
 
     const result = await applyStripeBillingEvent(checkout('evt_1', 'plus'), db, MAP);

@@ -27,7 +27,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `BOOKED_DETECTION_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `F14_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
-| `AUTONOMOUS_EXECUTE_ENABLED` | `true` (trimmed) | live lane: set to `true` before VIL-131 merges | unset | Barton |
+| `AUTONOMOUS_EXECUTE_ENABLED` | `true` (exact, untrimmed) | live lane: set to `true` before VIL-131 merges | unset | Barton |
 | `LINQ_GROUP_COPARENT` | unset (anything except `off`) | on | `off` | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | unset (anything except `false`) | on | `false` | Noah |
 | `VOICE_DISABLED` | unset | unset (voice runs) | `true` | Sloane |
