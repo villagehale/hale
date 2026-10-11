@@ -1302,6 +1302,39 @@ describe('a change the gate held is offered again', () => {
     expect(inTime.transport.sent).toHaveLength(1);
   });
 
+  it('ages a hold out by name while the lane is off, and keeps one still inside the limit', async () => {
+    const OLD: CalendarChange = { ...AHEAD, eventId: 'ev-old', location: 'Main Gym' };
+    const RECENT: CalendarChange = {
+      ...AHEAD,
+      eventId: 'ev-recent',
+      location: 'Main Gym',
+      start: { dateTime: '2026-09-26T20:15:00.000Z' },
+      end: { dateTime: '2026-09-26T21:00:00.000Z' },
+    };
+    const refused = { verdict: { allowed: false, reason: 'frequency_cap' } } as const;
+    await sweep(harness(refused), { changes: [OLD] });
+    await sweep(harness(refused), { changes: [RECENT], now: afterDays(2) });
+    expect(await snapshotOf(OLD.eventId)).toMatchObject({ heldLocation: 'Main Gym' });
+
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', undefined);
+    const off = harness();
+    await expect(
+      sweepBoth(off, { changes: [], now: afterDays(CALENDAR_ALERT_PENDING_MAX_DAYS) }),
+    ).resolves.toEqual({ changes: [], reoffers: ['pending_expired'] });
+
+    expect(off.transport.sent).toEqual([]);
+    expect(await snapshotOf(OLD.eventId)).toMatchObject({
+      pendingSince: null,
+      heldTitle: null,
+      heldLocation: null,
+    });
+    expect(await snapshotOf(RECENT.eventId)).toMatchObject({
+      heldTitle: 'Cartwheels Gym',
+      heldLocation: 'Main Gym',
+    });
+    expect((await snapshotOf(RECENT.eventId))?.pendingSince).toBeInstanceOf(Date);
+  });
+
   it('drops a hold the calendar overtook, under its own name', async () => {
     await expect(
       sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } })),

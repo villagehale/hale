@@ -150,8 +150,8 @@ export const CALENDAR_ALERT_OUTCOMES = [
    * reaches the group and nothing is retried as a 1:1. */
   'group_home',
   /** CALENDAR_ALERT_ENABLED is not `true`. The shape is remembered and a text already
-   * owed is left as it was: re-offered once the lane is back on, unless it has aged out
-   * at {@link CALENDAR_ALERT_PENDING_MAX_DAYS} by then. */
+   * owed is left as it was and re-offered once the lane is back on; one older than
+   * {@link CALENDAR_ALERT_PENDING_MAX_DAYS} is aged out by the lane-off sweep itself. */
   'lane_off',
 ] as const;
 
@@ -329,8 +329,9 @@ export async function alertParentForCalendarChanges(
     return { changes: changes.map(() => 'seeding_run'), reoffers: [] };
   }
   if (!laneEnabled('calendar_alert')) {
+    const reoffers = await expireStaleDebts(database, input, parentUserId, ports);
     await rememberOnly(database, input, parentUserId, ports);
-    return { changes: changes.map(() => 'lane_off'), reoffers: [] };
+    return { changes: changes.map(() => 'lane_off'), reoffers };
   }
   // The flag is a pure function of the family id, so nothing above it costs a query and a
   // dark sweep of an empty page is the cheapest thing this module does. A dark sweep with
@@ -499,6 +500,35 @@ async function rememberOnly(
     changes,
     now,
   });
+}
+
+/**
+ * The retention bound with the lane off. Nothing is re-offered while it is off, so the
+ * only place a hold's age is read would otherwise be the first sweep after it is back on —
+ * and the parent's own words would sit in the memory for the whole of the lane-off period
+ * instead of {@link CALENDAR_ALERT_PENDING_MAX_DAYS}. Same ending, same name, as a debt the
+ * live sweep finds too old.
+ */
+async function expireStaleDebts(
+  database: Database,
+  input: CalendarAlertInput,
+  parentUserId: string,
+  ports: CalendarAlertPorts,
+): Promise<CalendarAlertOutcome[]> {
+  const { integrationId, now } = input;
+  const stale = (await readSnapshots(database, integrationId, [])).filter(
+    (row): row is PendingSnapshot =>
+      isPending(row) &&
+      now.getTime() - row.pendingSince.getTime() > CALENDAR_ALERT_PENDING_MAX_DAYS * 86_400_000,
+  );
+  if (stale.length === 0) return [];
+  const timeZone = await ports.timeZone(parentUserId);
+  const writes = new Map<string, SnapshotWrite>();
+  // The outcome is the return value below, so a revived change has nowhere to write it.
+  const returned = () => {};
+  for (const row of stale) remember(writes, revive(row, timeZone, returned), null);
+  await writeSnapshots(database, integrationId, writes, now);
+  return stale.map(() => 'pending_expired');
 }
 
 async function sendOffer(
