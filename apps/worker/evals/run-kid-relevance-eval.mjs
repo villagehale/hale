@@ -116,7 +116,7 @@ function percentile(values, q) {
 }
 
 /** One lane-faithful call, keyed on everything it sends; truncation is never cached. */
-async function cachedVerdictCall({ tag, request, cachedOnly, getClient, cost, contract }) {
+async function cachedVerdictCall({ tag, request, schema, cachedOnly, getClient, cost, contract }) {
   const key = cacheKey(tag, JSON.stringify(request));
   const cached = await cacheGet(key);
   if (cached) return { ...cached, cached: true };
@@ -134,9 +134,14 @@ async function cachedVerdictCall({ tag, request, cachedOnly, getClient, cost, co
     (block) => block.type === 'tool_use' && block.name === contract.KID_VERDICT_TOOL,
   );
   if (!toolUse) throw new Error(`${tag}: no ${contract.KID_VERDICT_TOOL} tool call`);
-  const value = contract.kidVerdictsSchema.parse(toolUse.input);
+  const value = schema.parse(toolUse.input);
   noteUsage(cost, request.model, response.usage);
-  const record = { value, latencyMs, outputTokens: response.usage.output_tokens };
+  const record = {
+    value,
+    latencyMs,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+  };
   await cachePut(key, record);
   return { ...record, cached: false };
 }
@@ -167,13 +172,18 @@ async function main() {
   const contract = await importTs(CONTRACT);
   const skill = await agent.loadSkill(SKILL_PATH);
   const task = flag('task') ?? skill.meta.task;
-  const lane = agent.pickLane(task);
+  // --model swaps the model on the task's lane, for measuring a candidate tier. Eval only:
+  // production lanes come from model.ts, and CI gates the skill's own lane.
+  const modelOverride = flag('model');
+  const lane = modelOverride
+    ? { ...agent.pickLane(task), model: modelOverride }
+    : agent.pickLane(task);
   const toolChoice =
     lane.model === agent.SONNET55_MODEL
       ? { type: 'auto' }
       : { type: 'tool', name: contract.KID_VERDICT_TOOL };
 
-  const requestFor = (userMessage) => ({
+  const requestFor = (userMessage, verdictsContract) => ({
     ...agent.laneRequestFields(lane),
     max_tokens: contract.KID_JUDGE_MAX_TOKENS,
     system: skill.instructions,
@@ -181,7 +191,7 @@ async function main() {
       {
         name: contract.KID_VERDICT_TOOL,
         description: contract.KID_VERDICT_TOOL_DESCRIPTION,
-        input_schema: contract.kidVerdictsJsonSchema,
+        input_schema: verdictsContract.jsonSchema,
       },
     ],
     tool_choice: toolChoice,
@@ -260,9 +270,13 @@ async function main() {
   const judgeScores = [];
 
   for (const batch of batches) {
+    const verdictsContract = contract.kidVerdictsContract(
+      batch.input.children.map((child) => child.name),
+    );
     const result = await cachedVerdictCall({
       tag: batch.tag,
-      request: requestFor(contract.kidSkillMessage(batch.input)),
+      request: requestFor(contract.kidSkillMessage(batch.input), verdictsContract),
+      schema: verdictsContract.schema,
       cachedOnly,
       getClient,
       cost,

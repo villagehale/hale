@@ -141,7 +141,7 @@ beforeEach(async () => {
 describe('judgeKidRelevance', () => {
   it('stores a kid verdict with its child and reason, and an adult one with no reason', async () => {
     const { client } = scriptedClient(
-      byText({ 'Wren swim': { verdict: 'kid', childName: 'wren' }, Standup: { verdict: 'adult' } }),
+      byText({ 'Wren swim': { verdict: 'kid', childName: 'Wren' }, Standup: { verdict: 'adult' } }),
     );
     const judged = await judge(client, [item('a', 'Wren swim'), item('b', 'Standup')]);
 
@@ -260,12 +260,21 @@ describe('judgeKidRelevance', () => {
     expect(row?.childId).toBe(children[1]?.id);
   });
 
-  it('a child name the family does not have leaves the child unset', async () => {
-    const { client } = scriptedClient(
-      byText({ 'Story time': { verdict: 'kid', childName: 'Someone' } }),
+  it('offers the model only this family\'s children as names', async () => {
+    const { client, calls } = scriptedClient(byText({ Swim: { verdict: 'kid' } }));
+    await judge(client, [item('a', 'Swim')]);
+    const tools = calls[0]?.request.tools as { input_schema: unknown }[];
+    expect(JSON.stringify(tools[0]?.input_schema)).toContain('"enum":["Wren","Juno",null]');
+  });
+
+  it('a child name the family does not have fails validation and is held, never stored', async () => {
+    const { client, calls } = scriptedClient(
+      byText({ 'Juno practice': { verdict: 'kid', childName: 'Jun' } }),
     );
-    const [judged] = await judge(client, [item('a', 'Story time')]);
-    expect(judged).toMatchObject({ verdict: 'kid', childId: null, teen: false });
+    const judged = await judge(client, [item('a', 'Juno practice')]);
+    expect(calls).toHaveLength(2);
+    expect(judged).toEqual([{ ref: 'a', verdict: 'held', why: 'judge_failed' }]);
+    expect(await storedVerdicts()).toEqual([]);
   });
 
   it('re-asks a refused batch one item per call, so each item gets its own verdict', async () => {

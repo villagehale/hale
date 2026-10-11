@@ -35,44 +35,59 @@ export const KID_JUDGE_ITEMS_PER_CALL = Math.floor(
 export const KID_VERDICTS = ['kid', 'adult', 'unsure'] as const;
 export type KidVerdictValue = (typeof KID_VERDICTS)[number];
 
-export const kidVerdictsJsonSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    verdicts: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          ref: { type: 'string' },
-          reason: { type: 'string' },
-          verdict: { type: 'string', enum: [...KID_VERDICTS] },
-          childName: { type: ['string', 'null'] },
+/**
+ * The verdict tool for one call. `childName` can only be one of the children the call
+ * sends, or null, so a nickname or a misspelling fails validation (and is retried, then
+ * held) instead of becoming a kid verdict with no child id - which the teen gate reads
+ * (rule #1). A family with no children gets null only.
+ */
+export function kidVerdictsContract(childNames: readonly string[]) {
+  const names = [...new Set(childNames)];
+  const [first, ...rest] = names;
+  const jsonSchema = {
+    type: 'object' as const,
+    additionalProperties: false,
+    properties: {
+      verdicts: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ref: { type: 'string' },
+            reason: { type: 'string' },
+            verdict: { type: 'string', enum: [...KID_VERDICTS] },
+            childName:
+              first === undefined
+                ? { type: 'null' }
+                : { type: ['string', 'null'], enum: [...names, null] },
+          },
+          required: ['ref', 'reason', 'verdict', 'childName'],
         },
-        required: ['ref', 'reason', 'verdict', 'childName'],
       },
     },
-  },
-  required: ['verdicts'],
-} as const;
+    required: ['verdicts'],
+  };
+  const schema = z
+    .object({
+      verdicts: z.array(
+        z
+          .object({
+            ref: z.string(),
+            reason: z.string(),
+            verdict: z.enum(KID_VERDICTS),
+            childName: first === undefined ? z.null() : z.enum([first, ...rest]).nullable(),
+          })
+          .strict(),
+      ),
+    })
+    .strict();
+  return { jsonSchema, schema };
+}
 
-export const kidVerdictsSchema = z
-  .object({
-    verdicts: z.array(
-      z
-        .object({
-          ref: z.string(),
-          reason: z.string(),
-          verdict: z.enum(KID_VERDICTS),
-          childName: z.string().nullable(),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
-
-export type KidVerdictsAnswer = z.infer<typeof kidVerdictsSchema>;
+export interface KidVerdictsAnswer {
+  verdicts: { ref: string; reason: string; verdict: KidVerdictValue; childName: string | null }[];
+}
 
 /** What the skill reads. `activityTitles` and `notMineHints` are optional. */
 export interface KidSkillInput {

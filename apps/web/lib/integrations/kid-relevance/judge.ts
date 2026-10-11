@@ -17,8 +17,7 @@ import {
   kidItemText,
   kidSkillInputFor,
   kidSkillMessage,
-  kidVerdictsJsonSchema,
-  kidVerdictsSchema,
+  kidVerdictsContract,
 } from './skill-contract';
 
 /**
@@ -224,6 +223,7 @@ async function callJudge(
       now,
     ),
   );
+  const contract = kidVerdictsContract(ports.children.map((child) => child.name));
   const ask = async (onLane: LaneConfig): Promise<CallResult> => {
     const { value } = await forceToolJson({
       client: ports.client,
@@ -232,8 +232,8 @@ async function callJudge(
       userMessage,
       toolName: KID_VERDICT_TOOL,
       toolDescription: KID_VERDICT_TOOL_DESCRIPTION,
-      inputJsonSchema: kidVerdictsJsonSchema,
-      schema: kidVerdictsSchema,
+      inputJsonSchema: contract.jsonSchema,
+      schema: contract.schema,
       maxTokens: KID_JUDGE_MAX_TOKENS,
       transport: llmTransport(),
     });
@@ -288,10 +288,10 @@ function verdictRowFor(
       reason: null,
     };
   }
-  const wanted = answer.childName?.trim().toLowerCase();
-  const child = wanted
-    ? ports.children.find((candidate) => candidate.name.trim().toLowerCase() === wanted)
-    : undefined;
+  const child =
+    answer.childName === null
+      ? undefined
+      : ports.children.find((candidate) => candidate.name === answer.childName);
   const isTeen = (candidate: KidRelevanceChild) =>
     deriveStage(candidate.dateOfBirth, input.now) === 'teenager';
   const teen = child ? isTeen(child) : false;

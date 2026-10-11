@@ -8,8 +8,7 @@ import {
   KID_VERDICT_TOOL,
   KID_VERDICT_TOOL_DESCRIPTION,
   kidSkillMessage,
-  kidVerdictsJsonSchema,
-  kidVerdictsSchema,
+  kidVerdictsContract,
 } from '~/lib/integrations/kid-relevance/skill-contract';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { type AhaSnapshot, calendarOverlaps } from './aha-read';
@@ -63,6 +62,7 @@ export function createKidItemClassifier(client: AgentClient): KidItemClassifier 
   return {
     async classify(input) {
       const skill = await loadKidItemClassifierSkill();
+      const contract = kidVerdictsContract(input.children.map((child) => child.name));
       const { value } = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),
@@ -74,8 +74,8 @@ export function createKidItemClassifier(client: AgentClient): KidItemClassifier 
         }),
         toolName: KID_VERDICT_TOOL,
         toolDescription: KID_VERDICT_TOOL_DESCRIPTION,
-        inputJsonSchema: kidVerdictsJsonSchema,
-        schema: kidVerdictsSchema,
+        inputJsonSchema: contract.jsonSchema,
+        schema: contract.schema,
         maxTokens: KID_JUDGE_MAX_TOKENS,
         transport: llmTransport(),
       });
