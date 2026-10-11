@@ -10,7 +10,7 @@ import { emailAlertDedupeKey } from '~/lib/integrations/email-alert';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { judgeKidRelevance, loadNotMineHints } from './judge';
 import { KID_VERDICT_TOOL } from './skill-contract';
-import { UntrackActorNotMemberError, untrackItem } from './untrack';
+import { UntrackActorNotParentError, untrackItem } from './untrack';
 
 /**
  * "That's mine." The parent's word becomes an `adult` verdict for the whole series, the
@@ -424,10 +424,8 @@ describe('untrackItem', () => {
     });
   });
 
-  it('refuses an actor who is not a member of the family and writes nothing', async () => {
-    const event = await mirror('one-off', NEXT_WEEK);
-    const outsider = await seedFamily(db.database);
-    const counts = async () => ({
+  async function writes() {
+    return {
       verdicts: (await db.database.select().from(schema.kidRelevanceVerdicts)).length,
       events: (
         await db.database
@@ -442,18 +440,54 @@ describe('untrackItem', () => {
           .where(eq(schema.eventReminders.status, 'scheduled'))
       ).length,
       audit: (await db.database.select().from(schema.auditLog)).length,
+    };
+  }
+
+  async function memberOfThisFamily(role: 'co_parent' | 'nanny') {
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ email: `${role}-${familyId}@example.test`, name: 'Test Member' })
+      .returning({ id: schema.users.id });
+    if (!user) throw new Error('no user row');
+    await db.database.insert(schema.familyMembers).values({ familyId, userId: user.id, role });
+    return user.id;
+  }
+
+  function untrackAs(actorUserId: string, event: string) {
+    return untrackItem(db.database, {
+      familyId,
+      actorUserId,
+      target: { kind: 'family_event', id: event },
+      now: NOW,
+      kind: 'a choir',
     });
-    const before = await counts();
-    await expect(
-      untrackItem(db.database, {
-        familyId,
-        actorUserId: outsider.parentUserId,
-        target: { kind: 'family_event', id: event },
-        now: NOW,
-        kind: 'a choir',
-      }),
-    ).rejects.toBeInstanceOf(UntrackActorNotMemberError);
-    expect(await counts()).toEqual(before);
+  }
+
+  it('refuses an actor who is not a member of the family and writes nothing', async () => {
+    const event = await mirror('one-off', NEXT_WEEK);
+    const outsider = await seedFamily(db.database);
+    const before = await writes();
+    await expect(untrackAs(outsider.parentUserId, event)).rejects.toBeInstanceOf(
+      UntrackActorNotParentError,
+    );
+    expect(await writes()).toEqual(before);
+  });
+
+  it('refuses a caregiver in the family and writes nothing; the decision is a parent\'s', async () => {
+    const event = await mirror('one-off', NEXT_WEEK);
+    const nanny = await memberOfThisFamily('nanny');
+    const before = await writes();
+    await expect(untrackAs(nanny, event)).rejects.toBeInstanceOf(UntrackActorNotParentError);
+    expect(await writes()).toEqual(before);
+  });
+
+  it('accepts a co-parent', async () => {
+    const event = await mirror('one-off', NEXT_WEEK);
+    const coParent = await memberOfThisFamily('co_parent');
+    expect(await untrackAs(coParent, event)).toMatchObject({
+      outcome: 'untracked',
+      removedEvents: 1,
+    });
   });
 
   it('a second untrack of the same series is already_untracked and writes nothing more', async () => {

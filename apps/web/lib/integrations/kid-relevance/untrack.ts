@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { isParentRole } from '~/lib/channel/role-scope';
 import type { SuppressReason } from '~/lib/loop/reminders/schedule';
 import { seriesKeyForEvent } from './judge';
 import { KID_HINT_MAX_CHARS, type KidRelevanceSource } from './skill-contract';
@@ -59,14 +60,15 @@ const SERIES_ALERT_KEY = /^calendar_alert:([0-9a-f-]{36}):series:[^:]+:([^:]+):/
 const INSTANCE_ALERT_KEY = /^calendar_alert:([0-9a-f-]{36}):([^:]+):/;
 const EMAIL_ALERT_KEY = /^email_alert:([0-9a-f-]{36}):(.+)$/;
 
-/** The actor is not a member of the family it asked to untrack for. Nothing is written. */
-export class UntrackActorNotMemberError extends Error {
-  override name = 'UntrackActorNotMemberError';
+/** The actor is not a parent of the family it asked to untrack for: an outsider, or a
+ * caregiver, whose scope never covers a parent's own calendar. Nothing is written. */
+export class UntrackActorNotParentError extends Error {
+  override name = 'UntrackActorNotParentError';
 }
 
 export async function untrackItem(database: Database, input: UntrackInput): Promise<UntrackResult> {
   const [member] = await database
-    .select({ userId: schema.familyMembers.userId })
+    .select({ role: schema.familyMembers.role })
     .from(schema.familyMembers)
     .where(
       and(
@@ -74,7 +76,9 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
         eq(schema.familyMembers.userId, input.actorUserId),
       ),
     );
-  if (!member) throw new UntrackActorNotMemberError('untrackItem: actor is not a family member');
+  if (!member || !isParentRole(member.role)) {
+    throw new UntrackActorNotParentError('untrackItem: actor is not a parent of the family');
+  }
 
   const found = await resolveTarget(database, input);
   if (found === 'not_found' || found === 'not_provider_item') return { outcome: found };
