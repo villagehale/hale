@@ -257,6 +257,7 @@ export const AUDIT_VERBS = [
   'calendar_mirror_added',
   'calendar_mirror_moved',
   'calendar_mirror_removed',
+  'reminder_suppressed',
   'group_decision_sync_sent',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
@@ -966,6 +967,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   calendar_mirror_removed: {
     sentence: 'Hale dropped something that left your calendar',
+    family: 'note',
+  },
+  // A due reminder the fire path did not send: its event had started, or an
+  // evening-before reminder reached the event's own day. The row's `after` is the
+  // reason and the offset only — no title, no time.
+  reminder_suppressed: {
+    sentence: 'Hale held back a reminder that was no longer useful',
     family: 'note',
   },
   // A decision the parent made in a 1:1 thread, repeated once in the household
