@@ -66,7 +66,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `ORPHAN_USER_SWEEP_ENABLED` | `true` | off | `false` | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `true` | off | `false` | Noah |
 | `SOCIAL_WATCHLIST` | `on` | off | empty, or `off` | Noah |
-| `TRAVEL_BRIEF_ENABLED` | `true` | on, `true` in production since Oct 2 (Barton, 2026-10-11); read through the VIL-226 lane helper as `travel_brief`, no action | `false` | Sloane |
+| `TRAVEL_BRIEF_ENABLED` | `true` | on (verify in Vercel); read through the VIL-226 lane helper as `travel_brief`, no action | unset it AND empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` — an allowlisted family is admitted while the flag is off | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `true` | off | `false` | Noah |
 | `WATCHED_SPOTS_ENABLED` | `true` | off | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | `true` | off | `false` | Sloane |

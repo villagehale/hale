@@ -183,6 +183,10 @@ describe('reconcileCalendarMirrors', () => {
       end: { dateTime: '2026-10-06T16:00:00.000Z' },
     });
     await reconcile([swim(), piano]);
+    await db.database
+      .update(schema.familyEvents)
+      .set({ dutyOwnerLabel: 'Nana' })
+      .where(eq(schema.familyEvents.googleEventId, 'ev-swim'));
 
     await expect(reconcile([piano])).resolves.toMatchObject({ removed: 1 });
 
@@ -190,6 +194,7 @@ describe('reconcileCalendarMirrors', () => {
     expect(stored.find((row) => row.googleEventId === 'ev-swim')).toMatchObject({
       title: '',
       location: null,
+      dutyOwnerLabel: null,
       deletedAt: NOW,
     });
     expect(stored.find((row) => row.googleEventId === 'ev-piano')).toMatchObject({

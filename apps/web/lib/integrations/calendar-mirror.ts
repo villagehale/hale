@@ -385,7 +385,7 @@ async function softDeleteMirror(
   // NULL, so it is emptied rather than nulled.
   await database
     .update(schema.familyEvents)
-    .set({ deletedAt: input.now, title: '', location: null })
+    .set({ deletedAt: input.now, title: '', location: null, dutyOwnerLabel: null })
     .where(and(eq(schema.familyEvents.id, id), isNull(schema.familyEvents.deletedAt)));
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,
