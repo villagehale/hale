@@ -91,6 +91,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     markStatus: async (_db, id, status, reason) => {
       marked.push({ id, status, reason });
     },
+    auditSuppressed: async () => {},
     reanchor: async () => {},
     loadChildren: async () => [TODDLER, TEEN],
     enqueue: async (job) => {

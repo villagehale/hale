@@ -35,6 +35,7 @@ import {
   type SuppressReason,
   batchReminders,
   classifyReminder,
+  isLateFire,
   offsetUrgency,
   reminderFireAt,
 } from './schedule';
@@ -181,6 +182,11 @@ export interface ReminderRunDeps {
     reminderId: string,
     status: ReminderStatus,
     reason: SuppressReason | null,
+  ) => Promise<void>;
+  /** The audit row for a due reminder the fire path dropped (rule #6). */
+  auditSuppressed: (
+    db: Database,
+    row: { familyId: string; reminderId: string; offset: ReminderOffset; reason: SuppressReason },
   ) => Promise<void>;
   reanchor: (db: Database, reminderId: string, fireAt: Date) => Promise<void>;
   loadChildren: (db: Database, familyId: string) => Promise<ReminderChild[]>;
@@ -364,6 +370,16 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
         .set({ status, suppressReason: reason, updatedAt: new Date() })
         .where(eq(schema.eventReminders.id, reminderId));
     },
+    auditSuppressed: async (db, row) => {
+      await db.insert(schema.auditLog).values({
+        familyId: row.familyId,
+        actor: 'system',
+        actionTaken: 'reminder_suppressed',
+        targetTable: 'event_reminders',
+        targetId: row.reminderId,
+        after: { reason: row.reason, offset: row.offset },
+      });
+    },
     reanchor: async (db, reminderId, fireAt) => {
       await db
         .update(schema.eventReminders)
@@ -394,11 +410,15 @@ export interface ReminderRunResult {
   converged: number;
   due: number;
   fired: number;
+  /** Of `fired`, the reminders sent more than one cron tick after their slot (see
+   * `isLateFire`): held while a lane was off, or caught up after a cron gap. */
+  firedLate: number;
   suppressed: number;
   cancelled: number;
   /** Due reminders on a mirrored Google event left 'scheduled' because the
-   * parent_calendar_mirror lane is off. They are classified again once it is on, and
-   * one whose moment passed beyond the grace is suppressed as 'missed', never sent late. */
+   * parent_calendar_mirror lane is off. They are classified again once it is on: one whose
+   * event has not started is sent late, one whose event has started is suppressed as
+   * 'started', each with its reason logged. */
   heldLaneOff: number;
   /** Reminder rows not created for a mirrored Google event because the
    * parent_calendar_mirror lane is off. They are created on the first run after it is on. */
@@ -597,10 +617,19 @@ export async function runReminderCron(
         await deps.markStatus(db, row.id, 'cancelled', null);
         cancelled += 1;
         break;
-      case 'suppress':
+      case 'suppress': {
         await deps.markStatus(db, row.id, 'suppressed', decision.reason);
+        const dropped = {
+          familyId: row.familyId,
+          reminderId: row.id,
+          offset: row.offset,
+          reason: decision.reason,
+        };
+        console.info(dropped, 'reminder: dropped, not sent');
+        await deps.auditSuppressed(db, dropped);
         suppressed += 1;
         break;
+      }
       case 'stale':
         // event is non-null for every non-cancel decision; the guard narrows the type.
         if (event)
@@ -655,6 +684,7 @@ export async function runReminderCron(
 
   const sendEnabled = loopSendEnabled();
   let fired = 0;
+  let firedLate = 0;
 
   for (const group of byRecipient.values()) {
     const parentUserId = group.parentUserId;
@@ -773,7 +803,9 @@ export async function runReminderCron(
       await deps.enqueue(job);
       for (const ref of batch.eventRefs) {
         const r = rowByRef.get(ref);
-        if (r) await deps.markStatus(db, r.reminderId, 'sent', null);
+        if (!r) continue;
+        await deps.markStatus(db, r.reminderId, 'sent', null);
+        if (isLateFire(r.fireAt, now)) firedLate += 1;
       }
       fired += batch.eventRefs.length;
       // Coarse telemetry (buildEvent drops any PII key): counts + enum only.
@@ -789,6 +821,7 @@ export async function runReminderCron(
     converged,
     due: due.length,
     fired,
+    firedLate,
     suppressed,
     cancelled,
     heldLaneOff,

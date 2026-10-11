@@ -102,11 +102,23 @@ describe('classifyReminder — the don\'t-send matrix (the trust test)', () => {
     expect(classifyReminder(reminder(), event(), early, TZ)).toEqual({ action: 'wait' });
   });
 
-  it('suppresses (missed) a slot more than the grace behind now', () => {
-    // T-24h fire_at 2026-07-24T22:00Z; now 4h later; event not started → missed, not fired late.
+  it('fires a late T-24h reminder while its event is still tomorrow — no time window decides', () => {
+    // fire_at 18:00 EDT on the 24th; now 22:00 EDT the same evening, 4h late; the event is
+    // 10:00 on the 25th. It has not started and "tomorrow" is still true, so it is useful.
     const r = reminder({ offset: '-P1D', fireAt: new Date('2026-07-24T22:00:00Z') });
     const now = new Date('2026-07-25T02:00:00Z');
-    expect(classifyReminder(r, event(), now, TZ)).toEqual({ action: 'suppress', reason: 'missed' });
+    expect(classifyReminder(r, event(), now, TZ)).toEqual({ action: 'fire' });
+  });
+
+  it("suppresses (evening_passed) a T-24h reminder once the event's own day has come", () => {
+    // 08:00 EDT on the event's day: the event has not started, but an evening-before
+    // reminder would now say "tomorrow" about today. The T-1h reminder still covers it.
+    const r = reminder({ offset: '-P1D', fireAt: new Date('2026-07-24T22:00:00Z') });
+    const now = new Date('2026-07-25T12:00:00Z');
+    expect(classifyReminder(r, event(), now, TZ)).toEqual({
+      action: 'suppress',
+      reason: 'evening_passed',
+    });
   });
 
   it('suppresses (interacted) when the parent just engaged the event in-channel', () => {
