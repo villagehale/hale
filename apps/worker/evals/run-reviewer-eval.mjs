@@ -255,7 +255,7 @@ async function main() {
     '../../../packages/agent/src/cost.ts',
     import.meta.url,
   );
-  const model = modelArg === 'haiku' ? models.HAIKU_MODEL : models.SONNET5_MODEL;
+  const model = modelArg === 'haiku' ? models.HAIKU_MODEL : models.SONNET_MODEL;
   const subjectModel = process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? model;
   console.log(
     `reviewer-eval | mode=${broken ? 'broken' : cachedOnly ? 'cached-only' : 'real'} | suite=${suite} | review model=${subjectModel}`,
@@ -306,7 +306,7 @@ async function main() {
           client: broken
             ? brokenClient
             : makeCachedClient(
-                subjectModel === models.SONNET5_MODEL ? fx.id : `${fx.id}:${subjectModel}`,
+                subjectModel === models.SONNET_MODEL ? fx.id : `${fx.id}:${subjectModel}`,
                 {
                   anthropicModel,
                   directModel: modelArg === 'haiku' ? subjectModel : null,

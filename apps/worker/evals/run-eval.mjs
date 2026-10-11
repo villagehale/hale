@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
+import { PRICE, liveStructuredCall } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -46,10 +47,6 @@ const FIXTURE_DIR = join(HERE, 'fixtures', 'classifier');
 const HOLDOUT_DIR = join(FIXTURE_DIR, 'holdout');
 const CACHE_DIR = join(HERE, 'cache');
 
-// Haiku 4.5 list price (USD per 1M tokens). Source: Anthropic pricing,
-// cross-checked via the claude-api skill on 2026-06-12.
-const PRICE_PER_MTOK = { input: 1.0, output: 5.0 };
-
 const ACCURACY_BAR = 0.85;
 const ROUTING_BAR = 0.85;
 const ATTRIBUTION_BAR = 0.85;
@@ -60,9 +57,9 @@ const ATTRIBUTION_BAR = 0.85;
 // (src/agents/classifier.ts) resolves it via pickModel('classify'), so we call the
 // same function from @hale/agent source (via tsx, not the stale committed dist) —
 // a TASK_MODEL re-tier is picked up here with no eval edit.
-async function readModelId() {
-  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
-  return pickModel('classify');
+async function readLane() {
+  const { pickLane } = await tsImport(AGENT_SRC, import.meta.url);
+  return pickLane('classify');
 }
 
 async function readAutonomyThreshold() {
@@ -186,7 +183,8 @@ async function cachePut(key, value) {
 
 // --- the real classifier path (replicated forceToolJson) --------------------
 
-function makeRealClassifier(model, basePrompt, cachedOnly) {
+function makeRealClassifier(lane, basePrompt, cachedOnly) {
+  const model = lane.model;
   let client;
   return async function classify(fixture) {
     const system = await systemPromptFor(basePrompt, fixture);
@@ -206,25 +204,18 @@ function makeRealClassifier(model, basePrompt, cachedOnly) {
     }
 
     client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model,
-      max_tokens: 4096,
+    const response = await liveStructuredCall({
+      client,
+      lane,
       system,
-      tools: [
-        {
-          name: TOOL_NAME,
-          description: 'Return the structured classification of the inbound signal.',
-          input_schema: OUTPUT_JSON_SCHEMA,
-        },
-      ],
-      tool_choice: { type: 'tool', name: TOOL_NAME },
-      messages: [{ role: 'user', content: userMessage }],
+      userMessage,
+      toolName: TOOL_NAME,
+      toolDescription: 'Return the structured classification of the inbound signal.',
+      toolSchema: OUTPUT_JSON_SCHEMA,
+      maxTokens: 4096,
     });
 
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === TOOL_NAME);
-    if (!toolUse) throw new Error(`${fixture.id}: model returned no ${TOOL_NAME} tool call`);
-
-    const parsed = toolUse.input;
+    const parsed = response.value;
     const usage = {
       input: response.usage.input_tokens,
       output: response.usage.output_tokens,
@@ -320,7 +311,8 @@ async function main() {
   const includeHoldout = process.argv.includes('--include-holdout');
   const cachedOnly = process.argv.includes('--cached-only');
 
-  const model = await readModelId();
+  const lane = await readLane();
+  const model = lane.model;
   const prompt = await readFile(PROMPT_PATH, 'utf8');
   const threshold = await readAutonomyThreshold();
 
@@ -329,7 +321,7 @@ async function main() {
   const fixtures = [...scored, ...holdout];
 
   const classify =
-    mode === 'broken' ? makeBrokenClassifier() : makeRealClassifier(model, prompt, cachedOnly);
+    mode === 'broken' ? makeBrokenClassifier() : makeRealClassifier(lane, prompt, cachedOnly);
 
   console.log(
     `classifier-eval | mode=${mode}${cachedOnly ? ' (cached-only)' : ''} | model=${model} | autonomy_threshold=${threshold}`,
@@ -452,7 +444,8 @@ async function main() {
     console.log('calibration failures: none');
   }
 
-  const estUsd = (totalIn / 1e6) * PRICE_PER_MTOK.input + (totalOut / 1e6) * PRICE_PER_MTOK.output;
+  const price = PRICE[model];
+  const estUsd = (totalIn / 1e6) * price.input + (totalOut / 1e6) * price.output;
   console.log('');
   console.log('--- cost ---');
   console.log(`live API calls this run: ${liveCalls}`);

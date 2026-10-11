@@ -881,6 +881,8 @@ async function main() {
   const finderSkill = await agent.loadSkill(FINDER_SKILL);
   const model = candidateModel ?? agent.pickModel(deepSkill.meta.task);
   const composerModel = agent.pickModel(finderSkill.meta.task);
+  const subjectLane = candidateModel ? null : agent.pickLane(deepSkill.meta.task);
+  const composerLane = agent.pickLane(finderSkill.meta.task);
   // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
   // behaviours the rubric states in so many words are correct (harness.mjs readJudgeModel).
   const judgeModel = await readJudgeModel('sonnet');
@@ -963,6 +965,7 @@ async function main() {
           await cachedToolCall({
             tag: evalRunTag(`activity-deep-extract:${fixture.id}`),
             model,
+            lane: subjectLane,
             system: deepSkill.instructions,
             userMessage: deepExtractMessage(query, evidence.notes),
             toolName: 'activity_deep',
@@ -1046,6 +1049,7 @@ async function main() {
             await cachedToolCall({
               tag: evalRunTag(`activity-deep-followup:${fixture.id}:${attempt}`),
               model: composerModel,
+              lane: composerLane,
               system: finderSkill.instructions,
               userMessage: retryFollowUpMessage(
                 followUpUserMessage(fixture.subject, inText, pageEvidence, watch),

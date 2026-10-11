@@ -69,9 +69,9 @@ const SWEEPING_PATTERNS = [
 
 // --- read the single source of truth from worker source --------------------
 
-async function readModelId() {
-  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
-  return pickModel('infer');
+async function readLane() {
+  const { pickLane } = await tsImport(AGENT_SRC, import.meta.url);
+  return pickLane('infer');
 }
 
 // The tool-forced JSON schema MUST mirror inferencerOutputJsonSchema in
@@ -167,7 +167,7 @@ async function cachePut(key, value) {
 
 // --- the real inferencer path (replicated forceToolJson) --------------------
 
-function makeRealInferencer(model, prompt, cachedOnly, cost) {
+function makeRealInferencer(model, lane, prompt, cachedOnly, cost) {
   let client;
   return async function infer(fixture) {
     const userMessage = userMessageFor(fixture);
@@ -198,8 +198,7 @@ function makeRealInferencer(model, prompt, cachedOnly, cost) {
           toolDescription: 'Record the derived facts, episodes, and retirements for this family.',
           toolSchema: INFER_JSON_SCHEMA,
           maxTokens: 2048,
-          thinking: { type: 'disabled' },
-          effort: 'high',
+          lane,
           cachedOnly,
           getClient: () => {
             client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -379,7 +378,8 @@ async function main() {
     throw new Error('--broken is offline and cannot be combined with --anthropic-model');
   }
 
-  const model = process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? (await readModelId());
+  const lane = await readLane();
+  const model = process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? lane.model;
   const prompt = await readFile(PROMPT_PATH, 'utf8');
   const baseFixtures = await loadFixtures(FIXTURE_DIR);
   const allFixtures =
@@ -403,7 +403,7 @@ async function main() {
   const infer =
     mode === 'broken'
       ? makeBrokenInferencer()
-      : makeRealInferencer(model, prompt, cachedOnly, cost);
+      : makeRealInferencer(model, lane, prompt, cachedOnly, cost);
 
   console.log(
     `memory-eval | mode=${mode}${cachedOnly ? ' (cached-only)' : ''} | inferencer=${model}`,
@@ -431,10 +431,11 @@ async function main() {
     }
   }
 
+  // The lane arm prices through the harness table; the hand-rolled arm keeps its own.
   const estUsd =
-    process.env.EVAL_GATEWAY_MODEL || anthropicModel
-      ? totalUsd(cost)
-      : (cost.sonnetIn / 1e6) * PRICE.sonnet.input + (cost.sonnetOut / 1e6) * PRICE.sonnet.output;
+    totalUsd(cost) +
+    (cost.sonnetIn / 1e6) * PRICE.sonnet.input +
+    (cost.sonnetOut / 1e6) * PRICE.sonnet.output;
 
   console.log('');
   console.log('--- cost ---');

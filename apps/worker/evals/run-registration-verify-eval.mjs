@@ -42,7 +42,6 @@ import {
   cachedToolCall,
   lazyAnthropic,
   makeCost,
-  readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
 
@@ -370,9 +369,9 @@ async function main() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
-  const models = await readModelIds();
-  // The skill declares task: extract → Sonnet 5. Read from model.ts, never hardcoded.
-  const model = models.sonnet5;
+  // The skill declares its task; the lane comes from model.ts, never hardcoded.
+  const subjectLane = agent.pickLane(skill.meta.task);
+  const model = subjectLane.model;
 
   const getClient = lazyAnthropic();
   const cost = makeCost();
@@ -393,6 +392,7 @@ async function main() {
       const result = await cachedToolCall({
         tag: `registration-verify:${fixture.id}`,
         model,
+        lane: subjectLane,
         system: skill.instructions,
         userMessage: JSON.stringify({
           municipality: fixture.municipality,

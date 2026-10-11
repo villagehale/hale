@@ -94,6 +94,7 @@ async function main() {
   const { plainText } = await importTs(join(WEB_ROOT, 'lib', 'channel', 'coach', 'reply.ts'));
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
+  const subjectLane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(
     judgeModel,
@@ -124,6 +125,7 @@ async function main() {
             await cachedToolCall({
               tag: `add-them-yourself:${fixture.id}:${attempt}`,
               model,
+              lane: subjectLane,
               system: skill.instructions,
               userMessage,
               toolName: 'reply',

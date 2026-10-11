@@ -797,6 +797,7 @@ async function runLegacy() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
+  const subjectLane = agent.pickLane(skill.meta.task);
 
   const results = [];
   for (const fixture of LANE_FIXTURES) {
@@ -806,6 +807,7 @@ async function runLegacy() {
           await cachedToolCall({
             tag: `inbound-lane:${fixture.id}`,
             model,
+            lane: subjectLane,
             system: skill.instructions,
             userMessage: laneUserMessage(fixture),
             toolName: 'lane',

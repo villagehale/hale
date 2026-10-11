@@ -55,7 +55,15 @@ import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
-import { evalRunTag, evalSubjectClient, evalSubjectRequest, noteLatency } from './lib/harness.mjs';
+import {
+  PRICE as LIST_PRICE,
+  evalRunTag,
+  evalSubjectClient,
+  evalSubjectRequest,
+  judgeLaneFor,
+  liveStructuredCall,
+  noteLatency,
+} from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -67,10 +75,10 @@ const SKILLS_DIR = join(REPO_ROOT, 'packages', 'agent', 'skills');
 const FIXTURE_ROOT = join(HERE, 'fixtures');
 const CACHE_DIR = join(HERE, 'cache');
 
-// List prices (USD per 1M tokens). Source: Anthropic pricing, claude-api skill.
+// List prices (USD per 1M tokens), from the harness table.
 const PRICE = {
-  sonnet: { input: 3.0, output: 15.0 },
-  haiku: { input: 1.0, output: 5.0 },
+  sonnet: LIST_PRICE['claude-sonnet-5-5'],
+  haiku: LIST_PRICE['claude-haiku-5-5'],
   gateway: { input: 0.15, output: 0.6 },
 };
 
@@ -222,11 +230,12 @@ function makeGuardDeps(auditLog, teenChildIds) {
 const JUDGE_TOOL = 'score';
 const JUDGE_JSON_SCHEMA = {
   type: 'object',
+  // Reason BEFORE score: a score emitted first is a score reasoned backwards from.
   properties: {
-    score: { type: 'integer', minimum: 1, maximum: 5 },
     reason: { type: 'string' },
+    score: { type: 'integer', minimum: 1, maximum: 5 },
   },
-  required: ['score', 'reason'],
+  required: ['reason', 'score'],
 };
 
 function makeJudge(model, judgeSystem, tag, cachedOnly, getClient, cost) {
@@ -244,21 +253,19 @@ function makeJudge(model, judgeSystem, tag, cachedOnly, getClient, cost) {
       process.exit(1);
     }
 
-    const response = await getClient().messages.create({
-      model,
-      max_tokens: 256,
+    const response = await liveStructuredCall({
+      client: getClient(),
+      lane: await judgeLaneFor(model),
       system: judgeSystem,
-      tools: [
-        { name: JUDGE_TOOL, description: 'Return the score.', input_schema: JUDGE_JSON_SCHEMA },
-      ],
-      tool_choice: { type: 'tool', name: JUDGE_TOOL },
-      messages: [{ role: 'user', content: userMessage }],
+      userMessage,
+      toolName: JUDGE_TOOL,
+      toolDescription: 'Return the score.',
+      toolSchema: JUDGE_JSON_SCHEMA,
+      maxTokens: 1024,
     });
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === JUDGE_TOOL);
-    if (!toolUse) throw new Error(`judge (${tag}) returned no ${JUDGE_TOOL} tool call`);
     noteUsage(cost, 'haiku', response.usage);
-    await cachePut(key, { parsed: toolUse.input });
-    return toolUse.input;
+    await cachePut(key, { parsed: response.value });
+    return response.value;
   };
 }
 
@@ -573,7 +580,8 @@ function discoveryUserMessageFor(fixture) {
   });
 }
 
-async function realDiscovery(model, prompt, fixture, cachedOnly, getClient, cost) {
+async function realDiscovery(lane, prompt, fixture, cachedOnly, getClient, cost) {
+  const model = lane.model;
   const userMessage = discoveryUserMessageFor(fixture);
   const key = cacheKey('discovery:agent', `${model}\n${prompt}\n${userMessage}`);
 
@@ -587,25 +595,22 @@ async function realDiscovery(model, prompt, fixture, cachedOnly, getClient, cost
     process.exit(1);
   }
 
-  const response = await getClient().messages.create({
-    model,
-    max_tokens: 4096,
+  // Through the shared structured seam, on the converse lane discover.ts reads. NOT what
+  // apps/web/lib/village/discover.ts sends today: it forces tool_choice, which Sonnet 5.5
+  // rejects with a 400, and moving it onto this seam is VIL-423's (see the PR body).
+  const response = await liveStructuredCall({
+    client: getClient(),
+    lane,
     system: prompt,
-    tools: [
-      {
-        name: DISCOVERY_TOOL,
-        description: 'Return the structured local activity candidates.',
-        input_schema: DISCOVERY_JSON_SCHEMA,
-      },
-    ],
-    tool_choice: { type: 'tool', name: DISCOVERY_TOOL },
-    messages: [{ role: 'user', content: userMessage }],
+    userMessage,
+    toolName: DISCOVERY_TOOL,
+    toolDescription: 'Return the structured local activity candidates.',
+    toolSchema: DISCOVERY_JSON_SCHEMA,
+    maxTokens: 4096,
   });
-  const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === DISCOVERY_TOOL);
-  if (!toolUse) throw new Error(`${fixture.id}: model returned no ${DISCOVERY_TOOL} tool call`);
   noteUsage(cost, 'sonnet', response.usage);
-  await cachePut(key, { parsed: toolUse.input });
-  return toolUse.input;
+  await cachePut(key, { parsed: response.value });
+  return response.value;
 }
 
 // Deterministic broken stand-in: an out-of-stage candidate, fabricated specifics
@@ -692,7 +697,7 @@ function checkDiscovery(fixture, parsed, judgeScore) {
 }
 
 async function runDiscoverySuite(opts) {
-  const { broken, cachedOnly, getClient, cost, judge, discoveryModel } = opts;
+  const { broken, cachedOnly, getClient, cost, judge, discoveryLane } = opts;
   const fixtures = await loadFixtures('agent-discovery');
   const prompt = await readFile(DISCOVERY_PROMPT_PATH, 'utf8');
   const results = [];
@@ -701,7 +706,7 @@ async function runDiscoverySuite(opts) {
   for (const fixture of fixtures) {
     const parsed = broken
       ? brokenDiscovery()
-      : await realDiscovery(discoveryModel, prompt, fixture, cachedOnly, getClient, cost);
+      : await realDiscovery(discoveryLane, prompt, fixture, cachedOnly, getClient, cost);
     const score = broken ? null : (await judge(discoveryJudgePayload(fixture, parsed))).score;
     const failures = checkDiscovery(fixture, parsed, score);
     record(results, fixture, failures, score);
@@ -741,7 +746,10 @@ async function main() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
 
-  const { discovery: discoveryModel, judge: judgeModel } = await readModelIds();
+  const { judge: judgeModel } = await readModelIds();
+  // discover.ts reads its model from the converse lane (lib/coach/model.ts).
+  const discoveryLane = agent.pickLane('converse');
+  const discoveryModel = discoveryLane.model;
   const getClient = lazyAnthropic();
   const cost = {
     liveCalls: 0,
@@ -799,7 +807,7 @@ async function main() {
           getClient,
           cost,
           judge: discoveryJudge,
-          discoveryModel,
+          discoveryLane,
         }),
     ],
   ];

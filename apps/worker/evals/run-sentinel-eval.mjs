@@ -229,6 +229,8 @@ async function main() {
     ? JEV_MODEL
     : (triageCandidate ?? agent.pickModel(triageSkill.meta.task));
   const extractModel = agent.pickModel(extractSkill.meta.task);
+  const triageLane = triageJev || triageCandidate ? null : agent.pickLane(triageSkill.meta.task);
+  const extractLane = agent.pickLane(extractSkill.meta.task);
   const allFixtures =
     minSamples === null
       ? FIXTURES
@@ -277,6 +279,7 @@ async function main() {
         : await cachedToolCall({
             tag: `sentinel:triage:${fixture.id}`,
             model: triageModel,
+            lane: triageLane,
             system: triageSkill.instructions,
             userMessage: triageUserMessage(fixture),
             toolName: 'triage',
@@ -302,6 +305,7 @@ async function main() {
             await cachedToolCall({
               tag: `sentinel:extract:${fixture.id}`,
               model: extractModel,
+              lane: extractLane,
               system: extractSkill.instructions,
               userMessage: extractUserMessage(fixture),
               toolName: 'extraction',

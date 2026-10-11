@@ -484,6 +484,7 @@ async function main() {
   const model = useJev
     ? JEV_MODEL
     : (process.env.EVAL_GATEWAY_MODEL ?? agent.pickModel(skill.meta.task));
+  const subjectLane = agent.pickLane(skill.meta.task);
   const allFixtures =
     minSamples === null
       ? REPLY_RESOLVER_FIXTURES
@@ -533,6 +534,7 @@ async function main() {
             // the one input that changed the output while `cachedToolCall`'s key ignored it.
             tag: `reply-resolver:${MAX_TOKENS}:${fixture.id}`,
             model,
+            lane: subjectLane,
             system: skill.instructions,
             userMessage: replyResolverUserMessage(fixture.text, fixture.questions),
             toolName: 'resolution',

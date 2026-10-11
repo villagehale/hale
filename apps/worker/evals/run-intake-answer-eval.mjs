@@ -226,6 +226,7 @@ async function main() {
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
+  const subjectLane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'intake-answer', cachedOnly, getClient, cost);
 
@@ -242,6 +243,7 @@ async function main() {
           await cachedToolCall({
             tag: `intake-answer:${fixture.id}`,
             model,
+            lane: subjectLane,
             system: skill.instructions,
             userMessage: intakeAnswerUserMessage(fixture),
             toolName: 'reply',

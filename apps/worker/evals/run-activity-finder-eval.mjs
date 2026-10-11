@@ -1050,6 +1050,7 @@ async function main() {
   }
   const skill = await agent.loadSkill(ACTIVITY_SKILL);
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
+  const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
   // behaviours the rubric states in so many words are correct (harness.mjs readJudgeModel).
   const judgeModel = await readJudgeModel('sonnet');
@@ -1149,6 +1150,7 @@ async function main() {
           await cachedToolCall({
             tag: evalRunTag(`activity-picks:${fixture.id}`),
             model,
+            lane: subjectLane,
             system: skill.instructions,
             userMessage: composeUserMessage(query, ground.notes),
             toolName: 'activity_picks',
@@ -1250,6 +1252,7 @@ async function main() {
             await cachedToolCall({
               tag: evalRunTag(`activity-followup:${fixture.id}:${attempt}`),
               model,
+              lane: subjectLane,
               system: skill.instructions,
               userMessage: retryFollowUpMessage(
                 followUpUserMessage(fixture.subject, kept, pageEvidence, watch),

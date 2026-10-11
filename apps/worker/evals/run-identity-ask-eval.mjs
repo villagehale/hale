@@ -243,6 +243,7 @@ async function main() {
   smsEncodingRef = smsEncoding;
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
+  const subjectLane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'identity-ask', cachedOnly, getClient, cost);
 
@@ -262,6 +263,7 @@ async function main() {
           await cachedToolCall({
             tag: `identity-ask:${fixture.id}`,
             model,
+            lane: subjectLane,
             system: skill.instructions,
             userMessage,
             toolName: 'ask',

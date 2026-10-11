@@ -38,9 +38,9 @@ import {
   cacheKey,
   cachePut,
   lazyAnthropic,
+  liveStructuredCall,
   makeCost,
   noteUsage,
-  readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
@@ -116,7 +116,7 @@ function userMessage(fixture) {
  */
 async function cachedTravelCall({
   tag,
-  model,
+  lane,
   system,
   message,
   schema,
@@ -126,6 +126,7 @@ async function cachedTravelCall({
   getClient,
   cost,
 }) {
+  const model = lane.model;
   const thinking = { type: 'adaptive' };
   const outputConfig = { effort: 'high' };
   const canonical = JSON.stringify({
@@ -148,36 +149,21 @@ async function cachedTravelCall({
     );
   }
 
-  const response = await getClient().messages.create({
-    model,
-    max_tokens: maxTokens,
-    thinking,
-    output_config: outputConfig,
+  // Through the production seam: the lane's request shape, a strict schema, the re-ask
+  // and the named truncation / refusal / missing-call guards — none of which is cached.
+  const response = await liveStructuredCall({
+    client: getClient(),
+    lane,
     system,
-    tools: [
-      {
-        name: TOOL_NAME,
-        description: 'Return the structured travel-booking extraction.',
-        input_schema: schema,
-      },
-    ],
-    tool_choice: toolChoice ?? { type: 'tool', name: TOOL_NAME },
-    messages: [{ role: 'user', content: message }],
+    userMessage: message,
+    toolName: TOOL_NAME,
+    toolDescription: 'Return the structured travel-booking extraction.',
+    toolSchema: schema,
+    maxTokens: maxTokens,
   });
-  // A truncated forced tool call is not an answer and must never be cached as one: it
-  // arrives as `input: {}` and reads downstream as "this email said nothing".
-  if (response.stop_reason === 'max_tokens') {
-    throw new Error(
-      `${tag}: tool call truncated at max_tokens (${maxTokens}) - raise the budget; nothing cached`,
-    );
-  }
-  const toolUse = response.content.find(
-    (block) => block.type === 'tool_use' && block.name === TOOL_NAME,
-  );
-  if (!toolUse) throw new Error(`${tag}: model returned no ${TOOL_NAME} tool call`);
   noteUsage(cost, model, response.usage);
-  await cachePut(key, { value: toolUse.input, stopReason: response.stop_reason });
-  return { value: toolUse.input, stopReason: response.stop_reason, cached: false };
+  await cachePut(key, { value: response.value });
+  return { value: response.value, cached: false };
 }
 
 /** Case-, accent- and punctuation-insensitive, so one place compares as one thing. */
@@ -267,9 +253,12 @@ async function main() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
-  const models = await readModelIds();
-  // The skill declares task: extract → Sonnet 5. Read from model.ts, never hardcoded.
-  const model = candidateModel ?? models.sonnet5;
+  // The skill declares its task; the lane comes from model.ts, never hardcoded. A
+  // candidate swaps only the model on that lane.
+  const lane = candidateModel
+    ? { ...agent.pickLane(skill.meta.task), model: candidateModel }
+    : agent.pickLane(skill.meta.task);
+  const model = lane.model;
   const { maxTokens, childEvidence, properties } = await readRuntimeContract();
   const schema = toolSchema(childEvidence);
   const fixtures =
@@ -313,7 +302,7 @@ async function main() {
   for (const fixture of fixtures) {
     const result = await cachedTravelCall({
       tag: `travel-extract:${noSkill ? 'no-skill:' : ''}${fixture.id}`,
-      model,
+      lane,
       system,
       message: userMessage(fixture),
       schema,

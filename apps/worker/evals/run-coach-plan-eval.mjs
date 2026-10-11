@@ -463,6 +463,8 @@ async function main() {
   }
   const planModel = candidateModel ?? agent.pickModel(planSkill.meta.task);
   const noteModel = agent.pickModel(noteSkill.meta.task);
+  const planLane = candidateModel ? null : agent.pickLane(planSkill.meta.task);
+  const noteLane = agent.pickLane(noteSkill.meta.task);
   // A Sonnet judge, not the harness default: these are three-paragraph plans whose
   // failure mode is a shade of generality, and Haiku flapped on exactly that class in
   // the coach-channel corpus. The run is cached, so the tier costs once.
@@ -523,6 +525,7 @@ async function main() {
             await cachedToolCall({
               tag: `${isPlan ? 'coach-plan' : 'coach-note'}:${fixture.id}`,
               model: isPlan ? planModel : noteModel,
+              lane: isPlan ? planLane : noteLane,
               system: isPlan ? planSkill.instructions : noteSkill.instructions,
               userMessage: withViolations(base, violations),
               toolName: isPlan ? 'plan' : 'note',

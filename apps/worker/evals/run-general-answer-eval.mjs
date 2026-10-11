@@ -232,6 +232,7 @@ async function main() {
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
+  const subjectLane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'general-answer', cachedOnly, getClient, cost);
   const fixtures =
@@ -257,6 +258,7 @@ async function main() {
           await cachedToolCall({
             tag: `general-answer:${fixture.id}`,
             model,
+            lane: subjectLane,
             system: skill.instructions,
             userMessage: generalAnswerUserMessage(fixture.text),
             toolName: 'answer',
