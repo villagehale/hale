@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -516,7 +516,11 @@ async function freshSignalSince(
     .select({ id: schema.familyEvents.id })
     .from(schema.familyEvents)
     .where(
-      and(eq(schema.familyEvents.familyId, familyId), gte(schema.familyEvents.createdAt, since)),
+      and(
+        eq(schema.familyEvents.familyId, familyId),
+        householdFamilyEvent(),
+        gte(schema.familyEvents.createdAt, since),
+      ),
     )
     .limit(1);
   if (occasion) return true;

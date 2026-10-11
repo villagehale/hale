@@ -40,6 +40,13 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // VIL-226. One audit helper writes every verb of the hourly proactive review.
+  'apps/web/lib/channel/proactive/review.ts': [
+    'proactive_cadence_decision',
+    'proactive_cadence_held',
+    'proactive_cadence_sent',
+    'proactive_cadence_skipped',
+  ],
   // One helper writes every passport verb. The "both kids" copy in actions.ts
   // also writes interest_stamp_confirmed as a literal.
   'apps/web/lib/passport/store.ts': [
