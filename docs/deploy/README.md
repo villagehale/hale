@@ -96,16 +96,17 @@ Every switch defaults to `current`; an empty value also means `current`. Set one
 
 | Decision slice | Environment | `current` | `candidate` |
 |---|---|---|---|
-| Intake reply intent | `HALE_REPLY_INTENT_MODEL_MODE` on Vercel web | Sonnet 5 | JEV |
-| Sentinel envelope triage | `HALE_TRIAGE_MODEL_MODE` on Vercel web | Haiku 4.5 | JEV |
-| Event classification | `HALE_CLASSIFY_EVENT_MODEL_MODE` on Vercel web | Sonnet 5 | Sonnet 5.5 |
-| Intake extraction | `HALE_INTAKE_EXTRACT_MODEL_MODE` on Vercel web | Sonnet 5 | Sonnet 5.5 |
-| Inbound screen | `HALE_INBOUND_SCREEN_MODEL_MODE` on Vercel web | Haiku 4.5 | JEV |
-| Memory inference | `HALE_MEMORY_INFER_MODEL_MODE` on Vercel web | Sonnet 4.6 | DeepSeek V4.1 Flash |
-| Village search parsing | `HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE` on Vercel web | Sonnet 5 | DeepSeek V4.1 Flash |
+| Intake reply intent | `HALE_REPLY_INTENT_MODEL_MODE` on Vercel web | Sonnet 5.5 | JEV |
+| Sentinel envelope triage | `HALE_TRIAGE_MODEL_MODE` on Vercel web | Haiku 5.5 | JEV |
+| Event classification | `HALE_CLASSIFY_EVENT_MODEL_MODE` on Vercel web | Sonnet 5.5 | Sonnet 5.5 |
+| Intake extraction | `HALE_INTAKE_EXTRACT_MODEL_MODE` on Vercel web | Sonnet 5.5 | Sonnet 5.5 |
+| Inbound screen | `HALE_INBOUND_SCREEN_MODEL_MODE` on Vercel web | Haiku 5.5 | JEV |
+| Memory inference | `HALE_MEMORY_INFER_MODEL_MODE` on Vercel web | Sonnet 5.5 | DeepSeek V4.1 Flash |
+| Village search parsing | `HALE_VILLAGE_SEARCH_PARSE_MODEL_MODE` on Vercel web | Sonnet 5.5 | DeepSeek V4.1 Flash |
 
 These switches affect internal decisions only. Parent-facing `converse`, `draft`, `answer`,
-`acknowledge`, and `speak` output remains on its current Sonnet/Haiku routing.
+`acknowledge`, and `speak` output remains on its current Sonnet/Haiku routing. Every
+`current` lane is on the Claude 5.5 generation (packages/agent/src/model.ts).
 
 Deploying this code keeps every current model unless a flag explicitly says `candidate`.
 Rollback is setting the affected flag to `current` and redeploying/restarting the web service.

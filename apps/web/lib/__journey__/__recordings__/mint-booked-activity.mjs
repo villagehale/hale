@@ -99,7 +99,14 @@ function readEvalValue(tag, canonical) {
 /** The raw-message envelope the journey's client returns. The ANSWER is the model's; only
  * the transport shape around it is rebuilt, because the eval cache stores the parsed tool
  * input rather than the blocks. */
-function envelope(toolName, input) {
+function envelope(toolName, input, schema) {
+  if (agent.strictToolSchema(schema)) {
+    return {
+      content: [{ type: 'text', text: JSON.stringify(input) }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+  }
   return {
     content: [{ type: 'tool_use', id: `transcoded-${toolName}`, name: toolName, input }],
     stop_reason: 'tool_use',
@@ -171,7 +178,7 @@ for (const turn of turns) {
     key,
     recordedAt: new Date().toISOString(),
     request: { model: turn.model, userMessage: turn.userMessage },
-    response: envelope(turn.toolName, value),
+    response: envelope(turn.toolName, value, turn.toolSchema),
   };
   console.info(`${turn.tag}  ->  ${key}`);
 }
