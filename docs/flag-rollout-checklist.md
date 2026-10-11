@@ -2,7 +2,7 @@
 
 VIL-405. Merging this page leaves every flag where it is.
 
-Production env was not read. State comes from the flag read in `apps/web`, `apps/worker`, and `packages`, plus `.env.example`, `docs/capability-registry.md`, `docs/deploy/README.md`, `docs/evals/VIL-376-model-benchmark-results.md`, and the pull request that added the flag. `apps/worker` has no product flag reads. Eval scripts read `EVAL_GATEWAY_MODEL` only when someone runs an eval.
+Production env was not read. State comes from the flag read in `apps/web`, `apps/worker`, and `packages`, plus `.env.example`, `docs/capability-registry.md`, `docs/deploy/README.md`, `docs/evals/VIL-376-model-benchmark-results.md`, and the pull request that added the flag. `apps/worker` reads one product flag, `AUTONOMOUS_EXECUTE_ENABLED`, in the orchestrator that `apps/web` runs from `/api/cron/drain`. Eval scripts read `EVAL_GATEWAY_MODEL` only when someone runs an eval.
 
 **Unconfirmed, verify in Vercel env** means the rollout brief treats the flag as live, and the repo still records the code default as off. No pull request records the production value.
 
@@ -27,6 +27,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `BOOKED_DETECTION_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `F14_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
+| `AUTONOMOUS_EXECUTE_ENABLED` | `true` (trimmed) | live lane: set to `true` before VIL-131 merges | unset | Barton |
 | `LINQ_GROUP_COPARENT` | unset (anything except `off`) | on | `off` | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | unset (anything except `false`) | on | `false` | Noah |
 | `VOICE_DISABLED` | unset | unset (voice runs) | `true` | Sloane |
@@ -56,7 +57,6 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `GOING_COUNT_ENABLED` | `true` | off | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | `true` | off | `false` | Noah |
 | `GOOGLE_WRITE_SCOPES_ENABLED` | `true` | off | unset, or anything except `true` | Noah |
-| `IMESSAGE_UPGRADE_ASK` | `on` | off | empty, or `off` | Sloane |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `true` | off | `false` | Noah |
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | `true` (trimmed) | off | empty, or `false` | Noah (copy: Sloane) |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | `true` | off | `false` | Noah |
@@ -67,7 +67,6 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `ORPHAN_USER_SWEEP_ENABLED` | `true` | off | `false` | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `true` | off | `false` | Noah |
 | `SOCIAL_WATCHLIST` | `on` | off | empty, or `off` | Noah |
-| `SPEND_CEILING_ENFORCED` | `true` | off | `false` | Noah |
 | `TRAVEL_BRIEF_ENABLED` | `true` | off | `false` | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `true` | off | `false` | Noah |
 | `WATCHED_SPOTS_ENABLED` | `true` | off | `false` | Noah |
@@ -121,6 +120,7 @@ These are the flags the brief says are on. Confirm the Vercel value before treat
 | `BOOKED_DETECTION_ENABLED` | A booking confirmation is stored as a held spot. | `activity_booking_recorded` rows, and parent alerts that fire for mail the backfill should have stayed quiet on. | `false` | Noah |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | One capped page of booking-shaped mail from the last 90 days is recorded, and the parent is not alerted. | Log line `gmail sweep: envelope outcome`. Backfill must not insert a `channel_messages` row. | `false` | Noah |
 | `F14_ENABLED` | Hale may start a conversation (nudges, evening check-in, and the other proactive sweeps that read this flag). | Any outbound with no inbound from that parent the same day. A comment in `apps/web/lib/village/intros/run.ts` says this flag is on for real families. The capability registry still says the default is off. | `false` | Noah |
+| `AUTONOMOUS_EXECUTE_ENABLED` | Hale acts on its own on an action type the parent opted into and approved five times in a row (rule #4). Off, each such action is held for approval as `action.gated.lane_off`; a parent's own approval still executes. Families on the comped `family` tier already execute today, so this is set before the VIL-131 deploy, not after. | `action.executed` against `action.gated.*` per action type, and any `action.gated.lane_off` row while the value is `true`. | unset | Barton |
 
 ### On when unset
 
@@ -178,10 +178,8 @@ These stay off for the first families. The kill value is in the inventory table.
 - `ACTIVITY_REVIEWS_SURFACE`: stays off until three households have answered about one subject.
 - `MEMORY_SYNTHESIS_APPLY` and `MEMORY_DIGEST_APPLY`: the jobs already observe. Apply waits on a reviewed night of `applied: false` audit rows. Digest apply also needs `MEMORY_DIGEST_FAMILY_ALLOWLIST`.
 - `ORPHAN_USER_SWEEP_ENABLED`: unset counts candidates and writes nothing. The write is irreversible.
-- `SPEND_CEILING_ENFORCED`: unset warns and keeps ingest. `true` drops events before classify.
 - `SOCIAL_WATCHLIST`: the watchlist poll stays off.
 - `VILLAGE_INTROS_ENABLED`: cross-household intros stay off. A non-empty allowlist narrows the flag. It does not add families while the flag is off.
-- `IMESSAGE_UPGRADE_ASK`: the later year-retention ask stays off.
 - `INTEREST_PASSPORT_DEMO`: preview only. It stays unset in production. On a Vercel preview it also needs `VERCEL_ENV=preview` (Vercel sets that) and `INTEREST_PASSPORT_ENABLED=true`. Then `/demo/passport` opens the Mia and Leo fixture with no account and no database. The code refuses the combination when `VERCEL_ENV` is `production`.
 - `GOOGLE_WRITE_SCOPES_ENABLED`: stays unset in production. Linq delivers inbound texts to the production webhook, so a preview URL cannot receive a parent text. `GOOGLE_WRITE_SCOPES_ALLOWLIST` is comma-separated Hale user ids: only those accounts are asked for `calendar.events` and `gmail.compose`, and only their placements and Gmail drafts write to Google. Everyone else keeps today's readonly consent, and a placement still writes `family_events` and sends the iTIP invite. Preview may set the flag to `true` with an empty allowlist. Flip the global flag in production only after Google verification approves those scopes.
 - `LINQ_GROUP_ONBOARDING_V2_ENABLED`: when Hale is added to a family's group, it reads who is in the chat (`linq_group_rosters`) and claims the chat for the one family whose verified parent is in it. It seats nobody and sends nothing. Leave it off until the who's-who asks, the roles-confirmed send gate, and 1:1 connect links ship. Before the flag goes on, a sandbox probe has to show which webhook fires when a person adds Hale's line, and the live Linq subscription (do not change it in this PR) has to include `chat.created` and `participant.added` (the Sep 23 snapshot subscribed to `message.*` only). With the flag on and no send gate, a claimed chat would receive proactive group lines before anyone has said who they are. Migration `0158_linq_group_roster` must be applied first; until it is, the roster step answers `not_migrated`. Green-bubble / MMS groups cannot add a Linq line.
