@@ -268,20 +268,51 @@ describe('judgeKidRelevance', () => {
     expect(judged).toMatchObject({ verdict: 'kid', childId: null, teen: false });
   });
 
-  it('stores a refusal as unsure with no reason, and does not ask again for the same input', async () => {
-    const refused = scriptedClient(() => ({ stop_reason: 'refusal' }));
-    const judged = await judge(refused.client, [item('a', 'Appointment'), item('b', 'Lesson')]);
-    expect(refused.calls).toHaveLength(1);
-    expect(judged.map((row) => row.verdict)).toEqual(['unsure', 'unsure']);
+  it('re-asks a refused batch one item per call, so each item gets its own verdict', async () => {
+    const { client, calls } = scriptedClient(
+      () => ({ stop_reason: 'refusal' }),
+      byText({ 'Wren swim': { verdict: 'kid', childName: 'Wren' }, Lesson: { verdict: 'kid' } }),
+    );
+    const judged = await judge(client, [item('a', 'Wren swim'), item('b', 'Lesson')]);
+    expect(calls.map((call) => call.input.items.length)).toEqual([2, 1, 1]);
+    expect(judged.map((row) => row.verdict)).toEqual(['kid', 'kid']);
     const stored = await storedVerdicts();
-    expect(stored.map((row) => [row.verdict, row.reason])).toEqual([
-      ['unsure', null],
-      ['unsure', null],
-    ]);
+    expect(stored.map((row) => row.verdict).sort()).toEqual(['kid', 'kid']);
+  });
+
+  it('stores an item refused on its own as unsure with no reason, and does not ask again', async () => {
+    const { client } = scriptedClient(
+      () => ({ stop_reason: 'refusal' }),
+      byText({ 'Wren swim': { verdict: 'kid', childName: 'Wren' } }),
+      () => ({ stop_reason: 'refusal' }),
+    );
+    const judged = await judge(client, [item('a', 'Wren swim'), item('b', 'Appointment')]);
+    expect(judged.map((row) => row.verdict)).toEqual(['kid', 'unsure']);
+    const unsure = (await storedVerdicts()).filter((row) => row.verdict === 'unsure');
+    expect(unsure.map((row) => [row.itemKey, row.reason])).toEqual([['key-b', null]]);
 
     const again = scriptedClient(byText({ Appointment: { verdict: 'kid' } }));
-    await judge(again.client, [item('a', 'Appointment')]);
+    await judge(again.client, [item('b', 'Appointment')]);
     expect(again.calls).toHaveLength(0);
+  });
+
+  it('defers the items of a refused batch the deadline stops, writing nothing for them', async () => {
+    const deadline = new Date(Date.now() + 60_000);
+    const { client, calls } = scriptedClient(() => {
+      deadline.setTime(Date.now() - 1);
+      return { stop_reason: 'refusal' };
+    });
+    const judged = await judgeKidRelevance(
+      db.database,
+      { familyId, items: [item('a', 'Swim'), item('b', 'Lesson')], now: NOW, deadline },
+      { client, children, notMineHints: [] },
+    );
+    expect(calls).toHaveLength(1);
+    expect(judged).toEqual([
+      { ref: 'a', verdict: 'held', why: 'judge_deferred' },
+      { ref: 'b', verdict: 'held', why: 'judge_deferred' },
+    ]);
+    expect(await storedVerdicts()).toEqual([]);
   });
 
   it('retries a failed call once with thinking off, then holds it and writes nothing', async () => {

@@ -38,6 +38,9 @@ import {
  * its child id and no reason; a kid item tied to no named child keeps no reason when the
  * family has a teenager.
  *
+ * A refused batch stores nothing: its items are asked again one per call, and only an
+ * item refused on its own is stored `unsure` (with no reason).
+ *
  * Bounds are infrastructure, not cadence (D-G): items per call come from the eval's
  * measured output ceiling, and calls stop at `deadline`; the rest come back
  * `judge_deferred` for the next tick and are never dropped.
@@ -134,42 +137,67 @@ export async function judgeKidRelevance(
     }
   }
 
-  for (let start = 0; start < pending.length; start += KID_JUDGE_ITEMS_PER_CALL) {
-    const batch = pending.slice(start, start + KID_JUDGE_ITEMS_PER_CALL);
-    if (Date.now() >= input.deadline.getTime()) {
-      for (const entry of pending.slice(start)) {
-        resolved.set(entry.identity, {
-          ref: entry.item.ref,
-          verdict: 'held',
-          why: 'judge_deferred',
-        });
-      }
-      break;
+  const pastDeadline = () => Date.now() >= input.deadline.getTime();
+  const defer = (entries: readonly Pending[]) => {
+    for (const entry of entries) {
+      resolved.set(entry.identity, { ref: entry.item.ref, verdict: 'held', why: 'judge_deferred' });
     }
-    const result = await callJudge(ports, skill.instructions, lane, batch, input.now);
-    if (result.kind === 'failed') {
-      console.error(
-        { familyId: input.familyId, items: batch.length },
-        'kid-relevance: judge failed after one retry - items held',
-      );
-      for (const entry of batch) {
-        resolved.set(entry.identity, { ref: entry.item.ref, verdict: 'held', why: 'judge_failed' });
-      }
-      continue;
+  };
+  const hold = (entries: readonly Pending[]) => {
+    console.error(
+      { familyId: input.familyId, items: entries.length },
+      'kid-relevance: judge failed after one retry - items held',
+    );
+    for (const entry of entries) {
+      resolved.set(entry.identity, { ref: entry.item.ref, verdict: 'held', why: 'judge_failed' });
     }
-    const rows = batch.map((entry, index) =>
+  };
+  const store = async (
+    entries: readonly Pending[],
+    result: Exclude<CallResult, { kind: 'failed' }>,
+  ) => {
+    const rows = entries.map((entry, index) =>
       verdictRowFor(input, ports, entry, result, `i${index}`, model, skillHash),
     );
     await upsertModelVerdicts(database, rows);
     const stored = await loadVerdictRows(
       database,
       input.familyId,
-      batch.map((entry) => entry.item),
+      entries.map((entry) => entry.item),
     );
-    for (const entry of batch) {
+    for (const entry of entries) {
       const row = stored.get(entry.identity);
       if (!row) throw new Error('kid-relevance: verdict upsert left no row');
       resolved.set(entry.identity, judgementFrom(entry.item.ref, row));
+    }
+  };
+
+  for (let start = 0; start < pending.length; start += KID_JUDGE_ITEMS_PER_CALL) {
+    const batch = pending.slice(start, start + KID_JUDGE_ITEMS_PER_CALL);
+    if (pastDeadline()) {
+      defer(pending.slice(start));
+      break;
+    }
+    const result = await callJudge(ports, skill.instructions, lane, batch, input.now);
+    if (result.kind === 'failed') {
+      hold(batch);
+      continue;
+    }
+    if (result.kind === 'answered' || batch.length === 1) {
+      await store(batch, result);
+      continue;
+    }
+    // A refusal is about the batch's text, not about each item in it, so it is never
+    // cached against them: each item is asked on its own, and only an item refused alone
+    // is stored `unsure`.
+    for (const [index, entry] of batch.entries()) {
+      if (pastDeadline()) {
+        defer(batch.slice(index));
+        break;
+      }
+      const alone = await callJudge(ports, skill.instructions, lane, [entry], input.now);
+      if (alone.kind === 'failed') hold([entry]);
+      else await store([entry], alone);
     }
   }
 
