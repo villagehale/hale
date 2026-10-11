@@ -283,6 +283,21 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
     expect(rows.map((row) => [row.source, row.googleEventId])).toEqual([['parent', 'ev-swim']]);
   });
 
+  it('names a connection with no parent user as held for no_parent_user', async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const counts = await mirrorPort()({
+      connection: connection({ provider: 'gcal', userId: null }),
+      items: [swim()],
+      trustWindow: true,
+      now: NOW,
+    });
+
+    expect(counts).toMatchObject({ mirrored: 0, held: true, heldReason: 'no_parent_user' });
+    await expect(familyEventRows()).resolves.toEqual([]);
+  });
+
   it('leaves mirrors already written in place when the lane goes off', async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
     const conn = connection({ provider: 'gcal' });

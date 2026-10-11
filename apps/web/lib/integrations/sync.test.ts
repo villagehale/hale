@@ -274,6 +274,43 @@ describe('syncConnection — Calendar', () => {
     expect(cap.mirrored).toEqual([expect.objectContaining({ trustWindow: false, items: [] })]);
   });
 
+  it('logs the named reason when the mirror holds the window, and nothing when it does not', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const calendarPage = routedFetch([
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: { items: [], nextSyncToken: 'SYNC-2' },
+      },
+    ]).fetchImpl;
+    const counts = { mirrored: 0, updated: 0, removed: 0, alreadyKnown: 0, skipped: 0 };
+
+    const held = stubDeps({
+      googleFetch: calendarPage,
+      mirrorCalendarWindow: async () => ({
+        ...counts,
+        held: true,
+        heldReason: 'untrusted_window' as const,
+      }),
+    });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), held.deps);
+    expect(info).toHaveBeenCalledWith(
+      { connectionId: 'i1', heldReason: 'untrusted_window' },
+      'connector sync: calendar mirror held',
+    );
+
+    info.mockClear();
+    const kept = stubDeps({
+      googleFetch: calendarPage,
+      mirrorCalendarWindow: async () => ({ ...counts, held: false }),
+    });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), kept.deps);
+    expect(info).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'connector sync: calendar mirror held',
+    );
+    info.mockRestore();
+  });
+
   it('survives a Google that enforces the syncToken contract (the full sync is legal, the incremental must be too)', async () => {
     // The prod shape: a base carrying showDeleted=false passes the FULL sync and
     // 400s every incremental, so a connection syncs once at connect and never

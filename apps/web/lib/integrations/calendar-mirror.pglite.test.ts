@@ -192,6 +192,22 @@ describe('reconcileCalendarMirrors', () => {
     expect(piano?.title).toBe('Piano');
   });
 
+  it('names an empty untrusted window as held for untrusted_window and deletes nothing', async () => {
+    await reconcile([swim()]);
+
+    await expect(reconcile([], false)).resolves.toEqual({
+      mirrored: 0,
+      updated: 0,
+      removed: 0,
+      alreadyKnown: 0,
+      skipped: 0,
+      held: true,
+      heldReason: 'untrusted_window',
+    });
+    const stored = await rows();
+    expect(stored.map((row) => [row.googleEventId, row.deletedAt])).toEqual([['ev-swim', null]]);
+  });
+
   it('gives each connecting parent their own mirror of the same title', async () => {
     const [coparent] = await db.database
       .insert(schema.users)
