@@ -104,10 +104,6 @@ export type SuppressReason =
    * event is perfectly real, it is the disclosure that is not allowed.
    */
   | 'out_of_scope'
-  /** VIL-226. The kid-relevance judge read this connector item as the parent's own. */
-  | 'kid_relevance_adult'
-  /** VIL-226. The judge could not tell whose it is; unsure is never tracked. */
-  | 'kid_relevance_unsure'
   /** VIL-226. The parent said "that's mine" (untrack.ts). */
   | 'parent_untracked'
   /** VIL-226. Cancelled by the one-off backfill after an adult verdict. */
