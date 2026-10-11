@@ -157,7 +157,28 @@ export interface SyncConnectionResult {
    * trip was written down — and a bucket that means two things is the counter rule #11
    * exists to prevent. */
   travelDetections: readonly TravelDetectOutcome[];
+  /** Gmail only, null for every other provider and for a run that failed before the
+   * cursor was saved. What happened to the email alert's own watermark this run. */
+  gmailCursor: GmailCursorOutcome | null;
 }
+
+/**
+ * THE EMAIL ALERT'S WATERMARK, beside the ingest's `historyId`. While EMAIL_ALERT_ENABLED
+ * is off every live envelope is answered `lane_off`, and the ingest cursor still advances
+ * past it — so without a second watermark that mail is dropped, not held. `alertHistoryId`
+ * is where the alert pass last read to; it exists only while the lane holds it.
+ *
+ * - `advanced`: lane on and nothing held, the ordinary run.
+ * - `held_lane_off`: lane off; the alert watermark stays where the lane went off.
+ * - `released`: lane back on; the mail since the held watermark was handed to the alert
+ *   pass once, and the watermark is dropped.
+ * - `held_expired`: lane back on, but Gmail no longer has history from the held watermark
+ *   (or this run re-seeded); the watermark is dropped and that mail is not alerted.
+ *
+ * Only the ALERT pass re-reads: the ingest enqueue and the travel pass already saw the held
+ * mail when it arrived, and neither is idempotent on a message id.
+ */
+export type GmailCursorOutcome = 'advanced' | 'held_lane_off' | 'released' | 'held_expired';
 
 const GONE = 410;
 const NOT_FOUND = 404;
@@ -177,7 +198,13 @@ interface ProviderResult {
    * matches on the family's child NAMES, so it reads the envelope before
    * `redactEventPayload` masks them — which is why this rides alongside `events`
    * rather than being recovered from them. In-process only, never logged. */
-  gmail?: { seeding: boolean; envelopes: GmailAlertEnvelope[] };
+  gmail?: {
+    seeding: boolean;
+    envelopes: GmailAlertEnvelope[];
+    /** Mail since the held alert watermark, for the alert pass only. */
+    heldEnvelopes: GmailAlertEnvelope[];
+    cursor: GmailCursorOutcome;
+  };
   /** Calendar only: the raw changes of this run, INCLUDING the cancelled items the ingest
    * drops. A tombstone is the single most useful thing the alert path says and the one
    * thing `events` structurally cannot carry, so it rides alongside. */
@@ -204,6 +231,7 @@ export async function syncConnection(
   let calendarAlerts: readonly CalendarAlertOutcome[] = [];
   let calendarDroppedNoId = 0;
   let travelDetections: readonly TravelDetectOutcome[] = [];
+  let gmailCursor: GmailCursorOutcome | null = null;
   try {
     const accessToken = await ensureFreshToken(connection, deps);
     const result = await runProviderSync(connection, accessToken, deps.googleFetch);
@@ -227,13 +255,21 @@ export async function syncConnection(
     // would otherwise reach the catch below, mark the CONNECTION errored and stop the
     // INGEST as well, so a bug in the bonus would silently end the contract.
     if (result.gmail) {
-      const { seeding, envelopes } = result.gmail;
+      const { seeding, envelopes, heldEnvelopes } = result.gmail;
+      gmailCursor = result.gmail.cursor;
+      if (gmailCursor !== 'advanced') {
+        (gmailCursor === 'held_expired' ? console.warn : console.info)(
+          { connectionId: connection.id, gmailCursor, lane: 'email_alert' },
+          'connector sync: gmail alert watermark',
+        );
+      }
+      const alertEnvelopes = [...envelopes, ...heldEnvelopes];
       try {
         emailAlerts = await deps.alertGmailEnvelopes({
           connection,
           accessToken,
           seeding,
-          envelopes,
+          envelopes: alertEnvelopes,
         });
       } catch (err) {
         // The class only: an alert-path rejection can carry a subject line (rule #1).
@@ -248,7 +284,7 @@ export async function syncConnection(
         // neither the booking decision nor the count was ever reached - which is a
         // different fact from a booking that was refused or a count that was below the
         // floor.
-        emailAlerts = envelopes.map(() => ({
+        emailAlerts = alertEnvelopes.map(() => ({
           alert: 'alert_failed' as const,
           booking: null,
           going: null,
@@ -334,7 +370,7 @@ export async function syncConnection(
     );
     await deps.markError(connection.id, code);
   }
-  return { emailAlerts, calendarAlerts, calendarDroppedNoId, travelDetections };
+  return { emailAlerts, calendarAlerts, calendarDroppedNoId, travelDetections, gmailCursor };
 }
 
 /** Refresh + persist an expiring access token; returns the token to use for this
@@ -744,14 +780,38 @@ async function syncGmail(
     connection,
     messageIds,
   );
+  // A first run and a re-seed both saw mail that was already in the mailbox.
+  // seeding is what keeps either from becoming a burst of texts.
+  const seeding = startHistoryId === undefined || reseeded;
+  // Preserve bookedBackfill (and any other cursor key) across the history advance.
+  // A fresh {historyId} object would wipe an in-progress backfill page.
+  const { alertHistoryId, ...kept } = connection.providerMetadata;
+  const heldFrom = readString(alertHistoryId);
+  const nextMetadata: Record<string, unknown> = { ...kept, historyId: nextHistoryId };
+
+  const withoutReplay = (cursor: GmailCursorOutcome, meta = nextMetadata): ProviderResult => ({
+    events,
+    nextMetadata: meta,
+    gmail: { seeding, envelopes, heldEnvelopes: [], cursor },
+  });
+
+  if (!laneEnabled('email_alert')) {
+    const holdAt = heldFrom ?? (seeding ? undefined : startHistoryId);
+    if (holdAt === undefined) return withoutReplay('advanced');
+    return withoutReplay('held_lane_off', { ...nextMetadata, alertHistoryId: holdAt });
+  }
+  if (heldFrom === undefined) return withoutReplay('advanced');
+  const replay: GmailHistoryDrain = seeding
+    ? { stale: true }
+    : await drainGmailHistory(googleFetch, accessToken, heldFrom);
+  if (replay.stale) return withoutReplay('held_expired');
+  const read = new Set(messageIds);
+  const heldIds = [...new Set(replay.messageIds)].filter((id) => !read.has(id));
+  const held = await readGmailMessageBatch(googleFetch, accessToken, connection, heldIds);
   return {
     events,
-    // Preserve bookedBackfill (and any other cursor key) across the history advance.
-    // A fresh {historyId} object would wipe an in-progress backfill page.
-    nextMetadata: { ...connection.providerMetadata, historyId: nextHistoryId },
-    // A first run and a re-seed both saw mail that was already in the mailbox.
-    // seeding is what keeps either from becoming a burst of texts.
-    gmail: { seeding: startHistoryId === undefined || reseeded, envelopes },
+    nextMetadata,
+    gmail: { seeding, envelopes, heldEnvelopes: held.envelopes, cursor: 'released' },
   };
 }
 

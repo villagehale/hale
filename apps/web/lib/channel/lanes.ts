@@ -7,7 +7,11 @@
  * that shape must fail closed. Set it with `printf '%s' true`, and redeploy: the value
  * only takes effect on a fresh deployment.
  */
-export type ProactiveLane = 'calendar_alert' | 'parent_calendar_mirror' | 'email_alert' | 'travel_brief';
+export type ProactiveLane =
+  | 'calendar_alert'
+  | 'parent_calendar_mirror'
+  | 'email_alert'
+  | 'travel_brief';
 
 export const LANE_ENV: Record<ProactiveLane, string> = {
   calendar_alert: 'CALENDAR_ALERT_ENABLED',

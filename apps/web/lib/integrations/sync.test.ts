@@ -620,6 +620,14 @@ describe('syncConnection — Calendar', () => {
 });
 
 describe('syncConnection — Gmail', () => {
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('first run: messages.list then per-message metadata; advances historyId', async () => {
     const fetchImpl: GoogleFetch = async (url) => {
       if (url.includes('/messages/m1')) {
@@ -881,6 +889,14 @@ describe('syncConnection — Gmail', () => {
 });
 
 describe('syncConnection — the gmail alert hand-off', () => {
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   /** A mailbox whose one message carries internalDate and a child's name. */
   function mailbox(internalDate?: string): GoogleFetch {
     return async (url) => {
@@ -1042,6 +1058,165 @@ describe('syncConnection — the gmail alert hand-off', () => {
   });
 });
 
+describe('syncConnection — the gmail alert watermark under the email lane', () => {
+  /** A mailbox whose history depends on where it is read from: m1 arrived after 9002,
+   * m2 after 9100. */
+  function mailbox(): { fetchImpl: GoogleFetch; urls: string[] } {
+    const message = (id: string, internalDate: string) => ({
+      id,
+      snippet: `snippet ${id}`,
+      internalDate,
+      payload: {
+        headers: [
+          { name: 'Subject', value: `Subject ${id}` },
+          { name: 'From', value: 'Pool <info@pool.example>' },
+        ],
+      },
+    });
+    const { fetchImpl, calls } = routedFetch([
+      { match: '/messages/m1', body: message('m1', '1789000000000') },
+      { match: '/messages/m2', body: message('m2', '1789000600000') },
+      {
+        match: 'startHistoryId=9002',
+        body: {
+          history: [
+            { messagesAdded: [{ message: { id: 'm1' } }] },
+            { messagesAdded: [{ message: { id: 'm2' } }] },
+          ],
+          historyId: '9200',
+        },
+      },
+      {
+        match: 'startHistoryId=9100',
+        body: { history: [{ messagesAdded: [{ message: { id: 'm2' } }] }], historyId: '9200' },
+      },
+      { match: 'startHistoryId=9200', body: { history: [], historyId: '9200' } },
+    ]);
+    return {
+      fetchImpl,
+      get urls() {
+        return calls.map((call) => call.url);
+      },
+    };
+  }
+
+  /** The real port's lane behaviour, per envelope: answered lane_off while the lane is off,
+   * sent otherwise. Counts every send by message id across runs. */
+  function laneAwarePort(sent: string[]) {
+    return async (batch: GmailAlertBatch) =>
+      batch.envelopes.map((envelope) => {
+        if (process.env.EMAIL_ALERT_ENABLED !== 'true') {
+          return { alert: 'lane_off' as const, booking: null, going: null };
+        }
+        sent.push(envelope.messageId);
+        return { alert: 'sent' as const, booking: null, going: null };
+      });
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('lane off: the ingest watermark advances, the alert watermark is held and named', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { fetchImpl } = mailbox();
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+
+    const result = await syncConnection(connection('gmail', { historyId: '9100' }), deps);
+
+    expect(cap.cursor).toEqual({ historyId: '9200', alertHistoryId: '9100' });
+    expect(result.gmailCursor).toBe('held_lane_off');
+    expect(cap.enqueued.map((event) => event.payload.id)).toEqual(['m2']);
+    expect(logged).toHaveBeenCalledWith(
+      { connectionId: 'i1', gmailCursor: 'held_lane_off', lane: 'email_alert' },
+      'connector sync: gmail alert watermark',
+    );
+  });
+
+  it('a second sweep with the lane still off keeps the FIRST held watermark', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { fetchImpl } = mailbox();
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+
+    await syncConnection(connection('gmail', { historyId: '9100', alertHistoryId: '9002' }), deps);
+
+    expect(cap.cursor).toEqual({ historyId: '9200', alertHistoryId: '9002' });
+  });
+
+  it('lane on: both advance, nothing is held, and no extra history read is made', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    const mail = mailbox();
+    const { deps, cap } = stubDeps({ googleFetch: mail.fetchImpl });
+
+    const result = await syncConnection(connection('gmail', { historyId: '9100' }), deps);
+
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+    expect(result.gmailCursor).toBe('advanced');
+    expect(mail.urls.filter((url) => url.includes('/history'))).toHaveLength(1);
+  });
+
+  it('off then on: mail that arrived while off is alerted exactly once, and ingested once', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const sent: string[] = [];
+    const { fetchImpl } = mailbox();
+    const { deps, cap } = stubDeps({
+      googleFetch: fetchImpl,
+      alertGmailEnvelopes: laneAwarePort(sent),
+    });
+
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    const off = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    expect(off.emailAlerts.map((result) => result.alert)).toEqual(['lane_off', 'lane_off']);
+    expect(cap.cursor).toEqual({ historyId: '9200', alertHistoryId: '9002' });
+    const heldCursor = cap.cursor ?? {};
+
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    const on = await syncConnection(connection('gmail', heldCursor), deps);
+    expect(on.gmailCursor).toBe('released');
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+    const releasedCursor = cap.cursor ?? {};
+
+    const after = await syncConnection(connection('gmail', releasedCursor), deps);
+    expect(after.gmailCursor).toBe('advanced');
+
+    expect(sent.sort()).toEqual(['m1', 'm2']);
+    // The held mail rides the ALERT pass only: it reached the queue and the travel pass
+    // when it arrived, and neither is idempotent on a message id.
+    expect(cap.enqueued.map((event) => event.payload.id)).toEqual(['m1', 'm2']);
+    expect(cap.travelDetected.flatMap((batch) => batch.envelopes.map((e) => e.messageId))).toEqual([
+      'm1',
+      'm2',
+    ]);
+  });
+
+  it('a held watermark Gmail no longer has is named held_expired and dropped, never re-seeded into texts', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { fetchImpl } = routedFetch([
+      { match: 'startHistoryId=9002', status: 404, body: {} },
+      { match: 'startHistoryId=9100', body: { history: [], historyId: '9200' } },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+
+    const result = await syncConnection(
+      connection('gmail', { historyId: '9100', alertHistoryId: '9002' }),
+      deps,
+    );
+
+    expect(result.gmailCursor).toBe('held_expired');
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+    expect(cap.errored).toBe(false);
+    expect(cap.alerted.flatMap((batch) => batch.envelopes)).toEqual([]);
+    expect(logged).toHaveBeenCalledWith(
+      { connectionId: 'i1', gmailCursor: 'held_expired', lane: 'email_alert' },
+      'connector sync: gmail alert watermark',
+    );
+  });
+});
+
 describe('syncConnection — Drive', () => {
   it('first run: getStartPageToken then changes.list; advances pageToken', async () => {
     const fetchImpl: GoogleFetch = async (url) => {
@@ -1072,6 +1247,14 @@ describe('syncConnection — Drive', () => {
 });
 
 describe('syncConnection — pagination (drain all pages before advancing)', () => {
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('Calendar drains every page; the terminal nextSyncToken arrives only on the last', async () => {
     const { fetchImpl } = routedFetch([
       // page 2 (matched first): terminal nextSyncToken, no nextPageToken
