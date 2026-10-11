@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { SuppressReason } from '~/lib/loop/reminders/schedule';
 import {
@@ -42,6 +42,9 @@ export interface BackfillInput {
   deadline: Date;
   /** Restrict to these families; every family with connector rows when omitted. */
   familyIds?: readonly string[];
+  /** Stamped on every audit row an apply writes, so `revertKidRelevanceBackfill` can find
+   * exactly what this run did. */
+  runId: string;
 }
 
 export interface BackfillCounts {
@@ -197,7 +200,12 @@ export async function runKidRelevanceBackfill(
             actionTaken: 'kid_relevance_event_dropped',
             targetTable: 'family_events',
             targetId: event.id,
-            after: { verdict: 'adult', source: event.source, reason: BACKFILL_REASON },
+            after: {
+              verdict: 'adult',
+              source: event.source,
+              reason: BACKFILL_REASON,
+              runId: input.runId,
+            },
             occurredAt: input.now,
           })),
         );
@@ -219,7 +227,7 @@ export async function runKidRelevanceBackfill(
             actionTaken: 'kid_relevance_reminder_cancelled',
             targetTable: 'event_reminders',
             targetId: row.id,
-            after: { reason: BACKFILL_REASON },
+            after: { reason: BACKFILL_REASON, runId: input.runId },
             occurredAt: input.now,
           })),
         );
@@ -240,12 +248,155 @@ export async function runKidRelevanceBackfill(
           actionTaken: 'kid_relevance_event_dropped',
           targetTable: 'parent_calendar_blocks',
           targetId: `${block.integrationId}:${block.eventId}`,
-          after: { verdict: 'adult', source: block.source, reason: BACKFILL_REASON },
+          after: {
+            verdict: 'adult',
+            source: block.source,
+            reason: BACKFILL_REASON,
+            runId: input.runId,
+          },
           occurredAt: input.now,
         });
       }
     });
   }
+  return counts;
+}
+
+export interface RevertCounts {
+  runId: string;
+  /** False when no audit row carries this run id; nothing was changed. */
+  found: boolean;
+  eventsRestored: number;
+  remindersRescheduled: number;
+  verdictsCleared: number;
+}
+
+/**
+ * Undo one apply, found by its run id in the audit rows it wrote.
+ *
+ * Each family event that run dropped comes back live and unlinked, unless it has been
+ * dropped again since (its `deleted_at` no longer matches the run's). Its reminders that
+ * run cancelled and that are still ahead are scheduled again. The model verdicts for the
+ * restored items are deleted so the next judge asks again; a parent's own verdict stays.
+ * One audit row per restored event (rule #6).
+ *
+ * Not restored: titles and places (cleared at apply; a calendar copy is rewritten by the
+ * mirror's next pass, a Gmail copy stays without one), and parent calendar blocks (the next
+ * sweep rebuilds them). Returns counts only.
+ */
+export async function revertKidRelevanceBackfill(
+  database: Database,
+  input: { runId: string; now: Date },
+): Promise<RevertCounts> {
+  const counts: RevertCounts = {
+    runId: input.runId,
+    found: false,
+    eventsRestored: 0,
+    remindersRescheduled: 0,
+    verdictsCleared: 0,
+  };
+  const audit = schema.auditLog;
+  const ofRun = await database
+    .select({
+      familyId: audit.familyId,
+      action: audit.actionTaken,
+      targetTable: audit.targetTable,
+      targetId: audit.targetId,
+      occurredAt: audit.occurredAt,
+    })
+    .from(audit)
+    .where(
+      and(
+        inArray(audit.actionTaken, [
+          'kid_relevance_event_dropped',
+          'kid_relevance_reminder_cancelled',
+        ]),
+        sql`${audit.after}->>'runId' = ${input.runId}`,
+      ),
+    );
+  if (ofRun.length === 0) return counts;
+  counts.found = true;
+
+  const droppedAt = new Map<string, number>();
+  const cancelledIds: string[] = [];
+  for (const row of ofRun) {
+    if (row.targetId === null) continue;
+    if (row.action === 'kid_relevance_reminder_cancelled') cancelledIds.push(row.targetId);
+    else if (row.targetTable === 'family_events') {
+      droppedAt.set(row.targetId, row.occurredAt.getTime());
+    }
+  }
+  if (droppedAt.size === 0) return counts;
+
+  await database.transaction(async (tx) => {
+    const dropped = await tx
+      .select({
+        id: schema.familyEvents.id,
+        familyId: schema.familyEvents.familyId,
+        deletedAt: schema.familyEvents.deletedAt,
+        kidVerdictId: schema.familyEvents.kidVerdictId,
+      })
+      .from(schema.familyEvents)
+      .where(inArray(schema.familyEvents.id, [...droppedAt.keys()]));
+    const restore = dropped.filter(
+      (row) => row.deletedAt !== null && row.deletedAt.getTime() === droppedAt.get(row.id),
+    );
+    if (restore.length === 0) return;
+    const restoreIds = restore.map((row) => row.id);
+
+    await tx
+      .update(schema.familyEvents)
+      .set({ deletedAt: null, kidVerdictId: null })
+      .where(inArray(schema.familyEvents.id, restoreIds));
+    const rescheduled =
+      cancelledIds.length === 0
+        ? []
+        : await tx
+            .update(schema.eventReminders)
+            .set({ status: 'scheduled', suppressReason: null, updatedAt: input.now })
+            .where(
+              and(
+                inArray(schema.eventReminders.id, cancelledIds),
+                inArray(schema.eventReminders.eventRef, restoreIds),
+                eq(schema.eventReminders.status, 'cancelled'),
+                eq(schema.eventReminders.suppressReason, BACKFILL_REASON),
+                gt(schema.eventReminders.fireAt, input.now),
+              ),
+            )
+            .returning({ eventRef: schema.eventReminders.eventRef });
+    const verdictIds = [
+      ...new Set(restore.flatMap((row) => (row.kidVerdictId === null ? [] : [row.kidVerdictId]))),
+    ];
+    const cleared =
+      verdictIds.length === 0
+        ? []
+        : await tx
+            .delete(schema.kidRelevanceVerdicts)
+            .where(
+              and(
+                inArray(schema.kidRelevanceVerdicts.id, verdictIds),
+                eq(schema.kidRelevanceVerdicts.decidedBy, 'model'),
+              ),
+            )
+            .returning({ id: schema.kidRelevanceVerdicts.id });
+    await tx.insert(schema.auditLog).values(
+      restore.map((row) => ({
+        familyId: row.familyId,
+        actor: 'system',
+        actionTaken: 'kid_relevance_event_restored',
+        targetTable: 'family_events',
+        targetId: row.id,
+        after: {
+          runId: input.runId,
+          remindersRescheduled: rescheduled.filter((r) => r.eventRef === row.id).length,
+        },
+        occurredAt: input.now,
+      })),
+    );
+    counts.eventsRestored = restore.length;
+    counts.remindersRescheduled = rescheduled.length;
+    counts.verdictsCleared = cleared.length;
+  });
   return counts;
 }
 
@@ -264,8 +415,7 @@ async function loadCandidates(
     return { byFamily, skippedDisconnected, skippedFamiliesPendingErasure: 0 };
   }
   // Every read below is scoped in SQL, so a run for one family never loads another's rows.
-  const scoped = (column: AnyPgColumn) =>
-    familyIds ? inArray(column, [...familyIds]) : undefined;
+  const scoped = (column: AnyPgColumn) => (familyIds ? inArray(column, [...familyIds]) : undefined);
 
   // An offer or a booking names its connection without a foreign key, so it can outlive
   // a disconnect; a verdict cannot, because its integration_id cascades.

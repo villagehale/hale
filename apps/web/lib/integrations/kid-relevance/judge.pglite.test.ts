@@ -310,7 +310,7 @@ describe('judgeKidRelevance', () => {
     expect(row?.childId).toBe(children[1]?.id);
   });
 
-  it('offers the model only this family\'s children as names', async () => {
+  it("offers the model only this family's children as names", async () => {
     const { client, calls } = scriptedClient(byText({ Swim: { verdict: 'kid' } }));
     await judge(client, [item('a', 'Swim')]);
     const tools = calls[0]?.request.tools as { input_schema: unknown }[];

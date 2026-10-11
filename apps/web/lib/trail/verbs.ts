@@ -265,6 +265,7 @@ export const AUDIT_VERBS = [
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
   'kid_relevance_reminder_cancelled',
+  'kid_relevance_event_restored',
   'group_decision_sync_sent',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
@@ -991,6 +992,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   kid_relevance_reminder_cancelled: {
     sentence: 'Hale cancelled a reminder for one of your own events',
+    family: 'note',
+  },
+  // An operator undid a backfill run, so a dropped copy is back on the family calendar.
+  kid_relevance_event_restored: {
+    sentence: 'Hale put one of your events back on the family calendar',
     family: 'note',
   },
   // A decision the parent made in a 1:1 thread, repeated once in the household

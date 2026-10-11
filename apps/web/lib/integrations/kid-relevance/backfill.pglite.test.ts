@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
-import { runKidRelevanceBackfill } from './backfill';
+import { revertKidRelevanceBackfill, runKidRelevanceBackfill } from './backfill';
 import { KID_VERDICT_TOOL, type KidSkillInput } from './skill-contract';
 
 /**
@@ -27,6 +28,7 @@ let gcal: string;
 let gmail: string;
 let modelCalls: number;
 let seenTexts: string[];
+let runId: string;
 
 const ADULT = ['Standup', 'Dentist', 'Team dinner', 'Harbour Inn', 'Pottery for grown-ups'];
 const UNSURE = ['Mystery meetup'];
@@ -79,6 +81,7 @@ beforeEach(async () => {
   process.env.HALE_LLM_NO_STREAM = '1';
   modelCalls = 0;
   seenTexts = [];
+  runId = randomUUID();
   const family = await seedFamily(db.database);
   familyId = family.familyId;
   parentUserId = family.parentUserId;
@@ -202,7 +205,7 @@ async function state() {
 function run(apply: boolean) {
   return runKidRelevanceBackfill(
     db.database,
-    { apply, now: NOW, deadline: NO_DEADLINE, familyIds: [familyId] },
+    { apply, now: NOW, deadline: NO_DEADLINE, familyIds: [familyId], runId },
     { client },
   );
 }
@@ -271,7 +274,12 @@ describe('runKidRelevanceBackfill', () => {
   it('a run scoped to one family hands the model nothing from another', async () => {
     await mirror('ev-swim', 'Wren swim');
     const other = await seedFamily(db.database);
-    const otherGcal = await seedIntegration(db.database, other.familyId, other.parentUserId, 'gcal');
+    const otherGcal = await seedIntegration(
+      db.database,
+      other.familyId,
+      other.parentUserId,
+      'gcal',
+    );
     await db.database.insert(schema.familyEvents).values({
       familyId: other.familyId,
       title: 'Other household standup',
@@ -369,6 +377,93 @@ describe('runKidRelevanceBackfill', () => {
     expect(event).toMatchObject({ deletedAt: null, kidVerdictId: null });
     expect(after.reminders.map((row) => row.status)).toEqual(['scheduled', 'scheduled']);
     expect(after.audit).toEqual([]);
+  });
+
+  it('stamps every audit row an apply writes with its run id', async () => {
+    await seed();
+    await run(true);
+    const { audit } = await state();
+    expect(audit.length).toBeGreaterThan(0);
+    expect(audit.map((row) => (row.after as { runId?: string }).runId)).toEqual(
+      audit.map(() => runId),
+    );
+  });
+
+  it('a revert puts back what an apply dropped, except the cleared titles', async () => {
+    const ids = await seed();
+    const before = await state();
+    await run(true);
+
+    const reverted = await revertKidRelevanceBackfill(db.database, {
+      runId,
+      now: NOW,
+    });
+    expect(reverted).toEqual({
+      runId,
+      found: true,
+      eventsRestored: 3,
+      remindersRescheduled: 4,
+      verdictsCleared: 3,
+    });
+
+    const after = await state();
+    const dropped = new Set([ids.adultA, ids.adultB, ids.offer]);
+    const shape = (rows: typeof before.events) =>
+      rows
+        .map((row) =>
+          dropped.has(row.id)
+            ? { ...row, title: '', location: null }
+            : row.id === ids.kid
+              ? { ...row, kidVerdictId: null }
+              : row,
+        )
+        .sort((a, b) => a.id.localeCompare(b.id));
+    expect(shape(after.events)).toEqual(shape(before.events));
+    expect(after.events.find((row) => row.id === ids.adultA)).toMatchObject({
+      deletedAt: null,
+      kidVerdictId: null,
+      title: '',
+    });
+    const reminderState = (rows: typeof before.reminders) =>
+      rows
+        .map((row) => ({ id: row.id, status: row.status, suppressReason: row.suppressReason }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+    expect(reminderState(after.reminders)).toEqual(reminderState(before.reminders));
+
+    const restored = after.audit.filter(
+      (row) => row.actionTaken === 'kid_relevance_event_restored',
+    );
+    expect(restored.map((row) => row.targetId).sort()).toEqual([...dropped].sort());
+    for (const row of after.audit) {
+      expect((row.after as { runId?: string }).runId).toBe(runId);
+    }
+    // The next judge asks again: the model verdicts for the restored items are gone.
+    expect(after.verdicts.map((row) => row.verdict).sort()).toEqual(['adult', 'adult', 'kid']);
+
+    const again = await revertKidRelevanceBackfill(db.database, {
+      runId,
+      now: NOW,
+    });
+    expect(again).toMatchObject({ found: true, eventsRestored: 0, remindersRescheduled: 0 });
+  });
+
+  it('a revert of an unknown run id changes nothing and says so', async () => {
+    await seed();
+    await run(true);
+    const before = await state();
+    expect(
+      await revertKidRelevanceBackfill(db.database, {
+        runId: 'no-such-run',
+        now: NOW,
+      }),
+    ).toEqual({
+      runId: 'no-such-run',
+      found: false,
+      eventsRestored: 0,
+      remindersRescheduled: 0,
+      verdictsCleared: 0,
+    });
+    expect(await state()).toEqual(before);
   });
 
   it('a second apply reuses the verdicts and changes nothing more', async () => {

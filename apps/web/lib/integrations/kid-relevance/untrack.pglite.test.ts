@@ -247,7 +247,10 @@ describe('untrackItem', () => {
     const first = await mirror('one-off', NEXT_WEEK, 'Harbour Inn check-in');
     await untrack({ kind: 'family_event', id: first }, 'a hotel\nstay\u0007');
     const second = await mirror('another', NEXT_WEEK, 'Quarterly review');
-    await untrack({ kind: 'family_event', id: second }, `a work thing ${'with detail '.repeat(10)}`);
+    await untrack(
+      { kind: 'family_event', id: second },
+      `a work thing ${'with detail '.repeat(10)}`,
+    );
     expect((await parentVerdicts()).map((row) => [row.itemKey, row.hint]).sort()).toEqual([
       ['another', null],
       ['one-off', 'a hotel stay'],
