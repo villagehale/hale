@@ -41,8 +41,9 @@ import {
  * its child id and no reason; a kid item tied to no named child keeps no reason when the
  * family has a teenager.
  *
- * A refused batch stores nothing: its items are asked again one per call, and only an
- * item refused on its own is stored `unsure` (with no reason).
+ * A refused or failed batch stores nothing: its items are asked again one per call, only
+ * an item that fails on its own is held, and only an item refused on its own is stored
+ * `unsure` (with no reason).
  *
  * Bounds are infrastructure, not cadence (D-G): items per call come from the eval's
  * measured output ceiling, and calls stop at `deadline`; the rest come back
@@ -182,17 +183,18 @@ export async function judgeKidRelevance(
       break;
     }
     const result = await callJudge(ports, skill.instructions, lane, batch, input.now);
-    if (result.kind === 'failed') {
-      hold(batch);
+    if (batch.length === 1) {
+      if (result.kind === 'failed') hold(batch);
+      else await store(batch, result);
       continue;
     }
-    if (result.kind === 'answered' || batch.length === 1) {
+    if (result.kind === 'answered') {
       await store(batch, result);
       continue;
     }
-    // A refusal is about the batch's text, not about each item in it, so it is never
-    // cached against them: each item is asked on its own, and only an item refused alone
-    // is stored `unsure`.
+    // A refusal or a failure is about the batch's text, not about each item in it, so it
+    // is never held or cached against all of them: each item is asked on its own, only an
+    // item that fails alone is held, and only an item refused alone is stored `unsure`.
     for (const [index, entry] of batch.entries()) {
       if (pastDeadline()) {
         defer(batch.slice(index));

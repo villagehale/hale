@@ -387,6 +387,34 @@ describe('judgeKidRelevance', () => {
     expect(await storedVerdicts()).toEqual([]);
   });
 
+  it('a batch that fails twice is asked one item per call, so one bad item holds only itself', async () => {
+    const answer = byText({
+      'Wren swim': { verdict: 'kid', childName: 'Wren' },
+      Dentist: { verdict: 'adult' },
+    });
+    const { client, calls } = scriptedClient((input, request) =>
+      input.items.length > 1 || input.items[0]?.text.includes('Poison')
+        ? { stop_reason: 'end_turn' }
+        : answer(input, request),
+    );
+    const judged = await judge(client, [
+      item('a', 'Wren swim'),
+      item('b', 'Poison'),
+      item('c', 'Dentist'),
+    ]);
+    expect(calls.map((call) => call.input.items.length)).toEqual([3, 3, 1, 1, 1, 1]);
+    expect(judged).toEqual([
+      expect.objectContaining({ ref: 'a', verdict: 'kid' }),
+      { ref: 'b', verdict: 'held', why: 'judge_failed' },
+      expect.objectContaining({ ref: 'c', verdict: 'adult' }),
+    ]);
+    const stored = await storedVerdicts();
+    expect(stored.map((row) => [row.itemKey, row.verdict]).sort()).toEqual([
+      ['key-a', 'kid'],
+      ['key-c', 'adult'],
+    ]);
+  });
+
   it('an answer that leaves an item out counts as a failure and is retried', async () => {
     const { client, calls } = scriptedClient(
       (input) => ({
