@@ -45,7 +45,7 @@ function scriptedClient(...steps: Scripted[]) {
     calls.push({ input, request });
     const step = steps[Math.min(calls.length - 1, steps.length - 1)];
     if (!step) throw new Error('no scripted step');
-    const answer = step(input, request);
+    const answer = await step(input, request);
     if (answer && typeof answer === 'object' && 'stop_reason' in answer) {
       return { content: [], usage: { input_tokens: 1, output_tokens: 1 }, ...answer };
     }
@@ -209,6 +209,44 @@ describe('judgeKidRelevance', () => {
     expect(judged[0]).toMatchObject({ verdict: 'adult' });
     const [row] = await storedVerdicts();
     expect(row).toMatchObject({ decidedBy: 'parent', verdict: 'adult' });
+  });
+
+  it("a parent's verdict written while the model was answering is not overwritten", async () => {
+    const { client, calls } = scriptedClient(async (input) => {
+      await db.database.insert(schema.kidRelevanceVerdicts).values({
+        familyId,
+        source: 'google_calendar',
+        integrationId,
+        itemKey: 'key-a',
+        inputHash: 'parent',
+        verdict: 'adult',
+        decidedBy: 'parent',
+      });
+      return byText({ Swim: { verdict: 'kid', childName: 'Wren' } })(input, {});
+    });
+    const judged = await judge(client, [item('a', 'Swim')]);
+    expect(calls).toHaveLength(1);
+    expect(judged[0]).toMatchObject({ verdict: 'adult', childId: null });
+    const stored = await storedVerdicts();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ decidedBy: 'parent', verdict: 'adult', reason: null });
+  });
+
+  it('an unattributed kid item stores no reason when the family has a teenager', async () => {
+    const { client } = scriptedClient(byText({ 'Bake sale': { verdict: 'kid' } }));
+    const [judged] = await judge(client, [item('a', 'Bake sale')]);
+    expect(judged).toMatchObject({ verdict: 'kid', childId: null });
+    const [row] = await storedVerdicts();
+    expect(row).toMatchObject({ verdict: 'kid', childId: null, reason: null });
+  });
+
+  it('an unattributed kid item keeps its reason when no child is a teenager', async () => {
+    await db.database.delete(schema.children).where(eq(schema.children.id, children[1]?.id ?? ''));
+    children = children.slice(0, 1);
+    const { client } = scriptedClient(byText({ 'Bake sale': { verdict: 'kid' } }));
+    await judge(client, [item('a', 'Bake sale')]);
+    const [row] = await storedVerdicts();
+    expect(row).toMatchObject({ verdict: 'kid', childId: null, reason: 'about Bake sale' });
   });
 
   it("marks a teenager's item as teen with the child set and stores no reason", async () => {

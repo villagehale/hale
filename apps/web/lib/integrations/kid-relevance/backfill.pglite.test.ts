@@ -27,6 +27,13 @@ let gmail: string;
 let modelCalls: number;
 
 const ADULT = ['Standup', 'Dentist', 'Team dinner', 'Harbour Inn', 'Pottery for grown-ups'];
+const UNSURE = ['Mystery meetup'];
+
+function scriptedVerdict(text: string) {
+  if (ADULT.some((title) => text.includes(title))) return 'adult';
+  if (UNSURE.some((title) => text.includes(title))) return 'unsure';
+  return 'kid';
+}
 
 const client = {
   messages: {
@@ -43,7 +50,7 @@ const client = {
               verdicts: input.items.map((item) => ({
                 ref: item.ref,
                 reason: 'scripted',
-                verdict: ADULT.some((title) => item.text.includes(title)) ? 'adult' : 'kid',
+                verdict: scriptedVerdict(item.text),
                 childName: null,
               })),
             },
@@ -257,6 +264,22 @@ describe('runKidRelevanceBackfill', () => {
       targetTable: 'event_reminders',
       after: { reason: 'kid_relevance_backfill' },
     });
+    const dropAudits = after.audit.filter(
+      (row) => row.actionTaken === 'kid_relevance_event_dropped',
+    );
+    expect(
+      dropAudits
+        .map((row) => {
+          const payload = row.after as { verdict: string; source: string };
+          return `${row.targetTable}/${payload.verdict}/${payload.source}`;
+        })
+        .sort(),
+    ).toEqual([
+      'family_events/adult/gmail',
+      'family_events/adult/google_calendar',
+      'family_events/adult/google_calendar',
+      'parent_calendar_blocks/adult/google_calendar',
+    ]);
     const serialized = JSON.stringify(after.audit);
     for (const title of ADULT) expect(serialized).not.toContain(title);
 
@@ -266,6 +289,17 @@ describe('runKidRelevanceBackfill', () => {
     expect(after.bookings).toEqual([
       expect.objectContaining({ title: 'Harbour Inn', cancelledAt: null, eventId: null }),
     ]);
+  });
+
+  it('apply leaves an unsure copy alone: live, unlinked, its reminders still scheduled', async () => {
+    const unsure = await mirror('ev-mystery', 'Mystery meetup');
+    const counts = await run(true);
+    expect(counts).toMatchObject({ unsure: 1, eventsDropped: 0, remindersCancelled: 0 });
+    const after = await state();
+    const event = after.events.find((row) => row.id === unsure);
+    expect(event).toMatchObject({ deletedAt: null, kidVerdictId: null });
+    expect(after.reminders.map((row) => row.status)).toEqual(['scheduled', 'scheduled']);
+    expect(after.audit).toEqual([]);
   });
 
   it('a second apply reuses the verdicts and changes nothing more', async () => {

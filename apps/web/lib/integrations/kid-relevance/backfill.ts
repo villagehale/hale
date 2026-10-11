@@ -9,7 +9,7 @@ import {
   loadNotMineHints,
   seriesKeyForEvent,
 } from './judge';
-import type { KidRelevanceItem } from './skill-contract';
+import type { KidRelevanceItem, KidRelevanceSource } from './skill-contract';
 
 /**
  * The one-off kid-relevance backfill (VIL-226 item 5).
@@ -23,7 +23,8 @@ import type { KidRelevanceItem } from './skill-contract';
  *   - links each judged event to its verdict (and its child when the event had none), so
  *     the reminder gate can read it.
  * Adult activity bookings are only counted (founder default D10). `unsure` and held items
- * are counted and left alone.
+ * are counted and left alone: not dropped and not linked, so the live gate judges them
+ * again on its own terms.
  *
  * A dry run changes no tracking state and writes no audit row. It does store the verdicts
  * themselves, so the apply that follows judges nothing again and acts on exactly the
@@ -97,8 +98,9 @@ export async function runKidRelevanceBackfill(
     );
     const verdictByRef = new Map(judged.map((judgement) => [judgement.ref, judgement]));
 
-    const adultEvents: string[] = [];
-    const adultBlocks: { integrationId: string; eventId: string }[] = [];
+    const adultEvents: { id: string; source: KidRelevanceSource }[] = [];
+    const adultBlocks: { integrationId: string; eventId: string; source: KidRelevanceSource }[] =
+      [];
     const links: { eventId: string; judgement: Extract<KidJudgement, { verdictId: string }> }[] =
       [];
     for (const candidate of candidates) {
@@ -110,11 +112,16 @@ export async function runKidRelevanceBackfill(
         continue;
       }
       counts[judgement.verdict] += 1;
+      if (judgement.verdict === 'unsure') continue;
       if (candidate.target.kind === 'event') {
         links.push({ eventId: candidate.target.id, judgement });
-        if (judgement.verdict === 'adult') adultEvents.push(candidate.target.id);
+        if (judgement.verdict === 'adult') {
+          adultEvents.push({ id: candidate.target.id, source: candidate.item.source });
+        }
       } else if (candidate.target.kind === 'block') {
-        if (judgement.verdict === 'adult') adultBlocks.push(candidate.target);
+        if (judgement.verdict === 'adult') {
+          adultBlocks.push({ ...candidate.target, source: candidate.item.source });
+        }
       } else if (judgement.verdict === 'adult') {
         counts.adultBookings += 1;
       }
@@ -128,7 +135,10 @@ export async function runKidRelevanceBackfill(
             .from(schema.eventReminders)
             .where(
               and(
-                inArray(schema.eventReminders.eventRef, adultEvents),
+                inArray(
+                  schema.eventReminders.eventRef,
+                  adultEvents.map((event) => event.id),
+                ),
                 eq(schema.eventReminders.status, 'scheduled'),
               ),
             );
@@ -158,15 +168,20 @@ export async function runKidRelevanceBackfill(
         await tx
           .update(schema.familyEvents)
           .set({ deletedAt: input.now })
-          .where(inArray(schema.familyEvents.id, adultEvents));
+          .where(
+            inArray(
+              schema.familyEvents.id,
+              adultEvents.map((event) => event.id),
+            ),
+          );
         await tx.insert(schema.auditLog).values(
-          adultEvents.map((id) => ({
+          adultEvents.map((event) => ({
             familyId,
             actor: 'system',
             actionTaken: 'kid_relevance_event_dropped',
             targetTable: 'family_events',
-            targetId: id,
-            after: { verdict: 'adult', reason: BACKFILL_REASON },
+            targetId: event.id,
+            after: { verdict: 'adult', source: event.source, reason: BACKFILL_REASON },
             occurredAt: input.now,
           })),
         );
@@ -209,7 +224,7 @@ export async function runKidRelevanceBackfill(
           actionTaken: 'kid_relevance_event_dropped',
           targetTable: 'parent_calendar_blocks',
           targetId: `${block.integrationId}:${block.eventId}`,
-          after: { verdict: 'adult', reason: BACKFILL_REASON },
+          after: { verdict: 'adult', source: block.source, reason: BACKFILL_REASON },
           occurredAt: input.now,
         });
       }

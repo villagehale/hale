@@ -35,7 +35,8 @@ import {
  *
  * Privacy (rule #1): the model sees titles, places and senders; the table stores none of
  * them. A reason is stored only for a non-teen kid verdict. A teenager's item carries
- * its child id and no reason.
+ * its child id and no reason; a kid item tied to no named child keeps no reason when the
+ * family has a teenager.
  *
  * Bounds are infrastructure, not cadence (D-G): items per call come from the eval's
  * measured output ceiling, and calls stop at `deadline`; the rest come back
@@ -266,13 +267,18 @@ function verdictRowFor(
   const child = wanted
     ? ports.children.find((candidate) => candidate.name.trim().toLowerCase() === wanted)
     : undefined;
-  const teen = child ? deriveStage(child.dateOfBirth, input.now) === 'teenager' : false;
+  const isTeen = (candidate: KidRelevanceChild) =>
+    deriveStage(candidate.dateOfBirth, input.now) === 'teenager';
+  const teen = child ? isTeen(child) : false;
+  // An item the model did not tie to a named child may still be a teenager's, so it keeps
+  // no words when the family has one.
+  const mayBeTeen = child ? teen : ports.children.some(isTeen);
   return {
     ...base,
     verdict: 'kid',
     childId: child?.id ?? null,
     teen,
-    reason: teen ? null : answer.reason.trim() || null,
+    reason: mayBeTeen ? null : answer.reason.trim() || null,
   };
 }
 

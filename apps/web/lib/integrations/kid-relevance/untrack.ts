@@ -148,10 +148,10 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
       factType: 'preference',
       factKey: `${NOT_KIDS_FACT_PREFIX}${item.source}/${item.itemKey}`,
       factValue: {
-        kind: safeKind(
-          input.kind,
-          matching.map((row) => row.title),
-        ),
+        kind: safeKind(input.kind, [
+          ...matching.map((row) => row.title),
+          ...(await titlesSeen(tx, item)),
+        ]),
       },
       confidence: 1,
       inferredBy: 'kid_relevance_untrack',
@@ -204,6 +204,42 @@ function eventsOf(item: ProviderItem) {
       and ${schema.emailAlertOffers.eventId} is not null)`;
   }
   return sql`false`;
+}
+
+/** The titles Hale held for this item outside the family calendar. */
+async function titlesSeen(
+  database: Pick<Database, 'select'>,
+  item: ProviderItem,
+): Promise<string[]> {
+  if (item.integrationId === null) return [];
+  if (item.source === 'google_calendar') {
+    const rows = await database
+      .select({ title: schema.calendarEventSnapshots.heldTitle })
+      .from(schema.calendarEventSnapshots)
+      .where(
+        and(
+          eq(schema.calendarEventSnapshots.integrationId, item.integrationId),
+          or(
+            eq(schema.calendarEventSnapshots.eventId, item.itemKey),
+            eq(schema.calendarEventSnapshots.recurringEventId, item.itemKey),
+          ),
+        ),
+      );
+    return rows.flatMap((row) => (row.title === null ? [] : [row.title]));
+  }
+  if (item.source === 'gmail') {
+    const rows = await database
+      .select({ title: schema.emailAlertOffers.title })
+      .from(schema.emailAlertOffers)
+      .where(
+        and(
+          eq(schema.emailAlertOffers.integrationId, item.integrationId),
+          eq(schema.emailAlertOffers.messageId, item.itemKey),
+        ),
+      );
+    return rows.map((row) => row.title);
+  }
+  return [];
 }
 
 /** The kind, unless it is empty or carries the item's own title. */

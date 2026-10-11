@@ -206,6 +206,48 @@ describe('untrackItem', () => {
     expect(JSON.stringify(facts)).not.toContain('Dentist');
   });
 
+  it('refuses a kind that repeats the title Hale saw, even with no calendar copy', async () => {
+    await db.database.insert(schema.calendarEventSnapshots).values({
+      integrationId,
+      eventId: 'yoga_1018',
+      recurringEventId: 'yoga-series',
+      updatedStamp: 'u1',
+      status: 'confirmed',
+      startAt: NEXT_WEEK,
+      pendingSince: NOW,
+      heldTitle: 'Sunrise yoga',
+    });
+    const message = await alertMessage(calendarAlertDedupeKey(integrationId, 'yoga_1018', 'u1'));
+    await untrack({ kind: 'channel_message', id: message }, 'sunrise yoga');
+    const facts = await db.database
+      .select()
+      .from(schema.familyMemoryFacts)
+      .where(eq(schema.familyMemoryFacts.familyId, familyId));
+    expect(facts).toHaveLength(1);
+    expect(facts[0]?.factValue).toEqual({ kind: null });
+  });
+
+  it('refuses a kind that repeats a Gmail offer title the parent never added', async () => {
+    const message = await alertMessage(emailAlertDedupeKey(gmailIntegrationId, 'msg-2'));
+    await db.database.insert(schema.emailAlertOffers).values({
+      familyId,
+      parentUserId,
+      integrationId: gmailIntegrationId,
+      messageId: 'msg-2',
+      kind: 'event',
+      title: 'Book club',
+      startsAt: NEXT_WEEK,
+      channelMessageId: message,
+      expiresAt: NEXT_WEEK,
+    });
+    await untrack({ kind: 'channel_message', id: message }, 'Book club');
+    const facts = await db.database
+      .select()
+      .from(schema.familyMemoryFacts)
+      .where(eq(schema.familyMemoryFacts.familyId, familyId));
+    expect(facts.map((fact) => fact.factValue)).toEqual([{ kind: null }]);
+  });
+
   it('keeps the parent verdict when the model judges the same item again', async () => {
     const event = await mirror('one-off', NEXT_WEEK, 'Swim lesson');
     await untrack({ kind: 'family_event', id: event });
