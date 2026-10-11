@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a vague personal task with no child named or implied, making it the parent's own, but \"errands\" is ambiguous enough that it could involve the child — the reason is solid but slightly overconfident for a bare, context-free phrase from a group chat.",
+    "score": 3
+  }
+}

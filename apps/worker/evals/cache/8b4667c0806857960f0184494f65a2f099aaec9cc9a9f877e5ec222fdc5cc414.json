@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a bare, vague errand note with no child named and no other context to resolve it, so \"unsure\" is correct and the reason correctly identifies it as vague with no child mention.",
+    "score": 5
+  }
+}

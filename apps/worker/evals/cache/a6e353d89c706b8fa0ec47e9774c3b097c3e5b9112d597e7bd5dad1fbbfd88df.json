@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A bare \"Call\" entry names no activity, person, or child, making the context genuinely ambiguous, which correctly supports the unsure verdict.",
+    "score": 5
+  }
+}

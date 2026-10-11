@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly identifies this as a kid item — \"Preschool Swim Level 1\" is a child-oriented activity — but speculating that it's \"likely for Theo at 50 months or a second child\" invents a specific assignment not supported by the item, and mentioning \"a second child\" is confusing since both children are already listed; one sentence with two loosely connected clauses also weakens clarity.",
+    "score": 2
+  }
+}

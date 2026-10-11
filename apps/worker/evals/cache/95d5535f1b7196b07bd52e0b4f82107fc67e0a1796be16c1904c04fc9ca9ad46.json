@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A single initial provides no information about the item's subject, making the unsure verdict correct, and the reason correctly identifies this ambiguity in one plain clause.",
+    "score": 5
+  }
+}

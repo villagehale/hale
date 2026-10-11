@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a single bare word with no person, topic, or context, making it impossible to assign to a child or adult, which correctly leads to unsure.",
+    "score": 5
+  }
+}

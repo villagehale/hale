@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says \"errands for the parent\" but gives no explanation of why — it just restates the verdict without identifying what kind of item this is or why it points to the parent rather than being unsure; a bare ambiguous item like this with no child named and no notMineHints match warrants more justification than a circular restatement.",
+    "score": 2
+  }
+}

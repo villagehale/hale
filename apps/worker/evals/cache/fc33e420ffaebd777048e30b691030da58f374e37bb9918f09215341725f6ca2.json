@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A restaurant booking for two adults with no child named is the parent's own appointment, correctly leading to the adult verdict.",
+    "score": 5
+  }
+}

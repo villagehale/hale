@@ -1,0 +1,44 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "basketball tryouts for Juno, a kid activity",
+        "verdict": "kid",
+        "childName": "Juno"
+      },
+      {
+        "ref": "i1",
+        "reason": "driving lesson fits Juno's age (14), a kid activity",
+        "verdict": "kid",
+        "childName": "Juno"
+      },
+      {
+        "ref": "i2",
+        "reason": "soccer practice for Ezra, a kid activity",
+        "verdict": "kid",
+        "childName": "Ezra"
+      },
+      {
+        "ref": "i3",
+        "reason": "tennis with an adult named Marco, the parent's own plan",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "a tax filing deadline, the parent's own financial matter",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i5",
+        "reason": "a bare calendar entry with no indication of who it's for",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 3078,
+  "outputTokens": 319
+}

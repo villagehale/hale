@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A single bare word gives no context to identify the item as kid- or adult-related, correctly making it unsure.",
+    "score": 5
+  }
+}

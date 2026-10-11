@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a vague personal task with no child named or implied, but \"errands after lunch\" is ambiguous enough that it could involve the child (e.g., running errands with an 18-month-old in tow), making \"unsure\" at least as defensible as \"adult\"; the reason doesn't acknowledge this ambiguity and simply restates the title without explaining what kind of thing errands are or why they belong to the parent alone.",
+    "score": 2
+  }
+}

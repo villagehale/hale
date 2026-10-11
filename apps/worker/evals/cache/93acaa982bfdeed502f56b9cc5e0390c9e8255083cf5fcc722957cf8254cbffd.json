@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Single word \"Hold\" on a calendar gives no context about who or what it concerns, making unsure the correct call, and \"a bare label with no context\" correctly identifies this as the reason.",
+    "score": 5
+  }
+}

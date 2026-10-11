@@ -1,0 +1,116 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "the parent's own work standup",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a parent-and-tot swim class fitting Wren's age",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i2",
+        "reason": "a work 1:1 with a colleague who happens to share Wren's name",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i3",
+        "reason": "the parent's own dentist cleaning",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "a checkup for Wren at her age",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i5",
+        "reason": "the parent's own physio appointment",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a library storytime, a kid activity",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i7",
+        "reason": "the parent's own work offsite",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i8",
+        "reason": "a music class for Theo",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i9",
+        "reason": "the parent's own date night",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i10",
+        "reason": "daycare pickup, a childcare arrangement for the kids",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i11",
+        "reason": "another child's birthday party the family's kids would attend",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i12",
+        "reason": "a bare label with no clue who or what it concerns",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i13",
+        "reason": "a single initial with no context to identify a child or adult",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i14",
+        "reason": "the parent's own spin class",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i15",
+        "reason": "the parent's own mortgage call",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i16",
+        "reason": "a baby shower for another adult",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i17",
+        "reason": "a bare status word with no indication of who it's about",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 6367,
+  "outputTokens": 758
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a single bare word with no context, person named, or activity described, making \"unsure\" the correct call, and the reason correctly identifies it as a bare label with no context.",
+    "score": 5
+  }
+}

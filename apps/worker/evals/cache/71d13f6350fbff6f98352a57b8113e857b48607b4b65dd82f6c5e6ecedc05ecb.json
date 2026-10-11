@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A single-word calendar entry with no named party, subject, or context gives no basis to assign it to a child or the parent, correctly landing on unsure.",
+    "score": 5
+  }
+}

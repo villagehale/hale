@@ -275,6 +275,12 @@ jobs:
       - name: Travel-booking extraction eval (cached-only)
         run: pnpm --filter @hale/worker eval:travel-extract
 
+      # The kid-relevance judge decides what Hale may track, remind about or text about
+      # from a parent's calendar, mailbox and group. Nothing downstream re-checks a verdict,
+      # so this is the gate, wired before any caller ships (VIL-226 / VIL-403).
+      - name: Kid-relevance judge eval (cached-only)
+        run: pnpm --filter @hale/worker eval:kid-relevance
+
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
   # skipped job. Fails when workspace checks fail or when evals were required and

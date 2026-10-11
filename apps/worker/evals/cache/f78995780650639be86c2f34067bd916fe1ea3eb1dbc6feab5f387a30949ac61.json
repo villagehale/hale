@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A car service reminder is an appointment for the parent's own vehicle, matching the rule that an appointment with no child named belongs to the parent.",
+    "score": 5
+  }
+}

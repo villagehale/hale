@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A dentist cleaning appointment with no child named matches the rule that an appointment with no child named is the parent's own, making \"adult\" correct, but the reason gives no \"what it is\" beyond restating the title and no explicit \"why\" tied to the naming rule.",
+    "score": 3
+  }
+}

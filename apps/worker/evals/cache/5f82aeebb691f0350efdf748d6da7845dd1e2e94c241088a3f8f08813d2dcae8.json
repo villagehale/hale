@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Daycare pickup is a child care task, which correctly leads to a kid verdict, but the reason just restates the item title and labels it \"a child care arrangement\" without explaining what makes it a kid item (i.e., that picking up from daycare is an activity done on behalf of the children, not the parent's own life).",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A single-word calendar entry with no subject, participant, or context is too bare to assign to adult or kid, correctly leaving it unsure.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A hotel booking confirmation matches the \"hotel stay\" notMineHints entry, correctly placing it in the parent's own domain.",
+    "score": 5
+  }
+}

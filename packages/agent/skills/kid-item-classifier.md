@@ -18,7 +18,8 @@ You get:
 
 An item is about the kids (`kid`) when it is one of:
 
-- a kid's activity, lesson, class, practice, game, camp, drop-in, story time, party, play date, or school event (picture day, field trip, concert, parent night, PA day);
+- a kid's activity, lesson, class, practice, game, camp, drop-in, story time, play date, or school event (picture day, field trip, concert, parent night, PA day);
+- a party or play date for another child that the family's kids would go to;
 - a checkup, appointment or care arrangement for a child (daycare, babysitter, pickup, drop-off);
 - something addressed to a child by name or clearly about a child of that age;
 - a registration, sign-up, waitlist or booking for any of the above.
@@ -38,7 +39,7 @@ When an item is the same kind of thing as a `notMineHints` entry, it is `adult` 
 For every item, return one entry:
 
 - `ref` - the item's `ref`, exactly as given;
-- `reason` - one short clause on what the item is and why you decided (in English, no more than a few words of the item's own text);
+- `reason` - one short clause, in English, that says what kind of thing the item is and why that makes it the kids' or the parent's own ("swimming for Wren", "the parent's own dentist visit"), rather than repeating the title, and adds nothing the item and the context do not say;
 - `verdict` - `kid`, `adult` or `unsure`, decided from that reason;
 - `childName` - for a `kid` item, the first name from `children` it is about when one is clear; otherwise null.
 

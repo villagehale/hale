@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A hotel reservation email is an appointment/booking with no child named, correctly placing it in the adult category, but the reason invents \"travel\" as a purpose — the item only confirms a reservation, not that it is for travel specifically.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason argues for a kid verdict but the verdict given is unsure — a direct contradiction between the reason and the verdict being scored.",
+    "score": 1
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a work standup meeting",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a parent-and-tot swim class for Wren at 18 months",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i2",
+        "reason": "a 1:1 with a work colleague named Wren Castillo",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i3",
+        "reason": "the parent's own dental cleaning",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "a medical checkup for Wren at 18 months",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i5",
+        "reason": "the parent's own physio for shoulder injury",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a library storytime, likely for children",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i7",
+        "reason": "a work planning offsite for the parent",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i8",
+        "reason": "a music class for Theo at 50 months",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i9",
+        "reason": "a dinner date for the parent",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i10",
+        "reason": "a daycare pickup for one of the children",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i11",
+        "reason": "a birthday party for another child (Mila) that the family's children would attend",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i12",
+        "reason": "a bare hold with no context",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i13",
+        "reason": "a single initial with no context",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i14",
+        "reason": "the parent's own fitness class",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i15",
+        "reason": "the parent's own financial transaction",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i16",
+        "reason": "a baby shower for another adult (Dana)",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i17",
+        "reason": "a bare time block with no context",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i18",
+        "reason": "a hotel reservation for the parent's travel",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i19",
+        "reason": "a restaurant reservation for two (a date or adult dinner)",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i20",
+        "reason": "registration for preschool swim, likely for Theo at 50 months or a second child",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i21",
+        "reason": "a faith study group for adults",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i22",
+        "reason": "a baby rhyme time for young children",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i23",
+        "reason": "the parent's own flight",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i24",
+        "reason": "the parent's own car service",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i25",
+        "reason": "a playdate invitation for Wren at 18 months",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i26",
+        "reason": "an appointment reminder with no details to distinguish parent or child",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i27",
+        "reason": "coordination of swim transportation for Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i28",
+        "reason": "a book club scheduling change for the parent",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i29",
+        "reason": "a daycare pickup request for Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i30",
+        "reason": "errands for the parent",
+        "verdict": "adult",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 9723,
+  "outputTokens": 1150
+}

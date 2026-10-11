@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a birthday party for a child named Mila (not one of the family's children), which the classifier correctly identifies as another child's party — a clear kid-item rule match.",
+    "score": 5
+  }
+}

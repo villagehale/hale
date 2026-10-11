@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A baby shower for a named adult (Dana) is a social event for someone other than the parent or their children, but the verdict should be \"kid\" not \"adult\" — this is a party/social event the parent attends, which would be the parent's own adult social life, yet the classifier calls it \"adult\" which actually aligns with it being a parent's calendar item for their own social engagement; however, the reason itself is thin and doesn't explain why it's the parent's own item rather than someone else's event. The reason is one clause and directionally consistent with the verdict, but it omits the key logic (parent attending = parent's own calendar item).",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly identifies this as a party for another child (Mila), which per the rules is a kid item, and gives both the \"what it is\" (another child's birthday party) and the \"why\" (family's children would attend) in one clause.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly identifies this as a social event for another adult (Dana), but the verdict of \"adult\" is questionable — a baby shower for someone else is more accurately a kid-adjacent social event or at best \"unsure,\" not clearly the parent's own adult life. However, the reason itself is one concise clause stating what the item is and why, with no invented facts. The main weakness is that attending another person's baby shower doesn't neatly fit the \"adult own life\" verdict per the rules (it's not a notMineHints match, not an appointment/meeting/booking for the parent), making the reason argue implicitly for a different or weaker verdict.",
+    "score": 2
+  }
+}

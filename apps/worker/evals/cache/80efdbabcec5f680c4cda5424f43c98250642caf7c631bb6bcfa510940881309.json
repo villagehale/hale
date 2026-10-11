@@ -1,0 +1,56 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "c0",
+        "reason": "a swim class or activity for Mia, the 6-year-old child",
+        "verdict": "kid",
+        "childName": "Mia"
+      },
+      {
+        "ref": "c1",
+        "reason": "a work 1:1 meeting with an adult colleague named Mia Chen",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "c2",
+        "reason": "a birthday party for Mia, the 6-year-old child",
+        "verdict": "kid",
+        "childName": "Mia"
+      },
+      {
+        "ref": "c3",
+        "reason": "an alumni dinner for the parent",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e0",
+        "reason": "a 15-month checkup for Sebastian, the toddler",
+        "verdict": "kid",
+        "childName": "Sebastian"
+      },
+      {
+        "ref": "e1",
+        "reason": "a social coffee plan with an adult friend named Sebastian",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e2",
+        "reason": "a library hold for an adult novel",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e3",
+        "reason": "Parent and Tot Swim class, a known kid activity with availability notice",
+        "verdict": "kid",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 3887,
+  "outputTokens": 444
+}

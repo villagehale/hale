@@ -271,6 +271,7 @@ describe('ci.yml wiring', () => {
       'eval:activity-finder',
       'eval:activity-deep',
       'eval:travel-extract',
+      'eval:kid-relevance',
     ];
     for (const command of commands) {
       expect(evals, command).toContain(command);

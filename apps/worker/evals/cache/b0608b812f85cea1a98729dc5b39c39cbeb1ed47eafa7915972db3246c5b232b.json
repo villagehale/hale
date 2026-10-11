@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A hotel reservation confirmation is an adult booking with no child named, correctly classified as the parent's own.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Daycare pickup is a childcare task directly tied to the kids, correctly leading to a kid verdict, but the reason vaguely says \"for the kids\" without grounding it in the specific children or ages present in context.",
+    "score": 3
+  }
+}

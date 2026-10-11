@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the child and the appointment type but just restates the title without explaining why it leads to a \"kid\" verdict (i.e., that Wren is a named child with a matching age, making this clearly her medical checkup).",
+    "score": 2
+  }
+}

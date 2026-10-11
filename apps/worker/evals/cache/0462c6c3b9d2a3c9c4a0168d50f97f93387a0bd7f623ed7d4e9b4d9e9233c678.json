@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A dental appointment with no child named could be for the parent or the child, so unsure is correct, but the reason doesn't explicitly state why it can't be assigned — it omits that the rule for a nameless appointment points to adult, making the unsure verdict slightly under-explained; still, it correctly identifies the item type and the missing name as the deciding factor.",
+    "score": 3
+  }
+}

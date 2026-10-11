@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A hotel reservation with no child named is the parent's own booking, correctly leading to the adult verdict.",
+    "score": 5
+  }
+}

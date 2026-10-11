@@ -1,0 +1,32 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "swim activity for Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i1",
+        "reason": "an adult's book club schedule change",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "daycare pickup for Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i3",
+        "reason": "a vague errand plan with no mention of a child",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 2393,
+  "outputTokens": 195
+}

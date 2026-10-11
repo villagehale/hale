@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A restaurant reservation for two adults at 7:30 pm is an adult dinner booking, matching the rule that an appointment with no child named is the parent's own.",
+    "score": 5
+  }
+}

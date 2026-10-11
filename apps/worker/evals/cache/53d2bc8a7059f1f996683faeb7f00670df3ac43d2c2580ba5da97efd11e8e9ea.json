@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A flight check-in email from an airline is a travel booking, and no child is named, making it the parent's own item — the reason correctly identifies what the item is and why it leads to the adult verdict.",
+    "score": 5
+  }
+}

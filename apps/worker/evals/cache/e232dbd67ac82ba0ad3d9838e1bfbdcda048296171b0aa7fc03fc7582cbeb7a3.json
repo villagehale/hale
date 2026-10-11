@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A physio shoulder appointment names no child, matching the rule that an appointment with no child named belongs to the parent, which directly supports the adult verdict.",
+    "score": 5
+  }
+}

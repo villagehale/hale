@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A bare meeting title with no child name, topic, or other context makes the verdict unsure well-supported by the rule that an ambiguous item is unsure.",
+    "score": 5
+  }
+}

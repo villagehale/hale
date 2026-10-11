@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Juno is 170 months (~14 years old), which is not yet a typical driving age, and while the reasoning is close, 14 is generally below the minimum driving lesson age; however, the core logic — named child Juno + driving lesson = kid item — is sound and leads correctly to the kid verdict, even if the age framing is slightly off.",
+    "score": 3
+  }
+}

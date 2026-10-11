@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a preschool swim class registration, a kid activity, which correctly leads to the kid verdict; however, the reason speculates about \"a second child\" when there are already two named children, introducing an unsupported fact.",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a vague personal task with no child named or implied, correctly supporting the adult verdict, but \"no child reference\" alone doesn't explain why that makes it adult rather than unsure — a bare ambiguous item should arguably be unsure, weakening the reasoning.",
+    "score": 3
+  }
+}

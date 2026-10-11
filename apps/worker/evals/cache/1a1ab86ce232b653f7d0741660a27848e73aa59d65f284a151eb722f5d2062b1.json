@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A flight check-in email from an airline is the parent's own travel booking, correctly classed as adult, with a clear one-clause explanation of what the item is and why.",
+    "score": 5
+  }
+}

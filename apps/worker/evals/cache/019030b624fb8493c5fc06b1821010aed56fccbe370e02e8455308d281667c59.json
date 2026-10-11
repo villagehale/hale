@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason argues that library storytime is likely for children, which points to a \"kid\" verdict, but the verdict given is \"unsure\" — these two contradict each other, earning a low score.",
+    "score": 1
+  }
+}

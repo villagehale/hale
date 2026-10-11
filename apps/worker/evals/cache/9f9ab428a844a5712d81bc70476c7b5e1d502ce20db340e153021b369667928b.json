@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a generic clinic appointment reminder with no child or adult name attached, making it impossible to assign, which correctly supports the unsure verdict.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a known kid activity (matching an activityTitle) and notes it is an availability notice, directly supporting the kid verdict in one plain clause.",
+    "score": 5
+  }
+}

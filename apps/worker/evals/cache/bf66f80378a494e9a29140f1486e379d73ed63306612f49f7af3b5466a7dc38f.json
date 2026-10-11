@@ -1,0 +1,62 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a hotel reservation for the parent's own travel",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a restaurant reservation for 2, a date or dinner for the parent",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "swim class registration for a preschooler",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i3",
+        "reason": "a Bible study for adults",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "baby rhyme time for toddlers",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i5",
+        "reason": "a flight booking for the parent's own travel",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a car service for the parent's own vehicle maintenance",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i7",
+        "reason": "a playdate for Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i8",
+        "reason": "an appointment reminder with no detail; could be for parent or child",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 3862,
+  "outputTokens": 466
+}
