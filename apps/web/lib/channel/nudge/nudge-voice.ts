@@ -7,7 +7,6 @@ import { loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
-import { renderEmptySaturdayAsk } from './empty-saturday-copy';
 import type {
   EmptySaturdayNudge,
   HealthCheckpointNudge,
@@ -15,7 +14,6 @@ import type {
   WeekdayCareAsk,
 } from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
-import { renderWeekdayFinderAsk } from './weekday-care-copy';
 
 /**
  * VIL-239 · M4 — COMPOSE: the decision object, said out loud in Hale's voice.
@@ -210,14 +208,11 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
   // message, not a fallback for one.
   if (nudge.kind === 'health_checkpoint') return renderHealthNudge(nudge);
 
-  // VIL-360's ask, for the same reason: the sentence IS the message. It is measured to
-  // the character, it carries the one question mark the grammar answers, and no model
-  // sees it (nudge/weekday-care-copy.ts).
-  if (nudge.kind === 'weekday_care') return renderWeekdayFinderAsk(nudge.ask);
-
-  // VIL-365. The sentence is the message. The model must not see it: the nudge
-  // voice skill forbids questions, and this ask is byte-locked.
-  if (nudge.kind === 'empty_saturday') return renderEmptySaturdayAsk(nudge.kidName);
+  // Weekday care and empty Saturday have no canned sentence. The writer speaks,
+  // or the send does not happen.
+  if (nudge.kind === 'weekday_care' || nudge.kind === 'empty_saturday') {
+    throw new Error(`renderNudgeDeterministically: ${nudge.kind} has no template`);
+  }
 
   if (nudge.kind === 'registration') {
     const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
@@ -293,11 +288,12 @@ export async function composeNudgeMessage(
   deps: { familyId: string; database: Database; client: AgentClient | null },
 ): Promise<string | null> {
   if (nudge.kind === 'empty_saturday') return composeEmptySaturday(nudge, deps);
+  if (nudge.kind === 'weekday_care') return null;
   const deterministic = renderNudgeDeterministically(nudge);
   // A health checkpoint never reaches the model (VIL-243 · M8): deterministic copy is
   // REVIEWABLE copy, and this is the one message class where a warmer sentence is not
   // worth the chance of a sentence nobody approved.
-  if (nudge.kind === 'health_checkpoint' || nudge.kind === 'weekday_care' || !deps.client) {
+  if (nudge.kind === 'health_checkpoint' || !deps.client) {
     return deterministic;
   }
 

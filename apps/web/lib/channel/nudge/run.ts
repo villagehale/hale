@@ -48,6 +48,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -341,6 +342,11 @@ export interface NudgeRunResult {
    * is a signal or a habit. */
   quiet: number;
   deduped: number;
+  /**
+   * VIL-226 · copies handed to the family's proactive queue instead of sent, because
+   * PROACTIVE_CADENCE is live. The hourly decider sends them or holds them by name.
+   */
+  queued: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
   /**
@@ -365,6 +371,7 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     sent: 0,
     quiet: 0,
     deduped: 0,
+    queued: 0,
     failed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     skips: {},
@@ -585,6 +592,7 @@ type FamilyTally = {
   quiet: boolean;
   sent: number;
   deduped: number;
+  queued: number;
   held: ProactiveHoldReason[];
   /** The decide's own reasons for this family. A property of the DECISION, so it is
    * the household's like `quiet` is, not the recipient's. */
@@ -592,7 +600,7 @@ type FamilyTally = {
 };
 
 function emptyTally(overrides: Partial<FamilyTally> = {}): FamilyTally {
-  return { quiet: false, sent: 0, deduped: 0, held: [], skips: {}, ...overrides };
+  return { quiet: false, sent: 0, deduped: 0, queued: 0, held: [], skips: {}, ...overrides };
 }
 
 async function runForFamily(
@@ -666,8 +674,14 @@ async function runForFamily(
       now,
       family.timeZone,
     );
-    if (await deps.dedupeActive(database, dedupeKey)) deduped += 1;
-    else pending.push({ recipient, optOut, dedupeKey });
+    if (
+      (await deps.dedupeActive(database, dedupeKey)) ||
+      (await isQueuedForDecider(database, family.familyId, dedupeKey))
+    ) {
+      deduped += 1;
+    } else {
+      pending.push({ recipient, optOut, dedupeKey });
+    }
   }
   if (pending.length === 0) return emptyTally({ deduped, held });
 
@@ -686,9 +700,49 @@ async function runForFamily(
       actionTaken: 'proactive_nudge_skipped',
       targetTable: 'families',
       targetId: family.familyId,
-      after: { reason: 'saturday_unvoiced', kind: nudge.kind },
+      after: {
+        reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
+        kind: nudge.kind,
+      },
     });
     return emptyTally({ quiet: true });
+  }
+
+  // VIL-226 · the family queue. Unset sends as before and writes nothing; shadow queues
+  // and still sends; live queues and the hourly decider sends. A registration nudge is
+  // timed to a municipal clock and a health checkpoint is reviewed static copy, so
+  // neither ever queues.
+  const templateKey =
+    nudge.kind === 'weekday_care'
+      ? weekdayFinderTemplateKey(nudge.ask)
+      : proactiveNudgeTemplateKey(nudge.kind);
+  const handedOff = await handOffProactive(
+    database,
+    pending.map(({ recipient, dedupeKey }) => ({
+      familyId: family.familyId,
+      parentUserId: recipient.parentUserId,
+      kind: 'nudge' as const,
+      category: 'nudge' as const,
+      templateKey,
+      what: message,
+      why: nudge.kind,
+      sourceUrl: nudge.kind === 'empty_saturday' ? nudge.url : null,
+      worthlessAfter: null,
+      parentRequested: false,
+      dedupeKey,
+    })),
+    nudge.kind === 'registration' || nudge.kind === 'health_checkpoint' ? 'immediate' : 'candidate',
+  );
+  if (handedOff === 'queued') {
+    await deps.audit(database, {
+      familyId: family.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_nudge_queued',
+      targetTable: 'proactive_candidates',
+      targetId: family.familyId,
+      after: { kind: nudge.kind, cohort, copies: pending.length },
+    });
+    return emptyTally({ deduped, held, queued: pending.length });
   }
 
   let sent = 0;
@@ -920,7 +974,7 @@ async function runForFamily(
   if (firstMessageId !== null) {
     await recordFamilyLedgers(database, { family, nudge, messageId: firstMessageId, now }, deps);
   }
-  return { quiet: false, sent, deduped, held, skips: decision.skips };
+  return { quiet: false, sent, deduped, queued: 0, held, skips: decision.skips };
 }
 
 /**
@@ -997,6 +1051,7 @@ export async function runNudgeCron(
       if (outcome.quiet) result.quiet += 1;
       result.sent += outcome.sent;
       result.deduped += outcome.deduped;
+      result.queued += outcome.queued;
       for (const reason of outcome.held) result.held[reason] += 1;
       for (const [reason, count] of Object.entries(outcome.skips)) {
         const key = reason as keyof NudgeSkipCounts;

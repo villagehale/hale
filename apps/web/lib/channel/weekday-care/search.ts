@@ -9,7 +9,7 @@ import {
 } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
-import type { WeekdaySearchPrompt } from '~/lib/channel/nudge/weekday-care-copy';
+import type { WeekdaySearchPrompt } from '~/lib/channel/nudge/weekday-care-ask';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 
