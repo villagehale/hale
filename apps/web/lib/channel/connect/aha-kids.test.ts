@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import type { AgentClient } from '@hale/agent';
+import { describe, expect, it, vi } from 'vitest';
+import { KID_VERDICT_TOOL } from '~/lib/integrations/kid-relevance/skill-contract';
 import {
   type KidItemClassifier,
   type KidItemsInput,
   acceptKidItemIds,
+  createKidItemClassifier,
   kidItemsFor,
   kidRelatedAha,
 } from './aha-kids';
@@ -226,5 +229,54 @@ describe('kidRelatedAha', () => {
     const kept = await kidRelatedAha(snapshot, context, classifier);
     expect(kept.read).toBe('none_for_kids');
     expect(kept.kidFilter).toBe('classifier_failed');
+  });
+});
+
+describe('createKidItemClassifier', () => {
+  /** A scripted AgentClient: the port under the classifier, never the model (rule #8). */
+  function scriptedClient(childName: string | null) {
+    const requests: { tools: { input_schema: unknown }[] }[] = [];
+    const respond = async (request: { tools: { input_schema: unknown }[] }) => {
+      requests.push(request);
+      return {
+        content: [
+          {
+            type: 'tool_use',
+            id: 't',
+            name: KID_VERDICT_TOOL,
+            input: { verdicts: [{ ref: 'c0', reason: 'a swim class', verdict: 'kid', childName }] },
+          },
+        ],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      };
+    };
+    const client = {
+      messages: {
+        create: respond,
+        stream: (request: { tools: { input_schema: unknown }[] }) => ({
+          finalMessage: () => respond(request),
+        }),
+      },
+    } as unknown as AgentClient;
+    return { client, requests };
+  }
+  const input = { ...context, items: [{ id: 'c0', text: 'Swim' }] };
+
+  it("offers the model only this family's children as names, per call", async () => {
+    vi.stubEnv('HALE_LLM_NO_STREAM', '1');
+    const { client, requests } = scriptedClient('Mia');
+    await createKidItemClassifier(client).classify(input);
+    expect(JSON.stringify(requests[0]?.tools[0]?.input_schema)).toContain(
+      '"enum":["Sebastian","Mia",null]',
+    );
+    vi.unstubAllEnvs();
+  });
+
+  it('a child name the family does not have fails validation', async () => {
+    vi.stubEnv('HALE_LLM_NO_STREAM', '1');
+    const { client } = scriptedClient('Seb');
+    await expect(createKidItemClassifier(client).classify(input)).rejects.toThrow();
+    vi.unstubAllEnvs();
   });
 });
