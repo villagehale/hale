@@ -233,7 +233,9 @@ async function main() {
   const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const subjectLane = agent.pickLane(skill.meta.task);
-  const judgeModel = await readJudgeModel();
+  // The rubric-holding tier, not Haiku: on the 5.5 re-record the Haiku 5.5 judge marked
+  // the weather fixture down for the one sentence its own watchFor names as allowed.
+  const judgeModel = await readJudgeModel('sonnet');
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'general-answer', cachedOnly, getClient, cost);
   const fixtures =
     minSamples === null
