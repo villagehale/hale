@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "news-or-politics",
+    "reason": "asks who holds a political office, a fact about the world unrelated to the family's week"
+  },
+  "latencyMs": 988
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "thanks!",
+    "rationale": "A bare 'thanks!' is a pleasantry acknowledging the message, not a clear yes or no to the question.",
+    "confidence": 0.95
+  },
+  "latencyMs": 1317
+}

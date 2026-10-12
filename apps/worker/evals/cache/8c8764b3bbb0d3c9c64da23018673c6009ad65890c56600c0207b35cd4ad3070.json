@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The voice is warm and calm, written in sentence case with every sentence capitalized. The weekFraming names only the most notable supplied items (Mira's checkup, Theo's birthday, Saturday swim) and the suggestion, all of which appear in the items list. No invented names, dates, or times, and no health detail beyond the item title. Item lines are brief framings that do not restate dates. Minor nit: the weekFraming runs three sentences-worth of content and includes the suggestion, slightly exceeding the one-or-two sentence guidance.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The subject and note reuse only the given summary and time, state the invite is attached and can be added to their calendar, and stay vague about the appointment's nature with no extra details, greeting, or exclamation marks.",
+    "score": 5
+  }
+}

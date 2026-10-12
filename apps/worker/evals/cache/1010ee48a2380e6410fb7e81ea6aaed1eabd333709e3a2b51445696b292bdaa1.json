@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "maybe, let me ask my husband",
+    "rationale": "Hedged and conditional: 'maybe' and deferring to her husband, with no clear yes or no.",
+    "confidence": 0.97
+  },
+  "latencyMs": 1296
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "that would be great honestly",
+    "rationale": "'that would be great' is a plain affirmative response to the offer; 'honestly' only adds emphasis",
+    "confidence": 0.93
+  },
+  "latencyMs": 1314
+}

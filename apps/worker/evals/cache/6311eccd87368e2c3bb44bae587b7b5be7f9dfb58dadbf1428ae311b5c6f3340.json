@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "I'd rather not right now",
+    "rationale": "Explicit refusal: \"I'd rather not right now\" directly answers the question with a no",
+    "confidence": 0.97
+  },
+  "latencyMs": 1337
+}

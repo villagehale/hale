@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "👍",
+    "rationale": "A lone thumbs-up emoji is an acknowledgement, not a clear yes; the guidelines list '👍' on its own as ambiguous.",
+    "confidence": 0.85
+  },
+  "latencyMs": 1304
+}

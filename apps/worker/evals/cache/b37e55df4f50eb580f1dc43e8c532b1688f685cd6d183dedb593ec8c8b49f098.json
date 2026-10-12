@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "school_communication",
+    "confidence": 0.93,
+    "rationale": "School board notice that Term 2 report cards are posted and parent-teacher conference booking is open, which is optional and one-way.",
+    "payload": {
+      "sender": "office@elmwood-public.schoolboard.ca",
+      "subject": "Term 2 report cards now available",
+      "topic": "report_cards_and_parent_teacher_conferences",
+      "grade": "Grade 3",
+      "teacher": "Ms. Tran",
+      "conference_week": "week of March 10",
+      "action_required": false,
+      "booking_method": "parent portal"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 281,
+    "output": 334
+  }
+}

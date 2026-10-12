@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is short, plain, leads with the registration date for Maya and Leo, and states the Saturday climbing session with its given facts (paid, indoor, ages 8-12, Sam). No invented venue, no hype; the 'I checked' lead is the mandated clause. It omits the null venue correctly. Minor: it doesn't mention the offer question, but the facts only say offerQuestion is true, which is a prompt rather than a required fact, so the message is faithful and useful.",
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "reschedule request for a family activity on the schedule"
+  },
+  "latencyMs": 1633
+}

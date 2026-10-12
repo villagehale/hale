@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message contains the word \"name\" and asks only for that, which satisfies the refusedBefore fix. It covers one half of what happens next: \"I watch your dates\" says Hale watches on its own. It drops the second half, that the parent can text a parenting question anytime; \"you can text me anything\" is close but reads as a generic invitation rather than a clear service statement, and it is tied to nothing specific. Tone is plain and short, not stiff. Because it keeps one clear service half and the ask, it sits at the middle tier rather than the full two-job sentence.",
+    "score": 3
+  }
+}

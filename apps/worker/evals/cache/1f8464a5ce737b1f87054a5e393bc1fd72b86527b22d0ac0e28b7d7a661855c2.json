@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment reply to an unseen question; defaults to in_domain"
+  },
+  "latencyMs": 992
+}

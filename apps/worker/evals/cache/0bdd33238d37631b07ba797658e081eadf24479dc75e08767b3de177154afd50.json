@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first sentence attributes the find to Hale's own check: 'I checked Toronto's calendar', with the fact (Fall 2026 registration opened Sep 15) landing in that same sentence. The facts do support a look at the town's calendar (town and lastCycle/lastOpenedAtLocal are given), so nothing is invented. It scores 5 rather than 4 since the attribution is folded directly into the lead sentence as the spec requires.",
+    "score": 5
+  }
+}

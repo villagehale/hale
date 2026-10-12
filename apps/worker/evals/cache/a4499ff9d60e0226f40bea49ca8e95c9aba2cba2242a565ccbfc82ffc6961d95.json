@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is null, so only the slots are scored. The single slot is grounded in the search snippet and names a real program (Parent & Tot, 4 months to 3 years), which fits a toddler. It leaves when and price null instead of inventing figures, since neither fetch opened a page. The registration field honestly says the pages could not be opened. It does not claim the schedule is unposted, which would be unearned under no_page_read. The source is the operator's own Town of Halton Hills page, which is where the snippet came from. No pages_read list is shown, so there is no claim of having opened a refused page. This is the correct snippet-grounded result.",
+    "score": 5
+  }
+}

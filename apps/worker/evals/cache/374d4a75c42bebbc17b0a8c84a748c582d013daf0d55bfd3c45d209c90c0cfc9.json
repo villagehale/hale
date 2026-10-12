@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with a plain check-in, states only the given checkpoint fact (18-month well-baby visit with family doctor), and honestly says the weekend pick is coming because it is still learning the area, which matches the instructed clause for a null weekendPick. It omits any invented detail, registration padding, or hype. It does not ask the offer question, but the facts carry offerQuestion true, which is a minor gap in completeness rather than faithfulness.",
+    "score": 4
+  }
+}

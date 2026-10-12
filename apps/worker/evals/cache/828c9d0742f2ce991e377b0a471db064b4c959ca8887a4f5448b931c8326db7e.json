@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "who are you?",
+    "rationale": "Parent asked a question back about the sender's identity; no yes or no to the question asked.",
+    "confidence": 0.97
+  },
+  "latencyMs": 1225
+}

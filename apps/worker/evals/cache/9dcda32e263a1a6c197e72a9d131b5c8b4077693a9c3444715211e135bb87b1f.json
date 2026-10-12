@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with the useful fact (18-month vaccine visit) and names Maya, which matches the given checkpoint facts. Opens with 'I looked up', which is the contract-mandated wording and carries no invented scope. The 'still learning your area, I'll have something for the weekend soon' clause is the instructed copy for a null weekendPick. Plain, short, not hype. Minor deduction: the offerQuestion true flag is not reflected by any question, but that is a fact-handling detail, not a voice fault.",
+    "score": 4
+  }
+}

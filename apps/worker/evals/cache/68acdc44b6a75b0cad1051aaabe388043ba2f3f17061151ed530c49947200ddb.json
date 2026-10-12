@@ -1,0 +1,14 @@
+{
+  "value": {
+    "found": false,
+    "reason": "no_year_stated",
+    "cycle_on_page": null,
+    "year_evidence": null,
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "evidence": null,
+    "confidence": 0.9
+  },
+  "latencyMs": 1621
+}

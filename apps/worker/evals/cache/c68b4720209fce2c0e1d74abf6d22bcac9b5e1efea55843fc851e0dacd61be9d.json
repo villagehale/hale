@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Cancel swim\" matches two events in the week, so asking which one is the required handling, and nothing was drafted. The reply names both swims by day and time, asks a single question and stops. Every detail traces to the week, and there is no greeting or sign-off.",
+    "score": 5
+  }
+}

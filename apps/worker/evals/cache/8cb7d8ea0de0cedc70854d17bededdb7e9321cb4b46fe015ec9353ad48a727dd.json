@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "sure, go ahead",
+    "rationale": "Plain affirmative 'sure, go ahead' directly answers the question with permission",
+    "confidence": 0.97
+  },
+  "latencyMs": 1278
+}

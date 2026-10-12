@@ -1,0 +1,4 @@
+{
+  "searchCount": 9,
+  "notes": "```json\n{\n  \"answer\": \"A runny nose and mild cough with no fever, in a child who is still eating and playing, is most often a common cold. Colds usually clear in a week to 10 days, and the cough can last a bit longer. Skip over-the-counter cough medicine under age 6.\",\n  \"triage\": \"Call 811 if it isn't better after 10 days, or if there is ear pain, a fever lasting over 3 days, or poor drinking. Call 911 or go to the ER now for trouble breathing, blue lips, a stiff neck, or if your child is very sleepy or hard to wake.\",\n  \"sources\": [\"Alberta MyHealth\", \"Boston Children's Hospital\", \"KidsHealth\", \"WebMD\"]\n}\n```\n\nI only had the search tool in this step, so I've written the `medical_answer` object out directly. No language was given, so I wrote it in English. The answer and triage together come to roughly 510 characters."
+}

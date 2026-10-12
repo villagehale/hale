@@ -1,0 +1,12 @@
+{
+  "parsed": {
+    "payload": {
+      "to": "programs@riversidecommunity.ca",
+      "subject": "Re: Parent & Baby Swim — Fall registration open",
+      "body": "hi — thanks for the note. we'd like to hold a spot for the fall parent & baby swim on saturdays at 9:30. could you let us know what you need from us to confirm the registration and when payment is due?\n\nthanks!"
+    },
+    "confidence": 0.6,
+    "rationale": "Email says reply to hold a spot, but no memory/calendar context confirms the family's availability or child details, so I kept the reply minimal and asked about next steps.",
+    "recipient_visibility": "public"
+  }
+}

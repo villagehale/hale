@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "no need, I will handle it",
+    "rationale": "'no need, I will handle it' is a plain refusal of Hale monitoring things for them",
+    "confidence": 0.93
+  },
+  "latencyMs": 1232
+}

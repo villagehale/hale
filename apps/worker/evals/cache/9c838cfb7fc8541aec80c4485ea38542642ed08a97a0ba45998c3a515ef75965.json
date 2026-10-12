@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "msg_011CfwL4vM72KoThioQY4cSx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"greeting\":\"Hi there, hope the week's off to a calm start.\",\"weekFraming\":\"Sadie's 2-year checkup is the main thing on the calendar this week, and there's also a private appointment for Rowan, so it's a fairly light one with just the two to keep in mind.\",\"itemLines\":{\"0\":\"A good one to have on the books for Sadie.\",\"1\":\"Nothing more needed on this one beyond keeping the time free.\"},\"signOff\":\"Take it one day at a time.\"}"
+      }
+    ],
+    "usage": {
+      "input_tokens": 95,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2971,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 160,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

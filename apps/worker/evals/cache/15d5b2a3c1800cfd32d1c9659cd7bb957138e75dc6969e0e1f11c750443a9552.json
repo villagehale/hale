@@ -1,0 +1,28 @@
+{
+  "parsed": {
+    "event_type": "calendar_conflict_detected",
+    "confidence": 0.93,
+    "rationale": "A newly added Toddler Swim event (16:30–17:00) overlaps with Daycare pickup (16:00–16:45) on the same day.",
+    "payload": {
+      "added_event": {
+        "title": "Toddler Swim — Mia",
+        "start": "2026-09-10T16:30:00-04:00",
+        "end": "2026-09-10T17:00:00-04:00"
+      },
+      "overlaps_with": {
+        "title": "Daycare pickup",
+        "start": "2026-09-10T16:00:00-04:00",
+        "end": "2026-09-10T16:45:00-04:00"
+      },
+      "overlap_minutes": 15
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 332,
+    "output": 370
+  }
+}

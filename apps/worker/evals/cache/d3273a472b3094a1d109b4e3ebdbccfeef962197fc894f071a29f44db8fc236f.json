@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CfwQq5w19ZRvqnucmeTUJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStQYKEAgSGAI4AUIIdGhpbmtpbmcSDN3kJUxCmbSmtLmg+xoMIYCy7UzHvTaUQSLgIjDvBWJ9Wsis6ZbMOVxH4wJApWJGD527yBiyeiamwWxA942ujyLZv+0J1qzfrNIbPS8q0gW96gDvumFoLTuclFwr1CEIM2ZBDLL8VV7TkjEkHJbuBGdsZQ0MM2gkCL/vA1xoaelnxjK8t7ZV/UPwH4Fp7bAvFAHllT/6VKESxAfPmIDZ3YDoKe/VRrnSjXXbzSVQebbdwjsksl4aRPXBzAsVfqEkpqkUxX8kyPqkKNuITS5dtj0DXi39dDyxfz/XqxgYTficnsGqTpBPaHH+StDsjv+WWUOLzH14DaI1bDDBxyd/+ha4/SsrQv1/LBI3iiD05k4ZlEobYufH3uGzJpo+4QUbJA8YDzZRk2S+IkCz1wa7XGHF66rWadfiA5/6c1gd+f1Jls+0qbsRGvhTNoXhZsvVtxL+yn5Kp+bqS29KSjotWqZiLD2K9qizSliyEdPHxhsRYSe/jVoD1bc7p0zzU6BHEBjOyooZo5uI8aPBuPuKKmMWGleWaiwlILXAoD/0Jd0krH06l4wjpqfVEJjnyjLnF3+n0E5XhvWJkQmz0bGgHZko8UrMZ5rc7UH+28prXBKQVYhg6kXuUFpexi960wO5pSN4vYLCBsJqeb7LilFo+OxNxuf3md+5Mgqai17Nx2l8IJlke/lfOwjs32Ym83YzuXfNNI+EtPQB+KBQo38JVR6yaAzwZeUYNVufnMaA0iwwOELMm2HNq5mT/uXRVHVfVi+9khKrcs3o+QCoXZY0qw2/NO/4J44CTSkWAXUwAksZ+WQnpsMvg8Ai+9QjerT0/du6efUD4gzXf+EEuNeVBYiNR8mtDy4ERiQ9ZlNYPXanwvdkFj81LYE+lP1/4wvXCcdN5zo2vFy6Mgjz6LK5zhmcwunJc9TNbO68MXxFlTMtje32ZY67XSKTbNfsOk6rCCKnMbWKQ9DEJjQSo2BdV05QrsghNRfEmRWapSSOMOEbO7E2NBQ3VbiNlnoDC3I1BDEo+nAGWjBy18WgLDOBa8BHngo8zSUAF3iwY9D1PcmjvhgB"
+      },
+      {
+        "type": "text",
+        "text": "You've got soccer practice at Cedarvale Park Sat 10:00am, so that's one park you already know. I don't have a checked playground to add. Riverdale Farm is a farm, not a park, but it's free and outdoors on Sun, Aug 9."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1570,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20497,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 172,
+      "output_tokens_details": {
+        "thinking_tokens": 86
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2472
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "okay?",
+    "rationale": "Bare 'okay' with a question mark reads as uncertain or a request for clarification, not a plain yes.",
+    "confidence": 0.9
+  },
+  "latencyMs": 1307
+}

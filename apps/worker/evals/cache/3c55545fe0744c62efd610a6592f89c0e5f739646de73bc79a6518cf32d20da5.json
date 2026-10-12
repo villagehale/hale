@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with a plain 'I checked' and states the given facts: Fall 2026 opened Aug 11 7:00 a.m., Winter 2027 not yet posted (stillOpenPage false, so saying next dates aren't posted is correct). Includes the handed firstFindBeat verbatim. No invented scope, no hype, short and clear. Missing weekendPick is not mentioned, which is acceptable since no pick-learning clause is strictly required when it is absent alongside registration data. Strong, faithful message.",
+    "score": 5
+  }
+}

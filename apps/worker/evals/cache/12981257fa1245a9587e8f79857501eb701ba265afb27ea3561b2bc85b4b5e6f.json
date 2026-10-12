@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "Known clinic proposes a new time for Mia's 2-year checkup and asks the parent to reply with what works.",
+    "payload": {
+      "clinic": "Little Sprout Pediatrics",
+      "child_name": "Mia",
+      "appointment_type": "2-year checkup",
+      "reason": "Dr. Okafor unexpectedly away July 9",
+      "original_date": "July 9",
+      "proposed_date": "July 11",
+      "proposed_time": "3:30 PM",
+      "alternatives_welcome": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 288,
+    "output": 350
+  }
+}

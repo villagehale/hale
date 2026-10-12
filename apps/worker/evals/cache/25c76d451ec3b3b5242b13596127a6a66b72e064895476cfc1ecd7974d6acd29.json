@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "not right now",
+    "rationale": "'not right now' is a plain refusal of the offer to keep an eye on things",
+    "confidence": 0.95
+  },
+  "latencyMs": 1213
+}

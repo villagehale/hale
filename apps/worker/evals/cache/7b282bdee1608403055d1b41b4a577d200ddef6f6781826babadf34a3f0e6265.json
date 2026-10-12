@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "Starts with yes but changes the thing to Tuesday; a mixed answer and counter-request, so it goes to the coach."
+  },
+  "latencyMs": 1719
+}

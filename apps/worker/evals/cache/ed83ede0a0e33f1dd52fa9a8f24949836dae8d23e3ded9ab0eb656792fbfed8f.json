@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "news-or-politics",
+    "reason": "sports result question about the world, nothing to do with the family's week"
+  },
+  "latencyMs": 1008
+}

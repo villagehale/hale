@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "bare greeting, no off-domain or safety signal"
+  },
+  "latencyMs": 1042
+}

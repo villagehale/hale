@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.4,
+    "rationale": "Vague email from an unknown sender (brightpath-family.ca) mentioning an open house, a form, and a fee, with no clear institution type or specific ask.",
+    "payload": {
+      "sender": "contact@brightpath-family.ca",
+      "subject": "A few things",
+      "mentions": [
+        "open house moved",
+        "form still needed",
+        "possible small fee",
+        "date pending other location"
+      ]
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 245,
+    "output": 287
+  }
+}

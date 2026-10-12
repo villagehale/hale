@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "Message is in French, and this system only reads English, so it goes to the coach rather than being translated here."
+  },
+  "latencyMs": 2032
+}

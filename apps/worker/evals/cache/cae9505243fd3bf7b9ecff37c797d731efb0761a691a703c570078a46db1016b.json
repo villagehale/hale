@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.95,
+    "rationale": "Shipping notification for a goods order (rain boots), not a dated child event or place confirmation"
+  },
+  "latencyMs": 1327
+}
