@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason says what the item is (a group message arranging who takes Wren to swim) and why that makes it a kid item (it is a kid activity naming a child), which fits the verdict. It is a single short clause and adds no facts the item does not support. It could have stressed that Wren is named, but the reason still meets the standard.",
+    "score": 5
+  }
+}

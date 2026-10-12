@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a work event (a quarterly planning offsite) and implies why that makes it the parent's own. 'Q4' supports 'quarterly' and 'offsite' plainly signals work, so nothing is invented. It is one short clause matching the adult verdict. The 'why' is implicit rather than stated, but this is still near ideal.",
+    "score": 5
+  }
+}

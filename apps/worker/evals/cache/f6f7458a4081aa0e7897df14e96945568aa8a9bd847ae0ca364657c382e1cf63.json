@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is just the word 'Hold'. It names no child, activity or person, so unsure is the right call under the bare-item rule. The classifier's reason is one short clause that says what the item is (a bare placeholder) and why that gives unsure (nothing shows whose it is). It invents no facts and agrees with the verdict.",
+    "score": 5
+  }
+}

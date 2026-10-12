@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a hotel booking) and why it is the parent's own: it matches the 'a hotel stay' notMineHints entry and names no child. That supports the adult verdict and invents no fact. It is one clause, slightly long but plain.",
+    "score": 5
+  }
+}

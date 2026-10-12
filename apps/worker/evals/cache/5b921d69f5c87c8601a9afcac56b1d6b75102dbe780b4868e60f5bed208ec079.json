@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a swimming lesson that names Lina, who is one of the children, so it is a kid item. The classifier's reason is a single plain clause that says what the item is and why that leads to the kid verdict. It adds no unsupported facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names the item as a work meeting, a daily standup, and says it is the parent's own. That matches the rule that a meeting with no child named belongs to the parent, so it supports the adult verdict. It is one short clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

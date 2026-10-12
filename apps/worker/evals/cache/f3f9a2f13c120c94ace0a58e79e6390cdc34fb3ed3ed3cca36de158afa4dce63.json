@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short plain clause. It says what the item is: a bare 'Busy' calendar block. It also says why that means unsure: nothing shows whose it is. It invents no facts and matches the verdict.",
+    "score": 5
+  }
+}

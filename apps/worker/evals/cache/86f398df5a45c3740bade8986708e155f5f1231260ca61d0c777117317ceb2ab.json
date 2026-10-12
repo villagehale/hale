@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is the single word \"Call\", which is bare and ambiguous, so unsure is the right fit. The classifier says what it is (a bare call with no name or activity) and why that means unsure (could be either). It is one short clause and invents nothing.",
+    "score": 5
+  }
+}

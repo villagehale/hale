@@ -1,0 +1,33 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a swim outing for Wren, who is one of the children",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i1",
+        "reason": "a book club, an adult social group with no child named",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "a daycare pickup for Wren, a care arrangement for one of the children",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i3",
+        "reason": "errands after lunch, a bare errand with no child named and nothing that marks it as a kid item",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 1866,
+  "inputTokens": 162,
+  "outputTokens": 210
+}

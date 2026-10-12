@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Hold\" is a bare calendar placeholder with no activity, person or child attached, so nothing ties it to the kids or to the parent and unsure is the right call. The classifier's reason says exactly that in one short clause, adds no unsupported facts, and backs the given verdict.",
+    "score": 5
+  }
+}

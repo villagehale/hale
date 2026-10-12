@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a hotel reservation and points to the missing child name and missing family signal. Under the trip rule, that is exactly what makes the item unsure. It is one plain clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls this a clinic appointment reminder with no child named, but under the rules that points to adult, not unsure. Its hedge \"could be the parent's own\" leans toward the other verdict and never explains why the item is undecidable, so it does not support the unsure verdict beside it.",
+    "score": 2
+  }
+}

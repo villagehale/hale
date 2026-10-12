@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says the item is a family room booking and that it names both children. Under the trip rule, that is exactly why the verdict is kid. Every fact comes from the item, and it is one short plain clause.",
+    "score": 5
+  }
+}

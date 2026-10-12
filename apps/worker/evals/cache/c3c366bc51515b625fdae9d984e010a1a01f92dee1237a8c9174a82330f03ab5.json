@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason supports the adult verdict. It names a workplace design 1:1, and the surname shows Wren Castillo is an adult colleague, not the 18-month-old. \"Colleague\" is a fair reading of a 1:1 labelled design. The wording \"a colleague with a surname\" is a little clumsy but is still one clear clause.",
+    "score": 5
+  }
+}

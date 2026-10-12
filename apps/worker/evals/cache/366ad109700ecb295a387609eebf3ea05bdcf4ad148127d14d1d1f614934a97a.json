@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a general errands note and adds no unsupported facts. However, 'no child named' on its own leans toward an adult verdict. It never says the note is too bare to tell either way, which is the actual ground for unsure. That makes it a slightly incomplete link to the verdict.",
+    "score": 4
+  }
+}

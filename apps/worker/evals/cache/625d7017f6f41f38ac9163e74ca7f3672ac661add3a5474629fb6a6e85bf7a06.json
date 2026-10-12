@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a hotel booking and gives the rule-based grounds for unsure: no child is named and it is not plainly a family or work trip. It is one short clause, adds no unsupported facts and matches the verdict.",
+    "score": 5
+  }
+}

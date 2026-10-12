@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is accurate and backed by the context: the item is a hotel booking, it matches the 'a hotel stay' entry in notMineHints, and it names no child, so it leads directly to the adult verdict. It is one clause with no invented facts. It runs slightly long, since the notMineHints match alone would justify the verdict, but it is still a single plain sentence.",
+    "score": 5
+  }
+}

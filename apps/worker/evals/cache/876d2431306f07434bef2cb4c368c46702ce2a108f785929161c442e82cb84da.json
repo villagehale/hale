@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads 'Réunion' as a bare meeting and gives a plain, single-clause justification that matches the unsure verdict. It invents nothing and does not just copy the title. However, its 'why' sits uneasily with the rule that a meeting naming no child is the parent's own: lacking detail about whose meeting it is is exactly the case that rule settles. So the justification is coherent but not fully sound under the classifier's own rules.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is only the bare initial \"J.\", which names no child and no activity, so unsure is the right call under the bare-or-ambiguous rule. The reason says what the item is (a bare initial) and why that leads to unsure (nothing shows whose it is). It is one short plain clause with no invented facts.",
+    "score": 5
+  }
+}

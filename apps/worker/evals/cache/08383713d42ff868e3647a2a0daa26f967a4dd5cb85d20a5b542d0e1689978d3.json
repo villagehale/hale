@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls the item a hotel booking. It invokes the trip rule exactly: no child named, not plainly a family booking, so unsure, which matches the verdict. It is one short clause and adds no unsupported facts. It could also have noted that the booking is not plainly a work trip, but that is implied by the rule.",
+    "score": 5
+  }
+}

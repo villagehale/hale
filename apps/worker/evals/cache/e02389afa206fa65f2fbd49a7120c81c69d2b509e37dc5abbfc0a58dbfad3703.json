@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the unsure verdict. It says what the item is (a bare calendar block reading 'Busy') and why that gives unsure (nothing shows whose it is), which matches the rule for bare or ambiguous items. It is one short clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

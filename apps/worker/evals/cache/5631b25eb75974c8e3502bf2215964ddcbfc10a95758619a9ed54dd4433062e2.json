@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel reservation confirmation that names neither Wren nor Theo, and nothing marks it as a family stay or a work trip. Under the trip rule that makes it unsure, which is the verdict given. The reason is one plain clause that says what the item is and why that leads to unsure, and it adds no unsupported facts.",
+    "score": 5
+  }
+}

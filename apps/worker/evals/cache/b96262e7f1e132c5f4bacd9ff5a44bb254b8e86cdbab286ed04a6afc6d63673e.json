@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that says what the item is (a swim outing) and why it is kid (it names Wren, one of the children), which supports the kid verdict. It adds no unsupported facts. Calling it an 'outing' rather than a regular lesson is a light reading of the item, but it is fair.",
+    "score": 5
+  }
+}

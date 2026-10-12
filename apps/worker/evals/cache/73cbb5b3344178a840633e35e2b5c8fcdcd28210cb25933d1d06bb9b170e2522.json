@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a hotel reservation that names no child and has no family or work markers. Under the trip rule that leads straight to unsure, so it matches the verdict. It is one short clause and invents nothing.",
+    "score": 5
+  }
+}

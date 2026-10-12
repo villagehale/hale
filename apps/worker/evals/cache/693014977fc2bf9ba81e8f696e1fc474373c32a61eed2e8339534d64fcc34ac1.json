@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is Chinese for \"Lina's music class\", and Lina is a listed child. The reason says what the item is, a music class for Lina, and why that makes it a kid item. It is one plain clause with no unsupported facts.",
+    "score": 5
+  }
+}

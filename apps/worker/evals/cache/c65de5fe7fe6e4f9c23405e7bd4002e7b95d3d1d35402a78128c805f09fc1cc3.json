@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a single clause. It correctly says the item is a daycare pickup for Wren, who is a named child. That supports the kid verdict, and it adds no invented facts. The trailing phrase is a little redundant but harmless.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that matches the unsure verdict and adds nothing the item does not support. It says what the item is, a clinic appointment reminder, and gives a why: the email names no one, so it could be anyone's. There is tension with the rules, though. They make an appointment that names no child the parent's own, so pointing out that no child is named actually leans toward adult. The case for unsure would be better grounded in how bare the item is.",
+    "score": 4
+  }
+}

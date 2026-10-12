@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item 'Cena con amigos del trabajo' is a dinner with colleagues and names no child, so it is the parent's own social plan. The classifier's reason translates and identifies it in one plain clause, says why that means adult, and adds no unsupported facts.",
+    "score": 5
+  }
+}

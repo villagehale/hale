@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is: a birthday party for Mila, who is not one of the family's children. That fits the rule that a party for another child is a kid item, so it backs the kid verdict. It is one short clause with no invented facts. \"Would attend\" is a slight assumption, but it is a reasonable reading of a party on the parent's calendar.",
+    "score": 5
+  }
+}

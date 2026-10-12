@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a standup meeting, a recurring work meeting, and notes that no child is involved, so it is the parent's own work. That matches the adult verdict and follows the rule that a meeting with no child named belongs to the parent. It is one short plain clause and invents nothing.",
+    "score": 5
+  }
+}

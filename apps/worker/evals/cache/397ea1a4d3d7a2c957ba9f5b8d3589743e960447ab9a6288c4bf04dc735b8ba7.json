@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a restaurant booking for two with no child named, and Wren at 18 months would hardly be one of the two diners. The classifier's reason says plainly what the item is and ties it to the adult verdict. Calling it the parent's own dinner is a fair reading of a table-for-two booking, not an invented fact. It is one short clause.",
+    "score": 5
+  }
+}

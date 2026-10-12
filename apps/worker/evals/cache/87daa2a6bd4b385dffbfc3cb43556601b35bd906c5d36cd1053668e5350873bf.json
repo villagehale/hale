@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names the item as a restaurant reservation for two and ties it to the adult verdict as the parent's own dinner. Tablebook and a table booking plainly support 'restaurant'. Calling it the parent's own is a fair reading: no child is named, and a 7:30 table for two is not a family booking. It is one short clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

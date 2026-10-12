@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is the single word \"Hold\" with no activity, person or context, so the verdict has to be unsure. The classifier's reason says exactly this in one plain clause: it is a bare word with nothing to show whose it is. It adds no unsupported facts and it backs the verdict given.",
+    "score": 5
+  }
+}

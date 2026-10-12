@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that names the item as a play date request and says it names Wren, the family's child. Both facts are in the item, and they support the kid verdict directly without inventing anything.",
+    "score": 5
+  }
+}

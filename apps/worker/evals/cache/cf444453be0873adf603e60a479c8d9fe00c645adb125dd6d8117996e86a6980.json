@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks someone to pick Wren up from daycare, and Wren is a named child, so this is plainly a childcare logistics item and kid fits. The classifier's reason says exactly that in one plain clause, a daycare pickup for a named child, without inventing any facts. The second half is mildly redundant.",
+    "score": 5
+  }
+}

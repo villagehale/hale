@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause. It names the item as a flight and correctly says no child is named and nothing marks it as a family booking. It also adds no unsupported facts. That leads straight to unsure under the trip rule.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifierReason is one plain clause that names the item as a birthday party for another child, which the rules count as a kid item. That supports the kid verdict. 'Would attend' is a small inference, not an invented fact, since the rule treats another child's party as a kid item.",
+    "score": 5
+  }
+}

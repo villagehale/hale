@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a daycare pickup, a care arrangement for a child), and that supports the kid verdict under the rule that a kid activity with no child named is still a kid item. It adds no unsupported facts and is a single plain clause. The trailing 'though no child is named' is a slight hedge, but it is accurate and consistent with the rule.",
+    "score": 5
+  }
+}

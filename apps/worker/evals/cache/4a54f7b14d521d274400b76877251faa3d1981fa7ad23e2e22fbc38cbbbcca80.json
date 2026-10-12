@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause. It says what the item is (a flight check-in) and gives the rule-based why: no child is named and it is not plainly a family or work booking. That supports unsure, and it adds no facts the item lacks.",
+    "score": 5
+  }
+}

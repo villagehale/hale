@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short clause. It names the item as a bare calendar block and says nothing in it shows whose it is, which supports unsure under the bare-item rule. It adds no facts the item does not support.",
+    "score": 5
+  }
+}

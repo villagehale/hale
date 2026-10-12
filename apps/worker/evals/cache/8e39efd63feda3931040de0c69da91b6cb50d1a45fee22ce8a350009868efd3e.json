@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is only the word \"Busy\". The reason correctly calls it a bare word that names no activity and no person, which is exactly why ownership can't be told and the verdict is unsure. It is one plain clause, adds no unsupported fact, and does not copy the title back without explaining it.",
+    "score": 5
+  }
+}

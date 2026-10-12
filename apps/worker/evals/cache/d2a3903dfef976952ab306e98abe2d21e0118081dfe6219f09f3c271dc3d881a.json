@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short plain clause. It says what the item is, a car service reminder, and why that gives the adult verdict: the reminder is the parent's own. It invents no facts and fits the verdict given.",
+    "score": 5
+  }
+}

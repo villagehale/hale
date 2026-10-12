@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a French dentist appointment with no child named, and the rule says such an appointment is the parent's own. The reason names the kind of thing (a dentist visit) and attributes it to the parent, which matches the adult verdict. It is a plain clause, though it only implies the 'no child named' grounds rather than stating them.",
+    "score": 4
+  }
+}

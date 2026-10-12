@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a well-child checkup) and ties it to Wren, a named child aged 18 months, which matches the item and supports kid. It is one short clause with nothing unsupported. It nearly copies the title and leaves the \"why\" implicit, but naming the child carries it.",
+    "score": 4
+  }
+}
