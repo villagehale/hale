@@ -858,6 +858,49 @@ describe('after provision leftover facts · VIL-327', () => {
     expect(outcome.reply).not.toMatch(/https?:\/\//);
   });
 
+  /**
+   * WHERE THE EVAL AND PRODUCTION PART. The general-answer eval grades "who is the prime
+   * minister of canada" through sanitize, search and compose. In production the VIL-327
+   * matchers claim that text first: it never reaches the sanitize call, its search is this
+   * older branch's own (not streamed, and not behind GENERAL_ANSWER_SEARCH_ENABLED), and
+   * the reply ends on the fixed line back to the week.
+   */
+  it('takes the prime-minister question before the sanitize call, with the flag dark', async () => {
+    const seen = { sanitize: 0, searches: 0 };
+    const client = () =>
+      ({
+        messages: {
+          create: async (req: { system?: unknown; tools?: Array<{ type?: string }> }) => {
+            if (JSON.stringify(req.system ?? '').includes(SANITIZE_HEADING)) seen.sanitize += 1;
+            if (req.tools?.[0]?.type !== 'web_search_20250305') throw new Error('not a search');
+            seen.searches += 1;
+            return {
+              content: [
+                { type: 'text', text: 'The office is held by the person the page names.' },
+                {
+                  type: 'web_search_tool_result',
+                  tool_use_id: 'srvtu_4',
+                  content: [{ type: 'web_search_result', url: 'https://example.org', title: 'x' }],
+                },
+              ],
+            };
+          },
+        },
+      }) as unknown as AgentClient;
+
+    const outcome = await createGeneralAnswer(client).compose(
+      'who is the prime minister of canada',
+      TODAY,
+    );
+
+    expect(generalAnswerSearchEnabled()).toBe(false);
+    expect(seen).toEqual({ sanitize: 0, searches: 1 });
+    expect(outcome).toEqual({
+      status: 'composed',
+      reply: `The office is held by the person the page names. ${AFTER_PROVISION_RETURN_ASK}`,
+    });
+  });
+
   it('says no current source yet, then returns to the kids / the week', async () => {
     const exploding = () =>
       ({
