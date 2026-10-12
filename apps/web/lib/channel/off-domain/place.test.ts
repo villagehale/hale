@@ -10,12 +10,18 @@ import us from './postal-cities/us.json';
  * cities they belong to are real geography (postal-cities/README.md).
  */
 
-const ROW = { country: null, city: null, postalCode: null, areaCoarse: null };
+const ROW = { country: null, province: null, city: null, postalCode: null, areaCoarse: null };
 
 describe('placeOf', () => {
   it("uses the family's own stored city when the country's table has it, ahead of any postal code", async () => {
     expect(
-      await placeOf({ country: 'Canada', city: 'Halifax', postalCode: 'M4K 1A1', areaCoarse: 'M4K' }),
+      await placeOf({
+        ...ROW,
+        country: 'Canada',
+        city: 'Halifax',
+        postalCode: 'M4K 1A1',
+        areaCoarse: 'M4K',
+      }),
     ).toEqual({ status: 'known', city: 'Halifax', country: 'Canada' });
   });
 
@@ -48,13 +54,14 @@ describe('placeOf', () => {
   });
 
   it.each([
-    ['a ZIP code', '80202', '802', 'Denver'],
-    ['a ZIP+4', '60601-1234', '606', 'Chicago'],
-    ['a ZIP in a third state', '98101', '981', 'Seattle'],
-  ])('derives the city for a US family: %s', async (_label, postalCode, areaCoarse, city) => {
+    ['a ZIP code', '80202', '802', 'Denver', 'Colorado'],
+    ['a ZIP+4', '60601-1234', '606', 'Chicago', undefined],
+    ['a ZIP in a third state', '98101', '981', 'Seattle', undefined],
+  ])('derives the city for a US family: %s', async (_label, postalCode, areaCoarse, city, state) => {
     expect(await placeOf({ ...ROW, country: 'United States', postalCode, areaCoarse })).toEqual({
       status: 'known',
       city,
+      ...(state ? { provinceOrState: state } : {}),
       country: 'United States',
     });
   });
@@ -87,9 +94,9 @@ describe('placeOf', () => {
   it.each(['United States', 'united states of america', 'USA', 'us'])(
     'reads the US table for a country stored as %j',
     async (country) => {
-      expect(await placeOf({ ...ROW, country, postalCode: '80202' })).toEqual({
+      expect(await placeOf({ ...ROW, country, postalCode: '98101' })).toEqual({
         status: 'known',
-        city: 'Denver',
+        city: 'Seattle',
         country: 'United States',
       });
     },
@@ -166,6 +173,76 @@ describe('placeOf', () => {
 });
 
 /**
+ * Sloane, 2026-10-12: the province or the state goes with the city only when the city's
+ * name is ambiguous, which is when the table for the row's country has that name in more
+ * than one of them. The name that goes is the table's own.
+ */
+describe('a city name more than one province or state has', () => {
+  it.each([
+    ['a Windsor area in Quebec', 'Canada', 'J1S 1A1', 'Windsor', 'Quebec'],
+    ['a Windsor area in Ontario', 'Canada', 'N8P 1A1', 'Windsor', 'Ontario'],
+    ['Springfield, by an Illinois ZIP', 'United States', '62701', 'Springfield', 'Illinois'],
+    ['Springfield, by a Missouri ZIP', 'United States', '65806', 'Springfield', 'Missouri'],
+  ])('says which one for %s', async (_label, country, postalCode, city, provinceOrState) => {
+    expect(await placeOf({ ...ROW, country, postalCode })).toStrictEqual({
+      status: 'known',
+      city,
+      provinceOrState,
+      country,
+    });
+  });
+
+  it('says none for a city only one province has', async () => {
+    expect(await placeOf({ ...ROW, country: 'Canada', postalCode: 'M4K 1A1' })).toStrictEqual({
+      status: 'known',
+      city: 'Toronto',
+      country: 'Canada',
+    });
+    // Whatever the row holds for a province: it is not what decides.
+    expect(
+      await placeOf({ ...ROW, country: 'Canada', province: 'Nova Scotia', city: 'Halifax' }),
+    ).toStrictEqual({ status: 'known', city: 'Halifax', country: 'Canada' });
+  });
+
+  /** A family stored with a city and no postal code. The row's province is free text, so
+   * it only chooses among the table's names for the places that share the city's. */
+  it.each([
+    ['its name', 'Ontario', 'Ontario'],
+    ['its postal abbreviation, in lower case', 'on', 'Ontario'],
+    ['its name in capitals with an accent', ' QUÉBEC ', 'Quebec'],
+  ])('reads a stored province by %s, and sends the table spelling of it', async (_label, province, sent) => {
+    expect(
+      await placeOf({ ...ROW, country: 'Canada', province, city: 'windsor' }),
+    ).toStrictEqual({ status: 'known', city: 'Windsor', provinceOrState: sent, country: 'Canada' });
+  });
+
+  it('leaves a shared name to the postal area when the stored province does not say which', async () => {
+    // Not a province at all, so the area decides: N8P is in Ontario.
+    expect(
+      await placeOf({
+        ...ROW,
+        country: 'Canada',
+        province: 'the lake house',
+        city: 'Windsor',
+        postalCode: 'N8P 1A1',
+      }),
+    ).toStrictEqual({
+      status: 'known',
+      city: 'Windsor',
+      provinceOrState: 'Ontario',
+      country: 'Canada',
+    });
+    // A real province the table has no Windsor in, and no area to decide: never guessed.
+    for (const province of ['Yukon', null]) {
+      expect(await placeOf({ ...ROW, country: 'Canada', province, city: 'Windsor' })).toEqual({
+        status: 'unknown',
+        reason: 'no_postal',
+      });
+    }
+  });
+});
+
+/**
  * NO STORED TEXT LEAVES ON THIS PATH. A stored city is used only when it is a place name
  * in the table for the row's country, and what is sent is the table's spelling of it. The
  * country is sent as the name place.ts fixes for it.
@@ -180,7 +257,7 @@ describe('a stored city and country, which are never sent as stored', () => {
     ['a city with a postal code after it', 'Toronto A1A 1A1'],
   ])('ignores a stored city that is %s, and tries the postal area next', async (_label, city) => {
     expect(
-      await placeOf({ country: 'Canada', city, postalCode: 'V6B 1A1', areaCoarse: 'V6B' }),
+      await placeOf({ ...ROW, country: 'Canada', city, postalCode: 'V6B 1A1', areaCoarse: 'V6B' }),
     ).toEqual({ status: 'known', city: 'Vancouver', country: 'Canada' });
     expect(await placeOf({ ...ROW, country: 'Canada', city })).toEqual({
       status: 'unknown',
@@ -193,7 +270,7 @@ describe('a stored city and country, which are never sent as stored', () => {
     ['a country name with something after it', 'Canada, near the lake'],
   ])('reads no table for a stored country that is %s', async (_label, country) => {
     expect(
-      await placeOf({ country, city: 'Toronto', postalCode: 'M4K 1A1', areaCoarse: 'M4K' }),
+      await placeOf({ ...ROW, country, city: 'Toronto', postalCode: 'M4K 1A1', areaCoarse: 'M4K' }),
     ).toEqual({ status: 'unknown', reason: 'unsupported_country' });
   });
 
@@ -208,7 +285,13 @@ describe('a stored city and country, which are never sent as stored', () => {
     ["st. john's", "St. John's"],
   ])('sends a stored city of %j as the table spells it: %s', async (stored, city) => {
     expect(
-      await placeOf({ country: 'Canada', city: stored, postalCode: 'V6B 1A1', areaCoarse: 'V6B' }),
+      await placeOf({
+        ...ROW,
+        country: 'Canada',
+        city: stored,
+        postalCode: 'V6B 1A1',
+        areaCoarse: 'V6B',
+      }),
     ).toEqual({ status: 'known', city, country: 'Canada' });
   });
 
@@ -260,6 +343,45 @@ describe('the postal tables', () => {
       expect(new Set(table.codes).size).toBe(table.codes.length);
       expect(Math.max(...table.cityOf)).toBeLessThan(table.cities.length);
     }
+  });
+
+  /** Every area has the province or state it is in, by a name fixed in the table, and a
+   * place name found in more than one is listed with each of them. */
+  it('name the province or state of every area, and the place names more than one has', () => {
+    expect(ca.regions).toEqual([
+      'Alberta',
+      'British Columbia',
+      'Manitoba',
+      'New Brunswick',
+      'Newfoundland and Labrador',
+      'Northwest Territories',
+      'Nova Scotia',
+      'Nunavut',
+      'Ontario',
+      'Prince Edward Island',
+      'Quebec',
+      'Saskatchewan',
+      'Yukon',
+    ]);
+    expect(us.regions).toHaveLength(51);
+    for (const table of [ca, us]) {
+      expect(table.regionCodes).toHaveLength(table.regions.length);
+      expect(table.regionOf).toHaveLength(table.codes.length);
+      expect(Math.max(...table.regionOf)).toBeLessThan(table.regions.length);
+      expect(table.sharedRegions).toHaveLength(table.sharedCities.length);
+      expect(table.sharedRegions.filter((regions) => regions.length < 2)).toEqual([]);
+    }
+    // Every Canadian area has a province. A US area with none is one with no city either.
+    expect(ca.regionOf.filter((region) => region < 0)).toEqual([]);
+    expect(us.codes.filter((_, at) => (us.regionOf[at] ?? -1) < 0 && (us.cityOf[at] ?? -1) >= 0)).toEqual([]);
+    const sharedIn = (table: typeof ca, city: string) =>
+      (table.sharedRegions[table.sharedCities.indexOf(table.cities.indexOf(city))] ?? []).map(
+        (region) => table.regions[region],
+      );
+    expect(sharedIn(ca, 'Windsor')).toEqual(expect.arrayContaining(['Ontario', 'Quebec']));
+    expect(sharedIn(us, 'Springfield')).toEqual(expect.arrayContaining(['Illinois', 'Missouri']));
+    expect(sharedIn(ca, 'Toronto')).toEqual([]);
+    expect(sharedIn(us, 'Seattle')).toEqual([]);
   });
 
   it('key Canada by forward sortation area and the US by five-digit ZIP', () => {
