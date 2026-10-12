@@ -27,6 +27,7 @@ import {
   reachesForTheHealthLine,
 } from './copy';
 import { COMPOSE_MAX_TOKENS, normalizeLanguage } from './medical';
+import TOP_LEVEL_DOMAINS from './top-level-domains/tlds.json';
 
 export {
   generalAnswerUserMessage,
@@ -415,6 +416,28 @@ async function liveSearch(
 
 const LINK = /(?:https?:\/\/|www\.)\S+/gi;
 
+/**
+ * A host written with no scheme, and whatever page is written under it: dotted parts
+ * ending in letters, all lower case or all capitals. A phone makes `name.tld` tappable as
+ * it stands. Whether the last part is a top-level domain is the table's to say
+ * (top-level-domains/README.md): `Node.js` and `7 a.m.` have the shape and are not links.
+ * A last part written as a capitalized word is a sentence that began with no space after
+ * the full stop before it.
+ */
+const BARE_HOST =
+  /(?<![\p{L}\p{N}._-])((?:[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?\.)+([a-z]{2,}|[A-Z]{2,}))(?![\p{L}\p{N}-])(?:\/\S*)?/gu;
+const TOP_LEVEL: ReadonlySet<string> = new Set(TOP_LEVEL_DOMAINS);
+
+/** The hosts a reply names with no scheme in front. A link that has one is taken out
+ * first, so a file name at the end of its page is not read as a host of its own. */
+function bareHosts(body: string): string[] {
+  const hosts: string[] = [];
+  for (const [, host, lastPart] of body.replace(LINK, ' ').matchAll(BARE_HOST)) {
+    if (host && lastPart && TOP_LEVEL.has(lastPart.toLowerCase())) hosts.push(host);
+  }
+  return hosts;
+}
+
 /** Whose site a URL is, as it is compared: the host, without the scheme, a leading
  * `www.`, the page under it, or whatever punctuation the sentence put after it. Anything
  * odd in front of the host (a login name, a port) stays in and so matches nothing. */
@@ -432,11 +455,13 @@ function linkHost(url: string): string {
  * this stage could search, any URL was one the model invented and all of them were
  * refused; now one can be the thing the parent asked for, so what is refused is a host the
  * search did not return. The page is not compared: the front page of a site the search
- * found a deeper page on is still that site.
+ * found a deeper page on is still that site. A host written bare is the same link.
  */
 function carriesUnsearchedLink(body: string, searched: readonly string[]): boolean {
   const known = new Set(searched.map(linkHost));
-  return (body.match(LINK) ?? []).some((link) => !known.has(linkHost(link)));
+  return [...(body.match(LINK) ?? []), ...bareHosts(body)].some(
+    (link) => !known.has(linkHost(link)),
+  );
 }
 
 /**
