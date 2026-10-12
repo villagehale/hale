@@ -1,9 +1,15 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { GENERAL_ANSWER_SEARCH_ENABLED_ENV } from './answer';
-import { type InboundThread, productionOffDomainLane, readPendingAsk } from './lane';
+import {
+  type InboundThread,
+  productionOffDomainLane,
+  readPendingAsk,
+  settlePendingAsks,
+} from './lane';
 
 /**
  * The lane's reads of the family through its PRODUCTION wiring, against the real DDL.
@@ -468,32 +474,53 @@ describe("the family's city and country, through the production wiring", () => {
   });
 });
 
-/** A reply Hale sent, as the router writes its ledger row. */
+/** A reply Hale sent, as the router writes its ledger row, and the question it left open
+ * beside it. `missing` is left to the table's default when the reply was missing nothing. */
 async function sentReply(input: {
   familyId: string;
   parentUserId: string;
   createdAt: Date;
-  pending?: { question: string; missing: string | null };
+  pending?: { question: string; missing?: string };
   status?: 'sent' | 'delivered' | 'failed';
   /** The thread the reply went out in. The parent's own text thread unless said. */
   thread?: InboundThread;
 }) {
   const thread = input.thread ?? DIRECT;
-  await db.database.insert(schema.channelMessages).values({
-    familyId: input.familyId,
-    parentUserId: input.parentUserId,
-    channel: thread.channel,
-    providerChatId: thread.providerChatId,
-    direction: 'out',
-    category: 'reply',
-    status: input.status ?? 'sent',
-    body: null,
-    pendingQuestion: input.pending?.question ?? null,
-    pendingMissing: input.pending?.missing ?? null,
-    createdAt: input.createdAt,
-    sentAt: input.createdAt,
-  });
+  const [row] = await db.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: thread.channel,
+      providerChatId: thread.providerChatId,
+      direction: 'out',
+      category: 'reply',
+      status: input.status ?? 'sent',
+      body: null,
+      createdAt: input.createdAt,
+      sentAt: input.createdAt,
+    })
+    .returning({ id: schema.channelMessages.id });
+  const channelMessageId = row?.id as string;
+  if (input.pending) {
+    await db.database
+      .insert(schema.channelPendingAsks)
+      .values({ channelMessageId, familyId: input.familyId, ...input.pending });
+  }
+  return channelMessageId;
 }
+
+/** Every question the table holds, oldest first. */
+const keptAsks = () =>
+  db.database
+    .select({
+      channelMessageId: schema.channelPendingAsks.channelMessageId,
+      familyId: schema.channelPendingAsks.familyId,
+      question: schema.channelPendingAsks.question,
+      missing: schema.channelPendingAsks.missing,
+    })
+    .from(schema.channelPendingAsks)
+    .orderBy(schema.channelPendingAsks.createdAt);
 
 const NO_PLACE = { country: null, province: null, city: null, postalCode: null, areaCoarse: null };
 const ASKED = { question: 'hows the weather tomorrow', missing: 'which city' };
@@ -550,7 +577,7 @@ describe('a question Hale left open, through the production wiring', () => {
     });
     const turn = { familyId, parentUserId, channelMessageId, text: 'Maplewood', now: NOW };
     const pendingReads = (queries: string[]) =>
-      queries.filter((sql) => sql.includes('pending_question'));
+      queries.filter((sql) => sql.includes('channel_pending_asks'));
 
     const group = scripted();
     const groupQueries = watchQueries();
@@ -614,7 +641,7 @@ describe('a question Hale left open, through the production wiring', () => {
     expect(seen.sanitize.map((content) => JSON.parse(content))).toEqual([{ text: 'Maplewood' }]);
     // Positive control: the turn did touch the ledger (the demand-signal stamp).
     expect(queries.some((sql) => sql.includes('"channel_messages"'))).toBe(true);
-    expect(queries.filter((sql) => sql.includes('pending_question'))).toEqual([]);
+    expect(queries.filter((sql) => sql.includes('channel_pending_asks'))).toEqual([]);
   });
 });
 
@@ -643,7 +670,7 @@ describe('readPendingAsk', () => {
     await sentReply({
       ...other,
       createdAt: minutesBefore(2),
-      pending: { question: 'did the raptors win last night', missing: null },
+      pending: { question: 'did the raptors win last night' },
     });
     expect(await read(other)).toEqual({
       status: 'open',
@@ -703,6 +730,64 @@ describe('readPendingAsk', () => {
     expect(await read(asked)).toEqual(OPEN);
   });
 
+  /** One person can be a parent in two households. A question put to them in one is not
+   * read for the other, whose reply would go out under that household's name. */
+  it('does not read a question asked in one household for the same parent in another', async () => {
+    const asked = await seedFamily(NO_PLACE);
+    await sentReply({ ...asked, createdAt: minutesBefore(2), pending: ASKED });
+    const [second] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Second household', provinceOrState: 'ON' })
+      .returning({ id: schema.families.id });
+    const secondFamilyId = second?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: secondFamilyId, userId: asked.parentUserId, role: 'co_parent' });
+
+    expect(await read({ familyId: secondFamilyId, parentUserId: asked.parentUserId })).toEqual(
+      NONE,
+    );
+    // Positive control: in the household it was asked in, it is open.
+    expect(await read(asked)).toEqual(OPEN);
+  });
+
+  /** A question row is believed only when it is filed under the family its reply is. One
+   * that is not is nobody's (rule #1), and a foreign key alone would let it be read. */
+  it("does not read a question filed under another family than its reply's", async () => {
+    const parent = await seedFamily(NO_PLACE);
+    const stranger = await seedFamily(NO_PLACE);
+    const channelMessageId = await sentReply({ ...parent, createdAt: minutesBefore(2) });
+    await db.database
+      .insert(schema.channelPendingAsks)
+      .values({ channelMessageId, familyId: stranger.familyId, ...ASKED });
+
+    expect(await read(parent)).toEqual(NONE);
+    // Positive control: the row is there, and filed correctly it is read.
+    await db.database
+      .update(schema.channelPendingAsks)
+      .set({ familyId: parent.familyId })
+      .where(eq(schema.channelPendingAsks.channelMessageId, channelMessageId));
+    expect(await read(parent)).toEqual(OPEN);
+  });
+
+  /** Hale's last WORD. The parent's own texts since are not one: the text being answered
+   * is itself on the ledger, newer than the reply that asked. */
+  it('does not let what the parent has texted since close the question', async () => {
+    const parent = await seedFamily(NO_PLACE);
+    await sentReply({ ...parent, createdAt: minutesBefore(10), pending: ASKED });
+    await db.database.insert(schema.channelMessages).values({
+      ...parent,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: 'Maplewood',
+      createdAt: minutesBefore(1),
+    });
+
+    expect(await read(parent)).toEqual(OPEN);
+  });
+
   /**
    * Sloane's finding 2. A question is open to a text in the thread it was asked in and
    * nowhere else: the answer goes to whoever is in the chat the next text came from.
@@ -752,5 +837,158 @@ describe('readPendingAsk', () => {
 
     expect(await read(parent, NOW, OWN_CHAT)).toEqual(NONE);
     expect(await read(parent, NOW, GROUP_CHAT)).toEqual(NONE);
+  });
+});
+
+/**
+ * What a reply does to the questions Hale has left open for a parent, against the real
+ * table: the question lives only while it is open.
+ */
+describe('settlePendingAsks', () => {
+  const lit = () => vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+  const settle = (
+    reply: { familyId: string; parentUserId: string; channelMessageId: string },
+    ask: { question: string; missing: string } | null = null,
+  ) => settlePendingAsks(db.database, { ...reply, ask });
+
+  it('keeps the question a reply left open beside that reply, under its family', async () => {
+    lit();
+    const parent = await seedFamily(NO_PLACE);
+    const channelMessageId = await sentReply({ ...parent, createdAt: minutesBefore(2) });
+
+    await settle({ ...parent, channelMessageId }, ASKED);
+
+    expect(await keptAsks()).toEqual([{ channelMessageId, familyId: parent.familyId, ...ASKED }]);
+  });
+
+  /** Answered, or superseded: either way Hale has said something newer to this parent,
+   * and the earlier question can never be read again. So it is not kept. */
+  it('deletes every earlier question of that parent the moment Hale replies to them again', async () => {
+    lit();
+    const parent = await seedFamily(NO_PLACE);
+    await sentReply({ ...parent, createdAt: minutesBefore(10), pending: ASKED, thread: OWN_CHAT });
+    // Two other people with a question open: one in another household, and the other
+    // parent of this one. Neither is this reply's to close.
+    const stranger = await seedFamily(NO_PLACE);
+    const theirs = await sentReply({ ...stranger, createdAt: minutesBefore(9), pending: ASKED });
+    const [partner] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms_settle_partner' })
+      .returning({ id: schema.users.id });
+    const partnerId = partner?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: parent.familyId, userId: partnerId, role: 'co_parent' });
+    const partners = await sentReply({
+      familyId: parent.familyId,
+      parentUserId: partnerId,
+      createdAt: minutesBefore(8),
+      pending: ASKED,
+    });
+    const answer = await sentReply({ ...parent, createdAt: minutesBefore(1) });
+
+    await settle({ ...parent, channelMessageId: answer });
+
+    expect((await keptAsks()).map((ask) => ask.channelMessageId).sort()).toEqual(
+      [theirs, partners].sort(),
+    );
+  });
+
+  it('replaces the earlier question with the one the new reply left open', async () => {
+    lit();
+    const parent = await seedFamily(NO_PLACE);
+    await sentReply({ ...parent, createdAt: minutesBefore(10), pending: ASKED });
+    const next = await sentReply({ ...parent, createdAt: minutesBefore(1) });
+    const narrower = { question: 'hows the weather tomorrow in Maplewood', missing: 'which one' };
+
+    await settle({ ...parent, channelMessageId: next }, narrower);
+
+    expect(await keptAsks()).toEqual([
+      { channelMessageId: next, familyId: parent.familyId, ...narrower },
+    ]);
+  });
+
+  it('neither reads nor writes the table while the flag is dark', async () => {
+    const parent = await seedFamily(NO_PLACE);
+    const earlier = await sentReply({ ...parent, createdAt: minutesBefore(10), pending: ASKED });
+    const next = await sentReply({ ...parent, createdAt: minutesBefore(1) });
+    const queries = watchQueries();
+
+    await settle({ ...parent, channelMessageId: next }, ASKED);
+
+    expect(queries).toEqual([]);
+    vi.restoreAllMocks();
+    expect((await keptAsks()).map((ask) => ask.channelMessageId)).toEqual([earlier]);
+  });
+
+  /** The bounds are the schema file's, and the table's CHECKs are the same two numbers. */
+  it.each([
+    ['question', schema.PENDING_ASK_QUESTION_MAX_CHARS],
+    ['missing', schema.PENDING_ASK_MISSING_MAX_CHARS],
+  ] as const)('keeps no question whose %s is over its bound, and names it', async (field, max) => {
+    lit();
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const parent = await seedFamily(NO_PLACE);
+    const atBound = await sentReply({ ...parent, createdAt: minutesBefore(5) });
+    const overBound = await sentReply({ ...parent, createdAt: minutesBefore(1) });
+    const sized = (length: number) => ({ ...ASKED, [field]: 'x'.repeat(length) });
+
+    await settle({ ...parent, channelMessageId: atBound }, sized(max));
+    expect((await keptAsks()).map((ask) => ask[field].length)).toEqual([max]);
+    expect(info).not.toHaveBeenCalled();
+
+    await settle({ ...parent, channelMessageId: overBound }, sized(max + 1));
+    // The earlier question is closed all the same: Hale has replied since.
+    expect(await keptAsks()).toEqual([]);
+    expect(info.mock.calls).toEqual([
+      [
+        { pendingAsk: 'not_kept', reason: 'too_long' },
+        'off-domain lane: the question this reply left open was not kept',
+      ],
+    ]);
+    // The table refuses the same row by itself.
+    await expect(
+      db.database
+        .insert(schema.channelPendingAsks)
+        .values({ channelMessageId: overBound, familyId: parent.familyId, ...sized(max + 1) }),
+    ).rejects.toThrow(/channel_pending_asks_(question|missing)_length_check/);
+  });
+});
+
+/**
+ * A lit lane on a database migration 0167 has not reached. The table is the lit lane's
+ * alone, so the migration need not precede the deploy; lighting the flag first costs the
+ * open question and nothing else.
+ */
+describe('a pending ask on a database without its table', () => {
+  let before0167: TestDb;
+
+  beforeAll(async () => {
+    before0167 = await createTestDb('0163_drop_retired_auth_tables.sql');
+  });
+
+  afterAll(async () => {
+    await before0167.close();
+  });
+
+  it('names the table as not there instead of failing the turn', async () => {
+    const [family] = await before0167.database
+      .insert(schema.families)
+      .values({ displayName: 'Household', provinceOrState: 'ON' })
+      .returning({ id: schema.families.id });
+    const [parent] = await before0167.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms_no_table' })
+      .returning({ id: schema.users.id });
+
+    expect(
+      await readPendingAsk(before0167.database)({
+        familyId: family?.id as string,
+        parentUserId: parent?.id as string,
+        channel: 'sms',
+        providerChatId: null,
+        asOf: NOW,
+      }),
+    ).toEqual({ status: 'not_migrated' });
   });
 });

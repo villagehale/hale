@@ -11,6 +11,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { isUndefinedTable } from '../channel/linq/roster.js';
 import { removeDocument } from '../docs/storage.js';
 
 /**
@@ -36,7 +37,8 @@ import { removeDocument } from '../docs/storage.js';
  *
  * | Table | Approach | Why |
  * | --- | --- | --- |
- * | `channel_messages` | REDACT `body`, `pending_question` and `pending_missing` to null | Bookings, reviews, offers, and check-in notes reference the row, some NOT NULL, and the cap index counts rows. Migration 0121 forbids deleting one. Outbound rows store no body; one that left a question open stores that question, de-identified (migration 0167), and it goes on the same clock. |
+ * | `channel_messages` | REDACT `body` to null | Bookings, reviews, offers, and check-in notes reference the row, some NOT NULL, and the cap index counts rows. Migration 0121 forbids deleting one. Outbound rows store no body. |
+ * | `channel_pending_asks` | DELETE the row | The question a general answer left open, de-identified, beside its reply's row (migration 0167). The next reply Hale sends that parent already deletes it; this is the backstop for one nothing followed. |
  * | `messages` | DELETE the row | The Ask Hale transcript. Soft-delete leaves `content` in place; the retention promise removes it. Audit rows store the id as text, not a foreign key. |
  * | `chat_attachments` | DELETE the bytes, then the row | The file, its path, and `original_name`. Bytes are purged before the row so a cascade cannot drop the path first. Unlinked uploads are included. |
  * | `sms_intake_sessions` | REDACT `data_encrypted` and `phone_encrypted` | The pre-account transcript, including a group-chat sender who never became a user. The row stays: it is how the funnel counts an arrival, and both columns are NOT NULL. `phone_hash` stays so the same number is still recognised. An open session is closed so a later text starts clean rather than decrypting a tombstone. |
@@ -108,6 +110,7 @@ const MESSAGE_JSON_KEYS = [
 
 export interface MessageRetentionSummary {
   channelMessagesRedacted: number;
+  pendingAsksDeleted: number;
   messagesDeleted: number;
   chatAttachmentsDeleted: number;
   intakeSessionsRedacted: number;
@@ -128,6 +131,7 @@ export interface MessageRetentionOptions {
 
 const EMPTY_SUMMARY: MessageRetentionSummary = {
   channelMessagesRedacted: 0,
+  pendingAsksDeleted: 0,
   messagesDeleted: 0,
   chatAttachmentsDeleted: 0,
   intakeSessionsRedacted: 0,
@@ -169,6 +173,7 @@ export async function sweepMessageRetention(
   const summary = { ...EMPTY_SUMMARY };
 
   summary.channelMessagesRedacted = await redactChannelMessages(database, cutoff, batch);
+  summary.pendingAsksDeleted = await deletePendingAsks(database, cutoff, batch);
   const transcripts = await deleteTranscripts(database, cutoff, batch, removeObject);
   summary.messagesDeleted = transcripts.messagesDeleted;
   summary.chatAttachmentsDeleted += transcripts.chatAttachmentsDeleted;
@@ -198,21 +203,14 @@ async function redactChannelMessages(
     .select({ id: schema.channelMessages.id })
     .from(schema.channelMessages)
     .where(
-      and(
-        or(
-          isNotNull(schema.channelMessages.body),
-          isNotNull(schema.channelMessages.pendingQuestion),
-          isNotNull(schema.channelMessages.pendingMissing),
-        ),
-        lt(schema.channelMessages.createdAt, cutoff),
-      ),
+      and(isNotNull(schema.channelMessages.body), lt(schema.channelMessages.createdAt, cutoff)),
     )
     .orderBy(asc(schema.channelMessages.createdAt), asc(schema.channelMessages.id))
     .limit(batch);
   if (due.length === 0) return 0;
   const updated = await database
     .update(schema.channelMessages)
-    .set({ body: null, pendingQuestion: null, pendingMissing: null })
+    .set({ body: null })
     .where(
       inArray(
         schema.channelMessages.id,
@@ -221,6 +219,42 @@ async function redactChannelMessages(
     )
     .returning({ id: schema.channelMessages.id });
   return updated.length;
+}
+
+/**
+ * The table arrives with migration 0167, and nothing writes it while the general
+ * answer's search is dark, so this code can run on a database that does not have it yet.
+ * There is then nothing to delete, and the sweep says so by name and carries on with the
+ * other tables (the roster sweep's `not_migrated`, rule #11).
+ */
+async function deletePendingAsks(database: Database, cutoff: Date, batch: number): Promise<number> {
+  let due: Array<{ id: string }>;
+  try {
+    due = await database
+      .select({ id: schema.channelPendingAsks.channelMessageId })
+      .from(schema.channelPendingAsks)
+      .where(lt(schema.channelPendingAsks.createdAt, cutoff))
+      .orderBy(
+        asc(schema.channelPendingAsks.createdAt),
+        asc(schema.channelPendingAsks.channelMessageId),
+      )
+      .limit(batch);
+  } catch (err) {
+    if (!isUndefinedTable(err)) throw err;
+    console.warn({ outcome: 'not_migrated' }, 'message retention: pending-ask table missing');
+    return 0;
+  }
+  if (due.length === 0) return 0;
+  const deleted = await database
+    .delete(schema.channelPendingAsks)
+    .where(
+      inArray(
+        schema.channelPendingAsks.channelMessageId,
+        due.map((row) => row.id),
+      ),
+    )
+    .returning({ id: schema.channelPendingAsks.channelMessageId });
+  return deleted.length;
 }
 
 async function deleteTranscripts(

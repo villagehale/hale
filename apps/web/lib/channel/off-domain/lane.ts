@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, desc, eq, inArray, lte } from 'drizzle-orm';
 import { replyLanguage } from '~/lib/channel/language';
+import { isUndefinedTable } from '~/lib/channel/linq/roster';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import {
@@ -115,9 +116,9 @@ export type OffDomainVerdict =
       medicalSource: MedicalReplySource | null;
       signal: UnmetSignalOutcome;
       /**
-       * The question this reply left open, for the router to keep on the reply's own
-       * ledger row (see {@link OffDomainPorts.pendingAsk}), or null. Only a lit general
-       * answer ever sets it.
+       * The question this reply left open, for the router to keep beside the reply's own
+       * ledger row ({@link settlePendingAsks}), or null. Only a lit general answer ever
+       * sets it.
        */
       pendingAsk: PendingAsk | null;
     };
@@ -146,7 +147,9 @@ export interface InboundThread {
 export type PendingAskRead =
   | { status: 'open'; ask: PendingAsk }
   | { status: 'none' }
-  | { status: 'other_thread' };
+  | { status: 'other_thread' }
+  /** The table the questions are kept in has not reached this database (migration 0167). */
+  | { status: 'not_migrated' };
 
 export interface OffDomainPorts {
   screen: InboundLaneScreen;
@@ -356,6 +359,7 @@ function fixedLine(reply: string): LaneReply {
 }
 
 const NO_PENDING_ASK = 'off-domain lane: no pending ask for this parent';
+const NO_PENDING_ASK_KEPT = 'off-domain lane: the question this reply left open was not kept';
 
 /**
  * The question Hale's last word to this parent left open in THIS thread, or null with
@@ -448,11 +452,12 @@ function replyFor(composed: GeneralAnswerOutcome, text: string): LaneReply {
 /**
  * The production read behind {@link OffDomainPorts.pendingAsk}.
  *
- * NO STATE OF ITS OWN, the readiness and check-in asks' pattern: a question is open while
- * the reply that left it is Hale's last word to this parent, so "is it still pending" is
- * a read of the ledger and not a flag every other sender would have to remember to clear.
- * That also makes it one-shot by construction. Whatever answers the parent's next text,
- * the completed question or anything else, is a newer last word.
+ * NO STATUS OF ITS OWN, the readiness and check-in asks' pattern: a question is open
+ * while the reply that left it is Hale's last word to this parent, so "is it still
+ * pending" is a read of the ledger and not a flag every other sender would have to
+ * remember to clear. That also makes it one-shot by construction. Whatever answers the
+ * parent's next text, the completed question or anything else, is a newer last word. The
+ * question itself is in a table of its own beside that reply's row (migration 0167).
  *
  * PER PARENT, like those asks: it was put to one phone. A send that failed reached no
  * phone and is not a last word (SENT_STATUSES).
@@ -471,31 +476,115 @@ export function readPendingAsk(database: Database) {
     providerChatId: string | null;
     asOf: Date;
   }): Promise<PendingAskRead> => {
-    const [last] = await database
-      .select({
-        question: schema.channelMessages.pendingQuestion,
-        missing: schema.channelMessages.pendingMissing,
-        channel: schema.channelMessages.channel,
-        providerChatId: schema.channelMessages.providerChatId,
-      })
-      .from(schema.channelMessages)
-      .where(
-        and(
-          eq(schema.channelMessages.familyId, input.familyId),
-          eq(schema.channelMessages.parentUserId, input.parentUserId),
-          eq(schema.channelMessages.direction, 'out'),
-          inArray(schema.channelMessages.status, [...SENT_STATUSES]),
-          lte(schema.channelMessages.createdAt, input.asOf),
-        ),
-      )
-      .orderBy(desc(schema.channelMessages.createdAt))
-      .limit(1);
-    if (!last || last.question === null) return { status: 'none' };
-    if (last.channel !== input.channel || last.providerChatId !== input.providerChatId) {
+    let last: {
+      question: string | null;
+      missing: string | null;
+      channel: InboundThread['channel'];
+      providerChatId: string | null;
+    }[];
+    try {
+      last = await database
+        .select({
+          question: schema.channelPendingAsks.question,
+          missing: schema.channelPendingAsks.missing,
+          channel: schema.channelMessages.channel,
+          providerChatId: schema.channelMessages.providerChatId,
+        })
+        .from(schema.channelMessages)
+        .leftJoin(
+          schema.channelPendingAsks,
+          and(
+            eq(schema.channelPendingAsks.channelMessageId, schema.channelMessages.id),
+            eq(schema.channelPendingAsks.familyId, schema.channelMessages.familyId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.channelMessages.familyId, input.familyId),
+            eq(schema.channelMessages.parentUserId, input.parentUserId),
+            eq(schema.channelMessages.direction, 'out'),
+            inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+            lte(schema.channelMessages.createdAt, input.asOf),
+          ),
+        )
+        .orderBy(desc(schema.channelMessages.createdAt))
+        .limit(1);
+    } catch (err) {
+      // A lit lane on a database the table has not reached keeps and finds no question;
+      // it does not cost the parent this turn.
+      if (isUndefinedTable(err)) return { status: 'not_migrated' };
+      throw err;
+    }
+    const [row] = last;
+    if (!row || row.question === null) return { status: 'none' };
+    if (row.channel !== input.channel || row.providerChatId !== input.providerChatId) {
       return { status: 'other_thread' };
     }
-    return { status: 'open', ask: { question: last.question, missing: last.missing ?? '' } };
+    return { status: 'open', ask: { question: row.question, missing: row.missing ?? '' } };
   };
+}
+
+/**
+ * What a reply Hale just sent a parent does to the questions it has left open for them,
+ * which is the production write behind a pending ask (migration 0167).
+ *
+ * EVERY EARLIER QUESTION IS CLOSED, AND CLOSED MEANS DELETED. A question is open only
+ * while its reply is Hale's last word to that parent ({@link readPendingAsk}), and this
+ * reply is a newer one. So the question lives exactly as long as it can still be read:
+ * the answer to it, or anything else Hale replies with, takes it out, and the retention
+ * sweep is the backstop for one nothing ever followed. Then the question THIS reply left
+ * open, if it left one, is kept beside its row.
+ *
+ * A QUESTION LONGER THAN THE TABLE HOLDS IS NOT KEPT (channel-pending-asks.ts names the
+ * two bounds, and the table's CHECKs restate them). It is named (rule #11), and the
+ * parent's next text is read as a new one.
+ *
+ * Nothing is read or written while the general answer's search is dark: a dark lane
+ * leaves no question open, and a database that does not have the table sends as before.
+ */
+export async function settlePendingAsks(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    /** The reply's own ledger row. */
+    channelMessageId: string;
+    ask: PendingAsk | null;
+  },
+): Promise<void> {
+  if (!generalAnswerSearchEnabled()) return;
+  await database.delete(schema.channelPendingAsks).where(
+    and(
+      eq(schema.channelPendingAsks.familyId, input.familyId),
+      inArray(
+        schema.channelPendingAsks.channelMessageId,
+        database
+          .select({ id: schema.channelMessages.id })
+          .from(schema.channelMessages)
+          .where(
+            and(
+              eq(schema.channelMessages.familyId, input.familyId),
+              eq(schema.channelMessages.parentUserId, input.parentUserId),
+              eq(schema.channelMessages.direction, 'out'),
+            ),
+          ),
+      ),
+    ),
+  );
+  if (input.ask === null) return;
+  if (
+    input.ask.question.length > schema.PENDING_ASK_QUESTION_MAX_CHARS ||
+    input.ask.missing.length > schema.PENDING_ASK_MISSING_MAX_CHARS
+  ) {
+    console.info({ pendingAsk: 'not_kept', reason: 'too_long' }, NO_PENDING_ASK_KEPT);
+    return;
+  }
+  await database.insert(schema.channelPendingAsks).values({
+    channelMessageId: input.channelMessageId,
+    familyId: input.familyId,
+    question: input.ask.question,
+    missing: input.ask.missing,
+  });
 }
 
 /**
