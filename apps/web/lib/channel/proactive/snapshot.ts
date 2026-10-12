@@ -16,7 +16,9 @@ import { boundedLine } from './tools';
  * decline and watch label as `WITHHELD_LABEL`, and none of its parents' texts (rule #1's
  * double-miss fallback: a text names no child, so it cannot be shown not to be about the
  * teen). The decider's own earlier words are withheld there the same way: a prior hold's
- * reason reads as `WITHHELD_LABEL`, since it was written with parent texts in view. A kept
+ * reason reads as `WITHHELD_LABEL`, since it was written with parent texts in view. In
+ * every household it reads so in any batch that is not wholly the held row's owner's: it
+ * was written with that parent's texts and own calendar titles in view (rule #5). A kept
  * pace is its direction alone in every household (preference.ts). Other parent texts
  * reach the decider only from the one parent who owns every candidate (none for a batch
  * two parents own, rule #5), each until one review of that parent's batch has read it,
@@ -67,6 +69,15 @@ export interface PriorDecision {
   at: string | null;
   reason: string | null;
   holdUntil: string | null;
+}
+
+/**
+ * A prior hold as loaded, before the batch's owner is known. `parentUserId` is whose row
+ * the hold is on, and is never handed to the model: `loadFamilySnapshot` reads it and
+ * leaves it behind.
+ */
+export interface LoadedPriorDecision extends PriorDecision {
+  parentUserId: string;
 }
 
 export interface RecentSend {
@@ -497,7 +508,7 @@ export async function loadFamilySnapshot(
     candidates: SnapshotCandidate[];
     /** Every parent who owns one of `candidates`. */
     candidateParents: readonly string[];
-    priorDecisions: PriorDecision[];
+    priorDecisions: LoadedPriorDecision[];
     /** The mode this review runs in: a text is read once per mode (`ParentTextsRead`). */
     mode: 'shadow' | 'live';
     now: Date;
@@ -578,7 +589,6 @@ export async function loadFamilySnapshot(
     reader !== null && newest !== undefined
       ? { parentUserId: reader, through: newest.stamp }
       : null;
-  const withheld = (text: string): string => (context.teenInHousehold ? WITHHELD_LABEL : text);
   const shown = newTexts
     .reverse()
     .map((row) => ({ author: row.parentUserId, text: boundedLine(row.body ?? '') }))
@@ -609,8 +619,10 @@ export async function loadFamilySnapshot(
       : owner === null
         ? { parentTextsWithheld: 'mixed_batch' as const }
         : {}),
-    priorDecisions: input.priorDecisions.map((prior) =>
-      prior.reason === null ? prior : { ...prior, reason: withheld(prior.reason) },
+    priorDecisions: input.priorDecisions.map(({ parentUserId, ...prior }) =>
+      prior.reason === null || parentUserId === reader
+        ? prior
+        : { ...prior, reason: WITHHELD_LABEL },
     ),
   };
   return {

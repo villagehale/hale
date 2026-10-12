@@ -1,5 +1,5 @@
 import { dayKeyOf } from '~/lib/format/datetime';
-import type { PriorDecision, SnapshotCandidate } from './snapshot';
+import type { LoadedPriorDecision, SnapshotCandidate } from './snapshot';
 
 /**
  * VIL-226 · which open candidates this hourly run may hand to the model.
@@ -19,6 +19,8 @@ import type { PriorDecision, SnapshotCandidate } from './snapshot';
  */
 
 export interface OpenCandidate extends SnapshotCandidate {
+  /** Whose row it is. The snapshot loader reads it; the model never does. */
+  parentUserId: string;
   /** The composed text. The writer reads it; the decider never does. */
   what: string;
   status: 'queued' | 'held';
@@ -36,11 +38,16 @@ export function planHourlyReview(input: {
   timeZone: string;
   /** A parent reply, a calendar change, or a Gmail change after the last hold. */
   externalSignal: boolean;
-}): { skipModel: boolean; candidates: SnapshotCandidate[]; priorDecisions: PriorDecision[] } {
-  const priorDecisions: PriorDecision[] = input.items
+}): {
+  skipModel: boolean;
+  candidates: SnapshotCandidate[];
+  priorDecisions: LoadedPriorDecision[];
+} {
+  const priorDecisions: LoadedPriorDecision[] = input.items
     .filter((item) => item.status === 'held')
     .map((item) => ({
       id: item.id,
+      parentUserId: item.parentUserId,
       action: 'held',
       at: item.decidedAt,
       reason: item.reason,

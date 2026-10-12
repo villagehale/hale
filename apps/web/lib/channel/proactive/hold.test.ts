@@ -8,6 +8,7 @@ const EARLIER = '2026-10-08T22:00:00.000Z';
 
 function item(over: Partial<OpenCandidate> & Pick<OpenCandidate, 'id' | 'status'>): OpenCandidate {
   return {
+    parentUserId: 'parent-1',
     kind: 'nudge',
     what: 'Saturday farmers market',
     why: 'a nearby listing',
@@ -36,6 +37,7 @@ describe('planHourlyReview', () => {
     expect(plan.priorDecisions).toEqual([
       {
         id: 'later',
+        parentUserId: 'parent-1',
         action: 'held',
         at: EARLIER,
         reason: 'no window yet',

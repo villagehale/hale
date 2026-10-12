@@ -1806,6 +1806,70 @@ describe('runProactiveReview', () => {
     expect(h.snapshots[1]?.calendar.map((entry) => entry.label)).toEqual(['busy', 'busy']);
   });
 
+  it('shows a prior hold’s reason only in a batch that is wholly its owner’s', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const coParentId = await addCoParent();
+    const TOMORROW = '2026-10-09T21:00:00.000Z';
+    const hoursAfter = (hours: number) =>
+      new Date(THURSDAY_EVENING.getTime() + hours * 60 * 60_000);
+    const MINE = 'Physio appointment; they said: the tournament fills our weekend';
+    const THEIRS = 'Interview at the bank is that morning';
+    let reason = MINE;
+    const h = harness((snapshot) => ({
+      ...sendAll(snapshot),
+      reason,
+      action: 'hold',
+      holdUntil: TOMORROW,
+    }));
+    const reasons = (snapshot: FamilySnapshot | undefined) =>
+      Object.fromEntries((snapshot?.priorDecisions ?? []).map((prior) => [prior.id, prior.reason]));
+    const coParentItem = (dedupeKey: string) =>
+      enqueue(dedupeKey, { parentUserId: coParentId, why: 'weekday_dropin' });
+
+    const mine = await enqueue('nudge:weather:w41');
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    // The other parent's batch: the hold is still shown, its words are not.
+    reason = THEIRS;
+    const theirs = await coParentItem('nudge:dropin:w41');
+    await runProactiveReview(db.database, h.deps, hoursAfter(1));
+    expect(h.snapshots[1]?.candidates.map((item) => item.id)).toEqual([theirs]);
+    expect(h.snapshots[1]?.parentTextsWithheld).toBeUndefined();
+    expect(h.snapshots[1]?.priorDecisions).toEqual([
+      {
+        id: mine,
+        action: 'held',
+        at: THURSDAY_EVENING.toISOString(),
+        reason: WITHHELD_LABEL,
+        holdUntil: TOMORROW,
+      },
+    ]);
+
+    // The owner's own next batch still reads what the decider wrote in theirs.
+    reason = MINE;
+    const mineAgain = await enqueue('nudge:weather:w42');
+    await runProactiveReview(db.database, h.deps, hoursAfter(2));
+    expect(h.snapshots[2]?.candidates.map((item) => item.id)).toEqual([mineAgain]);
+    expect(reasons(h.snapshots[2])).toEqual({ [mine]: MINE, [theirs]: WITHHELD_LABEL });
+
+    // A batch two parents own is no one parent's: no hold's words are shown.
+    await enqueue('nudge:weather:w43');
+    await coParentItem('nudge:dropin:w43');
+    await runProactiveReview(db.database, h.deps, hoursAfter(3));
+    expect(h.snapshots[3]?.parentTextsWithheld).toBe('mixed_batch');
+    expect(reasons(h.snapshots[3])).toEqual({
+      [mine]: WITHHELD_LABEL,
+      [theirs]: WITHHELD_LABEL,
+      [mineAgain]: WITHHELD_LABEL,
+    });
+
+    // Whose row a hold is on is read by the code and never handed to the model.
+    expect(h.snapshots).toHaveLength(4);
+    const shown = JSON.stringify(h.snapshots);
+    expect(shown).not.toContain(parentUserId);
+    expect(shown).not.toContain(coParentId);
+  });
+
   it('stores a bounded one-line reason on a held row, whatever the decider wrote, and none in the audit trail', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     const id = await enqueue();

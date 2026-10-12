@@ -173,7 +173,6 @@ export async function readLineHold(database: Database): Promise<LineHold | null>
 
 interface QueuedItem extends OpenCandidate {
   familyId: string;
-  parentUserId: string;
   kind: ProactiveSendKind;
   category: (typeof schema.channelMessages.$inferInsert)['category'];
   templateKey: string;
