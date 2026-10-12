@@ -17,7 +17,10 @@ export interface CadencePreference {
 }
 
 /** Why a preference the decider heard was not kept. Named on the decision's audit row. */
-export type CadenceNotKept = 'not_written_shadow' | 'not_written_no_single_author';
+export type CadenceNotKept =
+  | 'not_written_shadow'
+  | 'not_written_no_single_author'
+  | 'not_written_author_not_owner';
 
 export function cadencePreference(
   parentUserId: string,

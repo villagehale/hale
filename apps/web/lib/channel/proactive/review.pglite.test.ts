@@ -993,6 +993,41 @@ describe('runProactiveReview', () => {
     expect(await memoryFacts()).toEqual([]);
   });
 
+  it('when live, never keeps a pace for a parent who texted about a batch that is not theirs', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const coParentId = await addCoParent();
+    const stored = { schemaVersion: 1, parentUserId, direction: 'less', note: 'fewer please' };
+    await db.database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_decision',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { cadencePreference: stored, mode: 'live' },
+      occurredAt: new Date(THURSDAY_EVENING.getTime() - 24 * 60 * 60_000),
+    });
+    await parentText('we love the weekend ideas', HOUR_BEFORE, coParentId);
+    await enqueue();
+    const h = harness((snapshot) => ({
+      ...lessPlease(snapshot),
+      frequencyPreference: { direction: 'less', note: 'fewer please' },
+    }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots[0]?.frequencyPreference).toEqual({
+      direction: 'less',
+      note: 'fewer please',
+    });
+    const decisions = await audits('proactive_cadence_decision');
+    const reviewed = decisions.find((row) => 'action' in (row.after as object));
+    expect(reviewed?.after).toMatchObject({ cadencePreference: 'not_written_author_not_owner' });
+    const kept = decisions
+      .map((row) => (row.after as { cadencePreference?: unknown }).cadencePreference)
+      .filter((pace) => typeof pace === 'object');
+    expect(kept).toEqual([stored]);
+  });
+
   it('hands the decider only the parent texts that arrived since its last look', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     await parentText(

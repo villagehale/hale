@@ -405,6 +405,8 @@ export interface LoadedSnapshot {
   snapshot: FamilySnapshot;
   /** Who sent the texts in `recentParentTexts`. Never handed to the model. */
   textAuthors: string[];
+  /** The one parent who owns every candidate, whose pace `frequencyPreference` is. */
+  owner: string | null;
 }
 
 /** The full snapshot for one family: the loaded context plus the thread's last 14 days. */
@@ -449,11 +451,9 @@ export async function loadFamilySnapshot(
       at: row.createdAt.toISOString(),
       replied: inbound.some((text) => text.createdAt.getTime() > row.createdAt.getTime()),
     }));
-  const [owner, ...otherOwners] = input.candidateParents;
-  const cadence =
-    owner !== undefined && otherOwners.length === 0
-      ? await latestCadence(database, input.familyId, owner)
-      : null;
+  const [onlyOwner, ...otherOwners] = input.candidateParents;
+  const owner = onlyOwner !== undefined && otherOwners.length === 0 ? onlyOwner : null;
+  const cadence = owner !== null ? await latestCadence(database, input.familyId, owner) : null;
   const [lastReview] = await database
     .select({ at: max(schema.proactiveCandidates.decidedAt) })
     .from(schema.proactiveCandidates)
@@ -485,5 +485,5 @@ export async function loadFamilySnapshot(
     recentParentTexts: shown.map((row) => row.text),
     priorDecisions: input.priorDecisions,
   };
-  return { snapshot, textAuthors: [...new Set(shown.map((row) => row.author))] };
+  return { snapshot, textAuthors: [...new Set(shown.map((row) => row.author))], owner };
 }

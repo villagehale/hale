@@ -464,7 +464,7 @@ async function reviewFamily(
     return;
   }
   const offered = new Set(plan.candidates.map((candidate) => candidate.id));
-  const { snapshot, textAuthors } = await loadFamilySnapshot(database, {
+  const { snapshot, textAuthors, owner } = await loadFamilySnapshot(database, {
     familyId,
     context,
     candidates: plan.candidates,
@@ -488,7 +488,7 @@ async function reviewFamily(
   const chosen = items.filter((item) => offered.has(item.id) && decision.itemIds.includes(item.id));
   const unchosen = items.filter((item) => offered.has(item.id) && !chosen.includes(item));
   const hold = clampHold(decision.holdUntil, chosen);
-  const cadence = keptCadence(decision, mode, textAuthors);
+  const cadence = keptCadence(decision, mode, textAuthors, owner);
   // The decision row is where a cadence preference is kept (preference.ts), and the
   // reason it was not, by name.
   await audit(database, familyId, 'proactive_cadence_decision', {
@@ -599,18 +599,22 @@ async function reviewFamily(
 
 /**
  * What the decision row says about a pace the decider heard. Live keeps it for the one
- * parent whose new texts it read; anything else is named, never a silent skip.
+ * parent whose new texts it read, and only when the batch is wholly theirs: the snapshot
+ * showed the owner's stored pace, which the decider may restate, and that is never
+ * another parent's (rule #5). Anything else is named, never a silent skip.
  */
 function keptCadence(
   decision: DeciderDecision,
   mode: 'shadow' | 'live',
   textAuthors: readonly string[],
+  owner: string | null,
 ): CadencePreference | CadenceNotKept | null {
   const heard = decision.frequencyPreference;
   if (!heard) return null;
   if (mode === 'shadow') return 'not_written_shadow';
   const [author, ...others] = textAuthors;
   if (author === undefined || others.length > 0) return 'not_written_no_single_author';
+  if (author !== owner) return 'not_written_author_not_owner';
   return cadencePreference(author, heard.direction, boundedLine(heard.note));
 }
 
