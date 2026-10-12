@@ -733,8 +733,8 @@ describe('the flags', () => {
     expect(h.sent).toEqual([]);
   });
 
-  it('the allowlist arms one household and not the one beside it', async () => {
-    vi.stubEnv('TRAVEL_BRIEF_ENABLED', '');
+  it('the allowlist narrows to one household and not the one beside it while the lane is on', async () => {
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', 'true');
     const armed = await seedFamily();
     const other = await seedFamily();
     vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', armed.familyId);
@@ -745,5 +745,16 @@ describe('the flags', () => {
     const result = await run(h);
     expect(result.sent).toBe(1);
     expect((await tripRow(dark))?.closedAt).toBeNull();
+  });
+
+  it('an allowlisted household gets nothing while the lane is off', async () => {
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', '');
+    const armed = await seedFamily();
+    vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', armed.familyId);
+    const held = await seedTrip({ ...armed, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+
+    const result = await run(harness());
+    expect(result.sent).toBe(0);
+    expect((await tripRow(held))?.closedAt).toBeNull();
   });
 });

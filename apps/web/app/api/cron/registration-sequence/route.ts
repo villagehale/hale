@@ -44,8 +44,8 @@ export const GET = cronRoute('registration-sequence', async () => {
         { ...off, env: LANE_ENV.registration_ladder },
         'registration ladder: lane off, nothing run',
       );
-      const sync = await flushGroupDecisionSyncs(db(), { now: new Date() });
-      return NextResponse.json({ ok: true, ...off, groupSync: sync }, { status: 200 });
+      // The group decision syncs send bubbles too, so the lane holds them as well.
+      return NextResponse.json({ ok: true, ...off, groupSync: 'lane_off' }, { status: 200 });
     }
     const summary = await runRegistrationSequenceCron(db());
     const sync = await flushGroupDecisionSyncs(db(), { now: new Date() });

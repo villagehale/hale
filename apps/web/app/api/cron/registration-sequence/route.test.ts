@@ -51,10 +51,10 @@ describe('GET /api/cron/registration-sequence — the registration_ladder lane',
       ok: true,
       lane: 'registration_ladder',
       outcome: 'lane_off',
-      groupSync: { flushed: 0 },
+      groupSync: 'lane_off',
     });
     expect(runRegistrationSequenceCronMock).not.toHaveBeenCalled();
-    expect(flushGroupDecisionSyncsMock).toHaveBeenCalledTimes(1);
+    expect(flushGroupDecisionSyncsMock).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledWith(
       { lane: 'registration_ladder', env: 'REGISTRATION_LADDER_ENABLED', outcome: 'lane_off' },
       'registration ladder: lane off, nothing run',

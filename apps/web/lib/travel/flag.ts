@@ -35,7 +35,7 @@ export function travelBriefEnabled(): boolean {
   return laneEnabled('travel_brief');
 }
 
-/** The comma-separated family ids allowed through while the flag is off. */
+/** The comma-separated family ids the brief is narrowed to while the lane is on. */
 export function travelBriefAllowlist(): Set<string> {
   return new Set(
     (process.env[TRAVEL_BRIEF_ALLOWLIST_ENV] ?? '')
@@ -46,5 +46,9 @@ export function travelBriefAllowlist(): Set<string> {
 }
 
 export function travelBriefEnabledFor(familyId: string): boolean {
-  return travelBriefEnabled() || travelBriefAllowlist().has(familyId);
+  // The lane is the kill: off is off for every household. While it is on, a non-empty
+  // allowlist narrows the brief to the listed households (one household to prove).
+  if (!travelBriefEnabled()) return false;
+  const allowlist = travelBriefAllowlist();
+  return allowlist.size === 0 || allowlist.has(familyId);
 }
