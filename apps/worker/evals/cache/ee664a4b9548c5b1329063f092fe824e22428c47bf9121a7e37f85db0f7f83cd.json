@@ -1,0 +1,27 @@
+{
+  "urls": [
+    "https://www.nesto.ca/mortgage-rates/fixed/5-year/",
+    "https://www.moneysense.ca/spend/real-estate/mortgages/five-year-fixed-mortgage-rates/",
+    "https://www.ratehub.ca/best-mortgage-rates/5-year/fixed",
+    "https://www.nesto.ca/mortgage-rates/",
+    "https://www.ratehub.ca/best-mortgage-rates",
+    "https://rates.ca/mortgage-rates/5-year-fixed",
+    "https://wowa.ca/mortgage-rates",
+    "https://canadianrates.ca/rates/5-year-fixed",
+    "https://www.nerdwallet.com/ca/?p=14467",
+    "https://www.nerdwallet.com/ca/mortgages/best-5-year-fixed-mortgage-rates-in-canada-2",
+    "https://www.nesto.ca/mortgage-rates/fixed/5-year/",
+    "https://www.ratehub.ca/best-mortgage-rates/5-year/fixed",
+    "https://www.nesto.ca/mortgage-rates/",
+    "https://www.ratehub.ca/best-mortgage-rates",
+    "https://rates.ca/mortgage-report",
+    "https://immigrationnewscanada.ca/new-canada-mortgage-rates-increase-2026/",
+    "https://wowa.ca/mortgage-rates",
+    "https://cadtod.com/mortgage-rates",
+    "https://www.forbes.com/advisor/ca/mortgages/best-5-year-fixed-rate-mortgages/"
+  ],
+  "notes": "**Research notes: 5-year fixed mortgage rates, for Canada (the person is in Toronto, Ontario). Today is Monday, Oct 12, 2026.**\n\nRates differ by lender and by down payment, so there is no single rate. These are the figures from the results, with their dates.\n\n**Lowest rates on offer**\n- Ratehub says as of October 12, 2026, the lowest high-ratio 5-year fixed rate is 4.34%, and the lowest variable rate is 3.4%. Its table was updated Oct 11 and lists 4.34% at a \"Canadian Lender\", 4.54% at a Big 6 Bank, 4.59% at Meridian Credit Union, 4.69% at Alterna Savings and 4.74% at Scotiabank.\n- WOWA, as of Oct 9, says the lowest 5-year fixed insured rate is 4.34%, which is 30 bps higher than 30 days ago. It says the lowest 5-year fixed conventional rate is 4.44%. It names Frank Mortgage as the best 5-year fixed offer at 4.34%. It also says the lowest uninsurable 5-year rate is 4.64%.\n- nesto, as of Oct 9, says its 5-year fixed insured rate is 4.59%. For other down payments, nesto lists 4.74% at 70% LTV and 4.59% at 65% LTV. The nesto page for uninsured mortgages gave 5.09%.\n\n**Big bank averages**\n- nesto's Oct 9 page lists a Big 6 Bank average 5-year fixed of 5.17%.\n- Another nesto page, dated Oct 8, gives 5.28% as the average 5-year fixed conventional rate in Canada. The same page gives a Big 6 discounted conventional average of 5.14%. These two nesto pages differ slightly.\n\n**Direction**\n- Fixed rates are climbing again in October 2026, after all 6 of the largest banks raised select fixed rates since early September.\n- BMO raised its standard 5-year fixed rate by 20 bps to 5.14% on October 7.\n- CIBC raised its 5-year fixed rates by 20 bps on October 9.\n- The 5-year Government of Canada bond yield hit a 52-week high near 3.73% on September 28 and eased to about 3.56% by October 9.\n\n**Gaps and conflicts**\n- The question doesn't say whether the mortgage is insured (under 20% down), insurable, or uninsured. It also doesn't say whether it is a new purchase or a renewal, or which lender. Rates differ across these.\n- nesto's own figure (4.59%) is higher than the lowest rates at Ratehub and WOWA (4.34%). The sources also differ in what they count as \"lowest\".\n- Some results were stale, and I left them out: MoneySense (March 2025), rates.ca (old), and a Forbes page from Aug 2026.\n- Ratehub's page also carries text saying the lowest 5-year fixed is 4.09%. That contradicts its own Oct 12 figure of 4.34%. It looks like older text, so I did not use it.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 11512
+}

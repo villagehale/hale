@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "With live set to missing_detail, the correct move is to ask which city, and the reply does that without stating any forecast or other current fact. It's casual and in English. It's a touch wordier than needed (\"without knowing where you are\" plus \"city or town\") but still reads like a friend's text. Correct and friendly.",
-    "score": 5
-  }
-}

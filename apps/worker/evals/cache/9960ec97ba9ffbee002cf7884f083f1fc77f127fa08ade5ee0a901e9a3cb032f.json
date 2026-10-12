@@ -1,0 +1,12 @@
+{
+  "value": {
+    "language": "fr",
+    "answers_pending": "nothing_pending",
+    "question": "l'ananas sur la pizza, c'est acceptable ou pas?",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "current_fact": "none",
+    "needs_search": "no"
+  },
+  "latencyMs": 1665
+}

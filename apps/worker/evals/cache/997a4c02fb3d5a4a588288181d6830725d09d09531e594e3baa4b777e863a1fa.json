@@ -1,0 +1,12 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "will it be raining in Toronto today",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "current_fact": "today's rain forecast in Toronto",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1964
+}

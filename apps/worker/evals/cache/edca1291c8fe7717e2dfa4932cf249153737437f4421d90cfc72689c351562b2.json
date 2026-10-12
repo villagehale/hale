@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct for the unavailable case: it says plainly that it can't check right now and states no result from memory. But the second sentence, offering to 'talk through it with you' and noting it 'won't be able to confirm the score', reads like an assistant offering a service. A friend texting would just say 'can't check right now'. That assistant-offer tone caps it below 4.",
+    "score": 3
+  }
+}
