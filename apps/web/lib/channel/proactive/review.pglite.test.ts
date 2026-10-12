@@ -691,10 +691,24 @@ describe('runProactiveReview', () => {
     await runProactiveReview(db.database, refusedWith(echoed).deps, HOUR_AFTER);
     expect(await candidate(worded)).toMatchObject({ status: 'held', reason: 'delivery_other' });
 
+    // Each bound on its own: a code-shaped string that is too long, and a short one that
+    // is not code-shaped. Both reviews still fall before quiet hours.
+    const minutesAfter = (minutes: number) =>
+      new Date(THURSDAY_EVENING.getTime() + minutes * 60_000);
+    const overlong = await enqueue('nudge:weather:w43');
+    await runProactiveReview(db.database, refusedWith('a'.repeat(33)).deps, minutesAfter(80));
+    expect(await candidate(overlong)).toMatchObject({ status: 'held', reason: 'delivery_other' });
+
+    const spaced = await enqueue('nudge:weather:w44');
+    await runProactiveReview(db.database, refusedWith('rate limited').deps, minutesAfter(100));
+    expect(await candidate(spaced)).toMatchObject({ status: 'held', reason: 'delivery_other' });
+
     const held = await audits('proactive_cadence_held');
     expect(held.map((row) => row.after)).toEqual([
       { reason: 'delivery_3001', itemIds: [coded], mode: 'live' },
       { reason: 'delivery_other', itemIds: [coded, worded], mode: 'live' },
+      { reason: 'delivery_other', itemIds: [coded, worded, overlong], mode: 'live' },
+      { reason: 'delivery_other', itemIds: [coded, worded, overlong, spaced], mode: 'live' },
     ]);
   });
 
@@ -1758,7 +1772,11 @@ describe('runProactiveReview', () => {
   });
 
   /** A parent's own connected calendar, with one event whose title the alert still holds. */
-  async function ownCalendarEvent(userId: string, title: string, startAt: Date): Promise<void> {
+  async function ownCalendarEvent(
+    userId: string | null,
+    title: string,
+    startAt: Date,
+  ): Promise<void> {
     const [integration] = await db.database
       .insert(schema.integrations)
       .values({ familyId, userId, provider: 'gcal', status: 'active' })
@@ -1781,6 +1799,8 @@ describe('runProactiveReview', () => {
     const friday = (hour: number) => new Date(`2026-10-09T${hour}:00:00.000Z`);
     await ownCalendarEvent(parentUserId, 'Physio appointment', friday(15));
     await ownCalendarEvent(coParentId, 'Interview at the bank', friday(18));
+    // A connection that names no user is no one parent's to read.
+    await ownCalendarEvent(null, 'Dentist for the twins', friday(20));
     await enqueue('nudge:weather:w41');
     const h = harness((snapshot) => ({ ...sendAll(snapshot), action: 'hold' }));
 
@@ -1795,15 +1815,17 @@ describe('runProactiveReview', () => {
         end: '12:00',
       },
       { day: '2026-10-09', label: 'busy', allDay: false, start: '14:00', end: '15:00' },
+      { day: '2026-10-09', label: 'busy', allDay: false, start: '16:00', end: '17:00' },
     ]);
     expect(JSON.stringify(h.snapshots[0])).not.toContain('Interview at the bank');
+    expect(JSON.stringify(h.snapshots[0])).not.toContain('Dentist for the twins');
 
     // A batch two parents own is no one parent's: neither title is shown.
     await enqueue('nudge:dropin:w41', { parentUserId: coParentId, why: 'weekday_dropin' });
     await runProactiveReview(db.database, h.deps, HOUR_AFTER);
 
     expect(h.snapshots[1]?.parentTextsWithheld).toBe('mixed_batch');
-    expect(h.snapshots[1]?.calendar.map((entry) => entry.label)).toEqual(['busy', 'busy']);
+    expect(h.snapshots[1]?.calendar.map((entry) => entry.label)).toEqual(['busy', 'busy', 'busy']);
   });
 
   it('shows a prior hold’s reason only in a batch that is wholly its owner’s', async () => {
