@@ -17,7 +17,6 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
-import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -25,7 +24,6 @@ export const WORKER_ROOT = join(HERE, '..', '..');
 export const REPO_ROOT = join(WORKER_ROOT, '..', '..');
 export const CACHE_DIR = join(HERE, '..', 'cache');
 const MODEL_TS = join(REPO_ROOT, 'packages', 'agent', 'src', 'model.ts');
-const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const CONTEXT_TS = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 
 // List prices, USD per 1M tokens. Source: platform.claude.com/docs/en/about-claude/pricing
@@ -77,10 +75,14 @@ export async function readModelIds() {
 
 let agentModule;
 
-/** packages/agent from source — the same seam production sends through. Loaded only for
- * a live call, so a --cached-only run never compiles it. */
+/**
+ * @hale/agent as production loads it (the built package, which CI builds before the eval
+ * job) — the same seam runtime sends through. Loaded only for a live call, so a
+ * --cached-only run never imports it. Not a second `tsImport` of the source: a suite that
+ * has already tsImported the web runtime (coach-channel) hangs the tsx loader on it.
+ */
 export async function loadAgent() {
-  agentModule ??= await tsImport(AGENT_SRC, import.meta.url);
+  agentModule ??= await import('@hale/agent');
   return agentModule;
 }
 

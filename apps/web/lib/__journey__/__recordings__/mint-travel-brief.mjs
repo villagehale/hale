@@ -58,7 +58,8 @@ const sha = (value) => createHash('sha256').update(value).digest('hex');
 /** apps/worker/evals/lib/harness.mjs — sha256(tag + "\n" + canonical request). */
 const evalKey = (tag, canonical) => sha(`${tag}\n${canonical}`);
 /** apps/web/lib/testing/recorded-model.ts — sha256(model + "\n" + system + "\n" + user). */
-const journeyKey = (model, system, userMessage) => sha(`${model}\n${system}\n${userMessage}`);
+const journeyKey = (model, system, userMessage, thinking) =>
+  sha(`${model}\n${thinking ? `thinking:${thinking}\n` : ''}${system}\n${userMessage}`);
 
 function readEvalEntry(tag, canonical, howToMint) {
   const key = evalKey(tag, canonical);
@@ -114,8 +115,8 @@ function searchResultsFrom(evidence) {
   return results;
 }
 
-function record(model, system, userMessage, response) {
-  const key = journeyKey(model, system, userMessage);
+function record(model, system, userMessage, response, thinking) {
+  const key = journeyKey(model, system, userMessage, thinking);
   return [
     key,
     { key, recordedAt: new Date().toISOString(), request: { model, userMessage }, response },
@@ -213,6 +214,7 @@ const [extractKey, extractRecording] = record(
   extractSkill.instructions,
   extractUser,
   toolEnvelope('travel_booking', extractEntry.value, extractSchema),
+  agent.laneRequestFields(agent.pickLane(extractSkill.meta.task)).thinking?.type,
 );
 recordings[extractKey] = extractRecording;
 console.info(`travel-extract:${EXTRACT_FIXTURE_ID}  ->  ${extractKey}`);
@@ -314,6 +316,8 @@ const picks = readEvalEntry(
     userMessage: composeUser,
     toolName: 'activity_picks',
     toolSchema: picksSchema,
+    // The harness keys a lane call on the lane too (evals/lib/harness.mjs cachedToolCall).
+    lane: agent.pickLane(finderSkill.meta.task),
   }),
   MINT_FINDER,
 );
@@ -323,6 +327,7 @@ const [picksKey, picksRecording] = record(
   finderSkill.instructions,
   composeUser,
   toolEnvelope('activity_picks', picks.value, picksSchema),
+  agent.laneRequestFields(agent.pickLane(finderSkill.meta.task)).thinking?.type,
 );
 recordings[picksKey] = picksRecording;
 console.info(`activity-picks:${FINDER_FIXTURE_ID}  ->  ${picksKey}`);

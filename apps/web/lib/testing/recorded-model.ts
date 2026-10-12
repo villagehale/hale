@@ -55,13 +55,20 @@ function systemKey(system: Anthropic.MessageCreateParams['system']): string {
     .join('');
 }
 
+/**
+ * The thinking mode is part of the question: the structured seam re-asks a turn that spent
+ * its budget thinking with the same model, system and message and thinking OFF, and a key
+ * without the mode hands that re-ask the very truncated turn it is retrying.
+ */
 function keyFor(
   model: string,
   system: Anthropic.MessageCreateParams['system'],
   userMessage: string,
+  thinking: string | undefined,
 ): string {
+  const mode = thinking ? `thinking:${thinking}\n` : '';
   return createHash('sha256')
-    .update(`${model}\n${systemKey(system)}\n${userMessage}`)
+    .update(`${model}\n${mode}${systemKey(system)}\n${userMessage}`)
     .digest('hex');
 }
 
@@ -101,7 +108,8 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
   async function create(params: Anthropic.MessageCreateParams) {
     const userMessage = firstText(params);
     requests.push(userMessage);
-    const key = keyFor(params.model, params.system, userMessage);
+    const thinking = (params as { thinking?: { type?: string } }).thinking?.type;
+    const key = keyFor(params.model, params.system, userMessage, thinking);
 
     const hit = recordings[key];
     if (hit) return hit.response as unknown as Anthropic.Message;
