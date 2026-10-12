@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is plain, short, and leads with the check Hale did. It states the lastOpenedAtLocal date and that Winter 2027 is not posted, which matches stillOpenPage false. Includes the firstFindBeat verbatim as instructed. Nothing invented: town, cycle names, and date are all in the facts. Minor issue: it doesn't say plainly that registration has closed for Fall 2026, so it's slightly less complete than a 5, but it is still clean and faithful.",
+    "score": 4
+  }
+}

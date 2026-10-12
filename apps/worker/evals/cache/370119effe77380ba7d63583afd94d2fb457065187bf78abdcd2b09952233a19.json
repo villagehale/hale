@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slots are scored. Both fetches were refused and the notes say so honestly. The one slot names a real program from the search snippet: Parent & Tot, ages 4 months to 3 years, which fits a toddler. Its ageFit is openly marked as snippet-sourced because the page could not be opened. When, price and registration are null rather than invented, and nothing claims the schedule is not posted. Attribution goes to the Town of Halton Hills, the operator. Minor quibble: sourceUrl points to a page that was not accessible, which reads a little like a page citation. The ageFit hedge mitigates this, and no pages_read field asserts the page was opened. This is the correct snippet-grounded answer.",
+    "score": 5
+  }
+}

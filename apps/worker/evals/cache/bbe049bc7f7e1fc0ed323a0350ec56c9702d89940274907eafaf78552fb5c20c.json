@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Quiet, plain, two sentences, one suggestion. It leads with the forecast and names the indoor swim as the thing it points to, which is the correct shape for a weekend suggestion with no deadline. It states only given facts (cold forecast, Family swim, Angus Glen, Sunday, Maya, indoor). Minor gap: it omits that the swim is paid, but that is not an error since the message is not required to list every fact.",
+    "score": 5
+  }
+}

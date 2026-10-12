@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real and match the page exactly: Preschool A and B, ages 3-5, the Saturday times and the Sept 12 to Nov 28 dates. Price is correctly null because the page prints no fee, and both slots carry the Aug 11 7am registration date, cited to the operator's page. No third level was invented. The message opens with the best slot by name, attributes the facts with 'their site says' and gives the not-yet-open registration date. It is two plain-ASCII sentences with no link and no question. Under page_has_schedule, the price gap is put in the first person ('I could not pin down the price') rather than as 'not posted'. Since watch is true, the first-person 'I'll keep watching and text you' is a real commitment. The only minor gap is that '9:00' drops the a.m.",
+    "score": 5
+  }
+}

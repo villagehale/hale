@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with the useful fact, uses only given facts (Markham, Fall 2026, Aug 11 6:30 a.m., Riverdale Farm, Saturday, free, outdoor, dry forecast), and 'I looked up'/'I also found' are the mandated lead-in phrasing. Plain, short, no hype. Minor deduction: offerQuestion is true but the message ends without a question, and kidNames are absent so nothing is invented, which is fine.",
+    "score": 5
+  }
+}

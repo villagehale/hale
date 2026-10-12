@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first sentence opens with 'I checked and found', so Hale is attributed as the one who looked, and the fact (free outdoor drop-in at Riverdale Farm Saturday) lands in that same sentence. The named place, day, and child come from the facts payload, so they are not invented scope.",
+    "score": 5
+  }
+}

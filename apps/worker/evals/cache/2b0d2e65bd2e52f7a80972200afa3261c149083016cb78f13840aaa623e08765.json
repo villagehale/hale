@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with the useful pick, uses only given facts (Riverdale Farm, Saturday, Maya, free, outdoor, dry forecast), and plainly states no registration date is coming up, as instructed. The 'I checked and found' lead-in is the required wording. Short, plain, no hype. Slight gap: it does not offer or ask anything despite offerQuestion being true, but that is a minor omission.",
+    "score": 4
+  }
+}

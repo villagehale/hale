@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is null, so only the slots are scored. There is one snippet-grounded slot: Parent & Tot lessons at Gellert for ages 4 months to 3 years. That age band covers a toddler. The day, time, price and registration are all left null, which is honest because both page fetches were refused. The age-fit field says outright that it comes from a search snippet and that the page could not be opened. Nothing is invented and there is no claim that the schedule is not posted. One minor issue: sourceUrl points to the Gellert page that was never opened. That is acceptable as a citation of the operator's own page, since the snippet came from that site. pages_read is not shown here, so it cannot be checked.",
+    "score": 5
+  }
+}

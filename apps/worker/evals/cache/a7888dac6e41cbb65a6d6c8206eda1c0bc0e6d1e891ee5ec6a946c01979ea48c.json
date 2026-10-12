@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first sentence opens with 'I looked up Markham and Fall 2026 registration', so the registration fact is attributed to Hale's own check, and the kids' names and town are given facts. The climbing session in the second message also uses 'I also found', but the registration fact in the lead sentence carries the attribution.",
+    "score": 5
+  }
+}
