@@ -108,10 +108,27 @@ describe('toTrailView — the honest frame', () => {
       },
     });
     expect(view.actor).toBe('hale');
-    expect(view.summary).toBe('carried out the action');
+    expect(view.summary).toBe('carried out the action on its own');
     expect(view.tone).toBe('done');
     expect(view.link).toBe('/approvals');
     expect(JSON.stringify(view)).not.toContain('all checks green');
+  });
+
+  it('keeps the plain executed sentence for an action a parent approved, and for a row with no decision', () => {
+    const approved = trail({
+      actionTaken: 'action.executed',
+      after: { kind: 'email_sent', decision: { source: 'human', reason: 'a parent approved it' } },
+    });
+    expect(approved.summary).toBe('carried out the action');
+    expect(trail({ actionTaken: 'action.executed', after: null }).summary).toBe(
+      'carried out the action',
+    );
+    // Only an execution says it: a failed autonomous run keeps the failure sentence.
+    const failed = trail({
+      actionTaken: 'action.execution_failed',
+      after: { error: 'x', decision: { source: 'autonomous', reason: 'all checks green' } },
+    });
+    expect(failed.summary).toBe('an action could not be completed');
   });
 
   it('a parent switching autonomy off for a kind reads as their own act', () => {

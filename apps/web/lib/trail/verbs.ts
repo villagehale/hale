@@ -1744,6 +1744,16 @@ export function isShadowOnlyRow(actionTaken: string, after: unknown): boolean {
 }
 
 /**
+ * An `action.executed` row for something Hale did on its own. The stored verb is the
+ * same as for an action a parent approved; only the row's recorded decision tells them
+ * apart, and History is the one place a parent sees the difference.
+ */
+export const EXECUTED_ON_ITS_OWN: Verb = {
+  sentence: 'carried out the action on its own',
+  family: 'done',
+};
+
+/**
  * The verb family → row tone. Failures/blocks read `needs-you` (never `done`);
  * held-for-you reads `awaiting`; quiet checkpoints and the neutral fallback read
  * `coach` (a quiet note). Only genuinely settled outcomes read `done`.

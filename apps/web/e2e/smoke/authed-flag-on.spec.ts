@@ -140,6 +140,17 @@ test('/trail renders the audit tally', async ({ browser }) => {
   await assertHealthy(page, errors, '06-trail');
 });
 
+test('/trail shows what Hale did on its own, and the switch-off', async ({ browser }) => {
+  const { page, errors } = await openPage(browser, 'member');
+  const response = await page.goto('/trail');
+  expect(response?.status()).toBe(200);
+  // The seed's rows (scripts/fixtures/smoke-autonomy-trail.ts), each on its own day.
+  await expect(page.getByText('carried out the action on its own')).toBeVisible();
+  await expect(page.getByText('you stopped Hale doing this on its own')).toBeVisible();
+  await expect(page.getByText('brought a draft to you')).toBeVisible();
+  await assertHealthy(page, errors, '06b-trail-autonomy');
+});
+
 test('/admin is gone: a plain portal 404, and the address does not move', async ({ browser }) => {
   const paths = ['/admin', '/admin/anything', '/admin/ledger/extra'];
   for (const viewer of ['anonymous', 'member'] as const) {
