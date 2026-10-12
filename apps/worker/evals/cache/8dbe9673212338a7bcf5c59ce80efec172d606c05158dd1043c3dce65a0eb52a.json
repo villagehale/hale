@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Picks one model (Honda Odyssey) with a concrete reason and adds a light hedge that model years and pricing change, all in a single sentence. It doesn't mention the family or point to any app, and it doesn't end with a question. 'With kids and gear' is a generic use case, not the family. The opener 'Going by the models I know of' plus the trailing hedge is a bit wordy, but acceptable.",
+    "score": 5
+  }
+}

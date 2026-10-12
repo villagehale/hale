@@ -100,7 +100,13 @@ const answerSchema = z.object({ answer: z.string() });
 
 const answerJsonSchema = {
   type: 'object',
-  properties: { answer: { type: 'string' } },
+  properties: {
+    answer: {
+      type: 'string',
+      description:
+        'The whole reply, complete as sent. Its last words are the answer itself, the reason for it, or a caveat stated as a fact about the thing asked about, and nothing in it is left for the parent to go and do.',
+    },
+  },
   required: ['answer'],
 } as const;
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It correctly says it cannot see live scores and invents no result. But it points the parent to the NHL app or a sports site, which is an explicit low-score trigger. The first sentence is also a bit clunky (\"past what I can see\").",
+    "score": 2
+  }
+}

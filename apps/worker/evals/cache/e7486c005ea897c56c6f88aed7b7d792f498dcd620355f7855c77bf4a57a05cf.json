@@ -1,0 +1,7 @@
+{
+  "value": {
+    "answer": "I can't book anything, I'm an AI and this is a kids' rec helper, so I can't sign you up or pay for lessons. Once you've got the details I can point out what to watch for on registration dates.",
+    "returnLine": "What are your kids' names and ages, and what's your postal code?"
+  },
+  "latencyMs": 4105
+}
