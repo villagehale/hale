@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
 import {
   WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
   WEEKDAY_BREAK_TEMPLATE_KEY,
@@ -78,6 +78,8 @@ export interface ProactiveReviewSummary {
   holdRefused: number;
   /** Rows whose kind the outbound gate has no class for, dropped by name before review. */
   unknownKind: number;
+  /** Families with more open rows than `FAMILY_ROWS`: their newest wait for a later run. */
+  familiesCut: number;
   skipped: number;
   failed: number;
 }
@@ -141,6 +143,12 @@ interface QueuedItem extends OpenCandidate {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * An infra bound, not a send rule: the open rows one family's review reads, oldest first,
+ * far above any real week's queue. A runaway sweep in one family then cannot stall the
+ * hourly run for every other family; the rows past it wait for a later review, by name.
+ */
+export const FAMILY_ROWS = 40;
 const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
 
 export async function runProactiveReview(
@@ -168,28 +176,67 @@ export async function runProactiveReview(
     dropRefused: 0,
     holdRefused: 0,
     unknownKind: 0,
+    familiesCut: 0,
     skipped: 0,
     failed: 0,
   };
   if (mode === 'off') return summary;
 
+  const families = await database
+    .selectDistinct({ familyId: schema.proactiveCandidates.familyId })
+    .from(schema.proactiveCandidates)
+    .where(inArray(schema.proactiveCandidates.status, ['queued', 'held']));
+  for (const { familyId } of families) {
+    try {
+      const items = await loadOpenItems(database, familyId, now, mode, summary);
+      if (items.length === 0) continue;
+      summary.families += 1;
+      await reviewFamily(database, deps, { familyId, items, now, mode, summary });
+    } catch (err) {
+      summary.failed += 1;
+      // Never the message: a postgres-js message can carry a constraint's key values.
+      console.error({ err: errorLabel(err), familyId }, 'proactive review: family failed');
+    }
+  }
+  return summary;
+}
+
+/** This family's open rows, oldest first and at most `FAMILY_ROWS` of them. */
+async function loadOpenItems(
+  database: Database,
+  familyId: string,
+  now: Date,
+  mode: 'shadow' | 'live',
+  summary: ProactiveReviewSummary,
+): Promise<QueuedItem[]> {
   const open = await database
     .select()
     .from(schema.proactiveCandidates)
-    .where(inArray(schema.proactiveCandidates.status, ['queued', 'held']));
-  const byFamily = new Map<string, QueuedItem[]>();
-  for (const row of open) {
+    .where(
+      and(
+        eq(schema.proactiveCandidates.familyId, familyId),
+        inArray(schema.proactiveCandidates.status, ['queued', 'held']),
+      ),
+    )
+    .orderBy(asc(schema.proactiveCandidates.createdAt), asc(schema.proactiveCandidates.id))
+    .limit(FAMILY_ROWS + 1);
+  if (open.length > FAMILY_ROWS) {
+    summary.familiesCut += 1;
+    console.warn({ familyId, bound: FAMILY_ROWS }, 'proactive review: family rows cut');
+  }
+  const items: QueuedItem[] = [];
+  for (const row of open.slice(0, FAMILY_ROWS)) {
     if (row.status !== 'queued' && row.status !== 'held') continue;
     if (!isProactiveSendKind(row.kind)) {
       // The gate has no class for it, so no send of it can be gated: never offered.
-      await mark(database, row.familyId, [row.id], {
+      await mark(database, familyId, [row.id], {
         status: 'dropped',
         reason: 'unknown_kind',
         decision: null,
         holdUntil: null,
         now,
       });
-      await audit(database, row.familyId, 'proactive_cadence_skipped', {
+      await audit(database, familyId, 'proactive_cadence_skipped', {
         reason: 'unknown_kind',
         itemId: row.id,
         kind: boundedLine(row.kind),
@@ -198,7 +245,7 @@ export async function runProactiveReview(
       summary.unknownKind += 1;
       continue;
     }
-    const item: QueuedItem = {
+    items.push({
       id: row.id,
       familyId: row.familyId,
       parentUserId: row.parentUserId,
@@ -217,21 +264,9 @@ export async function runProactiveReview(
       holdUntil: row.holdUntil ? row.holdUntil.toISOString() : null,
       decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
       createdAt: row.createdAt.toISOString(),
-    };
-    byFamily.set(row.familyId, [...(byFamily.get(row.familyId) ?? []), item]);
+    });
   }
-
-  for (const [familyId, items] of byFamily) {
-    summary.families += 1;
-    try {
-      await reviewFamily(database, deps, { familyId, items, now, mode, summary });
-    } catch (err) {
-      summary.failed += 1;
-      // Never the message: a postgres-js message can carry a constraint's key values.
-      console.error({ err: errorLabel(err), familyId }, 'proactive review: family failed');
-    }
-  }
-  return summary;
+  return items;
 }
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {

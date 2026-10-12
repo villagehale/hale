@@ -12,7 +12,7 @@ import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { WriterResult } from './compose';
 import type { DecideResult, DeciderDecision } from './decide';
 import { type CandidateDraft, handOffProactive } from './queue';
-import { type ProactiveReviewDeps, mark, runProactiveReview } from './review';
+import { FAMILY_ROWS, type ProactiveReviewDeps, mark, runProactiveReview } from './review';
 import { CALENDAR_ROWS, type FamilySnapshot, WITHHELD_LABEL } from './snapshot';
 import { LINE_CHARS, type ToolCandidate, boundedLine } from './tools';
 
@@ -1253,6 +1253,58 @@ describe('runProactiveReview', () => {
 
     expect(await candidate(own)).toMatchObject({ status: 'dropped', reason: 'test_drop' });
     expect(await candidate(theirId)).toMatchObject({ status: 'queued', reason: null });
+  });
+
+  it('reads at most the bound of one family’s open rows, oldest first, names the cut, and still reviews the rest', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const ids: string[] = [];
+    for (let i = 0; i < FAMILY_ROWS + 3; i += 1) ids.push(await enqueue(`nudge:runaway:${i}`));
+    for (const [i, id] of ids.entries()) {
+      await db.database
+        .update(schema.proactiveCandidates)
+        .set({ createdAt: new Date(THURSDAY_EVENING.getTime() - (ids.length - i) * 60_000) })
+        .where(eq(schema.proactiveCandidates.id, id));
+    }
+    const other = await seedFamily(db.database, 'Other Family');
+    await db.database
+      .update(schema.users)
+      .set({ timezone: TZ })
+      .where(eq(schema.users.id, other.parentUserId));
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    await handOffProactive(
+      db.database,
+      [
+        {
+          familyId: other.familyId,
+          parentUserId: other.parentUserId,
+          kind: 'nudge',
+          category: 'nudge',
+          templateKey: 'proactive_nudge:weather_swap',
+          what: 'Indoor climbing by the river',
+          why: 'weather_swap',
+          sourceUrl: null,
+          worthlessAfter: null,
+          parentRequested: false,
+          dedupeKey: 'nudge:weather:other',
+        },
+      ],
+      'candidate',
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 2, decided: 2, familiesCut: 1 });
+    const runaway = h.snapshots.find((snapshot) => snapshot.candidates.length > 1);
+    expect(runaway?.candidates.map((c) => c.id)).toEqual(ids.slice(0, FAMILY_ROWS));
+    expect(h.snapshots.filter((snapshot) => snapshot.candidates.length === 1)).toHaveLength(1);
+    for (const id of ids.slice(FAMILY_ROWS)) {
+      expect(await candidate(id)).toMatchObject({ status: 'queued' });
+    }
+    const cut = warn.mock.calls.find(([, line]) => line === 'proactive review: family rows cut');
+    expect(cut?.[0]).toEqual({ familyId, bound: FAMILY_ROWS });
+    warn.mockRestore();
   });
 
   it('keeps a clock-less code hold from the model until something new arrives', async () => {
