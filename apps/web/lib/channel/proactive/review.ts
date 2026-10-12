@@ -54,7 +54,12 @@ import { voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WriterResult, composeProactiveBatch } from './compose';
-import { type DecideResult, type DeciderDecision, decideForFamily } from './decide';
+import {
+  type DecideResult,
+  type DecideSkip,
+  type DeciderDecision,
+  decideForFamily,
+} from './decide';
 import {
   type SendFinalizerPorts,
   finalizeProactiveSend,
@@ -185,6 +190,8 @@ interface QueuedItem extends OpenCandidate {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** The skips where the snapshot, parent texts included, reached the model before the miss. */
+const SENT_TO_MODEL: readonly DecideSkip[] = ['model_failed', 'unparsed'];
 /**
  * An infra bound, not a send rule: the actionable rows (queued, or held with no clock or a
  * clock already past) one family's review reads, oldest first. The nudge sweep, the one
@@ -720,7 +727,16 @@ async function reviewFamily(
   const { decision, skipped } = await deps.decide({ snapshot, client: deps.client });
   if (!decision) {
     summary.skipped += 1;
-    await audit(database, familyId, 'proactive_cadence_skipped', { reason: skipped, mode });
+    // A call that failed or did not parse still handed the snapshot to the model. In
+    // shadow the read mark goes on this row, so the same texts are not sent again next
+    // hour: shadow keeps nothing from them, so nothing is lost. Live writes none: a
+    // parent's pace request stays unread until a decision that can keep it has read it.
+    const readInShadow = mode === 'shadow' && skipped !== null && SENT_TO_MODEL.includes(skipped);
+    await audit(database, familyId, 'proactive_cadence_skipped', {
+      reason: skipped,
+      ...(readInShadow && textsRead ? { parentTextsRead: textsRead } : {}),
+      mode,
+    });
     return;
   }
   summary.decided += 1;

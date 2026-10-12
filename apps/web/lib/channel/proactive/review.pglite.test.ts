@@ -1537,6 +1537,78 @@ describe('runProactiveReview', () => {
     expect(h.snapshots[1]?.recentParentTexts).toEqual([]);
   });
 
+  describe('a review whose decision failed or did not parse', () => {
+    /** The first call comes back with no decision, by `skip`; every later one hears. */
+    function skipsOnce(skip: NonNullable<DecideResult['skipped']>) {
+      const h = harness(hearsWhatItReads);
+      const decide = h.deps.decide;
+      let calls = 0;
+      h.deps.decide = async (input) => {
+        calls += 1;
+        if (calls > 1) return decide(input);
+        h.snapshots.push(input.snapshot);
+        return { decision: null, skipped: skip };
+      };
+      return h;
+    }
+
+    it.each(['unparsed', 'model_failed'] as const)(
+      'in shadow, marks the texts it sent the model as read on the %s row, and sends them once',
+      async (skip) => {
+        vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+        await parentText('text me less', HOUR_BEFORE);
+        await enqueue('nudge:weather:w41');
+        const h = skipsOnce(skip);
+
+        await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+        expect(h.snapshots[0]?.recentParentTexts).toEqual(['text me less']);
+        const skipped = await audits('proactive_cadence_skipped');
+        expect(skipped.map((row) => row.after)).toEqual([
+          {
+            reason: skip,
+            parentTextsRead: { parentUserId, through: stamp(HOUR_BEFORE) },
+            mode: 'shadow',
+          },
+        ]);
+
+        await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+        expect(h.snapshots).toHaveLength(2);
+        expect(h.snapshots[1]?.recentParentTexts).toEqual([]);
+      },
+    );
+
+    it('in shadow, marks nothing read when no model was called', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+      await parentText('text me less', HOUR_BEFORE);
+      await enqueue('nudge:weather:w41');
+      const h = skipsOnce('no_client');
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+      const skipped = await audits('proactive_cadence_skipped');
+      expect(skipped.map((row) => row.after)).toEqual([{ reason: 'no_client', mode: 'shadow' }]);
+
+      await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+      expect(h.snapshots[1]?.recentParentTexts).toEqual(['text me less']);
+    });
+
+    it('when live, writes no read mark, so the pace request is read again and kept', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      await parentText('text me less', HOUR_BEFORE);
+      await enqueue('nudge:weather:w41');
+      const h = skipsOnce('unparsed');
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+      const skipped = await audits('proactive_cadence_skipped');
+      expect(skipped.map((row) => row.after)).toEqual([{ reason: 'unparsed', mode: 'live' }]);
+
+      await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+      expect(h.snapshots[1]?.recentParentTexts).toEqual(['text me less']);
+      expect(await decisionFields('cadencePreference')).toEqual([
+        { schemaVersion: 1, parentUserId, direction: 'less' },
+      ]);
+    });
+  });
+
   it('reads a text first seen in shadow once more when live arms, and keeps the pace then', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     await parentText('text me less', HOUR_BEFORE);

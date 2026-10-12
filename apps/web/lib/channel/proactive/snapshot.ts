@@ -442,6 +442,8 @@ const PROACTIVE_CATEGORIES = [...new Set(Object.values(PROACTIVE_CATEGORY))];
 
 /** The decision audit row a cadence preference is kept on (preference.ts). */
 const CADENCE_DECISION_ACTION = 'proactive_cadence_decision';
+/** The audit row of a review that made no decision; in shadow it can carry a read mark. */
+const CADENCE_SKIPPED_ACTION = 'proactive_cadence_skipped';
 
 /** The latest pace this one parent asked for, from the decision rows that kept it. */
 async function latestCadence(
@@ -472,7 +474,10 @@ async function latestCadence(
  * mode. A live review reads past the newest live mark only, since shadow keeps no pace:
  * a request first read in shadow is read once more when live arms, and kept then. Another
  * parent's review and a batch two parents own write none, so neither can move a text out
- * of its author's reach unread.
+ * of its author's reach unread. A shadow review whose model call failed or did not parse
+ * writes the mark on its skipped row (review.ts): the texts went to the model, and shadow
+ * keeps nothing from them. A live one writes none, so a pace request stays unread until a
+ * decision that can keep it has read it.
  */
 export interface ParentTextsRead {
   parentUserId: string;
@@ -500,7 +505,7 @@ async function textsReadThrough(
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
-        eq(schema.auditLog.actionTaken, CADENCE_DECISION_ACTION),
+        inArray(schema.auditLog.actionTaken, [CADENCE_DECISION_ACTION, CADENCE_SKIPPED_ACTION]),
         sql`${schema.auditLog.after} -> 'parentTextsRead' ->> 'parentUserId' = ${parentUserId}`,
         mode === 'live' ? sql`${schema.auditLog.after} ->> 'mode' = ${mode}` : undefined,
       ),
