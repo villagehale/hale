@@ -295,8 +295,15 @@
 }
 
 .rowOff {
-  opacity: 0.5;
   cursor: default;
+}
+
+.rowOff .tile {
+  opacity: 0.5;
+}
+
+.rowOff h3 {
+  color: var(--meta);
 }
 
 /* Among link rows this div is its own :first-of-type, which would strip its divider. */
