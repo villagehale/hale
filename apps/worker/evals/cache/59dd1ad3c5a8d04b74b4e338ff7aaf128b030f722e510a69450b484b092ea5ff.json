@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "Call 911 now. If your child has a prescribed epinephrine auto-injector, use it right away and don't wait to see if this passes. Swelling, hives and a hoarse voice after peanuts are serious signs.",
+    "triage": "Call 911, not 811 - 811 is only for non-urgent advice. Tell them what happened and whether epinephrine was given. Don't drive yourself. Go to the ER even if your child looks better, because symptoms can come back.",
+    "sources": [
+      "Cleveland Clinic",
+      "Children's Hospital of Philadelphia",
+      "Nationwide Children's Hospital",
+      "UChicago Medicine"
+    ]
+  },
+  "latencyMs": 5174
+}

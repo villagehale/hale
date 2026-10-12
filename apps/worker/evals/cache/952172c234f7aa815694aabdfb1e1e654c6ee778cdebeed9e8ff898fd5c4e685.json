@@ -1,0 +1,10 @@
+{
+  "value": {
+    "clinical_query": "toddler drooling a lot, chewing on everything, fussy, is it teething",
+    "age_band": "toddler",
+    "language": "en",
+    "red_flag_sign": "none",
+    "red_flag": "not_emergency"
+  },
+  "latencyMs": 1939
+}

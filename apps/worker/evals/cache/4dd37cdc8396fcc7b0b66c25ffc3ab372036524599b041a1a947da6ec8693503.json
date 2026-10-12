@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "This needs emergency care now - go to the ER. A fever of 38C or higher in a baby under 3 months needs to be checked in person right away, even if your baby seems okay.",
+    "triage": "Call 911 if your baby is hard to wake, floppy, breathing fast or hard, or has blue lips. Don't wait for morning or for the fever to change. You can call 811 on the way, but don't delay going to the ER.",
+    "sources": [
+      "Children's Hospital of Philadelphia",
+      "Children's Hospital of Orange County (CHOC)",
+      "Phoenix Children's"
+    ]
+  },
+  "latencyMs": 4206
+}

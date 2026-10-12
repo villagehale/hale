@@ -1,0 +1,10 @@
+{
+  "value": {
+    "clinical_query": "toddler fever with purple spots on abdomen that do not fade when pressed",
+    "age_band": "toddler",
+    "language": "fr",
+    "red_flag_sign": "fever with non-blanching purple spots on the abdomen",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 2101
+}

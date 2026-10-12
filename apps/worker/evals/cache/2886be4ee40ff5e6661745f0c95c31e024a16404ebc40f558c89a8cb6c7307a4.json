@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "Appelez le 911 maintenant. Votre enfant est mou et somnolent après une convulsion avec fièvre : c'est une urgence. Couchez-le sur le côté, rien dans la bouche.",
+    "triage": "Composez le 911 sans attendre qu'il se réveille. Le 811 n'est pas pour ce cas. Sans ambulance, allez aux urgences maintenant.",
+    "sources": [
+      "Alberta Health Services",
+      "Royal Children's Hospital Melbourne",
+      "Mayo Clinic",
+      "Cleveland Clinic"
+    ]
+  },
+  "latencyMs": 7572
+}
