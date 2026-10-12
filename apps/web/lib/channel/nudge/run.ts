@@ -352,6 +352,12 @@ export interface NudgeRunResult {
    * PROACTIVE_CADENCE is live. The hourly decider sends them or holds them by name.
    */
   queued: number;
+  /**
+   * VIL-226 · copies whose candidate row could not be stored while PROACTIVE_CADENCE is
+   * shadow. The sweep went on with them as it would have unset; the decider's shadow record
+   * is what misses them.
+   */
+  shadowUnqueued: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
   /**
@@ -377,6 +383,7 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     quiet: 0,
     deduped: 0,
     queued: 0,
+    shadowUnqueued: 0,
     failed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     skips: {},
@@ -636,6 +643,7 @@ type FamilyTally = {
   sent: number;
   deduped: number;
   queued: number;
+  shadowUnqueued: number;
   held: ProactiveHoldReason[];
   /** The decide's own reasons for this family. A property of the DECISION, so it is
    * the household's like `quiet` is, not the recipient's. */
@@ -643,7 +651,16 @@ type FamilyTally = {
 };
 
 function emptyTally(overrides: Partial<FamilyTally> = {}): FamilyTally {
-  return { quiet: false, sent: 0, deduped: 0, queued: 0, held: [], skips: {}, ...overrides };
+  return {
+    quiet: false,
+    sent: 0,
+    deduped: 0,
+    queued: 0,
+    shadowUnqueued: 0,
+    held: [],
+    skips: {},
+    ...overrides,
+  };
 }
 
 async function runForFamily(
@@ -785,6 +802,7 @@ async function runForFamily(
     });
     return emptyTally({ deduped, held, queued: pending.length });
   }
+  const shadowUnqueued = handedOff === 'send_shadow_unqueued' ? pending.length : 0;
 
   let sent = 0;
   /** The row a family-scoped ledger write points at — the first copy that actually
@@ -860,7 +878,7 @@ async function runForFamily(
         targetId: family.familyId,
         after: { reason: delivered.reason, cohort },
       });
-      return emptyTally({ held });
+      return emptyTally({ held, shadowUnqueued });
     }
     if (delivered.status === 'skipped') {
       console.warn(
@@ -1011,7 +1029,7 @@ async function runForFamily(
   if (firstMessageId !== null) {
     await recordFamilyLedgers(database, { family, nudge, messageId: firstMessageId, now }, deps);
   }
-  return { quiet: false, sent, deduped, queued: 0, held, skips: decision.skips };
+  return { quiet: false, sent, deduped, queued: 0, shadowUnqueued, held, skips: decision.skips };
 }
 
 /**
@@ -1089,6 +1107,7 @@ export async function runNudgeCron(
       result.sent += outcome.sent;
       result.deduped += outcome.deduped;
       result.queued += outcome.queued;
+      result.shadowUnqueued += outcome.shadowUnqueued;
       for (const reason of outcome.held) result.held[reason] += 1;
       for (const [reason, count] of Object.entries(outcome.skips)) {
         const key = reason as keyof NudgeSkipCounts;

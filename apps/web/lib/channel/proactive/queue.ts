@@ -11,8 +11,11 @@ import { proactiveCadence } from './flag';
  * not send: the hourly decider does. An `immediate` item — a parent-requested or
  * time-critical send — never queues.
  *
- * A store failure throws. A candidate the decider cannot see must not turn into a text
- * nobody decided, and it must not vanish quietly either.
+ * When live, a store failure throws. A candidate the decider cannot see must not turn into
+ * a text nobody decided, and it must not vanish quietly either. In shadow the sweep is
+ * still the one deciding and sending, so a store failure there is named
+ * (`send_shadow_unqueued`), logged by its class, and the sweep sends as it would have
+ * unset: lighting shadow never costs a parent a text.
  */
 
 export type CadenceLane = 'immediate' | 'candidate';
@@ -45,27 +48,38 @@ export interface CandidateDraft {
   dedupeKey: string;
 }
 
+export type HandOff = 'send' | 'queued' | 'send_shadow_unqueued';
+
 export async function handOffProactive(
   database: Database,
   drafts: readonly CandidateDraft[],
   lane: CadenceLane,
-): Promise<'send' | 'queued'> {
+): Promise<HandOff> {
   const mode = proactiveCadence();
   if (mode === 'off' || lane === 'immediate' || drafts.length === 0) return 'send';
-  await database
-    .insert(schema.proactiveCandidates)
-    .values(drafts.map((draft) => ({ ...draft, status: 'queued' as const })))
-    .onConflictDoNothing({
-      target: [schema.proactiveCandidates.familyId, schema.proactiveCandidates.dedupeKey],
-    });
-  if (mode === 'shadow') {
-    console.info(
-      { familyId: drafts[0]?.familyId, kind: drafts[0]?.kind, count: drafts.length },
-      'proactive cadence: shadow queued; the old path still sends',
-    );
-    return 'send';
+  const store = () =>
+    database
+      .insert(schema.proactiveCandidates)
+      .values(drafts.map((draft) => ({ ...draft, status: 'queued' as const })))
+      .onConflictDoNothing({
+        target: [schema.proactiveCandidates.familyId, schema.proactiveCandidates.dedupeKey],
+      });
+  if (mode === 'live') {
+    await store();
+    return 'queued';
   }
-  return 'queued';
+  const batch = { familyId: drafts[0]?.familyId, kind: drafts[0]?.kind, count: drafts.length };
+  try {
+    await store();
+  } catch (err) {
+    console.error(
+      { err: errorLabel(err), ...batch },
+      'proactive cadence: shadow candidate not stored; the old path still sends',
+    );
+    return 'send_shadow_unqueued';
+  }
+  console.info(batch, 'proactive cadence: shadow queued; the old path still sends');
+  return 'send';
 }
 
 /**

@@ -320,23 +320,47 @@ describe('the nudge hand-off', () => {
     expect(await candidates()).toHaveLength(1);
   });
 
-  it('logs a refused hand-off by its error class and code, never the row it carried', async () => {
-    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
-    // Postgres reports a refused row in the error's detail: "Failing row contains (...)".
+  /** Postgres reports a refused row in the error's detail: "Failing row contains (...)". */
+  async function sweepWithCandidatesRefused(transport: FakeTransport) {
     await db.exec(
       "alter table proactive_candidates add constraint refuse_nudges check (kind <> 'nudge')",
     );
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const transport = new FakeTransport();
     try {
-      const result = await runNudgeCron(db.database, deps(transport), MONDAY);
-      expect(result).toMatchObject({ failed: 1, sent: 0, queued: 0 });
+      return await runNudgeCron(db.database, deps(transport), MONDAY);
     } finally {
       await db.exec('alter table proactive_candidates drop constraint refuse_nudges');
     }
+  }
 
+  it('when live, logs a refused hand-off by its error class and code, never the row it carried, and sends nothing', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const transport = new FakeTransport();
+    const result = await sweepWithCandidatesRefused(transport);
+
+    expect(result).toMatchObject({ failed: 1, sent: 0, queued: 0, shadowUnqueued: 0 });
+    expect(transport.sent).toEqual([]);
     const logged = errors.mock.calls.find(([, line]) => line === 'nudge: family sweep failed');
     expect(logged?.[0]).toEqual({ err: 'error:23514', familyId });
+    expect(inspect(errors.mock.calls, { depth: null })).not.toContain('Toddler drop-in');
+    errors.mockRestore();
+  });
+
+  it('in shadow, still sends the find when the candidate write is refused, and names the miss', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const transport = new FakeTransport();
+    const result = await sweepWithCandidatesRefused(transport);
+
+    expect(result).toMatchObject({ failed: 0, sent: 1, queued: 0, shadowUnqueued: 1 });
+    expect(transport.sent).toHaveLength(1);
+    expect(await ledger()).toHaveLength(1);
+    expect(await candidates()).toEqual([]);
+    const logged = errors.mock.calls.find(
+      ([, line]) =>
+        line === 'proactive cadence: shadow candidate not stored; the old path still sends',
+    );
+    expect(logged?.[0]).toEqual({ err: 'error:23514', familyId, kind: 'nudge', count: 1 });
     expect(inspect(errors.mock.calls, { depth: null })).not.toContain('Toddler drop-in');
     errors.mockRestore();
   });
