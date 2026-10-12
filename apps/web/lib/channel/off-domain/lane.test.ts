@@ -1,6 +1,11 @@
+import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
-import type { GeneralAnswerFallback, GeneralAnswerOutcome } from './answer';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  type GeneralAnswerFallback,
+  type GeneralAnswerOutcome,
+  createGeneralAnswer,
+} from './answer';
 import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
@@ -18,6 +23,7 @@ import {
   type ReplySource,
   type UnmetSignalOutcome,
   offDomainLane,
+  productionOffDomainLane,
   recordUnmetIntent,
 } from './lane';
 import type { MedicalReply } from './medical';
@@ -86,7 +92,7 @@ function ports(
     answer: {
       compose: async (text, today) => {
         harness.composeCalls += 1;
-        harness.composeSeen.push({ text, today });
+        harness.composeSeen.push({ text, today: await today() });
         return answer;
       },
     },
@@ -626,6 +632,101 @@ describe('recordUnmetIntent', () => {
       lane: 'off_domain_general',
     });
     log.mockRestore();
+  });
+});
+
+/**
+ * Today's date is the one thing this lane reads from the database for an answer. It is
+ * read where it is used: after the fixed lines that need no date, and in the zone the
+ * family keeps.
+ */
+describe("today's date", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** The screen can file a crisis under a question about the world. The composer's own
+   * tripwire answers it with the reviewed line, and that line waits on no read. */
+  it('sends the fixed crisis line when the date cannot be read', async () => {
+    const lane = offDomainLane({
+      ...ports(),
+      answer: createGeneralAnswer(() => {
+        throw new Error('a crisis must not reach a model');
+      }),
+      today: async () => {
+        throw new Error('connection terminated');
+      },
+    });
+
+    expect(
+      await lane.consider({ familyId: FAMILY, channelMessageId: MESSAGE, text: 'I want to die' }),
+    ).toMatchObject({ status: 'deflected', reply: MENTAL_CRISIS_REPLY, replySource: 'composed' });
+  });
+
+  /**
+   * The PRODUCTION wiring, through the real screen and the real composer on a scripted
+   * client. At 02:30 UTC it is already Tuesday in Tokyo and still Monday in Toronto, so
+   * the date the compose is handed says whose zone it was read in.
+   */
+  it("hands the compose today's date in the zone the database holds for this family", async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-13T02:30:00Z') });
+    const composePayloads: string[] = [];
+    const structured = (payload: unknown) => ({
+      content: [{ type: 'text', text: JSON.stringify(payload) }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    const client = () =>
+      ({
+        messages: {
+          async create(request: {
+            system?: string | Array<{ text: string }>;
+            messages: Array<{ content: string }>;
+          }) {
+            const system =
+              typeof request.system === 'string'
+                ? request.system
+                : (request.system ?? []).map((block) => block.text).join('');
+            if (system.includes('Which lane does this text belong in')) {
+              return structured({ lane: 'off_domain_general', category: 'sports', reason: 'x' });
+            }
+            if (system.includes('Take the family out, keep the question')) {
+              return structured({
+                language: 'en',
+                question: 'whats the capital of peru',
+                missing_detail: 'none',
+                current_fact: 'none',
+                needs_search: 'no',
+              });
+            }
+            composePayloads.push(request.messages[0]?.content ?? '');
+            return structured({ answer: 'Lima.' });
+          },
+        },
+      }) as unknown as AgentClient;
+    const database = {
+      select: () => ({
+        from: () => ({
+          innerJoin: () => ({
+            where: () => ({ limit: async () => [{ timezone: 'Asia/Tokyo' }] }),
+          }),
+        }),
+      }),
+      update: () => ({
+        set: () => ({ where: () => ({ returning: async () => [{ id: MESSAGE }] }) }),
+      }),
+    } as unknown as Database;
+
+    const verdict = await productionOffDomainLane(database, client).consider({
+      familyId: FAMILY,
+      channelMessageId: MESSAGE,
+      text: 'whats the capital of peru',
+    });
+
+    expect(verdict).toMatchObject({ status: 'deflected', reply: 'Lima.', replySource: 'composed' });
+    expect(composePayloads.map((payload) => JSON.parse(payload).today)).toEqual([
+      'tuesday, oct 13, 2026',
+    ]);
   });
 });
 

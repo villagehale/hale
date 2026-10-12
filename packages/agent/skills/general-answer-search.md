@@ -29,11 +29,8 @@ Search the web for what a correct answer needs, then write short research notes.
   from.
 - Where the results disagree with each other, or are older than the question needs,
   say so.
-- The people who text Hale are in Canada. Where the answer depends on the country
-  and the question names none - which broadcaster, which currency, which
-  government - look it up for Canada, and say in the notes that you did.
-- Where the question leaves out something else the answer depends on - which city,
-  which team - say what is missing. Do not pick one for them.
+- Where the question leaves out something the answer depends on - which country,
+  which city, which team - say what is missing. Do not pick one for them.
 - Where the results do not answer the question, say that plainly.
 
 These notes hold only what the search returned. A gap is written down as a gap, and

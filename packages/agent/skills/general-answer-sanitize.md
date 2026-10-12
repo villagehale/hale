@@ -27,8 +27,9 @@ You receive:
 {
   "language": "the language the PARENT wrote in, as a language code: en, fr, zh, es, ar...",
   "question": "their question with the family taken out, in the language they wrote it",
+  "missing_detail": "what a correct answer depends on that the message leaves out, in a few plain words, or 'none'",
   "current_fact": "what in the question could have changed recently, in a few plain words, or 'none'",
-  "needs_search": "yes, no or unsure"
+  "needs_search": "yes, no, unsure or missing_detail"
 }
 ```
 
@@ -67,16 +68,31 @@ Add nothing. A detail that is not in the parent's message does not belong in
 
 ## `needs_search` - does a correct answer depend on something current?
 
-First write `current_fact`: the thing in the question that could have changed
-recently, named in a few plain words and de-identified like the question, or `none`.
+First write `missing_detail`. Some questions about the world can only be answered
+for one particular place or thing: a forecast is for a city, and who broadcasts
+something, or what it costs, is different in each country. Hale holds nothing about
+where this family is. When the message does not say, and a correct answer would be
+a different one somewhere else, write what is missing in a few plain words (which
+city, which country, which team). Otherwise write `none`: a question with the same
+good answer wherever they are leaves nothing out, and neither does a question about
+their own life.
+
+Then `current_fact`: the thing in the question that could have changed recently,
+named in a few plain words and de-identified like the question, or `none`.
+
 Then `needs_search`:
 
+- `missing_detail` - a correct answer cannot be given without what you wrote in
+  `missing_detail`. No lookup is made, and Hale asks for it.
 - `yes` - a correct answer depends on something current: a result or a score, a
   forecast, a price, a schedule, where something is showing or streaming, who holds
   an office or a title today, what is newest or best right now, anything that
-  happened recently.
-- `no` - the answer is settled knowledge, arithmetic, an opinion, a creative ask, or
-  something about the parent's own life that no search could know.
+  happened recently. A count or a record that can still grow is current too - titles,
+  trophies, goals, the career of someone still playing - and so is an opinion that
+  would be argued from one.
+- `no` - the answer is settled knowledge, arithmetic, an opinion that rests on
+  nothing still changing, a creative ask, or something about the parent's own life
+  that no search could know.
 - `unsure` - you cannot tell. Hale treats `unsure` exactly as `yes`, so choose it
   whenever a stale answer would be a wrong one.
 

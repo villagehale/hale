@@ -2,14 +2,6 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import {
-  afterProvisionFallbackReply,
-  afterProvisionReplyFromNotes,
-  cheerUpAfterProvisionReply,
-  groundCurrentSource,
-  isCheerUpAsk,
-  isLiveLookupAsk,
-} from '~/lib/channel/intake/live-lookup';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { formatLongDate } from '~/lib/format/datetime';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
@@ -45,38 +37,41 @@ import {
  *
  *   0. SANITIZE. The one and only stage that sees the parent's raw words. It returns the
  *      question with the family taken out of it, the language they wrote in, and its
- *      judgment of whether a correct answer needs something current. The deterministic
- *      {@link scrubResidualPii} backstop then runs under it, before the question goes
- *      anywhere.
+ *      judgment of whether a correct answer needs something current, or cannot be given
+ *      at all without a detail the question leaves out (which city, for a forecast). The
+ *      deterministic {@link scrubResidualPii} backstop then runs under it, before the
+ *      question goes anywhere.
  *
  *   1. SEARCH. Only when the sanitizer judged the answer needs current facts AND
  *      {@link generalAnswerSearchEnabled} is lit: one STREAMED `web_search` server-tool
  *      turn on the de-identified question and today's date. The result items actually
- *      returned are counted, and zero is not a search.
+ *      returned are counted, and zero is not a search. A question missing what its
+ *      answer depends on is not searched: no search could answer it.
  *
  *   2. COMPOSE. The skill writes the one reply from the de-identified question, today's
- *      date and the research when there is any, in the parent's language.
+ *      date and the research when there is any, in the parent's language. Told a detail
+ *      is missing, it asks for it.
  *
  * NOTHING ABOUT THE FAMILY IS LOADED. No children, no calendar, no transcript. That is
  * rule #1 at its cheapest: an off-topic answer needs nothing about the kids, so nothing
  * about the kids is at risk. The one thing it is handed from outside the message is
- * today's date where the family is, worked out by the lane.
+ * today's date where the family is, worked out by the lane and asked for only once
+ * there is a de-identified question to read against it.
  *
  * EVERY WAY THE SEARCH DOES NOT HAPPEN IS NAMED ({@link LiveSearch}, rule #11), and none
  * of them costs the parent a reply or buys them an invented one: the compose is told that
  * nothing could be checked, and says so.
  *
- * IT CANNOT COST A PARENT THEIR REPLY. Every degraded path — no client, no skill, an
- * outage, an answer that cannot be sent — comes back NAMED (rule #11) and the lane
- * sends its fixed could-not-get-to-it line instead. The parent always gets something.
+ * A MODEL CANNOT COST A PARENT THEIR REPLY. Every degraded path of the calls made
+ * here — no client, no skill, an outage, an answer that cannot be sent — comes back
+ * NAMED (rule #11) and the lane sends its fixed could-not-get-to-it line instead. The
+ * date is the lane's read, not a model's: when it cannot be made it throws to the
+ * router, as every other database read on the turn does, and it is asked for after the
+ * fixed lines so that none of them waits on it.
  *
  * PRIVACY. The raw message reaches ONLY the sanitize call; the search and the compose see
  * the de-identified question alone. Nothing here logs the question in either form, or
  * any provider text — only a named reason and a named detail (rule #1).
- *
- * ONE BRANCH IS OLDER THAN THIS SHAPE AND IS NOT PART OF IT. A text the VIL-327 matchers
- * claim (intake/live-lookup.ts isLiveLookupAsk) leaves before the sanitize call, by that
- * module's own search and its own de-identification, and is not behind this flag.
  */
 
 export const GENERAL_ANSWER_SEARCH_ENABLED_ENV = 'GENERAL_ANSWER_SEARCH_ENABLED';
@@ -124,14 +119,16 @@ export type GeneralAnswerFallback =
 
 /**
  * What happened to the live search this turn. `searched` is the only one that put
- * research in front of the compose. The three after it are the ways a question that
- * needed a search went without one — the flag is dark, the call failed, the call
- * returned nothing to stand on — each logged by name and each answered by the compose
- * saying plainly that it cannot check right now.
+ * research in front of the compose. `missing_detail` is a question no search could
+ * answer as asked, so none was made and the compose asks for what is missing. The three
+ * after it are the ways a question that needed a search went without one — the flag is
+ * dark, the call failed, the call returned nothing to stand on — each logged by name and
+ * each answered by the compose saying plainly that it cannot check right now.
  */
 export type LiveSearch =
   | 'not_needed'
   | 'searched'
+  | 'missing_detail'
   | 'search_off'
   | 'search_failed'
   | 'nothing_usable';
@@ -150,12 +147,14 @@ export type GeneralAnswerOutcome =
   | { status: 'unavailable'; reason: GeneralAnswerFallback };
 
 export interface GeneralAnswerComposer {
-  /** `today` is today's date where the family is (see {@link localDate}). */
-  compose(text: string, today: string): Promise<GeneralAnswerOutcome>;
+  /** `today` reads today's date where the family is (see {@link localDate}). It is
+   * called at most once, and not at all for a text a fixed line answers. */
+  compose(text: string, today: () => Promise<string>): Promise<GeneralAnswerOutcome>;
 }
 
-/** What the sanitizer may answer. Only an explicit `no` skips the search. */
-const SEARCH_READINGS = ['yes', 'no', 'unsure'] as const;
+/** What the sanitizer may answer. `no` and `missing_detail` make no search; everything
+ * else, on the list or off it, does. */
+const SEARCH_READINGS = ['yes', 'no', 'unsure', 'missing_detail'] as const;
 
 /** Parsed loosely, for the reason screen.ts states at length: a strict schema turns a
  * parent's injected field name into a logged ZodError message (rule #1), and zod's
@@ -164,21 +163,24 @@ const SEARCH_READINGS = ['yes', 'no', 'unsure'] as const;
 const sanitizeSchema = z.object({
   language: z.string().nullish(),
   question: z.string(),
+  missing_detail: z.string().nullish(),
   current_fact: z.string().nullish(),
   needs_search: z.string().nullish(),
 });
 
 const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
   type: 'object',
-  // The language first: it is read off the parent's words before they are rewritten. The
-  // fact before the verdict: a reading that names what it is judging on first.
+  // The language first: it is read off the parent's words before they are rewritten. What
+  // is missing and what is current before the verdict: a reading that names what it is
+  // judging on first.
   properties: {
     language: { type: 'string' },
     question: { type: 'string' },
+    missing_detail: { type: 'string' },
     current_fact: { type: 'string' },
     needs_search: { type: 'string', enum: [...SEARCH_READINGS] },
   },
-  required: ['language', 'question', 'current_fact', 'needs_search'],
+  required: ['language', 'question', 'missing_detail', 'current_fact', 'needs_search'],
 };
 
 const answerSchema = z.object({ answer: z.string() });
@@ -210,11 +212,23 @@ export function searchUserMessage(input: { question: string; today: string }): s
 }
 
 /**
+ * What the compose is told about the search. The three ways a needed search did not
+ * happen are ONE value here. To the writer they are the same fact — nothing could be
+ * checked — and which one it was belongs to the log and the outcome, not to the reply.
+ */
+function liveAsTold(
+  search: LiveSearch,
+): 'searched' | 'not_needed' | 'missing_detail' | 'unavailable' {
+  if (search === 'searched' || search === 'not_needed' || search === 'missing_detail') {
+    return search;
+  }
+  return 'unavailable';
+}
+
+/**
  * The compose payload. Shared with the eval, which REPLICATES this request shape.
- *
- * The three ways a needed search did not happen are ONE value here. To the writer they
- * are the same fact — nothing could be checked — and which one it was belongs to the
- * log and the outcome, not to the reply.
+ * `notes` travels only with a search that found something, `missing` only with a
+ * question that left out what its answer depends on.
  */
 export function generalAnswerUserMessage(input: {
   question: string;
@@ -222,21 +236,22 @@ export function generalAnswerUserMessage(input: {
   today: string;
   search: LiveSearch;
   notes: string;
+  missing: string;
 }): string {
-  const searched = input.search === 'searched';
   return JSON.stringify({
     question: input.question,
     language: input.language,
     today: input.today,
-    live: searched ? 'searched' : input.search === 'not_needed' ? 'not_needed' : 'unavailable',
-    ...(searched ? { research_notes: input.notes } : {}),
+    live: liveAsTold(input.search),
+    ...(input.search === 'searched' ? { research_notes: input.notes } : {}),
+    ...(input.search === 'missing_detail' ? { missing: input.missing } : {}),
   });
 }
 
 /**
- * FAIL TOWARD LOOKING IT UP: only an explicit `no` skips the search. `unsure`, a missing
- * reading and anything off the list all search, because the failure worth avoiding is a
- * stale fact stated flat.
+ * FAIL TOWARD LOOKING IT UP: of the readings that reach here, only an explicit `no`
+ * skips the search. `unsure`, a missing reading and anything off the list all search,
+ * because the failure worth avoiding is a stale fact stated flat.
  */
 function needsSearch(raw: unknown): boolean {
   return raw !== 'no';
@@ -267,6 +282,13 @@ function unavailable(reason: GeneralAnswerFallback, detail?: string): GeneralAns
 function wentWithout<T extends LiveSearch>(search: T, detail?: string): T {
   console.warn({ search, detail }, 'off-domain answer: no live search this turn');
   return search;
+}
+
+/** A question no search could answer as asked, named (rule #11). Nothing went wrong, so
+ * it is not a warning. */
+function askedInstead(): 'missing_detail' {
+  console.info({ search: 'missing_detail' }, 'off-domain answer: no live search this turn');
+  return 'missing_detail';
 }
 
 interface SearchFindings {
@@ -333,6 +355,14 @@ async function liveSearch(
   } catch (err) {
     return { search: wentWithout('search_failed', failureName(err)), findings: NO_FINDINGS };
   }
+  // A turn the provider paused, or cut off at the ceiling, can hold result items and only
+  // its opening sentence: what it wrote is not what it found.
+  if (research.stop_reason !== 'end_turn') {
+    return {
+      search: wentWithout('nothing_usable', `stopped:${research.stop_reason}`),
+      findings: NO_FINDINGS,
+    };
+  }
   const findings = readSearch(research.content);
   if (findings.urls.length === 0) {
     return { search: wentWithout('nothing_usable', 'no_results'), findings: NO_FINDINGS };
@@ -340,6 +370,11 @@ async function liveSearch(
   if (findings.notes === '') {
     return { search: wentWithout('nothing_usable', 'empty_notes'), findings: NO_FINDINGS };
   }
+  // The one line a lit turn leaves when it worked: the count, never the question.
+  console.info(
+    { search: 'searched', results: findings.urls.length },
+    'off-domain answer: live search ran',
+  );
   return { search: 'searched', findings };
 }
 
@@ -411,7 +446,7 @@ function sendable(
  */
 export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerComposer {
   return {
-    async compose(text, today) {
+    async compose(text, readToday) {
       // VIL-328: physical emergency is Call 911 now., never the 811 Telehealth
       // line. Mental crisis is the reviewed 988 line, no return ask.
       if (namesAnEmergency(text)) {
@@ -421,29 +456,11 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
         return { status: 'composed', reply: MENTAL_CRISIS_REPLY };
       }
 
-      if (isCheerUpAsk(text)) {
-        return { status: 'composed', reply: cheerUpAfterProvisionReply() };
-      }
-
       let resolved: AgentClient;
       try {
         resolved = client();
       } catch (err) {
         return unavailable('client_unavailable', message(err));
-      }
-
-      // Leftover current-source facts and therapist-find: live lookup, then
-      // one line back to the kids / the week. Do not stay in trivia.
-      if (isLiveLookupAsk(text)) {
-        const ground = await groundCurrentSource(resolved, text);
-        if (ground.status === 'ungrounded') {
-          console.error(
-            { reason: ground.reason },
-            'off-domain answer: current source not grounded, returned to Hale',
-          );
-          return { status: 'composed', reply: afterProvisionFallbackReply() };
-        }
-        return { status: 'composed', reply: afterProvisionReplyFromNotes(ground.notes) };
       }
 
       let sanitizeSkill: Awaited<ReturnType<typeof loadCronSkill>>;
@@ -482,11 +499,15 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
       // Deterministic backstop UNDER the sanitizer, before the question goes anywhere.
       const question = scrubResidualPii(sanitized.question.trim());
       const language = normalizeLanguage(sanitized.language);
+      const today = await readToday();
 
       // Phase 1 — SEARCH (only when judged needed, and only when lit).
-      const { search, findings } = needsSearch(sanitized.needs_search)
-        ? await liveSearch(resolved, searchSkill, question, today)
-        : { search: 'not_needed' as const, findings: NO_FINDINGS };
+      const { search, findings } =
+        sanitized.needs_search === 'missing_detail'
+          ? { search: askedInstead(), findings: NO_FINDINGS }
+          : needsSearch(sanitized.needs_search)
+            ? await liveSearch(resolved, searchSkill, question, today)
+            : { search: 'not_needed' as const, findings: NO_FINDINGS };
 
       // Phase 2 — COMPOSE (blind: the question and the research, never the raw message).
       try {
@@ -500,6 +521,8 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
             today,
             search,
             notes: findings.notes,
+            // The model may leave it out; it is scrubbed like the question it came with.
+            missing: scrubResidualPii((sanitized.missing_detail ?? '').trim()),
           }),
           toolName: 'answer',
           toolDescription: 'Return the one brief answer to this question.',
