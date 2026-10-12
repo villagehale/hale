@@ -1,7 +1,8 @@
 import type { AgentClient } from '@hale/agent';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { structuredReply } from '~/lib/testing/structured-reply';
 import {
+  HOLDING_LINE_ENABLED_ENV,
   type HoldingLineComposer,
   MAX_COMPOSE_ATTEMPTS,
   armHoldingLine,
@@ -119,6 +120,27 @@ function composer(line: string | null): HoldingLineComposer & { calls: number } 
 }
 
 describe('armHoldingLine — one line, only on a slow turn', () => {
+  beforeEach(() => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('dark unless HOLDING_LINE_ENABLED is exactly true: composes nothing and settles as lane_off', async () => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'True');
+    vi.useFakeTimers();
+    const c = composer("I'm on it.");
+    const send = vi.fn();
+    const l = log();
+    const holding = armHoldingLine({ afterMs: 8_000, language: 'en', composer: c, send, log: l });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await holding.settle()).toBe('lane_off');
+    expect(c.calls).toBe(0);
+    expect(send).not.toHaveBeenCalled();
+    expect(l.info).toHaveBeenCalledWith({ outcome: 'lane_off' }, expect.any(String));
+  });
+
   it('a slow turn: sends ONE line once the wait passes, and the answer waits for it', async () => {
     vi.useFakeTimers();
     const sent: string[] = [];
