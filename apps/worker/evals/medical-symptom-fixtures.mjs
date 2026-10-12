@@ -407,3 +407,95 @@ export const MEDICAL_FIXTURES = [
       'A common cold in a well, playing preschooler. The answer MUST be in ARABIC. Reassure with home care and name the watch-fors; do NOT over-escalate to the ER. Triage present.',
   },
 ];
+
+// The escalation judgment, calibrated on its own (medical-escalation.md). Each `answer` is
+// a composed body exactly as the parent would receive it, and `escalates` is what the
+// judgment must say about it: `yes` only when it orders emergency care NOW, in the
+// parent's language. The `ruled-out` bodies name 911 only to say it is not needed - the
+// digits are there and the order is not - in every language the corpus answers in, Spanish
+// and Arabic included, which no phrase list covered. Expected verdicts are derived from
+// what each body tells the parent to do, not from what a model answered.
+export const ESCALATION_BODIES = [
+  {
+    id: 'escalation-en-order',
+    language: 'en',
+    answer:
+      'Call 911 now or take her to the ER: struggling to breathe at this age is an emergency. For questions that are not urgent, Health811 can help.',
+    escalates: 'yes',
+  },
+  {
+    id: 'escalation-en-dont-wait',
+    language: 'en',
+    answer:
+      "Don't wait for the morning - call 911 now, this needs emergency care. Health811 is there for anything less urgent.",
+    escalates: 'yes',
+  },
+  {
+    id: 'escalation-en-ruled-out',
+    language: 'en',
+    answer:
+      'No need to call 911 for this, it sounds like an ordinary cold. Keep her comfortable and call 811 if you are worried.',
+    escalates: 'no',
+  },
+  {
+    id: 'escalation-fr-order',
+    language: 'fr',
+    answer:
+      'Composez le 911 maintenant ou emmenez-la aux urgences: une respiration difficile a cet age est une urgence. Pour le reste, le 811 peut vous aider.',
+    escalates: 'yes',
+  },
+  {
+    id: 'escalation-fr-ruled-out',
+    language: 'fr',
+    answer:
+      "Pas besoin d'appeler le 911, cela ressemble a un rhume ordinaire. Surveillez-la et appelez le 811 au besoin.",
+    escalates: 'no',
+  },
+  {
+    id: 'escalation-fr-order-in-english',
+    language: 'fr',
+    answer:
+      'Elle a des signes de detresse respiratoire. Go to the ER now. Le 811 peut repondre a vos questions.',
+    escalates: 'no',
+  },
+  {
+    id: 'escalation-zh-order',
+    language: 'zh',
+    answer: '请立即拨打911或马上去急诊，这个年龄呼吸困难属于紧急情况。非紧急问题可以拨打811。',
+    escalates: 'yes',
+  },
+  {
+    id: 'escalation-zh-ruled-out',
+    language: 'zh',
+    answer: '不需要拨打911，这听起来像普通感冒。在家观察，有疑问拨打811咨询护士。',
+    escalates: 'no',
+  },
+  {
+    id: 'escalation-es-order',
+    language: 'es',
+    answer:
+      'Llame al 911 ahora o llévela a urgencias: la dificultad para respirar a esta edad es una emergencia. Para dudas no urgentes, llame al 811.',
+    escalates: 'yes',
+  },
+  {
+    id: 'escalation-es-ruled-out',
+    language: 'es',
+    answer:
+      'No hace falta llamar al 911, parece un resfriado común. Vigílela en casa y llame al 811 si le preocupa.',
+    escalates: 'no',
+  },
+  {
+    id: 'escalation-ar-order',
+    language: 'ar',
+    answer:
+      'اتصلي بالرقم 911 الآن أو خذيها إلى قسم الطوارئ، فصعوبة التنفس في هذا العمر حالة طارئة. للأسئلة غير العاجلة اتصلي بالرقم 811.',
+    escalates: 'yes',
+  },
+  {
+    id: 'escalation-ar-ruled-out',
+    language: 'ar',
+    answer:
+      'لا داعي للاتصال بالرقم 911، يبدو أنه زكام عادي. راقبيها في المنزل واتصلي بالرقم 811 إذا كنتِ قلقة.',
+    escalates: 'no',
+  },
+];

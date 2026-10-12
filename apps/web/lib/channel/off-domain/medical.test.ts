@@ -5,7 +5,6 @@ import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from './copy';
 import {
   createMedicalComposer,
   groundUserMessage,
-  hasEmergencyDirective,
   sanitizeUserMessage,
   scrubResidualPii,
 } from './medical';
@@ -27,7 +26,11 @@ import {
 
 interface Seen {
   system?: string | Array<{ type?: string; text?: string }>;
-  schema?: { properties?: Record<string, { enum?: unknown }>; required?: string[] };
+  schema?: {
+    properties?: Record<string, { enum?: unknown }>;
+    required?: string[];
+    additionalProperties?: unknown;
+  };
   toolChoice?: string;
   tools?: Array<{ type?: string; name?: string }>;
   userMessage?: string;
@@ -72,6 +75,14 @@ const composeResult = (input: unknown) => ({
   stop_reason: 'end_turn',
 });
 
+const escalationResult = (escalates: string) => ({
+  content: [
+    { type: 'text', text: JSON.stringify({ reason: 'what the answer tells them', escalates }) },
+  ],
+  usage: { input_tokens: 5, output_tokens: 5 },
+  stop_reason: 'end_turn',
+});
+
 const OK_SANITIZE = {
   clinical_query: 'fever 39C 3 days toddler',
   age_band: 'toddler',
@@ -89,7 +100,12 @@ const OK_COMPOSE = {
 type PhaseResponse = unknown | (() => unknown) | Error;
 
 function makeClient(
-  script: { sanitize?: PhaseResponse; ground?: PhaseResponse; compose?: PhaseResponse },
+  script: {
+    sanitize?: PhaseResponse;
+    ground?: PhaseResponse;
+    compose?: PhaseResponse;
+    escalation?: PhaseResponse;
+  },
   seen: Seen[] = [],
 ): () => AgentClient {
   return () =>
@@ -99,13 +115,20 @@ function makeClient(
         async create(req: any) {
           const isSanitize = isStage(req, 'sanitize', 'clinical_query');
           const isCompose = isStage(req, 'medical_answer', 'triage');
+          const isEscalation = isStage(req, 'escalation', 'escalates');
           const isGround = Array.isArray(req.tools) && req.tools[0]?.type === 'web_search_20250305';
           seen.push({
             system: req.system,
             schema:
               req.output_config?.format?.schema ??
               req.tools?.find((t: { input_schema?: unknown }) => t.input_schema)?.input_schema,
-            toolChoice: isSanitize ? 'sanitize' : isCompose ? 'medical_answer' : undefined,
+            toolChoice: isSanitize
+              ? 'sanitize'
+              : isCompose
+                ? 'medical_answer'
+                : isEscalation
+                  ? 'escalation'
+                  : undefined,
             tools: req.tools,
             userMessage: req.messages?.[0]?.content,
           });
@@ -113,9 +136,11 @@ function makeClient(
             ? script.sanitize
             : isCompose
               ? script.compose
-              : isGround
-                ? script.ground
-                : undefined;
+              : isEscalation
+                ? script.escalation
+                : isGround
+                  ? script.ground
+                  : undefined;
           const resolved = typeof pick === 'function' ? (pick as () => unknown)() : pick;
           if (resolved instanceof Error) throw resolved;
           if (resolved === undefined) throw new Error('medical test: no script for this phase');
@@ -265,140 +290,6 @@ describe('scrubResidualPii', () => {
   });
 });
 
-/**
- * The emergency-directive check: the positive half of the escalation invariant. It must
- * accept a real "seek emergency care" instruction and REJECT the presence of 811 alone —
- * "watch and wait, call 811" is exactly the under-escalation this lane must catch.
- *
- * It is checked in all THREE languages the lane answers in, because the check is what
- * decides whether a red-flag answer may ship: an English-only matcher reading a French or
- * Chinese body finds no directive in a perfectly good "allez aux urgences" and falls the
- * turn closed, and — the direction that actually hurts — would have no way to tell that
- * body apart from a French under-escalation. Both directions are asserted per language.
- */
-describe('hasEmergencyDirective', () => {
-  it('accepts an explicit emergency instruction', () => {
-    expect(hasEmergencyDirective('Go to the ER or call 911 now.')).toBe(true);
-    expect(hasEmergencyDirective('This needs emergency care now.')).toBe(true);
-    expect(hasEmergencyDirective('Seek immediate care.')).toBe(true);
-    expect(hasEmergencyDirective('Call an ambulance right away.')).toBe(true);
-    expect(hasEmergencyDirective('This needs urgent medical care now.')).toBe(true);
-  });
-
-  it('accepts an explicit emergency instruction in French', () => {
-    expect(hasEmergencyDirective('Emmenez-la aux urgences maintenant.')).toBe(true);
-    expect(hasEmergencyDirective("Allez a l'urgence tout de suite.")).toBe(true);
-    expect(hasEmergencyDirective("Allez à l'urgence tout de suite.")).toBe(true);
-    expect(hasEmergencyDirective("Elle a besoin de soins d'urgence immédiats.")).toBe(true);
-    expect(hasEmergencyDirective('Appelez une ambulance.')).toBe(true);
-    // The digits need no translation — the universal anchor.
-    expect(hasEmergencyDirective('Composez le 911 tout de suite.')).toBe(true);
-  });
-
-  it('accepts an explicit emergency instruction in Chinese', () => {
-    expect(hasEmergencyDirective('请立即就医。')).toBe(true);
-    expect(hasEmergencyDirective('马上去急诊。')).toBe(true);
-    expect(hasEmergencyDirective('立刻叫救护车。')).toBe(true);
-    expect(hasEmergencyDirective('马上就医，不要等。')).toBe(true);
-    expect(hasEmergencyDirective('立即拨打911。')).toBe(true);
-  });
-
-  it('rejects a body that only names the non-urgent nurse line', () => {
-    expect(hasEmergencyDirective('Probably viral, watch and wait, call 811 if worried.')).toBe(
-      false,
-    );
-    expect(hasEmergencyDirective('Call 811 any time to talk it through with a nurse.')).toBe(false);
-    expect(hasEmergencyDirective('Keep an eye on her and use your judgement.')).toBe(false);
-  });
-
-  /**
-   * The FR/ZH half of the same refusal, and the reason the French matcher is written
-   * around DIRECTIVES ("aux urgences", "soins d'urgence") rather than around the bare noun
-   * "urgence": a body that says "ce n'est pas une urgence" contains the word and escalates
-   * nothing, so a bare-noun matcher would wave through exactly the under-escalation this
-   * check exists to catch.
-   */
-  it('rejects a soft FR/ZH line that names only the nurse line', () => {
-    expect(hasEmergencyDirective('Appelle le 811 si inquiet.')).toBe(false);
-    expect(
-      hasEmergencyDirective("Ce n'est pas une urgence - surveille-la et appelle le 811."),
-    ).toBe(false);
-    expect(hasEmergencyDirective('Surveillez-la à la maison et appelez le 811 au besoin.')).toBe(
-      false,
-    );
-    expect(hasEmergencyDirective('在家观察即可，有疑问可拨打811咨询护士。')).toBe(false);
-  });
-
-  /**
-   * NEGATION, the shape that shipped past every gate above: a body that NAMES the ER, les
-   * urgences or 急诊 only to tell the parent they do not need it. Each of these carries 811
-   * (so the triage gate passes) and no 911, and each was accepted as an escalation before
-   * the negation scope existed — the exact under-escalation the invariant exists to catch,
-   * wearing the vocabulary of the thing that catches it.
-   */
-  it('rejects a directive inside the scope of a negation', () => {
-    expect(
-      hasEmergencyDirective(
-        "No need for the ER - this looks viral. Keep her comfortable and call 811 if you're worried.",
-      ),
-    ).toBe(false);
-    expect(
-      hasEmergencyDirective('You do not need to call 911 for this. Call 811 if anything changes.'),
-    ).toBe(false);
-    expect(
-      hasEmergencyDirective(
-        "Pas besoin d'aller aux urgences pour l'instant. Surveillez-la et appelez le 811 au besoin.",
-      ),
-    ).toBe(false);
-    expect(hasEmergencyDirective('不需要去急诊。在家观察，有疑问拨打811咨询护士。')).toBe(false);
-  });
-
-  /**
-   * The same refusal with the negator on the OTHER side of the phrase it negates. English,
-   * French and Chinese all rule a thing out by naming it first — "a trip to the ER is not
-   * necessary" — so a guard that only looked BACKWARD from the match would read the ruling-out
-   * as the order. This is why the scope is the whole clause rather than the text before the
-   * negator.
-   */
-  it('rejects a directive its own clause goes on to rule out', () => {
-    expect(
-      hasEmergencyDirective('A trip to the ER is not necessary for this. Call 811 if worried.'),
-    ).toBe(false);
-    expect(
-      hasEmergencyDirective("Calling 911 isn't necessary here. Call 811 any time for a nurse."),
-    ).toBe(false);
-    expect(
-      hasEmergencyDirective(
-        "Aller aux urgences n'est pas nécessaire. Surveillez-la et appelez le 811 au besoin.",
-      ),
-    ).toBe(false);
-    expect(hasEmergencyDirective('去急诊不必要，在家观察，有疑问拨打811咨询护士。')).toBe(false);
-  });
-
-  /** 急救 means emergency aid; 急救箱 is the first-aid kit in the cupboard. */
-  it('does not read a first-aid kit as an emergency directive', () => {
-    expect(hasEmergencyDirective('在家观察即可，备好急救箱，有疑问拨打811咨询护士。')).toBe(false);
-  });
-
-  /**
-   * The positive control for the guard: a negation scopes to ITS clause, not to the whole
-   * body. Without this pair, "reject anything near a negation" would pass the tests above
-   * while silently falling real escalations closed — a body that says "no need to panic,
-   * but go now" is an escalation.
-   */
-  it('accepts a directive that follows a negated clause', () => {
-    expect(hasEmergencyDirective('No need to panic, but take her to the ER now.')).toBe(true);
-    expect(
-      hasEmergencyDirective('Pas besoin de paniquer, mais emmenez-la aux urgences maintenant.'),
-    ).toBe(true);
-    expect(hasEmergencyDirective('不需要慌张，但要马上去急诊。')).toBe(true);
-    // "don't"/"do not" on their own are not negations of NEED — they are how a real
-    // directive is written ("don't wait"), so they must not fall one closed.
-    expect(hasEmergencyDirective("Don't wait for the morning - call 911 now.")).toBe(true);
-    expect(hasEmergencyDirective('Do not delay: go to the ER.')).toBe(true);
-  });
-});
-
 const RED_FLAG_SANITIZE = {
   clinical_query: 'rapid breathing with rib retractions and dusky lips',
   age_band: 'preschooler',
@@ -408,140 +299,148 @@ const RED_FLAG_SANITIZE = {
 };
 
 /**
- * The escalation invariant, end-to-end: a genuine red flag whose composed body names 811
- * but never says "seek emergency care" is an under-escalation, and it must fall CLOSED to
- * the fixed line (which itself names 911) rather than ship. Paired with a positive control:
- * the same red flag WITH a real directive ships.
+ * WHETHER THE ANSWER ESCALATES is an AI judgment of the composed body, in whatever
+ * language it was written — not a list of phrases and negators. A list only knows the
+ * languages it was written for: "no hace falta llamar al 911" carries the digits and no
+ * negator any en/fr/zh list holds, so it read as an order. The fake below scripts the
+ * VERDICT; what these prove is that the verdict, and nothing else, decides — the digits
+ * neither ship a body the judgment refused nor are required for one it accepted. Whether
+ * the model reads es/ar negation right is the eval's job (escalation bodies, rule #8).
  */
-describe('a detected red flag must be escalated (runtime invariant)', () => {
-  it('falls closed when a red-flag body under-escalates (811 present, no emergency directive)', async () => {
+const NOT_URGENT_TRIAGE: Record<string, string> = {
+  en: 'Call 811 any time to talk it through with a nurse.',
+  fr: 'Appelez le 811 pour parler a une infirmiere au besoin.',
+  zh: '非紧急问题可以拨打811咨询护士。',
+  es: 'Para dudas que no sean urgentes, llame al 811.',
+  ar: 'للأسئلة غير العاجلة يمكنك الاتصال بالرقم 811.',
+};
+
+describe('the escalation is an AI judgment of the composed answer, in any language', () => {
+  it.each([
+    ['en', 'Take her to the ER right now: these are signs she is struggling to breathe.'],
+    ['fr', 'Emmenez-la aux urgences maintenant: ce sont des signes de detresse respiratoire.'],
+    ['zh', '马上去急诊，这是呼吸困难的表现。'],
+    ['es', 'Llévela a urgencias ahora mismo: son señales de dificultad para respirar.'],
+    ['ar', 'خذيها إلى قسم الطوارئ الآن، فهذه علامات صعوبة في التنفس.'],
+  ])(
+    'ships a %s red-flag answer the judgment reads as an emergency order, no 911 digits needed',
+    async (language, answer) => {
+      const out = await createMedicalComposer(
+        makeClient({
+          sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language }),
+          ground: groundResult(2),
+          compose: composeResult({ answer, triage: NOT_URGENT_TRIAGE[language] }),
+          escalation: escalationResult('yes'),
+        }),
+      ).answer('raw message');
+
+      expect(out.replySource).toBe('web_grounded');
+      expect(out.reply).toContain(answer);
+    },
+  );
+
+  it.each([
+    ['en', 'You do not need to call 911 for this, it sounds like an ordinary virus.'],
+    ['fr', "Pas besoin d'appeler le 911, cela ressemble a un virus ordinaire."],
+    ['zh', '不需要拨打911，这听起来像普通的病毒感染。'],
+    ['es', 'No hace falta llamar al 911, parece un virus común.'],
+    ['ar', 'لا داعي للاتصال بالرقم 911، يبدو أنه فيروس عادي.'],
+  ])(
+    'falls closed on a %s red-flag answer that names 911 only to rule it out',
+    async (language, answer) => {
+      const log = quiet();
+      const out = await createMedicalComposer(
+        makeClient({
+          sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language }),
+          ground: groundResult(2),
+          compose: composeResult({ answer, triage: NOT_URGENT_TRIAGE[language] }),
+          escalation: escalationResult('no'),
+        }),
+      ).answer('raw message');
+
+      expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+      const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+      expect(reasons).toEqual(['under_escalated', 'under_escalated']);
+      log.mockRestore();
+    },
+  );
+
+  it('falls closed when the judgment is unsure, whatever the body says', async () => {
     const log = quiet();
-    const underEscalated = {
-      answer: 'A cough like this at this age is usually just a viral thing, watch and wait.',
-      triage: 'Call 811 any time to talk it through with a nurse if you stay worried.',
-    };
-    const out = await createMedicalComposer(
-      makeClient({
-        sanitize: sanitizeResult(RED_FLAG_SANITIZE),
-        ground: groundResult(2),
-        compose: composeResult(underEscalated),
-      }),
-    ).answer('raw message');
-
-    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
-    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
-    expect(reasons).toContain('under_escalated');
-    log.mockRestore();
-  });
-
-  it('falls closed when a red-flag body NAMES the ER only to rule it out', async () => {
-    const log = quiet();
-    const negated = {
-      answer:
-        'No need for the ER for this one - breathing that sounds like this at this age is usually a viral thing that settles on its own.',
-      triage: 'Call 811 any time to talk it through with a nurse if you stay worried.',
-    };
-    const out = await createMedicalComposer(
-      makeClient({
-        sanitize: sanitizeResult(RED_FLAG_SANITIZE),
-        ground: groundResult(2),
-        compose: composeResult(negated),
-      }),
-    ).answer('raw message');
-
-    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
-    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
-    expect(reasons).toContain('under_escalated');
-    log.mockRestore();
-  });
-
-  it('positive control: the same red flag ships when the body carries a real directive', async () => {
     const out = await createMedicalComposer(
       makeClient({
         sanitize: sanitizeResult(RED_FLAG_SANITIZE),
         ground: groundResult(2),
         compose: composeResult(OK_COMPOSE),
-      }),
-    ).answer('raw message');
-
-    expect(out.replySource).toBe('web_grounded');
-    expect(out.reply).toContain('911');
-  });
-
-  /**
-   * The same invariant with the answer written in the parent's language — the pair that
-   * proves the escalation gate reads the body it is actually given. The Chinese directive
-   * carries NO 911 digits on purpose: if the gate were still English-keyed it would read
-   * a correct Chinese emergency answer as an under-escalation and fall it closed, and it
-   * would read the Chinese under-escalation below the same way. One of those is a bug and
-   * the other is the whole point, so both are asserted.
-   */
-  it('ships a red-flag answer whose emergency directive is Chinese, with no 911 digits', async () => {
-    const out = await createMedicalComposer(
-      makeClient({
-        sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'zh' }),
-        ground: groundResult(2),
-        compose: composeResult({
-          answer: '呼吸急促、肋骨凹陷和嘴唇发紫是呼吸窘迫的表现，请立即就医。',
-          triage: '马上去急诊，不要在家等待。非紧急的问题可以拨打811咨询护士。',
-        }),
-      }),
-    ).answer('raw message');
-
-    expect(out.replySource).toBe('web_grounded');
-    expect(out.reply).toContain('急诊');
-  });
-
-  it('falls closed on a Chinese under-escalation (811 named, no emergency directive)', async () => {
-    const log = quiet();
-    const out = await createMedicalComposer(
-      makeClient({
-        sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'zh' }),
-        ground: groundResult(2),
-        compose: composeResult({
-          answer: '这多半只是普通病毒感染，在家观察就好。',
-          triage: '如果你仍然担心，可以拨打811咨询护士。',
-        }),
+        escalation: escalationResult('unsure'),
       }),
     ).answer('raw message');
 
     expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
-    expect(reasons).toContain('under_escalated');
+    expect(reasons).toEqual(['under_escalated', 'under_escalated']);
     log.mockRestore();
   });
 
-  it('falls closed on a French under-escalation, and ships the French escalation', async () => {
+  it('falls closed, under its own name, when the judgment cannot be had', async () => {
     const log = quiet();
-    const softFrench = {
-      answer: "C'est probablement viral et il n'y a rien d'inquiétant pour l'instant.",
-      triage: "Ce n'est pas une urgence - surveillez-la et appelez le 811 au besoin.",
-    };
-    expect(
-      await createMedicalComposer(
-        makeClient({
-          sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'fr' }),
-          ground: groundResult(2),
-          compose: composeResult(softFrench),
-        }),
-      ).answer('raw message'),
-    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
-    log.mockRestore();
-
-    const escalated = await createMedicalComposer(
+    const out = await createMedicalComposer(
       makeClient({
-        sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'fr' }),
+        sanitize: sanitizeResult(RED_FLAG_SANITIZE),
         ground: groundResult(2),
-        compose: composeResult({
-          answer:
-            'Emmenez-la aux urgences maintenant: des tirages et des lèvres bleuâtres sont des signes de détresse respiratoire.',
-          triage:
-            'Composez le 911 si elle a du mal à respirer. Le 811 reste là pour les questions non urgentes.',
-        }),
+        compose: composeResult(OK_COMPOSE),
+        escalation: new Error('overloaded'),
       }),
     ).answer('raw message');
-    expect(escalated.replySource).toBe('web_grounded');
-    expect(escalated.reply).toContain('urgences');
+
+    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+    expect(reasons).toEqual(['escalation_unjudged', 'escalation_unjudged']);
+    log.mockRestore();
+  });
+
+  it('judges the composed body and its language only, strictly, reason before verdict', async () => {
+    const seen: Seen[] = [];
+    const answer = 'Llévela a urgencias ahora mismo: son señales de dificultad para respirar.';
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'es' }),
+          ground: groundResult(2),
+          compose: composeResult({ answer, triage: NOT_URGENT_TRIAGE.es }),
+          escalation: escalationResult('yes'),
+        },
+        seen,
+      ),
+    ).answer('raw message from Emma');
+
+    const judged = seen.filter((s) => s.toolChoice === 'escalation');
+    expect(judged).toHaveLength(1);
+    expect(JSON.parse(judged[0]?.userMessage ?? '{}')).toEqual({
+      language: 'es',
+      answer: `${answer} ${NOT_URGENT_TRIAGE.es}`,
+    });
+    expect(judged[0]?.userMessage).not.toContain('Emma');
+    expect(systemText(judged[0]?.system)).toContain('Does this answer send them to emergency care');
+    expect(Object.keys(judged[0]?.schema?.properties ?? {})).toEqual(['reason', 'escalates']);
+    expect(judged[0]?.schema?.required).toEqual(['reason', 'escalates']);
+    expect(judged[0]?.schema?.properties?.escalates?.enum).toEqual(['yes', 'no', 'unsure']);
+    // A JSON output under the strict grammar, not a free tool call.
+    expect(judged[0]?.schema?.additionalProperties).toBe(false);
+
+    // A turn the sanitizer judged not an emergency never pays for the judgment.
+    const calm: Seen[] = [];
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult(OK_SANITIZE),
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        },
+        calm,
+      ),
+    ).answer('raw message');
+    expect(calm.filter((s) => s.toolChoice === 'escalation')).toHaveLength(0);
   });
 });
 
@@ -568,6 +467,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
         }),
         ground: groundResult(2),
         compose: composeResult(SOFT_BODY),
+        escalation: escalationResult('no'),
       }),
     ).answer('raw message');
 
@@ -584,6 +484,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
         sanitize: sanitizeResult({ ...OK_SANITIZE, red_flag: 'unsure' }),
         ground: groundResult(2),
         compose: composeResult(SOFT_BODY),
+        escalation: escalationResult('no'),
       }),
     ).answer('raw message');
 
@@ -600,6 +501,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
           sanitize: sanitizeResult(sanitize),
           ground: groundResult(2),
           compose: composeResult(SOFT_BODY),
+          escalation: escalationResult('no'),
         }),
       ).answer('raw message');
       expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
@@ -813,6 +715,7 @@ describe('the clinical query must come back in English', () => {
         }),
         ground: groundResult(2),
         compose: composeResult(OK_COMPOSE),
+        escalation: escalationResult('yes'),
       }),
     ).answer('raw message');
 
@@ -856,22 +759,25 @@ describe('the parent language reaches compose and nothing else', () => {
   it.each([
     ['Spanish', 'es'],
     ['Arabic', 'ar'],
-  ])('answers a parent who wrote in %s in %s, with no language list in the way', async (_name, code) => {
-    const seen: Seen[] = [];
-    await createMedicalComposer(
-      makeClient(
-        {
-          sanitize: sanitizeResult({ ...OK_SANITIZE, language: code }),
-          ground: groundResult(2),
-          compose: composeResult(OK_COMPOSE),
-        },
-        seen,
-      ),
-    ).answer('raw message');
-    expect(seen.find((s) => s.toolChoice === 'medical_answer')?.userMessage).toContain(
-      `"language":"${code}"`,
-    );
-  });
+  ])(
+    'answers a parent who wrote in %s in %s, with no language list in the way',
+    async (_name, code) => {
+      const seen: Seen[] = [];
+      await createMedicalComposer(
+        makeClient(
+          {
+            sanitize: sanitizeResult({ ...OK_SANITIZE, language: code }),
+            ground: groundResult(2),
+            compose: composeResult(OK_COMPOSE),
+          },
+          seen,
+        ),
+      ).answer('raw message');
+      expect(seen.find((s) => s.toolChoice === 'medical_answer')?.userMessage).toContain(
+        `"language":"${code}"`,
+      );
+    },
+  );
 
   it('asks the sanitizer for the language first, always, from no fixed list', async () => {
     const seen: Seen[] = [];

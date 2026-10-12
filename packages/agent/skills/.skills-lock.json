@@ -151,6 +151,10 @@
     "file": "kid-item-classifier.md",
     "sha256": "1016838c5b44d65457d0cd4b93d88676997925cad9b8d395c7e3ebbd8fb06b4d"
   },
+  "medical-escalation.md": {
+    "file": "medical-escalation.md",
+    "sha256": "ecc1c81c4aacbd45cbe1250e1b0df9e38d2683a9484833d12acaca72d4316dfb"
+  },
   "medical-sanitize.md": {
     "file": "medical-sanitize.md",
     "sha256": "904544023dc6fe1324ee4ca84ea59de9bde1429ae9611e85045a214fbd136c17"
