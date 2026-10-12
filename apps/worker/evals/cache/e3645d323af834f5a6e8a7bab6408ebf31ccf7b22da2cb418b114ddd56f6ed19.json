@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://weather.gc.ca/en/location/index.html?coords=43.655%2C-79.383",
+    "https://www.theweathernetwork.com/en/city/ca/ontario/toronto/hourly",
+    "https://www.wunderground.com/forecast/ca/toronto",
+    "https://www.accuweather.com/en/ca/toronto/m5h/weather-forecast/55488",
+    "https://www.theweather.net/toronto.htm",
+    "https://www.timeanddate.com/weather/canada/toronto/historic",
+    "https://www.timeanddate.com/weather/canada/toronto/ext",
+    "https://www.theweather.com/toronto.htm",
+    "https://globalmeteo.com/weather/toronto/oct-12/",
+    "https://cs-people.bu.edu/cthay/cs-103/labs/lab4/c/weather/lab4c-weather.html"
+  ],
+  "notes": "Notes for Toronto, Ontario, Canada, for Monday, October 12, 2026.\n\n**Environment Canada (forecast issued 11:00 AM EDT today):**\n- Today's forecast is mainly cloudy. Its daytime high is 23°C.\n- Tonight it forecasts a few showers, with a low of 16°C.\n- At 12:37 PM EDT it was cloudy and 19°C at Pearson airport.\n- Tomorrow (Tue Oct 13) it forecasts showers, with a 60% chance of showers that night.\n\n**AccuWeather:**\n- Today is a blend of sun and clouds, with a high of 71°F.\n- Tonight is partly cloudy and warm, with a couple of showers late.\n- Its hourly rain chances for 3–8 PM are only 1–7%.\n- The page is marked as 16 days old, so it may not be a current snapshot.\n\n**Timeanddate:**\n- Today is sprinkles late, mostly cloudy. The chance of precipitation is 21%, with 0.00\" expected.\n- The page is marked as 95 days old, so it may be outdated.\n\n**The Weather Network (hourly):**\n- Rain chance is 20% from noon through 10 PM and 30% at 11 PM.\n- The page is marked as 37 days old, so it may not reflect today.\n\n**Meteored:**\n- Today is light rain with partly cloudy skies, 90% and 0.3 mm.\n- The page is marked as 42 days old, so it may be outdated.\n- The US Meteored page gives the same outlook with 0.008 in of rain. It is marked 95 days old.\n\n**Weather Underground:**\n- Today shows \"Thunderstorms Late\" with 0.26 in of precipitation.\n- It also lists an AM thunderstorm entry of 0.08 in, which is unclear.\n- It is marked 19 days old.\n\n**Summary of the sources:**\n- Most sources agree the daytime is dry and cloudy, with a low rain chance through the afternoon and early evening.\n- Most also put showers or sprinkles late in the evening or overnight tonight.\n- Weather Underground and Meteored are stronger on rain. They say thunderstorms or light rain, though their pages may be outdated.\n- Several pages carry old age labels, so only the Environment Canada result is clearly timestamped to today.\n- Every source shows rain and possible thunderstorms tomorrow, Oct 13.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 8805
+}

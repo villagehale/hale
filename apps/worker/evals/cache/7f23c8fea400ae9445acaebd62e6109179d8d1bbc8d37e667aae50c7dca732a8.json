@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct for missing_detail: it asks which city or area in a few words and states no price from memory. It's in the question's language and says nothing about the family. The tone is a bit formal. 'Which city or area is the Costco in?' reads slightly more like an assistant than a casual friend's text (e.g. 'which costco? prices vary a lot by spot'), but it's brief and fine.",
+    "score": 4
+  }
+}

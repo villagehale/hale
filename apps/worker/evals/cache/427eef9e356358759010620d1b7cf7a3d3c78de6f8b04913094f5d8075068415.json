@@ -1,0 +1,20 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "Lionel Messi is my pick for GOAT",
+        "from": "settled"
+      },
+      {
+        "states": "Messi won the 2022 World Cup",
+        "from": "settled"
+      },
+      {
+        "states": "Pelé is the classic alternative pick",
+        "from": "settled"
+      }
+    ],
+    "answer": "Messi, for me. He won the 2022 World Cup and stayed at the top level for years after most players fade. Pelé is the pick people make from the old days, and it's a fair argument, but I'd still go with Messi."
+  },
+  "latencyMs": 4544
+}

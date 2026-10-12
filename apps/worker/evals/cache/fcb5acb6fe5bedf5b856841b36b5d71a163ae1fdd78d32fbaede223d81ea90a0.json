@@ -1,0 +1,28 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "Tuesday in Toronto: showers ending near noon, mostly cloudy, 60 percent chance of showers, risk of thunderstorms",
+        "from": "Environment Canada: A few showers end near noon. The rest of the day is mainly cloudy with a 60 percent chance of showers, and there is a risk of a thunderstorm in the morning and afternoon."
+      },
+      {
+        "states": "High of about 24°C",
+        "from": "Environment Canada: The high is 24 and the humidex is 28."
+      },
+      {
+        "states": "Wind southwest 20 km/h gusting to 40",
+        "from": "Environment Canada: Wind becomes southwest 20 km/h gusting to 40 near noon."
+      },
+      {
+        "states": "Warm, showery day with highs 24 to 26°C across sources",
+        "from": "The Environment Canada, Weather Network, timeanddate and Weather25 14-day pages broadly agree on a warm, showery day with thunderstorm risk. Highs range from 24 to 26°C."
+      },
+      {
+        "states": "Forecast as of this morning",
+        "from": "Environment Canada: forecast issued 11:00 AM EDT on Monday, October 12, 2026"
+      }
+    ],
+    "answer": "Tomorrow looks warm and showery, with a high around 24°C and a few storms possible. Showers should ease up around noon, then it stays mostly cloudy with a 60% chance of rain. It's gusty out of the southwest too, up to about 40 km/h near midday. That's the forecast as of this morning."
+  },
+  "latencyMs": 2699
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The Vancouver BC forecast matches Environment Canada (mix of sun and cloud, high 15, evening showers, low 11). Covering both Vancouvers is sensible. The WA forecast is right too: dry, and about 18°C, which fits 64–68°F. One flaw: 'forecasts as of this morning' is not fully supported, since the NWS forecast was last updated Oct 11, not this morning. The reply reads like a casual, direct text.",
-    "score": 4
-  }
-}

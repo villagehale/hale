@@ -1,0 +1,20 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "Mainly cloudy today",
+        "from": "Environment Canada (forecast issued 11:00 AM EDT today): Today's forecast is mainly cloudy."
+      },
+      {
+        "states": "Daytime high of 23°C",
+        "from": "Environment Canada (forecast issued 11:00 AM EDT today): Its daytime high is 23°C."
+      },
+      {
+        "states": "A few showers tonight",
+        "from": "Environment Canada (forecast issued 11:00 AM EDT today): Tonight it forecasts a few showers, with a low of 16°C."
+      }
+    ],
+    "answer": "Mostly no. Today's mainly cloudy and dry during the day, with a high around 23°C. Environment Canada's forecast from this morning has a few showers tonight, so rain is possible after dark."
+  },
+  "latencyMs": 4157
+}

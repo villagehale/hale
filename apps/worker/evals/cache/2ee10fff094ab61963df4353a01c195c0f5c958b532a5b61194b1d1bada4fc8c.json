@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer is correct. With live set to missing_detail, the right move is to ask for the city, and the reply does that without inventing a forecast. The tone is the problem: 'Happy to check... I'll look it up' reads like an assistant offering a service, not a friend texting back something like 'which city?'. A service-like reply scores below 4 however right it is.",
-    "score": 3
-  }
-}

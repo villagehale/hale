@@ -1,0 +1,36 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "No single agreed winner across outlets; Toyota Sienna is ranked #1 by Edmunds, Quartz and Yahoo/AutoGuide",
+        "from": "Edmunds ranks the 2026 Toyota Sienna #1; Quartz picks the Sienna; A Yahoo/AutoGuide four-way comparison also puts the Sienna first"
+      },
+      {
+        "states": "Honda Odyssey is ranked best by U.S. News (9.3/10) and KBB",
+        "from": "U.S. News names the 2026 Honda Odyssey the best minivan, with an overall score of 9.3/10; KBB currently has the 2026 Honda Odyssey at the top of its list"
+      },
+      {
+        "states": "Kia Carnival Hybrid is the pick of The Weekly Driver, with 32 mpg combined and 145.1 cubic feet max cargo",
+        "from": "The Weekly Driver picks the Carnival Hybrid; it says that van has the best mix of fuel economy (32 mpg combined), cargo space (145.1 cubic feet maximum)"
+      },
+      {
+        "states": "Sienna is the only hybrid-only minivan with standard hybrid and available AWD; Odyssey is front-wheel drive only",
+        "from": "It has a standard hybrid powertrain and available all-wheel drive; It is the only minivan offered only as a hybrid; It is front-wheel drive only"
+      },
+      {
+        "states": "Chrysler Pacifica is the only minivan combining AWD with Stow 'n Go seating",
+        "from": "It is the only minivan combining all-wheel drive with second-row Stow 'n Go seating"
+      },
+      {
+        "states": "Kia Carnival is the cheapest, with 2027 pricing from $37,490",
+        "from": "It is the cheapest, with a 2026 base price of $36,990; The 2027 Carnival is listed at $37,490 to $51,590"
+      },
+      {
+        "states": "The U.S. results only; prices and availability differ elsewhere",
+        "from": "The results are all about the U.S. market, so these notes are for the U.S. only. Prices and availability would differ in other countries."
+      }
+    ],
+    "answer": "Honestly there isn't one agreed winner. Reviewers are split: Edmunds, Quartz and Yahoo/AutoGuide go with the Toyota Sienna, while U.S. News and KBB put the Honda Odyssey on top. The Kia Carnival Hybrid is also a strong pick, especially if you want good mpg (about 32 combined) and lots of cargo room. What's best depends on what you care about: the Sienna is the only hybrid-only option with available AWD, the Odyssey drives most like a car, the Carnival is the cheapest, and the Pacifica is the one with AWD and Stow 'n Go seats. Tell me your budget, family size, and whether you're buying new or used and I can narrow it down. These are U.S. prices and rankings as of the latest reviews I found."
+  },
+  "latencyMs": 10509
+}

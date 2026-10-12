@@ -1,0 +1,12 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "Who's the goat in football",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "current_fact": "who is considered the greatest of all time, which can shift with active players' careers",
+    "needs_search": "yes"
+  },
+  "latencyMs": 2626
+}
