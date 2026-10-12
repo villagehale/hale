@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly identifies red flag, directs to emergency care immediately and clearly, Arabic language matches parent, gives clear escalation criteria. Minor issue: references 911 and 811 which are North American numbers, but the instruction set doesn't specify region, and triage structure is otherwise sound.",
+    "score": 5
+  }
+}

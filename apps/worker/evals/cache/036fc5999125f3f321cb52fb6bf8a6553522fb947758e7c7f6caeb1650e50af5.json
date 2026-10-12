@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ties the ask directly to the introduction the parent agreed to ('the introduction you said yes to') and asks for both missing facts, name and best email, in one short sentence. It fits the length constraint, has no greeting, pressure, or invented details, and does not describe the other household. It is a clean, plain ask that meets the watchFor requirement of shortening rather than padding.",
+    "score": 5
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "searchCount": 10,
+  "notes": "```json\n{\n  \"answer\": \"Call 911 now or go to the ER now. Fever with purple spots that don't fade under pressure needs urgent assessment and treatment, and it can't wait for morning or for the spots to change.\",\n  \"triage\": \"Call 911 now, or go straight to the nearest ER. Don't wait for 811 advice - this is an emergency. Tell them: fever and spots that don't fade. If your child gets drowsy, floppy or breathes fast, tell 911.\",\n  \"sources\": [\"Meningitis Now (glass test guidance)\", \"Queensland Children's Health Services (paediatric rashes of concern)\"]\n}\n```\n\nI only have the web search tool here, not `medical_answer`, so I've written the JSON out directly. I haven't checked whether it will pass the send check. The two sources listed are the ones whose guidance I used."
+}

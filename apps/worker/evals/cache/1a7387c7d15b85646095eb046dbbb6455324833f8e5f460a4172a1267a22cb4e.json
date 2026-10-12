@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "马上带宝宝去急诊。3个月以下的宝宝发烧38.5C,需要医生今天立刻检查,不能在家观察。",
+    "triage": "现在就去急诊室。如果宝宝很难叫醒、软绵无力、呼吸急促或费力、嘴唇发青,立即拨打911。需要帮忙找最近的急诊,可以拨打811。医生检查前先不要给退烧药。",
+    "sources": [
+      "Canadian Paediatric Society (Caring for Kids)",
+      "AboutKidsHealth (SickKids)",
+      "Quebec.ca",
+      "MyHealth Alberta"
+    ]
+  },
+  "latencyMs": 4923
+}

@@ -1,0 +1,11 @@
+{
+  "value": {
+    "language": "en",
+    "clinical_query": "toddler pulling at one ear, crying overnight, could it be an ear infection",
+    "age_band": "toddler",
+    "duration": "since last night",
+    "red_flag_sign": "none",
+    "red_flag": "not_emergency"
+  },
+  "latencyMs": 1928
+}

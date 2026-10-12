@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "clinical_query": "preschooler breathing fast with ribs pulling in, dusky lips",
+    "age_band": "preschooler",
+    "red_flag_sign": "fast breathing with chest/ribs pulling in and dusky (bluish) lips",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 2049
+}

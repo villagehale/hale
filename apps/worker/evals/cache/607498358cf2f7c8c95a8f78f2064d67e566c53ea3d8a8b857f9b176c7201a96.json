@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "立即拨打911。孩子肋骨随呼吸凹陷、呼吸急促费力、嘴唇发青，说明可能吸不到足够的空气。请留在孩子身边，让孩子保持安静、直立。",
+    "triage": "现在就拨打911，不要自己开车送，也不要先等811。811只适合较轻的呼吸问题，不适用于现在。等救护车时请一直陪着孩子。",
+    "sources": [
+      "Seattle Children's",
+      "St. Louis Children's",
+      "Nationwide Children's",
+      "Connecticut Children's"
+    ]
+  },
+  "latencyMs": 5490
+}

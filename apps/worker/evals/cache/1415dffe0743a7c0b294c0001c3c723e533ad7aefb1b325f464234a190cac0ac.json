@@ -1,0 +1,4 @@
+{
+  "searchCount": 9,
+  "notes": "```json\n{\n  \"answer\": \"Call 911 now, or go to the nearest ER right away. A toddler who is floppy, hard to wake, with sunken eyes and no wet diaper in 12 hours needs emergency care. Do not wait or try fluids at home first.\",\n  \"triage\": \"Call 911 now if you cannot get to the ER fast, or if they stop responding. Go to the ER immediately. Health811 (811) is for non-emergencies - do not wait on a nurse call for this.\",\n  \"sources\": [\"Seattle Children's\", \"KidsHealth\"]\n}\n```\n\nThe `medical_answer` tool wasn't available in this session, so I've returned the JSON directly. The two fields together are about 360 characters, under the 600 limit.\n\nThe search results agreed that a child who is very drowsy or hard to wake, with sunken eyes and no urine for 8 or more hours, needs the ER. That is why the message gives the order first and names no diagnosis."
+}

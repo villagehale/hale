@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "Call 911 now. Swelling of the lips and face, hives and a hoarse voice after peanuts is an emergency. If you have an epinephrine auto-injector, use it right away and don't wait to see if it passes. Keep them lying down and stay with them.",
+    "triage": "Call 911 now - this is not a job for 811. Antihistamines are not a substitute for epinephrine. Even if they look better, they still need the ER, because symptoms can come back.",
+    "sources": [
+      "Food Allergy Canada",
+      "KidsHealth",
+      "Cleveland Clinic",
+      "American Academy of Pediatrics"
+    ]
+  },
+  "latencyMs": 5296
+}
