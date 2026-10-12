@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a baby/toddler activity and links it to the kid verdict, but it adds \"toddler\" as a characterization that goes slightly beyond what the item says (it says \"baby\") — a minor unsupported embellishment. Still, the core logic is sound: \"Baby rhyme time\" is a kid activity, matching the verdict.",
-    "score": 3
-  }
-}

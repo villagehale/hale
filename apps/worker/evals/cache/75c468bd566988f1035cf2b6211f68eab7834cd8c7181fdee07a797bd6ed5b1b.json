@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier correctly identified this as an injected prompt-injection instruction rather than a real calendar item, making \"unsure\" the right call, and the reason clearly states what the item is and why it leads to that verdict.",
-    "score": 5
-  }
-}

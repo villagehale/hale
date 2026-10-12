@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A hotel reservation confirmation addressed to the parent is a personal booking, correctly classed as adult, but the reason gives no \"what it is\" detail beyond restating the label and no \"why\" beyond the obvious, making it a bare restatement rather than a proper supporting clause.",
-    "score": 3
-  }
-}

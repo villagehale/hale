@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This is a swim session that names Mia, a child in the family, so it is a kid item. The classifier's single clause says what the item is and why it is a kid item, and adds no unsupported facts.",
-    "score": 5
-  }
-}

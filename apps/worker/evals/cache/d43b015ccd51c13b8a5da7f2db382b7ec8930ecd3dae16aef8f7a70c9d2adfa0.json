@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason says what the item is: a book club, which is an adult social activity. It also notes that no child is named, which supports the adult verdict. Calling it adult is a fair reading, since the only child, Wren, is 18 months old and too young for a book club. The reason is one short clause with no invented facts.",
-    "score": 5
-  }
-}

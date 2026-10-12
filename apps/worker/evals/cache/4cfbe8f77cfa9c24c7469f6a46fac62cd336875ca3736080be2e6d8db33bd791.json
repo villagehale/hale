@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause. It identifies the item as a flight check-in. It also states the exact rule condition, no child named and not plainly a family or work trip, which leads to unsure. It invents no facts and matches the verdict.",
-    "score": 5
-  }
-}

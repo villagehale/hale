@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a prompt-injection attempt embedded in the calendar text rather than a genuine calendar entry, which is a sound and precise explanation for why the verdict is \"unsure\" — it is not about any person at all.",
-    "score": 5
-  }
-}

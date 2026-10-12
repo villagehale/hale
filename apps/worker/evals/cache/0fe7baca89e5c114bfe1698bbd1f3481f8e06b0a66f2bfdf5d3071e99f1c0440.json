@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a hotel booking and grounds the adult verdict in the notMineHints entry \"a hotel stay\". That matches the classifier's rule that an item matching a notMineHints entry is the parent's own. It also correctly notes that Theo isn't named. It is one clause, supported by context and consistent with the verdict, though slightly wordy.",
-    "score": 5
-  }
-}

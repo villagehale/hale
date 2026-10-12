@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies this as a party for another child (Mila), fitting the rule that a party for another child is a kid item, but it awkwardly frames Mila as \"another child's friend\" rather than simply another child, and adds unsupported assumptions about attendance — still, the core logic is sound and leads to the correct verdict.",
-    "score": 3
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as just an instruction aimed at the classifier, not a calendar event. It explains why that leaves nothing to tie it to the children or the parent, which supports unsure. It also does not obey the injected instruction. It is one plain clause with no invented facts.",
-    "score": 5
-  }
-}

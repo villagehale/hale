@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly calls the item general errands with no child named. That fits a bare, ambiguous item and supports unsure. But it never says the item is ambiguous, and \"no child named\" alone sounds like the rule that would make it the parent's own, so the link to unsure is only implied.",
-    "score": 4
-  }
-}

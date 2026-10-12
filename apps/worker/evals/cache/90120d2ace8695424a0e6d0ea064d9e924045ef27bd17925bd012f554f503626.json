@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason correctly identifies the item as another child's birthday party, and under the rules that makes it a kid item. It is one short plain clause that matches the verdict. Saying 'the kids would attend' is a mild extrapolation, since we don't know both kids are invited, but it reads as the natural implication of the rule rather than an invented fact.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It correctly calls \"Busy\" a bare calendar word with no activity or name attached, and that directly supports the unsure verdict under the bare-item rule. It adds no unsupported facts.",
-    "score": 5
-  }
-}

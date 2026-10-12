@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a bare, context-free 'Hold', and that fits the unsure verdict under the bare-or-ambiguous rule. It adds no facts the item lacks and is one short clause. It leaves the step from 'no context' to unsure implicit rather than stating it, though the step is plain.",
-    "score": 5
-  }
-}

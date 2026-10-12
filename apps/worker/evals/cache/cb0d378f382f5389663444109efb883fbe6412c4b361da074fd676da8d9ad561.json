@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause, supported by the item. It names the item as a bare calendar placeholder with no context, which is exactly why unsure is the right call. It could state the link to the verdict a little more explicitly.",
-    "score": 5
-  }
-}

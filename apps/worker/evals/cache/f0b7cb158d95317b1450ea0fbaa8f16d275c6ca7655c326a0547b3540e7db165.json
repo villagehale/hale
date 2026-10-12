@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason correctly translates the Spanish item as a dinner with work friends. It says what the item is and why it is the parent's own: these are the parent's social plans and no child is named. That matches the adult verdict. It is one short clause with no invented facts.",
-    "score": 5
-  }
-}

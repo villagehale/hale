@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is the single word \"Hold\", which names no activity and no person. The classifier's clause says exactly that: it is a bare word, and nothing in it shows whose it is. That supports the unsure verdict under the bare-item rule. It is one short plain clause and adds nothing the item does not support.",
-    "score": 5
-  }
-}

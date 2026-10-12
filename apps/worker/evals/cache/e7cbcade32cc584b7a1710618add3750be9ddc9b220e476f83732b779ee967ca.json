@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A restaurant reservation for two with no child named matches the rule that an appointment with no child named is the parent's own, correctly leading to the adult verdict.",
-    "score": 5
-  }
-}

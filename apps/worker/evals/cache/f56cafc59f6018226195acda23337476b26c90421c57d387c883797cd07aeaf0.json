@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item matches the notMineHints entry for a choir the parent sings in, so the item is the parent's own. The classifier's reason is one plain clause that says what the item is and ties it to that hint, and it supports the adult verdict. Nothing in it is invented.",
-    "score": 5
-  }
-}

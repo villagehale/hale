@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly names the item as a restaurant reservation, which a Tablebook booking supports. 'For two' hints at a couple's evening out rather than a family meal, which fits the adult verdict. But it never states that link, so the 'why' is only implied. Not a full 5.",
-    "score": 4
-  }
-}

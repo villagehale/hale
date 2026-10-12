@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is a single sentence that says what the item is, a hotel booking. It ties that to the notMineHints entry \"a hotel stay\", which is the rule that makes the item the parent's own, and adds that no child is named. All of this is supported by the context and argues for the given adult verdict. It is slightly longer than one plain clause but still concise.",
-    "score": 5
-  }
-}

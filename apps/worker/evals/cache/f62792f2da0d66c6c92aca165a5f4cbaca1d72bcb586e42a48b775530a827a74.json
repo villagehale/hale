@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason names the item correctly as a clinic appointment reminder, but its logic points the wrong way. Under the rules, an appointment with no child named is the parent's own, so noting that no child is named and that it 'could be the parent's own' argues for adult rather than the unsure verdict given. It never explains why the item is undecidable.",
-    "score": 2
-  }
-}

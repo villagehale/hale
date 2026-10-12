@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a hotel booking confirmation, which matches the notMineHints entry \"a hotel stay,\" directly supporting the adult verdict in one clean clause.",
-    "score": 5
-  }
-}

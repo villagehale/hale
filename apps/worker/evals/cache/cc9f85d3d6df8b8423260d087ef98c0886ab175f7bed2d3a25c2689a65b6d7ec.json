@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a library storytime, a kid activity. That supports the kid verdict under the rule that a kid activity with no child named is still a kid item. It is one short clause and adds no invented facts.",
-    "score": 5
-  }
-}

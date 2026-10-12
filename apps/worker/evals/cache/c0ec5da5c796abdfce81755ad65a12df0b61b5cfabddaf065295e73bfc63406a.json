@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason supports the given unsure verdict in one plain clause. It identifies the item as a bare clinic appointment reminder and correctly notes that it names neither a child nor the parent. It adds no unsupported facts.",
-    "score": 5
-  }
-}

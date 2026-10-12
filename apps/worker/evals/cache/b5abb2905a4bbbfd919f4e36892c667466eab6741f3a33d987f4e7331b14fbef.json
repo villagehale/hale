@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is a single plain clause that names the item (a well-child checkup), names the child (Wren), and so supports the kid verdict. It adds no unsupported facts. The 'why' is implicit but clear, since it is the child's own medical appointment.",
-    "score": 5
-  }
-}

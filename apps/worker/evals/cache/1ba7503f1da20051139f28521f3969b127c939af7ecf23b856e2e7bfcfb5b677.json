@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A bare \"Call\" with no named party, topic, or context makes it impossible to assign to kid or adult, correctly landing on unsure.",
-    "score": 5
-  }
-}

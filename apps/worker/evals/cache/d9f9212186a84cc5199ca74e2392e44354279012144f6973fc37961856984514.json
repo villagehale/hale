@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier correctly identifies this as a bare appointment reminder with no name or context to link it to Wren or the parent, making \"unsure\" the right call, and gives a clear one-clause explanation of why.",
-    "score": 5
-  }
-}

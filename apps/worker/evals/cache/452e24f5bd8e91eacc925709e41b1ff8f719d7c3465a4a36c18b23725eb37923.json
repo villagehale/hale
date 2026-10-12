@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A birthday party for another child (Mila) at a playground is exactly the type of kid social event the classifier's rules flag as a kid item, making the verdict correct, but the reason invents a relationship (\"another child's friend\") not stated in the item.",
-    "score": 3
-  }
-}

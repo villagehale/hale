@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "One plain clause naming the item as a flight, noting no child is named and it is not plainly a family booking, which per the trip rule supports unsure. It invents no facts and stays on the given verdict. 'Could be the parent's own' is slightly one-sided but still explains the ambiguity.",
-    "score": 5
-  }
-}

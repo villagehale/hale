@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a bare, vague errand note with no child named and no other context to distinguish adult from kid, correctly making it unsure, but the reason doesn't explicitly state why that ambiguity leads to the unsure verdict rather than adult.",
-    "score": 4
-  }
-}

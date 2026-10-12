@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies this as a preschool swim class registration, a kid activity, but invents a fact — it names Wren as the enrollee when the item never mentions Wren; the rule says a kid activity with no child named is still a kid item without needing to assign a name.",
-    "score": 3
-  }
-}

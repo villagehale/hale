@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a physiotherapy appointment for the parent's own shoulder injury, with no child named, matching the rule that an appointment with no child named belongs to the parent.",
-    "score": 5
-  }
-}

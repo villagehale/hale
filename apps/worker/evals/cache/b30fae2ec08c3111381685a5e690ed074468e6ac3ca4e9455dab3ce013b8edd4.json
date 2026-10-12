@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly treats the item as a physio appointment for the shoulder, and it fits the adult verdict. But it only asserts ownership ('parent's own') without the 'why': no child is named, so under the rules the appointment belongs to the parent. Without that grounding it is little more than the title plus the verdict restated.",
-    "score": 3
-  }
-}

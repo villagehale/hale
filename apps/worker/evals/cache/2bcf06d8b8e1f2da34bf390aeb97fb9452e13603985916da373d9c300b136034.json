@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "\"Daily standup\" is a recurring work meeting that names no child, so under the rules it is the parent's own and matches the adult verdict. The classifier's clause says what the item is but leaves the why implicit (that it is a work meeting with no child, hence adult). It adds no unsupported facts, though, and \"work\" carries the reasoning well enough to deserve a high score.",
-    "score": 4
-  }
-}

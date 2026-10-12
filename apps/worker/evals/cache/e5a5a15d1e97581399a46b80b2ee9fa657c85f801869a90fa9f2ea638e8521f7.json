@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause. It says what the item is (a play date request) and why it is a kid item (it names Wren, the 18-month-old child). Both facts are in the item, so it adds nothing unsupported, and it matches the kid verdict.",
-    "score": 5
-  }
-}

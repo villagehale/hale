@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (errands) and adds no unsupported facts. Its only argument, though, is that nothing ties the errands to the children, which points more toward the parent's own than toward unsure. It never says the item is bare or ambiguous, so it does not explain why the verdict is unsure rather than adult.",
-    "score": 3
-  }
-}

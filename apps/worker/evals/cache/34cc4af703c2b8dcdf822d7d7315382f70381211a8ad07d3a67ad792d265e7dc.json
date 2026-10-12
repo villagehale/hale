@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause that matches the verdict. It names what the item is (a flight) and gives the rule that applies: no child is named and nothing shows a family booking, so the item could be either. Everything it says is supported by the item.",
-    "score": 5
-  }
-}

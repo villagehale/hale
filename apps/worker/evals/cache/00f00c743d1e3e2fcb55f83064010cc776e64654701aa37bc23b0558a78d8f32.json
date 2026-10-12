@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a music class that names Theo, one of the listed children, so it is a kid item. The reason gets this right, and the age it adds is supported by the context. It drops a point because the age detail is padding that does nothing for the verdict, and the reason never says outright that naming a child makes the item a kid item.",
-    "score": 4
-  }
-}

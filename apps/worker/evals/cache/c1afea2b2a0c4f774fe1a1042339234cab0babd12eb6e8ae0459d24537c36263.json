@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a kid activity by naming it, but it just restates the title without explaining why it leads to the kid verdict (e.g., that it matches a known activityTitle for this family, or that it suits a toddler-aged child).",
-    "score": 2
-  }
-}

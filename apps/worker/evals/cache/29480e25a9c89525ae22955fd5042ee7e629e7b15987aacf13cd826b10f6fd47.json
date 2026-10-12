@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a household-chat request to collect Wren, the 18-month-old child, from daycare, so it is plainly about the child and the kid verdict follows. The classifier's reason names what the item is (a daycare pickup), ties it to the named child, and gives the why (a care arrangement for one of the children). It is a single plain clause that adds no unsupported facts and agrees with the verdict.",
-    "score": 5
-  }
-}

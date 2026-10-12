@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason supports the adult verdict in one short clause. It says what the item is: a work one-on-one, with the \"design\" tag pointing to a colleague. It gives a sound why: the surname marks this Wren as an adult who happens to share the child's first name, not the 18-month-old. It invents no facts.",
-    "score": 5
-  }
-}

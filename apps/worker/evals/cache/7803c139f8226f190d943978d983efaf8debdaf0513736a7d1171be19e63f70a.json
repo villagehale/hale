@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a bare errand), notes that no child is named, and ties that to unsure, which matches the bare-item rule. It is one clause and adds no unsupported facts. The title echoed at the start is slight padding, so it is a touch less tight than ideal, but it still supports the verdict.",
-    "score": 4
-  }
-}

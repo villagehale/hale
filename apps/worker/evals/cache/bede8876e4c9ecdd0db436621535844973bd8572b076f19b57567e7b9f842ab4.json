@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The calendar entry is just the bare word 'Hold', which carries no child's name, activity or owner. The classifier's single plain clause says exactly that and so supports the unsure verdict, without inventing any facts.",
-    "score": 5
-  }
-}

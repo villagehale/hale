@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a work one-to-one with an adult surnamed Chen in the Product team, so the shared first name with six-year-old Mia doesn't make it a kid item and adult is right. The classifier's reason says this in one plain clause. It names what the item is (a work 1:1 with a colleague) and points to the surname and team tag. It adds no unsupported facts. It could have said outright that the shared name is a coincidence, but the reasoning is clear.",
-    "score": 5
-  }
-}

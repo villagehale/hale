@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason names what the item is, a daycare pickup, and gives the right basis for kid: it is childcare. It is one plain clause and asserts nothing unsupported. Calling it 'for the children' is a fair reading because no child is named, so it does not invent which child attends.",
-    "score": 5
-  }
-}

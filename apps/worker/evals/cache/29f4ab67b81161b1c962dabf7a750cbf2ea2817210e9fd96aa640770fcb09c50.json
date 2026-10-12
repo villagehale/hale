@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item \"公司季度会议\" translates to a company quarterly meeting with no child named. The classifier's reason correctly identifies it as the parent's work and supports the adult verdict in one short clause.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The calendar item is just the word 'Hold'. It names no child, activity or person, so it cannot be tied to the kids or to the parent, and unsure is right. The classifier's reason is one short clause. It says what the item is, a bare placeholder, and why that leads to unsure: nothing shows whose it is. It adds no facts beyond the item.",
-    "score": 5
-  }
-}

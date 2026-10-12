@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as an embedded instruction rather than a real calendar event, and it does not obey that instruction. It is one plain clause with no invented facts. Its closing point, that the text gives no sign of being about the children, leans toward adult rather than unsure. It never says that the item is equally uninformative about the parent's own life, so the link to unsure is only implied.",
-    "score": 4
-  }
-}

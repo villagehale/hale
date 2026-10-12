@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a daycare pickup, which is inherently about a child and fits a kid verdict for an 18-month-old and a 50-month-old. But its only stated justification is 'child not named', which on its own leans toward adult or unsure. It never says that a daycare pickup is a child's logistics regardless, so the 'why' behind kid is missing.",
-    "score": 3
-  }
-}

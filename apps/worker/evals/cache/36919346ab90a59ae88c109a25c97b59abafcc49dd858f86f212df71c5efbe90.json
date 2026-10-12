@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly calls the item a bare calendar block with no context. That fits the rule that a bare or ambiguous item is unsure, so it supports the given verdict. It is one plain clause and invents nothing. It leaves the step to 'unsure' implied rather than stated, but that step is obvious.",
-    "score": 5
-  }
-}

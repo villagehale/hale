@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason names the item as a dentist cleaning and attributes it to the parent, which supports the adult verdict under the rule that an appointment naming no child is the parent's own. It adds no unsupported facts and fits in one short clause. It leaves out why the item is the parent's (no child is named), so the reason is mostly a label, but in substance it is correct.",
-    "score": 4
-  }
-}

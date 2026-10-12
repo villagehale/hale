@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A car service appointment belongs to the parent, not the children, making this a clear adult item — but the reason is a bare label with no explanation of why it leads to the adult verdict (e.g. no child named, matches an appointment/booking rule).",
-    "score": 2
-  }
-}

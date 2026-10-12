@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The verdict is right, since the item is a pediatric checkup for Wren, a named child aged 18 months. But the classifier's reason only restates the title. It never says that Wren is one of the children or that this is a child's medical appointment, so no 'why' is given.",
-    "score": 2
-  }
-}

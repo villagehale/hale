@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item 'J.' is a bare initial with no context, and neither child's name starts with J, so it cannot be tied to a child or to the parent. 'Unsure' fits, and the classifier says what the item is (an initial only) and why it is ambiguous. The phrasing 'a person or a child' is slightly loose, since a child is also a person, and it could have said that no child here matches J. Still one short supported clause backing the verdict.",
-    "score": 4
-  }
-}

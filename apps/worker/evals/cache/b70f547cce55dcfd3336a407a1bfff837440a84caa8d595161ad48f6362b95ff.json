@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a library storytime and calls it a kid activity, and that classification supports the kid verdict even though no child is named. It is one short clause and adds no unsupported facts. The \"why\" is thin, since it amounts to restating the category, but it is still adequate.",
-    "score": 5
-  }
-}

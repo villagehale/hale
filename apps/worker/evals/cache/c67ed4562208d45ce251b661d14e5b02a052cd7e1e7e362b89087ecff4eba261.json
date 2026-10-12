@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A restaurant reservation for two adults at 7:30 PM with no child named is correctly identified as the parent's own booking, matching the rule that an appointment with no child named belongs to the parent.",
-    "score": 5
-  }
-}

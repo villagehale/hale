@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason supports the kid verdict with facts from the context: it is a music class that names Theo, and Theo is listed as a 50-month-old child. It is one sentence with no invented facts. It falls short of a 5 because it leaves the reader to infer that the age means a child rather than saying so plainly, and the tacked-on age clause is slightly clunky.",
-    "score": 4
-  }
-}

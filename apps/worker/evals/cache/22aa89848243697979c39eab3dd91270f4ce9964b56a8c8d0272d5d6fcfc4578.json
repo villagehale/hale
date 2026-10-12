@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason names what the item is, a spin class or fitness session, and ties it to the parent, which supports the adult verdict. That inference is fair: spin classes are adult exercise, and the children are 18 and 50 months old. It is one short plain clause with no unsupported facts.",
-    "score": 5
-  }
-}

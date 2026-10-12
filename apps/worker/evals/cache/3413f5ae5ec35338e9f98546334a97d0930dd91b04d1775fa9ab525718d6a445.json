@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A daily standup is a recurring work meeting and no child is named, so it falls under the parent's own appointments and supports the adult verdict. The classifier's clause says what the item is and is a single plain clause. It only implies the why rather than stating it outright (\"no child named\" or \"work meeting\"), but \"work\" carries that.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause that matches the unsure verdict and invents nothing: it calls the item a generic clinic appointment reminder that names no patient. Its logic is weak, though. Under the rules, an appointment that names no child is the parent's own, so 'does not say whose' should point to adult, not unsure. Saying how this bare reminder differs from that rule would have made the case.",
-    "score": 3
-  }
-}

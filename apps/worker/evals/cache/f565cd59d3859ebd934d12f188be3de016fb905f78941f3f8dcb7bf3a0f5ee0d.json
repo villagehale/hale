@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is: a bare 'Busy' calendar block. It also says why that leads to unsure: there is no context to tie it to a child or to the parent. That fits the rule that a bare item is unsure. It is one short clause with no invented facts.",
-    "score": 5
-  }
-}

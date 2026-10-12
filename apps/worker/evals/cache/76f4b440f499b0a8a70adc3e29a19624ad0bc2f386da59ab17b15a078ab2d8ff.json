@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a birthday party) and why it is a kid item (it names Lina, the 30-month-old child). It is one short clause, supports the kid verdict and adds no unsupported facts. It reads the Spanish title correctly rather than just copying it.",
-    "score": 5
-  }
-}

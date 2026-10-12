@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item 'Q4 planning offsite' is a work planning event with no child named, so 'adult' fits. The reason correctly calls it a work offsite, which says what kind of thing it is and implies why it is the parent's own. It is short and invents nothing, but it leaves the why implicit, so it falls just short of a full what-plus-why clause.",
-    "score": 4
-  }
-}

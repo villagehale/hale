@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short plain clause. It says what the item is (a tax deadline) and why that makes it the parent's (an adult money matter). That matches the adult verdict and adds no unsupported facts.",
-    "score": 5
-  }
-}

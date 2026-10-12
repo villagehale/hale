@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one clause. It says the item is a flight check-in, names no child and is not plainly a family or work trip, which matches the trip rule for unsure. It adds no unsupported facts.",
-    "score": 5
-  }
-}

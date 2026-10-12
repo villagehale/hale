@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is an appointment with no child named, so the rule makes it the parent's own and supports the adult verdict. The classifier's clause does name the kind of thing (a dentist cleaning) and adds no invented facts. It falls short of a 5 because it mostly restates the title and leaves out the 'why': it never says that no child is named, it only asserts ownership.",
-    "score": 4
-  }
-}

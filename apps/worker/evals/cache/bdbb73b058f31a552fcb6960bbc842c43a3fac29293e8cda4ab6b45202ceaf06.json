@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item text means \"company quarterly meeting\", which is a work meeting with no child named, so it is the parent's own and the adult verdict follows; the classifier's one short clause says what the item is and ties it to the parent's work, with no unsupported facts.",
-    "score": 5
-  }
-}

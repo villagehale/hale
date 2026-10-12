@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Daycare pickup is a childcare task directly tied to the kids (Wren at 18 months is daycare age), making the kid verdict correct, but the reason is slightly generic and doesn't clearly identify what kind of item it is beyond restating the title.",
-    "score": 3
-  }
-}

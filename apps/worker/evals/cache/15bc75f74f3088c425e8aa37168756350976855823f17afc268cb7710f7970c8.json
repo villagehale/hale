@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A single word with no activity, person, or context is a bare item, correctly leaving the verdict unsure.",
-    "score": 5
-  }
-}

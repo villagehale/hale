@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Single bare word \"Hold\" gives no context about who or what it concerns, correctly making this unsure.",
-    "score": 5
-  }
-}

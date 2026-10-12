@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies that \"errands\" is generic with no child named or implied, supporting the unsure verdict in one concise clause.",
-    "score": 4
-  }
-}

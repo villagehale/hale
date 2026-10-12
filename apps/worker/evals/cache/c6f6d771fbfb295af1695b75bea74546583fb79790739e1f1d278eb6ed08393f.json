@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item names no child and matches the rule that an appointment with no child named is the parent's own; \"tennis with an adult friend\" correctly identifies what the item is and why it leads to the adult verdict.",
-    "score": 4
-  }
-}

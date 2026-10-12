@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a work planning offsite with no child named, so it is plainly the parent's own and the verdict is adult. The classifier's \"a work offsite\" correctly says what kind of thing it is, and calling it work carries the why. It is short and invents no facts. It does not spell out the link explicitly, for example that no child is involved, so it falls a little short of a full 5.",
-    "score": 4
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A baby shower for a named adult (Dana) is someone else's social event, but this is a kid item by the classifier's rule that a party for another person is a kid item — the verdict \"adult\" contradicts that rule, making the reason argue for a different classification than is defensible here; however, the reason is also just a label restatement with no explanation of why it leads to \"adult\" rather than \"kid.\"",
-    "score": 2
-  }
-}

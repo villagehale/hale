@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies this as a kid swim class registration, but it invents a fact not in the item — Wren's age (18 months) does not match \"toddler\" framing used to justify fit, and more importantly the item says \"Preschool Swim Level 1\" which the classifier reframes as fitting Wren's age without the item naming Wren at all; the age-suitability claim is an unsupported inference dressed as evidence rather than a plain statement of what the item is and why.",
-    "score": 2
-  }
-}

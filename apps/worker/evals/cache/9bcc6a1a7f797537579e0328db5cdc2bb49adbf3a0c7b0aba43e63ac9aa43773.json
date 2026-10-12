@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as another child's birthday party, and the rules make that a kid item, so it supports the given verdict. It is one plain clause. Saying 'the kids would attend' is a mild inference, but it follows from the item being on the parent's calendar and invents no specific fact.",
-    "score": 5
-  }
-}

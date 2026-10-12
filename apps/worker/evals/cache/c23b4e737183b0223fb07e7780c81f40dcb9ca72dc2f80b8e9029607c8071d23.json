@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a spin class, a fitness activity. Children aged 18 and 50 months could not ride spin bikes, so the classifier's reading that it is the parent's own workout is sound and matches the adult verdict. It is one short clause stating what the item is and why it is adult, though the age logic is left implicit.",
-    "score": 5
-  }
-}

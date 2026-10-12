@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a family room booking) and why it is a kid item: it names both children. That matches the trip rule and supports the verdict, with no invented facts, in one short clause.",
-    "score": 5
-  }
-}

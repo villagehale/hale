@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies this as errand planning but doesn't explain why it's the parent's own rather than a kid item — a bare activity note with no child named in a group chat is ambiguous, making \"unsure\" equally defensible; the reason also offers no grounding detail from the item itself.",
-    "score": 2
-  }
-}

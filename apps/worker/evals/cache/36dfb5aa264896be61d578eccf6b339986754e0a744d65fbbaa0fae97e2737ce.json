@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A generic clinic appointment reminder names no child and no adult activity, so it's correctly unsure per the bare/ambiguous rule.",
-    "score": 5
-  }
-}

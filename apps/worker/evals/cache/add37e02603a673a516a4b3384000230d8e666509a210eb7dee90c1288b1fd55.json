@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A generic appointment reminder with no named person or context makes it impossible to assign to adult or kid, correctly supporting unsure.",
-    "score": 5
-  }
-}

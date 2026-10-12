@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A physio appointment for a named body part with no child mentioned is the parent's own medical appointment, correctly matching the adult verdict.",
-    "score": 5
-  }
-}

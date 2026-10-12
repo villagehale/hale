@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A hotel reservation email is a personal travel booking, so it belongs to the parent, not the child — solid one-clause reasoning that matches the adult verdict.",
-    "score": 5
-  }
-}

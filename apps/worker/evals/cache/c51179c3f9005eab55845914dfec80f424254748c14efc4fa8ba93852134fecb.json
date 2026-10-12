@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short plain clause. It says what the item is: a date night at a restaurant, which the name Osteria Lupo supports. It also says why that leads to adult: a date night is the parent's own social plan. It matches the verdict and adds no unsupported facts.",
-    "score": 5
-  }
-}

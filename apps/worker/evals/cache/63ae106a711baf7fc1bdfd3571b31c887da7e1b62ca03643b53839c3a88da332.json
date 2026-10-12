@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a preschool swim class registration, which is a kid activity, but the reason fabricates a fact not in the item — Wren is not named anywhere in the email text, only inferred from age/context.",
-    "score": 2
-  }
-}

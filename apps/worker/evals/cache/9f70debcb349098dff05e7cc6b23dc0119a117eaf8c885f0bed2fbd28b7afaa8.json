@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "\"Q4 planning offsite\" is a quarterly business planning event with no child named, so it is the parent's own and the adult verdict holds. The classifier's reason correctly calls it a work planning offsite, which is a fair reading of the item. It says what the item is, and \"work\" implies why it is adult. It is short, plain and adds no unsupported facts. The \"why\" is only implied rather than stated outright, but the reason is still adequate.",
-    "score": 5
-  }
-}

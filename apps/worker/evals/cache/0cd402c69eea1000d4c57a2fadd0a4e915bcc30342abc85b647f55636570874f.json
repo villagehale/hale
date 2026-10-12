@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly reads the item as the parent's own restaurant booking and supports the adult verdict in one clause. But calling it a table for 'two adults' adds a detail the booking never states, so it falls short of a 5.",
-    "score": 4
-  }
-}

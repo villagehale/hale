@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A flight booking with no child named is the parent's own travel, correctly classed as adult, but the reason is only a label with no explanation of what the item is or why it leads to that verdict.",
-    "score": 2
-  }
-}

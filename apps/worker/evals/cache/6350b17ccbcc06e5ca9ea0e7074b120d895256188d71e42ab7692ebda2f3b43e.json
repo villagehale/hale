@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item names Theo, one of the children, and a music class is a typical kid activity, so 'kid' is the right reading. The classifier's reason says what the item is and who it is for, which supports the verdict. It is short and adds no unsupported facts. It stays close to the title but does add the framing of a class for a named child. The tie to the child is implicit rather than spelled out as a 'why', so it is not a model reason.",
-    "score": 4
-  }
-}

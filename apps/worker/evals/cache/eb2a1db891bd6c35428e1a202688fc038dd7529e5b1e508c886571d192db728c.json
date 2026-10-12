@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a flight to a sales conference) and why that makes it the parent's own (a work trip), which matches the adult verdict and the trip rule. It is one short clause and adds nothing the item doesn't support.",
-    "score": 5
-  }
-}

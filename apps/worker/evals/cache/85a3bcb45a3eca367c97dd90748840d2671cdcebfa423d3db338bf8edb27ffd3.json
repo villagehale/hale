@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier correctly identifies this as an injected instruction rather than a genuine calendar item, making it impossible to classify, which supports the unsure verdict cleanly and concisely.",
-    "score": 5
-  }
-}

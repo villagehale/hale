@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A planning offsite is a work meeting, and with no child named and no kid-activity context, the classifier correctly identifies it as the parent's own professional event.",
-    "score": 5
-  }
-}

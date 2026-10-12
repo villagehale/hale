@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason largely copies the title back. It does name the child, but it never says this is a pediatric appointment for Wren, the 18-month-old child, which is why it counts as a kid item. With no explicit 'why', it falls short of a full explanation.",
-    "score": 2
-  }
-}

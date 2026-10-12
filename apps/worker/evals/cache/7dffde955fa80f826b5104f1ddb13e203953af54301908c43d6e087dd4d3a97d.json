@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A dentist cleaning with no child named falls under the parent's-own-appointment rule, so adult follows. The classifier's clause says what the item is (the parent's dentist cleaning) and fits the verdict without inventing anything. It only implies the 'no child named' basis rather than stating it, but it still holds up as a short, plain, supported reason.",
-    "score": 5
-  }
-}

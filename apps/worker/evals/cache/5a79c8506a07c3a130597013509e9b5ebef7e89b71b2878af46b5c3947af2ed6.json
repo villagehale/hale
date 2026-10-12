@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A bare calendar entry with only the word \"Réunion\" (meeting) names no child and gives no other context, making unsure the correct call, and the reason states exactly that in plain terms.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies it as an activity class but doesn't explain why that makes it a kid item; it essentially just restates the title without noting that \"Parent and Tot Swim\" matches a known activityTitle for this family, which is the key supporting fact for the kid verdict.",
-    "score": 2
-  }
-}

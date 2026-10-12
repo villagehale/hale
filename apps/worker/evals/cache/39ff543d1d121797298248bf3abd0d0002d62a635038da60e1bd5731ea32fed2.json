@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short plain clause that names the item as a physio appointment. It also attributes it to the parent, which fits the rule that an appointment naming no child is the parent's own. It does not spell out that no child is named, but the shoulder physio context makes the point plain and nothing unsupported is added.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one short clause, accurately calls the item a clinic appointment reminder, and backs the unsure verdict. Its logic is weak, though: under the classifier's rules, an appointment with no child named is the parent's own. So 'no child named' is not a valid ground for 'could be either', and the reason leans on a fact that points away from the verdict it supports.",
-    "score": 3
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a daycare pickup and names Wren, one of the children in context, which is what makes it a kid item. It supports the given verdict, adds no unsupported facts and is one short clause, not just the title repeated.",
-    "score": 5
-  }
-}

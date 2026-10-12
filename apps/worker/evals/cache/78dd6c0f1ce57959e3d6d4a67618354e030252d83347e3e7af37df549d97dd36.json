@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is only the word 'Busy', a bare calendar block that names no child and gives no subject, so it cannot be placed and 'unsure' follows. The classifier's reason says exactly that in one short plain clause and invents nothing. It could state the 'why' a little more explicitly, but calling the block 'bare' carries the rule.",
-    "score": 5
-  }
-}

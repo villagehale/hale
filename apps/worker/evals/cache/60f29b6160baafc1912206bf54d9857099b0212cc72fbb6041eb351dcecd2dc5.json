@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a dentist appointment and no child is named, so under the rule that an unnamed appointment belongs to the parent, adult is correct. The classifier's reason is one short clause that says what the item is (a dentist visit) and attributes it to the parent. It adds no unsupported facts. It does leave the why (no child is named) implicit, but it is still sound.",
-    "score": 4
-  }
-}

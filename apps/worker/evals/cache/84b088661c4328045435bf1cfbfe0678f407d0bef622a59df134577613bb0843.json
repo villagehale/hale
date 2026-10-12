@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a physio appointment with no child named, which per the rules makes it the parent's own, so it backs the adult verdict. It is one short clause, adds no unsupported facts, and does more than copy the title by saying whose appointment it is. A shoulder physio session is plainly adult, though the reason could have noted that no child is named.",
-    "score": 5
-  }
-}

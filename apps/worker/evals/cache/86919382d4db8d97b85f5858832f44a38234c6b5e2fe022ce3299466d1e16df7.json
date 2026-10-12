@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is a single clause that names the item (a clinic appointment reminder) and matches the unsure verdict, with no invented facts. Its 'why' is flawed, though. Under the stated rules, an appointment with no child named is the parent's own. So 'no child named' is the very fact that points to adult, not to 'could be either', and the reason's logic undercuts itself.",
-    "score": 3
-  }
-}

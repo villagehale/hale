@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The clause correctly identifies the item as a meeting (Réunion is French for meeting) and gives a cause, a bare entry with no context, that fits an unsure verdict. It stays short and adds no unsupported facts. It loses a point because, under the classifier's own rules, a meeting with no child named reads as the parent's own, so 'no context' does not fully explain why it is unsure rather than adult.",
-    "score": 4
-  }
-}

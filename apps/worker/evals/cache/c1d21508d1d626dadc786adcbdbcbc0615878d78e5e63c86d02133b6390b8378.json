@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a dentist appointment that names no child, so under the rule it is the parent's own. The classifier's reason states what the item is and leads to the adult verdict in one short clause. Saying \"the parent's own\" restates the conclusion rather than giving the why (no child named), but it is still concise and adds no unsupported facts.",
-    "score": 4
-  }
-}

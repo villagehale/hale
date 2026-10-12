@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A dental appointment with no child named is correctly treated as the parent's own per the rule that appointments with no child named belong to the adult.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits the kid verdict and adds no unsupported fact. It says what the item is (soccer practice, a child activity) and why it leads to kid (it names Ezra, one of the children), all in one short plain clause.",
-    "score": 5
-  }
-}

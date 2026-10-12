@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A clinic appointment reminder with no named person or purpose is genuinely ambiguous between parent and child, correctly landing on unsure.",
-    "score": 5
-  }
-}

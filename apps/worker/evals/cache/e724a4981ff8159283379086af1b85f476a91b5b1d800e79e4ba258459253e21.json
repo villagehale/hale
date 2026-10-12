@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A hotel reservation confirmed by the inn is a booking for the parent's own travel, with no child named, matching the rule that an appointment/booking with no child named is the parent's own.",
-    "score": 5
-  }
-}

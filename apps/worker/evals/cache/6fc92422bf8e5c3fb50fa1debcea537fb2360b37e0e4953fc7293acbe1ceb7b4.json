@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a bare initial, \"J.\", and matches neither child (Wren, Theo) nor any hint. A bare or ambiguous item is unsure, and the classifier's single clause says what the item is (an initial only) and why that gives the verdict (it could mean a child or an adult). It adds no unsupported facts.",
-    "score": 5
-  }
-}

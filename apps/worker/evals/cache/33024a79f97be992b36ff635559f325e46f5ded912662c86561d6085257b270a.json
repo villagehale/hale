@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause that names the item (a hotel booking) and gives the rule-based grounds for unsure: no child is named and it is neither plainly a family trip nor plainly the parent's own. It invents nothing and matches the given verdict.",
-    "score": 5
-  }
-}

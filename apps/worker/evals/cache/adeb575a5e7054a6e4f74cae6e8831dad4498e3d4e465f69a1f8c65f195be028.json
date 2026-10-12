@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is a short clause that names the item as a spin class and supports the adult verdict. A cycling studio class fits neither an 18-month-old nor a 50-month-old, and no child is named. The reason says 'the parent's own' without saying why, though, such as that the class is an adult fitness class and no child is named. So it labels the item rather than explaining the verdict, which is a little short of ideal.",
-    "score": 4
-  }
-}

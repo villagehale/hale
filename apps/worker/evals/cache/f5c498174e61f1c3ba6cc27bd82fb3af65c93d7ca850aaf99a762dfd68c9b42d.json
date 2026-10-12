@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a hotel booking that names no child, and it matches the 'a hotel stay' entry in notMineHints, so it is the parent's own. The reason gives exactly that kind and that why, and it supports the adult verdict. It adds no unsupported fact. It is one sentence, if a little wordy.",
-    "score": 5
-  }
-}

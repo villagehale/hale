@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause. It says what the item is, a daycare pickup, and names Wren, which supports the kid verdict. The 'why' is only implied by naming the child, not stated outright, but it is clearly sufficient. Every fact in it comes from the item.",
-    "score": 5
-  }
-}

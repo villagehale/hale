@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause stating what the item is (a checkup) and that Wren, a listed child, is named in it, which directly supports the kid verdict. It adds no unsupported facts: the item itself states the age, and the reason does not even repeat it.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a quarterly business planning offsite with no child named, which is the parent's own work event, so 'adult' is right. The classifier's reason says what the item is in one short plain clause and stays within the item text. It only implies the 'why' (work, so not a child's event) and does not state it outright, but here that is self-evident.",
-    "score": 5
-  }
-}

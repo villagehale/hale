@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a bare hold with no context, which fits the item. That is exactly why it cannot be placed, and it supports the unsure verdict. It is a single short clause with no invented facts, though the link to unsure is implied rather than stated.",
-    "score": 5
-  }
-}

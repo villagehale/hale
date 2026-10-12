@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item \"Lina 的音乐课\" means \"Lina's music class\". The reason correctly says what it is, a music class for the child Lina. It says why that makes it a kid item: it is named for one of the children. It is one plain clause, supports the kid verdict, and adds no facts the item doesn't give.",
-    "score": 5
-  }
-}

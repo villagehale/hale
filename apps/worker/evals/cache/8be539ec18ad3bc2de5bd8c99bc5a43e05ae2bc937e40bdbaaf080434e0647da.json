@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short plain clause that calls the item a birthday party, names Mia as one of the listed children (true in the context), and that supports the kid verdict. A small caveat is that it could be another child's party, but that would still be a kid item. The reason invents nothing.",
-    "score": 5
-  }
-}

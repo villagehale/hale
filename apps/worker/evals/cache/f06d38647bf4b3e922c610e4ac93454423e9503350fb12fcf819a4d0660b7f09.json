@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a bare calendar block that gives no context, which is exactly why the rules call it unsure. It is one short clause and adds no facts the item does not support.",
-    "score": 5
-  }
-}
