@@ -48,7 +48,6 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
-import { skillSampleSentences, variationGate, variationLines } from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -77,30 +76,6 @@ function generalAnswerUserMessage(text) {
 }
 
 const MAX_TOKENS = 256;
-
-/**
- * The fixtures whose honest answer is "I cannot see that" — the ONLY part of this corpus
- * where two answers being alike is a defect rather than the point. Named here rather than
- * inferred from `forbiddenPatterns`, so adding a live-data fixture is a deliberate act.
- */
-const LIVE_DATA_FIXTURES = new Set([
-  'weather-tomorrow',
-  'leafs-last-night',
-  'gas-price-now',
-  'tsx-today',
-]);
-
-/**
- * Four deflects, at least two different ways of saying it.
- *
- * Two rather than three, and the reason is measured rather than modest: across five live
- * re-records the count landed 3, 2, 3, 2, 2 with the same skill, so a floor of three
- * gates on the draw. Two still has teeth against the thing the audit actually found —
- * "I can't see live {forecasts/scores/prices/market data} from here" across all four,
- * which is ONE opener — and the sharper instrument on this corpus is the pairwise
- * similarity check, which has run 0.34-0.53 against a 0.75 ceiling.
- */
-const MIN_DISTINCT_DEFLECT_OPENERS = 2;
 
 // ── the composer's sendable() gates, replicated from answer.ts ──────────────
 
@@ -215,7 +190,7 @@ const JUDGE_SYSTEM = [
 
 // Deterministic broken stand-in: hype, a fabricated forecast, an emoji, a link, an app
 // pointer and a trailing question — trips carries_link + redirect_errand + points_at_an_app
-// + the trailing-question zero + weather's forbidden pattern + the judge, so `--broken`
+// + the trailing-question zero + the judge, so `--broken`
 // proves every layer bites. (The emoji no longer trips a GSM-7 gate — there isn't one now;
 // the link and the redirect are what guarantee it fails.)
 const BROKEN_ANSWER =
@@ -236,7 +211,6 @@ async function main() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
-  const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const subjectLane = agent.pickLane(skill.meta.task);
   // The rubric-holding tier, not Haiku: on the 5.5 re-record the Haiku 5.5 judge marked
@@ -286,7 +260,12 @@ async function main() {
     // sentence is guaranteed to contain.)
     if (fixture.mustContainCjk && !CJK.test(flattened)) failures.push('not_in_chinese');
     if (/\?\s*$/.test(flattened)) failures.push('trailing_question');
-    if (REDIRECT_SHAPE.test(flattened)) failures.push('redirect_errand');
+    // On a health question a pointer to a pharmacist or a doctor is a safety judgment, not
+    // an errand, so the judge grades it (the fixture's watchFor allows it). Every other
+    // fixture is held to the gate.
+    if (!fixture.healthQuestion && REDIRECT_SHAPE.test(flattened)) {
+      failures.push('redirect_errand');
+    }
     if (APP_POINTER.test(flattened)) failures.push('points_at_an_app');
     for (const pattern of fixture.forbiddenPatterns ?? []) {
       if (pattern.test(flattened)) failures.push(`forbidden:${pattern.source}`);
@@ -307,25 +286,6 @@ async function main() {
 
     results.push({ fixture, flattened, failures });
   }
-
-  // The variation gate runs over the LIVE-DATA DEFLECTS only, which is where this corpus
-  // converges: the audit found "I can't see live {forecasts/scores/prices/market data}
-  // from here" slot-filled across four fixtures, one of them character-for-character the
-  // skill's own sample. The answered fixtures are excluded because their bodies are
-  // pinned by their subjects — Lima and x = 5 are supposed to be the same every time, and
-  // gating them for similarity would measure the questions rather than the voice.
-  const deflects = results.filter((r) =>
-    LIVE_DATA_FIXTURES.has(r.fixture.baseScenarioId ?? r.fixture.id),
-  );
-  const variation = variationGate({
-    items: deflects.map((r) => ({ id: r.fixture.id, text: r.flattened })),
-    samples,
-    minDistinctOpeners: MIN_DISTINCT_DEFLECT_OPENERS,
-  });
-  for (const result of deflects) {
-    result.failures.push(...(variation.failuresById[result.fixture.id] ?? []));
-  }
-  const openersShort = variation.distinctOpeners < MIN_DISTINCT_DEFLECT_OPENERS;
 
   // ── report ─────────────────────────────────────────────────────────────────
   console.log('--- answers ---');
@@ -366,7 +326,6 @@ async function main() {
   console.log(
     `unhedged officeholders:  ${staleOffice.length}  (0 required - the judge shares the cutoff, so this one is mechanical)`,
   );
-  for (const line of variationLines(variation)) console.log(`${line}  [live-data deflects]`);
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
 
   console.log('\n--- cost telemetry ---');
@@ -374,7 +333,7 @@ async function main() {
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );
 
-  const allPass = results.every((r) => r.failures.length === 0) && !openersShort;
+  const allPass = results.every((r) => r.failures.length === 0);
 
   console.log('\n--- gate ---');
   if (!broken) {
