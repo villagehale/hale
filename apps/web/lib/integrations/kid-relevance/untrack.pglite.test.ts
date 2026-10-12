@@ -225,6 +225,66 @@ describe('untrackItem', () => {
     expect(JSON.stringify(audit[0])).not.toContain('Choir');
   });
 
+  it("clears the kid flag and the title on the untracked item's parent blocks, and on no other", async () => {
+    await snapshot('choir_1018', 'choir-series');
+    const series = await mirror('choir_1018', NEXT_WEEK);
+    const oneOff = await mirror('recital', WEEK_AFTER, 'Choir recital');
+    const block = (eventId: string, recurringEventId: string | null, title: string) => ({
+      integrationId,
+      eventId,
+      recurringEventId,
+      familyId,
+      userId: parentUserId,
+      startAt: NEXT_WEEK,
+      kidRelated: true,
+      title,
+      status: 'confirmed',
+      updatedStamp: 'u1',
+    });
+    await db.database
+      .insert(schema.parentCalendarBlocks)
+      .values([
+        block('choir_1018', 'choir-series', 'Choir rehearsal'),
+        block('choir_1025', 'choir-series', 'Choir rehearsal'),
+        block('recital', null, 'Choir recital'),
+        block('swim_1018', 'swim-series', 'Wren swim'),
+      ]);
+    const blocks = async () =>
+      (
+        await db.database
+          .select()
+          .from(schema.parentCalendarBlocks)
+          .where(eq(schema.parentCalendarBlocks.familyId, familyId))
+      )
+        .map((row) => `${row.eventId}/${row.kidRelated}/${row.title}`)
+        .sort();
+
+    await untrack({ kind: 'family_event', id: series });
+
+    expect(await blocks()).toEqual([
+      'choir_1018/false/null',
+      'choir_1025/false/null',
+      'recital/true/Choir recital',
+      'swim_1018/true/Wren swim',
+    ]);
+
+    await untrack({ kind: 'family_event', id: oneOff });
+
+    expect(await blocks()).toEqual([
+      'choir_1018/false/null',
+      'choir_1025/false/null',
+      'recital/false/null',
+      'swim_1018/true/Wren swim',
+    ]);
+    const audit = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, familyId));
+    expect(
+      audit.map((row) => (row.after as { blocksCleared?: number }).blocksCleared).sort(),
+    ).toEqual([1, 2]);
+  });
+
   it('keeps the kind on the parent verdict as the hint the judge reads, and never the title', async () => {
     const factsBefore = await memoryFacts();
     const event = await mirror('one-off', NEXT_WEEK, 'Harbour Inn check-in');

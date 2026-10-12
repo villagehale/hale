@@ -19,6 +19,8 @@ import { KID_HINT_MAX_CHARS, type KidRelevanceSource } from './skill-contract';
  *   - a held calendar alert for it dropped, and an open Gmail offer for it withdrawn, so
  *     nothing Hale still owes can name it later;
  *   - their scheduled reminders cancelled with `parent_untracked`;
+ *   - the parent calendar blocks of it no longer kid-related, their title cleared, as the
+ *     backfill clears an adult block, so the coach and the co-parent duty asks read none;
  *   - one audit row with the verdict, the source and the counts (rule #6).
  *
  * It returns facts only; the caller writes any reply. It has no caller until the intent
@@ -176,6 +178,7 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
       .where(eq(table.id, verdict.id));
     const { heldAlertsCleared, offersWithdrawn } = await dropOwedTexts(tx, item, input.now);
     await clearOfferWords(tx, item);
+    const blocksCleared = await clearKidBlocks(tx, input.familyId, item, input.now);
 
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
@@ -190,6 +193,7 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
         removedEvents: removed.length,
         heldAlertsCleared,
         offersWithdrawn,
+        blocksCleared,
       },
       occurredAt: input.now,
     });
@@ -298,6 +302,30 @@ async function clearOfferWords(database: Pick<Database, 'update'>, item: Provide
         eq(schema.emailAlertOffers.messageId, item.itemKey),
       ),
     );
+}
+
+/** The item's parent calendar blocks that were kid-related: no longer, and untitled. */
+async function clearKidBlocks(
+  database: Pick<Database, 'update'>,
+  familyId: string,
+  item: ProviderItem,
+  now: Date,
+): Promise<number> {
+  if (item.source !== 'google_calendar' || item.integrationId === null) return 0;
+  const blocks = schema.parentCalendarBlocks;
+  const cleared = await database
+    .update(blocks)
+    .set({ kidRelated: false, title: null, updatedAt: now })
+    .where(
+      and(
+        eq(blocks.familyId, familyId),
+        eq(blocks.integrationId, item.integrationId),
+        or(eq(blocks.eventId, item.itemKey), eq(blocks.recurringEventId, item.itemKey)),
+        eq(blocks.kidRelated, true),
+      ),
+    )
+    .returning({ eventId: blocks.eventId });
+  return cleared.length;
 }
 
 /** The titles and places Hale held for this item outside the family calendar. */
