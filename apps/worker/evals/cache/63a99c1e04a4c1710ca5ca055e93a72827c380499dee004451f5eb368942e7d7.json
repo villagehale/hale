@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It says what the item is (a flight check-in) and why that gives unsure: no child is named and nothing shows it is a family booking or a work trip. This matches the trip rule and adds no invented facts. 'For either the parent or the child' is slightly loose wording, since an 18-month-old would travel with the parent and the real open question is family trip versus solo trip. That is not enough to lower the score much.",
+    "score": 5
+  }
+}

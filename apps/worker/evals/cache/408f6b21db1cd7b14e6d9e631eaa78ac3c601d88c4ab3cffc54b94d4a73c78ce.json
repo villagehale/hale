@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls the item a birthday party for another child, which the rules count as a kid item, and it supports the kid verdict in one clause. Saying the family's kids would attend is a mild inference, but it fits the rule rather than inventing a fact.",
+    "score": 5
+  }
+}

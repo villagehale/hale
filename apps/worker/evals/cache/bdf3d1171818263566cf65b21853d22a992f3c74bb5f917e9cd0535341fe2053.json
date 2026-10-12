@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a bare placeholder with no detail and says that is why it cannot be pinned to a child or the parent. That supports the unsure verdict, adds no unsupported facts, and is one short clause.",
+    "score": 5
+  }
+}

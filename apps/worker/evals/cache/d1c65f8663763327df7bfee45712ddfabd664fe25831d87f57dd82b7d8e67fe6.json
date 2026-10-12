@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is a single plain clause that names the item as a daycare pickup, which is a childcare arrangement and so a kid item. That matches the given verdict. It adds no unsupported facts: it names no particular child and states no age or place, and with Wren at 18 months a daycare-age child is plausible anyway. It does little more than restate the title, but 'a care arrangement for a child' supplies the why.",
+    "score": 5
+  }
+}

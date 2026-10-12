@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names the item correctly as a party for another child, and the rules count that as a kid item, so it backs the 'kid' verdict. It is one clause and adds no unsupported facts. 'Which the family's kids would attend' is a slight overreach, since Wren at 18 months may not go, but it reads as a gloss rather than an invented fact.",
+    "score": 5
+  }
+}

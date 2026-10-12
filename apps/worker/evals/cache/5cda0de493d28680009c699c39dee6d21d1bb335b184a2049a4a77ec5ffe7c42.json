@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It says what the item is, a clinic appointment reminder, and why that leads to unsure: no child is named, so it could be Wren's checkup or the parent's own visit. That matches the rule that an appointment with no child named is unsure when nothing settles it. It adds no unsupported facts and agrees with the verdict.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names what the item is, a daycare pickup, and ties it to the kid verdict by calling it childcare for a child. It is one short clause and adds no unsupported facts: it names no child and assumes no age. It says in a sound way why the item is about the children.",
+    "score": 5
+  }
+}

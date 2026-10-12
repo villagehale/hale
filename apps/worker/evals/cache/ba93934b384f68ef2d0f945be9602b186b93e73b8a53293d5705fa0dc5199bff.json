@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a Q4 planning offsite, which is plainly a work event, so it belongs to the parent and supports the adult verdict. The reason says what the item is (a quarterly planning offsite) and why that makes it adult (the parent's own work). It is one short clause, matches the verdict, and invents nothing, since 'Q4' supports 'quarterly'.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It says the item is a daycare pickup request, a care arrangement, and that it names Wren, an 18-month-old for whom daycare fits. That supports the kid verdict and adds no unsupported facts.",
+    "score": 5
+  }
+}

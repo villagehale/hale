@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason supports the kid verdict with one plain clause, and every fact in it is supported: Wren is a listed child aged 18 months, and the item is a clinic checkup. It mostly restates the title, though, and leaves the why implicit (a named child's own medical visit) rather than stating it.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short plain clause that gets everything right. It names the item as a bare 'Busy' calendar block with no detail. It then says that nothing ties it to a child or the parent, so it could be anyone's. That matches the rule that a bare item is unsure and supports the unsure verdict, with no invented facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "One plain clause that says what the item is (a bare 'Busy' block with no detail) and why that gives unsure (nothing points to a child or to the parent). It invents no facts and matches the verdict.",
+    "score": 5
+  }
+}

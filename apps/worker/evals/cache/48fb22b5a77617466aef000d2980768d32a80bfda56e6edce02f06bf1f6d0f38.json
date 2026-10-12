@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short clause that names the item as a bare calendar block with no detail, which is exactly what it is. It follows the rule that a bare or ambiguous item is unsure, so it supports the verdict given. It adds no facts the item does not support.",
+    "score": 5
+  }
+}

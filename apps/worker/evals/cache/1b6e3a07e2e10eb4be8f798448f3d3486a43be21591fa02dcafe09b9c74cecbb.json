@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It correctly treats the item as bare errands with no child or activity named, which supports unsure. It invents no facts and gives both the what and the why, though it partly echoes the title.",
+    "score": 5
+  }
+}

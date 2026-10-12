@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls the item a play date invitation that names Wren, which supports kid. But it is slightly inaccurate: the invitation is addressed to the parent and asks them to bring Wren, not addressed to Wren. 'From another family' is also an inference, since Priya is only named as the sender.",
+    "score": 4
+  }
+}

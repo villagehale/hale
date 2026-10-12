@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The calendar entry is just the word 'Hold', with no activity and no child named, so it is a bare placeholder that could belong to the parent or to a child. That fits the unsure verdict. The classifier's reason says this in one plain clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

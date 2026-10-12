@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Q4 planning offsite\" is a business planning session away from the office, so it belongs to the parent's working life, not to Wren or Theo. The classifier's reason fits that in one short clause. It says what the item is (a quarterly planning offsite) and why that means adult (the parent's own work event). It adds no unsupported facts and backs the given verdict.",
+    "score": 5
+  }
+}

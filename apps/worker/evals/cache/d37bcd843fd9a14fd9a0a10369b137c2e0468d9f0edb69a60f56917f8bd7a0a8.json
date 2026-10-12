@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a dentist appointment (French) with no child named, and the rules let a reason read such a visit as the parent's own. The classifier's single plain clause names what the item is, gives the rule-based why, and matches the adult verdict without inventing anything. Minor redundancy in repeating 'dentist visit' does not hurt it.",
+    "score": 5
+  }
+}

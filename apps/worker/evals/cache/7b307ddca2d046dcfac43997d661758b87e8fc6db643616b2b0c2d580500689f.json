@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a trip booking that names both children, which the rules count as a kid item. The reason says what the item is (a family room booking), gives the cause (it names Wren and Theo) and supports the kid verdict. It is one plain clause with no invented facts.",
+    "score": 5
+  }
+}

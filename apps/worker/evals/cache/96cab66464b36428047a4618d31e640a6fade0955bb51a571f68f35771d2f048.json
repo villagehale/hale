@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Item is a physio visit for a shoulder with no child named, which the rules let a reason read as the parent's own. The classifier's single clause names the kind of item (physio for a shoulder) and ties it to the adult verdict without inventing anything. Concise, accurate and consistent with the verdict.",
+    "score": 5
+  }
+}

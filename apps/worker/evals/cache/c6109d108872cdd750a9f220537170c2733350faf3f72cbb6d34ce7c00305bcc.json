@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the verdict. It names the item as a dental cleaning and reads a dentist visit with no child named as the parent's own, which the rules allow. It invents no facts and is one short clause. It could state outright that no child is named, but that is implied.",
+    "score": 5
+  }
+}

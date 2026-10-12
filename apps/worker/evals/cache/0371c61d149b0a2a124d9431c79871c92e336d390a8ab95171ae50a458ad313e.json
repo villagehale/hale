@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a restaurant booking and lands on the given adult verdict in one short clause. A table for two at 7:30 with two young children in the family plausibly means the parent's own evening out. But the reason only asserts \"the parent's own dinner\" and never says why two seats rules out the kids. The why is implied rather than stated.",
+    "score": 4
+  }
+}

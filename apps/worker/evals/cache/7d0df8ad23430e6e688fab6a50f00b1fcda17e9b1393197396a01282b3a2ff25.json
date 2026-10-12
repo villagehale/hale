@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item 'Cours de natation de Lina' is a swimming lesson, and it names Lina, the family's 30-month-old child. The reason says what the item is (a swimming class), ties it to the named child and reaches the given kid verdict. Her age comes straight from the context, so it is a supported fact, and the reason is one short plain clause.",
+    "score": 5
+  }
+}

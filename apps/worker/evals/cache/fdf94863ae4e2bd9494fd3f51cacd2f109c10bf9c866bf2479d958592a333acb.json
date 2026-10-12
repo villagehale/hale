@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason says what the item is (a hotel reservation) and why that gives unsure: no child is named, and it is neither plainly a family booking nor plainly a work trip. This applies the trip rule correctly and matches the verdict. It is one clause and invents nothing. The ending, 'for either side', is slightly vague but harmless.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads 'Call' as a bare calendar entry with no child named and no activity behind it, which is exactly why the item is unsure. It is one plain clause, invents nothing and supports the given verdict.",
+    "score": 5
+  }
+}

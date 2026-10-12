@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is just \"Réunion\" (French for meeting), a bare calendar entry with no child or activity named, so the rules make it unsure. The reason says exactly that in one plain clause, adds no invented facts, and matches the verdict.",
+    "score": 5
+  }
+}

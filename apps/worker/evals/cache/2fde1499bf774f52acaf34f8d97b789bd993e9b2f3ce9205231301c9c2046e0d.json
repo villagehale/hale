@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a swim outing for Wren, the named child, and correctly concludes it is a kid activity. The age comes from the supplied children list, so no fact is invented. It is one short clause that agrees with the verdict.",
+    "score": 5
+  }
+}

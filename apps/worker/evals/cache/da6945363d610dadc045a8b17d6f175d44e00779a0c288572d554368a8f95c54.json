@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that names the item as a car service reminder, and a car service is an adult household errand, which supports the adult verdict. It invents no child details, and \"the parent's own vehicle\" is a fair reading of \"your car\".",
+    "score": 5
+  }
+}

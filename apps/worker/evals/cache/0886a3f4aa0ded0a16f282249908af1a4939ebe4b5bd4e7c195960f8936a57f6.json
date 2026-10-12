@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason names the item as a choir rehearsal and ties it to the matching notMineHints entry, which by rule makes it the parent's own and supports the adult verdict. It is one short clause and adds no unsupported facts. Leaning on the hint is legitimate, though a choir rehearsal is generic enough that the match is slightly loose. It still meets the bar for a top score.",
+    "score": 5
+  }
+}

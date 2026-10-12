@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason fits the verdict: it notes that 'Hold' is a bare placeholder naming no activity and no child, so it cannot be tied to either the children or the parent. It is one plain clause with nothing invented.",
+    "score": 5
+  }
+}

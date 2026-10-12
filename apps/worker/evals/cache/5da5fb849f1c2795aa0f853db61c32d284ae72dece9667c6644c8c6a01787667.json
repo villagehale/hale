@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a music class) and why it is a kid item (it names Theo). The age of 50 months comes from the children list, so it is a supported fact, and the reason matches the kid verdict. It is one sentence, though a bit wordier than needed, because the age adds nothing once the child is named.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the trip rule: a hotel booking that names no child and is neither plainly a family booking nor plainly a work trip is unsure. It is one plain clause saying what the item is and why that leads to unsure, and it adds no unsupported facts. The closing phrase 'for either side' is slightly vague but does not hurt it.",
+    "score": 5
+  }
+}

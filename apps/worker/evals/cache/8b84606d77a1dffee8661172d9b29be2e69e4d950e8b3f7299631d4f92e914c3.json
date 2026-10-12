@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that names the item as a work 1:1 and points to the surname and the \"(Product)\" team label. Those details show this Mia is a colleague, not the 6-year-old, so the meeting is the parent's own. Everything it relies on is in the item, and it argues for the verdict given.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads the item as a restaurant table booking, a fair inference from a Tablebook confirmation, and it backs the adult verdict in one short clause. The 'why' is thin, though: 'an adult dinner booking' mostly restates the label. It never says what makes it adult, such as that a table for two at 7:30 pm names no child.",
+    "score": 4
+  }
+}

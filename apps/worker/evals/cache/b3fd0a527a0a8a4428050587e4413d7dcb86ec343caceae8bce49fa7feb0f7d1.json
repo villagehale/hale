@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a hotel booking) and ties it to the parent's 'a hotel stay' hint, which under the rules makes it the parent's own, so it supports the adult verdict. It adds no facts the item lacks. It is one clause, though slightly padded by the extra 'names no child' clause.",
+    "score": 5
+  }
+}

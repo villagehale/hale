@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a birthday party for another child, which the rules treat as a kid item, and it supports the kid verdict. It is one plain clause and adds no unsupported facts: the '4th birthday' wording establishes Mila is a child. Saying the family's kids would attend is a reasonable reading of why the party sits on the calendar.",
+    "score": 5
+  }
+}

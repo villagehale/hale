@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly says the item is a bare 'Busy' calendar block with no detail, which is why the verdict is unsure. It is one plain clause, adds no unsupported facts and fits the rule for bare items.",
+    "score": 5
+  }
+}

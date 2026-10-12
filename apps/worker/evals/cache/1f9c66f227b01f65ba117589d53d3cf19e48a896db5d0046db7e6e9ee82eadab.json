@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a birthday party (\"Fiesta de cumpleaños\") for Lina, and Lina is the family's only child. Calling it a kid item is supported by the context. The reason is one plain clause that says what the item is and ties it to the named child, which matches the verdict. It adds no invented facts.",
+    "score": 5
+  }
+}

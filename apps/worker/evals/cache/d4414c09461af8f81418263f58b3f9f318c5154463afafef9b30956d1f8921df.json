@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a dentist appointment ('Rendez-vous chez le dentiste') that names no child, and the rules let a reason read such a visit as the parent's own, which matches the adult verdict. The classifier's reason is one plain clause saying what the item is and why that gives the verdict, and it invents no facts.",
+    "score": 5
+  }
+}

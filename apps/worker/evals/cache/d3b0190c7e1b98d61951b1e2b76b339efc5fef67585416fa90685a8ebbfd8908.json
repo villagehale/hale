@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a flight check-in with no child named and no sign it is a work trip or a family booking. The trip rule makes that unsure, and the reason says exactly this in one clause with no invented facts. It reads as plainly as the rule asks.",
+    "score": 5
+  }
+}

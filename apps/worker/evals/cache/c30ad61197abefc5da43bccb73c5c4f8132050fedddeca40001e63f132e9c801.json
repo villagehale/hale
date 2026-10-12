@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a generic appointment reminder (what it is) and says no one is named, so it could belong to a child or the parent (why). That matches the rule that an appointment with no child named is unsure, and it invents nothing. It is one short plain clause.",
+    "score": 5
+  }
+}

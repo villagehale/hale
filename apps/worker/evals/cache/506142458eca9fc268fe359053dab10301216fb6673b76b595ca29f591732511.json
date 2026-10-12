@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Daily standup\" is a recurring workplace meeting format, and the children are 18 and 50 months old, so it plainly belongs to the parent. The classifier's reason states what the item is (a work standup) and why that makes it adult (the parent's own) in one short clause, inventing no facts and matching the verdict.",
+    "score": 5
+  }
+}

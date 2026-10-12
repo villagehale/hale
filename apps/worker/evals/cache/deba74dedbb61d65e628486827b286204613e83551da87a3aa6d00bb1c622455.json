@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one clause that matches the adult verdict and adds no unsupported fact. It names the item as a restaurant booking for two, which is a reasonable basis for adult: a table for 2 at 7:30pm cannot seat a family with an 18-month-old and a 4-year-old. That link is only implied, though, so the 'why' is thin and it falls just short of a 5.",
+    "score": 4
+  }
+}

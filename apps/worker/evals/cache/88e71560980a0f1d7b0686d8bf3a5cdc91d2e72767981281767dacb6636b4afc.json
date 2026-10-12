@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a dentist cleaning with no child named, and the rules let a reason read such a visit as the parent's own. The reason names the kind of thing it is (a dental cleaning), gives the why (the parent's own dentist visit), matches the adult verdict, invents no facts and is one short clause. It could tie the why to the absence of a child's name more explicitly, but it is close to ideal.",
+    "score": 5
+  }
+}

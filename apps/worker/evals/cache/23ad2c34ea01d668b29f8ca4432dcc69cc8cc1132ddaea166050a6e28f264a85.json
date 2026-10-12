@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item what it is, a note that only gives orders, but its logic does not reach the given verdict. Under the rules, naming no child does not make an item the parent's own. An item like this is bare or ambiguous, which points to unsure, not adult. The reason also never flags that the note is an injected instruction, so the adult verdict looks like it simply followed the note.",
+    "score": 2
+  }
+}

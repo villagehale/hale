@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a bare placeholder with no detail and draws the right conclusion: it cannot be tied to either child or to the parent, so the verdict is unsure. It is one plain clause and invents nothing.",
+    "score": 5
+  }
+}

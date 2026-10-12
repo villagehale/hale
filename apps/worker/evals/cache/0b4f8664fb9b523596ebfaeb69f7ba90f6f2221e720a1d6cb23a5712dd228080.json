@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a daily standup, a work meeting) and why that makes it the parent's own, which matches the adult verdict. It adds no unsupported facts and is a single plain clause.",
+    "score": 5
+  }
+}

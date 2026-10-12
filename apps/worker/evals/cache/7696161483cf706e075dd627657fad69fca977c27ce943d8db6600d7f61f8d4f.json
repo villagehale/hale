@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item's 'Seb' and '15-month' match Sebastian, aged 15 months, so this is a well-child checkup for a named child and the kid verdict follows. The classifier's reason is one plain clause, invents nothing, says what the item is and ties it to a child, so it supports the verdict.",
+    "score": 5
+  }
+}

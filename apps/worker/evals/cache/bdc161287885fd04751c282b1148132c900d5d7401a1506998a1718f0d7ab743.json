@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that names the kind of thing, a library storytime, and calls it a kid activity. The rules allow a kid activity with no child named to be a kid item, which matches the verdict. It adds no unsupported facts. The only gap is that the 'why' is implicit rather than stated outright, but it is still concise and correct.",
+    "score": 5
+  }
+}

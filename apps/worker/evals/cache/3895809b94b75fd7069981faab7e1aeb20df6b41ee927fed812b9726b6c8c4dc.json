@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is a single plain clause. It says what the item is (a dentist cleaning) and why that leads to unsure: no person is named, so it could be a child's visit or the parent's own. That matches the unsure verdict and the rule that an unnamed appointment stays unsure when nothing settles it. It adds no unsupported facts and does not argue for a different verdict.",
+    "score": 5
+  }
+}

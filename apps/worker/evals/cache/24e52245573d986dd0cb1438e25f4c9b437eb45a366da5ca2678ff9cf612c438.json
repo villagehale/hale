@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a physio visit with no child named, and the rules let a reason read that as the parent's own. The classifier's reason says what the item is (shoulder physio) and why that means adult (the parent's own health appointment). It adds no unsupported facts and is one short clause that matches the verdict.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a Q4 planning offsite, which is a work event, and that makes it the parent's own, so it supports the adult verdict. It is one plain clause, adds no unsupported facts, and does more than copy the title.",
+    "score": 5
+  }
+}

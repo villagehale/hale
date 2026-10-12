@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is just 'Réunion' (French for 'meeting') with no child, activity or other detail. The classifier's reason is one plain clause that says what the item is (a bare meeting) and why it leads to unsure (nothing ties it to the parent or to Lina). It invents no facts and matches the verdict.",
+    "score": 5
+  }
+}

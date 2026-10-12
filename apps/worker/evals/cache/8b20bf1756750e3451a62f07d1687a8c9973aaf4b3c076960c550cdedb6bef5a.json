@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item names Wren, who is 18 months old, and a parent-and-tot swim is a toddler activity, so the classifier's reason fits the context and backs the kid verdict. It is a single plain clause that says what the item is and why it counts as kid. Calling it toddler-age is a fair reading of the item, not an invented fact.",
+    "score": 5
+  }
+}
