@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly says the item is a bare word with no child, activity or context named. That is exactly why the item is ambiguous, so it supports the unsure verdict. It is one short clause, adds no invented facts and matches the bare-or-ambiguous rule.",
-    "score": 5
-  }
-}

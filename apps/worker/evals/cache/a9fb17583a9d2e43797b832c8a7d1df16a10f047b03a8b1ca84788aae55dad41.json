@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause. It names the item as an appointment reminder and explains the unsure verdict: no one is named, so it could be for either the child or the parent. It matches the verdict and invents no facts. However, its 'could be a child's checkup' logic sits awkwardly with the rule that an unnamed appointment is the parent's own, so the why is weaker than ideal.",
-    "score": 4
-  }
-}

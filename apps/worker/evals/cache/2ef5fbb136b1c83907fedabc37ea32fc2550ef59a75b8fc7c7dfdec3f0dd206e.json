@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The first clause does the job well: a preschool swim class registration is a kid activity, so it is a kid item. The added note that Wren is the only child and is 18 months old is supported by the context, but it is padding that hints at an unstated link between Wren and the class rather than explaining the verdict. That keeps the reason from being one short plain clause.",
-    "score": 4
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a pediatric checkup, and \"Seb\" with \"15-month\" matches Sebastian, who is 15 months old. The classifier's reason says what the item is and why it is a kid item, and every fact in it comes from the item, so it supports the kid verdict. It could have tied Seb to Sebastian more explicitly, but it is one plain, accurate clause.",
-    "score": 5
-  }
-}

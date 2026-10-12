@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a hotel booking naming Wren and Theo, and a trip that names a child is a kid item. The classifier says exactly what the item is and why that leads to the kid verdict. It uses one short clause, invents no facts, and supports the given verdict.",
-    "score": 5
-  }
-}

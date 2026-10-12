@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a 'spots left' notice for Parent and Tot Swim, which already appears in activityTitles, so calling it a toddler swim class that matches a known kid activity is supported and leads straight to kid. Calling it a 'registration' stretches the text slightly, since the item announces open spots rather than a sign-up. Still, it is one plain clause covering both what the item is and why it is kid.",
-    "score": 5
-  }
-}

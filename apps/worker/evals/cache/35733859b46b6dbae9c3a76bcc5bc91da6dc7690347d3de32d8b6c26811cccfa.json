@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a dental cleaning and matches the adult verdict in one short clause. But its 'why' just asserts the visit is the parent's own. It never gives the grounding fact that no child is named, which is what makes an appointment the parent's. Accurate, but slightly circular.",
-    "score": 4
-  }
-}

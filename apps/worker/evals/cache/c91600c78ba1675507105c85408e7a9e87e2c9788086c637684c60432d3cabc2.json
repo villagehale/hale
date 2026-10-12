@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason correctly says the item is a bare single word with no child, activity or context, which matches the rule that a bare or ambiguous item is unsure. It is one plain clause, invents nothing and supports the verdict. 'Could be anything' is slightly loose, but it states the what and the why.",
-    "score": 5
-  }
-}

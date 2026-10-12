@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item text is Chinese for \"company quarterly meeting\", so the classifier's description is accurate. It names no child, and a work meeting is the parent's own, which fits the adult verdict. The reason is one plain clause that says what the item is and why it is adult, and it adds no unsupported facts.",
-    "score": 5
-  }
-}

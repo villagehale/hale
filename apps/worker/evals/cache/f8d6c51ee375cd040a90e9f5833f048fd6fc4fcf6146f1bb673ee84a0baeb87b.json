@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The clause correctly identifies the item as a dentist appointment that names no child, and it is one short sentence that supports the unsure verdict. Its 'why' is weak, though: the classifier's own rules say an appointment with no child named is the parent's own. So 'could be either' is exactly the reasoning those rules settle. The reason does not argue against its verdict or invent facts, but its justification rests on an ambiguity the rules have already resolved.",
-    "score": 3
-  }
-}

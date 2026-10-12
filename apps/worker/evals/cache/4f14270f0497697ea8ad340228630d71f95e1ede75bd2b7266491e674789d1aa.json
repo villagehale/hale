@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a flight check-in) and why it is unsure: no child is named and it isn't plainly a work trip. That matches the trip rule and the verdict, adds no unsupported facts, and is one short clause.",
-    "score": 5
-  }
-}

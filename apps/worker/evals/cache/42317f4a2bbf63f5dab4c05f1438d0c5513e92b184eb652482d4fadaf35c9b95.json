@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a bare 'Hold' with no detail, which is what it is. It explains that this could be anything, which supports the unsure verdict under the rule that bare items are unsure. It is one plain clause and invents nothing.",
-    "score": 5
-  }
-}

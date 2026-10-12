@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause. It says what the item is (a swim session) and why it leads to the kid verdict: it names Mia, one of the family's children. Every fact it uses is supported by the context, and it argues for the verdict it sits beside.",
-    "score": 5
-  }
-}

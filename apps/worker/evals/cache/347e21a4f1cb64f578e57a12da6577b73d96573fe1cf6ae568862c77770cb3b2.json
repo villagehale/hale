@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one short clause that matches the adult verdict. It names the item as errands and says why that makes it the parent's own. Its 'why' is a generalization that errands belong to the parent, which no rule or hint supports. The item names no child but is bare, so the reasoning is thin rather than grounded.",
-    "score": 4
-  }
-}

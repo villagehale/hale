@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It says what the item is (a playdate invitation) and why it is a kid item (it asks for Wren, a named child). It adds no unsupported facts and matches the kid verdict.",
-    "score": 5
-  }
-}

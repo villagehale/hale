@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one clause that names the item as a flight check-in and notes that no traveller is named. Per the trip rule, that leaves it open between a family trip and the parent's own, which supports unsure. It adds no unsupported facts.",
-    "score": 5
-  }
-}

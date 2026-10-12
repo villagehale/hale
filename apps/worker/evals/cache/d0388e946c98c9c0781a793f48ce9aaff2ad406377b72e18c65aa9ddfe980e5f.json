@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason names the item as a family room booking and points to Wren and Theo being named, which is exactly why a trip counts as a kid item. Every fact in it is supported and it backs the kid verdict. The closing phrase 'so it is a family booking for the children' repeats the first part a little, but it is still one plain clause.",
-    "score": 5
-  }
-}

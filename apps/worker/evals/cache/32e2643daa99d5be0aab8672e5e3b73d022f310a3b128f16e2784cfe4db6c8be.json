@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is a single plain clause. It correctly treats the item as bare errands with no child named, so it could belong to the parent or the whole family. That ambiguity is exactly what supports the unsure verdict. It adds no facts the item doesn't contain and it goes beyond restating the title.",
-    "score": 5
-  }
-}

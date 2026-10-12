@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause that matches the kid verdict. It correctly reads the French title as a swim class, notes that it names Lina, who is one of the children, and uses that as the reason it is a kid activity. It adds nothing the item does not support.",
-    "score": 5
-  }
-}

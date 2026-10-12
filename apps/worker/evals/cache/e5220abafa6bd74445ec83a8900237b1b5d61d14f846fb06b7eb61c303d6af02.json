@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item names Wren, an 18-month-old child, and is a parent-and-tot swim class, so it is plainly a kid activity. The classifier's reason says what the item is and who it is for, and the age comes from the supplied context. It supports the kid verdict in one short clause.",
-    "score": 5
-  }
-}

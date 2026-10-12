@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason claims no child is named, but the item names Mia, who is one of the children. That makes its central claim false. It also invents a relationship with \"Mia's friend\". Even taken at its word, a party for another child is still a kid item, so the logic does not support unsure.",
-    "score": 1
-  }
-}

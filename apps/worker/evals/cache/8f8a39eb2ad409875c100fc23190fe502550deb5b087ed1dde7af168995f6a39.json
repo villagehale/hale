@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause. It identifies the item as an appointment reminder that names no one and gives that ambiguity as grounds for unsure, which matches the verdict and adds no unsupported fact. It loses a point because it ignores the rule that an appointment naming no child is the parent's own. It never explains why this bare clinic notice should be treated as ambiguous instead.",
-    "score": 4
-  }
-}

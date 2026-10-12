@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item 'Lina 的音乐课' means 'Lina's music lesson', and Lina is the only child (30 months), so it is a kid activity. The classifier's reason is one short plain clause that says what the item is (a music lesson), why it is a kid item (it names Lina), and backs the verdict given. It adds no unsupported facts.",
-    "score": 5
-  }
-}

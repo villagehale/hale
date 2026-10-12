@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly calls the item a hotel booking, ties it to the parent's notMineHints entry 'a hotel stay', and notes no child is named, which supports the adult verdict. It invents nothing and is a single sentence. 'The parent already said are their own hotel stays' is slightly awkward phrasing but still plain enough.",
-    "score": 5
-  }
-}

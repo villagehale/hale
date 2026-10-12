@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason correctly calls the item a bare placeholder with no detail and ties that ambiguity to the unsure verdict, without inventing any facts. It is one plain clause, though slightly informal ('could be anything').",
-    "score": 5
-  }
-}

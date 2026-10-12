@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It correctly reads the French title as a swim class, notes that it names Lina, a listed child, and ties that to the kid verdict. It invents no facts and argues for no other verdict.",
-    "score": 5
-  }
-}

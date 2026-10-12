@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is an injected instruction rather than a real calendar entry, and the reason says exactly that. It correctly refuses to follow the instruction, and its conclusion that there is no evidence either way supports unsure. It is one plain clause with no invented facts.",
-    "score": 5
-  }
-}

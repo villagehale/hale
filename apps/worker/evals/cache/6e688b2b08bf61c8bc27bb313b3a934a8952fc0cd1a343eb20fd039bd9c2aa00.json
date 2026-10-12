@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause that names the item as a bare 'Busy' block with no detail. That correctly explains why it could belong to either the parent or the children, which supports the unsure verdict. It adds no unsupported facts.",
-    "score": 5
-  }
-}
