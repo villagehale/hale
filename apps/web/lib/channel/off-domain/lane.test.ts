@@ -63,6 +63,7 @@ interface Harness extends OffDomainPorts {
   composeCalls: number;
   composeSeen: Array<{ text: string; today: string }>;
   todayAskedFor: string[];
+  placeAskedFor: string[];
   medicalCalls: number;
   medicalSeen: string[];
   recorded: Recorded[];
@@ -85,20 +86,25 @@ function ports(
     composeCalls: 0,
     composeSeen: [],
     todayAskedFor: [],
+    placeAskedFor: [],
     medicalCalls: 0,
     medicalSeen: [],
     recorded: [],
     screen: { read: async () => read },
     answer: {
-      compose: async (text, today) => {
+      compose: async (text, family) => {
         harness.composeCalls += 1;
-        harness.composeSeen.push({ text, today: await today() });
+        harness.composeSeen.push({ text, today: await family.today() });
         return answer;
       },
     },
     today: async (familyId) => {
       harness.todayAskedFor.push(familyId);
       return TODAY;
+    },
+    place: async (familyId) => {
+      harness.placeAskedFor.push(familyId);
+      return { status: 'known', city: 'Toronto', country: 'Canada' };
     },
     medical: {
       answer: async (text) => {
@@ -328,6 +334,31 @@ describe('what each lane says', () => {
     await consider(p);
 
     expect(p.todayAskedFor).toEqual([]);
+    expect(p.placeAskedFor).toEqual([]);
+  });
+
+  /**
+   * Where the family is belongs to the lane, like the date: the composer is handed a read
+   * of THIS family's place and decides whether to make it. A composer that never asks
+   * costs no read at all.
+   */
+  it("hands the composer a read of this family's place, and makes none itself", async () => {
+    const p = ports();
+    const places: unknown[] = [];
+    p.answer = {
+      compose: async (_text, family) => {
+        places.push(await family.place());
+        return { status: 'composed', reply: ANSWER };
+      },
+    };
+
+    await consider(p, 'hows the weather tomorrow');
+    expect(places).toEqual([{ status: 'known', city: 'Toronto', country: 'Canada' }]);
+    expect(p.placeAskedFor).toEqual([FAMILY]);
+
+    const untouched = ports();
+    await consider(untouched, 'whats the capital of peru');
+    expect(untouched.placeAskedFor).toEqual([]);
   });
 
   /**
