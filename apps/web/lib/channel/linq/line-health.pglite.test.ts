@@ -102,7 +102,42 @@ describe('parseLinqWebhook · phone_number.status_updated', () => {
   });
 });
 
+describe('parseLinqWebhook · a line event that is not the shape Linq sends', () => {
+  it('names an unbounded or malformed number or status, and normalises a real number', () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    for (const data of [
+      { phone_number: 'not a number', status: 'flagged' },
+      { phone_number: '9'.repeat(400), status: 'flagged' },
+      { phone_number: LINE, status: 'x'.repeat(400) },
+      { phone_number: LINE, status: 'flagged\nactive' },
+    ]) {
+      expect(parseLinqWebhook({ ...statusEvent('flagged'), data }, NOW)).toEqual({
+        kind: 'ignored',
+        reason: 'malformed',
+      });
+    }
+    expect(
+      parseLinqWebhook(
+        { ...statusEvent('flagged'), data: { phone_number: '(555) 555-0199', status: 'flagged' } },
+        NOW,
+      ),
+    ).toEqual({ kind: 'line_health', line: { phoneNumber: LINE, status: 'flagged' } });
+  });
+});
+
 describe('the Linq door · line health', () => {
+  it('stores nothing for a malformed line event, and says so', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const outcomes: InboundRouteOutcome[] = [];
+    const bad = {
+      ...statusEvent('flagged'),
+      data: { phone_number: LINE, status: 'x'.repeat(400) },
+    };
+    const response = await handleLinqInboundRequest(signed(bad), deps(outcomes));
+    expect(await response.json()).toEqual({ outcome: 'malformed' });
+    expect(await db.database.select().from(schema.linqLineHealth)).toEqual([]);
+  });
+
   it('stores a flagged line as paused, then clears it on a healthy status', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const outcomes: InboundRouteOutcome[] = [];

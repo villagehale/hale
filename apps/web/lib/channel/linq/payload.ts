@@ -1,4 +1,6 @@
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
+import { lineStatusToken } from '~/lib/channel/proactive/line-health';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { LINQ_WEBHOOK_VERSION } from './signature';
 
 /**
@@ -168,8 +170,10 @@ function parseLocation(
 
 function parseLineHealth(payload: Record<string, unknown>): LinqParsedWebhook {
   if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
-  const phoneNumber = stringField(payload.data.phone_number);
-  const status = stringField(payload.data.status);
+  // Signed, but still a third party's strings, and the number is the row's key: a
+  // number that is not E.164 or a status that is not a short token is not stored.
+  const phoneNumber = normalizePhoneE164(stringField(payload.data.phone_number));
+  const status = lineStatusToken(stringField(payload.data.status));
   if (!phoneNumber || !status) return { kind: 'ignored', reason: 'malformed' };
   return { kind: 'line_health', line: { phoneNumber, status } };
 }

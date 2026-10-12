@@ -6,6 +6,13 @@
 
 const PAUSED_STATUSES = new Set(['flagged', 'throttled', 'limited', 'suspended']);
 
+/** A status word: letters and underscores, one short word. Anything else is not stored. */
+const STATUS_TOKEN = /^[a-z][a-z_]{0,31}$/i;
+
+export function lineStatusToken(status: string): string | null {
+  return STATUS_TOKEN.test(status) ? status : null;
+}
+
 export function lineStatusPauses(status: string): boolean {
   const normalized = status.trim().toLowerCase();
   if (PAUSED_STATUSES.has(normalized)) return true;
