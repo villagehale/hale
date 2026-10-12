@@ -398,6 +398,24 @@ describe('a YES puts the occasion on the family week', () => {
     expect(offerId).toBeTruthy();
   });
 
+  it('claims no repeat yes once the copy it placed is dropped', async () => {
+    // The kid-relevance backfill drops an adult item's copy but keeps the offer's words so
+    // a revert can restore it; "already added" would then name an event that is gone. The
+    // test above is the positive control.
+    await seedOffer();
+    const first = await reply('yes');
+    if (!first.claimed) throw new Error('unreachable');
+    await first.afterSend?.(await receipt());
+    await db.database
+      .update(schema.familyEvents)
+      .set({ deletedAt: NOW })
+      .where(eq(schema.familyEvents.familyId, family.familyId));
+
+    const repeat = await reply('yes');
+
+    expect(repeat).toEqual({ claimed: false });
+  });
+
   it('lets the word go to the coach once the repeat window has passed', async () => {
     // The POSITIVE CONTROL for the test above: the same state, read eleven minutes later,
     // claims nothing. Without this the repeat branch could be claiming every bare "yes" a

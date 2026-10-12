@@ -489,11 +489,15 @@ async function loadRecentlyAddedOffer(
       schema.channelMessages,
       eq(schema.channelMessages.id, schema.emailAlertOffers.resolvedChannelMessageId),
     )
+    // Only while the copy it placed stands: the kid-relevance backfill drops an adult
+    // item's copy but keeps the offer's words for its revert.
+    .innerJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.emailAlertOffers.eventId))
     .where(
       and(
         eq(schema.emailAlertOffers.familyId, input.familyId),
         eq(schema.emailAlertOffers.parentUserId, input.parentUserId),
         eq(schema.emailAlertOffers.resolution, 'added'),
+        isNull(schema.familyEvents.deletedAt),
         gt(
           schema.emailAlertOffers.resolvedAt,
           new Date(input.now.getTime() - EMAIL_ALERT_REPEAT_WINDOW_MS),
