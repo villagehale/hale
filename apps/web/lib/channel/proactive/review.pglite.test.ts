@@ -363,7 +363,7 @@ describe('runProactiveReview', () => {
     expect(h.transport.sent).toEqual([]);
   });
 
-  it('drops with a named reason and an audit row', async () => {
+  it('drops on the decider’s word, with an audit row', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const id = await enqueue();
     const h = harness((snapshot) => ({
@@ -375,11 +375,11 @@ describe('runProactiveReview', () => {
     }));
     const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
     expect(summary.dropped).toBe(1);
-    expect(await candidate(id)).toMatchObject({
-      status: 'dropped',
-      reason: 'No free window fits it',
-    });
-    expect(await audits('proactive_cadence_decision')).toHaveLength(1);
+    expect(await candidate(id)).toMatchObject({ status: 'dropped', decision: 'drop' });
+    const decisions = await audits('proactive_cadence_decision');
+    expect(decisions.map((row) => row.after)).toEqual([
+      { action: 'drop', itemIds: [id], unchosen: [], holdUntil: null, mode: 'live' },
+    ]);
   });
 
   it('refuses, by name, a drop of something the parent asked for, and still drops the rest', async () => {
@@ -402,10 +402,7 @@ describe('runProactiveReview', () => {
       reason: 'drop_refused_parent_requested',
       decision: 'drop',
     });
-    expect(await candidate(other)).toMatchObject({
-      status: 'dropped',
-      reason: 'No free window fits it',
-    });
+    expect(await candidate(other)).toMatchObject({ status: 'dropped', decision: 'drop' });
     const held = await audits('proactive_cadence_held');
     expect(held.map((row) => row.after)).toEqual([
       { reason: 'drop_refused_parent_requested', itemIds: [asked], mode: 'live' },
@@ -1035,12 +1032,7 @@ describe('runProactiveReview', () => {
 
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({
-      cadencePreference: {
-        schemaVersion: 1,
-        parentUserId,
-        direction: 'less',
-        note: 'text me less',
-      },
+      cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less' },
     });
     expect(await memoryFacts()).toEqual([]);
     expect((await assembleMemoryBrief(db.database, familyId, THURSDAY_EVENING)).text).not.toContain(
@@ -1079,10 +1071,7 @@ describe('runProactiveReview', () => {
       h.deps,
       new Date(THURSDAY_EVENING.getTime() + 2 * 60 * 60_000),
     );
-    expect(h.snapshots[2]?.frequencyPreference).toEqual({
-      direction: 'less',
-      note: 'text me less',
-    });
+    expect(h.snapshots[2]?.frequencyPreference).toEqual({ direction: 'less' });
   });
 
   function observeReturnedRows(): { returned: unknown[]; restore: () => void } {
@@ -1126,7 +1115,7 @@ describe('runProactiveReview', () => {
     expect(read).not.toContain('we love the weekend ideas');
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({
-      cadencePreference: { parentUserId, direction: 'less', note: 'text me less' },
+      cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less' },
     });
     expect(await memoryFacts()).toEqual([]);
   });
@@ -1160,7 +1149,7 @@ describe('runProactiveReview', () => {
   it('when live, never keeps a pace for a parent who texted about a batch that is not theirs', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const coParentId = await addCoParent();
-    const stored = { schemaVersion: 1, parentUserId, direction: 'less', note: 'fewer please' };
+    const stored = { schemaVersion: 1, parentUserId, direction: 'less' };
     await db.database.insert(schema.auditLog).values({
       familyId,
       actor: 'system',
@@ -1179,10 +1168,7 @@ describe('runProactiveReview', () => {
 
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
-    expect(h.snapshots[0]?.frequencyPreference).toEqual({
-      direction: 'less',
-      note: 'fewer please',
-    });
+    expect(h.snapshots[0]?.frequencyPreference).toEqual({ direction: 'less' });
     expect(h.snapshots[0]?.recentParentTexts).toEqual([]);
     const decisions = await audits('proactive_cadence_decision');
     const reviewed = decisions.find((row) => 'action' in (row.after as object));
@@ -1268,7 +1254,7 @@ describe('runProactiveReview', () => {
 
     expect(h.snapshots[1]?.recentParentTexts).toEqual(['text me less']);
     expect(await decisionFields('cadencePreference')).toEqual([
-      { schemaVersion: 1, parentUserId, direction: 'less', note: 'text me less' },
+      { schemaVersion: 1, parentUserId, direction: 'less' },
     ]);
     expect(await decisionFields('parentTextsRead')).toContainEqual({
       parentUserId,
@@ -1296,7 +1282,7 @@ describe('runProactiveReview', () => {
 
     expect(h.snapshots[1]?.recentParentTexts).toEqual(['text me less']);
     expect(await decisionFields('cadencePreference')).toEqual([
-      { schemaVersion: 1, parentUserId, direction: 'less', note: 'text me less' },
+      { schemaVersion: 1, parentUserId, direction: 'less' },
     ]);
     expect(await audits('proactive_cadence_decision')).toHaveLength(2);
     expect(await decisionFields('parentTextsWithheld')).toEqual(['mixed_batch']);
@@ -1335,9 +1321,7 @@ describe('runProactiveReview', () => {
     const kept = (await decisionFields('cadencePreference')).filter(
       (pace) => typeof pace === 'object',
     );
-    expect(kept).toEqual([
-      { schemaVersion: 1, parentUserId, direction: 'less', note: 'text me less' },
-    ]);
+    expect(kept).toEqual([{ schemaVersion: 1, parentUserId, direction: 'less' }]);
     expect(await decisionFields('parentTextsRead')).toEqual([
       { parentUserId, through: stamp(HOUR_BEFORE) },
     ]);
@@ -1427,8 +1411,7 @@ describe('runProactiveReview', () => {
   });
 
   /** A pace kept from an earlier review, and a hold the decider made yesterday with its words. */
-  async function storedPaceAndPriorHold(): Promise<{ pace: string; why: string }> {
-    const pace = 'fewer texts on school nights';
+  async function storedPaceAndPriorHold(): Promise<{ why: string }> {
     const why = 'They said the weekend is already full with the tournament';
     await db.database.insert(schema.auditLog).values({
       familyId,
@@ -1437,7 +1420,7 @@ describe('runProactiveReview', () => {
       targetTable: 'families',
       targetId: familyId,
       after: {
-        cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less', note: pace },
+        cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less' },
         mode: 'live',
       },
       occurredAt: new Date(THURSDAY_EVENING.getTime() - 24 * 60 * 60_000),
@@ -1453,80 +1436,53 @@ describe('runProactiveReview', () => {
       })
       .where(eq(schema.proactiveCandidates.id, heldId));
     await enqueue('nudge:weather:w41');
-    return { pace, why };
+    return { why };
   }
 
-  function harnessHearingTheWriterNote(
-    over: Partial<ProactiveReviewDeps> = {},
-  ): Harness & { notes: (string | null)[] } {
-    const notes: (string | null)[] = [];
-    const h = harness(sendAll, {
-      compose: async ({ cadenceNote }): Promise<WriterResult> => {
-        notes.push(cadenceNote);
-        return { message: MESSAGE };
-      },
-      ...over,
-    });
-    return Object.assign(h, { notes });
-  }
-
-  it('never replays a kept pace’s words or a prior hold’s reason in a household with a teenager', async () => {
+  it('never replays a prior hold’s reason in a household with a teenager, and still shows a kept pace', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     await db.database
       .insert(schema.children)
       .values({ familyId, name: 'Older', dateOfBirth: '2011-03-01' });
-    const { pace, why } = await storedPaceAndPriorHold();
-    const h = harnessHearingTheWriterNote();
+    const { why } = await storedPaceAndPriorHold();
+    const h = harness(sendAll);
 
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
     const snapshot = h.snapshots[0];
-    expect(snapshot?.frequencyPreference).toEqual({ direction: 'less', note: WITHHELD_LABEL });
+    expect(snapshot?.frequencyPreference).toEqual({ direction: 'less' });
     expect(snapshot?.priorDecisions.map((prior) => prior.reason)).toEqual([WITHHELD_LABEL]);
-    const seen = JSON.stringify(snapshot);
-    expect(seen).not.toContain(pace);
-    expect(seen).not.toContain(why);
-    expect(h.notes).toEqual([null]);
+    expect(JSON.stringify(snapshot)).not.toContain(why);
   });
 
-  it('replays a kept pace’s words and a prior hold’s reason where no child is a teenager', async () => {
+  it('replays a kept pace and a prior hold’s reason where no child is a teenager', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    const { pace, why } = await storedPaceAndPriorHold();
-    const h = harnessHearingTheWriterNote();
+    const { why } = await storedPaceAndPriorHold();
+    const h = harness(sendAll);
 
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
     const snapshot = h.snapshots[0];
-    expect(snapshot?.frequencyPreference).toEqual({ direction: 'less', note: pace });
+    expect(snapshot?.frequencyPreference).toEqual({ direction: 'less' });
     expect(snapshot?.priorDecisions.map((prior) => prior.reason)).toEqual([why]);
-    expect(h.notes).toEqual([pace]);
   });
 
-  it('composes a claimed group’s one bubble without one parent’s own pace words, and names the withhold', async () => {
+  it('hands the writer the chosen items and nothing a parent said about pace', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    const coParentId = await addCoParent();
-    const { pace } = await storedPaceAndPriorHold();
-    const h = harnessHearingTheWriterNote({
-      outboundTarget: async () => ({ channel: 'group', chatId: 'chat-household', familyId }),
-      loadRecipients: async () => [
-        { parentUserId, timeZone: TZ, role: 'primary_parent' },
-        { parentUserId: coParentId, timeZone: TZ, role: 'co_parent' },
-      ],
-      fetch: (async () =>
-        Response.json(
-          { message: { id: 'msg-group-1' } },
-          { status: 201 },
-        )) as unknown as typeof fetch,
+    await storedPaceAndPriorHold();
+    const handed: string[][] = [];
+    const h = harness(sendAll, {
+      compose: async (input): Promise<WriterResult> => {
+        handed.push(Object.keys(input).sort());
+        return { message: MESSAGE };
+      },
     });
 
     const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
     expect(summary).toMatchObject({ sent: 1 });
-    expect(h.snapshots[0]?.frequencyPreference).toEqual({ direction: 'less', note: pace });
-    expect(h.notes).toEqual([null]);
-    const [sent] = await audits('proactive_nudge_sent');
-    expect(sent?.after).toMatchObject({ cadenceNote: 'withheld_group', mode: 'live' });
+    expect(h.snapshots[0]?.frequencyPreference).toEqual({ direction: 'less' });
+    expect(handed).toEqual([['client', 'items']]);
   });
 
   it('reads only the newest parent texts the decider is shown on its first look', async () => {
@@ -1667,13 +1623,13 @@ describe('runProactiveReview', () => {
     expect(snapshot?.deadlines[0]?.what).toBe(line);
   });
 
-  it('stores a bounded one-line reason, whatever the decider wrote', async () => {
+  it('stores a bounded one-line reason on a held row, whatever the decider wrote, and none in the audit trail', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     const id = await enqueue();
     const long = `No window fits\nand the weekend is\tfull ${'x'.repeat(400)}`;
     const h = harness((snapshot) => ({
       reason: long,
-      action: 'drop',
+      action: 'hold',
       itemIds: snapshot.candidates.map((c) => c.id),
       holdUntil: null,
       frequencyPreference: null,
@@ -1687,7 +1643,13 @@ describe('runProactiveReview', () => {
     );
     expect((await candidate(id))?.reason).toBe(bounded);
     const [decision] = await audits('proactive_cadence_decision');
-    expect(decision?.after).toMatchObject({ action: 'drop', reason: bounded });
+    expect(decision?.after).toEqual({
+      action: 'hold',
+      itemIds: [id],
+      unchosen: [],
+      holdUntil: null,
+      mode: 'shadow',
+    });
   });
 
   it('holds a send quiet hours refused until they end, and does not ask the model inside them', async () => {
@@ -1742,13 +1704,13 @@ describe('runProactiveReview', () => {
 
     await mark(db.database, familyId, [own, theirId], {
       status: 'dropped',
-      reason: 'test_drop',
+      reason: 'expired',
       decision: 'drop',
       holdUntil: null,
       now: THURSDAY_EVENING,
     });
 
-    expect(await candidate(own)).toMatchObject({ status: 'dropped', reason: 'test_drop' });
+    expect(await candidate(own)).toMatchObject({ status: 'dropped', reason: 'expired' });
     expect(await candidate(theirId)).toMatchObject({ status: 'queued', reason: null });
   });
 
@@ -2008,6 +1970,130 @@ describe('runProactiveReview', () => {
       });
       const queued = await enqueue('nudge:weather:w43', { what: WHAT });
       expect(await candidate(queued)).toMatchObject({ status: 'queued', what: WHAT });
+    });
+  });
+
+  describe('the decider’s own words', () => {
+    const WORDS = 'They said the weekend is already full with the tournament';
+    const PACE_WORDS = 'fewer texts on school nights please';
+    const heardAPace =
+      (action: DeciderDecision['action']) =>
+      (snapshot: FamilySnapshot): DeciderDecision => ({
+        reason: WORDS,
+        action,
+        itemIds: snapshot.candidates.map((c) => c.id),
+        holdUntil: null,
+        frequencyPreference: { direction: 'less', note: PACE_WORDS },
+      });
+
+    async function auditTrail(): Promise<string> {
+      const rows = await db.database
+        .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.familyId, familyId));
+      return JSON.stringify(rows);
+    }
+
+    it('in shadow, keeps none of them on the decision row', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+      const id = await enqueue();
+      const h = harness(heardAPace('drop'));
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      const [decision] = await audits('proactive_cadence_decision');
+      expect(decision?.after).toEqual({
+        action: 'drop',
+        itemIds: [id],
+        unchosen: [],
+        holdUntil: null,
+        cadencePreference: 'not_written_shadow',
+        mode: 'shadow',
+      });
+      expect(await auditTrail()).not.toContain(WORDS);
+    });
+
+    it('when live, keeps none of them on any audit row: a pace is its direction and whose it is', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      await parentText(PACE_WORDS, HOUR_BEFORE);
+      const id = await enqueue();
+      const h = harness(heardAPace('send_now'));
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      const [decision] = await audits('proactive_cadence_decision');
+      expect(decision?.after).toEqual({
+        action: 'send_now',
+        itemIds: [id],
+        unchosen: [],
+        holdUntil: null,
+        cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less' },
+        parentTextsRead: { parentUserId, through: stamp(HOUR_BEFORE) },
+        mode: 'live',
+      });
+      expect(await audits('proactive_nudge_sent')).toHaveLength(1);
+      const trail = await auditTrail();
+      expect(trail).not.toContain(WORDS);
+      expect(trail).not.toContain(PACE_WORDS);
+
+      // The direction is still the owner's pace at their next review.
+      await enqueue('nudge:weather:w42');
+      await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+      expect(h.snapshots[1]?.frequencyPreference).toEqual({ direction: 'less' });
+    });
+
+    it('keeps the reason on a held row for the next review to read, and none once the row settles', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const held = await enqueue('nudge:weather:w41');
+      let action: DeciderDecision['action'] = 'hold';
+      const h = harness((snapshot) => ({ ...sendAll(snapshot), reason: WORDS, action }));
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+      expect(await candidate(held)).toMatchObject({
+        status: 'held',
+        decision: 'hold',
+        reason: WORDS,
+      });
+
+      const fresh = await enqueue('nudge:weather:w42');
+      action = 'send_now';
+      await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+
+      expect(h.snapshots[1]?.priorDecisions).toEqual([
+        {
+          id: held,
+          action: 'held',
+          at: THURSDAY_EVENING.toISOString(),
+          reason: WORDS,
+          holdUntil: null,
+        },
+      ]);
+      expect(await candidate(held)).toMatchObject({
+        status: 'sent',
+        decision: 'send_now',
+        reason: null,
+      });
+      expect(await candidate(fresh)).toMatchObject({ status: 'sent', reason: null });
+    });
+
+    it('keeps none on a row the decider shadowed or dropped', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+      const shadowed = await enqueue('nudge:weather:w41');
+      await runProactiveReview(db.database, harness(heardAPace('send_now')).deps, THURSDAY_EVENING);
+      expect(await candidate(shadowed)).toMatchObject({
+        status: 'shadowed',
+        decision: 'send_now',
+        reason: null,
+      });
+
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const dropped = await enqueue('nudge:weather:w42');
+      await runProactiveReview(db.database, harness(heardAPace('drop')).deps, HOUR_AFTER);
+      expect(await candidate(dropped)).toMatchObject({
+        status: 'dropped',
+        decision: 'drop',
+        reason: null,
+      });
     });
   });
 });

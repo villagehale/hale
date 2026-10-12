@@ -58,7 +58,7 @@ export const proactiveCandidates = pgTable(
     status: text('status').notNull().default('queued').$type<ProactiveCandidateStatus>(),
     /** The decider's own action: send_now, hold, or drop. */
     decision: text('decision'),
-    /** Why the row is where it is. A named code or the decider's one-line reason. */
+    /** Why the row is where it is: a named code, or on a held row the decider's one line. */
     reason: text('reason'),
     holdUntil: timestamp('hold_until', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

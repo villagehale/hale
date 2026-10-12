@@ -114,7 +114,6 @@ export interface ProactiveReviewDeps {
   compose(input: {
     items: readonly ToolCandidate[];
     client: AgentClient | null;
-    cadenceNote: string | null;
   }): Promise<WriterResult>;
   buildGate(database: Database): OutboundGatePorts;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
@@ -417,23 +416,30 @@ async function audit(
   });
 }
 
+/** The names a settled row can carry. The decider's own words are never one of them. */
+type SettledReason = 'unknown_kind' | 'expired' | 'already_sent' | 'already_asked';
+
 /**
  * Moves this family's candidate rows. The family is in the write, not only the caller.
  * The composed text lives on a row only while it is queued or held, where the writer may
  * still need it: a row that settles keeps none, since dedupe reads only its key, and a
- * text that went is already in the parent's own thread (finalize.ts).
+ * text that went is already in the parent's own thread (finalize.ts). The decider's
+ * reason lives there as long and no longer: the next review shows it its prior holds
+ * (hold.ts), and no retention sweep reads this table, so a settled row carries a name
+ * the code gave it or nothing.
  */
 export async function mark(
   database: Database,
   familyId: string,
   ids: readonly string[],
   set: {
-    status: 'held' | 'dropped' | 'sent' | 'shadowed';
-    reason: string;
     decision: DeciderDecision['action'] | null;
     holdUntil: string | null;
     now: Date;
-  },
+  } & (
+    | { status: 'held'; reason: string }
+    | { status: 'dropped' | 'sent' | 'shadowed'; reason: SettledReason | null }
+  ),
 ): Promise<void> {
   if (ids.length === 0) return;
   await database
@@ -632,7 +638,8 @@ async function reviewFamily(
   }
   summary.decided += 1;
   // Model free text, written with parent texts and calendar titles in view: one bounded
-  // line before it reaches an immutable audit row or the candidate row.
+  // line, and only on a held candidate row (mark). Never on an audit row, which is
+  // immutable and outside the message retention sweep.
   const reason = boundedLine(decision.reason);
 
   const chosen = items.filter((item) => offered.has(item.id) && decision.itemIds.includes(item.id));
@@ -646,7 +653,6 @@ async function reviewFamily(
     action: decision.action,
     itemIds: chosen.map((item) => item.id),
     unchosen: unchosen.map((item) => item.id),
-    reason,
     holdUntil: hold.holdUntil,
     ...(hold.clamped ? { holdClamped: hold.clamped, askedHoldUntil: decision.holdUntil } : {}),
     ...(cadence ? { cadencePreference: cadence } : {}),
@@ -687,7 +693,7 @@ async function reviewFamily(
     if (droppable.length === 0) return;
     await mark(database, familyId, droppable, {
       status: 'dropped',
-      reason,
+      reason: null,
       decision: 'drop',
       holdUntil: null,
       now,
@@ -733,7 +739,7 @@ async function reviewFamily(
   if (mode === 'shadow') {
     await mark(database, familyId, ids, {
       status: 'shadowed',
-      reason,
+      reason: null,
       decision: 'send_now',
       holdUntil: null,
       now,
@@ -741,23 +747,15 @@ async function reviewFamily(
     summary.shadowed += 1;
     return;
   }
-  await sendChosen(database, deps, {
-    familyId,
-    chosen,
-    // A teenager's household withholds the note from the decider; the writer gets none.
-    cadenceNote: context.teenInHousehold ? null : (snapshot.frequencyPreference?.note ?? null),
-    noteParent: owner,
-    reason,
-    now,
-    summary,
-  });
+  await sendChosen(database, deps, { familyId, chosen, now, summary });
 }
 
 /**
- * What the decision row says about a pace the decider heard. Live keeps it for the one
- * parent whose new texts it read, and only when the batch is wholly theirs: the snapshot
- * showed the owner's stored pace, which the decider may restate, and that is never
- * another parent's (rule #5). Anything else is named, never a silent skip.
+ * What the decision row says about a pace the decider heard. Live keeps its direction,
+ * never the words, for the one parent whose new texts it read, and only when the batch is
+ * wholly theirs: the snapshot showed the owner's stored pace, which the decider may
+ * restate, and that is never another parent's (rule #5). Anything else is named, never a
+ * silent skip.
  */
 function keptCadence(
   decision: DeciderDecision,
@@ -771,7 +769,7 @@ function keptCadence(
   const [author, ...others] = textAuthors;
   if (author === undefined || others.length > 0) return 'not_written_no_single_author';
   if (author !== owner) return 'not_written_author_not_owner';
-  return cadencePreference(author, heard.direction, boundedLine(heard.note));
+  return cadencePreference(author, heard.direction);
 }
 
 async function sendChosen(
@@ -780,10 +778,6 @@ async function sendChosen(
   input: {
     familyId: string;
     chosen: QueuedItem[];
-    cadenceNote: string | null;
-    /** Whose own words the note is: never composed into a copy anyone else reads (rule #5). */
-    noteParent: string | null;
-    reason: string;
     now: Date;
     summary: ProactiveReviewSummary;
   },
@@ -862,35 +856,17 @@ async function sendChosen(
   // One text per distinct set of items: parents who share the same items share one
   // composition, and a parent is never texted about an item that is not theirs.
   const writtenFor = new Map<string, WriterResult>();
-  const voiced: Array<
-    (typeof gated)[number] & {
-      message: string;
-      noteWithheld: 'withheld_group' | 'withheld_not_owner' | null;
-    }
-  > = [];
+  const voiced: Array<(typeof gated)[number] & { message: string }> = [];
   for (const copy of gated) {
-    const noteWithheld =
-      input.cadenceNote === null
-        ? null
-        : target.channel === 'group'
-          ? 'withheld_group'
-          : copy.members.some((member) => member !== input.noteParent)
-            ? 'withheld_not_owner'
-            : null;
-    const cadenceNote = noteWithheld ? null : input.cadenceNote;
     const distinct = new Map<string, ToolCandidate>();
     for (const item of copy.items) {
       const key = `${item.kind}\n${item.what}`;
       if (!distinct.has(key)) distinct.set(key, writerItem(item));
     }
-    const setKey = [cadenceNote ?? '', ...[...distinct.keys()].sort()].join('\n\n');
+    const setKey = [...distinct.keys()].sort().join('\n\n');
     let written = writtenFor.get(setKey);
     if (!written) {
-      written = await deps.compose({
-        items: [...distinct.values()],
-        client: deps.client,
-        cadenceNote,
-      });
+      written = await deps.compose({ items: [...distinct.values()], client: deps.client });
       writtenFor.set(setKey, written);
     }
     if ('skipped' in written) {
@@ -898,7 +874,7 @@ async function sendChosen(
       summary.held += 1;
       continue;
     }
-    voiced.push({ ...copy, message: written.message, noteWithheld });
+    voiced.push({ ...copy, message: written.message });
   }
 
   const finalizer: SendFinalizerPorts = {
@@ -954,7 +930,6 @@ async function sendChosen(
           ...(labels.length === 1 ? { kind: labels[0] } : {}),
           kinds: labels,
           itemIds: coveredIds,
-          ...(copy.noteWithheld ? { cadenceNote: copy.noteWithheld } : {}),
           mode: 'live',
         },
       },
@@ -962,7 +937,7 @@ async function sendChosen(
     if (firstMessageId === null) firstMessageId = messageId;
     await mark(database, familyId, coveredIds, {
       status: 'sent',
-      reason: input.reason,
+      reason: null,
       decision: 'send_now',
       holdUntil: null,
       now,

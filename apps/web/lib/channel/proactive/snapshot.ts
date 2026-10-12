@@ -15,10 +15,9 @@ import { boundedLine } from './tools';
  * A household with a teenager has every calendar label read as "busy", every offer title,
  * decline and watch label as `WITHHELD_LABEL`, and none of its parents' texts (rule #1's
  * double-miss fallback: a text names no child, so it cannot be shown not to be about the
- * teen). The decider's own earlier words are withheld there the same way: a kept pace
- * keeps its direction with its note as `WITHHELD_LABEL`, and a prior hold's reason reads
- * as `WITHHELD_LABEL`, since both were written with parent texts in view. Other parent
- * texts reach the decider only from the one parent who owns every candidate (none for a
+ * teen). The decider's own earlier words are withheld there the same way: a prior hold's
+ * reason reads as `WITHHELD_LABEL`, since it was written with parent texts in view. A kept
+ * pace is its direction alone in every household (preference.ts). Other parent texts reach the decider only from the one parent who owns every candidate (none for a
  * batch two parents own, rule #5), each until one live review of that parent's batch has
  * read it (`ParentTextsRead`), and only those rows' bodies are read. Calendar titles, Gmail
  * offer titles and watch labels are each one bounded line, like the parent texts.
@@ -95,7 +94,7 @@ export interface FamilySnapshot {
   recentSends: RecentSend[];
   unansweredStreak: number;
   /** The pace the parent who owns every candidate asked for. Null for a mixed batch. */
-  frequencyPreference: Pick<CadencePreference, 'direction' | 'note'> | null;
+  frequencyPreference: Pick<CadencePreference, 'direction'> | null;
   declines: string[];
   /** Lines the parent who owns every candidate actually sent. Cadence is read from these. */
   recentParentTexts: string[];
@@ -557,9 +556,7 @@ export async function loadFamilySnapshot(
     candidates: input.candidates,
     recentSends,
     unansweredStreak: unansweredStreak(recentSends),
-    frequencyPreference: cadence
-      ? { direction: cadence.direction, note: withheld(cadence.note) }
-      : null,
+    frequencyPreference: cadence ? { direction: cadence.direction } : null,
     declines: context.declines,
     recentParentTexts: shown.map((row) => row.text),
     ...(owner === null ? { parentTextsWithheld: 'mixed_batch' as const } : {}),

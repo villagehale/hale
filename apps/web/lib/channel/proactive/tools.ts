@@ -18,7 +18,7 @@ const NAMING_WORD_MIN = 4;
 
 /**
  * One line of text a model reads or wrote: a parent's text in the snapshot, the decider's
- * reason on the row and in the audit trail, the cadence note the writer reads.
+ * reason on a held row, the cadence note the writer reads.
  */
 export const LINE_CHARS = 160;
 

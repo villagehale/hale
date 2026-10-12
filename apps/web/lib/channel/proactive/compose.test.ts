@@ -76,9 +76,9 @@ describe('the writer tool schema', () => {
 
 describe('composeProactiveBatch', () => {
   it('sends nothing, by name, when there is no model', async () => {
-    await expect(
-      composeProactiveBatch({ items: [ITEM], client: null, cadenceNote: null }),
-    ).resolves.toEqual({ skipped: 'no_client' });
+    await expect(composeProactiveBatch({ items: [ITEM], client: null })).resolves.toEqual({
+      skipped: 'no_client',
+    });
   });
 
   it('logs a failed model call by its error class, never the message', async () => {
@@ -92,7 +92,6 @@ describe('composeProactiveBatch', () => {
     const result = await composeProactiveBatch({
       items: [ITEM],
       client: { messages: { create: fail, stream: fail } } as never,
-      cadenceNote: null,
     });
     expect(result).toEqual({ skipped: 'model_failed' });
     const logged = errors.mock.calls.find(
