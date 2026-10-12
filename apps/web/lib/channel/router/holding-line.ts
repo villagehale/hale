@@ -26,6 +26,16 @@ export const HOLDING_LINE_TEMPLATE_KEY = 'holding_line';
 /** Past this, a parent is waiting on an answer that has not come, and gets one line. */
 export const HOLDING_LINE_AFTER_MS = 8_000;
 
+export const HOLDING_LINE_ENABLED_ENV = 'HOLDING_LINE_ENABLED';
+
+/**
+ * The holding line is a parent-visible send, so it is dark until lit. STRICT equality on
+ * the literal 'true': a piped `vercel env add` stores 'true\n', which must stay off.
+ */
+export function holdingLineEnabled(): boolean {
+  return process.env[HOLDING_LINE_ENABLED_ENV] === 'true';
+}
+
 /** Two attempts. The line only matters while the answer is still coming; a third try
  * would land after it. */
 export const MAX_COMPOSE_ATTEMPTS = 2;
@@ -153,9 +163,14 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
 
 /**
  * What became of the holding line on one turn (rule #11): sent, not needed because the
- * answer came first, or not sent and why.
+ * answer came first, not armed because the flag is dark, or not sent and why.
  */
-export type HoldingLineOutcome = 'sent' | 'answered_first' | 'compose_failed' | 'send_failed';
+export type HoldingLineOutcome =
+  | 'sent'
+  | 'answered_first'
+  | 'lane_off'
+  | 'compose_failed'
+  | 'send_failed';
 
 export interface HoldingLine {
   /**
@@ -174,6 +189,10 @@ export function armHoldingLine(input: {
   send: (line: string) => Promise<void>;
   log: Pick<Console, 'info' | 'warn'>;
 }): HoldingLine {
+  if (!holdingLineEnabled()) {
+    input.log.info({ outcome: 'lane_off' }, 'holding line: dark, none armed');
+    return { settle: async () => 'lane_off' };
+  }
   let settled = false;
   let outcome: HoldingLineOutcome | null = null;
   let sending: Promise<void> | null = null;

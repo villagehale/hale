@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { schema } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const waitUntil = vi.hoisted(() => vi.fn());
 vi.mock('@vercel/functions', () => ({ waitUntil }));
@@ -23,7 +23,6 @@ import {
 } from '~/lib/village/intros/copy';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
-import type { HoldingLineComposer } from './holding-line';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
 import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
 import type {
@@ -39,6 +38,7 @@ import {
   healthReplyHandler,
   sequenceReplyHandler,
 } from './handlers';
+import { HOLDING_LINE_ENABLED_ENV, type HoldingLineComposer } from './holding-line';
 import {
   type OpenQuestion,
   type OpenQuestionReader,
@@ -4111,6 +4111,23 @@ describe('a slow answer gets one holding line first', () => {
   const typingStarts = (logs: unknown[]) =>
     logs.filter((entry) => (entry as [{ phase?: string }])[0]?.phase === 'start').length;
 
+  /** A limiter that takes `ms` to decide: the slow-DB shape a webhook outage produces. */
+  function slowLimiter(ms: number, allowed: boolean): RateLimiter {
+    return {
+      async check() {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        return { allowed, retryAfterSec: 0 };
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('a slow turn: the bubble is re-armed after ONE holding line, and the answer follows it', async () => {
     const holding = fakeHoldingLine("I'm on it.");
     const h = harness({
@@ -4132,7 +4149,7 @@ describe('a slow answer gets one holding line first', () => {
     ]);
   });
 
-  it('a slow deterministic reply (the plan a "yes" composes) is covered the same way', async () => {
+  it('a slow deterministic reply (the plan a "yes" composes) never arms it', async () => {
     const holding = fakeHoldingLine("I'm on it.");
     const slowPlan: DeterministicHandler = {
       name: 'plan',
@@ -4151,10 +4168,86 @@ describe('a slow answer gets one holding line first', () => {
 
     await routeChannelMessage(h.deps, job());
 
-    expect(h.transport.bodies()).toEqual(["I'm on it.", 'the plan, part one']);
-    expect(holding.calls).toBe(1);
-    expect(typingStarts(h.logs)).toBeGreaterThanOrEqual(1);
+    expect(h.transport.bodies()).toEqual(['the plan, part one']);
+    expect(holding.calls).toBe(0);
   });
+
+  it('an opt-out the handlers claim never arms it, however slow the turn', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const slowOptOut: DeterministicHandler = {
+      name: 'sms_opt_out',
+      handle: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        return { claimed: true, outcome: 'opted_out', reply: 'opted out' };
+      },
+    };
+    const h = harness({
+      context: { body: 'STOP' },
+      handlers: [slowOptOut],
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result).toEqual(expect.objectContaining({ status: 'handled', handler: 'sms_opt_out' }));
+    expect(h.transport.bodies()).toEqual(['opted out']);
+    expect(holding.calls).toBe(0);
+  });
+
+  it('a flood-held turn never arms it, however slow the limiter', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const h = harness({
+      limiter: slowLimiter(120, false),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('flood_held');
+    expect(h.transport.bodies()).toEqual([FLOOD_REPLY]);
+    expect(holding.calls).toBe(0);
+  });
+
+  it('the wait is counted from the gates: a slow gate and a fast answer send no line', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const h = harness({
+      limiter: slowLimiter(200, true),
+      holdingLine: holding,
+      holdingLineAfterMs: 50,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(['coach says hi']);
+    expect(holding.calls).toBe(0);
+  });
+
+  it.each([
+    ['unset', undefined],
+    ['a trailing newline', 'true\n'],
+    ['padded', ' true'],
+  ])(
+    'dark unless HOLDING_LINE_ENABLED is exactly true (%s): no line, and lane_off is named',
+    async (_label, value) => {
+      vi.stubEnv(HOLDING_LINE_ENABLED_ENV, value);
+      const holding = fakeHoldingLine("I'm on it.");
+      const h = harness({
+        coach: slowCoach(120, 'the real answer'),
+        holdingLine: holding,
+        holdingLineAfterMs: 10,
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result.status).toBe('agent_replied');
+      expect(h.transport.bodies()).toEqual(['the real answer']);
+      expect(holding.calls).toBe(0);
+      expect(h.logs).toContainEqual([{ outcome: 'lane_off' }, expect.any(String)]);
+    },
+  );
 
   it('a fast turn: no holding line is composed or sent', async () => {
     const holding = fakeHoldingLine();

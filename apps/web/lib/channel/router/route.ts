@@ -81,13 +81,6 @@ import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
-  HOLDING_LINE_AFTER_MS,
-  HOLDING_LINE_TEMPLATE_KEY,
-  type HoldingLine,
-  type HoldingLineComposer,
-  armHoldingLine,
-} from './holding-line';
-import {
   type ChannelCoachRuntime,
   type ChannelTurn,
   type ChannelTurnResult,
@@ -109,6 +102,13 @@ import {
   readsAsOrdinal,
 } from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
+import {
+  HOLDING_LINE_AFTER_MS,
+  HOLDING_LINE_TEMPLATE_KEY,
+  type HoldingLine,
+  type HoldingLineComposer,
+  armHoldingLine,
+} from './holding-line';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
@@ -924,38 +924,6 @@ async function routeChannelMessageInner(
     }, LINQ_TYPING_SHOW_DELAY_MS);
     if (typeof typingDelay.unref === 'function') typingDelay.unref();
   }
-  // Past the wait a text normally takes, ONE composed line goes out first, the bubble back
-  // up behind it. Once per text: a re-driven turn already had its chance. Not on email,
-  // where a reply is not watched for as it is written.
-  if (!redriven && route.channel !== 'email') {
-    holding = armHoldingLine({
-      afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
-      language: replyLanguage(context.body),
-      composer: deps.holdingLine,
-      log: deps.log,
-      send: async (line) => {
-        if (typingLive) {
-          if (typingStarting) await typingStarting;
-          await signalImessageTyping(route, 'stop', deps.log);
-          typingLive = false;
-        }
-        await sendReply(deps, {
-          route,
-          body: line,
-          job,
-          conversationId: null,
-          templateKey: HOLDING_LINE_TEMPLATE_KEY,
-        });
-        if (typingTimer) {
-          clearInterval(typingTimer);
-          typingTimer = null;
-        }
-        // The send cleared the bubble; the answer is still being written.
-        await startTyping();
-      },
-    });
-  }
-
   const turn: HandlerContext = {
     familyId: job.family_id,
     parentUserId: job.parent_user_id,
@@ -1230,6 +1198,40 @@ async function routeChannelMessageInner(
       }
       return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
     }
+  }
+
+  // Past the wait a text normally takes, ONE composed line goes out first, the bubble back
+  // up behind it. Armed only HERE, past every gate above: a deterministic reply, an
+  // opt-out or a flood-held turn never has one, however slow its database. Once per text:
+  // a re-driven turn already had its chance. Not on email, where a reply is not watched
+  // for as it is written.
+  if (!redriven && route.channel !== 'email') {
+    holding = armHoldingLine({
+      afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
+      language: replyLanguage(context.body),
+      composer: deps.holdingLine,
+      log: deps.log,
+      send: async (line) => {
+        if (typingLive) {
+          if (typingStarting) await typingStarting;
+          await signalImessageTyping(route, 'stop', deps.log);
+          typingLive = false;
+        }
+        await sendReply(deps, {
+          route,
+          body: line,
+          job,
+          conversationId: null,
+          templateKey: HOLDING_LINE_TEMPLATE_KEY,
+        });
+        if (typingTimer) {
+          clearInterval(typingTimer);
+          typingTimer = null;
+        }
+        // The send cleared the bubble; the answer is still being written.
+        await startTyping();
+      },
+    });
   }
 
   // Search, the off-domain screen, and the coach are the waits a person would show: the
