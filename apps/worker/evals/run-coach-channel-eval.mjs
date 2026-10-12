@@ -782,7 +782,11 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
       refuseMismatchedWeekday(input, FIXTURE_TIMEZONE, 'propose_calendar_move');
       const startsAt = zonedLocalInstant(input.date, input.time, FIXTURE_TIMEZONE);
       claimDraftBudget();
-      record('propose_calendar_move', { actionType: 'calendar_move', eventId: event.eventId });
+      record('propose_calendar_move', {
+        actionType: 'calendar_move',
+        eventId: event.eventId,
+        startsAt: startsAt.toISOString(),
+      });
       return {
         drafted: true,
         actionId: `action-${calls.length}`,
@@ -814,7 +818,12 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
       refuseMismatchedWeekday(input, FIXTURE_TIMEZONE, 'propose_calendar_add');
       const startsAt = zonedLocalInstant(input.date, input.time, FIXTURE_TIMEZONE);
       claimDraftBudget();
-      record('propose_calendar_add', { actionType: 'calendar_add', eventId: null });
+      record('propose_calendar_add', {
+        actionType: 'calendar_add',
+        eventId: null,
+        title: typeof input.title === 'string' ? input.title : '',
+        startsAt: startsAt.toISOString(),
+      });
       return {
         drafted: true,
         actionId: `action-${calls.length}`,
@@ -1422,6 +1431,15 @@ function dateSourcesFor(fixture, calls) {
   for (const event of FIXTURE_EVENTS) {
     if (isPrivate(event)) continue;
     sources.push(dateSource(`${event.title} ${event.location ?? ''}`, calendarDate(event.startsAt)));
+  }
+  // A drafted move or add owns the date the tool resolved and handed back: the skill tells
+  // the agent to say THAT day, so naming it is recall, not a date borrowed from a find.
+  for (const call of calls) {
+    if (!call.startsAt) continue;
+    const event = FIXTURE_EVENTS.find((row) => row.eventId === call.eventId);
+    if (event && isPrivate(event)) continue;
+    const label = event ? `${event.title} ${event.location ?? ''}` : call.title;
+    sources.push(dateSource(label, calendarDate(call.startsAt)));
   }
   for (const window of fixture.registrationWindows ?? []) {
     sources.push(
@@ -2255,7 +2273,7 @@ async function main() {
               // did, at 2/5, on a reply that was doing exactly what the skill asks.
               // Half-blind is not a noisy judge, it is a confidently wrong one.
               webFind: calls.some((call) => call.tool === 'find_activities')
-                ? `${pick.name} (${pick.ageFit}), ${pick.when}, per ${pick.sourceName}${pick.url ? ` ${pick.url}` : ''} - source: web, NOT verified by Hale`
+                ? `${pick.name} (${pick.ageFit}), ${pick.when}${pick.price ? `, ${pick.price}` : ''}, per ${pick.sourceName}${pick.url ? ` ${pick.url}` : ''} - source: web, NOT verified by Hale`
                 : null,
               promises: calls
                 .filter((call) => call.tool === 'promise_activity_followup')
