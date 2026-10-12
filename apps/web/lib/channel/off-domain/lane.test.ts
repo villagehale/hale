@@ -1245,6 +1245,36 @@ describe('the screen reads a reply to an open question first', () => {
     expect(p.pendingAskedFor).toEqual([]);
   });
 
+  /**
+   * The two safety readings that had no test of their own. The screen RETURNS the
+   * reading: a client that throws would be caught and read as "not a reply", which is the
+   * same result with the gate taken out.
+   */
+  it.each([
+    ['child-safety', 'Toronto. also the sitter left him alone in the car again today'],
+    ['emergency', 'Toronto. there is smoke coming up from the basement right now'],
+  ] as const)(
+    'sends a reply the screen reads as %s through the safety door, and never continues the question',
+    async (category, text) => {
+      lit();
+      expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
+      const turn = scripted({ screen: { lane: 'safety_critical', category, reason: 'x' } });
+      const { p, run } = laneWith(turn);
+
+      const verdict = await run(text);
+
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        lane: 'safety_critical',
+        category,
+        replySource: 'fixed',
+        pendingAsk: null,
+      });
+      expect(turn.calls).toEqual(['screen']);
+      expect(p.pendingAskedFor).toEqual([]);
+    },
+  );
+
   it('sends a reply that is a parent hunting a doctor through the provider door', async () => {
     lit();
     const turn = scripted({
