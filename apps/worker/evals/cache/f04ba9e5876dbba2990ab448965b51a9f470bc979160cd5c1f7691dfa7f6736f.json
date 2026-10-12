@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly asks for the missing city and states no price from memory, which is right for missing_detail. Same language as the question. The tone is a bit wordy and service-like ('Happy to check... I'll look it up') rather than a quick casual text, but it doesn't deflect.",
+    "score": 4
+  }
+}

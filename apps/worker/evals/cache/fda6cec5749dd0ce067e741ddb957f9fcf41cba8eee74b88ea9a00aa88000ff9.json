@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "question": "What do you know about my family?",
+    "missing_detail": "none",
+    "current_fact": "none",
+    "needs_search": "no"
+  },
+  "latencyMs": 3269
+}

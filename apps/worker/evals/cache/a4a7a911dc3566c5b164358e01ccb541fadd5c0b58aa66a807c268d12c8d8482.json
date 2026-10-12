@@ -1,9 +1,0 @@
-{
-  "value": {
-    "language": "en",
-    "question": "can you solve 3x + 7 = 22",
-    "current_fact": "none",
-    "needs_search": "no"
-  },
-  "latencyMs": 2307
-}

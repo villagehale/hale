@@ -1,9 +1,0 @@
-{
-  "value": {
-    "language": "en",
-    "question": "write me a poem about mondays",
-    "current_fact": "none",
-    "needs_search": "no"
-  },
-  "latencyMs": 1689
-}

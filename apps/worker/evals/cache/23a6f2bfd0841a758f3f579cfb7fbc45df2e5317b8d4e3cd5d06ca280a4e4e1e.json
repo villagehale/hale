@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "question": "how long do I boil an egg for hard boiled",
+    "missing_detail": "none",
+    "current_fact": "none",
+    "needs_search": "no"
+  },
+  "latencyMs": 1756
+}

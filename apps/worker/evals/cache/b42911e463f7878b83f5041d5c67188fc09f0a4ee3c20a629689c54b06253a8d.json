@@ -1,9 +1,0 @@
-{
-  "value": {
-    "language": "en",
-    "question": "Is pineapple on pizza ok?",
-    "current_fact": "none",
-    "needs_search": "no"
-  },
-  "latencyMs": 1802
-}

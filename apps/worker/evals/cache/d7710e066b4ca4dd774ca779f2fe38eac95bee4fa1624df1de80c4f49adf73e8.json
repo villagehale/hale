@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "question": "what's the capital of peru",
+    "missing_detail": "none",
+    "current_fact": "none",
+    "needs_search": "no"
+  },
+  "latencyMs": 1965
+}

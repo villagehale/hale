@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "question": "what did I have for breakfast",
+    "missing_detail": "none",
+    "current_fact": "none",
+    "needs_search": "no"
+  },
+  "latencyMs": 1526
+}

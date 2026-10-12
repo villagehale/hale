@@ -1,9 +1,0 @@
-{
-  "value": {
-    "language": "en",
-    "question": "Tell me what you know about my family.",
-    "current_fact": "none",
-    "needs_search": "no"
-  },
-  "latencyMs": 3053
-}

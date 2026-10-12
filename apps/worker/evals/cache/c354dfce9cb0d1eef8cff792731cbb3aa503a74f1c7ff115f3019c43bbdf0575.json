@@ -1,9 +1,0 @@
-{
-  "value": {
-    "language": "en",
-    "question": "How's the weather tomorrow",
-    "current_fact": "tomorrow's weather forecast",
-    "needs_search": "yes"
-  },
-  "latencyMs": 1706
-}

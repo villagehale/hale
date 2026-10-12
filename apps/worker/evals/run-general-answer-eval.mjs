@@ -12,7 +12,7 @@
 // here as a miss rather than as silence.
 //
 // The suite records with the search LIT, which is the lane as it works once
-// GENERAL_ANSWER_SEARCH_ENABLED is on. One fixture (`searchOff`) runs it dark, which is
+// GENERAL_ANSWER_SEARCH_ENABLED is on. Two fixtures (`searchOff`) run it dark, which is
 // how it ships until then.
 //
 // What is NOT tested here: the lane routing (run-inbound-lane-eval.mjs); the flag, the
@@ -33,6 +33,7 @@
 //
 // One check is not about the reply at all: what the fixture marks `mustNotReachSearch`
 // must be gone from the de-identified question before it goes to the search (rule #1).
+// It lives beside the field, in general-answer-fixtures.mjs (`identityLeaks`).
 //
 // CALIBRATION. Every run also puts one broken stand-in in front of the judge, on a
 // searched fixture: a confident wrong result and a "check the app". A judge that passes
@@ -41,7 +42,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { ANSWER_FIXTURES, EVAL_TODAY } from './general-answer-fixtures.mjs';
+import { ANSWER_FIXTURES, EVAL_TODAY, identityLeaks } from './general-answer-fixtures.mjs';
 import {
   JUDGE_MIN,
   cacheGet,
@@ -67,7 +68,7 @@ const SKILL_PATH = join(SKILLS, 'general-answer.md');
 
 // ── the lane's request shapes, replicated from answer.ts ────────────────────
 
-const SEARCH_READINGS = ['yes', 'no', 'unsure'];
+const SEARCH_READINGS = ['yes', 'no', 'unsure', 'missing_detail'];
 
 /** Mirrors `sanitizeJsonSchema` in answer.ts. */
 const SANITIZE_TOOL_SCHEMA = {
@@ -75,10 +76,11 @@ const SANITIZE_TOOL_SCHEMA = {
   properties: {
     language: { type: 'string' },
     question: { type: 'string' },
+    missing_detail: { type: 'string' },
     current_fact: { type: 'string' },
     needs_search: { type: 'string', enum: SEARCH_READINGS },
   },
-  required: ['language', 'question', 'current_fact', 'needs_search'],
+  required: ['language', 'question', 'missing_detail', 'current_fact', 'needs_search'],
 };
 
 /** Mirrors `answerJsonSchema` in answer.ts. */
@@ -98,21 +100,24 @@ function searchUserMessage({ question, today }) {
   return JSON.stringify({ question, today });
 }
 
-/** What the compose and the judge are both told about the search: the three ways a
- * needed search did not happen are one value. */
+/** Mirrors `liveAsTold`. What the compose and the judge are both told about the search:
+ * the three ways a needed search did not happen are one value. */
 function liveOf(search) {
-  if (search === 'searched') return 'searched';
-  return search === 'not_needed' ? 'not_needed' : 'unavailable';
+  if (search === 'searched' || search === 'not_needed' || search === 'missing_detail') {
+    return search;
+  }
+  return 'unavailable';
 }
 
 /** Mirrors `generalAnswerUserMessage`. */
-function generalAnswerUserMessage({ question, language, today, search, notes }) {
+function generalAnswerUserMessage({ question, language, today, search, notes, missing }) {
   return JSON.stringify({
     question,
     language,
     today,
     live: liveOf(search),
     ...(search === 'searched' ? { research_notes: notes } : {}),
+    ...(search === 'missing_detail' ? { missing } : {}),
   });
 }
 
@@ -186,8 +191,9 @@ const USD_PER_WEB_SEARCH = 0.01;
 
 /**
  * One STREAMED web_search turn, as answer.ts sends it, replayed from cache after. The
- * recording keeps what production reads off the turn (the result URLs and the notes) and
- * what the PR has to report (how many searches were billed, how long it took).
+ * recording keeps what production reads off the turn (the result URLs, the notes and how
+ * the turn stopped) and what the PR has to report (how many searches were billed, how
+ * long it took).
  */
 async function cachedSearch({ tag, model, system, userMessage, cachedOnly, getClient, cost }) {
   const canonical = JSON.stringify({
@@ -223,7 +229,12 @@ async function cachedSearch({ tag, model, system, userMessage, cachedOnly, getCl
   cost.searchTurns = (cost.searchTurns ?? 0) + 1;
   cost.searchInput = (cost.searchInput ?? 0) + response.usage.input_tokens;
   cost.searchOutput = (cost.searchOutput ?? 0) + response.usage.output_tokens;
-  const value = { ...readSearch(response.content), searchRequests, latencyMs };
+  const value = {
+    ...readSearch(response.content),
+    stopReason: response.stop_reason,
+    searchRequests,
+    latencyMs,
+  };
   await cachePut(key, value);
   return value;
 }
@@ -247,7 +258,9 @@ const JUDGE_SYSTEM = [
   'judge the answer as settled knowledge, arithmetic, an honest opinion or a creative',
   'ask. When live is "unavailable", no search could be made this time: the correct answer',
   'says plainly that it cannot check that right now, and states no current fact from',
-  'memory.',
+  'memory. When live is "missing_detail", the question left out something its answer',
+  'depends on (which city, which country) and no search was made: the correct answer',
+  'asks for it in a few words, and states no current fact from memory.',
   'A FRIEND TEXTING is brief and casual, in the language the question was asked in, and',
   'it IS the answer: an opinion ask gets a real pick, a fact gets stated. A reply that',
   'deflects, tells the parent to look it up or go and check somewhere, or points at an',
@@ -333,11 +346,14 @@ async function main() {
     });
     const question = String(sanitize.value.question ?? '').trim();
     const language = normalizeLanguage(sanitize.value.language);
+    const missing = String(sanitize.value.missing_detail ?? '').trim();
 
     let search = 'not_needed';
     let notes = '';
     let searchLatencyMs = 0;
-    if (needsSearch(sanitize.value.needs_search)) {
+    if (sanitize.value.needs_search === 'missing_detail') {
+      search = 'missing_detail';
+    } else if (needsSearch(sanitize.value.needs_search)) {
       if (fixture.searchOff) {
         search = 'search_off';
       } else {
@@ -351,7 +367,8 @@ async function main() {
           cost,
         });
         searchLatencyMs = found.latencyMs;
-        if (found.urls.length === 0 || found.notes === '') {
+        // Mirrors `liveSearch`: a turn that did not finish is not research either.
+        if (found.stopReason !== 'end_turn' || found.urls.length === 0 || found.notes === '') {
           search = 'nothing_usable';
         } else {
           search = 'searched';
@@ -365,6 +382,7 @@ async function main() {
       reading: String(sanitize.value.needs_search),
       search,
       notes,
+      missing,
       latencyMs: sanitize.latencyMs + searchLatencyMs,
     };
   }
@@ -406,14 +424,9 @@ async function main() {
   const results = [];
   for (const fixture of fixtures) {
     const found = await research(fixture);
-    const failures = [];
     // Rule #1, and not a check on the reply: what the fixture marks must be gone from
-    // the question BEFORE it goes to the search.
-    for (const leak of fixture.mustNotReachSearch ?? []) {
-      if (found.question.toLowerCase().includes(leak.toLowerCase())) {
-        failures.push(`identity_leak:${leak}`);
-      }
-    }
+    // what leaves the sanitize stage, BEFORE any of it goes to the search.
+    const failures = identityLeaks(fixture, `${found.question} ${found.missing}`);
 
     const composed = await cachedToolCall({
       tag: `general-answer:${fixture.id}`,
@@ -426,6 +439,7 @@ async function main() {
         today: EVAL_TODAY,
         search: found.search,
         notes: found.notes,
+        missing: found.missing,
       }),
       toolName: 'answer',
       toolSchema: ANSWER_TOOL_SCHEMA,
@@ -455,7 +469,7 @@ async function main() {
   console.log('--- de-identified questions ---');
   for (const r of results) {
     console.log(
-      `${r.fixture.id.padEnd(22)} needs_search=${r.found.reading.padEnd(6)} ${r.found.language}  "${r.found.question}"`,
+      `${r.fixture.id.padEnd(22)} needs_search=${r.found.reading.padEnd(14)} ${r.found.language}  "${r.found.question}"${r.found.search === 'missing_detail' ? `  missing: "${r.found.missing}"` : ''}`,
     );
   }
 
@@ -485,7 +499,7 @@ async function main() {
     `judge on the broken stand-in: ${calibration.score}  (below ${JUDGE_MIN} required - a judge that passes it grades nothing)`,
   );
   console.log(
-    `live search:                  ${count('searched')} searched, ${count('not_needed')} not needed, ${count('search_off')} dark, ${count('nothing_usable')} nothing usable`,
+    `live search:                  ${count('searched')} searched, ${count('not_needed')} not needed, ${count('missing_detail')} missing a detail, ${count('search_off')} dark, ${count('nothing_usable')} nothing usable`,
   );
   console.log(
     `latency, searched answer:     ${latency(results.filter((r) => r.found.search === 'searched'))}  (sanitize + search + compose)`,

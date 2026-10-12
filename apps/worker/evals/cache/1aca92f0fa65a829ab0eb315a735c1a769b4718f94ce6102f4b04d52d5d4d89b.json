@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "question": "did the jays win last night",
+    "missing_detail": "none",
+    "current_fact": "result of the Jays game last night",
+    "needs_search": "yes"
+  },
+  "latencyMs": 2110
+}
