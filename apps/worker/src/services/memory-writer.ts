@@ -1140,17 +1140,19 @@ export async function loadHumanApprover(
 }
 
 const HUMAN_APPROVAL_VERB = 'action.approved_by_human';
+const HUMAN_DISMISSAL_VERB = 'action.declined_by_human';
 const AUTONOMY_REVOKED_VERB = 'autonomous_action_class.revoked';
 
 /**
  * One action kind's recent parent decisions, most-recent-first, for the rule #4
  * streak: each approval of an action of that kind (recordHumanApproval's
- * `action.approved_by_human` row) and each switch-off of the kind
+ * `action.approved_by_human` row), each dismissed draft of that kind (the web
+ * decline's `action.declined_by_human` row) and each switch-off of the kind
  * (revokeAutonomyForKind's `autonomous_action_class.revoked` row). An approval is
- * `humanApproved`; a switch-off is not, so it ends the run and the streak restarts
- * from it. An action Hale ran on its own has no approval row and is not in the
- * history at all: it neither counts toward the streak nor breaks it, so autonomy can
- * never bootstrap itself and never disarms itself.
+ * `humanApproved`; a dismissal and a switch-off are not, so either ends the run and
+ * the streak restarts from it. An action Hale ran on its own has no approval row and
+ * is not in the history at all: it neither counts toward the streak nor breaks it, so
+ * autonomy can never bootstrap itself and never disarms itself.
  *
  * Read per kind, and only as far back as the streak needs, so another kind's
  * decisions can never push this kind's approvals out of the window.
@@ -1172,7 +1174,7 @@ export async function loadActionApprovalHistory(
         eq(schema.auditLog.familyId, familyId),
         or(
           and(
-            eq(schema.auditLog.actionTaken, HUMAN_APPROVAL_VERB),
+            inArray(schema.auditLog.actionTaken, [HUMAN_APPROVAL_VERB, HUMAN_DISMISSAL_VERB]),
             eq(schema.auditLog.targetTable, 'actions'),
             inArray(schema.auditLog.targetId, actionsOfKind),
           ),

@@ -260,6 +260,19 @@ async function approve(fam: SeededFamily, kind: ActionType, approvedBy = fam.par
   );
 }
 
+/** The row `declineDraftedAction` writes when a parent dismisses a draft (apps/web/lib/actions/decline.ts). */
+async function dismiss(fam: SeededFamily, kind: ActionType, declinedBy = fam.parentUserId) {
+  sequence += 1;
+  const { actionId } = await seedAction(fam.familyId, `dismissed-${sequence}`, kind);
+  await db.database.insert(schema.auditLog).values({
+    familyId: fam.familyId,
+    actor: declinedBy,
+    actionTaken: 'action.declined_by_human',
+    targetTable: 'actions',
+    targetId: actionId,
+  });
+}
+
 async function approveTimes(fam: SeededFamily, kind: ActionType, times: number) {
   for (let i = 0; i < times; i += 1) {
     await approve(fam, kind);
@@ -370,6 +383,43 @@ describe('the approval streak is counted from the parent approval rows', () => {
 
     expect(await streakReached(fam, 'send_email')).toBe(true);
     expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+  });
+});
+
+describe('a dismissed draft breaks the streak', () => {
+  it('four approvals, one dismissal, one approval: not armed, and no grant is written', async () => {
+    const fam = await seedFamily(db.database);
+
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
+    await dismiss(fam, 'send_email');
+    await approve(fam, 'send_email');
+
+    expect(await streakReached(fam, 'send_email')).toBe(false);
+    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(false);
+    expect(await autonomyConsentRows(fam.familyId)).toEqual([]);
+  });
+
+  it('five approvals in a row after the dismissal arm it', async () => {
+    const fam = await seedFamily(db.database);
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
+    await dismiss(fam, 'send_email');
+
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
+    expect(await streakReached(fam, 'send_email')).toBe(false);
+
+    await approve(fam, 'send_email');
+    expect(await streakReached(fam, 'send_email')).toBe(true);
+    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+  });
+
+  it('dismissing a draft of another kind leaves this kind’s streak alone', async () => {
+    const fam = await seedFamily(db.database);
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
+
+    await dismiss(fam, 'calendar_add');
+    await approve(fam, 'send_email');
+
+    expect(await streakReached(fam, 'send_email')).toBe(true);
   });
 });
 
