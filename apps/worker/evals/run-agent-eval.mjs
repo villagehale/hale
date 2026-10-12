@@ -38,15 +38,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
-import { z } from 'zod';
 import {
   PRICE as LIST_PRICE,
-  evalRunTag,
-  evalSubjectClient,
-  evalSubjectRequest,
   judgeLaneFor,
   liveStructuredCall,
-  noteLatency,
 } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +49,7 @@ const WORKER_ROOT = join(HERE, '..');
 const REPO_ROOT = join(WORKER_ROOT, '..', '..');
 const MODEL_TS_PATH = join(REPO_ROOT, 'packages', 'agent', 'src', 'model.ts');
 const DISCOVERY_PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'discovery.md');
+const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const FIXTURE_ROOT = join(HERE, 'fixtures');
 const CACHE_DIR = join(HERE, 'cache');
 
