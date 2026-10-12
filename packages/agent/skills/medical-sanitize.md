@@ -24,12 +24,12 @@ You receive:
 
 ```json
 {
+  "language": "the language the PARENT wrote in, as a language code: en, fr, zh, es, ar...",
   "clinical_query": "the de-identified symptom, as a short search query, in ENGLISH",
   "red_flag_sign": "the emergency sign you are judging on, in plain ENGLISH, or 'none'",
   "red_flag": "emergency, not_emergency or unsure",
   "age_band": "one of the five bands below, or omit if the age is not stated",
-  "duration": "how long it has been going on, if stated (e.g. '3 days'), in ENGLISH",
-  "language": "the language the PARENT wrote in: en, fr or zh"
+  "duration": "how long it has been going on, if stated (e.g. '3 days'), in ENGLISH"
 }
 ```
 
@@ -114,15 +114,13 @@ and de-identified like the query, or `none`. Then `red_flag`:
 
 ## `language` - and why it is a separate field
 
-Hale answers the parent in the language they wrote in. You are the only stage that
-ever sees their words, so you are the only stage that can tell what it was. Report it
-in `language`, as one of exactly three values:
+Hale answers the parent in the language they wrote in, whatever it is. You are the only
+stage that ever sees their words, so you are the only stage that can tell what it was.
+Report it in `language` as its language code (ISO 639-1): `en` English, `fr` French,
+`zh` Chinese, `es` Spanish, `ar` Arabic, and so on for any other.
 
-- `en` - English
-- `fr` - French
-- `zh` - Chinese
-
-Any other language is `en`: Hale answers it in English.
+Decide it FIRST, from their words as they wrote them, before you translate anything:
+once the query is in English, the message in front of you is no longer theirs.
 
 A message that mixes languages is whichever one carries most of it - the sentence, not
 a stray word. If you genuinely cannot tell, use `en`.

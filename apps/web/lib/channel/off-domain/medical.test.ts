@@ -27,6 +27,7 @@ import {
 
 interface Seen {
   system?: string | Array<{ type?: string; text?: string }>;
+  schema?: { properties?: Record<string, { enum?: unknown }>; required?: string[] };
   toolChoice?: string;
   tools?: Array<{ type?: string; name?: string }>;
   userMessage?: string;
@@ -101,6 +102,9 @@ function makeClient(
           const isGround = Array.isArray(req.tools) && req.tools[0]?.type === 'web_search_20250305';
           seen.push({
             system: req.system,
+            schema:
+              req.output_config?.format?.schema ??
+              req.tools?.find((t: { input_schema?: unknown }) => t.input_schema)?.input_schema,
             toolChoice: isSanitize ? 'sanitize' : isCompose ? 'medical_answer' : undefined,
             tools: req.tools,
             userMessage: req.messages?.[0]?.content,
@@ -847,6 +851,46 @@ describe('the parent language reaches compose and nothing else', () => {
     expect(ground?.userMessage).not.toContain('language');
     // positive control: the search still got the clinical query it exists to run.
     expect(ground?.userMessage).toContain('fever');
+  });
+
+  it.each([
+    ['Spanish', 'es'],
+    ['Arabic', 'ar'],
+  ])('answers a parent who wrote in %s in %s, with no language list in the way', async (_name, code) => {
+    const seen: Seen[] = [];
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult({ ...OK_SANITIZE, language: code }),
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        },
+        seen,
+      ),
+    ).answer('raw message');
+    expect(seen.find((s) => s.toolChoice === 'medical_answer')?.userMessage).toContain(
+      `"language":"${code}"`,
+    );
+  });
+
+  it('asks the sanitizer for the language first, always, from no fixed list', async () => {
+    const seen: Seen[] = [];
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult({ ...OK_SANITIZE, language: 'en' }),
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        },
+        seen,
+      ),
+    ).answer('raw message');
+    const schema = seen.find((s) => s.toolChoice === 'sanitize')?.schema;
+    expect(Object.keys(schema?.properties ?? {})[0]).toBe('language');
+    expect(schema?.required).toContain('language');
+    expect(schema?.properties?.language?.enum).toBeUndefined();
+    // positive control: the age band keeps its list.
+    expect(schema?.properties?.age_band?.enum).toContain('toddler');
   });
 
   it('falls back to English when the sanitizer omits or garbles the language', async () => {

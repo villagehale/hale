@@ -43,15 +43,15 @@ import { SAFETY_REPLY_BY_LANGUAGE } from './copy';
  *      ceiling, and — the positive requirement — carrying real triage. Missing either is
  *      a failure.
  *
- * IN THE PARENT'S LANGUAGE. A parent who texts a symptom in French or Chinese is answered
- * in it. Three things make that safe rather than merely nice: whether it is an EMERGENCY is
+ * IN THE PARENT'S LANGUAGE. A parent who texts a symptom in any language is answered in
+ * it. Three things make that safe rather than merely nice: whether it is an EMERGENCY is
  * judged by the sanitize stage from the parent's own words, in whatever language they wrote
  * (see {@link isRedFlag}), not matched against an English word list; the clinical query
  * stays ENGLISH whatever the parent wrote (the pediatric search is English-keyed, and
  * {@link NON_ENGLISH_LETTERS} REFUSES a query that ignored it rather than trusting the
- * prompt); and the escalation gate below reads all three answer languages, so a correct
- * "allez aux urgences" is not mistaken for an under-escalation and a French
- * under-escalation is not mistaken for a directive.
+ * prompt); and the escalation gate below reads 911 in any language plus the en/fr/zh
+ * directive phrases, so a correct "allez aux urgences" is not mistaken for an
+ * under-escalation and a French under-escalation is not mistaken for a directive.
  *
  * FAIL CLOSED, THROUGH ONE DOOR. Every degradation — no client, a skill that would not
  * load, zero searches, an empty/oversized body, missing triage — is a thrown
@@ -112,16 +112,16 @@ export type AgeBand = (typeof AGE_BANDS)[number];
 
 /**
  * The language the answer goes back in — the PARENT's, as read by the sanitize stage (the
- * only call that sees their words).
+ * only call that sees their words), as a language code (`es`, `ar`, `zh-Hant`).
  *
- * Three and no more, deliberately: each one needs an emergency-directive matcher written
- * for it ({@link hasEmergencyDirective}) before an answer in it may ship, so the list is
- * bounded by what the safety gate can actually read, not by what the model can write.
- * An unrecognised value normalizes to `en` rather than throwing — the same "if you
- * genuinely cannot tell, English is the safe default" the general-answer skill takes.
+ * No list of languages: Hale answers in whatever language the parent wrote. The escalation
+ * gate does not need one either — 911 is dialled, not translated, so a red-flag answer in
+ * any language carries it ({@link hasEmergencyDirective}). A value that is not shaped like a
+ * language code normalizes to `en` rather than throwing.
  */
-export const REPLY_LANGUAGES = ['en', 'fr', 'zh'] as const;
-export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
+export type ReplyLanguage = string;
+
+const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i;
 
 /**
  * The sanitizer's reading of whether the parent described a pediatric emergency — judged
@@ -184,27 +184,29 @@ const sanitizeSchema = z.object({
   // Parsed LOOSELY, then normalized in code — a strict z.enum would turn an
   // off-list band into a thrown ZodError whose message could echo the request (rule #1),
   // and screen.ts/answer.ts hold the same line. `language` is parsed the same way and for
-  // the same reason; it also stays OPTIONAL, so a sanitizer that returns no language
-  // answers in English rather than costing the parent their answer.
+  // the same reason; a sanitizer that returns none answers in English rather than costing
+  // the parent their answer.
+  language: z.string().nullish(),
   age_band: z.string().nullish(),
   duration: z.string().nullish(),
-  language: z.string().nullish(),
   red_flag_sign: z.string().nullish(),
   red_flag: z.string().nullish(),
 });
 
 const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
   type: 'object',
+  // The language first: it is read off the parent's words before they are rewritten into
+  // the English query, which is what had a Chinese message reported as `en`.
   properties: {
+    language: { type: 'string' },
     clinical_query: { type: 'string' },
     age_band: { type: 'string', enum: [...AGE_BANDS] },
     duration: { type: 'string' },
-    language: { type: 'string', enum: [...REPLY_LANGUAGES] },
     red_flag_sign: { type: 'string' },
     red_flag: { type: 'string', enum: [...RED_FLAG_READINGS] },
   },
   // The sign before the verdict: a reading that names what it is judging on first.
-  required: ['clinical_query', 'red_flag_sign', 'red_flag'],
+  required: ['language', 'clinical_query', 'red_flag_sign', 'red_flag'],
 };
 
 const composeSchema = z.object({
@@ -287,13 +289,12 @@ function redFlagReading(raw: unknown): RedFlagReading {
     : 'unsure';
 }
 
-/** English for anything the sanitizer did not report as one of the three. Not null: every
+/** English for anything the sanitizer did not report as a language code. Not null: every
  * answer is written in SOME language, and a nullable one would only push the same default
  * out to the caller. */
 function normalizeLanguage(raw: unknown): ReplyLanguage {
-  return typeof raw === 'string' && (REPLY_LANGUAGES as readonly string[]).includes(raw)
-    ? (raw as ReplyLanguage)
-    : 'en';
+  const code = typeof raw === 'string' ? raw.trim() : '';
+  return LANGUAGE_CODE.test(code) ? code : 'en';
 }
 
 /**
@@ -332,7 +333,7 @@ function namesUrgentCare(body: string): boolean {
  * nothing. Only a real "call 911 / go to the ER / seek emergency care now" counts. Exported
  * for direct unit testing and mirrored by the eval gate.
  *
- * It reads all three languages the lane answers in, because an English-only matcher over a
+ * It reads 911 in every language, and the directive phrases of en/fr/zh, because an English-only matcher over a
  * French or Chinese body is wrong in BOTH directions: it falls a correct "emmenez-la aux
  * urgences" closed to the fixed English line, and — the direction that hurts — it cannot
  * tell that body apart from "ce n'est pas une urgence, appelez le 811", so the gate stops
