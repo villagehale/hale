@@ -16,6 +16,9 @@ import { KID_HINT_MAX_CHARS, type KidRelevanceSource } from './skill-contract';
  *     family memory fact, which the coach, the digest and a co-parent would read;
  *   - every live copy on the family calendar, past and future, soft-deleted, its title
  *     and place cleared, as the backfill drops an adult copy;
+ *   - every copy, live or already dropped, linked to that verdict, so a backfill revert
+ *     reads the parent's word from the copy even when the item's series key has changed
+ *     since the backfill judged it;
  *   - a held calendar alert for it dropped, and an open Gmail offer for it withdrawn, so
  *     nothing Hale still owes can name it later;
  *   - their scheduled reminders cancelled with `parent_untracked`;
@@ -147,6 +150,17 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
       );
     const removed = matching.filter((row) => row.deletedAt === null).map((row) => row.id);
 
+    if (matching.length > 0) {
+      await tx
+        .update(schema.familyEvents)
+        .set({ kidVerdictId: verdict.id })
+        .where(
+          inArray(
+            schema.familyEvents.id,
+            matching.map((row) => row.id),
+          ),
+        );
+    }
     if (removed.length > 0) {
       await tx
         .update(schema.familyEvents)

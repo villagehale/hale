@@ -621,6 +621,54 @@ describe('runKidRelevanceBackfill', () => {
     ).toEqual([1, 1]);
   });
 
+  it('a revert leaves dropped what the parent said is theirs after Hale learned the copy belongs to a series', async () => {
+    const ids = await seed();
+    await dryRunThenApply();
+    // The apply judged the copy under its own event id. Its series id arrives afterwards,
+    // so the parent's word is stored under the series.
+    await db.database.insert(schema.calendarEventSnapshots).values({
+      integrationId: gcal,
+      eventId: 'ev-standup',
+      recurringEventId: 'standup-series',
+      updatedStamp: 'u1',
+      status: 'confirmed',
+    });
+    expect(
+      await untrackItem(db.database, {
+        familyId,
+        actorUserId: parentUserId,
+        target: { kind: 'family_event', id: ids.adultA },
+        now: NEXT_DAY,
+        kind: null,
+      }),
+    ).toMatchObject({ outcome: 'untracked', removedEvents: 0 });
+
+    const reverted = await revertKidRelevanceBackfill(db.database, { runId, now: NEXT_DAY });
+
+    expect(reverted).toEqual({
+      runId,
+      found: true,
+      eventsRestored: 2,
+      remindersRescheduled: 2,
+      verdictsCleared: 2,
+      skippedParentOwned: 1,
+      skippedFamiliesPendingErasure: 0,
+    });
+    const after = await state();
+    const event = after.events.find((row) => row.id === ids.adultA);
+    expect(event).toMatchObject({ deletedAt: NOW, title: '' });
+    expect(
+      after.reminders
+        .filter((row) => row.eventRef === ids.adultA)
+        .map((row) => `${row.status}/${row.suppressReason}`),
+    ).toEqual(['cancelled/kid_relevance_backfill', 'cancelled/kid_relevance_backfill']);
+    expect(
+      after.verdicts
+        .filter((row) => row.decidedBy === 'parent')
+        .map((row) => `${row.itemKey}/${row.verdict}/${row.id === event?.kidVerdictId}`),
+    ).toEqual(['standup-series/adult/true']);
+  });
+
   it('a revert of an unknown run id changes nothing and says so', async () => {
     await seed();
     await dryRunThenApply();

@@ -342,7 +342,8 @@ export interface RevertCounts {
  * Each family event that run dropped comes back live and unlinked, unless it has been
  * dropped again since (its `deleted_at` no longer matches the run's), its family has an
  * erasure scheduled, or the parent has since said it is theirs (its verdict is now a
- * parent's `adult`; untrack does not re-stamp a copy that is already dropped) - each read
+ * parent's `adult`: untrack links every copy of the item to it, and does not re-stamp one
+ * that is already dropped) - each read
  * inside the restore's own transaction, the last two counted by name. Its reminders that
  * run cancelled and that are still ahead are scheduled again. The model verdicts for the
  * restored items are deleted so the next judge asks again; a parent's own verdict stays.
