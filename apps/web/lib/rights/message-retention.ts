@@ -4,13 +4,19 @@ import {
   type SQL,
   and,
   asc,
+  eq,
+  exists,
+  gt,
   inArray,
   isNotNull,
   lt,
   ne,
+  notInArray,
   or,
   sql,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
+import { SENT_STATUSES } from '../channel/ledger.js';
 import { isUndefinedTable } from '../channel/linq/roster.js';
 import { removeDocument } from '../docs/storage.js';
 
@@ -38,7 +44,7 @@ import { removeDocument } from '../docs/storage.js';
  * | Table | Approach | Why |
  * | --- | --- | --- |
  * | `channel_messages` | REDACT `body` to null | Bookings, reviews, offers, and check-in notes reference the row, some NOT NULL, and the cap index counts rows. Migration 0121 forbids deleting one. Outbound rows store no body. |
- * | `channel_pending_asks` | DELETE the row | The question a general answer left open, de-identified, beside its reply's row (migration 0167). The next reply Hale sends that parent already deletes it; this is the backstop for one nothing followed. |
+ * | `channel_pending_asks` | DELETE the row | The question a general answer left open, de-identified, beside its reply's row (migration 0167). The next reply the router sends that parent already deletes it. This sweep deletes one that any newer word from Hale has closed, and one that is a year old. |
  * | `messages` | DELETE the row | The Ask Hale transcript. Soft-delete leaves `content` in place; the retention promise removes it. Audit rows store the id as text, not a foreign key. |
  * | `chat_attachments` | DELETE the bytes, then the row | The file, its path, and `original_name`. Bytes are purged before the row so a cascade cannot drop the path first. Unlinked uploads are included. |
  * | `sms_intake_sessions` | REDACT `data_encrypted` and `phone_encrypted` | The pre-account transcript, including a group-chat sender who never became a user. The row stays: it is how the funnel counts an arrival, and both columns are NOT NULL. `phone_hash` stays so the same number is still recognised. An open session is closed so a later text starts clean rather than decrypting a tombstone. |
@@ -222,18 +228,49 @@ async function redactChannelMessages(
 }
 
 /**
+ * A question goes when it is a year old, and also as soon as it is CLOSED: when the reply
+ * that left it is no longer the last thing Hale sent that parent. That is the reader's
+ * own rule (off-domain/lane.ts readPendingAsk), restated here as a join on the ledger
+ * with no state of its own. The router already deletes a question when it next replies
+ * to the parent; a newer word from any other sender (a reminder, a nudge) closes the
+ * question for the reader all the same and would otherwise leave the row until the year
+ * was up. A reply that never reached a phone is nobody's last word, so its question is
+ * closed too.
+ *
  * The table arrives with migration 0167, and nothing writes it while the general
  * answer's search is dark, so this code can run on a database that does not have it yet.
  * There is then nothing to delete, and the sweep says so by name and carries on with the
  * other tables (the roster sweep's `not_migrated`, rule #11).
  */
 async function deletePendingAsks(database: Database, cutoff: Date, batch: number): Promise<number> {
+  const asked = schema.channelMessages;
+  const newer = alias(schema.channelMessages, 'newer');
   let due: Array<{ id: string }>;
   try {
     due = await database
       .select({ id: schema.channelPendingAsks.channelMessageId })
       .from(schema.channelPendingAsks)
-      .where(lt(schema.channelPendingAsks.createdAt, cutoff))
+      .innerJoin(asked, eq(asked.id, schema.channelPendingAsks.channelMessageId))
+      .where(
+        or(
+          lt(schema.channelPendingAsks.createdAt, cutoff),
+          notInArray(asked.status, [...SENT_STATUSES]),
+          exists(
+            database
+              .select({ id: newer.id })
+              .from(newer)
+              .where(
+                and(
+                  eq(newer.familyId, asked.familyId),
+                  eq(newer.parentUserId, asked.parentUserId),
+                  eq(newer.direction, 'out'),
+                  inArray(newer.status, [...SENT_STATUSES]),
+                  gt(newer.createdAt, asked.createdAt),
+                ),
+              ),
+          ),
+        ),
+      )
       .orderBy(
         asc(schema.channelPendingAsks.createdAt),
         asc(schema.channelPendingAsks.channelMessageId),
