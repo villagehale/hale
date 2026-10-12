@@ -806,6 +806,7 @@ describe('the off-domain lane', () => {
     replySource: 'composed',
     medicalSource: null,
     signal: 'recorded',
+    pendingAsk: null,
   };
 
   /** The lane's other answer: a symptom, answered rather than deflected. */
@@ -817,6 +818,7 @@ describe('the off-domain lane', () => {
     replySource: medicalSource,
     medicalSource,
     signal: 'not_applicable',
+    pendingAsk: null,
   });
 
   /**
@@ -885,6 +887,74 @@ describe('the off-domain lane', () => {
       expect(sent[0]?.body).toBeNull();
     },
   );
+
+  /**
+   * A reply that left a question open ("which city?") keeps that question on its own
+   * ledger row (migration 0167), where the parent's next text can be read beside it. What
+   * is kept is the lane's de-identified question and what it was missing. `body` stays
+   * null: not the parent's words, and not what Hale said.
+   */
+  it('keeps the question a reply left open on the reply row it sends, body still null', async () => {
+    const h = harness({
+      context: { body: "how's the weather tomorrow" },
+      offDomain: fakeLane({
+        ...ANSWERED,
+        reply: 'Which city are you in?',
+        pendingAsk: { question: 'hows the weather tomorrow', missing: 'which city' },
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      pendingQuestion: 'hows the weather tomorrow',
+      pendingMissing: 'which city',
+      body: null,
+    });
+  });
+
+  it('keeps no question on a reply that left none open, or on a coach answer', async () => {
+    const answered = harness({
+      context: { body: "how's the weather" },
+      offDomain: fakeLane(ANSWERED),
+    });
+    await routeChannelMessage(answered.deps, job());
+    const coached = harness({ context: { body: 'what should we do this weekend' } });
+    await routeChannelMessage(coached.deps, job());
+
+    for (const h of [answered, coached]) {
+      const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ pendingQuestion: null, pendingMissing: null });
+    }
+  });
+
+  /** A question Hale left open was put to one parent, and is open as of this turn: the
+   * lane is told whose text this is and what time the turn began. */
+  it('tells the lane whose text it is and when the turn began', async () => {
+    const asked: unknown[] = [];
+    const lane: OffDomainLane = {
+      async consider(input) {
+        asked.push(input);
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({ context: { body: 'Toronto' }, offDomain: lane });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(asked).toEqual([
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        channelMessageId: job().channel_message_id,
+        text: 'Toronto',
+        now: NOW,
+      },
+    ]);
+  });
 
   /** A coach turn's reply is not a deflection — no provenance stamp belongs on it. */
   it('leaves the reply source null on a coach answer', async () => {
@@ -1011,6 +1081,7 @@ describe('the off-domain lane', () => {
         replySource: 'fixed',
         medicalSource: null,
         signal: 'recorded',
+        pendingAsk: null,
       }),
     });
 
@@ -1933,6 +2004,7 @@ describe('the outage smoke alarm', () => {
         replySource: 'fixed',
         medicalSource: null,
         signal: 'recorded',
+        pendingAsk: null,
       }),
       coach: outageCoach(),
       smokeAlarm: claim,

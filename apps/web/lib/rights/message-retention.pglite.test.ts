@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { runDeletionSweep } from './delete';
 import {
   INTAKE_CONTENT_REDACTED,
   type MessageRetentionSummary,
@@ -443,6 +444,89 @@ describe('sweepMessageRetention', () => {
     const second = await sweepMessageRetention(db.database, NOW, { removeObject });
     expect(second).toEqual(ZEROS);
     expect(removeObject).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * A general answer that asked "which city?" keeps the question it was working on, on
+   * its own OUTBOUND row (migration 0167). It is de-identified, and it is still a
+   * question a parent asked, so the same clock clears it. `body` was never there to clear.
+   */
+  it('clears the question a reply left open after 365 days, and keeps one at 364 days', async () => {
+    const { familyId, parentUserId } = await seedFamily();
+    const openQuestion = async (createdAt: Date) => {
+      const [row] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          familyId,
+          parentUserId,
+          channel: 'sms',
+          direction: 'out',
+          category: 'reply',
+          status: 'delivered',
+          body: null,
+          pendingQuestion: 'hows the weather tomorrow',
+          pendingMissing: 'which city',
+          createdAt,
+        })
+        .returning({ id: schema.channelMessages.id });
+      return row?.id as string;
+    };
+    const oldId = await openQuestion(ago(366));
+    const youngId = await openQuestion(ago(364));
+    const kept = () =>
+      db.database
+        .select({
+          id: schema.channelMessages.id,
+          question: schema.channelMessages.pendingQuestion,
+          missing: schema.channelMessages.pendingMissing,
+        })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.familyId, familyId));
+
+    const summary = await sweepMessageRetention(db.database, NOW, {
+      removeObject: async () => {},
+    });
+
+    expect(summary).toEqual({ ...ZEROS, channelMessagesRedacted: 1 });
+    expect((await kept()).sort((a, b) => (a.id === oldId ? -1 : b.id === oldId ? 1 : 0))).toEqual([
+      { id: oldId, question: null, missing: null },
+      { id: youngId, question: 'hows the weather tomorrow', missing: 'which city' },
+    ]);
+    // A second run finds nothing left to do.
+    expect(await sweepMessageRetention(db.database, NOW, { removeObject: async () => {} })).toEqual(
+      ZEROS,
+    );
+  });
+
+  /** Erasure is the family cascade (runDeletionSweep deletes the family row), and the
+   * question rides on a row that cascade already takes. */
+  it('does not leave a pending question behind when the family is erased', async () => {
+    const { familyId, parentUserId } = await seedFamily();
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      status: 'delivered',
+      pendingQuestion: 'hows the weather tomorrow',
+      pendingMissing: 'which city',
+    });
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: ago(1) })
+      .where(eq(schema.families.id, familyId));
+    const pending = () =>
+      db.database
+        .select({ question: schema.channelMessages.pendingQuestion })
+        .from(schema.channelMessages);
+    // Positive control: it is there to be erased.
+    expect(await pending()).toEqual([{ question: 'hows the weather tomorrow' }]);
+
+    const swept = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(swept.erased).toBe(1);
+    expect(await pending()).toEqual([]);
   });
 
   it('covers a group-chat message from someone who is not a Hale user', async () => {

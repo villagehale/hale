@@ -167,6 +167,16 @@ export const channelMessages = pgTable(
      * the papercut digest counts the four fallback values as composer papercuts
      * (migration 0103). */
     replySource: text('reply_source').$type<ReplySourceValue>(),
+    /** OUTBOUND general answers only: the question a reply left open (Hale asked which
+     * city, or could not check), kept so the parent's next text can be read beside it
+     * (migration 0167). DE-IDENTIFIED: the sanitizer's rewrite of the question with a
+     * deterministic identifier scrub under it, never the parent's own words, and never
+     * what Hale said. Null on every other row. It stands only while this row is Hale's
+     * last word to that parent, and the 365-day retention sweep clears it. */
+    pendingQuestion: text('pending_question'),
+    /** What {@link channelMessages.pendingQuestion} was missing, in a few words ("which
+     * city"), de-identified and scrubbed the same way. Null when nothing was. */
+    pendingMissing: text('pending_missing'),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     /** INBOUND only: when this text was actually handed to C1's queue. Null means the
      * job does not exist — either the enqueue has not happened yet or it failed. It is a

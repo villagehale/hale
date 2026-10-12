@@ -55,6 +55,7 @@ import {
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
+import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
 import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -966,6 +967,7 @@ async function routeChannelMessageInner(
     replySource: ReplySource | null = null,
     templateKey: string | null = null,
     groupSync?: GroupActivityDecision,
+    pendingAsk: PendingAsk | null = null,
   ) =>
     sendReply(deps, {
       route,
@@ -975,6 +977,7 @@ async function routeChannelMessageInner(
       claim: claimAnswer,
       medicalSource,
       replySource,
+      pendingAsk,
       groupSync,
       templateKey,
       beforeSend: stopTyping,
@@ -1287,8 +1290,10 @@ async function routeChannelMessageInner(
       verdict = await withTimeout(
         deps.offDomain.consider({
           familyId: job.family_id,
+          parentUserId: job.parent_user_id,
           channelMessageId: job.channel_message_id,
           text: context.body,
+          now,
         }),
         OFF_DOMAIN_BUDGET_MS,
         OFF_DOMAIN_TIMEOUT,
@@ -1303,7 +1308,14 @@ async function routeChannelMessageInner(
       verdict = { status: 'in_domain', fallback: null };
     }
     if (verdict.status === 'deflected') {
-      await answer(verdict.reply, verdict.medicalSource, verdict.replySource);
+      await answer(
+        verdict.reply,
+        verdict.medicalSource,
+        verdict.replySource,
+        null,
+        undefined,
+        verdict.pendingAsk,
+      );
       return done(deps, job, {
         status: 'deflected',
         handler: null,
@@ -2337,6 +2349,11 @@ async function sendReply(
      * papercut digest split real answers from ANSWER_UNAVAILABLE sends; it is a closed
      * vocabulary and never a word of what was said (rule #1). */
     replySource?: ReplySource | null;
+    /** The question a general answer left open (migration 0167), or null on every other
+     * reply. De-identified by the lane before it gets here: never the parent's words and
+     * never what Hale said, so `body` stays null as ever (rule #1). The parent's next
+     * text is read beside it (off-domain/lane.ts readPendingAsk). */
+    pendingAsk?: PendingAsk | null;
     /** The lane's own name for this receipt, or null for a reply nothing reads back
      * (see {@link HandlerVerdict.templateKey}). */
     templateKey?: string | null;
@@ -2425,6 +2442,8 @@ async function sendReply(
       body: null,
       medicalReplySource: args.medicalSource ?? null,
       replySource: args.replySource ?? null,
+      pendingQuestion: args.pendingAsk?.question ?? null,
+      pendingMissing: args.pendingAsk?.missing ?? null,
       relatedConversationId: args.conversationId,
       sentAt: deps.now(),
     })

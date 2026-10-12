@@ -2,8 +2,11 @@ import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   type GeneralAnswerFallback,
   type GeneralAnswerOutcome,
+  type NotAReply,
+  type PendingAsk,
   createGeneralAnswer,
 } from './answer';
 import {
@@ -43,7 +46,9 @@ import type { LaneReading, LaneScreenFallback } from './screen';
  */
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
+const PARENT = '22222222-2222-4222-8222-222222222222';
 const MESSAGE = '33333333-3333-4333-8333-333333333333';
+const NOW = new Date('2026-10-12T15:00:00.000Z');
 const ANSWER = "Messi, for me - the closest thing to a complete player I've watched.";
 const TODAY = 'monday, oct 12, 2026';
 const MEDICAL_ANSWER =
@@ -64,6 +69,9 @@ interface Harness extends OffDomainPorts {
   composeSeen: Array<{ text: string; today: string }>;
   todayAskedFor: string[];
   placeAskedFor: string[];
+  screenCalls: number;
+  pendingAskedFor: Array<{ familyId: string; parentUserId: string; asOf: Date }>;
+  continueSeen: Array<{ text: string; pending: PendingAsk }>;
   medicalCalls: number;
   medicalSeen: string[];
   recorded: Recorded[];
@@ -75,6 +83,10 @@ function ports(
     signal?: UnmetSignalOutcome;
     answer?: GeneralAnswerOutcome;
     medical?: MedicalReply;
+    /** The question Hale's last word to this parent left open, if any. */
+    pending?: PendingAsk | null;
+    /** What the composer makes of the next text read beside it. */
+    continued?: GeneralAnswerOutcome | NotAReply;
   } = {},
 ): Harness {
   const read = overrides.read ?? reading();
@@ -87,16 +99,32 @@ function ports(
     composeSeen: [],
     todayAskedFor: [],
     placeAskedFor: [],
+    screenCalls: 0,
+    pendingAskedFor: [],
+    continueSeen: [],
     medicalCalls: 0,
     medicalSeen: [],
     recorded: [],
-    screen: { read: async () => read },
+    screen: {
+      read: async () => {
+        harness.screenCalls += 1;
+        return read;
+      },
+    },
     answer: {
       compose: async (text, family) => {
         harness.composeCalls += 1;
         harness.composeSeen.push({ text, today: await family.today() });
         return answer;
       },
+      continueAsk: async (text, pending) => {
+        harness.continueSeen.push({ text, pending });
+        return overrides.continued ?? { status: 'unrelated' };
+      },
+    },
+    pendingAsk: async (input) => {
+      harness.pendingAskedFor.push(input);
+      return overrides.pending ?? null;
     },
     today: async (familyId) => {
       harness.todayAskedFor.push(familyId);
@@ -126,7 +154,13 @@ function ports(
 }
 
 const consider = (p: OffDomainPorts, text = 'anything') =>
-  offDomainLane(p).consider({ familyId: FAMILY, channelMessageId: MESSAGE, text });
+  offDomainLane(p).consider({
+    familyId: FAMILY,
+    parentUserId: PARENT,
+    channelMessageId: MESSAGE,
+    text,
+    now: NOW,
+  });
 
 describe('what each lane says', () => {
   /** Every safety_critical category EXCEPT medical-symptom still gets the fixed line,
@@ -346,6 +380,7 @@ describe('what each lane says', () => {
     const p = ports();
     const places: unknown[] = [];
     p.answer = {
+      ...p.answer,
       compose: async (_text, family) => {
         places.push(await family.place());
         return { status: 'composed', reply: ANSWER };
@@ -691,7 +726,13 @@ describe("today's date", () => {
     });
 
     expect(
-      await lane.consider({ familyId: FAMILY, channelMessageId: MESSAGE, text: 'I want to die' }),
+      await lane.consider({
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        channelMessageId: MESSAGE,
+        text: 'I want to die',
+        now: NOW,
+      }),
     ).toMatchObject({ status: 'deflected', reply: MENTAL_CRISIS_REPLY, replySource: 'composed' });
   });
 
@@ -750,14 +791,189 @@ describe("today's date", () => {
 
     const verdict = await productionOffDomainLane(database, client).consider({
       familyId: FAMILY,
+      parentUserId: PARENT,
       channelMessageId: MESSAGE,
       text: 'whats the capital of peru',
+      now: NOW,
     });
 
     expect(verdict).toMatchObject({ status: 'deflected', reply: 'Lima.', replySource: 'composed' });
     expect(composePayloads.map((payload) => JSON.parse(payload).today)).toEqual([
       'tuesday, oct 13, 2026',
     ]);
+  });
+});
+
+/**
+ * Sloane's finding 1, lit. A reply that left a question open keeps it on its own ledger
+ * row, and the parent's next text is read beside it BEFORE the screen: "Toronto" on its
+ * own is not a question about the world, and a screen that never saw the ask would send it
+ * to the coach. The composer judges whether the text completes it (answer.test.ts). What
+ * is asserted here is when the lane looks, what it does with each answer, and that with
+ * the flag dark it neither looks nor keeps anything.
+ */
+describe('a reply to a question Hale left open', () => {
+  const PENDING: PendingAsk = { question: 'hows the weather tomorrow', missing: 'which city' };
+  const lit = () => vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+  const quietInfo = () => vi.spyOn(console, 'info').mockImplementation(() => {});
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('neither reads a pending ask nor keeps one while the flag is dark', async () => {
+    const info = quietInfo();
+    const p = ports({
+      pending: PENDING,
+      answer: { status: 'composed', reply: ANSWER, search: 'search_off' },
+    });
+
+    const verdict = await consider(p, 'Toronto');
+
+    expect(p.pendingAskedFor).toEqual([]);
+    expect(p.continueSeen).toEqual([]);
+    expect(p.screenCalls).toBe(1);
+    expect(verdict).toMatchObject({ status: 'deflected', reply: ANSWER, pendingAsk: null });
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it('looks for a pending ask for this parent, as of this turn, and names finding none', async () => {
+    lit();
+    const info = quietInfo();
+    const p = ports();
+
+    await consider(p, 'whats the capital of peru');
+
+    expect(p.pendingAskedFor).toEqual([{ familyId: FAMILY, parentUserId: PARENT, asOf: NOW }]);
+    expect(p.continueSeen).toEqual([]);
+    expect(p.screenCalls).toBe(1);
+    expect(info.mock.calls).toEqual([
+      [{ pendingAsk: 'none' }, 'off-domain lane: no pending ask for this parent'],
+    ]);
+  });
+
+  /** The reply IS the general answer's turn: no screen, and no second demand signal for a
+   * question that was counted when it was first asked. */
+  it('answers the completed question without the screen, and does not count it twice', async () => {
+    lit();
+    quietInfo();
+    const p = ports({
+      pending: PENDING,
+      continued: { status: 'composed', reply: 'Sunny in Toronto.', search: 'searched' },
+    });
+
+    const verdict = await consider(p, 'Toronto');
+
+    expect(p.continueSeen).toEqual([{ text: 'Toronto', pending: PENDING }]);
+    expect(p.screenCalls).toBe(0);
+    expect(p.composeCalls).toBe(0);
+    expect(p.recorded).toEqual([]);
+    expect(verdict).toEqual({
+      status: 'deflected',
+      lane: 'off_domain_general',
+      category: 'other',
+      reply: 'Sunny in Toronto.',
+      replySource: 'composed',
+      medicalSource: null,
+      signal: 'not_applicable',
+      pendingAsk: null,
+    });
+  });
+
+  it('routes an unrelated text as it would any other, with nothing of the old question', async () => {
+    lit();
+    quietInfo();
+    const p = ports({
+      pending: PENDING,
+      continued: { status: 'unrelated' },
+      read: reading({ lane: 'in_domain', category: null }),
+    });
+
+    const verdict = await consider(p, 'can we move swim to thursday');
+
+    expect(p.continueSeen).toEqual([{ text: 'can we move swim to thursday', pending: PENDING }]);
+    expect(p.screenCalls).toBe(1);
+    expect(verdict).toEqual({ status: 'in_domain', fallback: null });
+  });
+
+  it('answers an unrelated off-topic text as itself', async () => {
+    lit();
+    quietInfo();
+    const p = ports({ pending: PENDING, continued: { status: 'unrelated' } });
+
+    const verdict = await consider(p, 'whats the capital of peru');
+
+    expect(p.composeSeen).toEqual([{ text: 'whats the capital of peru', today: TODAY }]);
+    expect(p.recorded).toHaveLength(1);
+    expect(verdict).toMatchObject({ status: 'deflected', reply: ANSWER, signal: 'recorded' });
+  });
+
+  /** The question a turn could not answer rides out on the verdict, for the router to
+   * keep on the reply's own row. From a first ask and from a reply that still leaves
+   * something out alike. */
+  it.each([
+    ['a first ask', {}, 'weather tomorrow?'],
+    ['a reply that still leaves something out', { pending: PENDING }, 'the big one'],
+  ] as const)('hands the router the question left open by %s', async (_label, state, text) => {
+    lit();
+    quietInfo();
+    const asked: GeneralAnswerOutcome = {
+      status: 'composed',
+      reply: 'Which city?',
+      search: 'missing_detail',
+      pendingAsk: PENDING,
+    };
+    const p = ports({ ...state, answer: asked, continued: asked });
+
+    expect(await consider(p, text)).toMatchObject({
+      status: 'deflected',
+      reply: 'Which city?',
+      pendingAsk: PENDING,
+    });
+  });
+
+  it('keeps nothing when the reply to the ask could not be written', async () => {
+    lit();
+    quietInfo();
+    const p = ports({
+      pending: PENDING,
+      continued: { status: 'unavailable', reason: 'model_failed' },
+    });
+
+    expect(await consider(p, 'Toronto')).toMatchObject({
+      status: 'deflected',
+      reply: ANSWER_UNAVAILABLE_REPLY,
+      replySource: 'model_failed',
+      pendingAsk: null,
+    });
+  });
+
+  /** An emergency is answered by the fixed line before anything is looked up. */
+  it('reads no pending ask for an emergency', async () => {
+    lit();
+    const p = ports({ pending: PENDING });
+
+    expect(await consider(p, 'she is not breathing')).toMatchObject({
+      reply: EMERGENCY_REPLY,
+      pendingAsk: null,
+    });
+    expect(p.pendingAskedFor).toEqual([]);
+  });
+
+  it('carries no pending ask out of a door that is not the general answer', async () => {
+    lit();
+    quietInfo();
+    for (const read of [
+      reading({ lane: 'provider_access', category: 'doctor-access' }),
+      reading({ lane: 'safety_critical', category: 'child-safety' }),
+      reading({ lane: 'safety_critical', category: 'medical-symptom' }),
+    ]) {
+      expect(await consider(ports({ read }))).toMatchObject({
+        status: 'deflected',
+        pendingAsk: null,
+      });
+    }
   });
 });
 

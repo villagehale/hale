@@ -36,7 +36,7 @@ import { removeDocument } from '../docs/storage.js';
  *
  * | Table | Approach | Why |
  * | --- | --- | --- |
- * | `channel_messages` | REDACT `body` to null | Bookings, reviews, offers, and check-in notes reference the row, some NOT NULL, and the cap index counts rows. Migration 0121 forbids deleting one. Outbound rows already store no body. |
+ * | `channel_messages` | REDACT `body`, `pending_question` and `pending_missing` to null | Bookings, reviews, offers, and check-in notes reference the row, some NOT NULL, and the cap index counts rows. Migration 0121 forbids deleting one. Outbound rows store no body; one that left a question open stores that question, de-identified (migration 0167), and it goes on the same clock. |
  * | `messages` | DELETE the row | The Ask Hale transcript. Soft-delete leaves `content` in place; the retention promise removes it. Audit rows store the id as text, not a foreign key. |
  * | `chat_attachments` | DELETE the bytes, then the row | The file, its path, and `original_name`. Bytes are purged before the row so a cascade cannot drop the path first. Unlinked uploads are included. |
  * | `sms_intake_sessions` | REDACT `data_encrypted` and `phone_encrypted` | The pre-account transcript, including a group-chat sender who never became a user. The row stays: it is how the funnel counts an arrival, and both columns are NOT NULL. `phone_hash` stays so the same number is still recognised. An open session is closed so a later text starts clean rather than decrypting a tombstone. |
@@ -198,14 +198,21 @@ async function redactChannelMessages(
     .select({ id: schema.channelMessages.id })
     .from(schema.channelMessages)
     .where(
-      and(isNotNull(schema.channelMessages.body), lt(schema.channelMessages.createdAt, cutoff)),
+      and(
+        or(
+          isNotNull(schema.channelMessages.body),
+          isNotNull(schema.channelMessages.pendingQuestion),
+          isNotNull(schema.channelMessages.pendingMissing),
+        ),
+        lt(schema.channelMessages.createdAt, cutoff),
+      ),
     )
     .orderBy(asc(schema.channelMessages.createdAt), asc(schema.channelMessages.id))
     .limit(batch);
   if (due.length === 0) return 0;
   const updated = await database
     .update(schema.channelMessages)
-    .set({ body: null })
+    .set({ body: null, pendingQuestion: null, pendingMissing: null })
     .where(
       inArray(
         schema.channelMessages.id,
