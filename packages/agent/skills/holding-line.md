@@ -17,7 +17,7 @@ answer simply arrives when it is ready. So write something sendable.
 
 ## THE MEANING IS PINNED. THE WORDS ARE YOURS.
 
-> Hale is working on their answer, and it is coming. One sentence.
+> Hale is working on their answer, and it is coming.
 
 That is the whole message. It says someone has it and is on it. It does not say what the
 answer is, what Hale is doing to get it, or when it will land, because you do not know
@@ -49,13 +49,9 @@ each with the reason. Fix that specific problem and keep what was fine.
 
 ## Shape — these are refusals, not preferences
 
-- ONE sentence, and short: it has to fit in a single text. A line that needs two is
-  explaining itself.
-- No question. Nothing here needs an answer, and the real answer is already coming.
 - No number of any kind and no time: not "a minute", not "shortly", not "in a sec".
   Nobody knows when the answer lands, so any time you name is a promise nobody made.
 - No link, no app, no website. The answer comes here, in this thread.
-- Plain punctuation: straight quotes, a plain hyphen, no emoji.
 
 ## What it must never do
 
