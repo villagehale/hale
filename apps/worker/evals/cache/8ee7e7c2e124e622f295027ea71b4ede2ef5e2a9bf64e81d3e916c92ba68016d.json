@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item names 'Mia Chen (Product)', and a surname plus a department marks a colleague who only shares the child's first name, so this is the parent's own work meeting. The classifier says exactly this in one short clause: what the item is (a work 1:1) and why that makes it adult (surname and work title). It adds no unsupported facts and matches the verdict.",
+    "score": 5
+  }
+}

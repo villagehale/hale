@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names what the item is, a daycare pickup, and gives why it is a kid item: it is care for a child. That fits the kid verdict. It adds no unsupported facts, since it does not say which child. It is one short plain clause.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel booking confirmation, and the notMineHints include 'a hotel stay', so the rule makes it the parent's own. The classifier's reason says what the item is, cites that hint, and supports the adult verdict without inventing anything. It is one short clause, though the added 'names no child' is slightly redundant.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (errands with no child and no activity named) and why that is unsure (it could belong to the family or to the parent alone), which matches the bare-item rule. It is one clause, invents nothing and supports the verdict. It slightly restates the title, but it adds the why.",
+    "score": 5
+  }
+}

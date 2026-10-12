@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a dentist cleaning) and why it is unsure (no one is named, so it could be a child's or the parent's), which matches the rule for appointments with no child named. It invents no facts and is a single plain clause.",
+    "score": 5
+  }
+}

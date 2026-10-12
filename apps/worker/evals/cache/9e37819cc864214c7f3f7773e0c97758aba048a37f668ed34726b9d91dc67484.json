@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a family room booking, which is accurate. It notes that both children are named, which is the rule that makes a trip a kid item. It supports the kid verdict in one plain clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

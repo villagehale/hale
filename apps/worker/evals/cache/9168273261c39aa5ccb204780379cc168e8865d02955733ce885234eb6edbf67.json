@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (an 18-month checkup) and why it is a kid item (it names Wren, who is 18 months old per the context), so it supports the kid verdict. It is one short plain clause with no unsupported facts. It goes beyond copying the title by tying the item to a named child.",
+    "score": 5
+  }
+}

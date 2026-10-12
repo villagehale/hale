@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls this a dental cleaning, but its only 'why' is an unsupported claim that the visit is the parent's own. The item names no one, Theo (about 4) or Wren could just as well be the patient, and there are no notMineHints to back it. The reason asserts ownership rather than giving grounds for the adult verdict.",
+    "score": 2
+  }
+}

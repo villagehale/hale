@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a restaurant booking for two, which Tablebook and the text support, and it matches the adult verdict. But 'the parent's own dinner' asserts the verdict rather than explaining it. It never says why two seats rules out a family meal: the household has two young children, so a party of two plainly excludes them. The why is only implied.",
+    "score": 4
+  }
+}

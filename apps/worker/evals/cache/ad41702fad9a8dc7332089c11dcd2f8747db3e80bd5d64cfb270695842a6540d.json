@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A hotel confirmation that names no child and gives no sign of being a family booking or a work trip falls under the trip rule's 'otherwise unsure'. The classifier's reason says exactly that, adds no unsupported facts, and is one plain clause naming what the item is and why it leads to unsure. 'Either side' is slightly loose wording but clear enough.",
+    "score": 5
+  }
+}

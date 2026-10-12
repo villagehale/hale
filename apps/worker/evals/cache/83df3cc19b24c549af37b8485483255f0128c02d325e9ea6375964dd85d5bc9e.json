@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as an appointment reminder and notes that no child is named. It then explains that it could be a child's checkup or the parent's own appointment. That correctly applies the rule that an appointment with no child named is unsure, and it supports the verdict it sits beside. It is one plain clause, invents no facts and does not just copy the title back.",
+    "score": 5
+  }
+}

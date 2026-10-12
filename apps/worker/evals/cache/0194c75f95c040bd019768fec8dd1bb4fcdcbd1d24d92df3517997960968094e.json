@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that names the item as a bare initial and explains why that leaves it undecidable. Neither child is a J, which strengthens the case, and the reason invents no facts. It matches the unsure verdict. It could note that 'J' matches neither child, but it is still a clear, supported justification.",
+    "score": 5
+  }
+}

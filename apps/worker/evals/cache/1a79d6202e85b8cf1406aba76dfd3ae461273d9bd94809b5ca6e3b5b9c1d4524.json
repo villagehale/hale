@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a book club meeting) and why that points to adult (it is a social group for grown-ups), in one short clause that matches the verdict. Calling it a group 'for adults' is an inference rather than something the text states. The inference is reasonable, since the children are 18 and 50 months old and a book club does not fit them, but it is presented as a fact about the group.",
+    "score": 4
+  }
+}

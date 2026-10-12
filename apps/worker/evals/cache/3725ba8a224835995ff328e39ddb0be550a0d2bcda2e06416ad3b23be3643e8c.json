@@ -1,0 +1,63 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a hotel reservation that names no child and is not plainly a family booking, so it could be a trip for either side",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a table for 2 at a restaurant, which is an adult dinner booking",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "a registration for a preschool swim class, a kid activity for a toddler-aged child",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i3",
+        "reason": "an adult men's Bible study, a faith group for adults",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "a baby rhyme time program at the library, a class made for babies and toddlers",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i5",
+        "reason": "a flight check-in that names no child, so it could be a trip for either the parent or the child",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a car service reminder, the parent's own vehicle",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i7",
+        "reason": "a play date invitation addressed to Wren by name, from another family",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i8",
+        "reason": "an appointment reminder that names no child, so it could be a child's checkup or the parent's own appointment",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 2936,
+  "inputTokens": 423,
+  "outputTokens": 484
+}

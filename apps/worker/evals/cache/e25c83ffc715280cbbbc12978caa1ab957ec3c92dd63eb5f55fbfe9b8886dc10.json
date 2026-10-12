@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason supports the kid verdict with true facts: the item is a music class, it names Theo, and Theo's age of 50 months is given in the context. It is one sentence. It is slightly wordy, since the age adds little once the child is named, but it does not mislead.",
+    "score": 4
+  }
+}

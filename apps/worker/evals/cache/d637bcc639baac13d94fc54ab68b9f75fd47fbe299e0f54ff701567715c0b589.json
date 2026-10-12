@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item \"公司季度会议\" is a company quarterly meeting, which is plainly the parent's own work and not about the 30-month-old child. The classifier's reason gets this right in one short clause, names what the item is, and gives the reason for an adult verdict, which matches the verdict shown. It adds no unsupported facts.",
+    "score": 5
+  }
+}

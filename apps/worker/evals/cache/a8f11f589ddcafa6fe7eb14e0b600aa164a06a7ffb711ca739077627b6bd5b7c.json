@@ -1,0 +1,51 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a swimming class named for Lina, who is 30 months old, so a kid activity",
+        "verdict": "kid",
+        "childName": "Lina"
+      },
+      {
+        "ref": "i1",
+        "reason": "a dentist visit with no child named, so it is the parent's own dentist visit",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "a music class with Lina's name on it, so a kid activity for her",
+        "verdict": "kid",
+        "childName": "Lina"
+      },
+      {
+        "ref": "i3",
+        "reason": "a company quarterly meeting, which is the parent's work",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "a birthday party named for Lina, one of the children",
+        "verdict": "kid",
+        "childName": "Lina"
+      },
+      {
+        "ref": "i5",
+        "reason": "a dinner with work friends, which is the parent's own social plan",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a bare meeting with no child or activity named, so it could be the parent's work or a child's event",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 3362,
+  "inputTokens": 267,
+  "outputTokens": 362
+}

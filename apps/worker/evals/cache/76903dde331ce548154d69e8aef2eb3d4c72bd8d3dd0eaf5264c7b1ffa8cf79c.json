@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a swim activity, which is what kind of thing it is, and gives the child Mia, named in the text, as why it is a kid item. That matches the kid verdict, adds no unsupported fact, and fits in one short plain clause.",
+    "score": 5
+  }
+}

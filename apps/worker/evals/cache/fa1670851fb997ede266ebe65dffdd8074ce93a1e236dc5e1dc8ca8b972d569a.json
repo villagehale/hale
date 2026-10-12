@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names what the item is (a choir rehearsal) and ties it to the matching notMineHints entry, which supports the adult verdict. It is one plain clause with no invented facts. Quoting the hint verbatim is slightly clunky but still clear and correct.",
+    "score": 5
+  }
+}

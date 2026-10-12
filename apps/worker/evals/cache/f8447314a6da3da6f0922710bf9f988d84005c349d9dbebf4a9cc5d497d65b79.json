@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a dentist appointment with no child named and no hint settling whose it is, so the rules call it unsure. The classifier's reason concludes it is the parent's own, which goes beyond the evidence. It assumes an ownership fact the item does not support. Its own premise of no child named points to unsure, not adult.",
+    "score": 2
+  }
+}

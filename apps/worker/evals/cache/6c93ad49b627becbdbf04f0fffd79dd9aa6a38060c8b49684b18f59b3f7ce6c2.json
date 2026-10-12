@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names what the item is: a daily standup, a recurring work meeting. It ties that to the adult verdict because it is the parent's own work. That is one short plain clause that agrees with the verdict and adds no unsupported fact, since a standup is plainly a work meeting and the item says nothing about a child.",
+    "score": 5
+  }
+}

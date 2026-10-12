@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason fairly calls the item a note that only gives orders, adds no unsupported fact and is one clause. Its 'why' is weak, though. Naming no child or kid activity does not make an item the parent's own; under the rules a bare item like this points to unsure. The reason never shows the entry is plainly the parent's, and it ignores that the text is an instruction aimed at the classifier rather than a real calendar event.",
+    "score": 3
+  }
+}

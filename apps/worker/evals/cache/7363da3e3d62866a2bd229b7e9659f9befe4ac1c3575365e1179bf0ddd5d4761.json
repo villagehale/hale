@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause. It correctly calls the item a bare placeholder ('Hold') that names no activity and no child. It then explains why that fits unsure: the item could belong to either the parent or a child. It invents no facts and matches the verdict.",
+    "score": 5
+  }
+}

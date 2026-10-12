@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A daily standup is a recurring work meeting, so reading it as the parent's own is a fair interpretation of the item rather than an invented fact. The classifier's reason is one plain clause that names what the item is and why that supports the adult verdict. It adds nothing the item does not support.",
+    "score": 5
+  }
+}

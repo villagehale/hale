@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the unsure verdict and adds no unsupported facts. It names the item as a bare placeholder with no detail and gives that as the reason it cannot be placed, which is the bare-item rule. It is one short plain clause.",
+    "score": 5
+  }
+}

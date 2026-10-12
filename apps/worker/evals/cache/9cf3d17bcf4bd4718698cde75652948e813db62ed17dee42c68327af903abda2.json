@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a date night at a restaurant, which plainly belongs to the parent, so 'adult' is the right call. The classifier's reason says what the item is and why it is adult, in one short clause, and adds no facts the item does not support.",
+    "score": 5
+  }
+}

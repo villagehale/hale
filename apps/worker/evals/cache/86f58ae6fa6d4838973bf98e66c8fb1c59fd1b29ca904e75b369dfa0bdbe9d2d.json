@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a bare 'Busy' block, which says what it is, and gives the lack of detail as the reason it cannot be placed. That is the bare-item rule and it supports the unsure verdict. It is one short clause, adds no unsupported facts and does not just copy the title.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is Spanish for 'dinner with friends from work', a social plan from the parent's job, so it is plainly the parent's own and supports adult. The classifier's reason is one plain clause that states what the item is and why it leads to the given verdict, with no invented facts.",
+    "score": 5
+  }
+}

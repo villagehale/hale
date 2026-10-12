@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause and states only supported facts. It correctly calls the item a bare initial with no activity, and the item alone cannot say whose it is, which fits the unsure verdict. It says what the item is and why that leads to the verdict.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a flight check-in with no child named. Per the trip rule, it is neither plainly a family booking nor plainly the parent's own, so unsure follows. It is a single short clause and matches the verdict.",
+    "score": 5
+  }
+}

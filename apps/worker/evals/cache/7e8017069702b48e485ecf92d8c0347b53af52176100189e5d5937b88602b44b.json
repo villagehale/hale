@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a clinic appointment reminder with no one named. It explains that it could be either the child's or the parent's, which matches the 'unsure' rule for unnamed appointments. It is one plain clause, adds no unsupported facts and supports the given verdict.",
+    "score": 5
+  }
+}

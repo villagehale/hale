@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the unsure verdict. It says what the item is, a bare calendar 'Hold' with no detail, and why that leaves it unsure, since it could belong to either a child or the parent. It is one short clause and adds no facts the item does not support.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is, a bare 'Busy' block with no detail, and why that gives unsure: it could belong to a child or to the parent. It is one plain clause, invents nothing and matches the verdict.",
+    "score": 5
+  }
+}

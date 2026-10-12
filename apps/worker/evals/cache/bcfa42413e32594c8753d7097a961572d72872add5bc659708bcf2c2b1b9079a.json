@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the unsure verdict and names what the item is: a bare calendar placeholder with no activity, so nothing says whose it is. It adds no facts beyond the item and stays one short clause. The quoted title is used to make the point, not copied back as the whole reason.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that matches the unsure verdict. It notes that errands name no child and no activity, so ownership cannot be told. It adds no unsupported facts. It is slightly wordy and partly restates the title, but it does give both what the item is (generic errands) and why that leads to unsure.",
+    "score": 5
+  }
+}

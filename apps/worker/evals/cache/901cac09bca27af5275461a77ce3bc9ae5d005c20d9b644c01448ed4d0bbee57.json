@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Q4 planning offsite\" is a quarterly business planning event, plainly the parent's work. Neither child is involved, and an 18-month-old and a 4-year-old would have no quarterly planning. The classifier's reason is one short clause. It names the kind of thing (a quarterly planning offsite), ties it to the parent's work, and supports the adult verdict without inventing anything.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names the item as a physio appointment for a shoulder and matches the adult verdict, in one clause. But it simply asserts it is \"the parent's own\" without saying what settles it, such as Wren (18 months) and Theo (about 4) being unlikely shoulder-physio patients. Under the rules, an appointment with no child named is unsure unless something settles it, so the missing why is a real gap.",
+    "score": 3
+  }
+}

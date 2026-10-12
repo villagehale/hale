@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly says what the item is (a dentist appointment with no child named), but the rules make such an appointment unsure when nothing settles it. Nothing here does: there are no notMineHints and no adult marker. So the leap to 'the parent's own dentist visit' asserts a fact the item does not support, and the reason's own premise points to unsure rather than adult.",
+    "score": 2
+  }
+}

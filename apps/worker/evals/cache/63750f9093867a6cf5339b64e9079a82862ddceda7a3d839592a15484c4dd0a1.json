@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a clinic checkup for Wren, a child named in the context, and gives Wren's age of 18 months, which both the context and the item support. That makes it a kid item, matching the verdict. It is one short plain clause with no invented facts. The link to the verdict is left implicit rather than stated, but it is obvious.",
+    "score": 5
+  }
+}

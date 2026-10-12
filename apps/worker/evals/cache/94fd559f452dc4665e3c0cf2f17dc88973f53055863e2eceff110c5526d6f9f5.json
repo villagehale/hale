@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rules make a dentist appointment that names no child unsure when nothing settles it. This reason correctly notes that no child is named, then jumps to calling it the parent's own visit. No notMineHints entry or other fact supports that leap. The reason also asserts as fact that the parent is the patient, which the item does not support. It does align with the given verdict, so it is not fully contradictory.",
+    "score": 2
+  }
+}

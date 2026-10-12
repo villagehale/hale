@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that matches the kid verdict: it names the item as a checkup for Wren, a listed child, and calls it a child's appointment. The item itself states the 18-month figure, which also matches Wren's age, so nothing is invented.",
+    "score": 5
+  }
+}

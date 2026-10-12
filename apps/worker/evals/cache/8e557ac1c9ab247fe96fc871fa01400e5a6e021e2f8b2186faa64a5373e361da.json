@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a hotel reservation with no one named, which is accurate, and says it could be either a family or a personal trip, which follows the trip rule and supports unsure. It is one plain clause and adds nothing the item lacks.",
+    "score": 5
+  }
+}

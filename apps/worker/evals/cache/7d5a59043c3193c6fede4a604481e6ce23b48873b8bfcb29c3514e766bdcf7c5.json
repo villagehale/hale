@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel confirmation with no child named and nothing showing it is a family booking or a work trip. The trip rule makes that unsure. The classifier's reason says exactly this in one plain clause and invents no facts. 'either side' is slightly loose wording, but it still argues for the verdict given.",
+    "score": 5
+  }
+}

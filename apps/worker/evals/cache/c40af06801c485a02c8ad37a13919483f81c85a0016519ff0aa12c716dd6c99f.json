@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The child Sebastian is 15 months old and could not send a coffee invitation, so the sender is an adult who shares the child's name, which matches the stated rule. The classifier's reason says what the item is (a coffee invitation) and why that makes it adult (the sender is an adult). It fits the verdict and adds no unsupported fact. It is one plain clause.",
+    "score": 5
+  }
+}

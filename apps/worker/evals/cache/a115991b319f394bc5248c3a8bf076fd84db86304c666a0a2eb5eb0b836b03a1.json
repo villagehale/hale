@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (an appointment reminder) and why that gives unsure (no child is named, so it could be either person's), which matches the rule and the given verdict. It invents no facts and is one plain clause.",
+    "score": 5
+  }
+}

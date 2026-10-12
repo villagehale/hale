@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause. It identifies the item as a dentist cleaning, notes that no person is named, and concludes it could belong to a child or the parent. That matches the unsure verdict under the rule for unnamed appointments, and it adds no unsupported facts.",
+    "score": 5
+  }
+}

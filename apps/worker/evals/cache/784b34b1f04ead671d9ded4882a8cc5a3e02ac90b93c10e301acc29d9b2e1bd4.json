@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a daycare pickup request that names Wren, so it says what the item is and why it is a kid item. It supports the verdict, adds no facts the item lacks, and stays to one clause, though it repeats itself slightly.",
+    "score": 5
+  }
+}

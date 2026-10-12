@@ -1,0 +1,39 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a parent-and-tot swim class, a kid activity for Wren at 18 months",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i1",
+        "reason": "a daily standup, which is the parent's own work meeting",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "a note that only gives orders and names no child or kid activity, so it is not about the children",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i3",
+        "reason": "a music class with Theo's name on it, and he is 50 months old, so a kid activity",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i4",
+        "reason": "a checkup at a clinic for Wren, who is 18 months old",
+        "verdict": "kid",
+        "childName": "Wren"
+      }
+    ]
+  },
+  "latencyMs": 4492,
+  "inputTokens": 253,
+  "outputTokens": 735
+}

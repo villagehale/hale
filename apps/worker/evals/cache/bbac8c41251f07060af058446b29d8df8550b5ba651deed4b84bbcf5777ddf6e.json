@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says the item is a bare placeholder with no activity, which is what the item is, and that it could belong to either a child or the parent, which is why unsure follows. It is one plain clause, stays on the item text and adds no facts.",
+    "score": 5
+  }
+}

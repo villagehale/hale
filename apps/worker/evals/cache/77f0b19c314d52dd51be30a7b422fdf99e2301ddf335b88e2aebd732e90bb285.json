@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause. It names the item as a flight for a sales conference and identifies that as a work trip, which the rules treat as the parent's own. That supports the adult verdict, and every fact it uses comes from the item.",
+    "score": 5
+  }
+}

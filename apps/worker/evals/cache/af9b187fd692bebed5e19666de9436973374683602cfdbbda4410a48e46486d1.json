@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a flight check-in that names no child. It ties that to unsure, which fits the trip rule: not plainly a work trip, not plainly a family booking. It invents nothing and is one clause. The only weakness is the phrasing 'for either the parent or the child' rather than 'the parent alone or the family', since an 18-month-old would not travel alone. It is still accurate and supports the verdict.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that says what the item is (a gymnastics class) and why it is kid (it names Theo, a listed child), which supports the kid verdict. It adds no facts the item does not support, and none of the notMineHints apply.",
+    "score": 5
+  }
+}

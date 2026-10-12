@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a pediatric-style checkup scheduled for Wren, a named child aged 18 months, which supports a kid verdict. The classifier's reason says what the item is (a clinic checkup) and why it is a kid item (it is for Wren). The age matches both the family context and the title, so nothing is invented. It is a single plain clause consistent with the verdict.",
+    "score": 5
+  }
+}

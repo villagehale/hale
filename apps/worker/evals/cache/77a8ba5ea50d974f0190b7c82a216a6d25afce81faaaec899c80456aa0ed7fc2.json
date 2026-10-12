@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short clause that names the item as a work meeting, a 1:1 with a person given a surname and a team label. It correctly treats Wren Castillo as an adult who shares the 18-month-old's first name, which supports adult. Calling 'design' a 'work title' stretches it slightly, since it reads more like a team or topic than a job title, but the reading is reasonable.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "One clause says what the item is, a bare call with no name or activity, and why that makes it unsure, since it could belong to either a child or the parent. It matches the verdict and the rule for bare items, and adds no unsupported facts.",
+    "score": 5
+  }
+}

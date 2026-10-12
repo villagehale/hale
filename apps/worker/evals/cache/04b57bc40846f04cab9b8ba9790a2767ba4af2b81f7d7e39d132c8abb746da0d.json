@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls this a flight check-in, notes that no child is named, and that supports unsure under the trip rule. It is one short clause. The framing 'a trip for either the parent or the child' is slightly off. The real ambiguity is whether this is the parent's own trip or a family booking, since an 18-month-old does not fly alone. That is a small imprecision, not an invented fact.",
+    "score": 4
+  }
+}

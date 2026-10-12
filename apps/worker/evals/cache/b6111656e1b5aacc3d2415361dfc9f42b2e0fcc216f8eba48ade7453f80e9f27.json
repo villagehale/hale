@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item text means \"company quarterly meeting\". The reason correctly names what the item is, and saying it is the parent's work explains the adult verdict. That inference is supported: a toddler has no company meeting. It is one short, plain clause that invents no facts.",
+    "score": 5
+  }
+}
