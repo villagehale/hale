@@ -3,7 +3,7 @@ import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { GENERAL_ANSWER_SEARCH_ENABLED_ENV } from './answer';
-import { productionOffDomainLane, readPendingAsk } from './lane';
+import { type InboundThread, productionOffDomainLane, readPendingAsk } from './lane';
 
 /**
  * The lane's reads of the family through its PRODUCTION wiring, against the real DDL.
@@ -34,6 +34,14 @@ const structured = (payload: unknown) => ({
 });
 
 const NOW = new Date('2026-10-12T15:00:00.000Z');
+/** The parent's own text thread, a chat of their own with Hale, and a chat with others in it. */
+const DIRECT: InboundThread = { channel: 'sms', providerChatId: null, inGroup: false };
+const OWN_CHAT: InboundThread = { channel: 'imessage', providerChatId: 'chat-own', inGroup: false };
+const GROUP_CHAT: InboundThread = {
+  channel: 'imessage',
+  providerChatId: 'chat-group',
+  inGroup: true,
+};
 const minutesBefore = (minutes: number) => new Date(NOW.getTime() - minutes * 60_000);
 
 /** The lane's one client: a screen that files the text as off-topic, a sanitizer that
@@ -193,6 +201,7 @@ describe("the family's city and country, through the production wiring", () => {
       channelMessageId,
       text: 'hows the weather tomorrow',
       now: NOW,
+      thread: DIRECT,
     });
 
     expect(verdict).toMatchObject({ status: 'deflected', reply: 'Sunny, high of 14.' });
@@ -231,6 +240,7 @@ describe("the family's city and country, through the production wiring", () => {
       channelMessageId,
       text: 'hows the weather tomorrow',
       now: NOW,
+      thread: DIRECT,
     });
 
     expect(seen.search.map((content) => JSON.parse(content).place)).toEqual([
@@ -239,6 +249,121 @@ describe("the family's city and country, through the production wiring", () => {
     const sent = JSON.stringify(seen);
     expect(sent).not.toContain('A1A');
     expect(sent).not.toContain('Nova Scotia');
+  });
+
+  /** Sloane's finding 1: the lane's own postal table, not the registration radar's map,
+   * so a family outside the GTA, and one with a ZIP code, has a city too. */
+  it.each([
+    [
+      'a Canadian family outside the GTA',
+      { country: 'Canada', province: 'British Columbia', postalCode: 'V6B 1A1', areaCoarse: 'V6B' },
+      { city: 'Vancouver', country: 'Canada' },
+      ['V6B', '1A1', 'British Columbia'],
+    ],
+    [
+      'a US family',
+      { country: 'United States', province: 'Colorado', postalCode: '80202', areaCoarse: '802' },
+      { city: 'Denver', country: 'United States' },
+      ['80202', '802', 'Colorado'],
+    ],
+  ])('sends the search the city of %s, worked out from the postal code', async (_label, stored, place, never) => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { familyId, parentUserId, channelMessageId } = await seedFamily({ city: null, ...stored });
+    const { client, seen } = scripted();
+
+    await productionOffDomainLane(db.database, client).consider({
+      familyId,
+      parentUserId,
+      channelMessageId,
+      text: 'hows the weather tomorrow',
+      now: NOW,
+      thread: DIRECT,
+    });
+
+    expect(seen.search.map((content) => JSON.parse(content).place)).toEqual([place]);
+    const sent = JSON.stringify(seen);
+    for (const finer of never) expect(sent).not.toContain(finer);
+  });
+
+  /** A stored city is free text. One that holds an address is not sent in any form, and
+   * the family is asked instead. */
+  it('sends nothing of a stored city that is not a place name, and asks which city', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { familyId, parentUserId, channelMessageId } = await seedFamily({
+      country: 'Canada',
+      province: 'Ontario',
+      city: '12 Maplewick Crescent',
+      postalCode: 'M4K 1A1',
+      areaCoarse: 'M4K',
+    });
+    const { client, seen } = scripted();
+
+    await productionOffDomainLane(db.database, client).consider({
+      familyId,
+      parentUserId,
+      channelMessageId,
+      text: 'hows the weather tomorrow',
+      now: NOW,
+      thread: DIRECT,
+    });
+
+    expect(seen.search).toEqual([]);
+    expect(seen.compose.map((content) => JSON.parse(content).live)).toEqual(['missing_detail']);
+    expect(JSON.stringify(seen)).not.toMatch(/Maplewick|Crescent|redacted/);
+    expect(info.mock.calls).toContainEqual([
+      { place: 'unknown', reason: 'unusable_place' },
+      'off-domain answer: no place for this family',
+    ]);
+  });
+
+  /**
+   * A reply in a group goes to everyone in it. The family's row is not read for a text
+   * that arrived in a group, or in a thread the job does not describe, and the turn asks
+   * which city as it did before a place existed.
+   */
+  it.each([
+    ['a group thread', { ...GROUP_CHAT }, 'group_thread'],
+    ['a thread the job does not describe', { ...OWN_CHAT, inGroup: undefined }, 'thread_unknown'],
+  ])("reads no family row and sends no place in %s", async (_label, thread, reason) => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const stored = {
+      country: 'Canada',
+      province: 'Ontario',
+      city: 'Toronto',
+      postalCode: 'M4K 1A1',
+      areaCoarse: 'M4K',
+    };
+    const { familyId, parentUserId, channelMessageId } = await seedFamily(stored);
+    const { client, seen } = scripted();
+    const queries = watchQueries();
+    const turn = { familyId, parentUserId, channelMessageId, text: 'hows the weather tomorrow' };
+
+    await productionOffDomainLane(db.database, client).consider({ ...turn, now: NOW, thread });
+
+    expect(seen.search).toEqual([]);
+    expect(seen.compose.map((content) => JSON.parse(content).live)).toEqual(['missing_detail']);
+    expect(JSON.stringify(seen)).not.toContain('Toronto');
+    expect(readsOfTheFamilyRow(queries)).toEqual([]);
+    expect(info.mock.calls).toContainEqual([
+      { place: 'unknown', reason },
+      'off-domain answer: no place for this family',
+    ]);
+
+    // Positive control: the same family and text in the parent's own chat is searched
+    // for their city.
+    const own = scripted();
+    await productionOffDomainLane(db.database, own.client).consider({
+      ...turn,
+      now: NOW,
+      thread: OWN_CHAT,
+    });
+    expect(own.seen.search.map((content) => JSON.parse(content).place)).toEqual([
+      { city: 'Toronto', country: 'Canada' },
+    ]);
+    expect(readsOfTheFamilyRow(queries)).toHaveLength(1);
   });
 
   it('reads no place and sends none while the flag is dark', async () => {
@@ -259,6 +384,7 @@ describe("the family's city and country, through the production wiring", () => {
       channelMessageId,
       text: 'hows the weather tomorrow',
       now: NOW,
+      thread: DIRECT,
     });
 
     expect(seen.search).toEqual([]);
@@ -276,11 +402,15 @@ async function sentReply(input: {
   createdAt: Date;
   pending?: { question: string; missing: string | null };
   status?: 'sent' | 'delivered' | 'failed';
+  /** The thread the reply went out in. The parent's own text thread unless said. */
+  thread?: InboundThread;
 }) {
+  const thread = input.thread ?? DIRECT;
   await db.database.insert(schema.channelMessages).values({
     familyId: input.familyId,
     parentUserId: input.parentUserId,
-    channel: 'sms',
+    channel: thread.channel,
+    providerChatId: thread.providerChatId,
     direction: 'out',
     category: 'reply',
     status: input.status ?? 'sent',
@@ -314,6 +444,7 @@ describe('a question Hale left open, through the production wiring', () => {
       channelMessageId,
       text: 'Maplewood',
       now: NOW,
+      thread: DIRECT,
     });
 
     expect(seen.sanitize.map((content) => JSON.parse(content))).toEqual([
@@ -330,6 +461,67 @@ describe('a question Hale left open, through the production wiring', () => {
     });
   });
 
+  /** Sloane's finding 2, end to end: asked in the parent's own chat, and their next text
+   * comes from a group. It is read as a text of its own, and nothing of the question
+   * goes anywhere. */
+  it('does not continue a question for a text in another chat, and reads the ledger for none the job does not describe', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { familyId, parentUserId, channelMessageId } = await seedFamily(NO_PLACE);
+    await sentReply({
+      familyId,
+      parentUserId,
+      createdAt: minutesBefore(2),
+      pending: ASKED,
+      thread: OWN_CHAT,
+    });
+    const turn = { familyId, parentUserId, channelMessageId, text: 'Maplewood', now: NOW };
+    const pendingReads = (queries: string[]) =>
+      queries.filter((sql) => sql.includes('pending_question'));
+
+    const group = scripted();
+    const groupQueries = watchQueries();
+    await productionOffDomainLane(db.database, group.client).consider({
+      ...turn,
+      thread: GROUP_CHAT,
+    });
+    expect(group.seen.sanitize.map((content) => JSON.parse(content))).toEqual([
+      { text: 'Maplewood' },
+    ]);
+    // The combined question is the one thing only a continued turn searches for.
+    expect(JSON.stringify(group.seen)).not.toContain('hows the weather tomorrow in Maplewood');
+    expect(pendingReads(groupQueries)).toHaveLength(1);
+    expect(info.mock.calls).toContainEqual([
+      { pendingAsk: 'other_thread' },
+      'off-domain lane: no pending ask for this parent',
+    ]);
+    vi.restoreAllMocks();
+
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const unsaid = scripted();
+    const unsaidQueries = watchQueries();
+    await productionOffDomainLane(db.database, unsaid.client).consider({
+      ...turn,
+      thread: { ...OWN_CHAT, inGroup: undefined },
+    });
+    expect(unsaid.seen.sanitize.map((content) => JSON.parse(content))).toEqual([
+      { text: 'Maplewood' },
+    ]);
+    expect(pendingReads(unsaidQueries)).toEqual([]);
+    vi.restoreAllMocks();
+
+    // Positive control: the same text in the chat the question was asked in completes it.
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const own = scripted();
+    await productionOffDomainLane(db.database, own.client).consider({ ...turn, thread: OWN_CHAT });
+    expect(own.seen.sanitize.map((content) => JSON.parse(content))).toEqual([
+      { text: 'Maplewood', pending: ASKED },
+    ]);
+    expect(own.seen.search.map((content) => JSON.parse(content).question)).toEqual([
+      'hows the weather tomorrow in Maplewood',
+    ]);
+  });
+
   it('reads no pending ask while the flag is dark, whatever the ledger holds', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { familyId, parentUserId, channelMessageId } = await seedFamily(NO_PLACE);
@@ -343,6 +535,7 @@ describe('a question Hale left open, through the production wiring', () => {
       channelMessageId,
       text: 'Maplewood',
       now: NOW,
+      thread: DIRECT,
     });
 
     expect(seen.sanitize.map((content) => JSON.parse(content))).toEqual([{ text: 'Maplewood' }]);
@@ -353,13 +546,25 @@ describe('a question Hale left open, through the production wiring', () => {
 });
 
 describe('readPendingAsk', () => {
-  const read = (input: { familyId: string; parentUserId: string }, asOf = NOW) =>
-    readPendingAsk(db.database)({ ...input, asOf });
+  const read = (
+    input: { familyId: string; parentUserId: string },
+    asOf = NOW,
+    thread: InboundThread = DIRECT,
+  ) =>
+    readPendingAsk(db.database)({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: thread.channel,
+      providerChatId: thread.providerChatId,
+      asOf,
+    });
+  const OPEN = { status: 'open', ask: ASKED };
+  const NONE = { status: 'none' };
 
   it('returns the question the last reply left open, and an empty missing when none was kept', async () => {
     const parent = await seedFamily(NO_PLACE);
     await sentReply({ ...parent, createdAt: minutesBefore(2), pending: ASKED });
-    expect(await read(parent)).toEqual(ASKED);
+    expect(await read(parent)).toEqual(OPEN);
 
     const other = await seedFamily(NO_PLACE);
     await sentReply({
@@ -367,7 +572,10 @@ describe('readPendingAsk', () => {
       createdAt: minutesBefore(2),
       pending: { question: 'did the raptors win last night', missing: null },
     });
-    expect(await read(other)).toEqual({ question: 'did the raptors win last night', missing: '' });
+    expect(await read(other)).toEqual({
+      status: 'open',
+      ask: { question: 'did the raptors win last night', missing: '' },
+    });
   });
 
   /** One shot. Whatever Hale says next, the answer or anything else, is a newer last
@@ -377,7 +585,7 @@ describe('readPendingAsk', () => {
     await sentReply({ ...parent, createdAt: minutesBefore(10), pending: ASKED });
     await sentReply({ ...parent, createdAt: minutesBefore(5) });
 
-    expect(await read(parent)).toBeNull();
+    expect(await read(parent)).toEqual(NONE);
   });
 
   /** A text the turn itself sends while it works (the holding line) is newer than the
@@ -387,18 +595,18 @@ describe('readPendingAsk', () => {
     await sentReply({ ...parent, createdAt: minutesBefore(2), pending: ASKED });
     await sentReply({ ...parent, createdAt: new Date(NOW.getTime() + 9_000) });
 
-    expect(await read(parent)).toEqual(ASKED);
+    expect(await read(parent)).toEqual(OPEN);
   });
 
   it('does not count a send that failed as a last word', async () => {
     const parent = await seedFamily(NO_PLACE);
     await sentReply({ ...parent, createdAt: minutesBefore(10), pending: ASKED });
     await sentReply({ ...parent, createdAt: minutesBefore(5), status: 'failed' });
-    expect(await read(parent)).toEqual(ASKED);
+    expect(await read(parent)).toEqual(OPEN);
 
     const unasked = await seedFamily(NO_PLACE);
     await sentReply({ ...unasked, createdAt: minutesBefore(2), pending: ASKED, status: 'failed' });
-    expect(await read(unasked)).toBeNull();
+    expect(await read(unasked)).toEqual(NONE);
   });
 
   /** It was put to one phone. Another parent's text is not the reply to it, in the same
@@ -416,9 +624,60 @@ describe('readPendingAsk', () => {
       .values({ familyId: asked.familyId, userId: partnerId, role: 'co_parent' });
     const stranger = await seedFamily(NO_PLACE);
 
-    expect(await read({ familyId: asked.familyId, parentUserId: partnerId })).toBeNull();
-    expect(await read(stranger)).toBeNull();
+    expect(await read({ familyId: asked.familyId, parentUserId: partnerId })).toEqual(NONE);
+    expect(await read(stranger)).toEqual(NONE);
     // Positive control: the parent it was put to still has it.
-    expect(await read(asked)).toEqual(ASKED);
+    expect(await read(asked)).toEqual(OPEN);
+  });
+
+  /**
+   * Sloane's finding 2. A question is open to a text in the thread it was asked in and
+   * nowhere else: the answer goes to whoever is in the chat the next text came from.
+   */
+  it('does not read a question asked in the parent\'s own chat for a text in a group, or the reverse', async () => {
+    const OTHER = { status: 'other_thread' };
+    const inOwnChat = await seedFamily(NO_PLACE);
+    await sentReply({
+      ...inOwnChat,
+      createdAt: minutesBefore(2),
+      pending: ASKED,
+      thread: OWN_CHAT,
+    });
+    expect(await read(inOwnChat, NOW, GROUP_CHAT)).toEqual(OTHER);
+    // Positive control: the chat it was asked in still has it.
+    expect(await read(inOwnChat, NOW, OWN_CHAT)).toEqual(OPEN);
+
+    const inGroup = await seedFamily(NO_PLACE);
+    await sentReply({ ...inGroup, createdAt: minutesBefore(2), pending: ASKED, thread: GROUP_CHAT });
+    expect(await read(inGroup, NOW, OWN_CHAT)).toEqual(OTHER);
+    expect(await read(inGroup, NOW, GROUP_CHAT)).toEqual(OPEN);
+  });
+
+  /** The same chat id on another channel, and the same channel with no chat, are other
+   * threads too. A plain text thread has no chat id on either side, and is one thread. */
+  it('matches the channel and the chat, both', async () => {
+    const OTHER = { status: 'other_thread' };
+    const parent = await seedFamily(NO_PLACE);
+    await sentReply({ ...parent, createdAt: minutesBefore(2), pending: ASKED, thread: OWN_CHAT });
+
+    expect(await read(parent, NOW, { ...OWN_CHAT, channel: 'sms' })).toEqual(OTHER);
+    expect(await read(parent, NOW, { ...OWN_CHAT, providerChatId: null })).toEqual(OTHER);
+    expect(await read(parent, NOW, DIRECT)).toEqual(OTHER);
+
+    const texting = await seedFamily(NO_PLACE);
+    await sentReply({ ...texting, createdAt: minutesBefore(2), pending: ASKED });
+    expect(await read(texting, NOW, DIRECT)).toEqual(OPEN);
+    expect(await read(texting, NOW, OWN_CHAT)).toEqual(OTHER);
+  });
+
+  /** One shot across threads: Hale's last word to this parent is its last word anywhere.
+   * A later reply in the group closes the question asked in their own chat. */
+  it('finds nothing in the chat a question was asked in once Hale has answered the parent elsewhere', async () => {
+    const parent = await seedFamily(NO_PLACE);
+    await sentReply({ ...parent, createdAt: minutesBefore(10), pending: ASKED, thread: OWN_CHAT });
+    await sentReply({ ...parent, createdAt: minutesBefore(5), thread: GROUP_CHAT });
+
+    expect(await read(parent, NOW, OWN_CHAT)).toEqual(NONE);
+    expect(await read(parent, NOW, GROUP_CHAT)).toEqual(NONE);
   });
 });

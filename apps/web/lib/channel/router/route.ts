@@ -1295,6 +1295,14 @@ async function routeChannelMessageInner(
           channelMessageId: job.channel_message_id,
           text: context.body,
           now,
+          // The route is this text's own ledger row (wiring.ts): its channel, and the chat
+          // on the one channel that has chats. The group bit is the door's own, as for the
+          // holding line, and absent when the job does not say.
+          thread: {
+            channel: route.channel,
+            providerChatId: route.channel === 'imessage' ? route.chatId : null,
+            inGroup: job.in_group,
+          },
         }),
         OFF_DOMAIN_BUDGET_MS,
         OFF_DOMAIN_TIMEOUT,

@@ -20,9 +20,13 @@ import {
   SAFETY_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
   UNPLACEABLE_PROVIDER_REPLY,
+  namesAMentalCrisis,
+  namesAnEmergency,
 } from './copy';
 import {
+  type InboundThread,
   type OffDomainPorts,
+  type PendingAskRead,
   type ReplySource,
   type UnmetSignalOutcome,
   offDomainLane,
@@ -30,7 +34,7 @@ import {
   recordUnmetIntent,
 } from './lane';
 import type { MedicalReply } from './medical';
-import type { LaneReading, LaneScreenFallback } from './screen';
+import { type LaneReading, type LaneScreenFallback, createInboundLaneScreen } from './screen';
 
 /**
  * VIL-273 / boundary v3 — the lane's decisions, with no model and no database.
@@ -49,6 +53,12 @@ const FAMILY = '11111111-1111-4111-8111-111111111111';
 const PARENT = '22222222-2222-4222-8222-222222222222';
 const MESSAGE = '33333333-3333-4333-8333-333333333333';
 const NOW = new Date('2026-10-12T15:00:00.000Z');
+/** The parent's own iMessage chat with Hale, as the door reports it. */
+const DIRECT: InboundThread = { channel: 'imessage', providerChatId: 'chat-own', inGroup: false };
+/** A chat with other people in it. */
+const GROUP: InboundThread = { channel: 'imessage', providerChatId: 'chat-group', inGroup: true };
+/** A job that does not say which kind of chat it came from. */
+const UNSAID: InboundThread = { ...DIRECT, inGroup: undefined };
 const ANSWER = "Messi, for me - the closest thing to a complete player I've watched.";
 const TODAY = 'monday, oct 12, 2026';
 const MEDICAL_ANSWER =
@@ -70,7 +80,7 @@ interface Harness extends OffDomainPorts {
   todayAskedFor: string[];
   placeAskedFor: string[];
   screenCalls: number;
-  pendingAskedFor: Array<{ familyId: string; parentUserId: string; asOf: Date }>;
+  pendingAskedFor: Array<Parameters<OffDomainPorts['pendingAsk']>[0]>;
   continueSeen: Array<{ text: string; pending: PendingAsk }>;
   medicalCalls: number;
   medicalSeen: string[];
@@ -85,6 +95,8 @@ function ports(
     medical?: MedicalReply;
     /** The question Hale's last word to this parent left open, if any. */
     pending?: PendingAsk | null;
+    /** What the ledger read came back with when it is not an open question. */
+    pendingRead?: PendingAskRead;
     /** What the composer makes of the next text read beside it. */
     continued?: GeneralAnswerOutcome | NotAReply;
   } = {},
@@ -124,7 +136,9 @@ function ports(
     },
     pendingAsk: async (input) => {
       harness.pendingAskedFor.push(input);
-      return overrides.pending ?? null;
+      return overrides.pending
+        ? { status: 'open', ask: overrides.pending }
+        : (overrides.pendingRead ?? { status: 'none' });
     },
     today: async (familyId) => {
       harness.todayAskedFor.push(familyId);
@@ -153,13 +167,14 @@ function ports(
   return harness;
 }
 
-const consider = (p: OffDomainPorts, text = 'anything') =>
+const consider = (p: OffDomainPorts, text = 'anything', thread: InboundThread = DIRECT) =>
   offDomainLane(p).consider({
     familyId: FAMILY,
     parentUserId: PARENT,
     channelMessageId: MESSAGE,
     text,
     now: NOW,
+    thread,
   });
 
 describe('what each lane says', () => {
@@ -394,6 +409,33 @@ describe('what each lane says', () => {
     const untouched = ports();
     await consider(untouched, 'whats the capital of peru');
     expect(untouched.placeAskedFor).toEqual([]);
+  });
+
+  /**
+   * A reply in a group goes to everyone in it, and one that answers "the weather tomorrow"
+   * for a city names where one family lives. So the home city is read only in a thread
+   * the door said is the parent's own. In a group, or when the job does not say, the port
+   * is not read and the composer is handed the reason, which is the turn it had before
+   * the place existed: it asks which city.
+   */
+  it.each([
+    ['a group thread', GROUP, 'group_thread'],
+    ['a thread the job does not describe', UNSAID, 'thread_unknown'],
+  ] as const)("does not read the family's place in %s, and names why", async (_label, thread, reason) => {
+    const p = ports();
+    const places: unknown[] = [];
+    p.answer = {
+      ...p.answer,
+      compose: async (_text, family) => {
+        places.push(await family.place());
+        return { status: 'composed', reply: ANSWER };
+      },
+    };
+
+    await consider(p, 'hows the weather tomorrow', thread);
+
+    expect(places).toEqual([{ status: 'unknown', reason }]);
+    expect(p.placeAskedFor).toEqual([]);
   });
 
   /**
@@ -732,6 +774,7 @@ describe("today's date", () => {
         channelMessageId: MESSAGE,
         text: 'I want to die',
         now: NOW,
+        thread: DIRECT,
       }),
     ).toMatchObject({ status: 'deflected', reply: MENTAL_CRISIS_REPLY, replySource: 'composed' });
   });
@@ -795,6 +838,7 @@ describe("today's date", () => {
       channelMessageId: MESSAGE,
       text: 'whats the capital of peru',
       now: NOW,
+      thread: DIRECT,
     });
 
     expect(verdict).toMatchObject({ status: 'deflected', reply: 'Lima.', replySource: 'composed' });
@@ -806,11 +850,12 @@ describe("today's date", () => {
 
 /**
  * Sloane's finding 1, lit. A reply that left a question open keeps it on its own ledger
- * row, and the parent's next text is read beside it BEFORE the screen: "Toronto" on its
- * own is not a question about the world, and a screen that never saw the ask would send it
- * to the coach. The composer judges whether the text completes it (answer.test.ts). What
- * is asserted here is when the lane looks, what it does with each answer, and that with
- * the flag dark it neither looks nor keeps anything.
+ * row, and the parent's next text in that thread is read beside it: "Toronto" on its own
+ * is not a question about the world, and the screen files it with the family's week. The
+ * composer judges whether the text completes it (answer.test.ts). What is asserted here
+ * is when the lane looks, what it does with each answer, and that with the flag dark it
+ * neither looks nor keeps anything. That the screen reads the text first has a describe
+ * of its own below.
  */
 describe('a reply to a question Hale left open', () => {
   const PENDING: PendingAsk = { question: 'hows the weather tomorrow', missing: 'which city' };
@@ -838,14 +883,22 @@ describe('a reply to a question Hale left open', () => {
     expect(info).not.toHaveBeenCalled();
   });
 
-  it('looks for a pending ask for this parent, as of this turn, and names finding none', async () => {
+  it('looks for a pending ask for this parent, in this thread, as of this turn, and names finding none', async () => {
     lit();
     const info = quietInfo();
     const p = ports();
 
     await consider(p, 'whats the capital of peru');
 
-    expect(p.pendingAskedFor).toEqual([{ familyId: FAMILY, parentUserId: PARENT, asOf: NOW }]);
+    expect(p.pendingAskedFor).toEqual([
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        channel: 'imessage',
+        providerChatId: 'chat-own',
+        asOf: NOW,
+      },
+    ]);
     expect(p.continueSeen).toEqual([]);
     expect(p.screenCalls).toBe(1);
     expect(info.mock.calls).toEqual([
@@ -853,9 +906,45 @@ describe('a reply to a question Hale left open', () => {
     ]);
   });
 
-  /** The reply IS the general answer's turn: no screen, and no second demand signal for a
-   * question that was counted when it was first asked. */
-  it('answers the completed question without the screen, and does not count it twice', async () => {
+  /** Sloane's finding 2. A question asked in one chat is not open in another: the answer
+   * to it would go to whoever is in the chat the next text came from. */
+  it('does not continue a question that was left open in another thread, and names it', async () => {
+    lit();
+    const info = quietInfo();
+    const p = ports({ pendingRead: { status: 'other_thread' } });
+
+    const verdict = await consider(p, 'Toronto', GROUP);
+
+    expect(p.pendingAskedFor).toMatchObject([{ channel: 'imessage', providerChatId: 'chat-group' }]);
+    expect(p.continueSeen).toEqual([]);
+    expect(verdict).toMatchObject({ status: 'deflected', reply: ANSWER });
+    expect(info.mock.calls).toEqual([
+      [{ pendingAsk: 'other_thread' }, 'off-domain lane: no pending ask for this parent'],
+    ]);
+  });
+
+  /** A job that does not say whether it came from a group: nothing is read at all. */
+  it('reads no pending ask when the job does not say what kind of thread it came from', async () => {
+    lit();
+    const info = quietInfo();
+    const p = ports({ pending: PENDING });
+
+    const verdict = await consider(p, 'Toronto', UNSAID);
+
+    expect(p.pendingAskedFor).toEqual([]);
+    expect(p.continueSeen).toEqual([]);
+    expect(verdict).toMatchObject({ status: 'deflected', reply: ANSWER });
+    expect(info.mock.calls).toEqual([
+      [
+        { pendingAsk: 'not_read', reason: 'thread_unknown' },
+        'off-domain lane: no pending ask for this parent',
+      ],
+    ]);
+  });
+
+  /** Positive control for the two above: a question asked in a group is still open to
+   * the same parent's next text in that group. */
+  it('continues a question in the group thread it was asked in', async () => {
     lit();
     quietInfo();
     const p = ports({
@@ -863,10 +952,28 @@ describe('a reply to a question Hale left open', () => {
       continued: { status: 'composed', reply: 'Sunny in Toronto.', search: 'searched' },
     });
 
+    const verdict = await consider(p, 'Toronto', GROUP);
+
+    expect(p.pendingAskedFor).toMatchObject([{ channel: 'imessage', providerChatId: 'chat-group' }]);
+    expect(p.continueSeen).toEqual([{ text: 'Toronto', pending: PENDING }]);
+    expect(verdict).toMatchObject({ status: 'deflected', reply: 'Sunny in Toronto.' });
+  });
+
+  /** The reply IS the general answer's turn once the screen has read it: no second demand
+   * signal for a question that was counted when it was first asked. */
+  it('answers the completed question, and does not count it twice', async () => {
+    lit();
+    quietInfo();
+    const p = ports({
+      pending: PENDING,
+      continued: { status: 'composed', reply: 'Sunny in Toronto.', search: 'searched' },
+      read: reading({ lane: 'in_domain', category: null }),
+    });
+
     const verdict = await consider(p, 'Toronto');
 
     expect(p.continueSeen).toEqual([{ text: 'Toronto', pending: PENDING }]);
-    expect(p.screenCalls).toBe(0);
+    expect(p.screenCalls).toBe(1);
     expect(p.composeCalls).toBe(0);
     expect(p.recorded).toEqual([]);
     expect(verdict).toEqual({
@@ -975,6 +1082,255 @@ describe('a reply to a question Hale left open', () => {
       });
     }
   });
+});
+
+/**
+ * THE SCREEN READS EVERY TEXT BEFORE AN OPEN QUESTION IS CONTINUED. The sanitizer that
+ * judges whether a text answers "which city?" is not a safety screen: a reply that gives
+ * the city AND describes a symptom would be read as the answer and composed as a general
+ * question, past the medical lane and both fixed doors. The two keyword checks in front
+ * of the composer are a backstop for the words they know.
+ *
+ * Through the REAL screen and the REAL composer on one scripted client, so the order of
+ * the calls is what is under test. The sanitizer here always says the text answers the
+ * open question, which is the case that must not matter.
+ */
+describe('the screen reads a reply to an open question first', () => {
+  const PENDING: PendingAsk = { question: 'hows the weather tomorrow', missing: 'which city' };
+  const SCREEN_HEADING = 'Which lane does this text belong in';
+  const SANITIZE_HEADING = 'Take the family out, keep the question';
+
+  interface Request {
+    system?: string | Array<{ text: string }>;
+    messages: Array<{ content: string }>;
+  }
+  const structured = (payload: unknown) => ({
+    content: [{ type: 'text', text: JSON.stringify(payload) }],
+    usage: { input_tokens: 10, output_tokens: 5 },
+  });
+
+  /** One client for the turn. `calls` is the order the model stages ran in. */
+  function scripted(script: { screen: unknown; answersPending?: 'yes' | 'no' }) {
+    const calls: string[] = [];
+    const searched: string[] = [];
+    const client = () =>
+      ({
+        messages: {
+          async create(request: Request) {
+            const system =
+              typeof request.system === 'string'
+                ? request.system
+                : (request.system ?? []).map((block) => block.text).join('');
+            if (system.includes(SCREEN_HEADING)) {
+              calls.push('screen');
+              return structured(script.screen);
+            }
+            if (system.includes(SANITIZE_HEADING)) {
+              calls.push('sanitize');
+              return structured({
+                language: 'en',
+                answers_pending: script.answersPending ?? 'yes',
+                question: 'hows the weather tomorrow in Toronto',
+                missing_detail: 'none',
+                their_place: 'not_needed',
+                current_fact: 'the forecast',
+                needs_search: 'yes',
+              });
+            }
+            calls.push('compose');
+            return structured({ answer: 'Sunny in Toronto, high of 14.' });
+          },
+          stream(request: Request) {
+            calls.push('search');
+            searched.push(request.messages[0]?.content ?? '');
+            return {
+              async finalMessage() {
+                return {
+                  content: [
+                    {
+                      type: 'web_search_tool_result',
+                      tool_use_id: 'srvtoolu_1',
+                      content: [{ type: 'web_search_result', url: 'https://weather.example/f' }],
+                    },
+                    { type: 'text', text: 'Sunny tomorrow in Toronto, high of 14.' },
+                  ],
+                  stop_reason: 'end_turn',
+                  usage: { input_tokens: 10, output_tokens: 5 },
+                };
+              },
+            };
+          },
+        },
+      }) as unknown as AgentClient;
+    return { client, calls, searched };
+  }
+
+  /** The lane on the real screen and composer, with an open question on the ledger. */
+  function laneWith(turn: ReturnType<typeof scripted>) {
+    const p = ports({ pending: PENDING });
+    const lane = offDomainLane({
+      ...p,
+      screen: createInboundLaneScreen(turn.client),
+      answer: createGeneralAnswer(turn.client),
+    });
+    const run = (text: string) =>
+      lane.consider({
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        channelMessageId: MESSAGE,
+        text,
+        now: NOW,
+        thread: DIRECT,
+      });
+    return { p, run };
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  const lit = () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+  };
+
+  it('hands a reply that also describes a symptom to the medical lane, not the general answer', async () => {
+    lit();
+    const text = 'Toronto. also he has had a fever since lunch and keeps pulling at his ear';
+    // The premise: neither keyword check in front of the composer knows these words.
+    expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
+    const turn = scripted({
+      screen: { lane: 'safety_critical', category: 'medical-symptom', reason: 'x' },
+    });
+    const { p, run } = laneWith(turn);
+
+    const verdict = await run(text);
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      lane: 'safety_critical',
+      category: 'medical-symptom',
+      reply: MEDICAL_ANSWER,
+      medicalSource: 'web_grounded',
+      pendingAsk: null,
+    });
+    expect(p.medicalSeen).toEqual([text]);
+    // The open question was never read, so no sanitizer was asked whether this answers it.
+    expect(turn.calls).toEqual(['screen']);
+    expect(p.pendingAskedFor).toEqual([]);
+  });
+
+  it('answers a reply that is a mental-health crisis with the fixed crisis line', async () => {
+    lit();
+    const text = 'Toronto. honestly I do not see the point of any of it anymore';
+    expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
+    const turn = scripted({
+      screen: { lane: 'safety_critical', category: 'mental-health', reason: 'x' },
+    });
+    const { p, run } = laneWith(turn);
+
+    const verdict = await run(text);
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      lane: 'safety_critical',
+      category: 'mental-health',
+      reply: MENTAL_CRISIS_REPLY,
+      replySource: 'fixed',
+      pendingAsk: null,
+    });
+    expect(turn.calls).toEqual(['screen']);
+    expect(p.pendingAskedFor).toEqual([]);
+  });
+
+  it('sends a reply that is a parent hunting a doctor through the provider door', async () => {
+    lit();
+    const turn = scripted({
+      screen: { lane: 'provider_access', category: 'doctor-access', reason: 'x' },
+    });
+    const { p, run } = laneWith(turn);
+
+    const verdict = await run('Toronto. can you find us a family doctor there');
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      lane: 'provider_access',
+      reply: PROVIDER_ACCESS_REPLY,
+      replySource: 'fixed',
+    });
+    expect(turn.calls).toEqual(['screen']);
+    expect(p.pendingAskedFor).toEqual([]);
+  });
+
+  /** "Toronto" alone is not a question about the world, so the screen files it with the
+   * family's week. The open question is what makes it the general answer's turn. */
+  it('continues the question for a reply the screen reads as in-domain, on one search of the whole question', async () => {
+    lit();
+    const turn = scripted({ screen: { lane: 'in_domain', category: 'none', reason: 'x' } });
+    const { p, run } = laneWith(turn);
+
+    const verdict = await run('Toronto');
+
+    expect(turn.calls).toEqual(['screen', 'sanitize', 'search', 'compose']);
+    expect(turn.searched.map((content) => JSON.parse(content).question)).toEqual([
+      'hows the weather tomorrow in Toronto',
+    ]);
+    expect(verdict).toEqual({
+      status: 'deflected',
+      lane: 'off_domain_general',
+      category: 'other',
+      reply: 'Sunny in Toronto, high of 14.',
+      replySource: 'composed',
+      medicalSource: null,
+      signal: 'not_applicable',
+      pendingAsk: null,
+    });
+    expect(p.recorded).toEqual([]);
+  });
+
+  it('hands an unrelated in-domain text on to the coach as it would with nothing open', async () => {
+    lit();
+    const turn = scripted({
+      screen: { lane: 'in_domain', category: 'none', reason: 'x' },
+      answersPending: 'no',
+    });
+    const { p, run } = laneWith(turn);
+
+    const verdict = await run('can we move swim to thursday');
+
+    expect(verdict).toEqual({ status: 'in_domain', fallback: null });
+    expect(turn.calls).toEqual(['screen', 'sanitize']);
+    expect(p.recorded).toEqual([]);
+  });
+
+  /** A screen that could not run read nothing, so none of its doors saw the text. The
+   * question is left where it is and the turn goes to the coach, as a failed screen's
+   * always has. */
+  it.each(['client_unavailable', 'skill_unavailable', 'model_failed', 'unreadable'] as const)(
+    'does not continue an open question when the screen could not read the text: %s',
+    async (fallback) => {
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+      const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+      const p = ports({
+        pending: PENDING,
+        continued: { status: 'composed', reply: 'Sunny in Toronto.', search: 'searched' },
+        read: { lane: 'in_domain', category: null, fallback },
+      });
+
+      const verdict = await consider(p, 'Toronto');
+
+      expect(verdict).toEqual({ status: 'in_domain', fallback });
+      expect(p.pendingAskedFor).toEqual([]);
+      expect(p.continueSeen).toEqual([]);
+      expect(info.mock.calls).toEqual([
+        [
+          { pendingAsk: 'not_read', reason: 'screen_unavailable' },
+          'off-domain lane: no pending ask for this parent',
+        ],
+      ]);
+    },
+  );
 });
 
 /**
