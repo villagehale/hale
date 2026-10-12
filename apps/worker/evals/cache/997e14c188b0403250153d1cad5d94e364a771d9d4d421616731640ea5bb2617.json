@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A flight check-in that names no child and is not plainly a work trip is unsure under the trip rule. The classifier's reason says what the item is (a flight), why it is unsure (no child named, could be family or the parent's own), and invents nothing, all in one short clause.",
+    "score": 5
+  }
+}

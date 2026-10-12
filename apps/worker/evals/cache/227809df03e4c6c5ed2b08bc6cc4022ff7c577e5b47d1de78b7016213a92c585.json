@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It names the item as a restaurant reservation, and the table for two plausibly points to an adults' dinner rather than a family one with an 18-month-old and a 50-month-old. That supports the adult verdict, and it adds no facts the item doesn't support.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause. It says the item is a flight that names no child, and it applies the trip rule: with no child named and no sign of a work trip or family booking, the trip is unsure. Every fact in it comes from the item, and it supports the unsure verdict.",
+    "score": 5
+  }
+}

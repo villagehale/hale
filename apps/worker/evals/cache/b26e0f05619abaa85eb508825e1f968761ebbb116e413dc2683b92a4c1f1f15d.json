@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason correctly calls the item a bare 'Hold' block with no detail. It then gives the right consequence, that the item can't be attributed to anyone, and that supports the unsure verdict under the bare-item rule. It is one short clause and invents nothing.",
+    "score": 5
+  }
+}

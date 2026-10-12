@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item \"Lina 的音乐课\" means Lina's music class, and Lina is the 30-month-old child. The classifier's reason states what the item is (a music class), gives the reason for the verdict (it names Lina) and supports the kid verdict. It is one plain clause and adds nothing the item does not support.",
+    "score": 5
+  }
+}

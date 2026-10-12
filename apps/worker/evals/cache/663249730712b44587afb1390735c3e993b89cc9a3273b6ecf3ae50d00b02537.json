@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a company quarterly meeting (公司季度会议), so it is the parent's own work event. The classifier's reason says exactly that in one plain clause and supports the adult verdict without adding anything the item doesn't say.",
+    "score": 5
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a hotel reservation that names no child, so it could be a family trip or the parent's own",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a restaurant table for two, which is the parent's own dinner",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "a registration for a preschool swim class, a kid activity for the family's only child",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i3",
+        "reason": "a men's Bible study, a faith group for adults",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "a rhyme time session made for babies, so a kid activity for Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i5",
+        "reason": "a flight that names no child, so it could be a family trip or the parent's own",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a car service, which is the parent's own errand",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i7",
+        "reason": "a playdate invitation that names Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i8",
+        "reason": "a clinic appointment reminder that names no one, so it could be Wren's or the parent's",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 5204,
+  "inputTokens": 423,
+  "outputTokens": 999
+}

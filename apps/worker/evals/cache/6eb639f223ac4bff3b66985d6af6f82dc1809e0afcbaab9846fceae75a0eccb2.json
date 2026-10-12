@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says the item is a physio appointment for a shoulder, with no child named, which supports the adult verdict. Calling it the parent's own follows the rule that an appointment naming no child belongs to the parent, so it adds no new fact. It is one short plain clause covering both what the item is and why.",
+    "score": 5
+  }
+}

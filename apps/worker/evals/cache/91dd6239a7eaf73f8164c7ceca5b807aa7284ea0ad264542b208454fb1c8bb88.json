@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as another child's birthday party; the 4th birthday makes Mila a child. The rules treat that as a kid item, so it supports the verdict in one plain clause. 'Would attend' is a fair reading of a party on the family calendar.",
+    "score": 5
+  }
+}

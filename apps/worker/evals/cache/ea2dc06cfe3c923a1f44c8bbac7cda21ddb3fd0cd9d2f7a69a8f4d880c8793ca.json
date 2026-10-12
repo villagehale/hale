@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a generic errands note and says no child is named, so it cannot be assigned to anyone. That correctly identifies it as bare and ambiguous and supports the unsure verdict. It is one plain clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

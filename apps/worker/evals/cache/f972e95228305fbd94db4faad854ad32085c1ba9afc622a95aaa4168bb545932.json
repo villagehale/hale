@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one clause and it supports the unsure verdict. It says what the item is, a flight booking that names no child, and it follows the trip rule: neither plainly a family booking nor plainly the parent's own. Calling Port Haven 'a port' is a small reach from the place name, but it is harmless. Otherwise the reason is clear and accurate.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause. It names the item as a dentist cleaning and says no one is named, and that ties directly to the 'unsure' verdict beside it. It invents no facts and does not just copy the title. It falls short of a 5 because its logic, 'names no one, so could be either', runs against the classifier's own rule that an appointment with no child named is the parent's own.",
+    "score": 4
+  }
+}

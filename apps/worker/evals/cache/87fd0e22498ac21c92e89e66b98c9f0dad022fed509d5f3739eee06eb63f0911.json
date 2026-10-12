@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It says what the item is, a checkup and so a child's appointment, and it gives the grounds for the kid verdict: the item names Wren. The 18-month detail comes straight from the item text and matches Wren's age, so nothing is invented. The only flaw is the small grammatical slip of 'a 18-month' instead of 'an 18-month'.",
+    "score": 5
+  }
+}

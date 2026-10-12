@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason correctly reads the French title as a dentist appointment with no child named. It applies the rule that such an appointment belongs to the parent, which supports the adult verdict. It is one plain clause with no invented facts.",
+    "score": 5
+  }
+}

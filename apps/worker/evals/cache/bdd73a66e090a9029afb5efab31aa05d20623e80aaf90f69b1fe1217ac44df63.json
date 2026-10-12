@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a bare, detail-free 'Hold' and says it could belong to anyone, which matches the rule that a bare or ambiguous item is unsure. It is one plain clause, adds no unsupported facts, and supports the verdict given.",
+    "score": 5
+  }
+}

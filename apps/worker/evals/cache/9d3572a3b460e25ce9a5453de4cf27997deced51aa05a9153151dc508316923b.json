@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a detail-free 'Busy' block, which says what it is, and ties that to the unsure verdict in one clause with no invented facts, as the bare-item rule requires.",
+    "score": 5
+  }
+}

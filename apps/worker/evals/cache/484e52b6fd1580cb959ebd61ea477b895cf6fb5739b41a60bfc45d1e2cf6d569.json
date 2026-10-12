@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a medical checkup for Wren, which supports the kid verdict, and Wren's age matches the context. It is one clause with no invented facts. It falls short of a 5 because it mostly restates the title (checkup, Wren, 18 months, family clinic) and never says why that makes it a kid item, for example that a named child is the patient.",
+    "score": 4
+  }
+}

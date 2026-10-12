@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason calls the item a choir rehearsal, ties it to the notMineHints entry for the parent's own choir and notes that no child is named. That supports the adult verdict using only supported facts. It is one clause, though slightly wordy.",
+    "score": 5
+  }
+}

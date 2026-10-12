@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item names Theo, the family's child, together with gymnastics, which is a typical kid activity. The classifier's reason says what the item is and why it is the child's, so it supports the kid verdict. It is one short clause and adds nothing the item does not support. Calling it a \"class\" is a fair reading of the item, not an invented fact.",
+    "score": 5
+  }
+}

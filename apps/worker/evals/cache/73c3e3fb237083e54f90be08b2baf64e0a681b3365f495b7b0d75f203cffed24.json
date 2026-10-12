@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause. It says what the item is, a family room booking, and why it leads to kid: the booking names Wren and Theo. This matches the rule that a trip naming a child is a kid item. Every fact comes from the item, and the reason supports the verdict.",
+    "score": 5
+  }
+}

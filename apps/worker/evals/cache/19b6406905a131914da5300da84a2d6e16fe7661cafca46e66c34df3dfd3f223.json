@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "One plain clause that names the item as a family room booking. It ties that to the verdict through a supported fact: the booking names both children. That fits the rule that a trip naming a child is a kid item. It invents nothing and does not argue for another verdict.",
+    "score": 5
+  }
+}

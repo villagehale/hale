@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a bare 'Busy' calendar block with no detail and gives that as why it cannot be placed, which fits the unsure verdict. It is one short clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

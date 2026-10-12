@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short clause. It identifies the item as a physio appointment for a shoulder and links that to the adult verdict: a health appointment with no child named belongs to the parent. Calling it 'the parent's own' slightly asserts ownership, but that follows directly from the no-child-named rule, so it is not an invented fact.",
+    "score": 5
+  }
+}

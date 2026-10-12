@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It says what the item is (a spin class, a fitness activity). Spin cycling is not something an 18-month-old or a roughly 4-year-old would do, so it fits the adult verdict. The reason adds no unsupported facts.",
+    "score": 5
+  }
+}

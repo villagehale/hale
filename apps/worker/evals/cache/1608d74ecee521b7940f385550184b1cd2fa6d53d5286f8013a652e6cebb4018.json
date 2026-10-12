@@ -1,0 +1,45 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "basketball tryouts named for Juno, a teenager, so a kid's activity",
+        "verdict": "kid",
+        "childName": "Juno"
+      },
+      {
+        "ref": "i1",
+        "reason": "driving lesson named for Juno, a teenager, so a kid's lesson",
+        "verdict": "kid",
+        "childName": "Juno"
+      },
+      {
+        "ref": "i2",
+        "reason": "soccer practice named for Ezra, so a kid's activity",
+        "verdict": "kid",
+        "childName": "Ezra"
+      },
+      {
+        "ref": "i3",
+        "reason": "tennis with Marco, who is not one of the children, and no child is named, so it could be the parent's own",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "tax filing deadline is the parent's own money matter",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i5",
+        "reason": "a bare call with no name or activity, so it could be a child's or the parent's",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 2526,
+  "inputTokens": 236,
+  "outputTokens": 327
+}

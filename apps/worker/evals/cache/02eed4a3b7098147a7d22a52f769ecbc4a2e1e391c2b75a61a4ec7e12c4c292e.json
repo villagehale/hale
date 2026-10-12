@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is just the single initial \"J.\", which matches no child and carries no context. The classifier's reason says what the item is (an initial alone) and why that means unsure (no sign of whose it is). It is one short clause, consistent with the verdict, and invents nothing.",
+    "score": 5
+  }
+}

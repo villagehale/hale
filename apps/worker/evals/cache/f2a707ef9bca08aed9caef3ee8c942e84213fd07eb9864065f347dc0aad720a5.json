@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a car service reminder) and why that makes it the parent's own errand, in one short clause that matches the adult verdict and adds no unsupported facts.",
+    "score": 5
+  }
+}

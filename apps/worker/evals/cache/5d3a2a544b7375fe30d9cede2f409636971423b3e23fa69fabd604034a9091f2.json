@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "One plain clause naming the item as a bare 'Busy' block with no detail, which correctly supports unsure; it adds no unsupported facts.",
+    "score": 5
+  }
+}

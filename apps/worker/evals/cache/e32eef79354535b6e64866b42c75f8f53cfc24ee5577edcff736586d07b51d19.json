@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause. It correctly calls the item a bare placeholder with no detail and says that ambiguity is why it is unsure, which matches the verdict. It adds no unsupported facts. 'Could be anyone's' is slightly loose phrasing, but it still explains the verdict.",
+    "score": 5
+  }
+}

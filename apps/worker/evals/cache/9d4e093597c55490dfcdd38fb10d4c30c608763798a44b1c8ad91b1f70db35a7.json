@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is, a hotel booking. It ties that to the 'a hotel stay' notMineHints entry, and under the rules a hint match makes the item the parent's own. It also correctly notes that Theo is not named, so every point backs the adult verdict and nothing is invented. It is a single plain clause, though slightly longer than it needs to be.",
+    "score": 5
+  }
+}

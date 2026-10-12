@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short clause. It correctly reads the French title as a swim class, notes that it names Lina, who is a listed child, and ties that to the kid verdict without adding any unsupported fact.",
+    "score": 5
+  }
+}

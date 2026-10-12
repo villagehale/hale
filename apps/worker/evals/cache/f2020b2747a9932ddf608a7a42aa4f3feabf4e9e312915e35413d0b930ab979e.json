@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names what the item is (a car service reminder) and why that makes it adult (it is the parent's own errand). It is one plain clause, invents no facts, and supports the given verdict.",
+    "score": 5
+  }
+}

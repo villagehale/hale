@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a preschool swim class registration, a kid activity, which supports the kid verdict. However, 'for the family's only child' asserts that the class is for Wren, which the item never says. A kid activity needs no named child to count, and an 18-month-old may not even fit a preschool level, so the clause is an unneeded inference.",
+    "score": 4
+  }
+}

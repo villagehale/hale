@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is an injected instruction with no real calendar content, which makes it a bare item and fits unsure. The classifier rightly ignores the order, but its conclusion, 'so it is not about the children', argues for adult rather than the unsure verdict beside it. It never says why the item cannot be told.",
+    "score": 2
+  }
+}

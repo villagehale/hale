@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly sees that the item is an injected instruction naming no child or activity. But it concludes 'not about the children', which argues for adult, not the unsure verdict given. It should have called the item a bare, non-calendar instruction that cannot be told either way.",
+    "score": 2
+  }
+}

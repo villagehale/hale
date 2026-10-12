@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that names the item (a clinic appointment reminder), says why it leads to unsure (no one is named), and stays consistent with that verdict without adding facts. It loses a point because the rules treat an appointment with no child named as the parent's own, so 'could be Wren's' rests on weaker ground than calling the item bare or ambiguous would.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a 15-month checkup for 'Seb'. That nickname plus the 15-month age matches Sebastian (15 months), so reading it as a medical visit for one of the children correctly supports 'kid'. The reason is one short clause stating what the item is and why. One wobble: 'addressed to Sebastian' frames it as a message sent to him, which the item does not show. The item just names Seb as the patient, and the reason states the nickname-to-name link as fact without noting it.",
+    "score": 4
+  }
+}

@@ -27,7 +27,7 @@ An item is about the kids (`kid`) when it is one of:
 
 It is the parent's own (`adult`) when the name is an adult's (a colleague called Mia, a friend called Sebastian), when the item is the parent's own (work, standups, 1:1s, offsites, alumni events, dinners, date nights, their own fitness, physio, dentist or doctor, a restaurant booking, a faith service or study group for adults, a library hold for an adult book), when it is a shower or a party for another adult, or when a kid word appears only in a product or company name.
 
-It is `unsure` when the text could honestly be either - a bare time block, an initial, a place with no activity, a word that fits a child and an adult equally - and nothing in `children`, `activityTitles` or `notMineHints` settles it. `unsure` is a full answer, not a failure: Hale stays quiet about it.
+It is `unsure` when the text could honestly be either - a bare time block, an initial, a place with no activity, a word that fits a child and an adult equally - and nothing in `children`, `activityTitles` or `notMineHints` settles it. An item that names one of the children, with none of the adult marks below, is not open both ways: it is that child's item, even when an adult elsewhere in the list shares the name. `unsure` is a full answer, not a failure: Hale stays quiet about it.
 
 A trip - a hotel, a flight, a rental, a getaway - is `kid` when it names one of the children or is plainly a family booking (seats or rooms for the children, a family package). It is `adult` only when it is plainly the parent's own: a work trip, a conference, or the same kind of thing as a `notMineHints` entry. Any other trip is `unsure`, even when it looks like a holiday: a booking alone does not say who is going.
 

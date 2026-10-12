@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason says what the item is (a restaurant booking for two) and why that makes it the parent's own (a dinner for adults with no child named), which matches the adult verdict. It is one plain clause and adds no unsupported fact.",
+    "score": 5
+  }
+}

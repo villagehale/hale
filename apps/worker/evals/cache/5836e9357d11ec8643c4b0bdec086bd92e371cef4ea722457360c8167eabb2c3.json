@@ -1,0 +1,57 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "c0",
+        "reason": "a swim session at a pool, named for Mia, who is a child",
+        "verdict": "kid",
+        "childName": "Mia"
+      },
+      {
+        "ref": "c1",
+        "reason": "a work 1:1 with a colleague's surname and work title, so the parent's own",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "c2",
+        "reason": "a birthday party named for Mia, one of the children",
+        "verdict": "kid",
+        "childName": "Mia"
+      },
+      {
+        "ref": "c3",
+        "reason": "an alumni dinner RSVP, the parent's own social event",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e0",
+        "reason": "a 15-month checkup from a doctor, addressed to Sebastian, one of the children",
+        "verdict": "kid",
+        "childName": "Sebastian"
+      },
+      {
+        "ref": "e1",
+        "reason": "a coffee invitation sent by Sebastian, who is an adult and not one of the children",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e2",
+        "reason": "a library hold for a novel for grown-ups, the parent's own book",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e3",
+        "reason": "a Parent and Tot Swim class matching a known kid activity, made for toddlers, so Sebastian at 15 months",
+        "verdict": "kid",
+        "childName": "Sebastian"
+      }
+    ]
+  },
+  "latencyMs": 4924,
+  "inputTokens": 328,
+  "outputTokens": 969
+}
