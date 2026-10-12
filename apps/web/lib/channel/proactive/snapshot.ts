@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, max, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lt, max, ne, sql } from 'drizzle-orm';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { familyHasTeenager } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
@@ -107,7 +107,7 @@ const MIN_WINDOW = 60;
 /** The days ahead the decider sees: the calendar, free windows and a clock-less hold. */
 export const SNAPSHOT_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const RECENT_PARENT_TEXTS = 5;
+export const RECENT_PARENT_TEXTS = 5;
 const DEADLINE_ROWS = 40;
 const WATCH_ROWS = 20;
 /**
@@ -480,12 +480,13 @@ export async function loadFamilySnapshot(
             lastReviewAt === null ? undefined : gt(schema.channelMessages.createdAt, lastReviewAt),
           ),
         )
-        .orderBy(asc(schema.channelMessages.createdAt));
+        .orderBy(desc(schema.channelMessages.createdAt))
+        .limit(RECENT_PARENT_TEXTS);
   const withheld = (text: string): string => (context.teenInHousehold ? WITHHELD_LABEL : text);
   const shown = newTexts
+    .reverse()
     .map((row) => ({ author: row.parentUserId, text: boundedLine(row.body ?? '') }))
-    .filter((row) => row.text.length > 0)
-    .slice(-RECENT_PARENT_TEXTS);
+    .filter((row) => row.text.length > 0);
   const snapshot: FamilySnapshot = {
     timeZone: context.timeZone,
     now: input.now.toISOString(),

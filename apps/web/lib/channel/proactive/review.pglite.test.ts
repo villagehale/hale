@@ -19,7 +19,13 @@ import {
   mark,
   runProactiveReview,
 } from './review';
-import { CALENDAR_ROWS, type FamilySnapshot, SNAPSHOT_DAYS, WITHHELD_LABEL } from './snapshot';
+import {
+  CALENDAR_ROWS,
+  type FamilySnapshot,
+  RECENT_PARENT_TEXTS,
+  SNAPSHOT_DAYS,
+  WITHHELD_LABEL,
+} from './snapshot';
 import { LINE_CHARS, type ToolCandidate, boundedLine } from './tools';
 
 /**
@@ -1215,13 +1221,16 @@ describe('runProactiveReview', () => {
     return { pace, why };
   }
 
-  function harnessHearingTheWriterNote(): Harness & { notes: (string | null)[] } {
+  function harnessHearingTheWriterNote(
+    over: Partial<ProactiveReviewDeps> = {},
+  ): Harness & { notes: (string | null)[] } {
     const notes: (string | null)[] = [];
     const h = harness(sendAll, {
       compose: async ({ cadenceNote }): Promise<WriterResult> => {
         notes.push(cadenceNote);
         return { message: MESSAGE };
       },
+      ...over,
     });
     return Object.assign(h, { notes });
   }
@@ -1256,6 +1265,67 @@ describe('runProactiveReview', () => {
     expect(snapshot?.frequencyPreference).toEqual({ direction: 'less', note: pace });
     expect(snapshot?.priorDecisions.map((prior) => prior.reason)).toEqual([why]);
     expect(h.notes).toEqual([pace]);
+  });
+
+  it('composes a claimed group’s one bubble without one parent’s own pace words, and names the withhold', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const coParentId = await addCoParent();
+    const { pace } = await storedPaceAndPriorHold();
+    const h = harnessHearingTheWriterNote({
+      outboundTarget: async () => ({ channel: 'group', chatId: 'chat-household', familyId }),
+      loadRecipients: async () => [
+        { parentUserId, timeZone: TZ, role: 'primary_parent' },
+        { parentUserId: coParentId, timeZone: TZ, role: 'co_parent' },
+      ],
+      fetch: (async () =>
+        Response.json(
+          { message: { id: 'msg-group-1' } },
+          { status: 201 },
+        )) as unknown as typeof fetch,
+    });
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ sent: 1 });
+    expect(h.snapshots[0]?.frequencyPreference).toEqual({ direction: 'less', note: pace });
+    expect(h.notes).toEqual([null]);
+    const [sent] = await audits('proactive_nudge_sent');
+    expect(sent?.after).toMatchObject({ cadenceNote: 'withheld_group', mode: 'live' });
+  });
+
+  it('reads only the newest parent texts the decider is shown on its first look', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const texts = Array.from({ length: RECENT_PARENT_TEXTS + 3 }, (_, i) => `parent text ${i}`);
+    for (const [i, text] of texts.entries()) {
+      await parentText(text, new Date(THURSDAY_EVENING.getTime() - (texts.length - i) * 60_000));
+    }
+    await enqueue('nudge:weather:w41');
+    const h = harness(sendAll);
+
+    const returned: unknown[] = [];
+    const query = db.client.query.bind(db.client);
+    db.client.query = (async (text: string, ...rest: unknown[]) => {
+      const result = await (query as (...a: unknown[]) => Promise<{ rows: unknown[] }>)(
+        text,
+        ...rest,
+      );
+      returned.push(result.rows);
+      return result;
+    }) as typeof db.client.query;
+    try {
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    } finally {
+      db.client.query = query;
+    }
+
+    const newest = texts.slice(-RECENT_PARENT_TEXTS);
+    expect(h.snapshots[0]?.recentParentTexts).toEqual(newest);
+    const read = JSON.stringify(returned);
+    for (const older of texts.slice(0, -RECENT_PARENT_TEXTS)) {
+      expect(read).not.toContain(`"${older}"`);
+    }
+    for (const shown of newest) expect(read).toContain(`"${shown}"`);
   });
 
   it('reads no outbound body and no parent text from before the last look', async () => {
@@ -1543,5 +1613,63 @@ describe('runProactiveReview', () => {
     });
     await runProactiveReview(db.database, h.deps, hourAfter);
     expect(h.snapshots).toHaveLength(2);
+  });
+
+  describe('the composed text on a candidate row', () => {
+    const WHAT = 'Pip and Juno would love indoor climbing at Riverside Rocks';
+
+    it('keeps none once the row is sent, and the parent’s thread still carries what was said', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const id = await enqueue('nudge:weather:w41', { what: WHAT });
+      const h = harness(sendAll);
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(await candidate(id)).toMatchObject({ status: 'sent', what: '' });
+      const thread = await db.database
+        .select({ content: schema.messages.content })
+        .from(schema.messages);
+      expect(thread.map((row) => row.content)).toEqual([MESSAGE]);
+    });
+
+    it('keeps none once the row is shadowed or dropped', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+      const shadowed = await enqueue('nudge:weather:w41', { what: WHAT });
+      await runProactiveReview(db.database, harness(sendAll).deps, THURSDAY_EVENING);
+      expect(await candidate(shadowed)).toMatchObject({ status: 'shadowed', what: '' });
+
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const dropped = await enqueue('nudge:weather:w42', { what: WHAT });
+      const h = harness((snapshot) => ({ ...sendAll(snapshot), action: 'drop' }));
+      await runProactiveReview(
+        db.database,
+        h.deps,
+        new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+      );
+      expect(await candidate(dropped)).toMatchObject({ status: 'dropped', what: '' });
+    });
+
+    it('keeps it while the row is queued or held, for the writer that may still need it', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const chosen = await enqueue('nudge:weather:w41', { what: WHAT });
+      const unchosen = await enqueue('nudge:weather:w42', { what: WHAT });
+      const h = harness((snapshot) => ({
+        ...sendAll(snapshot),
+        action: 'hold',
+        itemIds: [chosen],
+        holdUntil: '2026-10-09T21:00:00.000Z',
+      }));
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(await candidate(chosen)).toMatchObject({ status: 'held', what: WHAT });
+      expect(await candidate(unchosen)).toMatchObject({
+        status: 'held',
+        reason: 'not_chosen',
+        what: WHAT,
+      });
+      const queued = await enqueue('nudge:weather:w43', { what: WHAT });
+      expect(await candidate(queued)).toMatchObject({ status: 'queued', what: WHAT });
+    });
   });
 });

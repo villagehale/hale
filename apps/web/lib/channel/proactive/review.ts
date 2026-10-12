@@ -143,7 +143,7 @@ export function defaultProactiveReviewDeps(): ProactiveReviewDeps {
   };
 }
 
-/** True when Linq has flagged or throttled any Hale sending line. */
+/** True when Linq has flagged or throttled Hale's sending line, the one line the door stores. */
 export async function readLinePaused(database: Database): Promise<boolean> {
   const [row] = await database
     .select({ paused: schema.linqLineHealth.paused })
@@ -176,7 +176,7 @@ export const FAMILY_ROWS = 40;
 /**
  * An infra bound on the holds still on their clock that one review reads, newest first.
  * They are never offered; they only show the decider its prior holds and anchor the
- * same-day rule (hold.ts), so the oldest past it go unread, by name.
+ * fresh-signal check (latestHold), so the oldest past it go unread, by name.
  */
 export const WAITING_ROWS = 40;
 const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
@@ -380,7 +380,12 @@ async function audit(
   });
 }
 
-/** Moves this family's candidate rows. The family is in the write, not only the caller. */
+/**
+ * Moves this family's candidate rows. The family is in the write, not only the caller.
+ * The composed text lives on a row only while it is queued or held, where the writer may
+ * still need it: a row that settles keeps none, since dedupe reads only its key, and a
+ * text that went is already in the parent's own thread (finalize.ts).
+ */
 export async function mark(
   database: Database,
   familyId: string,
@@ -398,6 +403,7 @@ export async function mark(
     .update(schema.proactiveCandidates)
     .set({
       status: set.status,
+      ...(set.status === 'held' ? {} : { what: '' }),
       reason: set.reason,
       decision: set.decision,
       holdUntil: set.holdUntil ? new Date(set.holdUntil) : null,
@@ -700,6 +706,7 @@ async function reviewFamily(
     chosen,
     // A teenager's household withholds the note from the decider; the writer gets none.
     cadenceNote: context.teenInHousehold ? null : (snapshot.frequencyPreference?.note ?? null),
+    noteParent: owner,
     reason,
     now,
     summary,
@@ -734,6 +741,8 @@ async function sendChosen(
     familyId: string;
     chosen: QueuedItem[];
     cadenceNote: string | null;
+    /** Whose own words the note is: never composed into a copy anyone else reads (rule #5). */
+    noteParent: string | null;
     reason: string;
     now: Date;
     summary: ProactiveReviewSummary;
@@ -782,7 +791,12 @@ async function sendChosen(
   }
 
   const gate = deps.buildGate(database);
-  const gated: Array<{ parentUserId: string; items: QueuedItem[]; optOutFull: boolean }> = [];
+  const gated: Array<{
+    parentUserId: string;
+    items: QueuedItem[];
+    members: string[];
+    optOutFull: boolean;
+  }> = [];
   for (const copy of copies) {
     const verdict = await gateCopy(gate, familyId, copy, now);
     if ('refused' in verdict) {
@@ -798,6 +812,7 @@ async function sendChosen(
     gated.push({
       parentUserId: copy.parentUserId,
       items: copy.items,
+      members: copy.members,
       optOutFull: verdict.optOutFull,
     });
   }
@@ -806,20 +821,34 @@ async function sendChosen(
   // One text per distinct set of items: parents who share the same items share one
   // composition, and a parent is never texted about an item that is not theirs.
   const writtenFor = new Map<string, WriterResult>();
-  const voiced: Array<(typeof gated)[number] & { message: string }> = [];
+  const voiced: Array<
+    (typeof gated)[number] & {
+      message: string;
+      noteWithheld: 'withheld_group' | 'withheld_not_owner' | null;
+    }
+  > = [];
   for (const copy of gated) {
+    const noteWithheld =
+      input.cadenceNote === null
+        ? null
+        : target.channel === 'group'
+          ? 'withheld_group'
+          : copy.members.some((member) => member !== input.noteParent)
+            ? 'withheld_not_owner'
+            : null;
+    const cadenceNote = noteWithheld ? null : input.cadenceNote;
     const distinct = new Map<string, ToolCandidate>();
     for (const item of copy.items) {
       const key = `${item.kind}\n${item.what}`;
       if (!distinct.has(key)) distinct.set(key, writerItem(item));
     }
-    const setKey = [...distinct.keys()].sort().join('\n\n');
+    const setKey = [cadenceNote ?? '', ...[...distinct.keys()].sort()].join('\n\n');
     let written = writtenFor.get(setKey);
     if (!written) {
       written = await deps.compose({
         items: [...distinct.values()],
         client: deps.client,
-        cadenceNote: input.cadenceNote,
+        cadenceNote,
       });
       writtenFor.set(setKey, written);
     }
@@ -828,7 +857,7 @@ async function sendChosen(
       summary.held += 1;
       continue;
     }
-    voiced.push({ ...copy, message: written.message });
+    voiced.push({ ...copy, message: written.message, noteWithheld });
   }
 
   const finalizer: SendFinalizerPorts = {
@@ -884,6 +913,7 @@ async function sendChosen(
           ...(labels.length === 1 ? { kind: labels[0] } : {}),
           kinds: labels,
           itemIds: coveredIds,
+          ...(copy.noteWithheld ? { cadenceNote: copy.noteWithheld } : {}),
           mode: 'live',
         },
       },
