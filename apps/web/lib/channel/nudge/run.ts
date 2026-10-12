@@ -60,6 +60,7 @@ import {
 } from '~/lib/channel/proactive/finalize';
 import {
   type CadenceLane,
+  errorLabel,
   handOffProactive,
   isQueuedForDecider,
 } from '~/lib/channel/proactive/queue';
@@ -1094,9 +1095,13 @@ export async function runNudgeCron(
         result.skips[key] = (result.skips[key] ?? 0) + count;
       }
     } catch (err) {
-      // One family's bad data must not silence every family after it.
+      // One family's bad data must not silence every family after it. Never the error
+      // itself: a refused candidate insert reports the row, composed text and all.
       result.failed += 1;
-      console.error({ err, familyId: family.familyId }, 'nudge: family sweep failed');
+      console.error(
+        { err: errorLabel(err), familyId: family.familyId },
+        'nudge: family sweep failed',
+      );
     }
   }
   return result;

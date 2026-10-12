@@ -17,6 +17,17 @@ import { proactiveCadence } from './flag';
 
 export type CadenceLane = 'immediate' | 'candidate';
 
+/**
+ * What a log may say about a failed candidate write or review: the error's class and its
+ * code. Never the error itself: Postgres reports a refused row in the detail ("Failing
+ * row contains ..."), and a candidate row carries the composed, child-named text.
+ */
+export function errorLabel(err: unknown): string {
+  if (!(err instanceof Error)) return 'unknown';
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' ? `${err.name}:${code}` : err.name;
+}
+
 export type ChannelCategory = (typeof schema.channelMessages.$inferInsert)['category'];
 
 export interface CandidateDraft {

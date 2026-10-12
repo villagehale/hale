@@ -64,6 +64,7 @@ import { type ProactiveCadence, proactiveCadence, requestedCadence, unroutedKind
 import { type OpenCandidate, planHourlyReview } from './hold';
 import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
+import { errorLabel } from './queue';
 import {
   type FamilySnapshot,
   SNAPSHOT_DAYS,
@@ -368,12 +369,6 @@ function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CAP, kind);
 }
 
-function errorLabel(err: unknown): string {
-  if (!(err instanceof Error)) return 'unknown';
-  const code = (err as { code?: unknown }).code;
-  return typeof code === 'string' ? `${err.name}:${code}` : err.name;
-}
-
 /**
  * A hold never outlives what it holds. Past the earliest `worthlessAfter` of the chosen
  * items the row would sit in the waiting set (hold.ts), where no signal reopens it. With
@@ -487,6 +482,18 @@ async function holdByName(
     ...(held.parentUserId ? { parentUserId: held.parentUserId } : {}),
     mode: 'live',
   });
+}
+
+/** A refusal's code as Hale or Linq names one: `timeout`, `http_429`, a numeric code. */
+const DELIVERY_CODE = /^[a-z0-9_]{1,32}$/i;
+
+/**
+ * Why a text did not leave, as a name. A skipped send carries the provider's own code
+ * string, which nothing else bounds: only a short code is stored, and anything else is
+ * `other`, so no provider wording reaches the row or the audit trail.
+ */
+function deliveryHold(reason: string): string {
+  return `delivery_${DELIVERY_CODE.test(reason) ? reason : 'other'}`;
 }
 
 /** The next end of the gate's quiet window, in this parent's own zone. */
@@ -904,7 +911,7 @@ async function sendChosen(
       // A group cap names when it resets; that is the hold's clock.
       const holdUntil =
         delivered.status === 'held' && 'until' in delivered ? delivered.until : undefined;
-      await holdByName(database, familyId, copy.items, `delivery_${delivered.reason}`, now, {
+      await holdByName(database, familyId, copy.items, deliveryHold(delivered.reason), now, {
         holdUntil,
       });
       summary.held += 1;

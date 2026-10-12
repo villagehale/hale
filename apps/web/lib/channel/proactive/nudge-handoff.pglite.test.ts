@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -317,6 +318,27 @@ describe('the nudge hand-off', () => {
     expect(again).toMatchObject({ sent: 0, queued: 0, deduped: 1 });
     expect(transport.sent).toEqual([]);
     expect(await candidates()).toHaveLength(1);
+  });
+
+  it('logs a refused hand-off by its error class and code, never the row it carried', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    // Postgres reports a refused row in the error's detail: "Failing row contains (...)".
+    await db.exec(
+      "alter table proactive_candidates add constraint refuse_nudges check (kind <> 'nudge')",
+    );
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const transport = new FakeTransport();
+    try {
+      const result = await runNudgeCron(db.database, deps(transport), MONDAY);
+      expect(result).toMatchObject({ failed: 1, sent: 0, queued: 0 });
+    } finally {
+      await db.exec('alter table proactive_candidates drop constraint refuse_nudges');
+    }
+
+    const logged = errors.mock.calls.find(([, line]) => line === 'nudge: family sweep failed');
+    expect(logged?.[0]).toEqual({ err: 'error:23514', familyId });
+    expect(inspect(errors.mock.calls, { depth: null })).not.toContain('Toddler drop-in');
+    errors.mockRestore();
   });
 
   it('runs a requested live as shadow while any class is unrouted', async () => {

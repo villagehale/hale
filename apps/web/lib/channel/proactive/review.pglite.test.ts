@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey } from '~/lib/channel/weekday-care/key';
@@ -668,6 +669,33 @@ describe('runProactiveReview', () => {
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
     expect(h.transport.sent).toEqual([]);
     expect(await candidate(id)).toMatchObject({ status: 'held', reason: 'unvoiced:no_client' });
+  });
+
+  it('holds an undelivered text by the provider’s code, and by `other` when that is not a short code', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const refusedWith = (code: string) =>
+      harness(sendAll, {
+        transport: {
+          send: async () => {
+            throw new LinqSendError(code, 400, true);
+          },
+        },
+      });
+
+    const coded = await enqueue('nudge:weather:w41');
+    await runProactiveReview(db.database, refusedWith('3001').deps, THURSDAY_EVENING);
+    expect(await candidate(coded)).toMatchObject({ status: 'held', reason: 'delivery_3001' });
+
+    const worded = await enqueue('nudge:weather:w42');
+    const echoed = `rejected: "${MESSAGE}" ${'x'.repeat(400)}`;
+    await runProactiveReview(db.database, refusedWith(echoed).deps, HOUR_AFTER);
+    expect(await candidate(worded)).toMatchObject({ status: 'held', reason: 'delivery_other' });
+
+    const held = await audits('proactive_cadence_held');
+    expect(held.map((row) => row.after)).toEqual([
+      { reason: 'delivery_3001', itemIds: [coded], mode: 'live' },
+      { reason: 'delivery_other', itemIds: [coded, worded], mode: 'live' },
+    ]);
   });
 
   it('names a family with no primary parent instead of guessing its zone', async () => {
