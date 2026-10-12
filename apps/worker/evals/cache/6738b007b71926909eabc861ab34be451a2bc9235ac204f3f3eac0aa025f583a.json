@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent explicitly asked to be texted less, and this candidate is a non-urgent, non-requested nudge with no deadline — it does not meet the bar to send to a parent who has asked for reduced contact.",
+    "action": "drop",
+    "item_ids": [
+      "extra-idea"
+    ],
+    "hold_until": null,
+    "frequency_direction": "less",
+    "frequency_note": "\"Can you text me less?\""
+  },
+  "stopReason": "tool_use"
+}

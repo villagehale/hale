@@ -49,7 +49,8 @@ describe('the decider tool schema', () => {
       'action',
       'item_ids',
       'hold_until',
-      'frequency_preference',
+      'frequency_direction',
+      'frequency_note',
     ]);
     expect(DECIDER_TOOL_SCHEMA.additionalProperties).toBe(false);
     expect(DECIDER_TOOL_SCHEMA.required).toEqual([
@@ -57,7 +58,8 @@ describe('the decider tool schema', () => {
       'action',
       'item_ids',
       'hold_until',
-      'frequency_preference',
+      'frequency_direction',
+      'frequency_note',
     ]);
   });
 });
@@ -70,7 +72,8 @@ describe('parseDeciderDecision', () => {
         action: 'hold',
         item_ids: ['a'],
         hold_until: '2026-10-09T12:00:00Z',
-        frequency_preference: { direction: 'less', note: 'text me less' },
+        frequency_direction: 'less',
+        frequency_note: 'text me less',
       }),
     ).toEqual({
       reason: 'two texts unanswered',
@@ -87,12 +90,31 @@ describe('parseDeciderDecision', () => {
       action: 'send_now',
       item_ids: ['a'],
       hold_until: null,
-      frequency_preference: null,
+      frequency_direction: null,
+      frequency_note: null,
     };
     expect(parseDeciderDecision({ ...base, reason: '  ' })).toBeNull();
     expect(parseDeciderDecision({ ...base, action: 'later' })).toBeNull();
     expect(parseDeciderDecision({ ...base, text: 'hi' })).toBeNull();
     expect(parseDeciderDecision(base)?.action).toBe('send_now');
+  });
+
+  it('reads a pace only as a direction with the parent’s note, never half of one', () => {
+    const base = {
+      reason: 'they asked for less',
+      action: 'drop',
+      item_ids: ['a'],
+      hold_until: null,
+    };
+    expect(
+      parseDeciderDecision({ ...base, frequency_direction: 'less', frequency_note: null }),
+    ).toBeNull();
+    expect(
+      parseDeciderDecision({ ...base, frequency_direction: null, frequency_note: 'less please' }),
+    ).toBeNull();
+    expect(
+      parseDeciderDecision({ ...base, frequency_direction: 'sometimes', frequency_note: 'x' }),
+    ).toBeNull();
   });
 
   it('rejects a hold time that is not a time', () => {
@@ -102,7 +124,8 @@ describe('parseDeciderDecision', () => {
         action: 'hold',
         item_ids: ['a'],
         hold_until: 'Friday evening',
-        frequency_preference: null,
+        frequency_direction: null,
+        frequency_note: null,
       }),
     ).toBeNull();
   });

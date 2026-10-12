@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "sat-lib is dropped because Saturday is an all-day commitment so it has no fitting free window; sun-lib fits the Sunday afternoon free window (12:30–20:00) and is a weekend find read at Thursday 6:00 PM, so it is sent now for planning lead time.",
+    "action": "send_now",
+    "item_ids": [
+      "sun-lib"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

@@ -70,18 +70,19 @@ export const DECIDER_TOOL_SCHEMA = {
       type: ['string', 'null'],
       description: 'ISO time to look again when holding; null otherwise or with no clock.',
     },
-    frequency_preference: {
-      type: ['object', 'null'],
-      additionalProperties: false,
-      properties: {
-        direction: { type: 'string', enum: ['less', 'more'] },
-        note: { type: 'string' },
-      },
-      required: ['direction', 'note'],
+    // Two flat fields, not one nullable object: in this non-strict tool the model has
+    // returned the object as a string of JSON, which no parse should guess its way back from.
+    frequency_direction: {
+      type: ['string', 'null'],
+      enum: ['less', 'more', null],
       description: "Set only when the parent's own words asked for a different pace.",
     },
+    frequency_note: {
+      type: ['string', 'null'],
+      description: 'With frequency_direction: what the parent said, in one line. Null otherwise.',
+    },
   },
-  required: ['reason', 'action', 'item_ids', 'hold_until', 'frequency_preference'],
+  required: ['reason', 'action', 'item_ids', 'hold_until', 'frequency_direction', 'frequency_note'],
 } satisfies Anthropic.Tool.InputSchema;
 
 const decisionSchema = z
@@ -93,12 +94,11 @@ const decisionSchema = z
       .string()
       .refine((value) => !Number.isNaN(Date.parse(value)))
       .nullable(),
-    frequency_preference: z
-      .object({ direction: z.enum(['less', 'more']), note: z.string() })
-      .strict()
-      .nullable(),
+    frequency_direction: z.enum(['less', 'more']).nullable(),
+    frequency_note: z.string().nullable(),
   })
-  .strict();
+  .strict()
+  .refine((value) => (value.frequency_direction === null) === (value.frequency_note === null));
 
 export function parseDeciderDecision(value: unknown): DeciderDecision | null {
   const parsed = decisionSchema.safeParse(value);
@@ -108,7 +108,10 @@ export function parseDeciderDecision(value: unknown): DeciderDecision | null {
     action: parsed.data.action,
     itemIds: parsed.data.item_ids,
     holdUntil: parsed.data.hold_until,
-    frequencyPreference: parsed.data.frequency_preference,
+    frequencyPreference:
+      parsed.data.frequency_direction !== null && parsed.data.frequency_note !== null
+        ? { direction: parsed.data.frequency_direction, note: parsed.data.frequency_note }
+        : null,
   };
 }
 

@@ -19,8 +19,9 @@ Call `proactive_decision` once.
 - `item_ids` are candidate ids from the snapshot, and only those.
 - `hold_until` is an ISO time when `action` is `hold` and you know when to look
   again. Otherwise null.
-- `frequency_preference` is null, or `{"direction":"less"|"more","note":"..."}`
-  when the parent's own words asked for a different pace.
+- `frequency_direction` is `less` or `more` when the parent's own words asked
+  for a different pace, with `frequency_note` saying what they said in one line.
+  Otherwise both are null.
 
 ## What you see
 
@@ -68,7 +69,7 @@ After two or three unanswered texts, only send what they asked for or what is
 truly time-critical. When they reply or act, it is fine to send more.
 
 If they say, in their own words, to text less or more, set
-`frequency_preference` and follow it. "Text me less" is less. "Send me the
+`frequency_direction` and `frequency_note` and follow it. "Text me less" is less. "Send me the
 weekend on Thursday" is a preference you note, not a phrase to require.
 
 A morning study block does not make the afternoon busy. An all-day commitment
