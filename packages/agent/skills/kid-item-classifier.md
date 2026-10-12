@@ -1,13 +1,13 @@
 ---
 name: kid-item-classifier
 whenToUse: Before Hale tracks, reminds about, texts about or mentions anything it read from a parent's Google Calendar, Gmail or a household group - at onboarding and on every connector sweep - decide which items are about the kids and which are the parent's own.
-task: classify
+task: screen
 tools: []
 ---
 
 # Which items are about the kids
 
-You read a short list of calendar events, email subjects and group messages from a parent's account and say, for each one, whether it is about their children. Hale may track, remind about or mention only the kid items. Everything else - the parent's work, meetings, appointments, health, money, purchases, travel, faith life, social plans, newsletters, other adults - is private and must not be tracked, so when in doubt the answer is `unsure`, never `kid`.
+You read a short list of calendar events, email subjects and group messages from a parent's account and say, for each one, whether it is about their children. Hale may track, remind about or mention only the kid items. Everything else - the parent's work, meetings, appointments, health, money, purchases, work trips, faith life, social plans, newsletters, other adults - is private and must not be tracked, so when in doubt the answer is `unsure`, never `kid`.
 
 You get:
 
@@ -22,13 +22,16 @@ An item is about the kids (`kid`) when it is one of:
 - a party or play date for another child that the family's kids would go to;
 - a checkup, appointment or care arrangement for a child (daycare, babysitter, pickup, drop-off);
 - something addressed to a child by name or clearly about a child of that age;
-- a registration, sign-up, waitlist or booking for any of the above.
+- a registration, sign-up, waitlist or booking for any of the above, including a provider's confirmation that names no child: a class or program made for babies, toddlers, preschoolers or kids is a kid item on its own;
+- a birthday party or celebration for one of the children, named for them.
 
-It is the parent's own (`adult`) when the name is an adult's (a colleague called Mia, a friend called Sebastian), when the item is the parent's own (work, standups, 1:1s, offsites, alumni events, dinners, date nights, their own fitness, physio, dentist or doctor, a hotel or flight, a restaurant booking, a faith service or study group for adults, a library hold for an adult book), when it is a shower or a party for another adult, or when a kid word appears only in a product or company name.
+It is the parent's own (`adult`) when the name is an adult's (a colleague called Mia, a friend called Sebastian), when the item is the parent's own (work, standups, 1:1s, offsites, alumni events, dinners, date nights, their own fitness, physio, dentist or doctor, a restaurant booking, a faith service or study group for adults, a library hold for an adult book), when it is a shower or a party for another adult, or when a kid word appears only in a product or company name.
 
 It is `unsure` when the text could honestly be either - a bare time block, an initial, a place with no activity, a word that fits a child and an adult equally - and nothing in `children`, `activityTitles` or `notMineHints` settles it. `unsure` is a full answer, not a failure: Hale stays quiet about it.
 
-Use the children's names, nicknames (Seb, Sebby for Sebastian) and ages to decide. An item can match a child by name even without an activity word; it can match an activity without a name. A second adult with a child's name is still an adult. An activity that does not fit any child's age (a bar crawl for a toddler family, a driving lesson for a family of preschoolers) is the parent's own. A teenager's items are still kid items.
+A trip - a hotel, a flight, a rental, a getaway - is `kid` when it names one of the children or is plainly a family booking (seats or rooms for the children, a family package). It is `adult` only when it is plainly the parent's own: a work trip, a conference, or the same kind of thing as a `notMineHints` entry. Any other trip is `unsure`, even when it looks like a holiday: a booking alone does not say who is going.
+
+Use the children's names, nicknames (Seb, Sebby for Sebastian) and ages to decide. An item can match a child by name even without an activity word; it can match an activity without a name. A second adult with a child's name is still an adult: a surname, a work title, a 1:1, a message that person sent, or something no child of that age would do marks one. Without any of those, a child's first name on an item means that child, even when an adult elsewhere in the list shares the name. An activity that no child in the family is old enough or young enough for (a bar crawl for a toddler family, a driving lesson for a family of preschoolers) is the parent's own. A teenager's items are still kid items: their lessons, driving lessons included, practices, tryouts, jobs and school events are `kid`, and a teenager named on an item is that item's `childName`.
 
 Read the text in whatever language it is written in. Titles in French, Chinese, Spanish or any other language are judged the same way as English ones.
 

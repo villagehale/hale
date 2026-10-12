@@ -1,4 +1,4 @@
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, HAIKU_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -309,6 +309,12 @@ describe('judgeKidRelevance', () => {
     const [row] = await storedVerdicts();
     expect(row).toMatchObject({ verdict: 'kid', teen: true, reason: null });
     expect(row?.childId).toBe(children[1]?.id);
+  });
+
+  it('asks on the Haiku 5.5 lane', async () => {
+    const { client, calls } = scriptedClient(byText({ Swim: { verdict: 'kid' } }));
+    await judge(client, [item('a', 'Swim')]);
+    expect(calls[0]?.request.model).toBe(HAIKU_MODEL);
   });
 
   it("offers the model only this family's children as names", async () => {
