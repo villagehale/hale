@@ -22,7 +22,8 @@ import { boundedLine } from './tools';
  * two parents own, rule #5), each until one review of that parent's batch has read it,
  * once per mode (`ParentTextsRead`), and only those rows' bodies are read. Calendar
  * titles, Gmail offer titles and watch labels are each one bounded line, like the parent
- * texts.
+ * texts. A title from one parent's own connected calendar is shown only in a batch that
+ * is wholly theirs, and reads as "busy" in anyone else's (rule #5).
  */
 
 export interface FreeWindow {
@@ -122,6 +123,8 @@ const WATCH_ROWS = 20;
 export const CALENDAR_ROWS = 60;
 /** What a teenager's household shows for an offer title, a decline or a watch label. */
 export const WITHHELD_LABEL = 'withheld';
+/** What a calendar entry reads as when its title is not this review's to read. */
+const BUSY_LABEL = 'busy';
 
 function clock(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -207,6 +210,8 @@ function ageYears(dob: string, now: Date): number {
 
 interface TimedRow {
   label: string;
+  /** Set on a row from one parent's own connected calendar: whose it is, if anyone's. */
+  personal: { userId: string | null } | null;
   startAt: Date | null;
   endAt: Date | null;
   allDay: boolean;
@@ -239,10 +244,18 @@ function entryOf(row: TimedRow & { startAt: Date }, timeZone: string): CalendarE
   return { day, label: row.label, allDay: false, start: clock(startMin), end: clock(endMin) };
 }
 
+/**
+ * A calendar entry as loaded, before the batch's owner is known. `personal` is never
+ * handed to the model: `loadFamilySnapshot` reads it and leaves it behind.
+ */
+export interface LoadedCalendarEntry extends CalendarEntry {
+  personal: TimedRow['personal'];
+}
+
 export interface LoadedFamilyContext {
   timeZone: string;
   household: HouseholdContext;
-  calendar: CalendarEntry[];
+  calendar: LoadedCalendarEntry[];
   calendarOmitted: number;
   freeWindows: FreeWindow[];
   deadlines: { what: string; at: string }[];
@@ -308,6 +321,7 @@ export async function loadFamilyContext(
       status: schema.calendarEventSnapshots.status,
       transparency: schema.calendarEventSnapshots.transparency,
       heldTitle: schema.calendarEventSnapshots.heldTitle,
+      userId: schema.integrations.userId,
     })
     .from(schema.calendarEventSnapshots)
     .innerJoin(
@@ -324,13 +338,14 @@ export async function loadFamilyContext(
       ),
     );
   const label = (title: string | null, sensitive: boolean): string => {
-    if (redactLabels || sensitive) return 'busy';
-    return boundedLine(title ?? '') || 'busy';
+    if (redactLabels || sensitive) return BUSY_LABEL;
+    return boundedLine(title ?? '') || BUSY_LABEL;
   };
   const line = (text: string): string => (redactLabels ? WITHHELD_LABEL : boundedLine(text));
   const rows: TimedRow[] = [
     ...events.map((row) => ({
       label: label(row.title, row.sensitive),
+      personal: null,
       startAt: row.startAt,
       endAt: row.endAt,
       allDay: false,
@@ -339,6 +354,7 @@ export async function loadFamilyContext(
     })),
     ...snapshots.map((row) => ({
       label: label(row.heldTitle, false),
+      personal: { userId: row.userId },
       startAt: row.startAt,
       endAt: row.endAt,
       allDay: row.allDay,
@@ -369,7 +385,7 @@ export async function loadFamilyContext(
       areaCoarse: zone.areaCoarse,
       childAgesYears: children.map((child) => ageYears(child.dateOfBirth, now)),
     },
-    calendar: listed.map((row) => entryOf(row, timeZone)),
+    calendar: listed.map((row) => ({ ...entryOf(row, timeZone), personal: row.personal })),
     calendarOmitted: busy.length - listed.length,
     freeWindows: freeWindowsForDays(
       upcomingDayKeys(now, timeZone, SNAPSHOT_DAYS),
@@ -557,7 +573,11 @@ export async function loadFamilySnapshot(
     now: input.now.toISOString(),
     localNow: formatSnapshotLocalNow(input.now, context.timeZone),
     household: context.household,
-    calendar: context.calendar,
+    calendar: context.calendar.map(({ personal, ...entry }) =>
+      personal === null || (owner !== null && personal.userId === owner)
+        ? entry
+        : { ...entry, label: BUSY_LABEL },
+    ),
     ...(context.calendarOmitted > 0 ? { calendarOmitted: context.calendarOmitted } : {}),
     freeWindows: context.freeWindows,
     deadlines: context.deadlines,

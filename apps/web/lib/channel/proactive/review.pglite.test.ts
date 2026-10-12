@@ -1658,6 +1658,55 @@ describe('runProactiveReview', () => {
     expect(snapshot?.deadlines[0]?.what).toBe(line);
   });
 
+  /** A parent's own connected calendar, with one event whose title the alert still holds. */
+  async function ownCalendarEvent(userId: string, title: string, startAt: Date): Promise<void> {
+    const [integration] = await db.database
+      .insert(schema.integrations)
+      .values({ familyId, userId, provider: 'gcal', status: 'active' })
+      .returning({ id: schema.integrations.id });
+    await db.database.insert(schema.calendarEventSnapshots).values({
+      integrationId: integration?.id as string,
+      eventId: `event-${userId}`,
+      startAt,
+      endAt: new Date(startAt.getTime() + 60 * 60_000),
+      updatedStamp: 'stamp-1',
+      status: 'confirmed',
+      pendingSince: THURSDAY_EVENING,
+      heldTitle: title,
+    });
+  }
+
+  it('shows a title from a parent’s own calendar only in a batch that is wholly theirs', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const coParentId = await addCoParent();
+    const friday = (hour: number) => new Date(`2026-10-09T${hour}:00:00.000Z`);
+    await ownCalendarEvent(parentUserId, 'Physio appointment', friday(15));
+    await ownCalendarEvent(coParentId, 'Interview at the bank', friday(18));
+    await enqueue('nudge:weather:w41');
+    const h = harness((snapshot) => ({ ...sendAll(snapshot), action: 'hold' }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots[0]?.calendar).toEqual([
+      {
+        day: '2026-10-09',
+        label: 'Physio appointment',
+        allDay: false,
+        start: '11:00',
+        end: '12:00',
+      },
+      { day: '2026-10-09', label: 'busy', allDay: false, start: '14:00', end: '15:00' },
+    ]);
+    expect(JSON.stringify(h.snapshots[0])).not.toContain('Interview at the bank');
+
+    // A batch two parents own is no one parent's: neither title is shown.
+    await enqueue('nudge:dropin:w41', { parentUserId: coParentId, why: 'weekday_dropin' });
+    await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+
+    expect(h.snapshots[1]?.parentTextsWithheld).toBe('mixed_batch');
+    expect(h.snapshots[1]?.calendar.map((entry) => entry.label)).toEqual(['busy', 'busy']);
+  });
+
   it('stores a bounded one-line reason on a held row, whatever the decider wrote, and none in the audit trail', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     const id = await enqueue();
