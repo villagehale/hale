@@ -18,17 +18,18 @@ export const PENDING_ASK_MISSING_MAX_CHARS = 200;
  *
  * A table of its own, not columns on channel_messages: every insert into that table
  * names every column, so two columns there would have had to exist before any code that
- * knew of them could send a text. Nothing reads or writes this table while
- * GENERAL_ANSWER_SEARCH_ENABLED is dark.
+ * knew of them could send a text. The lane neither reads nor writes this table while
+ * GENERAL_ANSWER_SEARCH_ENABLED is dark; the hourly retention sweep is its one other
+ * reader, and finds it empty.
  *
  * DE-IDENTIFIED (rule #1): `question` is the sanitizer's rewrite with the family taken
  * out and a deterministic identifier scrub under it, and `missing` what it lacked, in a
  * few words. Never the parent's own words, and never what Hale said.
  *
  * IT LIVES ONLY WHILE IT IS OPEN. A question stands while its reply is Hale's last word
- * to that parent, and the next reply Hale sends them deletes it (lane.ts). The 365-day
- * message sweep is the backstop, and both cascades are the erasure path: the family's,
- * and the reply row's.
+ * to that parent, and the next reply Hale sends them deletes it (lane.ts). The hourly
+ * retention sweep deletes one that any other newer word from Hale has closed, and one a
+ * year old. Both cascades are the erasure path: the family's, and the reply row's.
  */
 export const channelPendingAsks = pgTable(
   'channel_pending_asks',

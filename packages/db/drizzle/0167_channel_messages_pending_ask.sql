@@ -1,6 +1,7 @@
 -- The question a general answer left open, beside the reply that left it. One new table
--- (rule #9: additive, nothing existing is altered). Nothing reads or writes it while
--- GENERAL_ANSWER_SEARCH_ENABLED is dark.
+-- (rule #9: additive, nothing existing is altered). The lane neither reads nor writes it
+-- while GENERAL_ANSWER_SEARCH_ENABLED is dark; the hourly retention sweep is its one
+-- other reader.
 --
 -- Re-runnable: IF NOT EXISTS throughout. Reversible:
 --   DROP TABLE IF EXISTS channel_pending_asks;
@@ -28,7 +29,8 @@
 -- check-in asks do: it stands while that row is Hale's last word to that parent.
 --
 -- IT LIVES ONLY WHILE IT IS OPEN. The next reply Hale sends that parent deletes it. The
--- 365-day message sweep deletes whatever is left (apps/web/lib/rights/message-retention.ts).
+-- hourly retention sweep deletes one that any other newer word from Hale has closed, and
+-- one a year old (apps/web/lib/rights/message-retention.ts).
 -- Both foreign keys cascade, which IS the erasure path: runDeletionSweep deletes the
 -- family row, and the reply row takes its question with it.
 CREATE TABLE IF NOT EXISTS "channel_pending_asks" (

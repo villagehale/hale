@@ -530,9 +530,10 @@ export function readPendingAsk(database: Database) {
  *
  * EVERY EARLIER QUESTION IS CLOSED, AND CLOSED MEANS DELETED. A question is open only
  * while its reply is Hale's last word to that parent ({@link readPendingAsk}), and this
- * reply is a newer one. So the question lives exactly as long as it can still be read:
- * the answer to it, or anything else Hale replies with, takes it out, and the retention
- * sweep is the backstop for one nothing ever followed. Then the question THIS reply left
+ * reply is a newer one. So the answer to it, or anything else Hale replies with, takes
+ * it out here. A newer word from a sender that is not the router (a reminder, a nudge)
+ * closes it for the reader too, and the hourly retention sweep deletes those, and any
+ * question a year old (rights/message-retention.ts). Then the question THIS reply left
  * open, if it left one, is kept beside its row.
  *
  * A QUESTION LONGER THAN THE TABLE HOLDS IS NOT KEPT (channel-pending-asks.ts names the

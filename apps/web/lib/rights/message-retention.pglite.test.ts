@@ -454,8 +454,10 @@ describe('sweepMessageRetention', () => {
    * stays: `body` was never there to clear.
    */
   it('deletes the question a reply left open after 365 days, and keeps one at 364 days', async () => {
-    const { familyId, parentUserId } = await seedFamily();
+    // Each question is put to a parent of its own, so each is still the last thing Hale
+    // sent them and only its age can be what takes it.
     const openQuestion = async (askedAt: Date, missing?: string) => {
+      const { familyId, parentUserId } = await seedFamily();
       const [row] = await db.database
         .insert(schema.channelMessages)
         .values({
@@ -502,11 +504,112 @@ describe('sweepMessageRetention', () => {
     ]);
     // The three replies are still on the ledger: only their questions went.
     expect(
-      await db.database
-        .select({ id: schema.channelMessages.id })
-        .from(schema.channelMessages)
-        .where(eq(schema.channelMessages.familyId, familyId)),
+      await db.database.select({ id: schema.channelMessages.id }).from(schema.channelMessages),
     ).toHaveLength(3);
+    // A second run finds nothing left to do.
+    expect(await sweepMessageRetention(db.database, NOW, { removeObject: async () => {} })).toEqual(
+      ZEROS,
+    );
+  });
+
+  /**
+   * Sloane's finding 3 on `e8a0caff`. A question is open only while its reply is Hale's
+   * last word to that parent, and the router deletes it when it next replies. A newer
+   * word from any other sender (a reminder, a nudge) closes it for the reader just the
+   * same, and leaves the row. So the hourly sweep deletes every question that is no
+   * longer the latest thing Hale sent that parent, by the reader's own rule.
+   */
+  it('deletes a question once it is no longer the last thing Hale sent that parent', async () => {
+    const MINUTE_MS = 60 * 1000;
+    const minutesAgo = (minutes: number) => new Date(NOW.getTime() - minutes * MINUTE_MS);
+    const outbound = async (
+      to: { familyId: string; parentUserId: string },
+      sentAt: Date,
+      row: { category?: 'reply' | 'nudge' | 'reminder'; status?: 'sent' | 'failed' } = {},
+    ) => {
+      const [sent] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          ...to,
+          channel: 'sms',
+          direction: 'out',
+          category: row.category ?? 'reply',
+          status: row.status ?? 'sent',
+          createdAt: sentAt,
+        })
+        .returning({ id: schema.channelMessages.id });
+      return sent?.id as string;
+    };
+    const asked = async (
+      to: { familyId: string; parentUserId: string },
+      status: 'sent' | 'failed' = 'sent',
+    ) => {
+      const channelMessageId = await outbound(to, minutesAgo(30), { status });
+      await db.database.insert(schema.channelPendingAsks).values({
+        channelMessageId,
+        familyId: to.familyId,
+        question: 'hows the weather tomorrow',
+        missing: 'which city',
+      });
+      return channelMessageId;
+    };
+
+    // Closed: a nudge went out after the ask, and nothing came through the router.
+    const nudged = await seedFamily();
+    await asked(nudged);
+    await outbound(nudged, minutesAgo(10), { category: 'nudge' });
+    // Closed: the reply that asked never reached a phone, so it is nobody's last word.
+    const undelivered = await seedFamily();
+    await asked(undelivered, 'failed');
+
+    // Open: still the last thing Hale sent them.
+    const waiting = await seedFamily();
+    const stillOpen = await asked(waiting);
+    // Open: what followed did not reach a phone, so the ask is still the last word.
+    const failedSince = await seedFamily();
+    const openAfterFailure = await asked(failedSince);
+    await outbound(failedSince, minutesAgo(10), { category: 'reminder', status: 'failed' });
+    // Open: the parent has texted since, and Hale has not.
+    const texted = await seedFamily();
+    const openAfterText = await asked(texted);
+    await channelMessage({ ...texted, body: 'Maplewood', createdAt: minutesAgo(5) });
+    // Open: the newer word went to the other parent of the same household.
+    const household = await seedFamily();
+    const openForOne = await asked(household);
+    const [partner] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'google_retention_partner' })
+      .returning({ id: schema.users.id });
+    await outbound(
+      { familyId: household.familyId, parentUserId: partner?.id as string },
+      minutesAgo(10),
+      { category: 'reminder' },
+    );
+
+    // Open: the newer word went to the same person in another household they belong to.
+    const twoHomes = await seedFamily();
+    const openInOne = await asked(twoHomes);
+    const other = await seedFamily();
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: other.familyId, userId: twoHomes.parentUserId, role: 'co_parent' });
+    await outbound(
+      { familyId: other.familyId, parentUserId: twoHomes.parentUserId },
+      minutesAgo(10),
+      { category: 'reminder' },
+    );
+
+    const summary = await sweepMessageRetention(db.database, NOW, {
+      removeObject: async () => {},
+    });
+
+    expect(summary).toEqual({ ...ZEROS, pendingAsksDeleted: 2 });
+    const kept = await db.database
+      .select({ id: schema.channelPendingAsks.channelMessageId })
+      .from(schema.channelPendingAsks);
+    expect(kept.map((row) => row.id).sort()).toEqual(
+      [stillOpen, openAfterFailure, openAfterText, openForOne, openInOne].sort(),
+    );
     // A second run finds nothing left to do.
     expect(await sweepMessageRetention(db.database, NOW, { removeObject: async () => {} })).toEqual(
       ZEROS,
