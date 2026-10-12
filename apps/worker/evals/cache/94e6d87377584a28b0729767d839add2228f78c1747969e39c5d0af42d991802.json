@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason names what the item is, a daycare pickup for Wren, who is listed as an 18-month-old child, and why that makes it kid: it is a care arrangement for a child. It is one short plain clause, adds no unsupported facts, and backs the given verdict.",
+    "score": 5
+  }
+}

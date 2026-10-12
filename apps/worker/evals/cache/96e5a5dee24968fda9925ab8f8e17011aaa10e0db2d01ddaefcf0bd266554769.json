@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names what the item is (a generic errand block) and gives the right why: it names no child and could be either the parent's or the family's. That supports unsure in one plain clause with no invented facts.",
+    "score": 5
+  }
+}

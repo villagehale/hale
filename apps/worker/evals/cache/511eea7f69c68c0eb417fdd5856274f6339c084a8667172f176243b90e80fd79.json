@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It says what the item is, a shoulder physio appointment, and gives a sound reason for the adult verdict: the rules list physio as the parent's own, and no child is named. It invents no facts.",
+    "score": 5
+  }
+}

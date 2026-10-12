@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names what the item is, a library storytime, and ties it to the kid list's 'story time', which supports the kid verdict. It is one short plain clause with no invented facts. It is slightly circular ('storytime is a story time') but still says both what and why.",
+    "score": 5
+  }
+}

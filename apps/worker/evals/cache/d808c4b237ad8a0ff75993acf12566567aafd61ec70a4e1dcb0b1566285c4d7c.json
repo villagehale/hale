@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It names what the item is, a clinic appointment reminder with no patient named, and gives a sound ground for unsure: it could equally be Wren's checkup or the parent's own appointment, and nothing in children, activityTitles or notMineHints settles it. It adds no unsupported facts.",
+    "score": 5
+  }
+}

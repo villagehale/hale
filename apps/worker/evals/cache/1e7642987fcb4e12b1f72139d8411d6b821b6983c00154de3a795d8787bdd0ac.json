@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason reads 'Réunion' as a bare meeting with no child or activity, which supports unsure, but 'something for a child' is a vague stand-in for a concrete kid reading such as a daycare or parent meeting, and the sentence is a little wordy.",
+    "score": 4
+  }
+}

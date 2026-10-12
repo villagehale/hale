@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a swimming lesson (\"cours de natation\") that names Lina, a 30-month-old child in the family, which makes it her kid activity. The classifier's single short clause says what the item is and why that leads to kid, it adds no unsupported facts, and it backs the given verdict.",
+    "score": 5
+  }
+}

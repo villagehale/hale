@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It names what the item is, a daily standup, which is a work meeting. It says why that leads to adult, since standups are the parent's own work. It invents no facts and supports the given verdict.",
+    "score": 5
+  }
+}

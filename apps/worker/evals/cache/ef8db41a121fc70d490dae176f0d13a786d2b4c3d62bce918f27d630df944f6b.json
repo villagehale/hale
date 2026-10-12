@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short, plain clause. It names what the item is, a daycare pickup, and ties it to the care-arrangement rule. That rule makes the item kid, matching the verdict. It invents no unsupported facts.",
+    "score": 5
+  }
+}

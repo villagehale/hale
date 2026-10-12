@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short, plain clause. It names the item correctly as a spin class and ties it to the adult verdict as the parent's own fitness. That is apt: spin classes don't suit an 18-month-old or a 4-year-old. The reason adds no unsupported facts.",
+    "score": 5
+  }
+}

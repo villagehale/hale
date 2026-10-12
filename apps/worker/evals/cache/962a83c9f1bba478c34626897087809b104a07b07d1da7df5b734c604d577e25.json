@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a single clause. It names what the item is, a daily standup, which the rules list among the parent's own work items. It ties that directly to the adult verdict and adds no unsupported facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a flight check-in. It notes that no child is named and nothing marks it as a family booking. That matches the trip rule, which makes any other trip unsure. It is one clear clause with no invented facts and it supports the verdict given.",
+    "score": 5
+  }
+}

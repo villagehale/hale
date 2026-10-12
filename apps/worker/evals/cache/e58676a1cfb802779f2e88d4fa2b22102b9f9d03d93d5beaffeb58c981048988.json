@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is, a flight booking, and why it is unsure: it names no child, and nothing marks it as a family booking or as the parent's own. That matches the trip rule. It is one short clause. The ending 'could be the children's or the parent's' is a little loose but still sound.",
+    "score": 5
+  }
+}

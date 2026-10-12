@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that says what the item is: a baby shower for another adult, Dana. That leads straight to the adult verdict under the rule that a shower for another adult is the parent's own. It adds no facts the item does not support.",
+    "score": 5
+  }
+}

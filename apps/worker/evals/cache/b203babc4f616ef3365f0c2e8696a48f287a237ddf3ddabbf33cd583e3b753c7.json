@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that names the item as a work 1:1. It gives the right adult marks: a surname, a work role and a 1:1, none of which fit an 18-month-old. That leads straight to the adult verdict, and it adds no unsupported facts.",
+    "score": 5
+  }
+}

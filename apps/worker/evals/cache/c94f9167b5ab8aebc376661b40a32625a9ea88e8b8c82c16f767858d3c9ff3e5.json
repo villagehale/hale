@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly calls 'Busy' a bare time block with nothing in it that points to a child or to the parent, which is exactly why it fits 'unsure'; it is one plain clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

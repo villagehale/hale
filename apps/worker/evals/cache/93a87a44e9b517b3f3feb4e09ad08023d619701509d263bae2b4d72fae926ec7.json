@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason correctly reads the item as a quarterly planning offsite, which is work, and that matches the rules' adult category of offsites and work. It adds no facts the item does not support, and it is one short plain clause that says what the item is and why it is adult.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item (Spanish for \"Lina's birthday party\") is a party named for Lina, the family's 30-month-old, and the rules list a birthday party named for one of the children as a kid item. The classifier's reason says what the item is (a birthday party named for Lina) and why that makes it kid. It is one plain clause, invents no facts and matches the verdict.",
+    "score": 5
+  }
+}

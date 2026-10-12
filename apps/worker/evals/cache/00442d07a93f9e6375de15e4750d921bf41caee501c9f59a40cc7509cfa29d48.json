@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one clause that identifies the item as a dentist visit and supports the adult verdict, but its logic is weak. Not naming a child does not make an appointment the parent's own. A 30-month-old like Lina can have a dental appointment, so the stated 'why' rests on a non sequitur rather than on anything in the item.",
+    "score": 3
+  }
+}

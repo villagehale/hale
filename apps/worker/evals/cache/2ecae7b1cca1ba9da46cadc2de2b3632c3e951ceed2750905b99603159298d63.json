@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names the item correctly as a car service reminder. It ties that to the adult verdict because it is the parent's own errand, and it does this in one plain clause with no unsupported facts. Calling it a \"booking\" when it is a service-due notice is a slight stretch, but it doesn't change the logic.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It correctly calls 'Hold' a bare placeholder with no activity or name, which leaves it open to either the kids or the parent, so unsure follows. It adds no unsupported facts.",
+    "score": 5
+  }
+}

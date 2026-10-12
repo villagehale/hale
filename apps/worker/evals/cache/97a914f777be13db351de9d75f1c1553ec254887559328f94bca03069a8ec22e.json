@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is only the initial \"J.\", which matches neither child and has no activity attached. The classifier's single plain clause names it as a bare initial and explains why it could go either way. That supports unsure, as the rules spell out, with nothing invented.",
+    "score": 5
+  }
+}

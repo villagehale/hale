@@ -1,0 +1,57 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "c0",
+        "reason": "a swim session at a pool, named for Mia, one of the children",
+        "verdict": "kid",
+        "childName": "Mia"
+      },
+      {
+        "ref": "c1",
+        "reason": "a work 1:1 with a surnamed colleague, the parent's own work meeting",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "c2",
+        "reason": "a birthday party named for Mia, one of the children",
+        "verdict": "kid",
+        "childName": "Mia"
+      },
+      {
+        "ref": "c3",
+        "reason": "an alumni dinner RSVP, the parent's own social event",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e0",
+        "reason": "a 15-month checkup from a doctor for Seb, one of the children",
+        "verdict": "kid",
+        "childName": "Sebastian"
+      },
+      {
+        "ref": "e1",
+        "reason": "a coffee invitation sent by a person named Sebastian, an adult social plan",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e2",
+        "reason": "a library hold for a grown-up novel, the parent's own book",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "e3",
+        "reason": "a Parent and Tot Swim class with spots left, a toddler class matching Sebastian's age",
+        "verdict": "kid",
+        "childName": "Sebastian"
+      }
+    ]
+  },
+  "latencyMs": 5032,
+  "inputTokens": 328,
+  "outputTokens": 1022
+}

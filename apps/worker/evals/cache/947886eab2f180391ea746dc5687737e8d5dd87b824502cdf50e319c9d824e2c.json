@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that names the item as a dentist cleaning and ties it to the adult verdict, which matches the rules listing the parent's own dentist as adult. It asserts the visit is the parent's without noting that no child is named. That is what actually rules out a checkup for 4-year-old Theo, so the 'why' is thin.",
+    "score": 4
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a car service booking, which is the parent's own errand",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a playdate that names Wren, a child in the family",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i2",
+        "reason": "an appointment reminder that names no one, so it could be a child's checkup or the parent's own appointment",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i3",
+        "reason": "a swim outing for Wren, a child in the family",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i4",
+        "reason": "a book club, an adult social group, so the parent's own",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i5",
+        "reason": "a daycare pickup for Wren, a care arrangement for a child",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i6",
+        "reason": "a bare errands block with no child named, so it could be the parent's own or a child's errand",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 3709,
+  "inputTokens": 291,
+  "outputTokens": 710
+}
