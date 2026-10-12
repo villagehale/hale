@@ -1,6 +1,0 @@
-{
-  "value": {
-    "message": "Hey! Want me to look into a good after-school option near you?"
-  },
-  "stopReason": "tool_use"
-}
