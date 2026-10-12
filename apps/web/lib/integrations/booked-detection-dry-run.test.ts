@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import { isStage } from '~/lib/testing/structured-reply';
 import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
 import { type DryRunEnvelope, runBookedDetectionDryRun } from './booked-detection-dry-run';
 
@@ -20,15 +21,12 @@ const usage = { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens:
 
 function scriptedBookingClient(): AgentClient {
   const create = vi.fn().mockImplementation(async (params: { tools?: Array<{ name: string }> }) => {
-    const toolName = params.tools?.[0]?.name;
-    if (toolName === 'triage') {
+    if (isStage(params, 'triage', 'child_related')) {
       return {
         content: [
           {
-            type: 'tool_use',
-            id: 't1',
-            name: 'triage',
-            input: { child_related: true, confidence: 0.9, rationale: 'fixture' },
+            type: 'text',
+            text: JSON.stringify({ child_related: true, confidence: 0.9, rationale: 'fixture' }),
           },
         ],
         usage,
@@ -37,10 +35,8 @@ function scriptedBookingClient(): AgentClient {
     return {
       content: [
         {
-          type: 'tool_use',
-          id: 'e1',
-          name: 'extraction',
-          input: {
+          type: 'text',
+          text: JSON.stringify({
             kind: 'booking_confirmation',
             event: {
               title: 'Tadpole Swim',
@@ -52,7 +48,7 @@ function scriptedBookingClient(): AgentClient {
             source_confidence: 0.92,
             quote_evidence: 'scripted',
             teen_content: false,
-          },
+          }),
         },
       ],
       usage,

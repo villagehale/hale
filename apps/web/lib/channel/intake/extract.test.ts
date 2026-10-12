@@ -6,17 +6,15 @@ function response() {
   return {
     content: [
       {
-        type: 'tool_use',
-        id: 'tool_1',
-        name: 'intake',
-        input: {
+        type: 'text',
+        text: JSON.stringify({
           children: [{ name: 'Mia', age_months: 48, age_precision: 'years' }],
           postal_code: 'M5V 2T6',
           confidence: 0.9,
-        },
+        }),
       },
     ],
-    stop_reason: 'tool_use',
+    stop_reason: 'end_turn',
     usage: {
       input_tokens: 100,
       output_tokens: 20,

@@ -5,6 +5,7 @@ import { type Database, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isStage } from '~/lib/testing/structured-reply';
 import { cancelActivityPromise } from '~/lib/channel/activity/commitment';
 import { type DeepJobDeps, runDeepResearchJob } from '~/lib/channel/activity/deep-job';
 import type { DeepLaneDeps } from '~/lib/channel/activity/deep-lane';
@@ -150,13 +151,12 @@ describe('the deep answer arrives at question time', () => {
   function inlineWeb(): () => AgentClient {
     // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
     async function turn(req: any) {
-      if (req.tools?.[0]?.name === 'activity_picks') {
+      if (isStage(req, 'activity_picks', 'picks')) {
         return {
           content: [
             {
-              type: 'tool_use',
-              name: 'activity_picks',
-              input: {
+              type: 'text',
+              text: JSON.stringify({
                 picks: [
                   {
                     name: 'Tiny Gym, Cartwheels Gym Centre',
@@ -166,11 +166,11 @@ describe('the deep answer arrives at question time', () => {
                     source_name: 'Cartwheels Gym Centre',
                   },
                 ],
-              },
+              }),
             },
           ],
           usage: { input_tokens: 10, output_tokens: 10 },
-          stop_reason: 'tool_use',
+          stop_reason: 'end_turn',
         };
       }
       return {

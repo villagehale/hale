@@ -3,6 +3,7 @@ import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isStage } from '~/lib/testing/structured-reply';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { LinqSendError } from '~/lib/channel/linq/transport';
@@ -387,24 +388,22 @@ describe('the teen floor (rule #1)', () => {
 
   function scriptedClient(extraction: Record<string, unknown>): AgentClient {
     const create = vi.fn(async (params: { tools?: Array<{ name: string }> }) =>
-      params.tools?.[0]?.name === 'triage'
+      isStage(params, 'triage', 'child_related')
         ? {
             content: [
               {
-                type: 'tool_use',
-                id: 't1',
-                name: 'triage',
-                input: {
+                type: 'text',
+                text: JSON.stringify({
                   child_related: true,
                   confidence: 0.95,
                   rationale: 'registration receipt',
-                },
+                }),
               },
             ],
             usage: USAGE,
           }
         : {
-            content: [{ type: 'tool_use', id: 'e1', name: 'extraction', input: extraction }],
+            content: [{ type: 'text', text: JSON.stringify(extraction) }],
             usage: USAGE,
           },
     );

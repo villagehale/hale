@@ -50,7 +50,7 @@ function clientReturning(input: unknown, seen: Captured = {}): () => AgentClient
           seen.system = request.system;
           seen.messages = request.messages;
           return {
-            content: [{ type: 'tool_use', name: 'answer', input }],
+            content: [{ type: 'text', text: JSON.stringify(input) }],
             usage: { input_tokens: 10, output_tokens: 5 },
           };
         },

@@ -30,7 +30,7 @@ describe('the free-text call refuses to record a reply that is not there', () =>
   }
 
   function keyFor(tag) {
-    return cacheKey(tag, JSON.stringify({ model, system, userMessage }));
+    return cacheKey(tag, JSON.stringify({ model, system, userMessage, lane }));
   }
 
   it('throws on a reply with no text and caches nothing', async () => {

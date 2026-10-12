@@ -21,7 +21,7 @@ function clientReturning(input: unknown): () => AgentClient {
       messages: {
         async create() {
           return {
-            content: [{ type: 'tool_use', name: 'lane', input }],
+            content: [{ type: 'text', text: JSON.stringify(input) }],
             usage: { input_tokens: 10, output_tokens: 5 },
           };
         },

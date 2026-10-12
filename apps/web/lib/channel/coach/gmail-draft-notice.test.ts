@@ -16,7 +16,7 @@ function clientSaying(bodies: string[]): AgentClient {
         const notice = bodies[Math.min(call, bodies.length - 1)] ?? '';
         call += 1;
         return {
-          content: [{ type: 'tool_use', name: 'gmail_draft_notice', input: { notice } }],
+          content: [{ type: 'text', text: JSON.stringify({ notice }) }],
           usage: { input_tokens: 10, output_tokens: 5 },
         };
       },
@@ -48,9 +48,7 @@ describe('gmail draft notice', () => {
   it('sends nothing after the one retry is also refused', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const create = vi.fn(async () => ({
-      content: [
-        { type: 'tool_use', name: 'gmail_draft_notice', input: { notice: 'I sent the email.' } },
-      ],
+      content: [{ type: 'text', text: JSON.stringify({ notice: 'I sent the email.' }) }],
       usage: { input_tokens: 1, output_tokens: 1 },
     }));
     const text = await composeGmailDraftNotice(

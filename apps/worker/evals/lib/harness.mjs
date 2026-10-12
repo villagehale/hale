@@ -320,7 +320,17 @@ export async function cachedToolCall(opts) {
   const { tag, system, userMessage, toolName, toolSchema, cachedOnly, getClient, cost } = opts;
   const model = opts.lane?.model ?? opts.model;
   const maxTokens = opts.maxTokens ?? 1024;
-  const canonical = JSON.stringify({ model, system, userMessage, toolName, toolSchema });
+  // The lane's knobs are part of the request, so they are part of the key: a lane whose
+  // effort or thinking mode moves must re-record, not replay the old answer. (Arms without
+  // a lane keep their historical key.)
+  const canonical = JSON.stringify({
+    model,
+    system,
+    userMessage,
+    toolName,
+    toolSchema,
+    ...(opts.lane ? { lane: opts.lane } : {}),
+  });
   const key = cacheKey(tag, canonical);
 
   const cached = await cacheGet(key);
@@ -403,7 +413,12 @@ export async function cachedTextCall(opts) {
   }
   const { tag, system, userMessage, cachedOnly, getClient, cost } = opts;
   const model = opts.lane?.model ?? opts.model;
-  const canonical = JSON.stringify({ model, system, userMessage });
+  const canonical = JSON.stringify({
+    model,
+    system,
+    userMessage,
+    ...(opts.lane ? { lane: opts.lane } : {}),
+  });
   const key = cacheKey(tag, canonical);
 
   const cached = await cacheGet(key);

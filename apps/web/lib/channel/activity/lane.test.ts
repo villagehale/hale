@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import { isStage } from '~/lib/testing/structured-reply';
 import type { ActivityQuery } from './deidentify';
 import {
   MAX_SEARCHES,
@@ -59,9 +60,9 @@ const groundResultWithoutNotes = (nResults: number) => ({
 });
 
 const composeResult = (input: unknown) => ({
-  content: [{ type: 'tool_use', name: 'activity_picks', input }],
+  content: [{ type: 'text', text: JSON.stringify(input) }],
   usage: { input_tokens: 5, output_tokens: 5 },
-  stop_reason: 'tool_use',
+  stop_reason: 'end_turn',
 });
 
 const WHOLE_PICK = {
@@ -88,10 +89,10 @@ function makeClient(
     const messages = {
       // biome-ignore lint/suspicious/noExplicitAny: a fake driving the request mechanics
       async create(req: any) {
-        const isCompose = req.tools?.[0]?.name === 'activity_picks';
+        const isCompose = isStage(req, 'activity_picks', 'picks');
         seen.push({
           tools: req.tools,
-          toolChoice: req.tools?.[0]?.name,
+          toolChoice: isCompose ? 'activity_picks' : req.tools?.[0]?.name,
           userMessage: req.messages?.[0]?.content,
         });
         const pick = isCompose ? script.compose : script.ground;
@@ -244,7 +245,7 @@ describe('an ungrounded find never ships', () => {
       ...groundResultWithoutNotes(8),
       content: [
         ...groundResultWithoutNotes(8).content,
-        { type: 'tool_use', name: 'activity_picks', input: { picks: [WHOLE_PICK] } },
+        { type: 'text', text: JSON.stringify({ picks: [WHOLE_PICK] }) },
       ],
     };
     const finder = createActivityFinder(
@@ -490,7 +491,7 @@ describe('the ground turn does not use the 50s non-stream path', () => {
         ({
           messages: {
             async create(req: { tools?: { name?: string }[] }) {
-              if (req.tools?.[0]?.name !== 'activity_picks') {
+              if (!isStage(req, 'activity_picks', 'picks')) {
                 throw new Error('Request timed out.');
               }
               return composeResult({ picks: [WHOLE_PICK] });
