@@ -9,6 +9,18 @@ import {
   scrubResidualPii,
 } from './medical';
 
+const skillLoad = vi.hoisted(() => ({ error: null as Error | null }));
+vi.mock('~/lib/cron/skill', async (actual) => {
+  const real = await actual<typeof import('~/lib/cron/skill')>();
+  return {
+    ...real,
+    loadCronSkill: async (name: string) => {
+      if (skillLoad.error) throw skillLoad.error;
+      return real.loadCronSkill(name);
+    },
+  };
+});
+
 /**
  * The medical-symptom composer's MECHANICS and its SAFETY INVARIANTS — not its judgement.
  *
@@ -425,6 +437,29 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
       { reason, attempt: 2, detail: undefined },
     ]);
     log.mockRestore();
+  });
+
+  it.each([
+    [
+      'client_unavailable',
+      () => {
+        throw new Error('echo: her daughter is wheezing');
+      },
+    ],
+    ['skill_unavailable', makeClient({ sanitize: sanitizeResult(RED_FLAG_SANITIZE) })],
+  ] as const)('logs %s by name, without the provider message', async (reason, client) => {
+    const log = quiet();
+    if (reason === 'skill_unavailable') skillLoad.error = new Error('echo: her daughter is wheezing');
+    try {
+      await createMedicalComposer(client).answer('raw message');
+      expect(log.mock.calls.map((c) => c[0])).toEqual([
+        { reason, attempt: 1, detail: undefined },
+        { reason, attempt: 2, detail: undefined },
+      ]);
+    } finally {
+      skillLoad.error = null;
+      log.mockRestore();
+    }
   });
 
   it('falls closed, under its own name, when the judgment cannot be had', async () => {
