@@ -16,6 +16,7 @@ import {
  * real judge replayed from the committed recording: no API key, no model call.
  */
 const RUNNER = fileURLToPath(new URL('./run-general-answer-eval.mjs', import.meta.url));
+const FIXTURES_URL = new URL('./general-answer-fixtures.mjs', import.meta.url).href;
 
 /** `{ id: [failure, ...] }` from the report's answers block. */
 function failuresById(report) {
@@ -204,6 +205,32 @@ describe('the general-answer runner', () => {
       ]),
     ).toEqual([['street-address-costco', ['oakville']]]);
   });
+
+  /**
+   * The same check where the runner makes it. The function above can be right and the
+   * runner still never call it, so this replays the whole corpus from the committed
+   * recordings with one more town marked on the fixture whose search names Oakville: a
+   * town that request does not carry. A module loaded ahead of the runner marks it, on
+   * the fixture list the runner then imports. No API key, no model call.
+   */
+  it('fails the fixture in a real run when the search request leaves a marked town out', () => {
+    const unsentTown = 'milton';
+    const markOneMore = `data:text/javascript,${encodeURIComponent(
+      `import { ANSWER_FIXTURES } from ${JSON.stringify(FIXTURES_URL)};
+       ANSWER_FIXTURES.find((fixture) => fixture.id === 'street-address-costco').mustReachSearch.push(${JSON.stringify(unsentTown)});`,
+    )}`;
+    const { ANTHROPIC_API_KEY: _key, ...env } = process.env;
+    const run = spawnSync(process.execPath, ['--import', markOneMore, RUNNER, '--cached-only'], {
+      env,
+      encoding: 'utf8',
+    });
+    const realReport = `${run.stdout}${run.stderr}`;
+    const realFailures = failuresById(realReport);
+
+    expect(realFailures['street-address-costco']).toContain(`not_sent_to_search:${unsentTown}`);
+    expect(realFailures['street-address-costco']).not.toContain('not_sent_to_search:oakville');
+    expect(realReport).toMatch(/^named town not searched: +1 {2}\(0 required/m);
+  }, 60_000);
 
   /** The search is live when recorded and replayed after, so the day it was recorded on
    * is pinned in the shape answer.ts's localDate writes. */
