@@ -17,6 +17,7 @@ import {
   type ProactiveReviewDeps,
   WAITING_ROWS,
   mark,
+  readLineHold,
   runProactiveReview,
 } from './review';
 import {
@@ -163,7 +164,7 @@ function harness(
     },
     buildGate: openGate,
     resolveSendablePhone: async () => PHONE,
-    linePaused: async () => false,
+    lineHold: async () => null,
     loadRecipients: async () => [{ parentUserId, timeZone: TZ, role: 'primary_parent' }],
     outboundTarget: async () => ({ channel: 'legacy' }),
     threadMessage: threadProactiveMessage,
@@ -656,7 +657,7 @@ describe('runProactiveReview', () => {
   it('holds unrequested items while the sending line is flagged', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const id = await enqueue();
-    const h = harness(sendAll, { linePaused: async () => true });
+    const h = harness(sendAll, { lineHold: async () => 'line_health' });
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
     expect(h.transport.sent).toEqual([]);
     expect(await candidate(id)).toMatchObject({ status: 'held', reason: 'line_health' });
@@ -834,6 +835,35 @@ describe('runProactiveReview', () => {
       expect(linqCalls).toBe(1);
       expect(new Set(gated)).toEqual(new Set([parentUserId, coParentId]));
       expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    });
+
+    it('holds the bubble, by name, while no sending line is configured to read a pause for', async () => {
+      vi.stubEnv('LINQ_FROM_E164', '');
+      const id = await enqueue();
+      const h = harness(sendAll, {
+        outboundTarget: async () => ({ channel: 'group', chatId: CHAT, familyId }),
+        lineHold: readLineHold,
+        fetch: linqFetch,
+      });
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ sent: 0, held: 1 });
+      expect(linqCalls).toBe(0);
+      expect(await candidate(id)).toMatchObject({
+        status: 'held',
+        reason: 'no_sending_line',
+        decision: 'send_now',
+      });
+      const [held] = await audits('proactive_cadence_held');
+      expect(held?.after).toMatchObject({ reason: 'no_sending_line', itemIds: [id], mode: 'live' });
+
+      // Positive control: the same bubble leaves once the line is configured and clear.
+      vi.stubEnv('LINQ_FROM_E164', '+15555550199');
+      await parentText('any news?', new Date(THURSDAY_EVENING.getTime() + 30 * 60_000));
+      const after = await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+      expect(after).toMatchObject({ sent: 1, held: 0 });
+      expect(linqCalls).toBe(1);
     });
 
     it('gates a parent still in the chat whose own 1:1 line was stopped', async () => {
@@ -1764,7 +1794,7 @@ describe('runProactiveReview', () => {
     // Spelled as an env var may be: the stored row below is the same line.
     vi.stubEnv('LINQ_FROM_E164', ' +1 (555) 555-0199 ');
     const id = await enqueue();
-    const h = harness(sendAll, { linePaused: async () => true });
+    const h = harness(sendAll, { lineHold: async () => 'line_health' });
     const nextEvening = new Date(THURSDAY_EVENING.getTime() + 24 * 60 * 60_000);
     const hourAfter = new Date(nextEvening.getTime() + 60 * 60_000);
 

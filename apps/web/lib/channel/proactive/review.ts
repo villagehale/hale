@@ -118,7 +118,7 @@ export interface ProactiveReviewDeps {
   }): Promise<WriterResult>;
   buildGate(database: Database): OutboundGatePorts;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
-  linePaused(database: Database): Promise<boolean>;
+  lineHold(database: Database): Promise<LineHold | null>;
   /** Every parent seat with a live number: who a claimed group's one bubble reaches. */
   loadRecipients(database: Database, familyId: string): Promise<FamilyTextRecipient[]>;
   outboundTarget(database: Database, familyId: string): Promise<FamilyOutboundTarget>;
@@ -138,7 +138,7 @@ export function defaultProactiveReviewDeps(): ProactiveReviewDeps {
     compose: composeProactiveBatch,
     buildGate: buildOutboundGatePorts,
     resolveSendablePhone,
-    linePaused: readLinePaused,
+    lineHold: readLineHold,
     loadRecipients: loadFamilyTextRecipients,
     outboundTarget: familyOutboundTarget,
     threadMessage: threadProactiveMessage,
@@ -146,10 +146,18 @@ export function defaultProactiveReviewDeps(): ProactiveReviewDeps {
   };
 }
 
-/** True when Linq has flagged or throttled Hale's sending line (`LINQ_FROM_E164`). */
-export async function readLinePaused(database: Database): Promise<boolean> {
+/** Why Hale's sending line (`LINQ_FROM_E164`) carries no unrequested send right now. */
+export type LineHold = 'line_health' | 'no_sending_line';
+
+/**
+ * `line_health` when Linq has flagged or throttled the sending line. With no sending line
+ * configured Linq's status for it is stored nowhere (the door's `no_sending_line`), and a
+ * claimed group's bubble needs no `from` to leave, so nothing could pause it: held by that
+ * name instead.
+ */
+export async function readLineHold(database: Database): Promise<LineHold | null> {
   const sendingLine = sendingLineE164();
-  if (sendingLine === null) return false;
+  if (sendingLine === null) return 'no_sending_line';
   const [row] = await database
     .select({ paused: schema.linqLineHealth.paused })
     .from(schema.linqLineHealth)
@@ -160,7 +168,7 @@ export async function readLinePaused(database: Database): Promise<boolean> {
       ),
     )
     .limit(1);
-  return row !== undefined;
+  return row !== undefined ? 'line_health' : null;
 }
 
 interface QueuedItem extends OpenCandidate {
@@ -783,8 +791,9 @@ async function sendChosen(
   if (chosen.length === 0) return;
   // Nothing in the queue is time-critical (those send immediately), so a flagged line
   // holds the whole batch.
-  if (await deps.linePaused(database)) {
-    await holdByName(database, familyId, chosen, 'line_health', now);
+  const lineHold = await deps.lineHold(database);
+  if (lineHold !== null) {
+    await holdByName(database, familyId, chosen, lineHold, now);
     summary.held += 1;
     return;
   }

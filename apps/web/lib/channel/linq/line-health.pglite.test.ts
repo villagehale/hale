@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboundRouteDeps, InboundRouteOutcome } from '~/lib/channel/inbound-route';
-import { readLinePaused } from '~/lib/channel/proactive/review';
+import { readLineHold } from '~/lib/channel/proactive/review';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { handleLinqInboundRequest } from './inbound';
 import { parseLinqWebhook } from './payload';
@@ -169,11 +169,11 @@ describe('the Linq door · line health', () => {
     );
     expect(await other.json()).toEqual({ outcome: 'other_line' });
     expect(await db.database.select().from(schema.linqLineHealth)).toEqual([]);
-    expect(await readLinePaused(db.database)).toBe(false);
+    expect(await readLineHold(db.database)).toBeNull();
 
     const sending = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
     expect(await sending.json()).toEqual({ outcome: 'line_health', paused: true });
-    expect(await readLinePaused(db.database)).toBe(true);
+    expect(await readLineHold(db.database)).toBe('line_health');
   });
 
   it('reads the sending line however its variable is spelled', async () => {
@@ -186,7 +186,7 @@ describe('the Linq door · line health', () => {
     expect(await db.database.select().from(schema.linqLineHealth)).toMatchObject([
       { phoneNumber: LINE, paused: true },
     ]);
-    expect(await readLinePaused(db.database)).toBe(true);
+    expect(await readLineHold(db.database)).toBe('line_health');
   });
 
   it('names a line status with no sending line configured, and stores nothing', async () => {
@@ -197,18 +197,19 @@ describe('the Linq door · line health', () => {
     const response = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
     expect(await response.json()).toEqual({ outcome: 'no_sending_line' });
     expect(await db.database.select().from(schema.linqLineHealth)).toEqual([]);
+    expect(await readLineHold(db.database)).toBe('no_sending_line');
   });
 
   it('reads a pause only for the sending line, whoever wrote the row', async () => {
     await db.database
       .insert(schema.linqLineHealth)
       .values({ phoneNumber: OTHER_LINE, status: 'flagged', paused: true, updatedAt: NOW });
-    expect(await readLinePaused(db.database)).toBe(false);
+    expect(await readLineHold(db.database)).toBeNull();
 
     await db.database
       .insert(schema.linqLineHealth)
       .values({ phoneNumber: LINE, status: 'flagged', paused: true, updatedAt: NOW });
-    expect(await readLinePaused(db.database)).toBe(true);
+    expect(await readLineHold(db.database)).toBe('line_health');
   });
 
   it('writes nothing while the flag is unset', async () => {

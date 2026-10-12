@@ -256,7 +256,7 @@ describe('the nudge hand-off', () => {
       compose: async ({ items }) => ({ message: items.map((item) => item.what).join(' ') }),
       buildGate: openGate,
       resolveSendablePhone: async () => PHONE,
-      linePaused: async () => false,
+      lineHold: async () => null,
       loadRecipients: async () => [{ parentUserId, timeZone: TZ, role: 'primary_parent' }],
       outboundTarget: async () => ({ channel: 'legacy' }),
       threadMessage: threadProactiveMessage,
