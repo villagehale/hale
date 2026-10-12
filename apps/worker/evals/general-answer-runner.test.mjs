@@ -1,4 +1,7 @@
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -538,6 +541,57 @@ describe('the general-answer runner', () => {
       },
     );
   });
+
+  /**
+   * The report is what every test above reads, and what CI's log shows. `process.exit`
+   * drops whatever a pipe has not yet taken, and with three replies a fixture the report
+   * grew long enough for a reader that is busy when the runner finishes (a CI runner) to
+   * lose its tail: the test above this block went red in CI on exactly that, with a
+   * fixture's line missing from a run that had printed it.
+   *
+   * So the runner is run here into a pipe nobody reads until its last line is written,
+   * with every line padded so the report is far longer than any pipe holds. The whole
+   * report has to arrive, the gate line last.
+   */
+  it('prints its whole report to a reader that is not keeping up, the gate line included', () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'general-answer-report-'));
+    const printed = join(scratch, 'printed');
+    const padded = `data:text/javascript,${encodeURIComponent(
+      `import fs from 'node:fs';
+       const log = console.log;
+       const done = () => fs.writeFileSync(process.env.REPORT_PRINTED, '');
+       console.log = (...args) => {
+         const line = args.join(' ');
+         log(line + ' '.repeat(4000));
+         if (line.startsWith('overall (real)')) done();
+       };
+       process.on('exit', done);`,
+    )}`;
+    const { ANTHROPIC_API_KEY: _key, ...env } = process.env;
+    const run = spawnSync(
+      'sh',
+      [
+        '-c',
+        'node --import "$PADDED" "$RUNNER" --cached-only | { while [ ! -e "$REPORT_PRINTED" ]; do sleep 0.1; done; cat; }',
+      ],
+      {
+        env: { ...env, PADDED: padded, RUNNER, REPORT_PRINTED: printed },
+        encoding: 'utf8',
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: 50_000,
+      },
+    );
+    rmSync(scratch, { recursive: true, force: true });
+
+    const lines = run.stdout.split('\n').map((line) => line.trimEnd());
+    // Positive control: this is the full run, and it is longer than a pipe holds.
+    expect(lines).toContain(`corpus: ${ANSWER_FIXTURES.length} questions | today: ${EVAL_TODAY}`);
+    expect(run.stdout.length).toBeGreaterThan(256 * 1024);
+    expect(lines.filter((line) => /^(PASS|FAIL) {2}\S+/.test(line))).toHaveLength(
+      ANSWER_FIXTURES.length,
+    );
+    expect(lines.filter((line) => line.startsWith('overall (real): '))).toHaveLength(1);
+  }, 60_000);
 
   /**
    * The runner's own call to production's identifier scrub, between the sanitize
