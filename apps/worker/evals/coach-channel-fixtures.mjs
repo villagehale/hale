@@ -800,6 +800,51 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'registration-live-read-unavailable',
+    text: 'When does the registration I asked you to watch open now?',
+    city: 'Halton Hills',
+    transcript: [{ role: 'assistant', content: 'It was listed as Sep 1 at 7:00 a.m.' }],
+    registrationWindows: [
+      {
+        ...FIXTURE_REGISTRATION_WINDOW,
+        opensFor: 'Current date could not be verified. Do not use a cached date.',
+        sourceUrl: 'https://example.org/registration',
+        generalOpens: null,
+        reminderState: 'paused',
+        minuteReminderAvailable: false,
+      },
+    ],
+    note: 'A saved watch is not current date evidence. The former transcript clock must not be repeated as a fact.',
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['paused', 'https://example.org/registration'],
+      forbidden: ['sep 1', '7:00', 'fifteen', '15 minutes'],
+    },
+  },
+  {
+    id: 'registration-live-date-only',
+    text: 'What time does my tracked London course registration open?',
+    city: 'London',
+    registrationWindows: [
+      {
+        ...FIXTURE_REGISTRATION_WINDOW,
+        town: 'London',
+        programs: 'tracked swim course',
+        opensFor: '2026-10-20 (opening time not published) Europe/London',
+        generalOpens: null,
+        residentsFirst: false,
+        reminderState: 'active',
+        minuteReminderAvailable: false,
+      },
+    ],
+    note: 'A published date is not a midnight/noon clock and cannot support a fifteen-minute promise.',
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['time', 'Europe/London'],
+      forbidden: ['midnight', 'noon', '12:00', 'fifteen', '15 minutes', '7:00'],
+    },
+  },
+  {
     id: 'registration-window-plus-a-find',
     text: 'whats there for the fall near us?',
     city: 'Halton Hills',

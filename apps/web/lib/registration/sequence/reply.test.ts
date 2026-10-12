@@ -356,7 +356,7 @@ describe('loadAwaitingSequence · the anchor', () => {
         if (which === 0) {
           return {
             from: () => ({
-              innerJoin: () => ({
+              leftJoin: () => ({
                 innerJoin: () => ({
                   innerJoin: () => ({
                     where: () => ({

@@ -516,7 +516,7 @@ function webPickFor(fixture) {
  */
 const spotPage = (name) => readFileSync(join(SPOTS_FIXTURES, `${name}.html`), 'utf8');
 
-function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
+function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks, sourceUrl) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
   const redacted = redactTeenNames(flattened, children, NOW);
@@ -527,7 +527,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
   // A plan offer or a referral still crowds the count out. An activity URL does not:
   // the count is about that find, and the URL is that find's page.
   const protectedTail = redactTeenNames(
-    [planOffer, referral]
+    [planOffer, referral, sourceUrl]
       .map((part) => part?.trim() ?? '')
       .filter((part) => part !== '')
       .join(' '),
@@ -1357,12 +1357,18 @@ function groundedHay(fixture, toolResults) {
   // facts are DATES — the thing the fabrication gate is most load-bearing about. A date
   // in the reply that is not in this list is one the model made up.
   for (const window of fixture.registrationWindows ?? []) {
-    parts.push(window.town, window.programs, window.opensFor, window.generalOpens ?? '');
+    parts.push(window.town, window.programs, window.opensFor, window.generalOpens ?? '', window.sourceUrl ?? '');
     // Both spellings of the month, for the reason both spellings of every weekday are
     // below: the context renders "Sep 1" and a parent reads "September 1", so a model
     // that writes the long form is recalling the date it was given, not inventing one.
     parts.push(...(window.opensFor.match(/[A-Z][a-z]{2}/g) ?? []).map(longMonth));
     parts.push(...((window.generalOpens ?? '').match(/[A-Z][a-z]{2}/g) ?? []).map(longMonth));
+    for (const match of `${window.opensFor} ${window.generalOpens ?? ''}`.matchAll(
+      /\b\d{4}-(\d{2})-\d{2}\b/g,
+    )) {
+      const month = [...LONG_MONTHS][Number(match[1]) - 1];
+      if (month) parts.push(...month);
+    }
   }
   // Both forms of every day the schedule actually touches: the tools emit "Thu", the
   // model may write "Thursday", and neither is a fabrication.
@@ -2031,6 +2037,9 @@ async function main() {
   const shortenSkill = await agent.loadSkill(
     join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-shorten.md'),
   );
+  const registrationPolicy = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'registration-live-truth.md'),
+  );
   const model =
     process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
   // Sonnet, not the Haiku the other evals judge with. Scoring a two-sentence text
@@ -2051,6 +2060,15 @@ async function main() {
   const judge = makeJudge(
     judgeModel,
     JUDGE_SYSTEM,
+    'coach-channel',
+    cachedOnly,
+    getJudgeClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
+  const registrationJudge = makeJudge(
+    judgeModel,
+    `${JUDGE_SYSTEM}\nFor registration turns, this live-truth policy overrides the old hand-checked-date and no-URL rules above. A provided sourceUrl is the official source, not an app handback. Reporting an unverifiable date, paused reminders and that source link is required, not explaining internal machinery.\n${registrationPolicy.instructions}`,
     'coach-channel',
     cachedOnly,
     getJudgeClient,
@@ -2153,7 +2171,12 @@ async function main() {
         subjectLatencies,
       );
       const run = await agent.runAgent({
-        skill: augmentCoachSkillForAutonomySwitchOff(skill, fixture.autonomy === true),
+        skill: augmentCoachSkillForAutonomySwitchOff(
+          fixture.registrationWindows
+            ? { ...skill, instructions: `${skill.instructions}\n\n${registrationPolicy.instructions}` }
+            : skill,
+          fixture.autonomy === true,
+        ),
         context: turnContext,
         tools,
         client,
@@ -2191,6 +2214,7 @@ async function main() {
         referralBlock,
         fixture.nearby,
         activityLinksFor(fixture, calls),
+        fixture.registrationWindows?.find((window) => window.reminderState === 'paused')?.sourceUrl,
       );
       // One shorter rewrite when no complete sentence fit. The same cached client
       // keys it: a different system prompt is a different entry, and only a turn
@@ -2279,7 +2303,7 @@ async function main() {
     const verdict =
       broken || reply === null
         ? null
-        : await await judge(fixture.id, {
+        : await (fixture.registrationWindows ? registrationJudge : judge)(fixture.id, {
             text: fixture.text,
             // The judge gets the SAME context the agent had. Handing it only a one-line
             // week summary was the eval's own bug, and its cached reasons say so out

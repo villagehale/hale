@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cityRecLine } from '~/lib/channel/rec-morning';
+import { recMorningReturnLine } from '~/lib/channel/rec-morning/copy';
 import { adultLearnDoor } from './adult-learn';
 import {
   type IntakeAnswerInput,
@@ -148,7 +148,7 @@ describe('intake answer · the emergency tripwire', () => {
     vi.useRealTimers();
   });
 
-  it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
+  it('uses the live rec reader result and retains the outstanding intake ask', async () => {
     const exploding = {
       messages: {
         create: () => {
@@ -156,7 +156,7 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding);
+    const composer = createIntakeAnswerComposer(exploding, async (input) => `The current Toronto page says 2026-10-20. ${recMorningReturnLine(input.pendingAsk)}`);
     atRecMorningNow();
     const outcome = await composer.compose({
       ...INPUT,
@@ -164,8 +164,8 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body.startsWith(cityRecLine('toronto', REC_MORNING_NOW) as string)).toBe(true);
-    expect(outcome.body).toContain('non-residents Friday Sep 25 at 7 a.m.');
+    expect(outcome.body).toBe('The current Toronto page says 2026-10-20. Still want me watching?');
+    expect(outcome.body).not.toContain('Sep 25');
     expect(outcome.body.toLowerCase()).not.toContain('activeto');
     expect(outcome.body.toLowerCase()).not.toContain('unofficial');
     expect(outcome.body.toLowerCase()).not.toContain('efun');
@@ -174,7 +174,7 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).not.toContain(WATCH_OFFER_ASK);
   });
 
-  it('answers a Markham rec ask with the locked leftover, no model, no Toronto clock', async () => {
+  it('reports an unverified Markham read rather than the old seed date', async () => {
     const exploding = {
       messages: {
         create: () => {
@@ -182,7 +182,7 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding);
+    const composer = createIntakeAnswerComposer(exploding, async (input) => `I couldn't verify the Markham registration date. ${recMorningReturnLine(input.pendingAsk)}`);
     atRecMorningNow();
     const outcome = await composer.compose({
       ...INPUT,
@@ -190,7 +190,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW) as string)).toBe(true);
+    expect(outcome.body).toBe("I couldn't verify the Markham registration date. Still want me watching?");
     expect(outcome.body).toContain('Markham');
     expect(outcome.body).not.toContain('7:00');
     expect(outcome.body).not.toMatch(/Sept?\s*15/i);
@@ -206,7 +206,10 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding);
+    const composer = createIntakeAnswerComposer(exploding, async (input) => {
+      expect(input.postal).toBe('L3R');
+      return `The current Markham page says 2026-10-20. ${recMorningReturnLine(input.pendingAsk)}`;
+    });
     atRecMorningNow();
     const outcome = await composer.compose({
       ...INPUT,
@@ -215,7 +218,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW) as string)).toBe(true);
+    expect(outcome.body).toBe('The current Markham page says 2026-10-20. Still want me watching?');
   });
 
   it("answers adult-learn / I wanna learn swimming with the kids-only door, never I don't do that", async () => {

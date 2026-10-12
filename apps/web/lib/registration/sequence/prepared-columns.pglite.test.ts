@@ -10,8 +10,8 @@ import { defaultSequenceRunDeps } from './run.js';
  *
  * Everything this migration is for lives in the database and nowhere else: three
  * nullable columns whose nullability IS the semantics (NULL = unasked, not false), a
- * paired CHECK that makes "bound to a course with no clock to anchor on" unrepresentable,
- * and RLS. A Drizzle chain fake can observe none of it — it returns whatever rows it was
+ * source CHECK that refuses an anchor without a URL, and RLS. A Drizzle chain fake can
+ * observe none of it — it returns whatever rows it was
  * handed and would pass just as happily against a table that never grew the columns.
  *
  * Each test names the mutation it exists to catch.
@@ -96,22 +96,15 @@ describe('registration_sequences · the prepared-registration columns', () => {
     ]);
   });
 
-  it('refuses a bound course with no clock, and a clock with no bound course', async () => {
-    // Kills: dropping the paired CHECK. A course_url without course_opens_at is a
-    // sequence the scheduler believes is bound and has nothing to anchor its legs on;
-    // a clock without a URL is an anchor no send-time read can re-verify.
-    await expect(insertSequence(COURSE_URL, null)).rejects.toThrow(
-      /registration_sequences_course_check/,
-    );
+  it('accepts a URL before its date is published, but refuses a clock without a source', async () => {
+    await expect(insertSequence(COURSE_URL, null)).resolves.toBeDefined();
     await expect(insertSequence(null, '2026-08-12T10:30:00Z')).rejects.toThrow(
       /registration_sequences_course_check/,
     );
   });
 
   it('accepts the unbound row, and round-trips a bound one through the Drizzle columns', async () => {
-    // The positive control the pair of refusals above needs: the CHECK must not be
-    // refusing everything. Kills a CHECK written as `IS NOT NULL AND IS NOT NULL`,
-    // which would make today's unbound sequences uninsertable.
+    // The legacy unbound shape must still be insertable after the watch migration.
     await expect(insertSequence(null, null)).resolves.toBeDefined();
 
     // The bound row goes in through the table object rather than raw SQL, because the

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly follows the live-truth registration override rules: it does not repeat the old Sep 1 / 7:00 a.m. date, states it couldn't verify the current date, says reminders are paused while checking again, and includes the provided sourceUrl. It does not invent a time, does not send the parent to the app, and does not promise an upcoming text. The one small blemish is a dash used as punctuation mid-sentence (\"fall registration - date\") which is slightly informal but not a real flaw. Otherwise this is exactly the required shape: one sentence of status, one sentence of reminder state, the source link. Clean and correct.",
+    "score": 5
+  }
+}

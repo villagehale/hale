@@ -36,7 +36,8 @@
 // date from the prose rule, and invents times for date-only fields) must fail.
 
 import { join } from 'node:path';
-import { tsImport } from 'tsx/esm/api';
+import { pathToFileURL } from 'node:url';
+import { register } from 'tsx/esm/api';
 import {
   REPO_ROOT,
   cachedToolCall,
@@ -48,53 +49,20 @@ import {
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'verify-registration-window.md');
+register({ tsconfig: join(REPO_ROOT, 'apps', 'web', 'tsconfig.json') });
+const importTs = (path) => import(pathToFileURL(path).href);
+const {
+  EXTRACTION_JSON_SCHEMA: TOOL_SCHEMA,
+  extractionInput,
+  parseExtraction,
+} = await importTs(join(REPO_ROOT, 'apps', 'web', 'lib', 'registration', 'verify-window.ts'));
+const { normalizeExtractedRegistration } = await importTs(
+  join(REPO_ROOT, 'apps', 'web', 'lib', 'registration', 'live-reading.ts'),
+);
 
 /** Production's floor (MIN_VERIFY_CONFIDENCE). A correct reading below it is
  * DISCARDED in production, so it is not a pass here either. */
 const MIN_CONFIDENCE = 0.7;
-
-const REASONS = ['announced_later', 'different_cycle_only', 'no_year_stated', 'not_published'];
-
-const PUBLISHED_DATE = {
-  type: ['object', 'null'],
-  properties: {
-    date: { type: 'string', description: 'YYYY-MM-DD' },
-    time: {
-      type: ['string', 'null'],
-      description: '24-hour HH:MM, or null when the page publishes no time',
-    },
-  },
-  required: ['date', 'time'],
-};
-
-const TOOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    found: { type: 'boolean' },
-    reason: { type: ['string', 'null'], enum: [...REASONS, null] },
-    cycle_on_page: { type: ['string', 'null'] },
-    year_evidence: {
-      type: ['string', 'null'],
-      description: 'Verbatim page text stating the YEAR these dates belong to.',
-    },
-    preview: PUBLISHED_DATE,
-    resident_open: PUBLISHED_DATE,
-    general_open: PUBLISHED_DATE,
-    evidence: { type: ['string', 'null'], description: 'Verbatim page text the dates came from.' },
-    confidence: { type: 'number', minimum: 0, maximum: 1 },
-  },
-  required: [
-    'found',
-    'reason',
-    'cycle_on_page',
-    'year_evidence',
-    'preview',
-    'resident_open',
-    'general_open',
-    'evidence',
-    'confidence',
-  ],
-};
 
 // ── the real pages ───────────────────────────────────────────────────────────
 
@@ -170,6 +138,52 @@ const NO_YEAR =
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
 const FIXTURES = [
+  // Controlled page text for new source-zone contracts; the model calls are real.
+  {
+    id: 'us-course-source-zone',
+    municipality: 'course operator',
+    programDomain: 'course',
+    cycleLabel: 'the single course shown on this page',
+    pageText:
+      'Brooklyn Swim, New York City. Registration opens October 20, 2026 at 9 a.m. Class sessions start November 2, 2026 at 4 p.m.',
+    expect: {
+      found: true,
+      preview: null,
+      resident_open: null,
+      general_open: { date: '2026-10-20', time: '09:00' },
+      timeZone: 'America/New_York',
+    },
+  },
+  {
+    id: 'uk-course-date-only',
+    municipality: 'course operator',
+    programDomain: 'course',
+    cycleLabel: 'the single course shown on this page',
+    pageText:
+      'London Swim, London, England. Registration opens 20 October 2026. Opening time has not been announced. Class sessions begin 2 November 2026 at 16:00.',
+    expect: {
+      found: true,
+      preview: null,
+      resident_open: null,
+      general_open: { date: '2026-10-20', time: null },
+      timeZone: 'Europe/London',
+    },
+  },
+  {
+    id: 'weekday-unique-year',
+    municipality: 'course operator',
+    programDomain: 'course',
+    cycleLabel: 'the single course shown on this page',
+    referenceDate: '2026-10-10',
+    pageText: 'New York City swim registration opens Tuesday, October 20 at 9 a.m.',
+    expect: {
+      found: true,
+      preview: null,
+      resident_open: null,
+      general_open: { date: '2026-10-20', time: '09:00' },
+      timeZone: 'America/New_York',
+    },
+  },
   {
     id: 'markham-fall-2026',
     why: 'The ordinary confirm, off a page listing four cycles at once.',
@@ -326,6 +340,26 @@ function check(fixture, value) {
       problems.push(`${field.toUpperCase()} is not in the page text: "${quote}"`);
     }
   }
+  if (want.timeZone) {
+    if (value.time_zone !== want.timeZone)
+      problems.push(`TIME_ZONE expected ${want.timeZone}, got ${value.time_zone}`);
+    if (!value.time_zone_evidence || !page.includes(normalize(value.time_zone_evidence)))
+      problems.push('TIME_ZONE_EVIDENCE is not quoted from the page');
+  }
+  try {
+    const reading = normalizeExtractedRegistration(
+      { ok: true, extracted: parseExtraction(value), pageText: fixture.pageText },
+      {
+        sourceUrl: 'https://example.org/eval',
+        checkedAt: new Date(`${fixture.referenceDate ?? '2026-08-01'}T12:00:00Z`),
+        timeZone: want.timeZone ?? 'America/Toronto',
+      },
+    );
+    if (reading.status !== 'verified')
+      problems.push(`PRODUCTION_GATE discarded reading: ${reading.reason ?? reading.status}`);
+  } catch (err) {
+    problems.push(`PRODUCTION_GATE: ${err.message}`);
+  }
   return problems;
 }
 
@@ -381,7 +415,7 @@ async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
 
-  const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const agent = await importTs(AGENT_SRC);
   const skill = await agent.loadSkill(SKILL_PATH);
   // The skill declares its task; the lane comes from model.ts, never hardcoded.
   const subjectLane = agent.pickLane(skill.meta.task);
@@ -409,16 +443,19 @@ async function main() {
         model,
         lane: subjectLane,
         system: skill.instructions,
-        userMessage: JSON.stringify({
-          municipality: fixture.municipality,
-          program_domain: fixture.programDomain,
-          cycle_label: fixture.cycleLabel,
-          page_text: fixture.pageText,
-        }),
+        userMessage: extractionInput(
+          {
+            municipality: fixture.municipality,
+            programDomain: fixture.programDomain,
+            cycleLabel: fixture.cycleLabel,
+            referenceDate: fixture.referenceDate,
+          },
+          fixture.pageText,
+        ),
         toolName: 'published_registration_window',
         toolDescription: 'Return the registration dates this page publishes for the named cycle.',
         toolSchema: TOOL_SCHEMA,
-        maxTokens: 1024,
+        maxTokens: 2048,
         cachedOnly,
         getClient,
         cost,

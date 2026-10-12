@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the date (2026-10-20) as a verified fact from registrationWindows, notes the opening time is not published (accurate), and confirms watching is active with a promise to text — all of which are correct and required. However, it slightly misstates the promise: with watching:true, Hale texts a week out, the evening before, and fifteen minutes before it opens — not \"as soon as a time or spot shows up,\" which sounds like a spot-watch rather than a registration-window watch. It also adds \"or spot\" which conflates two different features. That's a small but real inaccuracy in how the watch is described. Otherwise the reply is clean: no greeting, no sign-off, no invented details, no app referral, correct date stated flat. A minor blemish keeps this at a 4.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the registration window (Sep 1, 7:00 a.m. for residents) as a verified fact from knows.registrationWindows, states watching is already active, and promises to text before it opens — all of which matches the `watching: true` state exactly. It does not mention Milo by name but the question was about Milo's swim registration and the answer covers the whole window, which is correct since the window applies to the family. No app referral, no invented details, no markdown, no sign-off. It is tight and direct. A very minor point: it could have noted the general opens date (Sep 8) for completeness, but that is not required. The reply does the job cleanly.",
+    "score": 5
+  }
+}

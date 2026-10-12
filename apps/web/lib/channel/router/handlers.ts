@@ -53,13 +53,14 @@ import {
 } from '~/lib/channel/linq/coparent-invite';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
-import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
+import { recMorningCouldUseWhere } from '~/lib/channel/rec-morning';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
   writeConnectorLink,
   writeConnectorLinks,
 } from '~/lib/channel/voice/said-line';
+import { liveRecMorningReply } from '~/lib/channel/rec-morning/live';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import {
@@ -1487,15 +1488,15 @@ async function loadFamilyRecWhere(
   return { city: row.city, postal: row.postalCode ?? row.areaCoarse };
 }
 
-export function recMorningHandler(): DeterministicHandler {
+export function recMorningHandler(read: typeof liveRecMorningReply = liveRecMorningReply): DeterministicHandler {
   return {
     name: 'rec_morning',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const named = recMorningReply(ctx.body, ctx.now);
+      const named = await read(ctx.body, ctx.now);
       if (named !== null) return { claimed: true, outcome: 'rec_morning', reply: named };
       if (!recMorningCouldUseWhere(ctx.body)) return { claimed: false };
       const where = await loadFamilyRecWhere(database, ctx.familyId);
-      const reply = recMorningReply(ctx.body, ctx.now, where);
+      const reply = await read(ctx.body, ctx.now, where);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };
     },

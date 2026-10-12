@@ -19,12 +19,13 @@ import {
   type VerifyOutcome,
   type VerifyField,
   compareWindow,
-  corroborationFailure,
   extractPublishedWindow,
   isTrustworthyFind,
   withoutInferredEvidence,
 } from './verify-window';
 import { inferredFieldsFor } from './registration-windows';
+import { normalizeExtractedRegistration } from './live-reading';
+import { createRegistrationPageFetch } from './page';
 
 /**
  * VIL-259 — the weekly registration re-verify sweep. M1 (VIL-236) specified this
@@ -99,7 +100,7 @@ export type FetchPage = (url: string) => Promise<string>;
 
 /** Crude tag strip — good enough for a model read, not a rendering surface.
  * Same approach as the sentinel's html fallback. */
-function stripHtml(html: string): string {
+export function stripHtml(html: string): string {
   return html
     .replace(/<(script|style|noscript)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
@@ -395,7 +396,10 @@ export async function claimVerifySweepWeek(database: Database, now: Date): Promi
     .where(
       and(
         eq(schema.rateLimits.route, REGISTRATION_VERIFY_ROUTE),
-        lt(schema.rateLimits.windowStart, new Date(now.getTime() - CLAIM_RETENTION_DAYS * 86_400_000)),
+        lt(
+          schema.rateLimits.windowStart,
+          new Date(now.getTime() - CLAIM_RETENTION_DAYS * 86_400_000),
+        ),
       ),
     );
 
@@ -403,7 +407,11 @@ export async function claimVerifySweepWeek(database: Database, now: Date): Promi
     .insert(schema.rateLimits)
     .values({ identifier: 'weekly-sweep', route: REGISTRATION_VERIFY_ROUTE, windowStart, count: 1 })
     .onConflictDoNothing({
-      target: [schema.rateLimits.identifier, schema.rateLimits.route, schema.rateLimits.windowStart],
+      target: [
+        schema.rateLimits.identifier,
+        schema.rateLimits.route,
+        schema.rateLimits.windowStart,
+      ],
     })
     .returning({ id: schema.rateLimits.id });
 
@@ -495,7 +503,9 @@ export function formatRegistrationVerifyDigest(
       lines.push(`  ${rowHeading(row)}`);
       for (const diff of row.outcome.diffs) {
         const stored = diff.stored === null ? '(nothing stored)' : localStamp(diff.stored);
-        lines.push(`    ${FIELD_LABEL[diff.field]}: we store ${stored} · page says ${localStamp(diff.published)}`);
+        lines.push(
+          `    ${FIELD_LABEL[diff.field]}: we store ${stored} · page says ${localStamp(diff.published)}`,
+        );
       }
       if (row.outcome.evidence) {
         lines.push(`    the page's words: "${row.outcome.evidence}"`);
@@ -542,7 +552,11 @@ export function formatRegistrationVerifyDigest(
   return lines.join('\n');
 }
 
-function appendDiscoveries(lines: string[], heading: string, discoveries: readonly DiscoveryResult[]): void {
+function appendDiscoveries(
+  lines: string[],
+  heading: string,
+  discoveries: readonly DiscoveryResult[],
+): void {
   if (discoveries.length === 0) return;
   lines.push('', heading);
   for (const discovery of discoveries) {
@@ -557,7 +571,9 @@ function appendDiscoveries(lines: string[], heading: string, discoveries: readon
         ['general open', reading.generalOpen],
       ] as const) {
         if (value) {
-          lines.push(`    ${label}: ${value.date}${value.time ? ` ${value.time}` : ' (no time published)'}`);
+          lines.push(
+            `    ${label}: ${value.date}${value.time ? ` ${value.time}` : ' (no time published)'}`,
+          );
         }
       }
       if (reading.evidence) {
@@ -608,7 +624,10 @@ export interface RegistrationVerifyDeps {
   recordRun: RecordVerifyRun;
   /** Writes each discovery reading. Non-nullable (rule #11): a sweep that found
    * a date and kept it only in an email is the gap this table exists to close. */
-  recordDiscoveries: (database: Database, readings: readonly DiscoveryReadingInsert[]) => Promise<void>;
+  recordDiscoveries: (
+    database: Database,
+    readings: readonly DiscoveryReadingInsert[],
+  ) => Promise<void>;
   /** Published readings old enough to escalate. A failure here is logged by the
    * caller and treated as no history — an escalation that did not happen,
    * named, rather than a sweep that aborts. */
@@ -618,12 +637,11 @@ export interface RegistrationVerifyDeps {
   discoveryTargets: readonly DiscoveryTarget[];
 }
 
-export function defaultRegistrationVerifyDeps(
-  client: AgentClient | null,
-): RegistrationVerifyDeps {
+export function defaultRegistrationVerifyDeps(client: AgentClient | null): RegistrationVerifyDeps {
+  const fetchBody = createRegistrationPageFetch();
   return {
     client,
-    fetchPage: createFetchPage(),
+    fetchPage: async (url) => stripHtml(await fetchBody(url)).slice(0, MAX_PAGE_TEXT_CHARS),
     extract: (cycle, pageText) => {
       if (!client) throw new Error('registration verify: no model client');
       return extractPublishedWindow(cycle, pageText, { client });
@@ -662,6 +680,7 @@ async function verifyRow(
   row: StoredWindow,
   getPage: (url: string) => Promise<string>,
   deps: RegistrationVerifyDeps,
+  now: Date,
 ): Promise<RowResult> {
   const base = {
     windowId: row.id,
@@ -675,8 +694,15 @@ async function verifyRow(
   try {
     pageText = await getPage(row.sourceUrl);
   } catch (err) {
-    console.error({ err, windowId: row.id, url: row.sourceUrl }, 'registration verify: fetch failed');
-    return { ...base, outcome: { kind: 'unverified', reason: 'fetch_failed' }, detail: errorText(err) };
+    console.error(
+      { err, windowId: row.id, url: row.sourceUrl },
+      'registration verify: fetch failed',
+    );
+    return {
+      ...base,
+      outcome: { kind: 'unverified', reason: 'fetch_failed' },
+      detail: errorText(err),
+    };
   }
 
   let reading: ExtractedWindow;
@@ -691,13 +717,26 @@ async function verifyRow(
     };
   }
 
-  const failure = corroborationFailure(pageText, reading);
-  if (failure !== null) {
+  const live = normalizeExtractedRegistration(
+    { ok: true, extracted: reading, pageText },
+    {
+      sourceUrl: row.sourceUrl,
+      checkedAt: now,
+      timeZone: REGISTRATION_TIME_ZONE,
+    },
+  );
+  if (live.status !== 'verified') {
     console.error(
       { windowId: row.id, evidence: reading.evidence },
       'registration verify: reading not corroborated by the page — DISCARDED',
     );
-    return { ...base, outcome: { kind: 'unverified', reason: failure } };
+    return {
+      ...base,
+      outcome: {
+        kind: 'unverified',
+        reason: live.status === 'unverified' ? live.reason : 'extract_failed',
+      },
+    };
   }
 
   // The dataset's own marker has the last word (VIL-347): a field this row never read off
@@ -850,7 +889,7 @@ export async function runRegistrationVerifySweep(
 
   const rows: RowResult[] = [];
   for (const window of windows) {
-    rows.push(await verifyRow(window, getPage, deps));
+    rows.push(await verifyRow(window, getPage, deps, now));
   }
 
   // The write happens after the read, and only for confirmations. A row whose
@@ -863,7 +902,10 @@ export async function runRegistrationVerifySweep(
       await deps.markVerified(database, row.windowId, now);
       confirmed += 1;
     } catch (err) {
-      console.error({ err, windowId: row.windowId }, 'registration verify: verified_at bump failed');
+      console.error(
+        { err, windowId: row.windowId },
+        'registration verify: verified_at bump failed',
+      );
     }
   }
 

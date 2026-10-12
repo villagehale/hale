@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the date (2026-10-20) from `registrationWindows`, correctly notes the opening time isn't published (matching `opensFor` which says \"opening time not published\"), and correctly confirms it's being watched with reminders — all of which are accurate recall. However, it slightly overclaims on \"as soon as a spot shows up\" — the watching here is for the registration window opening, not a spot-watch for class openings. Also, `minuteReminderAvailable` is false, so the fifteen-minute reminder isn't available, but the reply doesn't claim that. The main issue is the phrase \"a time or spot shows up\" blurs the registration-window watch with a class-spot watch, which are different features. Still, the core answer (date, no time published, watching, will text you) is correct and complete. Minor imprecision in wording but the job is done correctly overall.",
+    "score": 4
+  }
+}

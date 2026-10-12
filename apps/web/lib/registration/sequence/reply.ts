@@ -13,7 +13,7 @@ import {
   awaitingOutcome,
   waitlistDeadline,
 } from './schedule.js';
-import { type Shortlist, buildShortlist } from './shortlist.js';
+import { type Shortlist, buildShortlist, courseShortlist } from './shortlist.js';
 
 /**
  * VIL-242 · M7 — what a parent's answer to "how did it go?" is allowed to do.
@@ -351,9 +351,10 @@ export async function loadAwaitingSequence(
       timezone: schema.users.timezone,
       areaCoarse: schema.families.areaCoarse,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
+      courseUrl: schema.registrationSequences.courseUrl,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
+    .leftJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
     )
@@ -363,6 +364,7 @@ export async function loadAwaitingSequence(
       and(
         eq(schema.registrationSequences.familyId, familyId),
         isNull(schema.registrationSequences.outcome),
+        isNull(schema.registrationSequences.pausedAt),
         // THE SAME ANCHOR THE LADDER RAN ON, in SQL. The check-in goes out four hours
         // after the bound course's morning, so a horizon measured from the M1 row hears
         // a reply for only `72h − drift` after it — and a course bound three days off
@@ -388,8 +390,8 @@ export async function loadAwaitingSequence(
   // THIS family's open instant — the same one the ladder was anchored on. A resident
   // household registers a week before the general date, so reading the general one
   // would refuse the answer to a question Hale had already asked them.
-  const open = resolveFamilyOpen(row.window, row.areaCoarse);
-  const shortlist = buildShortlist(
+  const open = row.window ? resolveFamilyOpen(row.window, row.areaCoarse) : { isResidentWindow: false, opensForFamilyAt: row.courseOpensAt ?? now };
+  const shortlist = row.window ? buildShortlist(
     {
       window: row.window,
       // A reply re-renders the ONE cycle the sequence claimed.
@@ -402,7 +404,7 @@ export async function loadAwaitingSequence(
     },
     children,
     now,
-  );
+  ) : row.courseUrl && row.courseOpensAt ? courseShortlist(row.sequenceId, row.courseUrl, row.courseOpensAt) : null;
   if (!shortlist) return null;
 
   return {
@@ -422,11 +424,11 @@ export async function loadAwaitingSequence(
       optIn,
       outcome: null,
       waitlistStartedAt: null,
-      waitlistResponseHours: row.window.waitlistResponseHours,
+      waitlistResponseHours: row.window?.waitlistResponseHours ?? null,
       // Read from the registry rather than passed as null: this state answers
       // `awaitingOutcome` today, which never looks at it, and a placeholder here would
       // be the wrong answer the first time somebody asks it which leg is due.
-      portal: portalForMunicipality(row.window.municipality),
+      portal: row.window ? portalForMunicipality(row.window.municipality) : null,
     },
   };
 }

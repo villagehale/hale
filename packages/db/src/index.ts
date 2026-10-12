@@ -27,6 +27,7 @@ export type {
   RegistrationWindow,
   NewRegistrationWindow,
 } from './schema/registration-windows.js';
+export { REGISTRATION_COURSE_URL_MAX_CHARS } from './schema/registration-sequences.js';
 export type {
   GtaRegion,
   SocialCategory,

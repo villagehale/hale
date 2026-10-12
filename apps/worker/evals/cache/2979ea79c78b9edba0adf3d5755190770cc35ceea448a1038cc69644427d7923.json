@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly applies the live-truth override: it does not repeat the old Sep 1 / 7:00 a.m. date, states it could not verify the current date, reports that reminders are paused, and provides the source URL so Sam can check directly. That is exactly the required shape for an unverifiable reading with reminderState: paused. No invented dates, no app handback, no internal machinery. Clean and complete.",
+    "score": 5
+  }
+}

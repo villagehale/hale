@@ -4,7 +4,6 @@ import type { Database } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
-import { cityRecLine } from '~/lib/channel/rec-morning';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
 import type { OpenCheckupOffer } from '~/lib/health/offer';
@@ -510,30 +509,30 @@ describe('the village intro lane and the lanes behind it', () => {
 });
 
 describe('recMorningHandler', () => {
-  it("answers a Toronto swim clock question with the dataset's Toronto dates", async () => {
-    const verdict = await recMorningHandler().handle(
+  it('returns the current page reader result rather than the static Toronto date', async () => {
+    const verdict = await recMorningHandler(async () => 'The page says 2026-10-20 at 07:00 America/Toronto. https://www.toronto.ca/registration').handle(
       DB,
       turn('When does Toronto swim registration open?'),
     );
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed || verdict.reply === null) return;
     const body = verdict.reply;
-    expect(body).toBe(cityRecLine('toronto', TURN_NOW));
-    expect(body).toContain('residents Tuesday Sep 15 at 7 a.m.');
-    expect(body).toContain('toronto.ca/OnlineReg');
+    expect(body).toContain('2026-10-20 at 07:00 America/Toronto');
+    expect(body).not.toContain('Sep 15');
+    expect(body).toContain('toronto.ca/registration');
     expect(body.toLowerCase()).not.toContain('activeto');
     expect(body.toLowerCase()).not.toContain('unofficial');
     expect(body.toLowerCase()).not.toContain('efun');
     expect(body).not.toMatch(/I'm an AI/i);
-    expect(body).not.toMatch(/https?:\/\//i);
+    expect(body).toMatch(/https?:\/\//i);
   });
 
-  it("answers a named Markham rec ask with Markham's own cycle, not Toronto", async () => {
-    const verdict = await recMorningHandler().handle(DB, turn('Markham fall rec dates?'));
+  it('reports a failed Markham page read without substituting the seed date', async () => {
+    const verdict = await recMorningHandler(async () => "I couldn't verify the Markham registration date. https://www.markham.ca/registration").handle(DB, turn('Markham fall rec dates?'));
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed || verdict.reply === null) return;
-    expect(verdict.reply).toBe(cityRecLine('markham', TURN_NOW));
-    expect(verdict.reply).toContain('Tuesday Aug 11 at 6:30 a.m.');
+    expect(verdict.reply).toContain("couldn't verify");
+    expect(verdict.reply).not.toContain('Aug 11');
     expect(verdict.reply).not.toContain('7:00');
     expect(verdict.reply).not.toMatch(/Sept?\s*15/i);
     expect(verdict.reply.toLowerCase()).not.toContain('activeto');
@@ -617,6 +616,7 @@ describe('the shipped order', () => {
       // Exact memory phrases only, and only with the kinds flag on. Flag off
       // claims nothing, so a bare yes never lands here.
       'family_memory_kinds',
+      'registration_link',
       'registration',
       'rec_morning',
       // Immediately before the bare-word capture, so "yes" to "Can I call you Bea?"

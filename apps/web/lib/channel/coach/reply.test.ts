@@ -72,6 +72,17 @@ describe('redactTeenNames', () => {
 });
 
 describe('toSmsReply', () => {
+  it('preserves a live registration source link when an unverified answer is trimmed', () => {
+    const sourceUrl = 'https://www.king.ca/recreation';
+    const reply = toSmsReply(
+      `I couldn't verify the current date. ${'Please check the official page for the latest information. '.repeat(8)}`,
+      { children: [], now: NOW, sourceUrl },
+    );
+    expect(reply).toContain("couldn't verify");
+    expect(reply.endsWith(sourceUrl)).toBe(true);
+    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+  });
+
   it('strips markdown the phone would render literally', () => {
     const raw = '**Two swims** this week:\n\n- Mon 4:30\n- Thu 5:15\n\nWhich one?';
 

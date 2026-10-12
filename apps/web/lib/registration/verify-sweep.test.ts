@@ -33,6 +33,7 @@ import {
 const MARKHAM_PAGE =
   '2026 Fall Programs, Swim Lessons and Winter Break Camps. Preview starting Aug, 3. ' +
   'Register starting Aug. 11 at 6:30 AM.';
+const MOVED_PAGE = MARKHAM_PAGE.replace('Aug. 11', 'Aug. 18');
 
 function storedWindow(overrides: Partial<StoredWindow> = {}): StoredWindow {
   return {
@@ -59,7 +60,7 @@ function reading(overrides: Partial<ExtractedWindow> = {}): ExtractedWindow {
     preview: { date: '2026-08-03', time: null },
     residentOpen: null,
     generalOpen: { date: '2026-08-11', time: '06:30' },
-    evidence: 'Register starting Aug. 11 at 6:30 AM',
+    evidence: MARKHAM_PAGE,
     confidence: 0.95,
     ...overrides,
   };
@@ -151,10 +152,11 @@ describe('runRegistrationVerifySweep — an inferred field is not evidence (VIL-
 describe('runRegistrationVerifySweep — a discrepancy NEVER writes', () => {
   it('does not touch the row, not even verified_at, and raises a digest line', async () => {
     const h = harness({
+      fetchPage: vi.fn(async () => MOVED_PAGE),
       extract: vi.fn(async () =>
         reading({
           generalOpen: { date: '2026-08-18', time: '06:30' },
-          evidence: 'Register starting Aug. 11 at 6:30 AM',
+          evidence: MOVED_PAGE,
         }),
       ),
     });
@@ -176,10 +178,11 @@ describe('runRegistrationVerifySweep — a discrepancy NEVER writes', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const h = harness({
       sender: { send: vi.fn(async () => false) },
+      fetchPage: vi.fn(async () => MOVED_PAGE),
       extract: vi.fn(async () =>
         reading({
           generalOpen: { date: '2026-08-18', time: '06:30' },
-          evidence: 'Register starting Aug. 11 at 6:30 AM',
+          evidence: MOVED_PAGE,
         }),
       ),
     });
@@ -355,6 +358,7 @@ describe('runRegistrationVerifySweep — the run leaves its outcomes behind', ()
       loadWindows: async () => [storedWindow(), moved, unreadable],
       fetchPage: vi.fn(async (url: string) => {
         if (url === 'https://example.test/dead') throw new Error('HTTP 503');
+        if (url === moved.sourceUrl) return MOVED_PAGE;
         return MARKHAM_PAGE;
       }),
       extract: vi.fn(async (cycle: CycleIdentity) =>
@@ -362,7 +366,7 @@ describe('runRegistrationVerifySweep — the run leaves its outcomes behind', ()
           ? reading({
               cycleOnPage: moved.cycleLabel,
               generalOpen: { date: '2026-08-18', time: '06:30' },
-              evidence: 'Register starting Aug. 11 at 6:30 AM',
+              evidence: MOVED_PAGE,
             })
           : reading(),
       ),
@@ -391,13 +395,14 @@ describe('runRegistrationVerifySweep — the run leaves its outcomes behind', ()
   it('logs and carries on when the outcome write fails, still sending the digest', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const h = harness({
+      fetchPage: vi.fn(async () => MOVED_PAGE),
       recordRun: vi.fn(async () => {
         throw new Error('relation "registration_verify_runs" does not exist');
       }),
       extract: vi.fn(async () =>
         reading({
           generalOpen: { date: '2026-08-18', time: '06:30' },
-          evidence: 'Register starting Aug. 11 at 6:30 AM',
+          evidence: MOVED_PAGE,
         }),
       ),
     });

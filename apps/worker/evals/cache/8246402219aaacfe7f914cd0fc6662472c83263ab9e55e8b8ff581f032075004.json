@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles both available sources. It states the registration window date flat (recall from knows.registrationWindows, watching:true), correctly says it's already watching — which is accurate and the whole point of the feature. It then hands over the webFind (Tiny Tumblers, Saturday mornings, walking to 3 years) and attributes it to \"their own page\" — which satisfies the webFind rule of naming the source and noting no price is posted. No URL invented (referralLinkAppended is null). No app mention. No greeting or sign-off. No markdown. Concise and actionable. The one small thing: it doesn't mention that no general-open date was offered to Sam (Sep 8 for non-residents), but that's not required since Sam is a resident and the resident date is the relevant one. Overall this is a clean, correct, complete reply.",
+    "score": 5
+  }
+}

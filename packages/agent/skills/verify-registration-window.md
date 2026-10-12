@@ -7,8 +7,8 @@ tools: []
 
 # Read the registration dates a municipal page publishes for one cycle
 
-You are given the text of a Canadian municipality's recreation registration page
-and the name of ONE cycle. Return the registration dates that page publishes for
+You are given the text of an operator's registration page (including Canadian,
+US and UK courses) and the name of ONE cycle or course. Return the registration dates that page publishes for
 THAT cycle, and nothing else.
 
 You are not being asked whether a date is correct. You are not told what is
@@ -40,7 +40,13 @@ report it as this one.
 - Many pages print `Aug. 11` with no year at all. You may only supply a year that
   the page itself states for that cycle — in the section heading, the table
   caption, the cycle's own name. If nothing on the page supplies the year for
-  this cycle, that is `found: false`, reason `no_year_stated`.
+  this cycle, that is `found: false`, reason `no_year_stated`, EXCEPT when
+  `reference_date` is supplied and the page prints a weekday together with the
+  month/day: use a year only if exactly one of reference year minus one, reference
+  year, and reference year plus one matches that weekday. Quote the complete
+  weekday/month/day in `year_evidence`. A month/day alone is never enough.
+  This unique match is evidence under this rule, not a guessed current year;
+  confidence should still reflect any other ambiguity about the course or date.
 - If the page says the dates are not out yet — "to be announced", "dates will be
   announced at a later date", "coming soon", "check back" — that is
   `found: false`, reason `announced_later`. This is a real and common state, and
@@ -66,6 +72,13 @@ the printed resident date and leave `general_open` null.
 
 ## Output
 
+Also return `time_zone` (an IANA zone) and `time_zone_evidence` (a verbatim
+page quote naming the zone or an unambiguous venue city/address). If the location
+is ambiguous, return null for both. Never use the parent's zone or a hostname
+to infer the venue's zone. If the course label is not known, read only the single
+course on this page; several courses with different dates are ambiguous, not a
+reason to pick one. Course start/session dates are NOT registration dates.
+
 Answer with a SINGLE JSON object and nothing else — no prose, no code fence.
 
 ```
@@ -78,7 +91,9 @@ Answer with a SINGLE JSON object and nothing else — no prose, no code fence.
   "resident_open": null,
   "general_open":  { "date": "2026-08-11", "time": "06:30" },
   "evidence": "Register starting Aug. 11 at 6:30 AM",
-  "confidence": 0.95
+  "confidence": 0.95,
+  "time_zone": null,
+  "time_zone_evidence": null
 }
 ```
 

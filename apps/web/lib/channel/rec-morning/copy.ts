@@ -28,7 +28,7 @@ import { matchRecMorning, postalMentioned } from './match';
  * paraphrase.
  */
 
-const INTAKE_MAX_REPLY_CHARS = 300;
+export const INTAKE_MAX_REPLY_CHARS = 300;
 
 export const TORONTO_FOLLOW = `Wishlist can look frozen, so wait, don't mash refresh. Waitlist email takes about ${TORONTO_WAITLIST_HOURS} hours and there's no queue number. Two parents means two phones.`;
 

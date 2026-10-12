@@ -1,6 +1,11 @@
 import type { CandidateAccess } from '@hale/db';
 import type { CIVIC_SOURCE } from '~/lib/civic/project';
 import { formatWhenPhrase } from '~/lib/format/datetime';
+import {
+  registrationDate,
+  registrationWhen,
+  type LiveRegistrationWindow,
+} from '~/lib/registration/read';
 import { priceBandLabel } from '~/lib/format/labels';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import { nextWatchedCycle } from '~/lib/registration/discovery-targets';
@@ -128,6 +133,12 @@ export interface WeekendPick {
    * discovery source whose URL is the venue's own rather than a model's guess
    * ("A model-supplied source URL ... is often guessed", village/discover.ts). */
   verifiedUrl: string | null;
+}
+
+function liveWindowWhen(window: RegistrationMatch['window'], resident: boolean): string | null {
+  const reading = (window as Partial<LiveRegistrationWindow>).reading;
+  const date = reading ? registrationDate(reading, resident) : null;
+  return reading && date ? registrationWhen(reading, date) : null;
 }
 
 export interface RegistrationLine {
@@ -540,7 +551,10 @@ function decideRegistration(input: DecideRadarInput): RegistrationLine | null {
       programDomain: match.window.programDomain,
       cycleLabel: asciiCopy(match.window.cycleLabel),
     },
-    opensAtLocal: asciiSpaces(formatWhenPhrase(match.opensForFamilyAt, input.timeZone, input.now)),
+    opensAtLocal: asciiSpaces(
+      liveWindowWhen(match.window, match.isResidentWindow) ??
+        formatWhenPhrase(match.opensForFamilyAt, input.timeZone, input.now),
+    ),
     kidNames,
     residentNote:
       match.isResidentWindow && match.window.residentOpenAt !== null
@@ -582,7 +596,8 @@ function decideRegistrationAbsence(
       cycleLabel: asciiCopy(past.window.cycleLabel),
     },
     lastOpenedAtLocal: asciiSpaces(
-      formatWhenPhrase(past.openedForFamilyAt, input.timeZone, input.now),
+      liveWindowWhen(past.window, true) ??
+        formatWhenPhrase(past.openedForFamilyAt, input.timeZone, input.now),
     ),
     nextCycleLabel: next === null ? null : asciiCopy(next),
     stillOpen:

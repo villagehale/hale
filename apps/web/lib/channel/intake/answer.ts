@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
+import { liveRecMorningIntakeReply } from '~/lib/channel/rec-morning/live';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
@@ -358,7 +358,7 @@ async function groundOfficialPages(
   }
 }
 
-export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerComposer {
+export function createIntakeAnswerComposer(client: AgentClient, readRecMorning: typeof liveRecMorningIntakeReply = liveRecMorningIntakeReply): IntakeAnswerComposer {
   return {
     async compose(input) {
       // FIRST, and with no model in the loop. See the module note: intake has never had
@@ -384,7 +384,7 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // Rec-morning clock and portal are reviewed copy, not a composition. A first-time
       // texter asking which morning / which login must not wait on a model that still
       // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
-      const recMorning = recMorningIntakeReply({
+      const recMorning = await readRecMorning({
         parentWords: input.parentWords,
         pendingAsk: input.pendingAsk,
         postal: input.postalCode,

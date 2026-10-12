@@ -1170,6 +1170,13 @@
       "when": 1781556212000,
       "tag": "0171_channel_pending_asks",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1781556213000,
+      "tag": "0161_registration_live_watch_storage",
+      "breakpoints": true
     }
   ]
 }

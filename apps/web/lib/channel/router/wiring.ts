@@ -74,6 +74,7 @@ import {
   readinessQuestion,
 } from '~/lib/registration/sequence/prepare-reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
+import { registrationLinkHandler } from '~/lib/registration/sequence/link-handler';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
@@ -384,6 +385,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
  * "something went wrong" line until someone writes it a sentence.
  */
 const SPINE_REFUSALS: Record<string, SpineRefusal> = {
+  registration_date_changed: 'already_resolved',
   action_not_awaiting_approval: 'already_resolved',
   action_not_reviewer_approved: 'not_reviewer_approved',
   undo_window_expired: 'undo_window_expired',
@@ -459,6 +461,7 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     // Exact "what do you know" / "forget …" / "correct …" only, and only when
     // FAMILY_MEMORY_KINDS_ENABLED is exactly true. Flag off claims nothing.
     familyMemoryKindsHandler(),
+    registrationLinkHandler(),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
     parentCallNameHandler(parentCallNameVoice(defaultCallNameComposer())),

@@ -1,11 +1,7 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import {
-  SPOT_PORTAL_HOSTS,
-  type SpotPortal,
-  sanitizeSpotUrl,
-} from '~/lib/channel/spots/url';
+import { SPOT_PORTAL_HOSTS, type SpotPortal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { formatWhenPhrase } from '~/lib/format/datetime';
@@ -24,6 +20,8 @@ import { legDedupeKey } from './run.js';
 import { SEQUENCE_LEGS } from './schedule.js';
 import { type FitNote, buildShortlist } from './shortlist.js';
 import { printsReadinessAsk } from './copy.js';
+import { type LiveRegistrationReading, readCourseRegistration } from '../live-reading';
+import { refreshRegistrationWatch } from './refresh';
 
 /**
  * VIL-338 · what a parent may SAY to a registration morning that has not happened yet.
@@ -166,6 +164,7 @@ export async function loadPreparingSequence(
     .where(
       and(
         liveOptedInSequence(familyId, now),
+        isNull(schema.registrationSequences.pausedAt),
         inArray(schema.registrationWindows.municipality, PORTAL_MUNICIPALITIES),
       ),
     )
@@ -446,6 +445,18 @@ export async function handleCourseBind(
     prerequisite: verdict.facts.PrerequisiteEvents === true,
     ageFit: verdict.age.fit,
     driftMinutes: Math.round(driftMs / 60_000),
+    reading: readCourseRegistration(
+      { ok: true, raw },
+      {
+        sourceUrl: sanitized.url,
+        checkedAt: now,
+        timeZone: sequence.portal.timeZone,
+        courseId: sanitized.courseId,
+      },
+    ),
+    cachedAnchor: sequence.courseOpensAt ?? sequence.opensForFamilyAt,
+    resident: sequence.isResidentWindow,
+    parentTimeZone: sequence.timeZone,
     now,
   });
 
@@ -460,7 +471,13 @@ export async function handleCourseBind(
     timeZone: sequence.timeZone,
     now,
   });
-  return written === 'bound' ? { status: 'bound', reply } : { status: 'already_bound', reply };
+  const confirmation =
+    clock.at > (sequence.courseOpensAt ?? sequence.opensForFamilyAt)
+      ? ' Old date reminders are paused until you confirm this later date in approvals.'
+      : '';
+  return written === 'bound'
+    ? { status: 'bound', reply: reply + confirmation }
+    : { status: 'already_bound', reply: reply + confirmation };
 }
 
 function refuse(
@@ -730,7 +747,7 @@ export async function approvedShortlistAskedOf(
   const [row] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
-      windowId: schema.registrationSequences.windowId,
+      windowId: schema.registrationWindows.id,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       window: schema.registrationWindows,
       areaCoarse: schema.families.areaCoarse,
@@ -775,6 +792,10 @@ export interface CourseBindingWrite {
   prerequisite: boolean;
   ageFit: AgeVerdict['fit'];
   driftMinutes: number;
+  reading?: LiveRegistrationReading;
+  cachedAnchor?: Date;
+  resident?: boolean;
+  parentTimeZone?: string;
   now: Date;
 }
 
@@ -808,7 +829,11 @@ export async function recordCourseBinding(
   return database.transaction(async (tx) => {
     const [row] = await tx
       .update(schema.registrationSequences)
-      .set({ courseUrl: input.url, courseOpensAt: input.courseOpensAt, updatedAt: input.now })
+      .set({
+        courseUrl: input.url,
+        ...(input.reading ? {} : { courseOpensAt: input.courseOpensAt }),
+        updatedAt: input.now,
+      })
       .where(
         and(
           eq(schema.registrationSequences.id, input.sequenceId),
@@ -818,6 +843,15 @@ export async function recordCourseBinding(
       )
       .returning({ id: schema.registrationSequences.id });
     if (!row) return 'already_bound';
+    if (input.reading)
+      await refreshRegistrationWatch(tx as unknown as Database, {
+        sequenceId: input.sequenceId,
+        reading: input.reading,
+        resident: input.resident ?? false,
+        cachedAnchor: input.cachedAnchor,
+        parentTimeZone: input.parentTimeZone,
+        now: input.now,
+      });
 
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,

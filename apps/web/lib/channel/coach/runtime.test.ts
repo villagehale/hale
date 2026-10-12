@@ -99,10 +99,59 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
 }
 
 describe('channelCoachRuntime', () => {
+  it('loads live registration facts only on a relevant turn and appends their policy', async () => {
+    let reads = 0;
+    let instructions = '';
+    const p = ports({
+      loadRegistrationWindows: async () => {
+        reads++;
+        return [];
+      },
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Thanks.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('How do I help with bedtime?'), []);
+    expect(reads).toBe(0);
+    expect(instructions).toBe(SKILL.instructions);
+    await channelCoachRuntime(p).respond(turn('When does registration open?'), []);
+    expect(reads).toBe(1);
+    expect(instructions).toContain('Registration live truth');
+  });
+  it('a date follow-up to a registration discussion also reads live, not the old transcript', async () => {
+    let reads = 0;
+    const p = ports({
+      loadTranscript: async () => [{ role: 'assistant', content: 'Registration opens Sep 1.' }],
+      loadRegistrationWindows: async () => {
+        reads++;
+        return [];
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('What time now?'), []);
+    expect(reads).toBe(1);
+  });
   it('answers a turn with the post-processed reply', async () => {
     const { reply } = await channelCoachRuntime(ports()).respond(turn(), []);
 
     expect(reply).toBe('Move swim to Tue 4:30? YES to confirm.');
+  });
+
+  it('a held registration answer retains the source even when the model omits its link', async () => {
+    const sourceUrl = 'https://www.king.ca/recreation';
+    const p = ports({
+      loadRegistrationWindows: async () => [{
+        town: 'King', programs: 'Winter 2027',
+        opensFor: 'Current date could not be verified. Do not use a cached date.',
+        residentsFirst: false, generalOpens: null, ageApproximate: false,
+        watching: true, reminderState: 'paused', sourceUrl,
+      }],
+      runAgent: answering("I couldn't verify the current date. Date reminders are paused while I check again."),
+    });
+    const { reply } = await channelCoachRuntime(p).respond(turn('When does registration open?'), []);
+    expect(reply).toContain("couldn't verify");
+    expect(reply).toContain(sourceUrl);
+    expect(reply).not.toMatch(/\b(?:2026|2027|midnight|09:00)\b/);
   });
 
   /**

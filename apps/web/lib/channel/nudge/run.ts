@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
+import { createRegistrationReader, readRegistrationWindows as liveRegistrationWindows } from '~/lib/registration/read';
 import { and, eq, lte } from 'drizzle-orm';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
@@ -196,7 +197,7 @@ export interface NudgeRunDeps {
   selectFamilies(database: Database, now: Date): Promise<NudgeFamily[]>;
   loadChildren(database: Database, familyId: string): Promise<NudgeChildRow[]>;
   loadCandidates(database: Database, familyId: string): Promise<RadarCandidate[]>;
-  loadWindows(database: Database, areaCoarse: string): Promise<RegistrationWindow[]>;
+  loadWindows(database: Database, areaCoarse: string, now?: Date): Promise<RegistrationWindow[]>;
   /** Health checkpoints this family must not be raised about again (VIL-243 · M8). */
   loadSuppressedCheckpoints(database: Database, familyId: string): Promise<Set<string>>;
   /** Registration windows an M7 sequence (VIL-242) is already preparing this family
@@ -584,7 +585,7 @@ async function decideForFamily(
     householdBias,
   ] = await Promise.all([
     weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
-    area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
+    area && weekendPossible ? deps.loadWindows(database, area, now) : Promise.resolve([]),
     // Weather is an input, never a blocker: the port swallows its own failures.
     area && weekendPossible
       ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
@@ -1175,7 +1176,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     selectFamilies: selectNudgeFamilies,
     loadChildren: readNudgeChildren,
     loadCandidates: (database, familyId) => readVillageCandidates(database, familyId),
-    loadWindows: (database, areaCoarse) => readRegistrationWindows(database, areaCoarse),
+    loadWindows: async (database, areaCoarse, now = new Date()) => liveRegistrationWindows(await readRegistrationWindows(database, areaCoarse), createRegistrationReader(), now, areaCoarse),
     loadSuppressedCheckpoints: (database, familyId) =>
       loadSuppressedCheckpointRefs(database, familyId),
     loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),

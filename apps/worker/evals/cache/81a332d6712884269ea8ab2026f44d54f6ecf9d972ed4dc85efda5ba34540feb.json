@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles both parts of the question. For the registration window, it states the resident-priority date (Sep 1, 7:00 a.m.) as a verified fact from knows.registrationWindows, and correctly notes it is already watching — all accurate recall. For the activity, it hands over the webFind (Tiny Tumblers, Saturday mornings, walking to 3 years) and correctly attributes it as coming from the venue's own page (\"Their own page lists\"), with a note that price isn't posted — exactly what the webFind rule requires. Remy at 19 months fits the \"walking to 3 years\" age range, so the age-fit note is appropriate. No URL is invented (referralLinkAppended is null, and no URL is written). No app handback. No greeting or sign-off. The one small issue: the registration window answer leads first, but the parent asked about fall activities near them — the webFind answer is arguably the more direct hit. Also, the reply doesn't name the source as \"their site says\" or equivalent attribution phrase quite explicitly — it says \"Their own page lists\" which does satisfy attribution. The reply is tight, correct, and actionable. A very minor quibble: it could have noted the general opens date (Sep 8) for completeness, but omitting it is not wrong. Overall this is a clean, correct reply.",
+    "score": 5
+  }
+}

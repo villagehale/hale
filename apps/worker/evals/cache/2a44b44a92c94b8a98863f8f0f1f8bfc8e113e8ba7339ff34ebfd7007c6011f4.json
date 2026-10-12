@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles both data sources: it states the registration window date as a flat fact (correct, since watching is true and `registrationWindows` is Hale's own verified data), confirms it is already watching (correct, watching:true), and hands over the webFind with clear attribution (\"Their own page lists\") including the age range and the honest note that price isn't posted — exactly what the web-find rule requires. No URL is written out. No app mention. No invented details. The two pieces of information (registration window + the one web find) are exactly what's available to answer a \"what's there for the fall near us\" question. Compact, no greeting/sign-off, no markdown. One very small issue: \"Their own page lists\" is slightly ambiguous about whose page, but the program name and Saturday mornings detail make it sufficiently grounded. Overall this is a clean, correct reply that does the job and stops.",
+    "score": 5
+  }
+}

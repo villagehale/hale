@@ -44,6 +44,15 @@ import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
 import {
+  createRegistrationReader,
+  registrationDate,
+  registrationWhen,
+} from '~/lib/registration/read';
+import { loadLiveSequences, registrationTargetFor } from '~/lib/registration/sequence/run';
+import { refreshRegistrationWatch } from '~/lib/registration/sequence/refresh';
+import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
+import { f14EnabledFor } from '~/lib/channel/f14';
+import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
   nearbyClauseTarget,
@@ -256,16 +265,30 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
-      const [loadedSkill, transcript, children, registrationWindows] = await Promise.all([
+      const [loadedSkill, transcript, children] = await Promise.all([
         ports.loadSkill(turn.parentUserId, turn.familyId),
         ports.loadTranscript(turn.conversationId),
         ports.loadChildren(turn.familyId),
-        ports.loadRegistrationWindows(turn.familyId, now),
       ]);
+      const registrationQuestion =
+        /\b(register|registration|signup|sign.?up|swim|camp|course|rec|fall|winter|spring|summer)\b|报名|课程|提醒/i.test(
+          turn.body,
+        ) ||
+        (/\b(when|date|time|open)\b|什么时候|几点|日期|时间/i.test(turn.body) &&
+          transcript
+            .slice(-4)
+            .some((message) => /\b(registration|signup|sign.?up)\b|报名/i.test(message.content)));
+      const registrationWindows = registrationQuestion
+        ? await ports.loadRegistrationWindows(turn.familyId, now)
+        : [];
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
-      const skill =
+      let skill =
         turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+      if (registrationQuestion) {
+        const policy = await loadCronSkill('registration-live-truth');
+        skill = { ...skill, instructions: `${skill.instructions}\n\n${policy.instructions}` };
+      }
 
       const familyContext = await ports.loadContext({
         familyId: turn.familyId,
@@ -452,6 +475,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                     ),
                     ...offeredThisTurn.links(),
                   ],
+                  sourceUrl: registrationWindows.find((window) => window.reminderState === 'paused')
+                    ?.sourceUrl,
                   nearby: nearby ?? undefined,
                   onTrimmed: (overBy: number) => {
                     trimmedOverBy = overBy;
@@ -561,13 +586,56 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
-    loadRegistrationWindows: (familyId, now) =>
-      loadRegistrationWindows(
-        productionRegistrationContextPorts(database),
+    loadRegistrationWindows: async (familyId, now) => {
+      const reader = createRegistrationReader();
+      const windows = await loadRegistrationWindows(
+        productionRegistrationContextPorts(database, reader),
         familyId,
         DEFAULT_TIMEZONE,
         now,
-      ),
+      );
+      const watches = (await loadLiveSequences(database, undefined, familyId)).slice(0, 8);
+      for (let watch of watches) {
+        const reading = await reader(registrationTargetFor(watch), now);
+        const resident = watch.window
+          ? resolveFamilyOpen(watch.window, watch.areaCoarse).isResidentWindow
+          : false;
+        await refreshRegistrationWatch(database, {
+          sequenceId: watch.sequenceId,
+          reading,
+          resident,
+          now,
+          cachedAnchor: watch.window
+            ? resolveFamilyOpen(watch.window, watch.areaCoarse).opensForFamilyAt
+            : null,
+          parentTimeZone: watch.timeZone,
+        });
+        const updated = (await loadLiveSequences(database, watch.sequenceId, familyId))[0];
+        if (!updated) continue;
+        watch = updated;
+        const date = registrationDate(reading, resident);
+        windows.push({
+          town: watch.window?.municipality ?? new URL(reading.sourceUrl).hostname,
+          programs: watch.window?.cycleLabel ?? 'tracked course',
+          opensFor: date
+            ? registrationWhen(reading, date)
+            : `Current date could not be verified (${reading.status}). Do not use a cached date.`,
+          residentsFirst: resident && date?.kind === 'resident_open',
+          generalOpens: null,
+          ageApproximate: false,
+          watching: f14EnabledFor(familyId) && watch.optIn === 'opted_in',
+          sourceUrl: reading.sourceUrl,
+          reminderState:
+            watch.optIn !== 'opted_in'
+              ? 'awaiting_confirmation'
+              : watch.pausedAt || !date
+                ? 'paused'
+                : 'active',
+          minuteReminderAvailable: date?.time != null,
+        });
+      }
+      return windows;
+    },
     buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered, onGmailNotice) => {
       return buildChannelCoachTools({
         familyId: turn.familyId,

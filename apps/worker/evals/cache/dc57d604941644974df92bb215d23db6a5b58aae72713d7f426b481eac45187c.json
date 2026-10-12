@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watching` is already true for the Halton Hills fall registration window, states the exact resident-priority open date and time (Sep 1, 7:00 a.m.) as a verified fact without hedging, confirms it is already watching, and promises to text before it opens — all of which matches the rubric for a `watching: true` window exactly. It does not send the parent to the app, does not invent any details, does not mention Milo by name (which is fine — the watch covers fall programs and the parent will be texted), and stops cleanly without a sign-off or unnecessary padding. One very minor point: it could have said it will text a week out, the evening before, and fifteen minutes before, but omitting that level of detail is not a flaw. The reply is short, exact, and correct.",
+    "score": 5
+  }
+}

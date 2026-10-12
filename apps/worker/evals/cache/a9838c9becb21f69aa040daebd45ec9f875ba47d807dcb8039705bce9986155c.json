@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The registration window has `opensFor` set to \"Current date could not be verified. Do not use a cached date.\" — so the previous assistant message (Sep 1 at 7:00 a.m.) is now stale and must not be restated. The reply correctly does not restate it and instead explains that the date could not be verified and that reminders are paused while it checks again, while confirming it is still watching. This is the honest and complete answer given the constraint. The reply is concise, does not send the parent to the app, does not invent a date, and correctly conveys the watching state (watching: true) and the paused reminder state. The only minor issue is it's slightly mechanical in phrasing (\"Date reminders are paused while I check again\") but it communicates the key facts accurately. This is essentially the correct shape for this edge case.",
+    "score": 5
+  }
+}

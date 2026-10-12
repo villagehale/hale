@@ -204,7 +204,7 @@ function fakeDb(args: {
     if (which === 2) return { from: () => ({ innerJoin: () => ({ where: membersWhere }) }) };
     if (which === 3) return { from: () => ({ innerJoin: () => ({ where: savesWhere }) }) };
     if (which === 4) return { from: () => ({ innerJoin: () => ({ where: assistantsWhere }) }) };
-    if (which === 5) return { from: () => ({ innerJoin: () => ({ where: preparationsWhere }) }) };
+    if (which === 5) return { from: () => ({ leftJoin: () => ({ where: preparationsWhere }) }) };
     if (which === 6) return { from: () => ({ where: watchesWhere }) };
     if (which === 7) return { from: () => ({ where: bookingsWhere }) };
     if (which === 8) return { from: () => ({ where: checkInPrefsWhere }) };
@@ -383,6 +383,10 @@ describe('assembleFamilyExport', () => {
         courseHost: 'cityofmarkham.perfectmind.com',
         courseOpensAt: '2026-09-15T10:30:00.000Z',
         readinessReady: true,
+        lastReadAt: null,
+        nextCheckAt: null,
+        pausedAt: null,
+        hasPendingChange: false,
         // When this ROW last changed, which is not the same thing as when the parent
         // pasted the link: the anchor is refreshed by later reads. The dated bind is a
         // trail line, and the trail is in this document.

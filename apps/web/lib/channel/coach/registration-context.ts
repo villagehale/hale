@@ -1,12 +1,19 @@
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { eq } from 'drizzle-orm';
-import { f14EnabledFor } from '~/lib/channel/f14';
 import { readWindows } from '~/lib/channel/intake/radar';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { PROGRAM_DOMAIN_LABEL } from '~/lib/registration/sequence/shortlist';
+import {
+  createRegistrationReader,
+  readRegistrationWindows,
+  registrationDate,
+  registrationWhen,
+  type LiveRegistrationWindow,
+  type RegistrationReader,
+} from '~/lib/registration/read';
 
 /**
  * THE RADAR, VISIBLE TO THE COACH (2026-08-21 answer-quality probe).
@@ -46,7 +53,7 @@ export interface RegistrationWindowContext {
   town: string;
   /** What opens — `Fall 2026 recreation programs`. */
   programs: string;
-  /** When THIS family can first register, in their zone: `Sep 1, 7:00 a.m.` */
+  /** This family's applicable opening date/time, with the source's timezone. */
   opensFor: string;
   /** The residents-first date is theirs, so the general date is a different, later one. */
   residentsFirst: boolean;
@@ -55,17 +62,19 @@ export interface RegistrationWindowContext {
   /** The match rests on the ±6-month tolerance around a derived DOB, so hedge the band. */
   ageApproximate: boolean;
   /**
-   * Hale's registration ladder is armed for this family and this window: it will text
-   * a week ahead, the evening before, and fifteen minutes before the doors open.
-   * FALSE means the sweep is dark for them and nothing is being watched.
+   * An approved watch is active. Date-only sources cannot support a minute reminder;
+   * reminderState distinguishes a paused watch from an unapproved proposal.
    */
   watching: boolean;
+  sourceUrl?: string;
+  reminderState?: 'active' | 'awaiting_confirmation' | 'paused';
+  minuteReminderAvailable?: boolean;
 }
 
 export interface RegistrationContextPorts {
   areaCoarse(familyId: string): Promise<string | null>;
   childAgesMonths(familyId: string, now: Date): Promise<number[]>;
-  windows(areaCoarse: string): Promise<RegistrationWindow[]>;
+  windows(areaCoarse: string, now?: Date): Promise<RegistrationWindow[]>;
   watching(familyId: string): boolean;
 }
 
@@ -87,12 +96,15 @@ export async function loadRegistrationWindows(
 
   const [childrenAgesMonths, windows] = await Promise.all([
     ports.childAgesMonths(familyId, now),
-    ports.windows(areaCoarse),
+    ports.windows(areaCoarse, now),
   ]);
 
   const watching = ports.watching(familyId);
   return matchRegistrationWindows({ windows, postal: areaCoarse, childrenAgesMonths, now }).map(
     (match) => {
+      const reading = (match.window as Partial<LiveRegistrationWindow>).reading;
+      const date = reading ? registrationDate(reading, match.isResidentWindow) : null;
+      const general = reading ? registrationDate(reading, false) : null;
       const generalOpens =
         match.generalOpenAt.getTime() === match.opensForFamilyAt.getTime()
           ? null
@@ -100,24 +112,32 @@ export async function loadRegistrationWindows(
       return {
         town: townLabel(match.window.municipality),
         programs: [
-          ...new Set(match.cycleWindows.map((w) => `${w.cycleLabel} ${PROGRAM_DOMAIN_LABEL[w.programDomain]}`)),
+          ...new Set(
+            match.cycleWindows.map(
+              (w) => `${w.cycleLabel} ${PROGRAM_DOMAIN_LABEL[w.programDomain]}`,
+            ),
+          ),
         ].join(', '),
-        opensFor: formatWhenPhrase(match.opensForFamilyAt, timeZone, now),
+        opensFor:
+          reading && date
+            ? registrationWhen(reading, date)
+            : formatWhenPhrase(match.opensForFamilyAt, timeZone, now),
         residentsFirst: match.isResidentWindow && generalOpens !== null,
-        generalOpens,
+        generalOpens:
+          reading && general && generalOpens ? registrationWhen(reading, general) : generalOpens,
         ageApproximate: match.ageApproximate,
         watching,
+        sourceUrl: match.window.sourceUrl,
       };
     },
   );
 }
 
-/** The live wiring: the family's own FSA and children, the seeded window table, and the
- * ladder's own flag. `readWindows` is the intake radar's reader, shared rather than
- * re-queried, so the coach can never be looking at a different window set than the
- * sweep that will do the work. */
+/** Seed rows identify known pages/cycles only; every date comes from this turn's read.
+ * Runtime adds the family's actual approved watches, not a feature-flag promise. */
 export function productionRegistrationContextPorts(
   database: Database,
+  reader: RegistrationReader = createRegistrationReader(),
 ): RegistrationContextPorts {
   return {
     areaCoarse: async (familyId) => {
@@ -134,7 +154,9 @@ export function productionRegistrationContextPorts(
         .where(eq(schema.children.familyId, familyId));
       return rows.map((row) => ageInMonths(row.dateOfBirth, now));
     },
-    windows: (areaCoarse) => readWindows(database, areaCoarse),
-    watching: (familyId) => f14EnabledFor(familyId),
+    windows: async (areaCoarse, now = new Date()) =>
+      readRegistrationWindows(await readWindows(database, areaCoarse), reader, now, areaCoarse),
+    // A flag is not a subscription. Actual approved watches are added by runtime.
+    watching: () => false,
   };
 }

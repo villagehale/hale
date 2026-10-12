@@ -164,6 +164,7 @@ function harness(
   const transport = options.transport ?? new FakeTransport();
 
   const deps: SequenceRunDeps = {
+    live: null,
     refuseUnbackedSend: async () => options.unbacked ?? [],
     selectFamilies: async () => options.families ?? [family()],
     loadChildren: async () => options.children ?? CHILDREN,

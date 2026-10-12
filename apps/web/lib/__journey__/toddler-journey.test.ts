@@ -688,6 +688,7 @@ async function runToddlerJourney(): Promise<Journey> {
   // ── STAGE 6 · the registration sequence ───────────────────────────────────
   const claimed = new Set<string>();
   const sequenceDeps: SequenceRunDeps = {
+    live: null,
     refuseUnbackedSend: async () => [],
     /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
      * (channel/family-recipients.ts). This household has one parent. */

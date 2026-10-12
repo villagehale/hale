@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the registration window as a verified fact (watching: true), states the resident-first opening time flat without hedging, and confirms Hale is already watching — all correct. It then hands over the webFind (Tiny Tumblers) with attribution baked in (\"their own page lists\") and includes the relevant detail (Saturday mornings, age range, price not posted). That attribution is required by the webFind rule and is present. No URL is invented (referralLinkAppended is null, no URL appears). No app handback, no sign-off, no markdown, one clean message. The only small issue: the reply doesn't explicitly say \"their site says\" or name the source page as the venue's program page — it says \"their own page lists\" which is close enough to satisfy the attribution rule. The price-not-posted note is correct per webFind rules. This is a near-perfect reply — concise, accurate, correctly shaped. Minor: it could have noted stillBeingChecked is 0 and offerable is empty, meaning Tiny Tumblers is the only find and it's a webFind, which it handled correctly. No real blemish.",
+    "score": 5
+  }
+}

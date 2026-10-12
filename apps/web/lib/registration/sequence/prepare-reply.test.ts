@@ -532,7 +532,7 @@ describe('the bind write', () => {
     expect(stored).toEqual([RESIDENT_CLOCK]);
   });
 
-  it('gives a two-municipality household the public clock, a day after the M1 row', async () => {
+  it('pauses for approval when the public clock is a day later than the old M1 anchor', async () => {
     await setArea('L3T');
     const sequence = await preparing();
 
@@ -542,7 +542,8 @@ describe('the bind write', () => {
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
-    expect((await sequenceRow()).courseOpensAt).toEqual(PUBLIC_CLOCK);
+    expect(await sequenceRow()).toMatchObject({ courseOpensAt: RESIDENT_CLOCK, pendingChange: { kind: 'later', candidateAt: PUBLIC_CLOCK.toISOString() } });
+    expect((await sequenceRow()).pausedAt).not.toBeNull();
     const [audit] = await auditRows('registration_course_bound');
     expect(audit?.after).toMatchObject({ driftMinutes: 1440 });
   });

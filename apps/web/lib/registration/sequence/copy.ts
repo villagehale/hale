@@ -846,9 +846,10 @@ export function renderShortlistRationale(
   timeZone: string,
   now: Date,
   portal: SpotPortal | null,
+  published?: { when: string; hasTime: boolean },
 ): string {
   const lines = [
-    `${windowPhrase(shortlist)} registration opens ${when(shortlist.opensForFamilyAt, timeZone, now)}.`,
+    `${windowPhrase(shortlist)} registration opens ${published?.when ?? when(shortlist.opensForFamilyAt, timeZone, now)}.`,
     `Register here: ${shortlist.sourceUrl}`,
   ];
   if (shortlist.isResidentWindow && shortlist.residentPriorityDays !== null) {
@@ -879,7 +880,13 @@ export function renderShortlistRationale(
   // arrives, and the thirteen others read the sentence that shipped, byte for byte.
   // "I never register for you" is verbatim on both, and stays that way: it is asserted
   // in the toddler journey and mirrored in the capability table's CANNOT row.
-  lines.push(portal == null ? CONSENT_THREE_TEXTS : CONSENT_FOUR_TEXTS);
+  lines.push(
+    published?.hasTime === false
+      ? 'Approve to get a heads-up a week ahead and a plan the evening before. No minute-specific reminder unless the page publishes an opening time. I never register for you.'
+      : portal == null
+        ? CONSENT_THREE_TEXTS
+        : CONSENT_FOUR_TEXTS,
+  );
   if (portal != null) {
     // The one place a parent learns how to bind a course, and it belongs here rather
     // than in an SMS leg: this is read on a screen, where a longer sentence fits, and
