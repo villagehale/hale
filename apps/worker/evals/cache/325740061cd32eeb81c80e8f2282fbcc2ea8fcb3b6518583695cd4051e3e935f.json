@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "pas maintenant, merci",
+    "rationale": "French for 'not now, thank you' — a clear refusal of this offer",
+    "confidence": 0.95
+  },
+  "latencyMs": 1072
+}

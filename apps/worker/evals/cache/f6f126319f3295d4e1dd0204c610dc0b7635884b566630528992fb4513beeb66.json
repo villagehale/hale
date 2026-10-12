@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "what would you be watching?",
+    "rationale": "A question back asking for clarification, with no yes or no given to the offer.",
+    "confidence": 0.97
+  },
+  "latencyMs": 1190
+}

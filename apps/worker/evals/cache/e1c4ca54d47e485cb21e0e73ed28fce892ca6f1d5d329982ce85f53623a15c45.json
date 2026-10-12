@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "shopping-or-deals",
+    "reason": "asks for a product deal, not the family's week"
+  },
+  "latencyMs": 1048
+}

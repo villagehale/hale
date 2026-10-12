@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "is this a real person?",
+    "rationale": "Parent asked a question back about who is texting; it is neither a yes nor a no to the offer.",
+    "confidence": 0.97
+  },
+  "latencyMs": 1374
+}

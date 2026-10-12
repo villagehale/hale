@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "oui merci",
+    "rationale": "\"oui\" is a plain French yes, and \"merci\" here is the polite \"yes, thank you\" rather than a bare acknowledgement.",
+    "confidence": 0.93
+  },
+  "latencyMs": 2071
+}

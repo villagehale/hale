@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "absolutely, please do",
+    "rationale": "Plain affirmative 'absolutely, please do' directly answers the question",
+    "confidence": 0.98
+  },
+  "latencyMs": 1293
+}

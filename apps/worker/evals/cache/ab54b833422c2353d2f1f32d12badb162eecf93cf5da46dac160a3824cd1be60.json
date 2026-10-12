@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "mental-health",
+    "reason": "parent reports a child's suicidal statement, a crisis state"
+  },
+  "latencyMs": 1548
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "clinical_query": "toddler vomiting everything, watery diarrhea, floppy, hard to wake, sunken eyes, no wet diaper over 12 hours",
+    "age_band": "toddler",
+    "duration": "2 days",
+    "language": "en"
+  },
+  "latencyMs": 2048
+}

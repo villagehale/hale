@@ -1,0 +1,36 @@
+{
+  "parsed": {
+    "candidates": [
+      {
+        "title": "Parent-and-tot swim at a City of Toronto community pool",
+        "description": "Toronto's municipal pools usually offer parent-and-tot or family swim sessions in shallow, warm water. They suit a toddler who loves water and give a low-pressure first step toward lessons.",
+        "confidence": 0.72,
+        "coverageNote": "General knowledge. Toronto runs this kind of program across the downtown core, but I haven't confirmed a specific pool, schedule, or registration for M5V. Check the City of Toronto Recreation listings for current times."
+      },
+      {
+        "title": "Toddler swim lessons (parent-assisted) at a nearby indoor pool or private swim school",
+        "description": "Parent-assisted water-introduction classes for toddlers, focused on comfort, splashing, and floating. A direct match for a water-loving child, and many downtown buildings and swim schools offer them.",
+        "confidence": 0.6,
+        "coverageNote": "General knowledge. Providers, fees, and waitlists vary and are unverified. Confirm the minimum age and whether it's parent-assisted."
+      },
+      {
+        "title": "Splash pad and water play at a downtown neighbourhood park (summer)",
+        "description": "Toronto runs seasonal splash pads in many parks, and the King West, CityPlace, and Fort York area has several parks. They give toddlers free, easy water play on warm days.",
+        "confidence": 0.6,
+        "coverageNote": "General knowledge. Splash pads usually run late spring to early fall. I haven't confirmed which park near M5V has one, so check the City's splash pad listing for locations and open dates."
+      },
+      {
+        "title": "Ripley's Aquarium of Canada visit",
+        "description": "A well-known aquarium in the M5V area with tanks, touch exhibits, and a moving walkway under a shark tank. It suits a water-curious toddler, though it is a paid outing and not a routine.",
+        "confidence": 0.8,
+        "coverageNote": "Well-known attraction in this area, but I haven't verified current hours, pricing, or toddler-specific programming. Check the venue's site before planning."
+      },
+      {
+        "title": "Waterfront walk and play along Toronto's Harbourfront",
+        "description": "A stroller-friendly walk along the lake with boats, ducks, and water views, plus family-friendly spaces and seasonal events. It's an easy free outing for a toddler who loves water.",
+        "confidence": 0.6,
+        "coverageNote": "General knowledge. The waterfront is close to M5V, but I'm not citing specific events or schedules, and conditions vary by season and weather."
+      }
+    ]
+  }
+}

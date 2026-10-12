@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are right. The one slot is real, and its day, times and session dates (Sept 8 to Dec 11) match the programme page exactly. It is cited to that page. Price is correctly null: the programme page prints no fee, and the $185 birthday package and $95 meeting-room rate on the rentals page were not borrowed. The page gives no registration date, so a null registration is correct. The message is mostly right. It leads with the programme by name, attributes the facts with 'their site says', uses plain ASCII, has no link and asks no question. Under page_has_schedule it puts the gap in the first person ('I could not pin down the price') rather than claiming the fee isn't posted. With watch TRUE, the first-person 'I'll keep watching and text you' is a legitimate commitment. It fits in two segments. Minor deduction: it runs to three sentences against the one-or-two short sentence target, and the price and watch sentences could have been merged.",
+    "score": 4
+  }
+}

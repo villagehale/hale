@@ -1,0 +1,26 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM), 212 West 83rd Street",
+        "age_fit": "children ages 0-6",
+        "when": "Tuesday-Sunday, 10am-5pm on their main pages; their visitor guidelines list July-September as open daily",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Children's Zoo at the Bronx Zoo",
+        "age_fit": "family attraction with prairie dogs, turtles, an anteater and a farmyard to pet and feed goats, sheep and alpacas",
+        "when": "Children's Zoo 10:00-4:30 on weekdays, 10:00-5:00 on weekends, April to October",
+        "source_name": "Bronx Zoo"
+      },
+      {
+        "name": "New York Aquarium, Coney Island",
+        "age_fit": "Child (3-12) tickets; children 2 and under free",
+        "when": "Daily 10:00am-5:00pm, September 8 to October 31, 2026; last entry 4:00pm",
+        "price": "Child (3-12) $25.95 off-peak or $27.95 peak; adult (13 and over) $29.95 or $32.95",
+        "source_name": "New York Aquarium"
+      }
+    ]
+  },
+  "latencyMs": 6143
+}

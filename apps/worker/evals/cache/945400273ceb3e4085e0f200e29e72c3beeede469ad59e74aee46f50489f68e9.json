@@ -1,0 +1,12 @@
+{
+  "parsed": {
+    "payload": {
+      "to": "admissions@sunnydays-childcare.ca",
+      "subject": "Re: Spot available for September",
+      "body": "hi,\n\nthanks for letting us know — that's great news. we got your note about the september spot and will confirm with you within the 5 business days.\n\nthanks again,"
+    },
+    "confidence": 0.6,
+    "rationale": "Acknowledges the offer and promises a reply within the stated deadline without committing to accept, since no memory confirms the family's decision.",
+    "recipient_visibility": "public"
+  }
+}

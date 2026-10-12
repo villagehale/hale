@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is mostly right. It leads with Tiny Gym by name, attributes with \"their site says\" and carries the July 22 registration date. The page_has_schedule gap is put correctly in the first person (\"I could not pin down the day or the price\"), not as \"not posted\". With watch TRUE, the first-person keep-watching line is a real commitment. It asks no question, uses no link, stays in plain ASCII and fits two segments. Deductions: (1) It is three sentences, not one or two. (2) Every slot cites programs.php, but the registration date and the $45 Gymnastics Ontario fee were read off the home page and the registration page, so the citations do not match their sources. (3) Hale did not open the linked 'Schedule at a glance' PDF, the likely home of the day and time; the slots admit this honestly. (4) Mini Gym (3.5+, unaccompanied) and Tumble & Learn are a stretch for a toddler stage. Nothing is fabricated, so these are moderate faults rather than disqualifying ones.",
+    "score": 4
+  }
+}

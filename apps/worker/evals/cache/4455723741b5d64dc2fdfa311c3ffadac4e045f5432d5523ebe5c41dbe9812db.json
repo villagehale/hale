@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "ambiguous",
+    "polarity": "yes",
+    "confidence": "medium",
+    "reason": "Clear yes to something, but two approval questions are open (reschedule vs add to calendar) and nothing names which one."
+  },
+  "latencyMs": 1110
+}

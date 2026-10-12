@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "Appelez le 911 maintenant. Les côtes qui se creusent à chaque respiration montrent que votre bébé peine à respirer.",
+    "triage": "Composez le 911 ou allez aux urgences maintenant. Lèvres bleues ou grises, gémissements, grande somnolence: encore plus urgent. Le 811 n'est pas pour ça.",
+    "sources": [
+      "Seattle Children's Hospital",
+      "HealthyChildren.org (American Academy of Pediatrics)",
+      "Cleveland Clinic"
+    ]
+  },
+  "latencyMs": 5005
+}

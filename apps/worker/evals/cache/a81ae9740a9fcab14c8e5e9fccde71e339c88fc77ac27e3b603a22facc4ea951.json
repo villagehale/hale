@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "yes",
+    "rationale": "Plain, unconditional 'yes' directly answering the question",
+    "confidence": 0.98
+  },
+  "latencyMs": 1662
+}

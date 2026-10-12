@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "asks to get a pediatric dentist, a named specialty"
+  },
+  "latencyMs": 1655
+}

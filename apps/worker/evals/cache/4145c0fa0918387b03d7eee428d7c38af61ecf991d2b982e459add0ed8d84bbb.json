@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both venues are real, specific Ottawa places, and each is sourced from its own official site. Both are visits, not terms or registrations. Two picks is within the limit. The null price on the Children's Museum is fine. The problem is that both `when` fields describe fall schedules beginning Sept 8, which is after the Aug 30–Sept 2 trip has ended. Nothing in the picks shows the family can turn up during their dates, and the hours shown (e.g. Nature closed Tuesdays, 9:30–4) may not match the summer/Labour Day hours that actually apply. This is exactly the fall-schedule bleed the watchFor warns about. It is not a session or registration, but it is misleading for this window. The venues are right; the dated information attached to them is wrong for the trip.",
+    "score": 3
+  }
+}

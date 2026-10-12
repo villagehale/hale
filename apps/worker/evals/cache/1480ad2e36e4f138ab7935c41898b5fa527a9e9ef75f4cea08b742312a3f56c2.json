@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "no — what would you even watch?",
+    "rationale": "Opens with a clear 'no' to the question; the follow-up question is curiosity, not a hedge.",
+    "confidence": 0.88
+  },
+  "latencyMs": 1380
+}

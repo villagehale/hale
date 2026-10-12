@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "reports a child swallowing a button battery, an immediate medical emergency"
+  },
+  "latencyMs": 1985
+}

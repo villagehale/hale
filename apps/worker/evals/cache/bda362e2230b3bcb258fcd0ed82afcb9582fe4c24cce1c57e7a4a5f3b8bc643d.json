@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "I'd like that, thanks",
+    "rationale": "\"I'd like that\" is a plain affirmative response to the offer to keep an eye on things; \"thanks\" is incidental politeness.",
+    "confidence": 0.9
+  },
+  "latencyMs": 1413
+}

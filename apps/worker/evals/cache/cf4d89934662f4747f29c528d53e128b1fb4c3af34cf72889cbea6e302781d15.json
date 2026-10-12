@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message offers to add events to the real calendar by email and asks the recipient to text back their address, covering both halves in two short clauses. It is plain, first person, with no greeting, pressure, hype, or explanation of why it helps Hale. It promises nothing beyond invites and has no question mark, so the watchFor retry condition is not met. It is fine to ignore as required.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The subject and note reuse only the given summary and time, state that the attached file removes the event from their calendar, and stay within two plain sentences with no added details, greeting, apology, or exclamation marks.",
+    "score": 5
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "supply_low_signal",
+    "confidence": 0.92,
+    "rationale": "Supplier says Size 2 diapers will run out in ~5 days and asks whether to ship early against a subscription on file.",
+    "payload": {
+      "item": "Size 2 diapers",
+      "estimated_days_remaining": 5,
+      "sender": "subscriptions@everydaybaby.ca",
+      "subscription_on_file": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "place_supply_order"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 243,
+    "output": 297
+  }
+}

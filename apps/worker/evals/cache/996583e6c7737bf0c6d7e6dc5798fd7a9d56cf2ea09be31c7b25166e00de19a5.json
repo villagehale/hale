@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "Known clinic asks the parent to confirm a proposed new time (June 25, 2:00 PM) or suggest another day, so it needs a reply.",
+    "payload": {
+      "clinic": "Little Sprout Pediatrics",
+      "original_date": "June 23",
+      "proposed_date": "June 25",
+      "proposed_time": "2:00 PM",
+      "provider": "Dr. Okafor",
+      "reason": "Provider out on original date"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 274,
+    "output": 328
+  }
+}

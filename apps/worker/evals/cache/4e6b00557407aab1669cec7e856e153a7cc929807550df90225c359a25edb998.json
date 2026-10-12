@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "a72b6e05-4c93-4d18-b7f2-6e0a51c38d94",
+    "polarity": "no",
+    "confidence": "high",
+    "reason": "Declines the only open offer (plan for 4am wake-ups) with 'no thanks, we're good'."
+  },
+  "latencyMs": 1524
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "traffic-or-transit",
+    "reason": "asks about current highway traffic conditions, not the family's week"
+  },
+  "latencyMs": 756
+}

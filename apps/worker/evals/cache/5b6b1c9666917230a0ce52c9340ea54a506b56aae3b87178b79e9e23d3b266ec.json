@@ -1,0 +1,17 @@
+{
+  "value": {
+    "found": true,
+    "reason": null,
+    "cycle_on_page": "After-School Recreation Care (ARC)",
+    "year_evidence": "Registration starts on June 5, 2026, at 7 a.m.",
+    "preview": null,
+    "resident_open": {
+      "date": "2026-06-05",
+      "time": "07:00"
+    },
+    "general_open": null,
+    "evidence": "Registration starts on June 5, 2026, at 7 a.m.",
+    "confidence": 0.7
+  },
+  "latencyMs": 4267
+}

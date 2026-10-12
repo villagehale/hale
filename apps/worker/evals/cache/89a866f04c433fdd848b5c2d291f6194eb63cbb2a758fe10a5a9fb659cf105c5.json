@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is plain, short, leads with the useful checkpoint fact for Noor and states only facts given (task, name). The lead 'I looked up' is the mandated scope-free phrasing. It doesn't mention the absent weekend pick or registration, which is acceptable since both are null and no clause was included, though a brief note of absence would have been instructed. Otherwise faithful and calm, though it omits the offer question, a minor gap.",
+    "score": 4
+  }
+}

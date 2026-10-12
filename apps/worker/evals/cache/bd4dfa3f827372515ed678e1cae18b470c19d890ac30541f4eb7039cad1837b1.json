@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "let's stop here, no monitoring",
+    "rationale": "explicitly refuses monitoring: \"no monitoring\"",
+    "confidence": 0.96
+  },
+  "latencyMs": 1057
+}

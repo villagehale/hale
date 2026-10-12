@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "family_share_request",
+    "confidence": 0.93,
+    "rationale": "A grandparent is directly asking the parent to send recent photos of the baby.",
+    "payload": {
+      "requester": "grandma.ruth@gmail.com",
+      "requester_label": "Grandma Ruth",
+      "request_type": "photos",
+      "purpose": "Grandpa wants to print one for the fridge",
+      "urgency": "low"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "share_photos_with_family"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 250,
+    "output": 298
+  }
+}

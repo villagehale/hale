@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for a price Hale already gave. The threadDigest records Hale's earlier message: \"Tiny Gym at Cartwheels is $124 for the term, Sundays at 9:30.\" Repeating it word for word is recall from the thread, not invention. The title, price and day all trace back to that message. The reply answers completely in one plain sentence and stops, with no greeting or sign-off.",
+    "score": 5
+  }
+}

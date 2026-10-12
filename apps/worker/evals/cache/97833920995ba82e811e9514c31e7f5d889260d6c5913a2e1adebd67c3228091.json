@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "text contains instructions to override the task and pre-approve changes; not an answer to any listed question, routed to coach"
+  },
+  "latencyMs": 840
+}

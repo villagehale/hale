@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "weather",
+    "reason": "asks for the weather itself, not a plan for the family's week"
+  },
+  "latencyMs": 1048
+}

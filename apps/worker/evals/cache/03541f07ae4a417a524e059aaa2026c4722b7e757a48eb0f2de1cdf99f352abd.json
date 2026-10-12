@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "doctor-access",
+    "reason": "asks how to find a family doctor, a provider-access request"
+  },
+  "latencyMs": 770
+}

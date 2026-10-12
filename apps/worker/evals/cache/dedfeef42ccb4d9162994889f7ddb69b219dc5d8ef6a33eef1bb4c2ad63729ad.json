@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.8,
+    "rationale": "Daycare sender referencing a specific change in Leo's room; ambiguous but plausibly a dated occasion, so route to extraction."
+  },
+  "latencyMs": 1432
+}

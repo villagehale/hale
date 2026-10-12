@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "that's neat",
+    "rationale": "A pleasantry or comment about the idea, not a clear yes or no to the question.",
+    "confidence": 0.95
+  },
+  "latencyMs": 1168
+}

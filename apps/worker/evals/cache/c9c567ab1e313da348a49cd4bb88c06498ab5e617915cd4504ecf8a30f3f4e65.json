@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "feeding_pattern_signal",
+    "confidence": 0.9,
+    "rationale": "Tracker export shows a 7-day feeding trend with declining intake for a 3-month-old infant, a one-way pattern signal.",
+    "payload": {
+      "metric": "feeding",
+      "window_days": 7,
+      "avg_feeds_per_day": 7.8,
+      "avg_volume_ml": 118,
+      "trend": "declining_intake",
+      "note": "daily volume down ~15% vs prior week; more frequent shorter feeds"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 266,
+    "output": 314
+  }
+}

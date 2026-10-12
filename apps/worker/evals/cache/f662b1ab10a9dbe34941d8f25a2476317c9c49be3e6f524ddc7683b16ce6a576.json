@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "please don't keep watching",
+    "rationale": "Explicit refusal: \"please don't keep watching\" rejects the offer to keep an eye on things.",
+    "confidence": 0.95
+  },
+  "latencyMs": 1338
+}

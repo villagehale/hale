@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Canadian Children's Museum, inside the Canadian Museum of History",
+        "age_fit": "Children's museum; their page gives no age range",
+        "when": "Sept 8 to Dec 9, 2026: daily 9am-5pm, Thursdays until 7pm",
+        "source_name": "Canadian Museum of History"
+      },
+      {
+        "name": "Canadian Museum of Nature, Ottawa",
+        "age_fit": "Child (3-12 years); Tiny Tot (0-2 years) free",
+        "when": "Sept 8, 2026 to May 20, 2027: open Wed-Mon 9:30am-4pm, closed Tuesdays, Thursdays until 8pm",
+        "price": "Child (3-12) $19, adult $26",
+        "source_name": "Canadian Museum of Nature"
+      }
+    ]
+  },
+  "latencyMs": 11567
+}

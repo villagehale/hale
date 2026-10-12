@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first sentence says 'I checked Toronto's calendar', so Hale attributes the fact to a look they already took, and the fact (Fall 2026 registration opened Sep 15) lands in that same sentence. The town and cycle name are given in the facts, so naming them is not invented scope.",
+    "score": 5
+  }
+}

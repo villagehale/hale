@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.92,
+    "rationale": "Known daycare (Maple Grove Childcare) is offering an infant-room spot for September, requiring confirmation and a $200 deposit within 5 business days.",
+    "payload": {
+      "sender": "admin@maplegrove-childcare.ca",
+      "daycare": "Maple Grove Childcare",
+      "outcome": "spot_offered",
+      "room": "infant",
+      "start": "September",
+      "deposit_amount_cad": 200,
+      "response_deadline": "5 business days",
+      "consequence_if_missed": "spot offered to next family on waitlist"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 263,
+    "output": 601
+  }
+}

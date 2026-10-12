@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "non merci",
+    "rationale": "\"non merci\" is French for \"no thank you\", a plain refusal of the offer",
+    "confidence": 0.97
+  },
+  "latencyMs": 1025
+}

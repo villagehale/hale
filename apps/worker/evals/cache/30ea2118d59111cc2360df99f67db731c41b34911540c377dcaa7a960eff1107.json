@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "schedule change: cancelling a weekly activity"
+  },
+  "latencyMs": 995
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply quotes the web find's title whole, credits the library's page, and handles ages correctly (Ada fits, Milo is under the range). The URL is recall from the webFind. However, it calls the program \"free\", and nothing in the webFind says so. That is an invented price detail.",
+    "score": 1
+  }
+}

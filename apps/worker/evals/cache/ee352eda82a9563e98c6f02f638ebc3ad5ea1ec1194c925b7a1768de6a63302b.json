@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, specific classes at the named venue (Cartwheels Gym Centre), so the research stays on the place the parent asked about. Both fit the toddler stage. The message leads with Tiny Gym by name and attributes rather than verifies (\"their site says\"). It invents no day, time or price. Under page_has_schedule it correctly owns the gap in the first person (\"I could not pin down the day or the price\"). Since watch is true, it correctly states the first-person continuation. There is no question and no link. The one deduction is length: it runs to three sentences rather than the required one or two short ones, and the tacked-on \"- their site says\" reads awkwardly.",
+    "score": 4
+  }
+}
