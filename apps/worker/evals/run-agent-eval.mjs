@@ -256,9 +256,8 @@ async function realDiscovery(lane, prompt, fixture, cachedOnly, getClient, cost)
     process.exit(1);
   }
 
-  // Through the shared structured seam, on the converse lane discover.ts reads. NOT what
-  // apps/web/lib/village/discover.ts sends today: it forces tool_choice, which Sonnet 5.5
-  // rejects with a 400, and moving it onto this seam is VIL-423's (see the PR body).
+  // Through the shared structured seam, on the converse lane — the request
+  // apps/web/lib/village/discover.ts sends.
   const response = await liveStructuredCall({
     client: getClient(),
     lane,
