@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It picks one model, the Honda Odyssey, and gives a reason, which meets watchFor. The staleness hedge is light and doesn't apologize. It runs two sentences with no greeting, no emoji, and no closing question. Naming a brand is fine here because the question asks for an opinion pick, so it isn't an invented specific. 'Check it against what's current' leans slightly toward pointing them elsewhere, but it doesn't name an app or site.",
+    "score": 5
+  }
+}
