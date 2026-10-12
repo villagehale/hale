@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct handling of missing_detail. It asks for the country and states no broadcaster or current fact from memory, so nothing is unsupported or invented. It is in the question's language and says nothing about the family. The tone drags it down a little: 'Happy to help with that!' and 'point you to the right place' read like customer service rather than a friend texting back something like 'which country you in? depends where'.",
-    "score": 4
-  }
-}

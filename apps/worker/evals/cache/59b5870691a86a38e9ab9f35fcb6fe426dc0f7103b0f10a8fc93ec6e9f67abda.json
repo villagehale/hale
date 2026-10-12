@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct for missing_detail: it asks which city and states no weather fact from memory. It answers in English, the question's language, and says nothing about the family. It's a bit wordy and service-like ('Happy to check!', 'Send me the name and I'll look up...') rather than a casual few-word ask like 'which city?', but it stays friendly and on point.",
-    "score": 4
-  }
-}

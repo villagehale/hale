@@ -1,0 +1,12 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "Who's the GOAT in football",
+    "missing_detail": "which football (soccer or American football)",
+    "their_place": "not_needed",
+    "current_fact": "who is considered the greatest, with players still playing and records still growing",
+    "needs_search": "yes"
+  },
+  "latencyMs": 2241
+}

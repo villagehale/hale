@@ -1,0 +1,12 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "hows the TSX doing today",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "current_fact": "today's performance of the TSX index",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1782
+}
