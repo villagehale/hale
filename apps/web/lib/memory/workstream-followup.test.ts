@@ -41,7 +41,7 @@ function toolMessage(body: string): Anthropic.Message {
     model: 'claude-haiku',
     stop_reason: 'end_turn',
     stop_sequence: null,
-    content: [{ type: 'tool_use', id: 'toolu_voice', name: 'write_followup', input: { body } }],
+    content: [{ type: 'text', text: JSON.stringify({ body }) }],
     usage: usage(),
   };
 }

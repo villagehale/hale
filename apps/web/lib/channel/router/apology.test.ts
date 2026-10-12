@@ -141,7 +141,7 @@ function clientSaying(bodies: string[], seen: Captured[] = []): () => AgentClien
           const apology = bodies[Math.min(call, bodies.length - 1)];
           call += 1;
           return {
-            content: [{ type: 'tool_use', name: 'apology', input: { apology } }],
+            content: [{ type: 'text', text: JSON.stringify({ apology }) }],
             usage: { input_tokens: 10, output_tokens: 5 },
           };
         },

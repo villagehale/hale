@@ -1,27 +1,19 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { structuredReply } from '~/lib/testing/structured-reply';
 import { applyVerbatimGuard, createReplyIntentReader } from './intent';
 
 function currentClient(): AgentClient {
   return {
     messages: {
-      create: vi.fn(async () => ({
-        content: [
-          {
-            type: 'tool_use',
-            id: 'tool_1',
-            name: 'intent',
-            input: {
-              intent: 'decline',
-              verbatim: 'no thanks',
-              rationale: 'clear decline',
-              confidence: 0.9,
-            },
-          },
-        ],
-        stop_reason: 'tool_use',
-        usage: { input_tokens: 10, output_tokens: 5 },
-      })),
+      create: vi.fn(async (request: unknown) =>
+        structuredReply(request, 'intent', {
+          intent: 'decline',
+          verbatim: 'no thanks',
+          rationale: 'clear decline',
+          confidence: 0.9,
+        }),
+      ),
     },
   } as unknown as AgentClient;
 }

@@ -46,7 +46,7 @@ function clientReturning(ack: unknown): AgentClient {
     messages: {
       async create() {
         return {
-          content: [{ type: 'tool_use', name: 'ack', input: { ack } }],
+          content: [{ type: 'text', text: JSON.stringify({ ack }) }],
           usage: { input_tokens: 10, output_tokens: 5 },
         };
       },

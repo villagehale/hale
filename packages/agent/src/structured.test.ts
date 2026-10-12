@@ -116,7 +116,7 @@ describe('structuredRequest — the shape each 5.5 tier accepts', () => {
   };
 
   it.each([
-    ['screen', HAIKU_MODEL, { type: 'disabled' }, 'low'],
+    ['screen', HAIKU_MODEL, { type: 'adaptive' }, 'medium'],
     ['classify', SONNET_MODEL, { type: 'adaptive' }, 'high'],
     ['high-stakes-judgment', OPUS_MODEL, { type: 'adaptive' }, 'xhigh'],
   ] as const)(
@@ -141,7 +141,7 @@ describe('structuredRequest — the shape each 5.5 tier accepts', () => {
     });
     expect(req.tools).toEqual([{ name: TOOL, description: 'desc', input_schema: OPEN_SCHEMA }]);
     expect(req.tool_choice).toEqual({ type: 'tool', name: TOOL });
-    expect(req.output_config).toEqual({ effort: 'low' });
+    expect(req.output_config).toEqual({ effort: 'medium' });
   });
 
   it('and auto with one call on the tiers that reject a forced tool_choice', () => {
@@ -221,6 +221,49 @@ describe('strictToolSchema — the wire subset', () => {
       one: { type: 'array', minItems: 1, items: { type: 'string' } },
       two: { type: 'array', description: '(minItems: 2)', items: { type: 'string' } },
     });
+  });
+
+  it('seals an object that is also allowed to be null', () => {
+    expect(
+      strictToolSchema({
+        type: 'object',
+        properties: {
+          window: {
+            type: ['object', 'null'],
+            properties: { opens: { type: 'string' } },
+            required: ['opens'],
+          },
+        },
+        required: ['window'],
+      })?.properties,
+    ).toEqual({
+      window: {
+        type: ['object', 'null'],
+        additionalProperties: false,
+        properties: { opens: { type: 'string' } },
+        required: ['opens'],
+      },
+    });
+  });
+
+  it('returns null for a node that accepts any value', () => {
+    expect(
+      strictToolSchema({
+        type: 'object',
+        properties: { anything: {}, label: { type: 'string', description: 'x' } },
+        required: ['anything', 'label'],
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null for keywords the compiler does not support', () => {
+    expect(
+      strictToolSchema({
+        type: 'object',
+        properties: { either: { oneOf: [{ type: 'string' }, { type: 'number' }] } },
+        required: ['either'],
+      }),
+    ).toBeNull();
   });
 
   it('returns null for an open object, which no grammar can express', () => {
@@ -320,6 +363,21 @@ describe('forceToolJson — every failure is reported as itself', () => {
     expect(result.usage.output_tokens).toBe(10);
   });
 
+  it('re-asks a turn that thought first and ran out mid-answer', async () => {
+    const thoughtThenCut = message(
+      [
+        { type: 'thinking', thinking: '', signature: 'sig' },
+        { type: 'text', text: '{"found":tr' },
+      ],
+      'max_tokens',
+    );
+    const { client, create } = fakeClient(thoughtThenCut, ANSWER);
+    await expect(call(client, 'classify')).resolves.toMatchObject({
+      value: { found: true, confidence: 0.9 },
+    });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
   it('does not re-ask a turn cut off while writing its answer', async () => {
     const cut = message([{ type: 'text', text: '{"found":tr' }], 'max_tokens');
     const { client, create } = fakeClient(cut);
@@ -333,7 +391,7 @@ describe('forceToolJson — every failure is reported as itself', () => {
       'max_tokens',
     );
     const { client, create } = fakeClient(thoughtOut);
-    await expect(call(client, 'screen')).rejects.toMatchObject({ outcome: 'truncated' });
+    await expect(call(client, 'speak')).rejects.toMatchObject({ outcome: 'truncated' });
     expect(create).toHaveBeenCalledTimes(1);
   });
 

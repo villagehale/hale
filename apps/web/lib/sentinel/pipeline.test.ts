@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import { isStage } from '~/lib/testing/structured-reply';
 import { classifyChildEventEmail } from './pipeline';
 import type { FamilyChildRef, InboxEnvelope } from './types';
 
@@ -34,15 +35,19 @@ interface ExtractionInput {
 
 function scriptedClient(triage: TriageInput, extraction?: ExtractionInput): AgentClient {
   const create = vi.fn().mockImplementation(async (params: { tools?: Array<{ name: string }> }) => {
-    const toolName = params.tools?.[0]?.name;
+    const toolName = isStage(params, 'triage', 'child_related')
+      ? 'triage'
+      : isStage(params, 'extraction', 'quote_evidence')
+        ? 'extraction'
+        : undefined;
     if (toolName === 'triage') {
-      return { content: [{ type: 'tool_use', id: 't1', name: 'triage', input: triage }], usage };
+      return { content: [{ type: 'text', text: JSON.stringify(triage) }], usage };
     }
     if (toolName === 'extraction') {
       if (!extraction)
         throw new Error('unexpected extraction call — triage should have short-circuited');
       return {
-        content: [{ type: 'tool_use', id: 'e1', name: 'extraction', input: extraction }],
+        content: [{ type: 'text', text: JSON.stringify(extraction) }],
         usage,
       };
     }

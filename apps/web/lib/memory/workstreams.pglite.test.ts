@@ -43,14 +43,7 @@ function toolClient(input: unknown, seen?: { user?: string }): AgentClient {
           model: 'claude-sonnet-5',
           stop_reason: 'end_turn',
           stop_sequence: null,
-          content: [
-            {
-              type: 'tool_use',
-              id: 'toolu_workstream',
-              name: 'record_workstreams',
-              input,
-            },
-          ],
+          content: [{ type: 'text', text: JSON.stringify(input) }],
           usage: usage(),
         } as Anthropic.Message;
       },

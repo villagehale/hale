@@ -268,9 +268,9 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   // thinking plus answer, the 5.5 tiers have no field that bounds the thinking half, and
   // Sonnet 5.5 at `high` thinks longer than Sonnet 5 did, so small-budget structured
   // stages that never truncated started to (the activity follow-up note, 400 tokens, all
-  // of them thinking). The room belongs to the turn that proved it needed it, so the lane
-  // keeps its budget. A turn cut off while WRITING its answer is not re-asked: the same
-  // answer would be cut again.
+  // of them thinking; the medical answer, 1,024, mostly thinking). The room belongs to the
+  // turn that proved it needed it, so the lane keeps its budget. A turn that spent none of
+  // it thinking is not re-asked: the same answer would be cut again.
   const lessThinking = withoutThinking(args.lane);
   if (lessThinking && spentBudgetThinking(response)) {
     console.warn(
@@ -295,12 +295,11 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   };
 }
 
-/** Cut off at the ceiling with nothing but thinking to show for it. */
+/** Cut off at the ceiling after spending part of it thinking. */
 function spentBudgetThinking(response: Anthropic.Message): boolean {
   return (
     response.stop_reason === 'max_tokens' &&
-    response.content.length > 0 &&
-    response.content.every(
+    response.content.some(
       (block) => block.type === 'thinking' || block.type === 'redacted_thinking',
     )
   );
@@ -324,6 +323,21 @@ const STRIPPED_KEYWORDS = [
   'pattern',
 ] as const;
 
+/** Keywords with no grammar under strict: a schema using one goes out as a plain tool. */
+const UNSUPPORTED_KEYWORDS = [
+  'oneOf',
+  'not',
+  'if',
+  'then',
+  'else',
+  'patternProperties',
+  'dependentSchemas',
+  'prefixItems',
+] as const;
+
+/** Keywords that give a node a concrete shape; a node with none of them accepts anything. */
+const SHAPE_KEYWORDS = ['type', 'enum', 'const', 'anyOf', 'allOf', '$ref'] as const;
+
 /** Compiler limits across one request's strict schemas (structured-outputs docs). */
 const MAX_OPTIONAL_PARAMS = 24;
 const MAX_UNION_PARAMS = 16;
@@ -335,6 +349,12 @@ interface ProjectionState {
 }
 
 function projectNode(node: JsonSchemaNode, state: ProjectionState): JsonSchemaNode {
+  if (
+    UNSUPPORTED_KEYWORDS.some((key) => key in node) ||
+    !SHAPE_KEYWORDS.some((key) => key in node)
+  ) {
+    state.expressible = false;
+  }
   const out: JsonSchemaNode = {};
   const notes: string[] = [];
   for (const [key, value] of Object.entries(node)) {
@@ -361,7 +381,7 @@ function projectNode(node: JsonSchemaNode, state: ProjectionState): JsonSchemaNo
   }
   if (Array.isArray(out.type) || Array.isArray(out.anyOf)) state.unions += 1;
 
-  if (out.type === 'object') {
+  if (out.type === 'object' || (Array.isArray(out.type) && out.type.includes('object'))) {
     // An object with no properties, or one opened to any key, has no grammar; sealing
     // it would silently turn "anything" into "nothing".
     if (
