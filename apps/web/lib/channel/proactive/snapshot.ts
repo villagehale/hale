@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, max, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, sql } from 'drizzle-orm';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { familyHasTeenager } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
@@ -18,9 +18,9 @@ import { boundedLine } from './tools';
  * teen). The decider's own earlier words are withheld there the same way: a kept pace
  * keeps its direction with its note as `WITHHELD_LABEL`, and a prior hold's reason reads
  * as `WITHHELD_LABEL`, since both were written with parent texts in view. Other parent
- * texts reach the decider only once, when they arrived after its last look at this
- * family, only from the one parent who owns every candidate (none for a batch two
- * parents own, rule #5), and only those rows' bodies are read. Calendar titles, Gmail
+ * texts reach the decider only from the one parent who owns every candidate (none for a
+ * batch two parents own, rule #5), each until one live review of that parent's batch has
+ * read it (`ParentTextsRead`), and only those rows' bodies are read. Calendar titles, Gmail
  * offer titles and watch labels are each one bounded line, like the parent texts.
  */
 
@@ -412,12 +412,47 @@ async function latestCadence(
   return readCadencePreference((row.after as { cadencePreference?: unknown }).cadencePreference);
 }
 
+/**
+ * Whose new texts a review read, up to its own clock. A live decision keeps it on its audit
+ * row, beside the pace it heard in them, and that parent's next review reads only what
+ * came after. Another parent's review, a batch two parents own and a shadow review write
+ * none, so none of them can move a text out of its author's reach unread.
+ */
+export interface ParentTextsRead {
+  parentUserId: string;
+  through: string;
+}
+
+/** Up to when a live review has already read this one parent's texts. */
+async function textsReadThrough(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<Date | null> {
+  const [row] = await database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, CADENCE_DECISION_ACTION),
+        sql`${schema.auditLog.after} -> 'parentTextsRead' ->> 'parentUserId' = ${parentUserId}`,
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(1);
+  if (!row) return null;
+  return new Date((row.after as { parentTextsRead: ParentTextsRead }).parentTextsRead.through);
+}
+
 export interface LoadedSnapshot {
   snapshot: FamilySnapshot;
   /** Who sent the texts in `recentParentTexts`. Never handed to the model. */
   textAuthors: string[];
   /** The one parent who owns every candidate, whose pace `frequencyPreference` is. */
   owner: string | null;
+  /** The owner's new texts this snapshot read. Null when it read none. */
+  textsRead: ParentTextsRead | null;
 }
 
 /** The full snapshot for one family: the loaded context plus the thread's last 14 days. */
@@ -461,14 +496,12 @@ export async function loadFamilySnapshot(
   const [onlyOwner, ...otherOwners] = input.candidateParents;
   const owner = onlyOwner !== undefined && otherOwners.length === 0 ? onlyOwner : null;
   const cadence = owner !== null ? await latestCadence(database, input.familyId, owner) : null;
-  const [lastReview] = await database
-    .select({ at: max(schema.proactiveCandidates.decidedAt) })
-    .from(schema.proactiveCandidates)
-    .where(eq(schema.proactiveCandidates.familyId, input.familyId));
-  const lastReviewAt = lastReview?.at ?? null;
   const { context } = input;
+  const reader = context.teenInHousehold ? null : owner;
+  const readThrough =
+    reader === null ? null : await textsReadThrough(database, input.familyId, reader);
   const newTexts =
-    context.teenInHousehold || owner === null
+    reader === null
       ? []
       : await database
           .select({
@@ -479,17 +512,21 @@ export async function loadFamilySnapshot(
           .where(
             and(
               eq(schema.channelMessages.familyId, input.familyId),
-              eq(schema.channelMessages.parentUserId, owner),
+              eq(schema.channelMessages.parentUserId, reader),
               eq(schema.channelMessages.direction, 'in'),
               isNotNull(schema.channelMessages.body),
               gte(schema.channelMessages.createdAt, since),
-              lastReviewAt === null
-                ? undefined
-                : gt(schema.channelMessages.createdAt, lastReviewAt),
+              // `through` is this review's clock, so a text that lands mid-run is the next one's.
+              lte(schema.channelMessages.createdAt, input.now),
+              readThrough === null ? undefined : gt(schema.channelMessages.createdAt, readThrough),
             ),
           )
           .orderBy(desc(schema.channelMessages.createdAt))
           .limit(RECENT_PARENT_TEXTS);
+  const textsRead =
+    reader !== null && newTexts.length > 0
+      ? { parentUserId: reader, through: input.now.toISOString() }
+      : null;
   const withheld = (text: string): string => (context.teenInHousehold ? WITHHELD_LABEL : text);
   const shown = newTexts
     .reverse()
@@ -518,5 +555,10 @@ export async function loadFamilySnapshot(
       prior.reason === null ? prior : { ...prior, reason: withheld(prior.reason) },
     ),
   };
-  return { snapshot, textAuthors: [...new Set(shown.map((row) => row.author))], owner };
+  return {
+    snapshot,
+    textAuthors: [...new Set(shown.map((row) => row.author))],
+    owner,
+    textsRead,
+  };
 }

@@ -606,7 +606,7 @@ async function reviewFamily(
     return;
   }
   const offered = new Set(plan.candidates.map((candidate) => candidate.id));
-  const { snapshot, textAuthors, owner } = await loadFamilySnapshot(database, {
+  const { snapshot, textAuthors, owner, textsRead } = await loadFamilySnapshot(database, {
     familyId,
     context,
     candidates: plan.candidates,
@@ -632,7 +632,7 @@ async function reviewFamily(
   const hold = clampHold(decision.holdUntil, chosen, now);
   const cadence = keptCadence(decision, mode, textAuthors, owner);
   // The decision row is where a cadence preference is kept (preference.ts), and the
-  // reason it was not, by name.
+  // reason it was not, by name. A live one also says whose texts it read (snapshot.ts).
   await audit(database, familyId, 'proactive_cadence_decision', {
     action: decision.action,
     itemIds: chosen.map((item) => item.id),
@@ -641,6 +641,7 @@ async function reviewFamily(
     holdUntil: hold.holdUntil,
     ...(hold.clamped ? { holdClamped: hold.clamped, askedHoldUntil: decision.holdUntil } : {}),
     ...(cadence ? { cadencePreference: cadence } : {}),
+    ...(mode === 'live' && textsRead ? { parentTextsRead: textsRead } : {}),
     mode,
   });
   await mark(
