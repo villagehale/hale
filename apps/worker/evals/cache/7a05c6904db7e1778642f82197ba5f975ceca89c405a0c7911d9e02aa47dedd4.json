@@ -1,6 +1,0 @@
-{
-  "value": {
-    "message": "Oye, ¿quieres que busque una buena opción extracurricular para Nell? Te aviso si encuentro algo."
-  },
-  "stopReason": "tool_use"
-}

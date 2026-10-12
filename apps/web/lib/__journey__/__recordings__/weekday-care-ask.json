@@ -1,23 +1,60 @@
 {
-  "3e9eaf314f2886f692901063cec36d5b176e0d9c3c4a433a8ad8b16ece9b8e45": {
-    "key": "3e9eaf314f2886f692901063cec36d5b176e0d9c3c4a433a8ad8b16ece9b8e45",
-    "recordedAt": "2026-10-12T03:30:28.730Z",
+  "75bac4b77448041e261a271a0dd4889da64fb647176c4791580f5e3e1174af44": {
+    "key": "75bac4b77448041e261a271a0dd4889da64fb647176c4791580f5e3e1174af44",
+    "recordedAt": "2026-10-12T04:18:27.659Z",
+    "request": {
+      "model": "claude-haiku-4-5",
+      "userMessage": "."
+    },
+    "response": {
+      "model": "claude-haiku-4-5-20251001",
+      "id": "msg_011CfwhVJeuRDYZQE66UNaw7",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "#"
+        }
+      ],
+      "container": null,
+      "stop_reason": "max_tokens",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 1,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "diagnostics": null
+    }
+  },
+  "05bfde931c3d0522e1b53e5093e01ac04e86ef032602e602f7e54ed615afdc1e": {
+    "key": "05bfde931c3d0522e1b53e5093e01ac04e86ef032602e602f7e54ed615afdc1e",
+    "recordedAt": "2026-10-12T04:18:29.794Z",
     "request": {
       "model": "claude-sonnet-4-6",
       "userMessage": "{\"prompt\":\"weekend_fallback\",\"language\":\"en\"}"
     },
     "response": {
       "model": "claude-sonnet-4-6",
-      "id": "msg_011Cfwdpzb44kRakfUnbfasW",
+      "id": "msg_011CfwhVLvaZTTYtpQZyQen3",
       "type": "message",
       "role": "assistant",
       "content": [
         {
           "type": "tool_use",
-          "id": "toolu_01F8fLJLy2kRE4xPZGivzB9W",
+          "id": "toolu_01QdjqnLmXScL6oyWLgBtqCN",
           "name": "weekday_ask",
           "input": {
-            "message": "Hey! The last few things I found were weekend stuff — want me to take a look at what's available during the week too?"
+            "message": "Hey! The options I sent were all weekend — want me to look at weekdays too?"
           },
           "caller": {
             "type": "direct"
@@ -29,39 +66,39 @@
       "stop_sequence": null,
       "stop_details": null,
       "usage": {
-        "input_tokens": 1085,
+        "input_tokens": 1110,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
           "ephemeral_1h_input_tokens": 0
         },
-        "output_tokens": 59,
+        "output_tokens": 51,
         "service_tier": "standard",
         "inference_geo": "global"
       },
       "diagnostics": null
     }
   },
-  "04c82f51ff72c2e225f266929fcbb922e82d1bec316ba5688a92d43290893511": {
-    "key": "04c82f51ff72c2e225f266929fcbb922e82d1bec316ba5688a92d43290893511",
-    "recordedAt": "2026-10-12T03:30:30.568Z",
+  "60c78c945052289df34c3485d508034f37971cc35ee73021b8c861ba3351eb59": {
+    "key": "60c78c945052289df34c3485d508034f37971cc35ee73021b8c861ba3351eb59",
+    "recordedAt": "2026-10-12T04:18:32.148Z",
     "request": {
       "model": "claude-sonnet-4-6",
       "userMessage": "{\"prompt\":\"weekend_fallback\",\"language\":\"fr\"}"
     },
     "response": {
       "model": "claude-sonnet-4-6",
-      "id": "msg_011Cfwdq8a2RMQv9ULeJ3CnV",
+      "id": "msg_011CfwhVWLs8YeHKG2P7H9c3",
       "type": "message",
       "role": "assistant",
       "content": [
         {
           "type": "tool_use",
-          "id": "toolu_0135c69tMchqKiHc3SK7G9i4",
+          "id": "toolu_01JdyENLvktVnS4jbqwRm1XR",
           "name": "weekday_ask",
           "input": {
-            "message": "Au fait, je t'avais envoyé des idées pour le week-end — tu veux que je regarde aussi ce qui existe en semaine ?"
+            "message": "Les dernières idées que je t'avais envoyées c'était pour le week-end — je peux aussi regarder du côté de la semaine si tu veux ?"
           },
           "caller": {
             "type": "direct"
@@ -73,14 +110,14 @@
       "stop_sequence": null,
       "stop_details": null,
       "usage": {
-        "input_tokens": 1085,
+        "input_tokens": 1110,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
           "ephemeral_1h_input_tokens": 0
         },
-        "output_tokens": 67,
+        "output_tokens": 73,
         "service_tier": "standard",
         "inference_geo": "global"
       },
