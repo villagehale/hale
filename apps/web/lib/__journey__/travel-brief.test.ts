@@ -258,14 +258,27 @@ function model() {
 function recordedPicks(): ActivityPick[] {
   const recordings = JSON.parse(readFileSync(RECORDINGS, 'utf8')) as Record<
     string,
-    { response: { content: Array<{ type: string; name?: string; input?: unknown }> } }
+    {
+      response: {
+        content: Array<{ type: string; name?: string; input?: unknown; text?: string }>;
+      };
+    }
   >;
   for (const entry of Object.values(recordings)) {
-    const block = entry.response.content.find(
-      (b) => b.type === 'tool_use' && b.name === 'activity_picks',
+    // The structured seam asks for a JSON output (a text block) or, for a schema with no
+    // grammar, a tool call; the picks turn is whichever carries `picks`.
+    const answers = entry.response.content.map((b) =>
+      b.type === 'tool_use' && b.name === 'activity_picks'
+        ? b.input
+        : b.type === 'text' && b.text?.trimStart().startsWith('{')
+          ? JSON.parse(b.text)
+          : null,
     );
-    if (!block) continue;
-    const input = block.input as {
+    const answer = answers.find(
+      (value) => value !== null && typeof value === 'object' && 'picks' in value,
+    );
+    if (!answer) continue;
+    const input = answer as {
       picks: Array<{
         name: string;
         age_fit: string;
@@ -485,7 +498,8 @@ describe('a booking email becomes one text a week before the trip', () => {
     expect(body).toContain("You're in New York the 12th to the 15th");
     // Both children are under 13, so both are named; neither age is.
     expect(body).toContain('for Mia and Leo');
-    expect(body).not.toMatch(/\b(4|7)\b/);
+    // The ages, not a clock time: a venue's "10:00-4:30" is not an age.
+    expect(body).not.toMatch(/\b(4|7)\b(?![:.]\d)/);
 
     // THE PICKS ARE THE MODEL'S OWN, read out of the recording rather than typed here —
     // so this is a claim about the RENDERER carrying what the lane found, not about a set

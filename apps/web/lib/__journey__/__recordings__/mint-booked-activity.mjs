@@ -78,7 +78,8 @@ const sha = (value) => createHash('sha256').update(value).digest('hex');
 /** apps/worker/evals/lib/harness.mjs — sha256(tag + "\n" + canonical request). */
 const evalKey = (tag, canonical) => sha(`${tag}\n${canonical}`);
 /** apps/web/lib/testing/recorded-model.ts — sha256(model + "\n" + system + "\n" + user). */
-const journeyKey = (model, system, userMessage) => sha(`${model}\n${system}\n${userMessage}`);
+const journeyKey = (model, system, userMessage, thinking) =>
+  sha(`${model}\n${thinking ? `thinking:${thinking}\n` : ''}${system}\n${userMessage}`);
 
 function readEvalValue(tag, canonical) {
   const key = evalKey(tag, canonical);
@@ -149,6 +150,7 @@ const turns = [
     tag: `sentinel:triage:${FIXTURE_ID}`,
     toolName: 'triage',
     model: triageModel,
+    lane: agent.pickLane(triageSkill.meta.task),
     system: triageSkill.instructions,
     userMessage: triageUser,
     toolSchema: TRIAGE_TOOL_SCHEMA,
@@ -157,6 +159,7 @@ const turns = [
     tag: `sentinel:extract:${FIXTURE_ID}`,
     toolName: 'extraction',
     model: extractModel,
+    lane: agent.pickLane(extractSkill.meta.task),
     system: extractSkill.instructions,
     userMessage: extractUser,
     toolSchema: EXTRACT_TOOL_SCHEMA,
@@ -171,9 +174,16 @@ for (const turn of turns) {
     userMessage: turn.userMessage,
     toolName: turn.toolName,
     toolSchema: turn.toolSchema,
+    // The harness keys a lane call on the lane too (evals/lib/harness.mjs cachedToolCall).
+    lane: turn.lane,
   });
   const value = readEvalValue(turn.tag, canonical);
-  const key = journeyKey(turn.model, turn.system, turn.userMessage);
+  const key = journeyKey(
+    turn.model,
+    turn.system,
+    turn.userMessage,
+    agent.laneRequestFields(turn.lane).thinking?.type,
+  );
   recordings[key] = {
     key,
     recordedAt: new Date().toISOString(),
