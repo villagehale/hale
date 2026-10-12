@@ -1,16 +1,22 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNull, lt, ne } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt, max, ne } from 'drizzle-orm';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { familyHasTeenager } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
 import { CADENCE_FACT_KEY, type CadenceFact, readCadenceFact } from './preference';
+import { boundedLine } from './tools';
 
 /**
  * VIL-226 · the family state the decider reads. Calendar, mail, watches, recent sends
  * and the household shape are loaded here. What to do with them lives in the skill.
  *
- * No names reach the snapshot: children are ages, and a household with a teenager has
- * every calendar label read as "busy" (rule #1's double-miss fallback).
+ * Children are ages, never names. A candidate is its kind and the sweep's names-free
+ * label (`why`), never the composed text: that is the writer's input, not the decider's.
+ * A household with a teenager has every calendar label read as "busy" and none of its
+ * parents' texts (rule #1's double-miss fallback: a text names no child, so it cannot be
+ * shown not to be about the teen). Other parent texts reach the decider only once, when
+ * they arrived after its last look at this family. Calendar titles, Gmail offer titles
+ * and watch labels are passed as stored.
  */
 
 export interface FreeWindow {
@@ -29,7 +35,9 @@ export interface BusyBlock {
 
 export interface SnapshotCandidate {
   id: string;
-  what: string;
+  /** The outbound-gate class, e.g. `nudge`. */
+  kind: string;
+  /** The sweep's own label for the item, e.g. `weekday_dropin`. No names. */
   why: string;
   sourceUrl: string | null;
   worthlessAfter: string | null;
@@ -92,7 +100,6 @@ const MIN_WINDOW = 60;
 const SNAPSHOT_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RECENT_PARENT_TEXTS = 5;
-const PARENT_TEXT_CHARS = 160;
 const DEADLINE_ROWS = 40;
 const WATCH_ROWS = 20;
 
@@ -220,6 +227,8 @@ export interface LoadedFamilyContext {
   deadlines: { what: string; at: string }[];
   watches: { what: string }[];
   declines: string[];
+  /** A child here is 13 or older. */
+  teenInHousehold: boolean;
 }
 
 /**
@@ -347,6 +356,7 @@ export async function loadFamilyContext(
       .map((offer) => ({ what: offer.title, at: offer.startsAt.toISOString() })),
     watches: watches.map((watch) => ({ what: watch.label })),
     declines: offers.filter((offer) => offer.resolution === 'declined').map((offer) => offer.title),
+    teenInHousehold: redactLabels,
   };
 }
 
@@ -404,7 +414,15 @@ export async function loadFamilySnapshot(
     )
     .limit(1);
   const cadence = pref ? readCadenceFact(pref.factValue) : null;
+  const [lastReview] = await database
+    .select({ at: max(schema.proactiveCandidates.decidedAt) })
+    .from(schema.proactiveCandidates)
+    .where(eq(schema.proactiveCandidates.familyId, input.familyId));
+  const lastReviewAt = lastReview?.at ?? null;
   const { context } = input;
+  const newTexts = context.teenInHousehold
+    ? []
+    : inbound.filter((row) => lastReviewAt === null || row.createdAt > lastReviewAt);
   return {
     timeZone: context.timeZone,
     now: input.now.toISOString(),
@@ -419,8 +437,8 @@ export async function loadFamilySnapshot(
     unansweredStreak: unansweredStreak(recentSends),
     frequencyPreference: cadence ? { direction: cadence.direction, note: cadence.note } : null,
     declines: context.declines,
-    recentParentTexts: inbound
-      .map((row) => (row.body ?? '').slice(0, PARENT_TEXT_CHARS))
+    recentParentTexts: newTexts
+      .map((row) => boundedLine(row.body ?? ''))
       .filter((text) => text.length > 0)
       .slice(-RECENT_PARENT_TEXTS),
     priorDecisions: input.priorDecisions,

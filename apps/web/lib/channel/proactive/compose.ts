@@ -2,8 +2,8 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type { SnapshotCandidate } from './snapshot';
 import {
+  type ToolCandidate,
   WRITER_MAX_TOKENS,
   WRITER_TOOL,
   WRITER_TOOL_SCHEMA,
@@ -25,7 +25,7 @@ export const WRITER_SKILL = 'proactive-writer';
 export { WRITER_TOOL_SCHEMA, type WriterResult, readWriterText, withActivityLinks };
 
 export async function composeProactiveBatch(input: {
-  items: readonly SnapshotCandidate[];
+  items: readonly ToolCandidate[];
   client: AgentClient | null;
   /** The parent's saved cadence note, when they asked to hear less or more. */
   cadenceNote: string | null;

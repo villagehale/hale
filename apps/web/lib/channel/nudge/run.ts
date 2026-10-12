@@ -31,7 +31,7 @@ import {
   upcomingWeekend,
 } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
   deliverFamilyOutbound,
@@ -52,6 +52,12 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import {
+  type ProactiveLedgerWrite,
+  finalizeProactiveSend,
+  recordProactiveSend,
+  writeProactiveAudit,
+} from '~/lib/channel/proactive/finalize';
 import {
   type CadenceLane,
   handOffProactive,
@@ -172,18 +178,8 @@ export interface GroupHowItWentLine {
   parentUserId: string;
 }
 
-export interface NudgeLedgerWrite {
-  familyId: string;
-  parentUserId: string;
-  channel: 'sms' | 'imessage';
-  category: 'nudge';
-  templateKey: string;
-  dedupeKey: string;
-  status: AcceptedStatus;
-  providerMessageId: string;
-  providerChatId?: string | null;
-  sentAt: Date;
-}
+/** The ledger row a send writes, via the finalizer it shares with the hourly decider. */
+export type NudgeLedgerWrite = ProactiveLedgerWrite;
 
 export interface NudgeAuditRow {
   familyId: string;
@@ -888,20 +884,44 @@ async function runForFamily(
     }
     const { providerMessageId } = delivered;
 
-    const messageId = await deps.recordSend(database, {
+    // THE LEDGER ROW, THE TRAIL AND THE THREAD (proactive/finalize.ts), shared with the
+    // hourly decider so a send from either path leaves the same rows. The thread is
+    // where THIS parent's answer will be read — their own, one per recipient — and it
+    // gets the COMPOSED sentence, never the wire body: the CASL line belongs on the wire
+    // and nowhere else.
+    const messageId = await finalizeProactiveSend(database, deps, {
       familyId: family.familyId,
-      parentUserId: recipient.parentUserId,
+      recipientUserId: recipient.parentUserId,
       channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
-      category: 'nudge',
-      templateKey:
-        nudge.kind === 'weekday_care'
-          ? weekdayFinderTemplateKey(nudge.ask)
-          : proactiveNudgeTemplateKey(nudge.kind),
-      dedupeKey,
-      status: acceptedStatus(delivered.channel === 'imessage' ? 'imessage' : 'sms'),
       providerMessageId,
       providerChatId: delivered.chatId,
       sentAt: now,
+      items: [
+        {
+          parentUserId: recipient.parentUserId,
+          category: 'nudge',
+          templateKey:
+            nudge.kind === 'weekday_care'
+              ? weekdayFinderTemplateKey(nudge.ask)
+              : proactiveNudgeTemplateKey(nudge.kind),
+          dedupeKey,
+        },
+      ],
+      composed: message,
+      audit: {
+        actionTaken: 'proactive_nudge_sent',
+        // Enum-shaped provenance only — never the rendered body (rule #1). A health nudge
+        // also names its checkpoint (a reviewed table constant, never PII), so the trail
+        // says WHICH errand was raised without a join back to the ledger row's dedupe key.
+        after: {
+          kind: nudge.kind,
+          cohort,
+          // Which SEAT this copy went to. The row already names the parent; this names
+          // the relationship, which is what a founder reading the trail is asking.
+          role: recipient.role,
+          ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
+        },
+      },
     });
     if (dutyFold) {
       try {
@@ -938,34 +958,6 @@ async function runForFamily(
       }
       absorbed = [];
     }
-    await deps.audit(database, {
-      familyId: family.familyId,
-      actor: 'system',
-      actionTaken: 'proactive_nudge_sent',
-      targetTable: 'channel_messages',
-      targetId: messageId,
-      // Enum-shaped provenance only — never the rendered body (rule #1). A health nudge
-      // also names its checkpoint (a reviewed table constant, never PII), so the trail
-      // says WHICH errand was raised without a join back to the ledger row's dedupe key.
-      after: {
-        kind: nudge.kind,
-        cohort,
-        // Which SEAT this copy went to. The row already names the parent; this names
-        // the relationship, which is what a founder reading the trail is asking.
-        role: recipient.role,
-        ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
-      },
-    });
-
-    // THE THREAD, which is where THIS parent's answer will be read — their own, one per
-    // recipient. Unconditional and AFTER the send: a compose that never reached a
-    // transport is not something Hale said. The COMPOSED sentence, never the wire body —
-    // the CASL line belongs on the wire and nowhere else.
-    await deps.threadMessage(database, {
-      familyId: family.familyId,
-      parentUserId: recipient.parentUserId,
-      body: message,
-    });
     if (firstMessageId === null) firstMessageId = messageId;
     sent += 1;
 
@@ -1179,17 +1171,8 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
     resolveSendablePhone,
-    recordSend: async (database, write) => {
-      const [row] = await database
-        .insert(schema.channelMessages)
-        .values({ ...write, direction: 'out' })
-        .returning({ id: schema.channelMessages.id });
-      if (!row) throw new Error('runNudgeCron: channel_messages insert returned no row');
-      return row.id;
-    },
-    audit: async (database, row) => {
-      await database.insert(schema.auditLog).values(row);
-    },
+    recordSend: recordProactiveSend,
+    audit: writeProactiveAudit,
     transport: createOutboundTransport(),
     outboundTarget: familyOutboundTarget,
     client: voiceClient(),

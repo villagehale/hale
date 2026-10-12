@@ -8,8 +8,10 @@ const EARLIER = '2026-10-08T22:00:00.000Z';
 
 function item(over: Partial<OpenCandidate> & Pick<OpenCandidate, 'id' | 'status'>): OpenCandidate {
   return {
+    kind: 'nudge',
     what: 'Saturday farmers market',
     why: 'a nearby listing',
+    decision: 'hold',
     sourceUrl: 'https://example.test/market',
     worthlessAfter: null,
     parentRequested: false,
@@ -100,5 +102,22 @@ describe('planHourlyReview', () => {
     expect(plan.skipModel).toBe(false);
     expect(plan.candidates.map((candidate) => candidate.id)).toEqual(['fresh', 'open']);
     expect(plan.priorDecisions.map((decision) => decision.id)).toEqual(['open', 'later']);
+  });
+  it('reopens a hold the code made after a send_now on a signal, not on the day turning', () => {
+    const paused = item({
+      id: 'paused',
+      status: 'held',
+      decision: 'send_now',
+      reason: 'line_health',
+      holdUntil: null,
+    });
+    const nextDay = new Date('2026-10-09T14:00:00.000Z');
+    expect(
+      planHourlyReview({ items: [paused], now: nextDay, timeZone: TZ, externalSignal: false }),
+    ).toMatchObject({ skipModel: true, candidates: [] });
+    expect(
+      planHourlyReview({ items: [paused], now: nextDay, timeZone: TZ, externalSignal: true })
+        .candidates,
+    ).toMatchObject([{ id: 'paused' }]);
   });
 });

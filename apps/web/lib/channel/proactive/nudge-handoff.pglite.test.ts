@@ -12,8 +12,11 @@ import {
   runNudgeCron,
 } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
+import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { type ProactiveReviewDeps, runProactiveReview } from './review';
 
 /**
  * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
@@ -168,14 +171,102 @@ async function ledger() {
     );
 }
 
+/** What a send leaves for every later reader: the ledger, the thread, the trail. */
+async function sendTrail() {
+  const rows = await ledger();
+  const thread = await db.database
+    .select({ role: schema.messages.role, content: schema.messages.content })
+    .from(schema.messages)
+    .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+    .where(eq(schema.conversations.familyId, familyId));
+  const sent = await db.database
+    .select()
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'proactive_nudge_sent'),
+      ),
+    );
+  return {
+    ledger: rows.map((row) => ({
+      parentUserId: row.parentUserId,
+      direction: row.direction,
+      category: row.category,
+      templateKey: row.templateKey,
+      dedupeKey: row.dedupeKey,
+    })),
+    ledgerIds: rows.map((row) => row.id),
+    thread,
+    sent: sent.map((row) => ({
+      targetTable: row.targetTable,
+      targetId: row.targetId,
+      kind: (row.after as { kind?: unknown }).kind,
+    })),
+  };
+}
+
+/** One find, one parent: the rows a sweep send leaves, whichever path sent it. */
+function expectFindSent(trail: Awaited<ReturnType<typeof sendTrail>>, body: string | undefined) {
+  expect(trail.ledger).toEqual([
+    {
+      parentUserId,
+      direction: 'out',
+      category: 'nudge',
+      templateKey: DROPIN_TEMPLATE,
+      dedupeKey: `nudge:${familyId}:weekday_dropin:2026-08-10:${parentUserId}`,
+    },
+  ]);
+  expect(trail.thread).toEqual([{ role: 'assistant', content: body }]);
+  expect(trail.sent).toEqual([
+    { targetTable: 'channel_messages', targetId: trail.ledgerIds[0], kind: 'weekday_dropin' },
+  ]);
+}
+
 describe('the nudge hand-off', () => {
   it('sends the find and queues nothing while the flag is unset', async () => {
     const transport = new FakeTransport();
     const result = await runNudgeCron(db.database, deps(transport), MONDAY);
     expect(result).toMatchObject({ sent: 1, queued: 0 });
     expect(transport.bodies()[0]).toContain('Toddler drop-in');
-    expect(await ledger()).toHaveLength(1);
+    expectFindSent(await sendTrail(), transport.bodies()[0]);
     expect(await candidates()).toEqual([]);
+  });
+
+  it('when live, the decider’s send leaves the same rows the sweep’s send leaves', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const transport = new FakeTransport();
+    await runNudgeCron(db.database, deps(transport), MONDAY);
+    expect(transport.sent).toEqual([]);
+    const [queued] = await candidates();
+
+    const review: ProactiveReviewDeps = {
+      client: null,
+      transport,
+      decide: async ({ snapshot }) => ({
+        decision: {
+          reason: 'Tuesday morning is open',
+          action: 'send_now',
+          itemIds: snapshot.candidates.map((item) => item.id),
+          holdUntil: null,
+          frequencyPreference: null,
+        },
+        skipped: null,
+      }),
+      compose: async ({ items }) => ({ message: items.map((item) => item.what).join(' ') }),
+      buildGate: openGate,
+      resolveSendablePhone: async () => PHONE,
+      linePaused: async () => false,
+      loadRecipients: async () => [{ parentUserId, timeZone: TZ, role: 'primary_parent' }],
+      outboundTarget: async () => ({ channel: 'legacy' }),
+      threadMessage: threadProactiveMessage,
+      fulfillCommitment,
+    };
+    const summary = await runProactiveReview(db.database, review, MONDAY);
+
+    expect(summary).toMatchObject({ sent: 1 });
+    expect(transport.bodies()).toEqual([queued?.what]);
+    expectFindSent(await sendTrail(), queued?.what);
   });
 
   it('in shadow, sends the find and also queues it for the decider', async () => {

@@ -22,8 +22,8 @@ const SNAPSHOT: FamilySnapshot = {
 
 const CANDIDATE = {
   id: 'c1',
-  what: 'Paper lantern craft at the Elm Street library',
-  why: 'Saturday afternoon is open',
+  kind: 'nudge',
+  why: 'empty_saturday',
   sourceUrl: 'https://example.test/lantern',
   worthlessAfter: null,
   parentRequested: false,

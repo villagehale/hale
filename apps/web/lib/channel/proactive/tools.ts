@@ -16,6 +16,22 @@ export const WRITER_MAX_TOKENS = 400;
 /** A word shorter than this ("the", "at") says nothing about which activity was named. */
 const NAMING_WORD_MIN = 4;
 
+/**
+ * One line of text a model reads or wrote: a parent's text in the snapshot, the decider's
+ * reason on the row and in the audit trail, the cadence note the writer reads.
+ */
+export const LINE_CHARS = 160;
+
+/** Control and bidi-format characters, which could open a second line or reorder one. */
+const UNSAFE_IN_LINE =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
+  /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]+/g;
+
+/** Free text made one bounded line before it is stored or handed to another model. */
+export function boundedLine(text: string): string {
+  return text.replace(UNSAFE_IN_LINE, ' ').replace(/\s+/g, ' ').trim().slice(0, LINE_CHARS);
+}
+
 export interface ToolCandidate {
   id: string;
   what: string;
@@ -151,5 +167,6 @@ export function readWriterText(value: unknown, items: readonly ToolCandidate[]):
 
 /** The writer's user message: the chosen items, and the parent's cadence note if any. */
 export function writerContext(items: readonly ToolCandidate[], cadenceNote: string | null): string {
-  return JSON.stringify({ items, ...(cadenceNote ? { note: cadenceNote } : {}) });
+  const note = cadenceNote ? boundedLine(cadenceNote) : '';
+  return JSON.stringify({ items, ...(note ? { note } : {}) });
 }

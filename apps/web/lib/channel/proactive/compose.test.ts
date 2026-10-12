@@ -5,9 +5,9 @@ import {
   readWriterText,
   withActivityLinks,
 } from './compose';
-import type { SnapshotCandidate } from './snapshot';
+import { LINE_CHARS, type ToolCandidate, writerContext } from './tools';
 
-const ITEM: SnapshotCandidate = {
+const ITEM: ToolCandidate = {
   id: 'c1',
   what: 'Paper lantern craft at the Elm Street library',
   why: 'Saturday afternoon is open',
@@ -66,5 +66,14 @@ describe('composeProactiveBatch', () => {
     await expect(
       composeProactiveBatch({ items: [ITEM], client: null, cadenceNote: null }),
     ).resolves.toEqual({ skipped: 'no_client' });
+  });
+});
+
+describe('writerContext', () => {
+  it('cuts the cadence note to one bounded line before the writer sees it', () => {
+    const note = `less, please\n${'y'.repeat(400)}`;
+    expect(JSON.parse(writerContext([ITEM], note)).note).toBe(
+      `less, please ${'y'.repeat(400)}`.slice(0, LINE_CHARS),
+    );
   });
 });

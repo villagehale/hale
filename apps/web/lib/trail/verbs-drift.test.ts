@@ -40,13 +40,18 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
-  // VIL-226. One audit helper writes every verb of the hourly proactive review.
+  // VIL-226. One audit helper writes every verb of the hourly proactive review, and a
+  // decider send names the sweep's own verb for a nudge.
   'apps/web/lib/channel/proactive/review.ts': [
     'proactive_cadence_decision',
     'proactive_cadence_held',
     'proactive_cadence_sent',
     'proactive_cadence_skipped',
+    'proactive_nudge_sent',
   ],
+  // VIL-226. The send finalizer the nudge sweep and the hourly review share writes the
+  // verb its caller names.
+  'apps/web/lib/channel/proactive/finalize.ts': ['proactive_cadence_sent', 'proactive_nudge_sent'],
   // One helper writes every passport verb. The "both kids" copy in actions.ts
   // also writes interest_stamp_confirmed as a literal.
   'apps/web/lib/passport/store.ts': [

@@ -1,15 +1,20 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { weekdayFinderDedupeKey } from '~/lib/channel/weekday-care/key';
+import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { WriterResult } from './compose';
 import type { DecideResult, DeciderDecision } from './decide';
 import { CADENCE_FACT_KEY } from './preference';
-import { handOffProactive } from './queue';
+import { type CandidateDraft, handOffProactive } from './queue';
 import { type ProactiveReviewDeps, runProactiveReview } from './review';
 import type { FamilySnapshot } from './snapshot';
+import { LINE_CHARS, type ToolCandidate } from './tools';
 
 /**
  * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
@@ -69,7 +74,10 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-async function enqueue(dedupeKey = 'nudge:weather:w41'): Promise<string> {
+async function enqueue(
+  dedupeKey = 'nudge:weather:w41',
+  over: Partial<CandidateDraft> = {},
+): Promise<string> {
   const mode = process.env.PROACTIVE_CADENCE;
   vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
   await handOffProactive(
@@ -87,6 +95,7 @@ async function enqueue(dedupeKey = 'nudge:weather:w41'): Promise<string> {
         worthlessAfter: null,
         parentRequested: false,
         dedupeKey,
+        ...over,
       },
     ],
     'candidate',
@@ -112,6 +121,7 @@ interface Harness {
   transport: FakeTransport;
   snapshots: FamilySnapshot[];
   composed: number;
+  written: ToolCandidate[][];
 }
 
 function harness(
@@ -119,7 +129,13 @@ function harness(
   over: Partial<ProactiveReviewDeps> = {},
 ): Harness {
   const transport = new FakeTransport();
-  const state: Harness = { deps: {} as ProactiveReviewDeps, transport, snapshots: [], composed: 0 };
+  const state: Harness = {
+    deps: {} as ProactiveReviewDeps,
+    transport,
+    snapshots: [],
+    composed: 0,
+    written: [],
+  };
   state.deps = {
     client: null,
     transport,
@@ -128,13 +144,18 @@ function harness(
       const made = decision(snapshot);
       return made ? { decision: made, skipped: null } : { decision: null, skipped: 'unparsed' };
     },
-    compose: async (): Promise<WriterResult> => {
+    compose: async ({ items }): Promise<WriterResult> => {
       state.composed += 1;
+      state.written.push([...items]);
       return { message: MESSAGE };
     },
     buildGate: openGate,
     resolveSendablePhone: async () => PHONE,
     linePaused: async () => false,
+    loadRecipients: async () => [{ parentUserId, timeZone: TZ, role: 'primary_parent' }],
+    outboundTarget: async () => ({ channel: 'legacy' }),
+    threadMessage: threadProactiveMessage,
+    fulfillCommitment,
     ...over,
   };
   return state;
@@ -241,8 +262,9 @@ describe('runProactiveReview', () => {
       dedupeKey: 'nudge:weather:w41',
       providerMessageId: 'fake-out-1',
     });
-    const [sent] = await audits('proactive_cadence_sent');
-    expect(sent?.after).toMatchObject({ itemIds: [id] });
+    const [sent] = await audits('proactive_nudge_sent');
+    expect(sent).toMatchObject({ targetTable: 'channel_messages', targetId: ledger[0]?.id });
+    expect(sent?.after).toMatchObject({ kind: 'weather_swap', itemIds: [id] });
   });
 
   it('writes each parent their own text when their items differ and there is no group', async () => {
@@ -431,5 +453,260 @@ describe('runProactiveReview', () => {
     expect(await candidate(id)).toMatchObject({ status: 'held', reason: 'not_chosen' });
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({ itemIds: [], unchosen: [id] });
+  });
+
+  it('drops, by name, a candidate the old path already sent, and still sends a fresh one', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const already = await enqueue('nudge:weather:w41');
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'nudge',
+      templateKey: 'proactive_nudge:weather_swap',
+      dedupeKey: 'nudge:weather:w41',
+      status: 'delivered',
+      sentAt: THURSDAY_EVENING,
+    });
+    const fresh = await enqueue('nudge:weather:w42');
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.transport.sent).toHaveLength(1);
+    expect(await candidate(already)).toMatchObject({ status: 'dropped', reason: 'already_sent' });
+    expect(await candidate(fresh)).toMatchObject({ status: 'sent' });
+    const [skipped] = await audits('proactive_cadence_skipped');
+    expect(skipped?.after).toMatchObject({ reason: 'already_sent', itemIds: [already] });
+  });
+
+  it('drops a weekday-care ask the household was already asked, and sends nothing', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    // A legacy care ask to this household: same template, a different key.
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'nudge',
+      templateKey: WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+      dedupeKey: `nudge:${familyId}:weekday_care:legacy-child:${parentUserId}`,
+      status: 'delivered',
+      sentAt: THURSDAY_EVENING,
+    });
+    const ask = await enqueue(
+      weekdayFinderDedupeKey(familyId, { prompt: 'weekend_fallback' }, parentUserId),
+      { templateKey: WEEKDAY_CARE_ASK_TEMPLATE_KEY, why: 'weekday_care', sourceUrl: null },
+    );
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.transport.sent).toEqual([]);
+    expect(h.composed).toBe(0);
+    expect(await candidate(ask)).toMatchObject({ status: 'dropped', reason: 'already_asked' });
+    const [skipped] = await audits('proactive_cadence_skipped');
+    expect(skipped?.after).toMatchObject({ reason: 'already_asked', itemIds: [ask] });
+  });
+
+  describe('a claimed group', () => {
+    const CHAT = 'chat-household';
+    let coParentId: string;
+    let linqCalls: number;
+    const linqFetch = (async () => {
+      linqCalls += 1;
+      return Response.json({ message: { id: 'msg-group-1' } }, { status: 201 });
+    }) as unknown as typeof fetch;
+
+    beforeEach(async () => {
+      linqCalls = 0;
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+      const [coParent] = await db.database
+        .insert(schema.users)
+        .values({ name: 'Second Parent', timezone: TZ })
+        .returning({ id: schema.users.id });
+      coParentId = coParent?.id as string;
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId, userId: coParentId, role: 'co_parent' });
+    });
+
+    function groupHarness(gate: () => OutboundGatePorts) {
+      return harness(sendAll, {
+        outboundTarget: async () => ({ channel: 'group', chatId: CHAT, familyId }),
+        loadRecipients: async () => [
+          { parentUserId, timeZone: TZ, role: 'primary_parent' },
+          { parentUserId: coParentId, timeZone: TZ, role: 'co_parent' },
+        ],
+        buildGate: gate,
+        fetch: linqFetch,
+      });
+    }
+
+    it('holds the whole copy, by that member’s reason, when one member may not be texted', async () => {
+      const id = await enqueue();
+      const h = groupHarness(() => ({
+        ...openGate(),
+        channelEnrolled: async (userId) => userId !== coParentId,
+      }));
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ sent: 0, held: 1 });
+      expect(linqCalls).toBe(0);
+      expect(h.composed).toBe(0);
+      expect(await candidate(id)).toMatchObject({ status: 'held', reason: 'not_enrolled' });
+      const [held] = await audits('proactive_cadence_held');
+      expect(held?.after).toMatchObject({
+        reason: 'not_enrolled',
+        parentUserId: coParentId,
+        itemIds: [id],
+      });
+    });
+
+    it('sends the one copy when every member may be texted', async () => {
+      const id = await enqueue();
+      const gated: string[] = [];
+      const h = groupHarness(() => ({
+        ...openGate(),
+        channelEnrolled: async (userId) => {
+          gated.push(userId);
+          return true;
+        },
+      }));
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ sent: 1, held: 0 });
+      expect(linqCalls).toBe(1);
+      expect(new Set(gated)).toEqual(new Set([parentUserId, coParentId]));
+      expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    });
+  });
+
+  it('shows the decider a candidate by kind and label, and only the writer its text', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue('nudge:weather:w41', {
+      what: 'Pip and Juno would love indoor climbing at Riverside Rocks',
+    });
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const seen = JSON.stringify(h.snapshots[0]);
+    expect(seen).not.toContain('Pip');
+    expect(seen).not.toContain('Riverside Rocks');
+    expect(h.snapshots[0]?.candidates).toEqual([
+      {
+        id,
+        kind: 'nudge',
+        why: 'weather_swap',
+        sourceUrl: 'https://example.test/climb',
+        worthlessAfter: null,
+        parentRequested: false,
+      },
+    ]);
+    // The writer is the one reader of the composed text.
+    expect(h.written[0]?.[0]?.what).toBe(
+      'Pip and Juno would love indoor climbing at Riverside Rocks',
+    );
+  });
+
+  async function parentText(body: string, at: Date): Promise<void> {
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body,
+      createdAt: at,
+    });
+  }
+
+  it('hands the decider only the parent texts that arrived since its last look', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    await parentText(
+      'weekends are best for us',
+      new Date(THURSDAY_EVENING.getTime() - 60 * 60_000),
+    );
+    await enqueue('nudge:weather:w41');
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(h.snapshots[0]?.recentParentTexts).toEqual(['weekends are best for us']);
+
+    await enqueue('nudge:weather:w42');
+    await runProactiveReview(
+      db.database,
+      h.deps,
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+    );
+    expect(h.snapshots).toHaveLength(2);
+    expect(h.snapshots[1]?.recentParentTexts).toEqual([]);
+  });
+
+  it('never hands the decider a parent text from a household with a teenager', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Older', dateOfBirth: '2011-03-01' });
+    await parentText(
+      'weekends are best for us',
+      new Date(THURSDAY_EVENING.getTime() - 60 * 60_000),
+    );
+    await enqueue();
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots[0]?.recentParentTexts).toEqual([]);
+  });
+
+  it('stores a bounded one-line reason, whatever the decider wrote', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const id = await enqueue();
+    const long = `No window fits\nand the weekend is\tfull ${'x'.repeat(400)}`;
+    const h = harness((snapshot) => ({
+      reason: long,
+      action: 'drop',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: null,
+      frequencyPreference: null,
+    }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const bounded = `No window fits and the weekend is full ${'x'.repeat(400)}`.slice(
+      0,
+      LINE_CHARS,
+    );
+    expect((await candidate(id))?.reason).toBe(bounded);
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({ action: 'drop', reason: bounded });
+  });
+
+  it('holds a send quiet hours refused until they end, and does not ask the model inside them', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue();
+    const h = harness(sendAll);
+    /** Thursday 22:00, Friday 01:00 and Friday 08:00 in the family's zone. */
+    const late = new Date('2026-10-09T02:00:00.000Z');
+    const night = new Date('2026-10-09T05:00:00.000Z');
+    const morning = new Date('2026-10-09T12:00:00.000Z');
+
+    await runProactiveReview(db.database, h.deps, late);
+    expect(await candidate(id)).toMatchObject({ status: 'held', reason: 'quiet_hours' });
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(morning.toISOString());
+
+    await runProactiveReview(db.database, h.deps, night);
+    expect(h.snapshots).toHaveLength(1);
+
+    await runProactiveReview(db.database, h.deps, morning);
+    expect(h.snapshots).toHaveLength(2);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
   });
 });
