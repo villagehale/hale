@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reason": "The parent explicitly asked to be notified the moment a seat opened in this class, making it parent-requested and time-critical (worthless in one hour); despite a 2-unanswered streak, this overrides the hold-back rule.",
+    "action": "send_now",
+    "item_ids": [
+      "watch-1"
+    ],
+    "hold_until": null,
+    "frequency_preference": null
+  },
+  "stopReason": "tool_use"
+}

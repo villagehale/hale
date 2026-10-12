@@ -4,7 +4,8 @@
  * which the runner renders into `localNow` exactly as the runtime does.
  *
  * The keys follow loadFamilySnapshot's order (apps/web/lib/channel/proactive/snapshot.ts)
- * so the model reads the same JSON shape production sends.
+ * so the model reads the same JSON shape production sends. A candidate is its kind and a
+ * names-free label (`why`), never the composed text: that is the writer's input.
  */
 
 const TZ = 'America/New_York';
@@ -15,7 +16,7 @@ const LIBRARY = 'https://library.example.test/programs';
 function candidate(over) {
   return {
     id: over.id,
-    what: over.what,
+    kind: 'nudge',
     why: over.why,
     sourceUrl: over.sourceUrl ?? null,
     worthlessAfter: over.worthlessAfter ?? null,
@@ -51,7 +52,6 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       candidates: [
         candidate({
           id: 'weekend-swim',
-          what: 'Saturday drop-in swim',
           why: 'a saved find for an open Saturday',
           sourceUrl: 'https://pool.example.test/swim',
         }),
@@ -78,7 +78,6 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       candidates: [
         candidate({
           id: 'market',
-          what: 'Saturday farmers market',
           why: 'a nearby Saturday listing',
           sourceUrl: 'https://market.example.test/saturday',
           worthlessAfter: '2026-10-10T20:00:00.000Z',
@@ -94,7 +93,6 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       candidates: [
         candidate({
           id: 'watch-1',
-          what: 'A seat opened in the class you asked me to watch',
           why: 'the parent asked to hear the moment a seat opened',
           sourceUrl: 'https://rec.example.test/class',
           worthlessAfter: '2026-10-08T23:00:00.000Z',
@@ -116,7 +114,6 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       candidates: [
         candidate({
           id: 'extra-idea',
-          what: 'Sunday craft hour',
           why: 'a saved find',
           sourceUrl: 'https://library.example.test/craft',
         }),
@@ -137,7 +134,6 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       candidates: [
         candidate({
           id: 'sat-find',
-          what: 'Paper Lantern Craft at the Elm Street library',
           why: 'Saturday afternoon is open and this session is running',
           sourceUrl: LIBRARY,
           worthlessAfter: '2026-10-10T18:00:00.000Z',
@@ -160,14 +156,12 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       candidates: [
         candidate({
           id: 'sat-lib',
-          what: 'Paper Lantern Craft at the Elm Street library',
           why: 'Saturday at 2:00 p.m., but Saturday is an all-day commitment',
           sourceUrl: LIBRARY,
           worthlessAfter: '2026-10-10T18:00:00.000Z',
         }),
         candidate({
           id: 'sun-lib',
-          what: 'Family Storytime at the Elm Street library',
           why: 'Sunday at 2:00 p.m., after the morning study block',
           sourceUrl: LIBRARY,
           worthlessAfter: '2026-10-11T18:00:00.000Z',
@@ -188,14 +182,12 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       candidates: [
         candidate({
           id: 'sat-find',
-          what: 'Paper Lantern Craft at the Elm Street library',
           why: 'Saturday afternoon is open and this session is running',
           sourceUrl: LIBRARY,
           worthlessAfter: '2026-10-10T18:00:00.000Z',
         }),
         candidate({
           id: 'reg-deadline',
-          what: 'Fall swim registration closes Friday',
           why: 'the window closes this week',
           sourceUrl: 'https://rec.example.test/swim-registration',
           worthlessAfter: '2026-10-09T23:00:00.000Z',

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "It is Thursday 6:00 PM local — the last good pre-weekend evening — and both a Saturday afternoon find (fits the free window Oct 10 13:00–20:00) and a registration deadline closing Friday are time-sensitive this week, so both are batched into one send now.",
+    "action": "send_now",
+    "item_ids": [
+      "sat-find",
+      "reg-deadline"
+    ],
+    "hold_until": null,
+    "frequency_preference": null
+  },
+  "stopReason": "tool_use"
+}
