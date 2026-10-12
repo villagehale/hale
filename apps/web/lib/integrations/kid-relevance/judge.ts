@@ -9,7 +9,6 @@ import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeli
 import {
   KID_JUDGE_ITEMS_PER_CALL,
   KID_JUDGE_MAX_TOKENS,
-  KID_REASON_MAX_CHARS,
   KID_VERDICT_TOOL,
   KID_VERDICT_TOOL_DESCRIPTION,
   type KidRelevanceChild,
@@ -20,8 +19,7 @@ import {
   kidSkillInputFor,
   kidSkillMessage,
   kidVerdictsContract,
-  repeatsAny,
-  sharesAnyWord,
+  storedReason,
 } from './skill-contract';
 
 /**
@@ -314,21 +312,6 @@ function verdictRowFor(
     teen,
     reason: mayBeTeen ? null : storedReason(answer.reason, entry.item),
   };
-}
-
-/**
- * The reason, unless it is empty, long, repeats the item's title, or carries any word of
- * its place or sender: a surname or a venue's first word alone still says where or who.
- */
-function storedReason(
-  reason: string,
-  item: Pick<KidRelevanceItem, 'title' | 'place' | 'sender'>,
-): string | null {
-  const trimmed = reason.trim();
-  if (trimmed.length === 0 || trimmed.length > KID_REASON_MAX_CHARS) return null;
-  return repeatsAny(trimmed, [item.title]) || sharesAnyWord(trimmed, [item.place, item.sender])
-    ? null
-    : trimmed;
 }
 
 async function upsertModelVerdicts(

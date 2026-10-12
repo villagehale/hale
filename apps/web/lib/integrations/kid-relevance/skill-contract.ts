@@ -96,6 +96,22 @@ export function sharesAnyWord(text: string, own: readonly (string | null)[]): bo
   );
 }
 
+/**
+ * The reason as stored, unless it is empty, long, repeats the item's title, or carries any
+ * naming word of its place or sender: a surname or a venue's first word alone still says
+ * where or who. The judge stores this; the eval reports how many of its reasons survive it.
+ */
+export function storedReason(
+  reason: string,
+  item: Pick<KidRelevanceItem, 'title' | 'place' | 'sender'>,
+): string | null {
+  const trimmed = reason.trim();
+  if (trimmed.length === 0 || trimmed.length > KID_REASON_MAX_CHARS) return null;
+  return repeatsAny(trimmed, [item.title]) || sharesAnyWord(trimmed, [item.place, item.sender])
+    ? null
+    : trimmed;
+}
+
 export const KID_VERDICTS = ['kid', 'adult', 'unsure'] as const;
 export type KidVerdictValue = (typeof KID_VERDICTS)[number];
 

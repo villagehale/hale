@@ -35,6 +35,7 @@
 
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { deriveStage } from '@hale/types';
 import { register } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
@@ -229,6 +230,7 @@ async function main() {
         family,
         tag: `kid-relevance:${task}:${family.id}:${index}`,
         input,
+        children,
         refs: items.map((item, position) => ({
           item,
           ref: input.items[position].ref,
@@ -272,6 +274,11 @@ async function main() {
   const copies = [];
   let live = 0;
   const judgeScores = [];
+  // Reported, not gated: how many kid reasons production would keep (judge.ts stores
+  // storedReason's result, and nothing for a teenager's item), so a reason the gate
+  // passes but storage drops is visible.
+  let storable = 0;
+  let stored = 0;
 
   for (const batch of batches) {
     const verdictsContract = contract.kidVerdictsContract(
@@ -309,6 +316,19 @@ async function main() {
       if (answer?.verdict === 'kid' && item.expect === 'unclear') tally.unclearAsKid += 1;
       if (answer?.verdict !== 'kid' && item.expect === 'kid') tally.kidMissed += 1;
       if (answer?.verdict !== 'unsure' && item.expect === 'unsure') tally.unsureMissed += 1;
+      if (answer?.verdict === 'kid' && !batch.onboarding) {
+        const isTeen = (child) => deriveStage(child.dateOfBirth, now) === 'teenager';
+        const named = batch.children.find((child) => child.name === answer.childName);
+        if (!(named ? isTeen(named) : batch.children.some(isTeen))) {
+          storable += 1;
+          const kept = contract.storedReason(answer.reason, {
+            title: item.title,
+            place: item.place ?? null,
+            sender: item.sender ?? null,
+          });
+          if (kept !== null) stored += 1;
+        }
+      }
 
       if (answer) {
         const verdict = await judge(`${task}:${batch.family.id}:${item.id}`, {
@@ -371,6 +391,7 @@ async function main() {
   console.log(
     `reasons: min ${Math.min(...judgeScores)} (each >= ${REASON_FLOOR}) mean ${meanReason.toFixed(2)} (>= ${JUDGE_MIN})`,
   );
+  console.log(`stored reasons: ${stored}/${storable} (reported, not gated)`);
   console.log(
     `output per item: peak ${peakPerItem.toFixed(0)} tokens (bound ${contract.KID_JUDGE_PEAK_TOKENS_PER_ITEM}) ${peakOk ? 'ok' : 'OVER'}`,
   );
