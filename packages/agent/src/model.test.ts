@@ -26,6 +26,7 @@ describe('pickModel', () => {
     ['infer', 'claude-sonnet-5-5'],
     ['discover', 'claude-sonnet-5-5'],
     ['high-stakes-judgment', 'claude-opus-5-5'],
+    ['plan', 'claude-opus-5-5'],
     ['triage', 'claude-haiku-5-5'],
     ['extract', 'claude-sonnet-5-5'],
     ['acknowledge', 'claude-haiku-5-5'],
@@ -101,6 +102,8 @@ describe('laneRequestFields', () => {
     expect(effortOf('converse')).toBe('high');
     expect(effortOf('discover')).toBe('medium');
     expect(effortOf('high-stakes-judgment')).toBe('xhigh');
+    // The plan a parent is waiting on: Opus at `high` (Barton, 2026-10-11).
+    expect(effortOf('plan')).toBe('high');
     expect(effortOf('classify')).toBe('high');
     expect(effortOf('extract')).toBe('high');
     expect(effortOf('review')).toBe('high');

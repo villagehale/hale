@@ -58,6 +58,7 @@ export type ModelId =
  *    teen_content — a rule-#1 safety call, gated on teenAccuracy in the model matrix)
  *  - converse / draft / infer / discover → Sonnet
  *  - high-stakes-judgment → Opus  (run-rarely, judgment-dense)
+ *  - plan → Opus  (the plan a parent said yes to and is waiting on)
  */
 export type AgentTask =
   | 'classify'
@@ -68,6 +69,7 @@ export type AgentTask =
   | 'infer'
   | 'discover'
   | 'high-stakes-judgment'
+  | 'plan'
   | 'triage'
   | 'extract'
   | 'acknowledge'
@@ -136,6 +138,9 @@ const TASK_LANE: Record<AgentTask, LaneConfig> = {
 
   // Run-rarely and judgment-dense: the one lane worth `xhigh`.
   'high-stakes-judgment': { model: OPUS_MODEL, thinking: 'adaptive', effort: 'xhigh' },
+  // Opus at `high`, not `xhigh`: a parent is waiting on this one, and `xhigh` put the
+  // plan's p95 at 34 s (Barton, 2026-10-11).
+  plan: { model: OPUS_MODEL, thinking: 'adaptive', effort: 'high' },
 
   // Haiku lanes. Effort is Haiku 5.5's lever: with thinking off, the acknowledge and
   // answer lanes failed evals that adaptive at `medium` passes (re-record 2026-10-11), and
