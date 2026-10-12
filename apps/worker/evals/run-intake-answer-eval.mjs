@@ -171,6 +171,8 @@ const JUDGE_SYSTEM = [
   'something, or will do something from tomorrow is FALSE when it is sent: automatic low.',
   'Describing what Hale is FOR is NOT that claim and must not be scored as one - the parent',
   'asked what it does, and "registration dates and the things that slip" is the answer.',
+  'The conditional is the same description and the skill asks for it: "I\'d keep an eye on',
+  'the dates" says what Hale WOULD do once they say yes, not that it has started.',
   'You are given parentWords, pendingAsk, answer, returnLine and watchFor - fixture-specific',
   'notes on what right and wrong look like here. Score 1-5.',
   'A 5 is a neighbour texting back: it actually answers the thing asked, briefly, in the',
