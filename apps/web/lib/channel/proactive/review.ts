@@ -27,7 +27,6 @@ import {
 } from '~/lib/channel/family-recipients';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { dedupeActive } from '~/lib/channel/ledger';
-import { linqFromE164 } from '~/lib/channel/linq/config';
 import {
   type FamilyOutboundTarget,
   deliverFamilyOutbound,
@@ -63,6 +62,7 @@ import {
 } from './finalize';
 import { type ProactiveCadence, proactiveCadence, requestedCadence, unroutedKinds } from './flag';
 import { type OpenCandidate, planHourlyReview } from './hold';
+import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import {
   type FamilySnapshot,
@@ -146,7 +146,7 @@ export function defaultProactiveReviewDeps(): ProactiveReviewDeps {
 
 /** True when Linq has flagged or throttled Hale's sending line (`LINQ_FROM_E164`). */
 export async function readLinePaused(database: Database): Promise<boolean> {
-  const sendingLine = linqFromE164();
+  const sendingLine = sendingLineE164();
   if (sendingLine === null) return false;
   const [row] = await database
     .select({ paused: schema.linqLineHealth.paused })
@@ -1037,10 +1037,17 @@ async function freshSignalSince(
     )
     .limit(1);
   if (calendar) return true;
+  const sendingLine = sendingLineE164();
+  if (sendingLine === null) return false;
   const [line] = await database
     .select({ phoneNumber: schema.linqLineHealth.phoneNumber })
     .from(schema.linqLineHealth)
-    .where(gte(schema.linqLineHealth.updatedAt, since))
+    .where(
+      and(
+        eq(schema.linqLineHealth.phoneNumber, sendingLine),
+        gte(schema.linqLineHealth.updatedAt, since),
+      ),
+    )
     .limit(1);
   return line !== undefined;
 }

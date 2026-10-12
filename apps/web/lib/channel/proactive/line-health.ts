@@ -1,3 +1,6 @@
+import { linqFromE164 } from '~/lib/channel/linq/config';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
+
 /**
  * VIL-226 · Linq `phone_number.status_updated`. Flagged or throttled pauses unrequested
  * sends; a healthy status lifts the pause. These are Linq's status words for Hale's own
@@ -25,4 +28,13 @@ export function lineStatusPauses(status: string): boolean {
   const normalized = status.trim().toLowerCase();
   if (HEALTHY_STATUSES.has(normalized)) return false;
   return true;
+}
+
+/**
+ * Hale's sending line (`LINQ_FROM_E164`) in the form a line status is stored in, so a
+ * spaced or dashed spelling of the variable still names the same line.
+ */
+export function sendingLineE164(): string | null {
+  const from = linqFromE164();
+  return from === null ? null : normalizePhoneE164(from);
 }

@@ -1604,6 +1604,7 @@ describe('runProactiveReview', () => {
 
   it('keeps a clock-less code hold from the model until something new arrives', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550199');
     const id = await enqueue();
     const h = harness(sendAll, { linePaused: async () => true });
     const nextEvening = new Date(THURSDAY_EVENING.getTime() + 24 * 60 * 60_000);
@@ -1618,6 +1619,16 @@ describe('runProactiveReview', () => {
     });
 
     await runProactiveReview(db.database, h.deps, nextEvening);
+    expect(h.snapshots).toHaveLength(1);
+
+    // A status for another number on the account is no signal for this family's hold.
+    await db.database.insert(schema.linqLineHealth).values({
+      phoneNumber: '+15555550188',
+      status: 'active',
+      paused: false,
+      updatedAt: nextEvening,
+    });
+    await runProactiveReview(db.database, h.deps, new Date(nextEvening.getTime() + 30 * 60_000));
     expect(h.snapshots).toHaveLength(1);
 
     await db.database.insert(schema.linqLineHealth).values({

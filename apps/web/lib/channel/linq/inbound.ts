@@ -13,7 +13,12 @@ import {
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { loadOpenSession } from '~/lib/channel/intake/session';
-import { lineStatusKnown, lineStatusPauses, lineStatusToken } from '~/lib/channel/proactive/line-health';
+import {
+  lineStatusKnown,
+  lineStatusPauses,
+  lineStatusToken,
+  sendingLineE164,
+} from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
@@ -1301,7 +1306,7 @@ async function handleLinqLineHealth(
   deps: LinqDoorDeps,
   line: { phoneNumber: string; status: string },
 ): Promise<Response> {
-  const sendingLine = linqFromE164();
+  const sendingLine = sendingLineE164();
   if (sendingLine === null) {
     deps.log.info({ outcome: 'no_sending_line' }, 'linq line health: no sending line, ignored');
     await deps.countOutcome('ignored');

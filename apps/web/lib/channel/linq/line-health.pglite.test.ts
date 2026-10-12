@@ -176,6 +176,19 @@ describe('the Linq door · line health', () => {
     expect(await readLinePaused(db.database)).toBe(true);
   });
 
+  it('reads the sending line however its variable is spelled', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('LINQ_FROM_E164', ' +1 (555) 555-0199 ');
+    const outcomes: InboundRouteOutcome[] = [];
+
+    const response = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
+    expect(await response.json()).toEqual({ outcome: 'line_health', paused: true });
+    expect(await db.database.select().from(schema.linqLineHealth)).toMatchObject([
+      { phoneNumber: LINE, paused: true },
+    ]);
+    expect(await readLinePaused(db.database)).toBe(true);
+  });
+
   it('names a line status with no sending line configured, and stores nothing', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     vi.stubEnv('LINQ_FROM_E164', '');
