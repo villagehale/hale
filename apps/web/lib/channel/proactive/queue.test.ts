@@ -75,6 +75,22 @@ describe('stackFrames', () => {
     expect(frames.join('\n')).not.toMatch(/Pip|Juno|leaked/);
   });
 
+  it('reads no frames when the message is no longer where the stack opened with it', () => {
+    const refusedRow = 'Error: Failing row contains\n    at Pip (rows/secret-child.ts:1:2)';
+    const thrownAt = '    at handOff (lib/channel/proactive/queue.ts:10:3)';
+    const reworded = Object.assign(new Error('wrapped: Failing row contains'), {
+      stack: `${refusedRow}\n${thrownAt}`,
+    });
+    const blanked = Object.assign(new Error(''), { stack: `${refusedRow}\n${thrownAt}` });
+    const intact = Object.assign(new Error('Failing row contains'), {
+      stack: `Error: Failing row contains\n${thrownAt}`,
+    });
+
+    expect(stackFrames(intact)).toEqual(['handOff lib/channel/proactive/queue.ts:10']);
+    expect(stackFrames(reworded)).toEqual([]);
+    expect(stackFrames(blanked)).toEqual([]);
+  });
+
   it('carries at most the bound of frames, and none for a value that is not an error', () => {
     const err = caught(() => throwsDeep(STACK_FRAMES + 4)) as Error;
     expect(err.stack?.split('\n').filter((line) => /^\s+at /.test(line)).length).toBeGreaterThan(

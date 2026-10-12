@@ -50,13 +50,16 @@ const STACK_FRAME = /^\s+at (?:((?:async |new )?[\w$.<>[\] ]+) \()?([^\s()]+):(\
  * Where a failure was thrown, as `function file:line` per frame and nothing else, so a
  * bug stays findable from a log that never carries the error. A stack opens with the
  * error's message, which can carry a refused row: everything up to the message's end is
- * cut before the frames are read, and a line that is not a frame is dropped.
+ * cut before the frames are read, and a line that is not a frame is dropped. A stack whose
+ * message cannot be found in it (it is empty, or was reassigned after the throw) has no
+ * known end to cut at, so it gives no frames.
  */
 export function stackFrames(err: unknown): string[] {
   if (!(err instanceof Error) || typeof err.stack !== 'string') return [];
   const messageAt = err.message.length > 0 ? err.stack.indexOf(err.message) : -1;
-  const frames = messageAt < 0 ? err.stack : err.stack.slice(messageAt + err.message.length);
-  return frames
+  if (messageAt < 0) return [];
+  return err.stack
+    .slice(messageAt + err.message.length)
     .split('\n')
     .map((line) => STACK_FRAME.exec(line))
     .filter((frame) => frame !== null)
