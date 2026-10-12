@@ -1239,7 +1239,6 @@ describe("the family's city and country", () => {
     'no_postal',
     'unmapped',
     'ambiguous',
-    'unusable_place',
     'group_thread',
     'thread_unknown',
   ] as const)(

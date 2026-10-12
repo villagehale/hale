@@ -286,11 +286,11 @@ describe("the family's city and country, through the production wiring", () => {
     for (const finer of never) expect(sent).not.toContain(finer);
   });
 
-  /** A stored city is free text. One that holds an address is not sent in any form, and
-   * the family is asked instead. */
-  it('sends nothing of a stored city that is not a place name, and asks which city', async () => {
+  /** A stored city is free text, and none of it leaves. One that is not a place name is
+   * ignored, and the city is the one the family's postal area belongs to. */
+  it('sends nothing of a stored city that is not a place name, and uses the postal area', async () => {
     vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
-    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
     const { familyId, parentUserId, channelMessageId } = await seedFamily({
       country: 'Canada',
       province: 'Ontario',
@@ -309,13 +309,10 @@ describe("the family's city and country, through the production wiring", () => {
       thread: DIRECT,
     });
 
-    expect(seen.search).toEqual([]);
-    expect(seen.compose.map((content) => JSON.parse(content).live)).toEqual(['missing_detail']);
-    expect(JSON.stringify(seen)).not.toMatch(/Maplewick|Crescent|redacted/);
-    expect(info.mock.calls).toContainEqual([
-      { place: 'unknown', reason: 'unusable_place' },
-      'off-domain answer: no place for this family',
+    expect(seen.search.map((content) => JSON.parse(content).place)).toEqual([
+      { city: 'Toronto', country: 'Canada' },
     ]);
+    expect(JSON.stringify(seen)).not.toMatch(/Maplewick|Crescent|redacted/);
   });
 
   /**

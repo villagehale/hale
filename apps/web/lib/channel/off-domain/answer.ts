@@ -176,10 +176,9 @@ export type GeneralAnswerOutcome =
  * Why a family's place cannot be named. Each is its own story: no country on the row
  * (never guessed, not even from a postal code), a country the lane has no postal table
  * for, no postal code to work a city out from, a postal area the table cannot give one
- * municipality for, one that covers more than one town (never resolved to the likelier
- * one), or a stored city or country that is not a place name and so is not sent at all.
- * The last two are the lane's and not the row's: the text arrived in a group thread, or
- * in one the job does not describe, and a family's home city is said in neither.
+ * municipality for, or one that covers more than one town (never resolved to the likelier
+ * one). The last two are the lane's and not the row's: the text arrived in a group thread,
+ * or in one the job does not describe, and a family's home city is said in neither.
  */
 export type PlaceUnknown =
   | 'no_country'
@@ -187,7 +186,6 @@ export type PlaceUnknown =
   | 'no_postal'
   | 'unmapped'
   | 'ambiguous'
-  | 'unusable_place'
   | 'group_thread'
   | 'thread_unknown';
 
