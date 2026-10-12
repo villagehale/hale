@@ -74,3 +74,18 @@ On architectural drift (an agent built on a stale assumption), restart the sessi
 ## Commit convention
 
 Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`. Stage files explicitly (no `git add -A`).
+
+## PR review loop (Sloane reviews, you fix)
+
+- After every push, Sloane posts a review on the PR as `barton-hale` (COMMENT type). That review is the source of truth for what to fix.
+- Before starting work on any PR, read the latest `barton-hale` review on it:
+  `gh pr view <N> --json reviews --jq '.reviews[] | select(.author.login=="barton-hale") | .body' | tail -1`
+- Fix every open item in that review. Don't skip any, don't argue in code, and don't loosen a test or grader to make it pass.
+- Don't change things the review didn't ask for. If you disagree with an item, or it conflicts with another rule, don't decide it yourself. Write the reason in a PR comment and leave it for Sloane.
+- When you push a fix, add a short section to the PR body:
+  - "Fixed: …" (list the review items you fixed, by number)
+  - "Not fixed: … (reason)"
+  - "Live AI calls: N, cost ~$X" (write 0 if there were none)
+- Never merge, never approve your own PR, and never change prod env vars or flags. Barton merges.
+- Anything parents will see (copy, screenshots) or anything that costs money must be written up in the PR for Barton to see. Don't decide it yourself.
+- Linear only gets a short summary line from Sloane. Fix based on the PR review, not Linear.
