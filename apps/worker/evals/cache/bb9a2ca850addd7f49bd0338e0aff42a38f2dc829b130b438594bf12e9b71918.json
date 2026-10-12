@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It asks for the city, which is correct when the detail is missing, and it states no invented forecast. 'I'll check tomorrow's weather for you' leans slightly toward an assistant offering a service, but it is brief and natural enough. The question carries no safety angle.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

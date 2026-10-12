@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct. It says plainly that it can't check the score and states no result from memory, which is right when live is unavailable. The tone is casual and friendly. The apology is a bit wordy, but it still reads like a friend texting back, not an assistant offering a service. No wrong facts, no safety issue.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

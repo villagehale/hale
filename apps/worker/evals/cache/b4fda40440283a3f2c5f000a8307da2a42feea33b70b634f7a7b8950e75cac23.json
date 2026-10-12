@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tomorrow is Tuesday, October 13, in Toronto",
+        "from": "Notes are for Toronto, Canada, covering Tuesday, October 13, 2026."
+      },
+      {
+        "states": "High of about 24 to 25°C",
+        "from": "Environment Canada: The high is 24. The Weather Network: a high of 25."
+      },
+      {
+        "states": "A few showers early, ending near noon, then mainly cloudy",
+        "from": "Environment Canada: A few showers end near noon, then it is mainly cloudy."
+      },
+      {
+        "states": "60 percent chance of showers",
+        "from": "Environment Canada: mainly cloudy with a 60 percent chance of showers."
+      },
+      {
+        "states": "Risk of thunderstorms in the morning and afternoon",
+        "from": "Environment Canada: There is a risk of a thunderstorm in the morning and afternoon."
+      },
+      {
+        "states": "Southwest wind 20 km/h gusting to 40 near noon",
+        "from": "Environment Canada: Wind becomes southwest 20 km/h gusting to 40 near noon."
+      },
+      {
+        "states": "Forecast is from this morning",
+        "from": "Environment Canada (forecast issued 11:00 AM EDT on Monday, October 12, 2026)."
+      }
+    ],
+    "answer": "Tomorrow in Toronto looks warm and showery. A few showers early that clear around noon, then mostly cloudy with a 60% chance of more showers and a risk of thunderstorms during the day. High around 24 to 25°C, with gusty southwest wind up to 40 km/h near noon. That's from this morning's forecast."
+  },
+  "latencyMs": 5027
+}

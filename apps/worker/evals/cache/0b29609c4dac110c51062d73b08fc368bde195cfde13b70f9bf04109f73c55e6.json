@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: x = 5. It leads with the answer and adds one short line of working, not a lesson. The tone is brief and fine for a text, if slightly textbook.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

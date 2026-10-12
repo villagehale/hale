@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: Lima is the capital, it is on the coast and it is Peru's largest city, all settled knowledge. The reply answers only this question, with nothing about the pending weather question. It is brief and casual and reads like a friend texting back. The coast detail is a small extra but fine.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

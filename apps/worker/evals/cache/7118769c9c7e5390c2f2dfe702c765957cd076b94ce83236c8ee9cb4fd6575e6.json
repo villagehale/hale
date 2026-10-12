@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With live set to missing_detail, the right move is to ask for the country without stating current facts, and the answer does exactly that. 'Rights differ by country' is common knowledge, not an invented specific. It is in English and doesn't deflect. The phrasing is slightly formal and explanatory ('Streaming rights for the Euros differ by country… I'll tell you where to watch'), so it reads more like a helpful assistant than a casual friend's text. That keeps it just short of the top score.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

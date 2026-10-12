@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correctly states 911 for police, fire and ambulance, which is settled knowledge. It is brief and direct, and it does not treat the question as an emergency. The extra claim that 911 works from any phone holds for a phone with no plan or SIM, but 'no service' could be read as no signal, where a call won't connect. That is not an invented fact, just loose wording. It also skips the easy confirmation that it's the same as at home. The tone reads like a friend texting, if a little plain.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

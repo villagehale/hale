@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi is the soccer pick",
+        "from": "Sportda's 2026 ranking names Lionel Messi as the greatest"
+      },
+      {
+        "states": "Messi has eight Ballon d'Or awards",
+        "from": "Sportda cites his eight Ballon d'Or awards"
+      },
+      {
+        "states": "Messi won the 2022 World Cup",
+        "from": "Sportda cites the 2022 World Cup title"
+      },
+      {
+        "states": "Ronaldo, Pelé and Maradona are the other names that come up",
+        "from": "Live Score Desk lists Pelé, Maradona, Cristiano Ronaldo and Cruyff as the other main candidates"
+      },
+      {
+        "states": "Ronaldo is neck and neck with Messi in a fan vote",
+        "from": "vote-the-goat.com raw vote totals have Messi at 527.7K and Ronaldo at 527.1K"
+      },
+      {
+        "states": "Tom Brady is the NFL pick",
+        "from": "CBS Sports' top-100 list, updated for the 2026 season, puts Tom Brady first"
+      },
+      {
+        "states": "Brady has seven Super Bowl titles",
+        "from": "Sports Media X cites seven Super Bowl titles"
+      },
+      {
+        "states": "Jerry Rice is the main alternative, and Brady himself names him the GOAT",
+        "from": "Brady named Jerry Rice the greatest football player of all time in an AMC documentary"
+      }
+    ],
+    "answer": "Depends which football you mean. Soccer: Messi, and it's not really close for most people. Eight Ballon d'Or, the 2022 World Cup, and he's the name everyone else gets measured against. Ronaldo, Pelé and Maradona come up too, and a fan vote still has Ronaldo neck and neck with him. NFL: Tom Brady, seven Super Bowl titles. Brady himself says Jerry Rice is the GOAT, but Brady is still the usual pick."
+  },
+  "latencyMs": 7559
+}

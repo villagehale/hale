@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "IM8 is the David Beckham co-founded supplement powder",
+        "from": "the David Beckham co-founded supplement powder"
+      },
+      {
+        "states": "about $78 a month for Base and $99 for Pro",
+        "from": "a price of about $78/month for Base and about $99/month for Pro"
+      },
+      {
+        "states": "proprietary blends hide how much of each ingredient is in it",
+        "from": "proprietary blends that hide doses"
+      },
+      {
+        "states": "the independent reviews are lukewarm at best",
+        "from": "Independent expert and ingredient reviews (mostly lukewarm)"
+      },
+      {
+        "states": "dietitians think a varied diet covers most of it",
+        "from": "healthy people eating a varied diet generally don't need supplementation in this many things"
+      },
+      {
+        "states": "it can make sense if it replaces several supplements you already buy",
+        "from": "worth it if it replaces 4 or 5 other supplements"
+      }
+    ],
+    "answer": "Assuming you mean IM8, the David Beckham-backed powder: I'd call it overrated for most people. It's about $78 a month for Base and $99 for Pro, and the proprietary blends hide how much of each ingredient is in there. The independent reviews are lukewarm at best, and dietitians think a varied diet covers most of it. It only earns the price if it replaces several separate supplements you're already buying. Otherwise your money goes further elsewhere."
+  },
+  "latencyMs": 6670
+}

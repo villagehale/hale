@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Ontario Structured Psychotherapy gives free CBT to adults in Ontario with depression, anxiety, OCD or PTSD",
+        "from": "Adults with depression and anxiety-related concerns can get free, publicly funded cognitive-behavioural therapy through OSP. Eligibility includes being 18 or older, living in Ontario, and having depression, anxiety or an anxiety-related condition such as OCD or post-traumatic stress."
+      },
+      {
+        "states": "No health card or family doctor is needed, and you can refer yourself",
+        "from": "No Ontario health card or primary care provider is required, and self-referrals are accepted."
+      },
+      {
+        "states": "ontariohealth.ca/osp",
+        "from": "To use it, find your local network at ontariohealth.ca/osp and fill out the referral form."
+      },
+      {
+        "states": "It is not a fit for everyone, and I couldn't find which regional network covers your part of Toronto",
+        "from": "The program is not suitable for everyone. I did not find which regional network covers the person's part of Toronto."
+      },
+      {
+        "states": "Affordable Therapy Network lists over 500 therapists, most in Toronto or online across Ontario",
+        "from": "The Affordable Therapy Network says it has a directory of over 500 therapists, most serving Toronto or online across Ontario."
+      },
+      {
+        "states": "Affordable Therapy Services has online sessions from $50 on a sliding scale",
+        "from": "Affordable Therapy Services lists online sessions from $50 on a sliding scale."
+      },
+      {
+        "states": "Radcliffe Psychotherapy Clinic gives 5 free sessions with student therapists, then $50 plus HST",
+        "from": "Radcliffe Psychotherapy Clinic offers 5 free sessions with practicum student therapists, then $50 plus HST."
+      },
+      {
+        "states": "Some of these prices come from older pages",
+        "from": "Prices and availability come from clinic and directory pages, several of them months old."
+      }
+    ],
+    "answer": "That's a good thing to be looking for. The free route first: Ontario Structured Psychotherapy gives free CBT to adults in Ontario with depression, anxiety, OCD or PTSD. You don't need a health card or a family doctor, and you can refer yourself at ontariohealth.ca/osp. It isn't a fit for everyone, and I couldn't find which regional network covers your part of Toronto, so the referral form is where you'll be sorted. For private options, Affordable Therapy Network lists over 500 therapists, most in Toronto or online across Ontario. Affordable Therapy Services has online sessions from $50 on a sliding scale. Radcliffe Psychotherapy Clinic gives 5 free sessions with student therapists, then $50 plus HST. Some of these prices come from older pages, so they may have moved."
+  },
+  "latencyMs": 10161
+}

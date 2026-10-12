@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Most figures match the notes: 4.34% insured at Frank Mortgage (WOWA), a 5.17% big-bank average (nesto), and the 20 bp hikes at BMO and CIBC this month. The 20%-down line is wrong, though. WOWA puts the lowest conventional 5-year fixed at 4.44%. The 4.64% figure is its lowest uninsurable rate, a narrower category, so calling 4.64% the lowest for 20% or more down misstates the notes. No as-of date is given beyond 'right now'. The tone is casual and direct, like a friend texting.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 3
+  }
+}

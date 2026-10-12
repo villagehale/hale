@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The detail was missing and no search was made, so asking which country is the right move, and the reply states no rate from memory. It is in English and brief. The wording is a little explanatory and leans toward an assistant's 'tell me X and I'll do Y' rather than a quick friend text like 'which country?'",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: 2006 is twenty years before 2026, and the Cardinals beat the Tigers 4-1 in that World Series, which is settled knowledge. It's a brief, direct text that states the answer flat. Slightly formal ('That would be') but still reads like a friend.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

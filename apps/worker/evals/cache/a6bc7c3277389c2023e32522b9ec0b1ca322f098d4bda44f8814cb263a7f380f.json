@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every stated fact is backed by the research notes: Messi's eight Ballon d'Or and the 2022 World Cup, Ronaldo, Pelé and Maradona as the alternatives, the near-tied fan vote, Brady's seven Super Bowls, and Brady naming Rice. It handles the soccer-or-NFL ambiguity by covering both and makes a clear pick for each, which is what watchFor asks for. The tone is casual and reads like a friend's text. 'Not really close' is a slight overstatement next to the tied fan vote, but the answer flags that itself.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

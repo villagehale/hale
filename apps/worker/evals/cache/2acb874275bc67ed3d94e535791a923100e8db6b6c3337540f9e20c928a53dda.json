@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "pineapple on pizza is a matter of taste, and the answer is an opinion",
+        "from": "settled"
+      }
+    ],
+    "answer": "Pour moi, oui, c'est tout à fait acceptable. L'ananas apporte du sucré et de l'acidité qui vont bien avec le jambon et le fromage, et c'est la garniture la plus connue de la pizza hawaïenne. Si ça ne te plaît pas, c'est un choix tout aussi valable : c'est une question de goût."
+  },
+  "latencyMs": 1951
+}

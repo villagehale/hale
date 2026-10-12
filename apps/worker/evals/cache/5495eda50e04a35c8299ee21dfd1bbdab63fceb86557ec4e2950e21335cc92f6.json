@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "St. Louis Cardinals won the 2006 World Series",
+        "from": "settled"
+      },
+      {
+        "states": "4-1 over the Detroit Tigers",
+        "from": "settled"
+      }
+    ],
+    "answer": "That would be 2006: the St. Louis Cardinals beat the Detroit Tigers 4-1."
+  },
+  "latencyMs": 2222
+}

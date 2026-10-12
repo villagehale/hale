@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct handling: live is missing_detail, and the reply asks which country without stating any rate from memory. But the opener 'Happy to look that up' reads like an assistant offering a service rather than a friend texting back. Something like 'which country? rates are different everywhere' would land better. The explanation is fine, but the service-desk framing keeps it below 4.",
-    "score": 3
-  }
-}

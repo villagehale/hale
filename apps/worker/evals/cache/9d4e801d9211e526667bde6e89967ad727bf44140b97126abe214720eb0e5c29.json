@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lima is the capital of Peru",
+        "from": "settled"
+      }
+    ],
+    "answer": "Lima. It's on the coast, and it's the biggest city in the country."
+  },
+  "latencyMs": 1639
+}

@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Oakville, Ontario has no open Costco yet",
+        "from": "Oakville, Ontario has no open Costco yet."
+      },
+      {
+        "states": "The Oakville store is slated to open in 2027",
+        "from": "The FlamboroughToday headline says the opening is slated for 2027."
+      },
+      {
+        "states": "Burlington warehouse at 1225 Brant St, Burlington, ON L7P 1X7",
+        "from": "Burlington, 1225 Brant St, Burlington, ON L7P 1X7."
+      },
+      {
+        "states": "Laird Rd warehouse in Mississauga at 3180 Laird Rd",
+        "from": "One third-party deals site (yepsavings.com) says the Laird Rd warehouse serves Mississauga and Oakville. It gives the address as 3180 Laird Rd."
+      },
+      {
+        "states": "Burlington store hours differ between sources on Mondays",
+        "from": "Hours are inconsistent. Apple Maps shows it closed on Monday, October 12, 2026. Waze and Yellow Pages show Monday 9:00 am to 8:30 pm. Yelp shows Monday 10:00 am to 8:30 pm."
+      }
+    ],
+    "answer": "Assuming you mean Oakville, Ontario: there's no open Costco there yet. The Oakville store is slated to open in 2027. The open ones I found are in Burlington at 1225 Brant St, and on Laird Rd in Mississauga at 3180 Laird Rd, which one deals site says also serves Oakville. I couldn't work out which one is closer from what I found. The Burlington store's Monday hours are listed differently across sources."
+  },
+  "latencyMs": 7236
+}
