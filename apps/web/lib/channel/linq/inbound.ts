@@ -1289,15 +1289,22 @@ async function familyIdForClaimedChat(
 }
 
 /**
- * VIL-226 · Linq's status for one of Hale's sending lines. Flagged or throttled is
- * stored as paused, which the hourly decider reads before it sends anything nobody
- * asked for, and #ops is paged. A healthy status lifts the pause. The line's number
- * stays out of the log and the page.
+ * VIL-226 · Linq's status for Hale's sending line (`LINQ_FROM_E164`). Flagged or
+ * throttled is stored as paused, which the hourly decider reads before it sends anything
+ * nobody asked for, and #ops is paged. A healthy status lifts the pause. A status for any
+ * other number on the account (a test or secondary line) is stored nowhere and named
+ * `other_line`, so it cannot pause the sending line's texts. The number stays out of the
+ * log and the page.
  */
 async function handleLinqLineHealth(
   deps: LinqDoorDeps,
   line: { phoneNumber: string; status: string },
 ): Promise<Response> {
+  if (line.phoneNumber !== linqFromE164()) {
+    deps.log.info({ outcome: 'other_line' }, 'linq line health: not the sending line, ignored');
+    await deps.countOutcome('ignored');
+    return json({ outcome: 'other_line' });
+  }
   const paused = lineStatusPauses(line.status);
   if (!lineStatusKnown(line.status)) {
     // Fail closed: a status word Hale cannot read pauses sends until a known one arrives.

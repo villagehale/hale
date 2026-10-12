@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboundRouteDeps, InboundRouteOutcome } from '~/lib/channel/inbound-route';
+import { readLinePaused } from '~/lib/channel/proactive/review';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { handleLinqInboundRequest } from './inbound';
 import { parseLinqWebhook } from './payload';
@@ -18,6 +19,7 @@ const URL_PINNED = 'https://app.example.test/api/channels/linq/inbound?version=2
 const NOW = new Date('2026-10-08T16:00:00.000Z');
 const TS = String(Math.floor(NOW.getTime() / 1000));
 const LINE = '+15555550199';
+const OTHER_LINE = '+15555550188';
 
 let db: TestDb;
 
@@ -33,20 +35,21 @@ beforeEach(async () => {
   await db.exec('truncate table linq_line_health');
   vi.stubEnv('LINQ_WEBHOOK_SECRET', SECRET);
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+  vi.stubEnv('LINQ_FROM_E164', LINE);
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function statusEvent(status: string): Record<string, unknown> {
+function statusEvent(status: string, phoneNumber = LINE): Record<string, unknown> {
   return {
     api_version: 'v3',
     webhook_version: '2026-02-03',
     event_type: 'phone_number.status_updated',
     event_id: 'evt_line',
     created_at: NOW.toISOString(),
-    data: { phone_number: LINE, status },
+    data: { phone_number: phoneNumber, status },
   };
 }
 
@@ -154,6 +157,23 @@ describe('the Linq door · line health', () => {
       { phoneNumber: LINE, status: 'active', paused: false },
     ]);
     expect(outcomes).toEqual(['line_health', 'line_health']);
+  });
+
+  it('pauses sends for Hale’s sending line, and never for another line on the account', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const outcomes: InboundRouteOutcome[] = [];
+
+    const other = await handleLinqInboundRequest(
+      signed(statusEvent('flagged', OTHER_LINE)),
+      deps(outcomes),
+    );
+    expect(await other.json()).toEqual({ outcome: 'other_line' });
+    expect(await db.database.select().from(schema.linqLineHealth)).toEqual([]);
+    expect(await readLinePaused(db.database)).toBe(false);
+
+    const sending = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
+    expect(await sending.json()).toEqual({ outcome: 'line_health', paused: true });
+    expect(await readLinePaused(db.database)).toBe(true);
   });
 
   it('writes nothing while the flag is unset', async () => {
