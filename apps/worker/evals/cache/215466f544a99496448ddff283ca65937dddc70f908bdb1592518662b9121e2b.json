@@ -1,0 +1,12 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "Pineapple on pizza is a matter of taste; many people like it and many don't",
+        "from": "settled"
+      }
+    ],
+    "answer": "Ça dépend du goût de chacun, mais oui, c'est tout à fait acceptable! Beaucoup de gens adorent le mélange sucré-salé (jambon-ananas, c'est un classique). Si tu n'aimes pas, pas besoin de t'en faire, c'est une question de goût. Pour moi, c'est un bon choix!"
+  },
+  "latencyMs": 2045
+}

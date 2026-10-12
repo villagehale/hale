@@ -1,0 +1,16 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "2006 World Series winner: St. Louis Cardinals",
+        "from": "settled"
+      },
+      {
+        "states": "Series result 4-1 over the Detroit Tigers",
+        "from": "settled"
+      }
+    ],
+    "answer": "The St. Louis Cardinals won the 2006 World Series, 4-1 over the Detroit Tigers."
+  },
+  "latencyMs": 2157
+}

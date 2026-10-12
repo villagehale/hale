@@ -1,0 +1,48 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "No single agreed best minivan; reviewers split between Toyota Sienna, Honda Odyssey, and Kia Carnival",
+        "from": "Overall picks differ by outlet."
+      },
+      {
+        "states": "Toyota Sienna ranked #1 by Edmunds, Quartz, and AutoGuide/Yahoo",
+        "from": "Edmunds ranks the 2026 Toyota Sienna #1; Quartz picks the Sienna; A Yahoo/AutoGuide four-way comparison also puts the Sienna first."
+      },
+      {
+        "states": "Honda Odyssey named best by U.S. News with a 9.3/10 score",
+        "from": "U.S. News ranks the Honda Odyssey best... overall score of 9.3/10."
+      },
+      {
+        "states": "Kia Carnival Hybrid picked by The Weekly Driver for fuel economy, cargo space, and warranty",
+        "from": "The Weekly Driver (about 12 days old) picks the Carnival Hybrid."
+      },
+      {
+        "states": "Honda Odyssey drives most like a car",
+        "from": "It drives the most like a car, with responsive steering and a smooth V6."
+      },
+      {
+        "states": "Sienna is the only minivan offered only as a hybrid, with standard hybrid and available AWD",
+        "from": "It has a standard hybrid powertrain and available all-wheel drive. It is the only minivan offered only as a hybrid."
+      },
+      {
+        "states": "Kia Carnival is the cheapest, with a 2026 base price of $36,990",
+        "from": "It is the cheapest, with a 2026 base price of $36,990."
+      },
+      {
+        "states": "Odyssey is front-wheel drive only",
+        "from": "It is front-wheel drive only."
+      },
+      {
+        "states": "Pacifica is the only minivan combining AWD with second-row Stow 'n Go seating",
+        "from": "It is the only minivan combining all-wheel drive with second-row Stow 'n Go seating."
+      },
+      {
+        "states": "Results are for the U.S. market only; a budget, family size, and new vs used preference are unknown",
+        "from": "The results are all about the U.S. market... Gaps: The answer depends on priorities such as fuel economy, driving feel, cargo space, price and all-wheel drive. The results don't say the buyer's budget, family size, or whether they want a new or used van."
+      }
+    ],
+    "answer": "Honestly there's no single agreed winner. Toyota Sienna gets the most top spots, with Edmunds, Quartz and AutoGuide all picking it, and it's the one to get if you want all-wheel drive or the most efficient ride, though the hybrid system is a bit noisy. Honda Odyssey is the one I'd pick if you care most about how it drives, since it feels closest to a car, though it's front-wheel drive only. If you want the most value, the Kia Carnival is the cheapest and has the most cargo room. Which one fits depends on your budget, how many people you're hauling, and whether you're buying new or used, so tell me any of those and I'll narrow it down. These picks are for the US market."
+  },
+  "latencyMs": 9776
+}

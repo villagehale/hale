@@ -1,0 +1,32 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "lowest high-ratio 5-year fixed rate is 4.34% (Ratehub, Oct 12)",
+        "from": "Ratehub says as of October 12, 2026, the lowest high-ratio 5-year fixed rate is 4.34%"
+      },
+      {
+        "states": "Frank Mortgage at 4.34% is among the lowest offers (WOWA, Oct 9)",
+        "from": "It names Frank Mortgage as the best 5-year fixed offer at 4.34%"
+      },
+      {
+        "states": "big bank average 5-year fixed around 5.17%",
+        "from": "nesto's Oct 9 page lists a Big 6 Bank average 5-year fixed of 5.17%"
+      },
+      {
+        "states": "BMO raised its standard 5-year fixed to 5.14% on Oct 7",
+        "from": "BMO raised its standard 5-year fixed rate by 20 bps to 5.14% on October 7"
+      },
+      {
+        "states": "rates are climbing again this month after the big banks raised fixed rates since early September",
+        "from": "Fixed rates are climbing again in October 2026, after all 6 of the largest banks raised select fixed rates since early September"
+      },
+      {
+        "states": "the answer depends on whether the mortgage is insured, and on the lender",
+        "from": "The question doesn't say whether the mortgage is insured (under 20% down), insurable, or uninsured"
+      }
+    ],
+    "answer": "Right now the lowest 5-year fixed rates in Canada are around 4.34%, at lenders like Frank Mortgage and some credit unions, as of this week. Big banks are higher, roughly 5.1% to 5.2%, and rates are creeping up again this month. Your exact rate depends on your down payment and lender, so if you tell me whether you're under 20% down, I can narrow it down."
+  },
+  "latencyMs": 8521
+}

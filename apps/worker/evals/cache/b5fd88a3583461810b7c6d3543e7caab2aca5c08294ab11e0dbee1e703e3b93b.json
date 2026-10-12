@@ -1,0 +1,20 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "Mainly cloudy today with a daytime high of 23°C, mostly dry during the day",
+        "from": "Today's forecast is mainly cloudy. Its daytime high is 23°C."
+      },
+      {
+        "states": "A few showers tonight, with a low of 16°C",
+        "from": "Tonight it forecasts a few showers, with a low of 16°C."
+      },
+      {
+        "states": "This is the forecast from this morning",
+        "from": "forecast issued 11:00 AM EDT today"
+      }
+    ],
+    "answer": "Mostly dry today. It's cloudy with a high of 23°C, and the rain holds off until tonight, when a few showers are expected and it drops to about 16°C. That's the Environment Canada forecast from this morning."
+  },
+  "latencyMs": 4094
+}
