@@ -44,12 +44,14 @@ import { SAFETY_REPLY_BY_LANGUAGE } from './copy';
  *      a failure.
  *
  * IN THE PARENT'S LANGUAGE. A parent who texts a symptom in French or Chinese is answered
- * in it. Two things make that safe rather than merely nice: the clinical query stays
- * ENGLISH whatever the parent wrote (the red-flag lexicon and the pediatric search are
- * English-keyed — medical-sanitize.md is emphatic about it, and {@link NON_ENGLISH_LETTERS}
- * REFUSES a query that ignored it rather than trusting the prompt), and the escalation gate
- * below reads all three languages, so a correct "allez aux urgences" is not mistaken for
- * an under-escalation and a French under-escalation is not mistaken for a directive.
+ * in it. Three things make that safe rather than merely nice: whether it is an EMERGENCY is
+ * judged by the sanitize stage from the parent's own words, in whatever language they wrote
+ * (see {@link isRedFlag}), not matched against an English word list; the clinical query
+ * stays ENGLISH whatever the parent wrote (the pediatric search is English-keyed, and
+ * {@link NON_ENGLISH_LETTERS} REFUSES a query that ignored it rather than trusting the
+ * prompt); and the escalation gate below reads all three answer languages, so a correct
+ * "allez aux urgences" is not mistaken for an under-escalation and a French
+ * under-escalation is not mistaken for a directive.
  *
  * FAIL CLOSED, THROUGH ONE DOOR. Every degradation — no client, a skill that would not
  * load, zero searches, an empty/oversized body, missing triage — is a thrown
@@ -121,6 +123,15 @@ export type AgeBand = (typeof AGE_BANDS)[number];
 export const REPLY_LANGUAGES = ['en', 'fr', 'zh'] as const;
 export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
 
+/**
+ * The sanitizer's reading of whether the parent described a pediatric emergency — judged
+ * from the MEANING of their words, in any language, by the one stage that sees them. There
+ * is no word list behind it: a parent describes a non-blanching rash or a stiff neck in
+ * words no list holds, and in languages none was written for.
+ */
+export const RED_FLAG_READINGS = ['emergency', 'not_emergency', 'unsure'] as const;
+export type RedFlagReading = (typeof RED_FLAG_READINGS)[number];
+
 /** Where the words that go out came from. `web_grounded` is the composed, searched
  * answer; `fixed` is the last-resort {@link SAFETY_REPLY} after a live attempt and a
  * retry both failed. The two values are @hale/db's, because this outcome is STAMPED on
@@ -141,10 +152,11 @@ export interface MedicalComposer {
  * Why a medical turn could not be answered — four different operational stories plus the
  * ways the model's own output is unusable, deliberately not folded into one.
  * `not_grounded` is the invariant this lane exists to hold: a medical answer that did not
- * actually search is not a medical answer. `under_escalated` is its safety twin: a detected
- * red flag whose composed body never said "seek emergency care" (see {@link detectRedFlag}).
- * `sanitize_failed` carries one more than its name suggests: a query the sanitizer left in
- * the parent's language (detail `query_not_english`), which would blind that detector.
+ * actually search is not a medical answer. `under_escalated` is its safety twin: a judged
+ * red flag whose composed body never said "seek emergency care" (see {@link isRedFlag});
+ * its detail names the reading, `emergency` or `unsure`. `sanitize_failed` carries one more
+ * than its name suggests: a query the sanitizer left in the parent's language (detail
+ * `query_not_english`), which the English-keyed search cannot use.
  */
 export type MedicalFallback =
   | 'client_unavailable'
@@ -177,6 +189,8 @@ const sanitizeSchema = z.object({
   age_band: z.string().nullish(),
   duration: z.string().nullish(),
   language: z.string().nullish(),
+  red_flag_sign: z.string().nullish(),
+  red_flag: z.string().nullish(),
 });
 
 const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
@@ -186,8 +200,11 @@ const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
     age_band: { type: 'string', enum: [...AGE_BANDS] },
     duration: { type: 'string' },
     language: { type: 'string', enum: [...REPLY_LANGUAGES] },
+    red_flag_sign: { type: 'string' },
+    red_flag: { type: 'string', enum: [...RED_FLAG_READINGS] },
   },
-  required: ['clinical_query'],
+  // The sign before the verdict: a reading that names what it is judging on first.
+  required: ['clinical_query', 'red_flag_sign', 'red_flag'],
 };
 
 const composeSchema = z.object({
@@ -255,6 +272,21 @@ function normalizeAgeBand(raw: unknown): AgeBand | null {
     : null;
 }
 
+/**
+ * FAIL CLOSED: only an explicit `not_emergency` is not a red flag. `unsure`, a missing
+ * reading and anything off the list all are, so the answer must then carry an emergency
+ * directive or the turn falls to the fixed line, which names 911 itself.
+ */
+function isRedFlag(raw: unknown): boolean {
+  return raw !== 'not_emergency';
+}
+
+function redFlagReading(raw: unknown): RedFlagReading {
+  return typeof raw === 'string' && (RED_FLAG_READINGS as readonly string[]).includes(raw)
+    ? (raw as RedFlagReading)
+    : 'unsure';
+}
+
 /** English for anything the sanitizer did not report as one of the three. Not null: every
  * answer is written in SOME language, and a nullable one would only push the same default
  * out to the caller. */
@@ -268,21 +300,18 @@ function normalizeLanguage(raw: unknown): ReplyLanguage {
  * The ENGLISH-QUERY CONTRACT, held in code rather than asked for in a prompt.
  *
  * medical-sanitize.md instructs the sanitizer to write `clinical_query` and `duration` in
- * English whatever language the parent wrote in, and it explains why at length. That
- * instruction is load-bearing in a way no other prompt line here is: everything downstream
- * is English-keyed, and {@link detectRedFlag}'s lexicon is English ENTIRELY. A French or
- * Chinese query does not fail loudly — it BLINDS the detector, which turns the whole
- * escalation invariant below into a check that cannot fire. A safety property that depends
- * on a model following an instruction is not a safety property, so the query is CHECKED.
+ * English whatever language the parent wrote in: the pediatric search downstream is
+ * English-keyed, and a French or Chinese query does not fail loudly — it searches for the
+ * wrong thing. A property that depends on a model following an instruction is not a
+ * property, so the query is CHECKED.
  *
- * The pattern is the eval's (run-medical-symptom-eval.mjs), which calibrates it over the
- * FR/ZH corpus: any CJK/Kana/Hangul character, or one of the Latin accents French carries.
- * It is deliberately blind to the things a real English clinical query contains — a degree
- * sign, a decimal temperature, a plain ASCII word — and every English query the live corpus
+ * The pattern is the eval's (run-medical-symptom-eval.mjs): any LETTER outside plain
+ * ASCII — an accent, CJK, Arabic, Hebrew, Cyrillic, any script a parent writes in. It is
+ * deliberately blind to the things a real English clinical query contains — a degree sign,
+ * a decimal temperature, a plain ASCII word — and every English query the live corpus
  * produced passes it untouched.
  */
-const NON_ENGLISH_LETTERS =
-  /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|[\u00e0\u00e2\u00e4\u00e3\u00e9\u00e8\u00ea\u00eb\u00ed\u00ec\u00ee\u00ef\u00f3\u00f2\u00f4\u00f6\u00f5\u00fa\u00f9\u00fb\u00fc\u00fd\u00ff\u00e7\u00f1\u0153\u00e6]/iu;
+const NON_ENGLISH_LETTERS = /[^\P{L}a-z]/iu;
 
 function isEnglish(text: string): boolean {
   return !NON_ENGLISH_LETTERS.test(text);
@@ -294,58 +323,6 @@ function isEnglish(text: string): boolean {
  * one SUBSTITUTES the fixed line; this one REQUIRES the numbers be present. */
 function namesUrgentCare(body: string): boolean {
   return /\b(?:811|911)\b/.test(body);
-}
-
-/** Fever mentioned and not explicitly negated. Used ONLY inside the age-aware
- * under-3-months rule below — everywhere else a fever is not itself a red flag, so this
- * stays private to {@link detectRedFlag}. The negation guard stops "no fever"/"afebrile"
- * from firing the infant rule on a well baby. */
-const FEVER_TERMS = /\bfever\b|\bfebrile\b|\btemperature\b|\btemp\b|\b\d{2,3}(?:\.\d)?\s?°?[cf]\b/i;
-const FEVER_NEGATED = /\bno fever\b|\bwithout fever\b|\bafebrile\b|\bno temperature\b/i;
-function mentionsFever(t: string): boolean {
-  return FEVER_TERMS.test(t) && !FEVER_NEGATED.test(t);
-}
-
-/** A young infant, from the coarse band OR an explicit "under 3 months" left in the query
- * (a coarse band, not an exact age, so it survives the sanitizer). */
-const YOUNG_INFANT_TEXT = /under (?:3|three) months|younger than (?:3|three) months|\bnewborn\b/i;
-
-/** Neck stiffness — a meningitis red flag only ALONGSIDE fever, never on its own (a stiff
- * neck from sleeping awkwardly is benign). */
-const STIFF_NECK = /\bstiff neck\b|\bneck (?:is )?stiff\b|\bneck\b[^.,;]{0,20}\bstiffness\b/i;
-
-/**
- * The unambiguous pediatric emergencies — each a red flag on its own, at any age.
- * Deliberately CONSERVATIVE: every term here is one that does not turn up describing a well
- * child (a mild cold, teething), because a detector that over-fires would replace a good
- * grounded answer with the fixed line — its own harm (alarm fatigue, a product that "can't
- * help"). Fever, sore throat and an ordinary rash are absent on purpose; they are red flags
- * only in the compound rules ({@link STIFF_NECK} + fever; fever in a young infant) below.
- */
-const RED_FLAG_TERMS: RegExp[] = [
-  /trouble breathing|difficulty breathing|labou?red breathing|struggling to breathe|working (?:really |very )?hard to breathe|can'?t breathe|cannot breathe|not breathing|gasping for (?:air|breath)|\bgrunting\b/i,
-  /ribs? (?:are )?pulling in|pulling in (?:with|under|between)[^.]{0,20}(?:breath|rib)|\bretractions?\b|chest (?:is )?(?:sucking|caving) in/i,
-  /blue lips|dusky lips|lips (?:look|turning|are|went|are turning) (?:a bit )?(?:blue|dusky|grey|gray)|blue (?:around|round) the (?:lips|mouth)|turning blue|going blue/i,
-  /\bseizure\b|\bseizing\b|\bconvulsion\b|\bconvulsing\b/i,
-  /\bunresponsive\b|won'?t wake|will not wake|can'?t wake|cannot wake|hard to wake|difficult to wake|not waking|won'?t respond|not responding|\blimp\b|\bfloppy\b|\blethargic\b|\blethargy\b|\bunconscious\b|passed out/i,
-  /non-?blanching|\bpetechiae?\b|petechial|\bpurpura\b|(?:does ?n[o']?t|do not|don'?t|will not|won'?t) (?:fade|blanch)/i,
-  /anaphyla|face (?:is )?swelling|swelling of (?:the |her |his )?face|swollen face|lips (?:are )?swelling|swollen lips|tongue (?:is )?swelling|swollen tongue|throat (?:is )?(?:swelling|closing|tightening)/i,
-  /sunken eyes|sunken fontanelle|no wet (?:diaper|nappy)|not urinating|no urine|no tears when (?:crying|she cries|he cries)|severe(?:ly)? dehydrat/i,
-];
-
-/**
- * Whether the de-identified clinical query describes a genuine pediatric emergency. Runs on
- * the SANITIZED (and scrubbed) query plus the coarse age band — the same inputs the search
- * saw. This is the conservative half of the escalation invariant: if this fires, the answer
- * that ships MUST carry an emergency directive ({@link hasEmergencyDirective}) or the lane
- * falls closed. Exported for direct unit testing and mirrored by the eval gate.
- */
-export function detectRedFlag(clinicalQuery: string, ageBand: AgeBand | null): boolean {
-  const t = clinicalQuery.toLowerCase();
-  if (RED_FLAG_TERMS.some((re) => re.test(t))) return true;
-  if (STIFF_NECK.test(t) && mentionsFever(t)) return true;
-  if ((ageBand === 'infant_under_3mo' || YOUNG_INFANT_TEXT.test(t)) && mentionsFever(t)) return true;
-  return false;
 }
 
 /**
@@ -386,8 +363,7 @@ const EMERGENCY_DIRECTIVE_FR =
 const EMERGENCY_DIRECTIVE_ZH = /急诊|急救(?![箱包])|救护车|(?:立即|马上|立刻)(?:就医|就诊|送医|去医院)/;
 
 /**
- * The negation guard, built the way {@link FEVER_NEGATED} is: a term the detector matches
- * counts only when nothing NEGATED it. Every phrase above names the emergency, and naming
+ * The negation guard: a directive term counts only when nothing NEGATED it. Every phrase above names the emergency, and naming
  * it is exactly how a body rules it OUT — "no need for the ER, call 811", "pas besoin
  * d'aller aux urgences", "不需要去急诊" all matched, all named 811 and no 911, and all
  * shipped as escalations of a detected red flag.
@@ -564,7 +540,7 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
     ...(duration ? { duration: scrubResidualPii(duration) } : {}),
   };
   // The English-query contract (see NON_ENGLISH_LETTERS): an untranslated query would
-  // blind detectRedFlag rather than fail, so it is refused here. The detail names the
+  // search for the wrong thing rather than fail, so it is refused here. The detail names the
   // reason and carries none of the text (rule #1). A sanitize_failed is retried once,
   // which gives the model a second chance to translate before the fixed line.
   if (!isEnglish(query.clinicalQuery) || (query.duration && !isEnglish(query.duration))) {
@@ -624,11 +600,11 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
   if (!namesUrgentCare(body)) throw new MedicalUnresolvable('missing_triage', 'lost in assembly');
   // The escalation invariant. namesUrgentCare only proves a number is PRESENT — 811 alone
   // passes it, so a mis-triaged emergency ("probably viral, watch and wait, call 811") ships
-  // through every gate above. This is the one that catches it: a detected red flag whose body
-  // never says "seek emergency care" fails CLOSED to the fixed line, which itself names 911 —
-  // strictly safer than shipping an under-escalation.
-  if (detectRedFlag(query.clinicalQuery, query.ageBand) && !hasEmergencyDirective(body)) {
-    throw new MedicalUnresolvable('under_escalated');
+  // through every gate above. This is the one that catches it: a judged red flag — `unsure`
+  // included — whose body never says "seek emergency care" fails CLOSED to the fixed line,
+  // which itself names 911 — strictly safer than shipping an under-escalation.
+  if (isRedFlag(sanitized.red_flag) && !hasEmergencyDirective(body)) {
+    throw new MedicalUnresolvable('under_escalated', redFlagReading(sanitized.red_flag));
   }
   return body;
 }

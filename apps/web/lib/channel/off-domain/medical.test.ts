@@ -4,7 +4,6 @@ import { isStage } from '~/lib/testing/structured-reply';
 import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from './copy';
 import {
   createMedicalComposer,
-  detectRedFlag,
   groundUserMessage,
   hasEmergencyDirective,
   sanitizeUserMessage,
@@ -76,6 +75,8 @@ const OK_SANITIZE = {
   clinical_query: 'fever 39C 3 days toddler',
   age_band: 'toddler',
   duration: '3 days',
+  red_flag_sign: 'none',
+  red_flag: 'not_emergency',
 };
 const OK_COMPOSE = {
   answer:
@@ -261,65 +262,6 @@ describe('scrubResidualPii', () => {
 });
 
 /**
- * The red-flag detector, tested as a pure decision. It must FIRE on each unambiguous
- * pediatric emergency and must NOT fire on the benign path (a mild cold, teething) — an
- * over-firing detector replaces a good grounded answer with the fixed line, which is its
- * own harm. Inputs are the SANITIZED clinical query + coarse age band, exactly what the
- * runtime hands it. Expected values are derived from published pediatric red-flags.
- */
-describe('detectRedFlag', () => {
-  it('fires on each red-flag class', () => {
-    expect(detectRedFlag('trouble breathing, ribs pulling in', null)).toBe(true);
-    expect(detectRedFlag('rapid breathing with rib retractions and dusky lips', null)).toBe(true);
-    expect(detectRedFlag('her lips look blue', null)).toBe(true);
-    expect(detectRedFlag('febrile seizure, now floppy and drowsy', null)).toBe(true);
-    expect(detectRedFlag('unresponsive and hard to wake', null)).toBe(true);
-    expect(detectRedFlag('fever with non-blanching purple spot rash on legs', null)).toBe(true);
-    expect(detectRedFlag('purple spots that do not fade when pressed', null)).toBe(true);
-    // The sanitizer's paraphrase on Sonnet 5.5 (2026-10-11 re-record): the same sign,
-    // said with "blanch" instead of "fade".
-    expect(
-      detectRedFlag('fever with purple spots rash on legs that do not blanch when pressed', null),
-    ).toBe(true);
-    expect(detectRedFlag("spots that don't blanch", null)).toBe(true);
-    expect(detectRedFlag('face and lips are swelling, anaphylaxis', null)).toBe(true);
-    expect(detectRedFlag('sunken eyes and no wet diaper in 12 hours', null)).toBe(true);
-    // stiff neck is a red flag only alongside fever (meningitis), not on its own
-    expect(detectRedFlag('high fever, headache, stiff neck', null)).toBe(true);
-    // The sanitizer's paraphrase on Sonnet 5.5: the same sign with "stiffness" after "neck".
-    expect(
-      detectRedFlag('high fever, severe headache, neck pain and stiffness, light hurts', null),
-    ).toBe(true);
-    // ANY fever under 3 months, from the band or an explicit "under 3 months"
-    expect(detectRedFlag('fever', 'infant_under_3mo')).toBe(true);
-    expect(detectRedFlag('fever 38.2C in infant under 3 months', null)).toBe(true);
-  });
-
-  it('does NOT fire on the benign path', () => {
-    expect(
-      detectRedFlag('runny nose, mild cough, no fever, active and eating well', 'preschooler'),
-    ).toBe(false);
-    expect(detectRedFlag('drooling, chewing on objects, fussiness, teething', 'toddler')).toBe(
-      false,
-    );
-    expect(
-      detectRedFlag('tugging at ear, crying overnight, possible ear infection', 'toddler'),
-    ).toBe(false);
-    expect(detectRedFlag('sore throat and fever, sibling with recent strep', 'preschooler')).toBe(
-      false,
-    );
-    expect(
-      detectRedFlag('watery diarrhea and vomiting, still drinking, wet diapers present', 'toddler'),
-    ).toBe(false);
-    // fever alone in an OLDER child is not a red flag, and a stiff neck alone is not either
-    expect(detectRedFlag('fever 39C 3 days', 'toddler')).toBe(false);
-    expect(detectRedFlag('stiff neck after sleeping awkwardly', 'school_age')).toBe(false);
-    // an under-3-months infant with an EXPLICIT no-fever is not the infant-fever red flag
-    expect(detectRedFlag('stuffy nose, no fever', 'infant_under_3mo')).toBe(false);
-  });
-});
-
-/**
  * The emergency-directive check: the positive half of the escalation invariant. It must
  * accept a real "seek emergency care" instruction and REJECT the presence of 811 alone —
  * "watch and wait, call 811" is exactly the under-escalation this lane must catch.
@@ -457,6 +399,8 @@ const RED_FLAG_SANITIZE = {
   clinical_query: 'rapid breathing with rib retractions and dusky lips',
   age_band: 'preschooler',
   duration: '1 hour',
+  red_flag_sign: 'respiratory distress with blue lips',
+  red_flag: 'emergency',
 };
 
 /**
@@ -597,6 +541,87 @@ describe('a detected red flag must be escalated (runtime invariant)', () => {
   });
 });
 
+/**
+ * WHETHER IT IS AN EMERGENCY is the sanitizer's judgment, read from the parent's own words
+ * in whatever language they wrote — not a word list over the English query. Unsure, or no
+ * judgment at all, is a red flag: the answer must then escalate or the turn falls closed.
+ */
+describe('the red flag is judged from meaning, and unsure is a red flag', () => {
+  const SOFT_BODY = {
+    answer: 'This is most often a passing viral thing at this age; rest and fluids help.',
+    triage: 'Call 811 any time to talk it through with a nurse if you stay worried.',
+  };
+
+  it('falls closed when the sanitizer judged an emergency no English keyword would show', async () => {
+    const log = quiet();
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({
+          clinical_query: 'small purple spots on legs that stay when pressed, feverish toddler',
+          age_band: 'toddler',
+          red_flag_sign: 'rash that does not fade under pressure, with fever',
+          red_flag: 'emergency',
+        }),
+        ground: groundResult(2),
+        compose: composeResult(SOFT_BODY),
+      }),
+    ).answer('raw message');
+
+    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+    expect(reasons).toContain('under_escalated');
+    log.mockRestore();
+  });
+
+  it('treats an unsure judgment as a red flag', async () => {
+    const log = quiet();
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({ ...OK_SANITIZE, red_flag: 'unsure' }),
+        ground: groundResult(2),
+        compose: composeResult(SOFT_BODY),
+      }),
+    ).answer('raw message');
+
+    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    log.mockRestore();
+  });
+
+  it('treats a missing or garbled judgment as a red flag', async () => {
+    const log = quiet();
+    const { red_flag: _judged, red_flag_sign: _sign, ...unjudged } = OK_SANITIZE;
+    for (const sanitize of [unjudged, { ...OK_SANITIZE, red_flag: 'probably fine' }]) {
+      const out = await createMedicalComposer(
+        makeClient({
+          sanitize: sanitizeResult(sanitize),
+          ground: groundResult(2),
+          compose: composeResult(SOFT_BODY),
+        }),
+      ).answer('raw message');
+      expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    }
+    log.mockRestore();
+  });
+
+  it('no word list gates it: a judged non-emergency ships though its query names a seizure', async () => {
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({
+          clinical_query: 'past febrile seizure last year, well today, asking about vaccine fever',
+          age_band: 'toddler',
+          red_flag_sign: 'none',
+          red_flag: 'not_emergency',
+        }),
+        ground: groundResult(2),
+        compose: composeResult(SOFT_BODY),
+      }),
+    ).answer('raw message');
+
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('811');
+  });
+});
+
 describe('the happy path', () => {
   it('answers with a web-grounded reply that carries its own triage', async () => {
     const out = await createMedicalComposer(
@@ -694,13 +719,12 @@ describe('de-identification before search', () => {
 /**
  * The ENGLISH-QUERY CONTRACT, enforced rather than asked for.
  *
- * Everything downstream of the sanitizer is English-keyed: the pediatric search, and —
- * the one that matters — `detectRedFlag`, whose entire lexicon is English. A query left in
- * French or Chinese does not fail loudly; it BLINDS the detector, and a blind detector
- * turns every escalation gate below it into a check that cannot fail. The skill is
+ * The pediatric search downstream of the sanitizer is English-keyed. A query left in the
+ * parent's language does not fail loudly; it searches for the wrong thing. The skill is
  * emphatic about translating, but a skill is a request, so the runtime refuses the query
- * instead: an untranslated query is a `sanitize_failed`, which retries once and then falls
- * to the fixed line that names 911 itself.
+ * instead — in any script, not only the ones the lane answers in: an untranslated query is
+ * a `sanitize_failed`, which retries once and then falls to the fixed line that names 911
+ * itself.
  */
 describe('the clinical query must come back in English', () => {
   it('falls closed when the sanitizer leaves the query in the parent language', async () => {
@@ -733,6 +757,26 @@ describe('the clinical query must come back in English', () => {
       ).answer('raw message'),
     ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
     quietZh.mockRestore();
+  });
+
+  it('falls closed on a query left in a script the lane does not answer in', async () => {
+    const log = quiet();
+    for (const clinicalQuery of [
+      'الطفل يتنفس بصعوبة',
+      'התינוק נושם בקושי',
+      'erupción que no desaparece',
+    ]) {
+      expect(
+        await createMedicalComposer(
+          makeClient({
+            sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, clinical_query: clinicalQuery }),
+            ground: groundResult(2),
+            compose: composeResult(OK_COMPOSE),
+          }),
+        ).answer('raw message'),
+      ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    }
+    log.mockRestore();
   });
 
   it('falls closed when the DURATION is left in the parent language', async () => {
@@ -776,10 +820,10 @@ describe('the clinical query must come back in English', () => {
 /**
  * The parent's language is decided by the ONE stage that sees their words, and it travels
  * to the composer alone. It is deliberately kept out of the search: `clinical_query` and
- * `duration` are English by contract (the red-flag lexicon and the pediatric search are
- * English-keyed), so a language tag on the search turn could only invite the model to
- * answer the search in French — it buys nothing and risks the one field the safety gate
- * reads. Compose is where it belongs, because compose is what writes to the parent.
+ * `duration` are English by contract (the pediatric search is English-keyed), so a
+ * language tag on the search turn could only invite the model to answer the search in
+ * French — it buys nothing. Compose is where it belongs, because compose is what writes
+ * to the parent.
  */
 describe('the parent language reaches compose and nothing else', () => {
   it('carries the sanitizer-detected language into the compose payload only', async () => {
