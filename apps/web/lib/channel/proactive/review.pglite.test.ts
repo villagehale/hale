@@ -1036,7 +1036,26 @@ describe('runProactiveReview', () => {
     });
   });
 
-  it('when live, keeps no cadence preference it cannot pin on one parent, and names that', async () => {
+  function observeReturnedRows(): { returned: unknown[]; restore: () => void } {
+    const returned: unknown[] = [];
+    const query = db.client.query.bind(db.client);
+    db.client.query = (async (text: string, ...rest: unknown[]) => {
+      const result = await (query as (...a: unknown[]) => Promise<{ rows: unknown[] }>)(
+        text,
+        ...rest,
+      );
+      returned.push(result.rows);
+      return result;
+    }) as typeof db.client.query;
+    return {
+      returned,
+      restore: () => {
+        db.client.query = query;
+      },
+    };
+  }
+
+  it('reads only the owner’s texts for a batch that is wholly theirs, and keeps the pace as theirs', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const coParentId = await addCoParent();
     await parentText('text me less', HOUR_BEFORE);
@@ -1044,11 +1063,49 @@ describe('runProactiveReview', () => {
     await enqueue();
     const h = harness(lessPlease);
 
-    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    const observed = observeReturnedRows();
+    try {
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    } finally {
+      observed.restore();
+    }
 
+    expect(h.snapshots[0]?.recentParentTexts).toEqual(['text me less']);
+    expect(h.snapshots[0]?.parentTextsWithheld).toBeUndefined();
+    const read = JSON.stringify(observed.returned);
+    expect(read).toContain('text me less');
+    expect(read).not.toContain('we love the weekend ideas');
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({
+      cadencePreference: { parentUserId, direction: 'less', note: 'text me less' },
+    });
+    expect(await memoryFacts()).toEqual([]);
+  });
+
+  it('reads no parent text for a batch two parents own, and names the withhold', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const coParentId = await addCoParent();
+    await parentText('text me less', HOUR_BEFORE);
+    await parentText('we love the weekend ideas', HOUR_BEFORE, coParentId);
+    await enqueue('nudge:weather:w41');
+    await enqueue('nudge:dropin:w41', { parentUserId: coParentId, why: 'weekday_dropin' });
+    const h = harness(lessPlease);
+
+    const observed = observeReturnedRows();
+    try {
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    } finally {
+      observed.restore();
+    }
+
+    expect(h.snapshots[0]?.candidates).toHaveLength(2);
+    expect(h.snapshots[0]?.recentParentTexts).toEqual([]);
+    expect(h.snapshots[0]?.parentTextsWithheld).toBe('mixed_batch');
+    const read = JSON.stringify(observed.returned);
+    expect(read).not.toContain('text me less');
+    expect(read).not.toContain('we love the weekend ideas');
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({ cadencePreference: 'not_written_no_single_author' });
-    expect(await memoryFacts()).toEqual([]);
   });
 
   it('when live, never keeps a pace for a parent who texted about a batch that is not theirs', async () => {
@@ -1077,9 +1134,10 @@ describe('runProactiveReview', () => {
       direction: 'less',
       note: 'fewer please',
     });
+    expect(h.snapshots[0]?.recentParentTexts).toEqual([]);
     const decisions = await audits('proactive_cadence_decision');
     const reviewed = decisions.find((row) => 'action' in (row.after as object));
-    expect(reviewed?.after).toMatchObject({ cadencePreference: 'not_written_author_not_owner' });
+    expect(reviewed?.after).toMatchObject({ cadencePreference: 'not_written_no_single_author' });
     const kept = decisions
       .map((row) => (row.after as { cadencePreference?: unknown }).cadencePreference)
       .filter((pace) => typeof pace === 'object');

@@ -19,8 +19,9 @@ import { boundedLine } from './tools';
  * keeps its direction with its note as `WITHHELD_LABEL`, and a prior hold's reason reads
  * as `WITHHELD_LABEL`, since both were written with parent texts in view. Other parent
  * texts reach the decider only once, when they arrived after its last look at this
- * family, and only those rows' bodies are read. Calendar titles, Gmail offer titles
- * and watch labels are each one bounded line, like the parent texts.
+ * family, only from the one parent who owns every candidate (none for a batch two
+ * parents own, rule #5), and only those rows' bodies are read. Calendar titles, Gmail
+ * offer titles and watch labels are each one bounded line, like the parent texts.
  */
 
 export interface FreeWindow {
@@ -96,8 +97,10 @@ export interface FamilySnapshot {
   /** The pace the parent who owns every candidate asked for. Null for a mixed batch. */
   frequencyPreference: Pick<CadencePreference, 'direction' | 'note'> | null;
   declines: string[];
-  /** Lines the parent actually sent. The decider reads cadence from these. */
+  /** Lines the parent who owns every candidate actually sent. Cadence is read from these. */
   recentParentTexts: string[];
+  /** Why no parent text was read: a batch two parents own has no one pace to read. */
+  parentTextsWithheld?: 'mixed_batch';
   priorDecisions: PriorDecision[];
 }
 
@@ -464,25 +467,29 @@ export async function loadFamilySnapshot(
     .where(eq(schema.proactiveCandidates.familyId, input.familyId));
   const lastReviewAt = lastReview?.at ?? null;
   const { context } = input;
-  const newTexts = context.teenInHousehold
-    ? []
-    : await database
-        .select({
-          parentUserId: schema.channelMessages.parentUserId,
-          body: schema.channelMessages.body,
-        })
-        .from(schema.channelMessages)
-        .where(
-          and(
-            eq(schema.channelMessages.familyId, input.familyId),
-            eq(schema.channelMessages.direction, 'in'),
-            isNotNull(schema.channelMessages.body),
-            gte(schema.channelMessages.createdAt, since),
-            lastReviewAt === null ? undefined : gt(schema.channelMessages.createdAt, lastReviewAt),
-          ),
-        )
-        .orderBy(desc(schema.channelMessages.createdAt))
-        .limit(RECENT_PARENT_TEXTS);
+  const newTexts =
+    context.teenInHousehold || owner === null
+      ? []
+      : await database
+          .select({
+            parentUserId: schema.channelMessages.parentUserId,
+            body: schema.channelMessages.body,
+          })
+          .from(schema.channelMessages)
+          .where(
+            and(
+              eq(schema.channelMessages.familyId, input.familyId),
+              eq(schema.channelMessages.parentUserId, owner),
+              eq(schema.channelMessages.direction, 'in'),
+              isNotNull(schema.channelMessages.body),
+              gte(schema.channelMessages.createdAt, since),
+              lastReviewAt === null
+                ? undefined
+                : gt(schema.channelMessages.createdAt, lastReviewAt),
+            ),
+          )
+          .orderBy(desc(schema.channelMessages.createdAt))
+          .limit(RECENT_PARENT_TEXTS);
   const withheld = (text: string): string => (context.teenInHousehold ? WITHHELD_LABEL : text);
   const shown = newTexts
     .reverse()
@@ -506,6 +513,7 @@ export async function loadFamilySnapshot(
       : null,
     declines: context.declines,
     recentParentTexts: shown.map((row) => row.text),
+    ...(owner === null ? { parentTextsWithheld: 'mixed_batch' as const } : {}),
     priorDecisions: input.priorDecisions.map((prior) =>
       prior.reason === null ? prior : { ...prior, reason: withheld(prior.reason) },
     ),
