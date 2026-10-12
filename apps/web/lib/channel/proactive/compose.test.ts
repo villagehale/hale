@@ -5,7 +5,7 @@ import {
   readWriterText,
   withActivityLinks,
 } from './compose';
-import { LINE_CHARS, type ToolCandidate, writerContext } from './tools';
+import { LINE_CHARS, TEXT_CHARS, type ToolCandidate, writerContext } from './tools';
 
 const ITEM: ToolCandidate = {
   id: 'c1',
@@ -51,6 +51,19 @@ describe('readWriterText', () => {
     expect(readWriterText({ message: 'ok', extra: true }, [ITEM])).toEqual({
       skipped: 'unparsed',
     });
+  });
+
+  it('refuses, by name, a text longer than one text is', () => {
+    const line = 'Lantern craft Saturday.';
+    const fits = Array.from(
+      { length: Math.floor(TEXT_CHARS / (line.length + 1)) },
+      () => line,
+    ).join(' ');
+    expect(fits.length).toBeLessThanOrEqual(TEXT_CHARS);
+    expect(readWriterText({ message: fits }, [ITEM])).toEqual({ message: fits });
+    const over = `${fits} ${line} ${line}`;
+    expect(over.length).toBeGreaterThan(TEXT_CHARS);
+    expect(readWriterText({ message: over }, [ITEM])).toEqual({ skipped: 'over_length' });
   });
 });
 

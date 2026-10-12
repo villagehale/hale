@@ -22,6 +22,13 @@ const NAMING_WORD_MIN = 4;
  */
 export const LINE_CHARS = 160;
 
+/**
+ * One text a parent reads: four of those lines. An infra bound on the writer's output,
+ * not a send rule. WRITER_MAX_TOKENS bounds the tokens and the Linq door takes far more
+ * than this, so the code is what keeps a model's runaway text off the phone, by name.
+ */
+export const TEXT_CHARS = 4 * LINE_CHARS;
+
 /** Control and bidi-format characters, which could open a second line or reorder one. */
 const UNSAFE_IN_LINE =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
@@ -131,7 +138,7 @@ const textSchema = z
   .object({ message: z.string().refine((value) => value.trim().length > 0) })
   .strict();
 
-export type WriterSkip = 'no_client' | 'model_failed' | 'unparsed' | 'invented';
+export type WriterSkip = 'no_client' | 'model_failed' | 'unparsed' | 'invented' | 'over_length';
 export type WriterResult = { message: string } | { skipped: WriterSkip };
 
 function slotsOf(items: readonly ToolCandidate[]): string[] {
@@ -161,14 +168,17 @@ export function withActivityLinks(message: string, items: readonly ToolCandidate
 
 /**
  * The writer's tool input, checked and finished: one non-empty message, nothing
- * invented, and the link appended for an activity it named without one.
+ * invented, the link appended for an activity it named without one, and no longer than
+ * one text (`TEXT_CHARS`).
  */
 export function readWriterText(value: unknown, items: readonly ToolCandidate[]): WriterResult {
   const parsed = textSchema.safeParse(value);
   if (!parsed.success) return { skipped: 'unparsed' };
   const message = parsed.data.message.trim();
   if (findInventedFacts(message, slotsOf(items)).length > 0) return { skipped: 'invented' };
-  return { message: withActivityLinks(message, items) };
+  const finished = withActivityLinks(message, items);
+  if (finished.length > TEXT_CHARS) return { skipped: 'over_length' };
+  return { message: finished };
 }
 
 /** The writer's user message: the chosen items, and the parent's cadence note if any. */
