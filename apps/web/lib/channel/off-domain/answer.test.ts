@@ -1233,7 +1233,16 @@ describe("the family's city and country", () => {
    * A place the lane cannot name is a named outcome (rule #11), with which kind, and the
    * turn then goes exactly as it did before there was a place to read: Hale asks.
    */
-  it.each(['no_country', 'no_postal', 'unmapped', 'ambiguous'] as const)(
+  it.each([
+    'no_country',
+    'unsupported_country',
+    'no_postal',
+    'unmapped',
+    'ambiguous',
+    'unusable_place',
+    'group_thread',
+    'thread_unknown',
+  ] as const)(
     'asks for the city when the place is unknown (%s), and names why',
     async (reason) => {
       lit();
