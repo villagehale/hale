@@ -8,7 +8,9 @@ import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured'
 import {
   type HomePlace,
   type LiveSearch,
+  type PendingAsk,
   answerJsonSchema,
+  answersPending,
   generalAnswerUserMessage,
   needsSearch,
   questionSanitizeUserMessage,
@@ -32,7 +34,7 @@ export {
   scrubDirectIdentifiers,
   searchUserMessage,
 };
-export type { HomePlace, LiveSearch };
+export type { HomePlace, LiveSearch, PendingAsk };
 
 /**
  * Boundary v3 — the general answer.
@@ -85,6 +87,16 @@ export type { HomePlace, LiveSearch };
  * a lit turn that reading says needs it. A question that names its own place, or does not
  * depend on place, carries none. Only the search is sent it; neither the sanitizer nor
  * the compose is.
+ *
+ * A QUESTION LEFT OPEN IS KEPT FOR THE REPLY. The lane is one text in and one out, so a
+ * parent who answers "Toronto" to "which city?" starts a new turn with no question
+ * attached. A lit turn that could not answer (a detail was missing, or the search came
+ * back with nothing) therefore hands out the question it was working on, de-identified
+ * and scrubbed, with what it was missing ({@link PendingAsk}; the router keeps it on the
+ * reply's own ledger row). The parent's next text is read beside it by the sanitizer,
+ * which alone judges whether the text completes it ({@link GeneralAnswerComposer.continueAsk}).
+ * There is no keyword and no time window. What is kept is never the parent's own words,
+ * and nothing is kept or read while the flag is dark.
  *
  * EVERY WAY THE SEARCH DOES NOT HAPPEN IS NAMED ({@link LiveSearch}, rule #11), and none
  * of them costs the parent a reply or buys them an invented one: the compose is told that
@@ -147,8 +159,9 @@ export type GeneralAnswerFallback =
 
 export type GeneralAnswerOutcome =
   /** `search` is set whenever a model wrote the reply. The fixed lines above the model
-   * have no search to name. */
-  | { status: 'composed'; reply: string; search?: LiveSearch }
+   * have no search to name. `pendingAsk` is set when the reply left the question open:
+   * what the parent's next text is read beside. */
+  | { status: 'composed'; reply: string; search?: LiveSearch; pendingAsk?: PendingAsk }
   /**
    * The question turned out to be about someone hurt or ill, and the model answered it
    * with a referral of its own (skill audit P0 #3). This branch carries NO reply on
@@ -182,8 +195,25 @@ export interface FamilyFacts {
   place(): Promise<FamilyPlace>;
 }
 
+/** A text that is not the reply to the pending ask, or could not be read as one. The
+ * lane routes it as it would any other text. */
+export interface NotAReply {
+  status: 'unrelated';
+}
+
 export interface GeneralAnswerComposer {
   compose(text: string, family: FamilyFacts): Promise<GeneralAnswerOutcome>;
+  /**
+   * The parent's next text after a reply that left `pending` open. Answered as the
+   * completed question when the sanitizer judges it completes it; handed back as
+   * `unrelated` otherwise, and also when that judgment could not be made at all, because
+   * this runs ahead of the screen on a text that may be about the kids' week.
+   */
+  continueAsk(
+    text: string,
+    pending: PendingAsk,
+    family: FamilyFacts,
+  ): Promise<GeneralAnswerOutcome | NotAReply>;
 }
 
 /** Parsed loosely, for the reason screen.ts states at length: a strict schema turns a
@@ -236,6 +266,28 @@ function unavailable(reason: GeneralAnswerFallback, detail?: string): GeneralAns
 function wentWithout<T extends LiveSearch>(search: T, detail?: string): T {
   console.warn({ search, detail }, 'off-domain answer: no live search this turn');
   return search;
+}
+
+/**
+ * What became of a text read beside a pending ask, named (rule #11) and never with a word
+ * of either (rule #1): it `completed` the question, it was `unrelated`, or it went
+ * `unread` because the judgment could not be made.
+ */
+function notAReply(detail?: string): NotAReply {
+  if (detail === undefined) {
+    console.info({ pendingAsk: 'unrelated' }, 'off-domain answer: the reply to a pending ask');
+  } else {
+    console.warn({ pendingAsk: 'unread', detail }, 'off-domain answer: the reply to a pending ask');
+  }
+  return { status: 'unrelated' };
+}
+
+/** The question a lit turn could not answer, as it is kept for the parent's reply. A turn
+ * that answered, needed no search, or ran dark keeps nothing. */
+function leftOpen(search: LiveSearch, question: string, missing: string): PendingAsk | null {
+  if (search === 'missing_detail') return { question, missing };
+  if (search === 'search_failed' || search === 'nothing_usable') return { question, missing: '' };
+  return null;
 }
 
 /** A question no search could answer as asked, named (rule #11). Nothing went wrong, so
@@ -391,6 +443,7 @@ function sendable(
   raw: string,
   search: LiveSearch,
   searched: readonly string[],
+  pendingAsk: PendingAsk | null,
 ): GeneralAnswerOutcome {
   const flattened = plainText(raw);
   // Before every other gate, because this one SUBSTITUTES where the rest refuse: a
@@ -404,7 +457,7 @@ function sendable(
   if (carriesUnsearchedLink(flattened, searched)) {
     return unavailable('unsendable', 'link_not_from_search');
   }
-  return { status: 'composed', reply: flattened, search };
+  return { status: 'composed', reply: flattened, search, ...(pendingAsk ? { pendingAsk } : {}) };
 }
 
 /**
@@ -416,6 +469,115 @@ function sendable(
  * break approvals — and deferring it buys the honest `client_unavailable` outcome.
  */
 export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerComposer {
+  type Skill = Awaited<ReturnType<typeof loadCronSkill>>;
+  interface Stage {
+    client: AgentClient;
+    sanitize: Skill;
+    search: Skill;
+    answer: Skill;
+  }
+
+  /** The client and the three skills, or the name of what is missing. */
+  async function setUp(): Promise<
+    Stage | { missing: 'client_unavailable' | 'skill_unavailable'; detail: string }
+  > {
+    let resolved: AgentClient;
+    try {
+      resolved = client();
+    } catch (err) {
+      return { missing: 'client_unavailable', detail: message(err) };
+    }
+    try {
+      return {
+        client: resolved,
+        sanitize: await loadCronSkill('general-answer-sanitize'),
+        search: await loadCronSkill('general-answer-search'),
+        answer: await loadCronSkill('general-answer'),
+      };
+    } catch (err) {
+      return { missing: 'skill_unavailable', detail: message(err) };
+    }
+  }
+
+  /** Phase 0 — SANITIZE (the family out of the question; the language; the readings).
+   * Throws what the call throws: the two callers name a failure differently. */
+  async function sanitize(
+    stage: Stage,
+    text: string,
+    pending: PendingAsk | null,
+  ): Promise<z.infer<typeof sanitizeSchema>> {
+    const { value } = await forceToolJson({
+      client: stage.client,
+      lane: pickLane(stage.sanitize.meta.task),
+      system: stage.sanitize.instructions,
+      userMessage: questionSanitizeUserMessage(text, pending),
+      toolName: 'sanitize',
+      toolDescription: 'Return the de-identified question.',
+      inputJsonSchema: sanitizeJsonSchema,
+      schema: sanitizeSchema,
+      maxTokens: SANITIZE_MAX_TOKENS,
+    });
+    return value;
+  }
+
+  /** Phases 1 and 2, from what the sanitizer returned. */
+  async function answer(
+    stage: Stage,
+    sanitized: z.infer<typeof sanitizeSchema>,
+    family: FamilyFacts,
+  ): Promise<GeneralAnswerOutcome> {
+    // Nothing is composed from a question nobody de-identified: the raw text may not go
+    // to the compose, and there is no other question to hand it.
+    if (sanitized.question.trim() === '') {
+      return unavailable('model_failed', 'sanitize_failed:empty_question');
+    }
+    // Deterministic backstop UNDER the sanitizer, before the question goes anywhere.
+    const question = scrubDirectIdentifiers(sanitized.question.trim());
+    // The model may leave it out; it is scrubbed like the question it came with.
+    const missing = scrubDirectIdentifiers((sanitized.missing_detail ?? '').trim());
+    const language = normalizeLanguage(sanitized.language);
+    const today = await family.today();
+
+    // Phase 1 — SEARCH (only when judged needed, and only when lit). Where the family
+    // is, is read only for a lit search the sanitizer judged to depend on it. A detail
+    // still missing after that is asked for, and only while lit: dark, there is nothing
+    // the answer could be used for.
+    const lit = generalAnswerSearchEnabled();
+    const searching = needsSearch(sanitized.needs_search);
+    const place =
+      lit && searching && turnsOnTheirPlace(sanitized.their_place) ? await homePlace(family) : null;
+    const { search, findings } = !searching
+      ? { search: 'not_needed' as const, findings: NO_FINDINGS }
+      : lit && sanitized.needs_search === 'missing_detail' && place === null
+        ? { search: askedInstead(), findings: NO_FINDINGS }
+        : await liveSearch(stage.client, stage.search, question, today, place);
+
+    // Phase 2 — COMPOSE (blind: the question and the research, never the raw message).
+    try {
+      const { value } = await forceToolJson({
+        client: stage.client,
+        lane: pickLane(stage.answer.meta.task),
+        system: stage.answer.instructions,
+        userMessage: generalAnswerUserMessage({
+          question,
+          language,
+          today,
+          search,
+          notes: findings.notes,
+          missing,
+        }),
+        toolName: 'answer',
+        toolDescription: 'Return the one brief answer to this question.',
+        inputJsonSchema: answerJsonSchema,
+        schema: answerSchema,
+        maxTokens: MAX_TOKENS,
+      });
+      return sendable(value.answer, search, findings.urls, leftOpen(search, question, missing));
+    } catch (err) {
+      return unavailable('model_failed', failureName(err));
+    }
+  }
+
   return {
     async compose(text, family) {
       // VIL-328: physical emergency is Call 911 now., never the 811 Telehealth
@@ -427,92 +589,34 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
         return { status: 'composed', reply: MENTAL_CRISIS_REPLY };
       }
 
-      let resolved: AgentClient;
-      try {
-        resolved = client();
-      } catch (err) {
-        return unavailable('client_unavailable', message(err));
-      }
+      const stage = await setUp();
+      if ('missing' in stage) return unavailable(stage.missing, stage.detail);
 
-      let sanitizeSkill: Awaited<ReturnType<typeof loadCronSkill>>;
-      let searchSkill: Awaited<ReturnType<typeof loadCronSkill>>;
-      let skill: Awaited<ReturnType<typeof loadCronSkill>>;
-      try {
-        sanitizeSkill = await loadCronSkill('general-answer-sanitize');
-        searchSkill = await loadCronSkill('general-answer-search');
-        skill = await loadCronSkill('general-answer');
-      } catch (err) {
-        return unavailable('skill_unavailable', message(err));
-      }
-
-      // Phase 0 — SANITIZE (the family out of the question; the language; the reading).
       let sanitized: z.infer<typeof sanitizeSchema>;
       try {
-        ({ value: sanitized } = await forceToolJson({
-          client: resolved,
-          lane: pickLane(sanitizeSkill.meta.task),
-          system: sanitizeSkill.instructions,
-          userMessage: questionSanitizeUserMessage(text),
-          toolName: 'sanitize',
-          toolDescription: 'Return the de-identified question.',
-          inputJsonSchema: sanitizeJsonSchema,
-          schema: sanitizeSchema,
-          maxTokens: SANITIZE_MAX_TOKENS,
-        }));
+        sanitized = await sanitize(stage, text, null);
       } catch (err) {
         return unavailable('model_failed', `sanitize_failed:${failureName(err)}`);
       }
-      // Nothing is composed from a question nobody de-identified: the raw text may not go
-      // to the compose, and there is no other question to hand it.
-      if (sanitized.question.trim() === '') {
-        return unavailable('model_failed', 'sanitize_failed:empty_question');
-      }
-      // Deterministic backstop UNDER the sanitizer, before the question goes anywhere.
-      const question = scrubDirectIdentifiers(sanitized.question.trim());
-      const language = normalizeLanguage(sanitized.language);
-      const today = await family.today();
+      return answer(stage, sanitized, family);
+    },
 
-      // Phase 1 — SEARCH (only when judged needed, and only when lit). Where the family
-      // is, is read only for a lit search the sanitizer judged to depend on it. A detail
-      // still missing after that is asked for, and only while lit: dark, there is nothing
-      // the answer could be used for.
-      const lit = generalAnswerSearchEnabled();
-      const searching = needsSearch(sanitized.needs_search);
-      const place =
-        lit && searching && turnsOnTheirPlace(sanitized.their_place)
-          ? await homePlace(family)
-          : null;
-      const { search, findings } = !searching
-        ? { search: 'not_needed' as const, findings: NO_FINDINGS }
-        : lit && sanitized.needs_search === 'missing_detail' && place === null
-          ? { search: askedInstead(), findings: NO_FINDINGS }
-          : await liveSearch(resolved, searchSkill, question, today, place);
+    async continueAsk(text, pending, family) {
+      // A crisis never waits on a model. The lane's own doors answer it.
+      if (namesAnEmergency(text) || namesAMentalCrisis(text)) return notAReply();
 
-      // Phase 2 — COMPOSE (blind: the question and the research, never the raw message).
+      const stage = await setUp();
+      if ('missing' in stage) return notAReply(stage.missing);
+
+      let sanitized: z.infer<typeof sanitizeSchema>;
       try {
-        const { value } = await forceToolJson({
-          client: resolved,
-          lane: pickLane(skill.meta.task),
-          system: skill.instructions,
-          userMessage: generalAnswerUserMessage({
-            question,
-            language,
-            today,
-            search,
-            notes: findings.notes,
-            // The model may leave it out; it is scrubbed like the question it came with.
-            missing: scrubDirectIdentifiers((sanitized.missing_detail ?? '').trim()),
-          }),
-          toolName: 'answer',
-          toolDescription: 'Return the one brief answer to this question.',
-          inputJsonSchema: answerJsonSchema,
-          schema: answerSchema,
-          maxTokens: MAX_TOKENS,
-        });
-        return sendable(value.answer, search, findings.urls);
+        sanitized = await sanitize(stage, text, pending);
       } catch (err) {
-        return unavailable('model_failed', failureName(err));
+        return notAReply(failureName(err));
       }
+      if (!answersPending(sanitized.answers_pending)) return notAReply();
+      console.info({ pendingAsk: 'completed' }, 'off-domain answer: the reply to a pending ask');
+      return answer(stage, sanitized, family);
     },
   };
 }

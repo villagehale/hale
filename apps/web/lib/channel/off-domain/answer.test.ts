@@ -5,6 +5,7 @@ import {
   type FamilyFacts,
   type FamilyPlace,
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
+  type PendingAsk,
   createGeneralAnswer,
   generalAnswerSearchEnabled,
   generalAnswerUserMessage,
@@ -179,6 +180,17 @@ describe('the three payloads', () => {
    * change to any of them re-keys the cache. */
   it('hands the sanitize call the raw text and nothing else', () => {
     expect(questionSanitizeUserMessage(ASK)).toBe('{"text":"whos the goat in football"}');
+  });
+
+  it('hands the sanitize call the pending ask beside the raw text, when there is one', () => {
+    expect(
+      questionSanitizeUserMessage('Toronto', {
+        question: 'hows the weather tomorrow',
+        missing: 'which city',
+      }),
+    ).toBe(
+      '{"text":"Toronto","pending":{"question":"hows the weather tomorrow","missing":"which city"}}',
+    );
   });
 
   it('hands the search the de-identified question and the date, and nothing else', () => {
@@ -803,7 +815,12 @@ describe('the live search', () => {
             seen,
           ),
         ).compose('did the leafs win last night', family),
-      ).toEqual({ status: 'composed', reply: "Can't check right now.", search: 'nothing_usable' });
+      ).toEqual({
+        status: 'composed',
+        reply: "Can't check right now.",
+        search: 'nothing_usable',
+        pendingAsk: { question: 'did the leafs win last night', missing: '' },
+      });
 
       expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}')).toEqual({
         question: 'did the leafs win last night',
@@ -845,7 +862,16 @@ describe('the live search', () => {
           seen,
         ),
       ).compose('hows the weather tomorrow', family),
-    ).toEqual({ status: 'composed', reply: 'Which city?', search: 'missing_detail' });
+    ).toEqual({
+      status: 'composed',
+      reply: 'Which city?',
+      search: 'missing_detail',
+      // What is kept for the parent's reply is what the compose was handed: scrubbed.
+      pendingAsk: {
+        question: 'hows the weather tomorrow',
+        missing: 'which city, reply to [redacted]',
+      },
+    });
 
     expect(seen.search).toHaveLength(0);
     expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}')).toEqual({
@@ -983,6 +1009,7 @@ describe('the live search', () => {
       status: 'composed',
       reply: "I can't check that right now.",
       search: 'search_failed',
+      pendingAsk: { question: 'did the leafs win last night', missing: '' },
     });
 
     expect(live(seen)).toBe('unavailable');
@@ -1030,7 +1057,12 @@ describe('the live search', () => {
             seen,
           ),
         ).compose('did the leafs win last night', family),
-      ).toEqual({ status: 'composed', reply: "Can't check right now.", search: 'nothing_usable' });
+      ).toEqual({
+        status: 'composed',
+        reply: "Can't check right now.",
+        search: 'nothing_usable',
+        pendingAsk: { question: 'did the leafs win last night', missing: '' },
+      });
 
       expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}')).toEqual({
         question: 'did the leafs win last night',
@@ -1276,6 +1308,288 @@ describe("the family's city and country", () => {
     expect(text).not.toContain('Toronto');
     expect(text).not.toContain('Canada');
     expect(text.toLowerCase()).not.toContain('toronto');
+  });
+});
+
+/**
+ * Sloane's finding 1, lit. Hale asks which city, the parent texts "Toronto", and that
+ * text starts a new turn with no question attached. So the reply that left a question
+ * open carries it out ({@link PendingAsk}: de-identified, never the parent's words), and
+ * the parent's next text is read beside it. Whether the text completes the question is the
+ * sanitizer's judgment. There is no keyword and no time window.
+ */
+describe('a reply to a question Hale left open', () => {
+  const PENDING: PendingAsk = { question: 'hows the weather tomorrow', missing: 'which city' };
+  const sanitizeMessage = (seen: Seen) =>
+    JSON.parse(seen.sanitize[0]?.messages?.[0]?.content ?? '{}');
+
+  it('reads "Toronto" as the answer to the ask, and makes exactly one search on the combined question', async () => {
+    lit();
+    const info = quietInfo();
+    const facts = familyAt({ status: 'unknown', reason: 'no_postal' });
+    const asked = seenNothing();
+
+    // The first turn: no city, and the lane cannot name one. Hale asks.
+    const first = await createGeneralAnswer(
+      scripted(
+        {
+          sanitize: reading({
+            question: 'hows the weather tomorrow',
+            missing_detail: 'which city',
+            their_place: 'needed',
+            needs_search: 'missing_detail',
+          }),
+          answer: { answer: 'Which city are you in?' },
+        },
+        asked,
+      ),
+    ).compose('weather tomorrow?', facts);
+    expect(first).toEqual({
+      status: 'composed',
+      reply: 'Which city are you in?',
+      search: 'missing_detail',
+      pendingAsk: PENDING,
+    });
+    expect(asked.search).toHaveLength(0);
+    if (first.status !== 'composed' || first.pendingAsk === undefined) throw new Error('no ask');
+    info.mockClear();
+
+    // The second turn: the reply, read beside the question it answers.
+    const seen = seenNothing();
+    expect(
+      await createGeneralAnswer(
+        scripted(
+          {
+            sanitize: reading({
+              answers_pending: 'yes',
+              question: 'hows the weather tomorrow in Toronto',
+              missing_detail: 'none',
+              their_place: 'not_needed',
+              needs_search: 'yes',
+            }),
+            search: searchFound(),
+            answer: { answer: 'Sunny in Toronto, high of 14.' },
+          },
+          seen,
+        ),
+      ).continueAsk('Toronto', first.pendingAsk, family),
+    ).toEqual({ status: 'composed', reply: 'Sunny in Toronto, high of 14.', search: 'searched' });
+
+    expect(sanitizeMessage(seen)).toEqual({ text: 'Toronto', pending: PENDING });
+    expect(seen.search.map((request) => request.messages)).toEqual([
+      [
+        {
+          role: 'user',
+          content: `{"question":"hows the weather tomorrow in Toronto","today":"${TODAY}"}`,
+        },
+      ],
+    ]);
+    expect(info.mock.calls).toEqual([
+      [{ pendingAsk: 'completed' }, 'off-domain answer: the reply to a pending ask'],
+      [{ search: 'searched', results: 1 }, 'off-domain answer: live search ran'],
+    ]);
+  });
+
+  /** A new question is answered as itself: the lane takes it from the top, with nothing
+   * of the old one attached, so this stage neither searches nor composes. */
+  it.each(['no', 'nothing_pending', 'maybe', '', null, undefined])(
+    'hands the text back as unrelated when the reading is %j, and searches and composes nothing',
+    async (answers_pending) => {
+      lit();
+      const info = quietInfo();
+      const seen = seenNothing();
+
+      expect(
+        await createGeneralAnswer(
+          scripted(
+            {
+              sanitize: reading({
+                answers_pending,
+                question: 'what is the capital of peru',
+                needs_search: 'yes',
+              }),
+              search: searchFound(),
+              answer: { answer: 'Lima.' },
+            },
+            seen,
+          ),
+        ).continueAsk('whats the capital of peru', PENDING, family),
+      ).toEqual({ status: 'unrelated' });
+
+      expect(seen.sanitize).toHaveLength(1);
+      expect(seen.search).toHaveLength(0);
+      expect(seen.compose).toHaveLength(0);
+      expect(info.mock.calls).toEqual([
+        [{ pendingAsk: 'unrelated' }, 'off-domain answer: the reply to a pending ask'],
+      ]);
+    },
+  );
+
+  /**
+   * This call runs AHEAD of the screen, on a text that may be about the kids' week. So
+   * when it cannot judge, the text goes back to the lane to be routed as usual. It never
+   * costs a parent the coach, and it never sends the fixed line.
+   */
+  it.each([
+    ['there is no client', throwingClient, 'client_unavailable'],
+    ['the sanitize call fails', scripted({ sanitize: new Error('upstream 529') }), 'Error'],
+    ['the sanitize call comes back in the wrong shape', scripted({ sanitize: 'sure' }), 'ZodError'],
+  ] as const)('hands the text back unread when %s, by name', async (_label, client, detail) => {
+    lit();
+    const warn = quietWarn();
+
+    expect(await createGeneralAnswer(client).continueAsk('Toronto', PENDING, family)).toEqual({
+      status: 'unrelated',
+    });
+    expect(warn.mock.calls).toEqual([
+      [{ pendingAsk: 'unread', detail }, 'off-domain answer: the reply to a pending ask'],
+    ]);
+  });
+
+  /** A crisis never waits on a model, and the lane's own doors answer it. */
+  it.each(['I want to die', 'she is not breathing'])(
+    'hands %j back without calling a model',
+    async (text) => {
+      lit();
+      quietInfo();
+      const exploding = () =>
+        ({
+          messages: {
+            create: () => {
+              throw new Error('a crisis must not reach a model');
+            },
+          },
+        }) as unknown as AgentClient;
+
+      expect(await createGeneralAnswer(exploding).continueAsk(text, PENDING, family)).toEqual({
+        status: 'unrelated',
+      });
+    },
+  );
+
+  /** "Tell me the score you saw" (Sloane, on score-search-off): a question whose search
+   * failed is left open the same way, so the parent's reply is read beside it. */
+  it('keeps a question whose search failed, and reads the reply beside it', async () => {
+    lit();
+    quietWarn();
+    quietInfo();
+    const failed = await createGeneralAnswer(
+      scripted({
+        sanitize: reading({ question: 'did the raptors win last night', needs_search: 'yes' }),
+        search: new Error('connection reset'),
+        answer: { answer: "Can't check right now. What score did you see?" },
+      }),
+    ).compose('did the raptors win last night', family);
+    expect(failed).toMatchObject({
+      search: 'search_failed',
+      pendingAsk: { question: 'did the raptors win last night', missing: '' },
+    });
+    if (failed.status !== 'composed' || failed.pendingAsk === undefined) throw new Error('no ask');
+
+    const seen = seenNothing();
+    await createGeneralAnswer(
+      scripted(
+        {
+          sanitize: reading({
+            answers_pending: 'yes',
+            question: 'the raptors won 112-104 last night, how did the game go',
+            needs_search: 'yes',
+          }),
+          search: searchFound(),
+          answer: { answer: 'Big fourth quarter.' },
+        },
+        seen,
+      ),
+    ).continueAsk('they won 112-104', failed.pendingAsk, family);
+
+    expect(sanitizeMessage(seen)).toEqual({
+      text: 'they won 112-104',
+      pending: { question: 'did the raptors win last night', missing: '' },
+    });
+    expect(seen.search).toHaveLength(1);
+  });
+
+  /** A reply that still leaves the city out is asked again, with the question it now
+   * belongs to kept for the next one. */
+  it('keeps the combined question when the reply still leaves something out', async () => {
+    lit();
+    quietInfo();
+
+    expect(
+      await createGeneralAnswer(
+        scripted({
+          sanitize: reading({
+            answers_pending: 'yes',
+            question: 'hows the weather tomorrow in the big one',
+            missing_detail: 'which city they mean',
+            needs_search: 'missing_detail',
+          }),
+          answer: { answer: 'Which city is that?' },
+        }),
+      ).continueAsk('the big one', PENDING, family),
+    ).toEqual({
+      status: 'composed',
+      reply: 'Which city is that?',
+      search: 'missing_detail',
+      pendingAsk: {
+        question: 'hows the weather tomorrow in the big one',
+        missing: 'which city they mean',
+      },
+    });
+  });
+
+  /** Nothing is kept for a turn that was answered, needed no search, or ran dark. */
+  it.each([
+    ['a searched answer', true, reading({ needs_search: 'yes' })],
+    ['a question that needed no search', true, reading({ needs_search: 'no' })],
+    [
+      'a dark turn',
+      false,
+      reading({ needs_search: 'missing_detail', missing_detail: 'which city' }),
+    ],
+    ['a dark turn that needed a search', false, reading({ needs_search: 'yes' })],
+  ] as const)('keeps nothing for %s', async (_label, isLit, sanitize) => {
+    if (isLit) lit();
+    quietInfo();
+    quietWarn();
+
+    const outcome = await createGeneralAnswer(
+      scripted({ sanitize, search: searchFound(), answer: { answer: 'An answer.' } }),
+    ).compose(ASK, family);
+
+    expect(outcome).toMatchObject({ status: 'composed', reply: 'An answer.' });
+    expect(outcome).not.toHaveProperty('pendingAsk');
+  });
+
+  /** Rule #1. The pending question is a question a parent asked, de-identified or not. */
+  it('logs nothing of the pending question or the reply to it', async () => {
+    lit();
+    const logged: unknown[][] = [];
+    for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args);
+      });
+    }
+    const pending: PendingAsk = { question: 'is the Fernhollow rink open', missing: 'which town' };
+
+    await createGeneralAnswer(
+      scripted({
+        sanitize: reading({ answers_pending: 'yes', needs_search: 'no' }),
+        answer: { answer: 'x' },
+      }),
+    ).continueAsk('in Maplewood', pending, family);
+    await createGeneralAnswer(
+      scripted({ sanitize: reading({ answers_pending: 'no' }) }),
+    ).continueAsk('in Maplewood', pending, family);
+    await createGeneralAnswer(
+      scripted({ sanitize: new Error('400: is the Fernhollow rink open in Maplewood') }),
+    ).continueAsk('in Maplewood', pending, family);
+
+    expect(logged).toHaveLength(3);
+    const text = JSON.stringify(logged);
+    expect(text).not.toContain('Fernhollow');
+    expect(text).not.toContain('Maplewood');
+    expect(text).not.toContain('which town');
   });
 });
 

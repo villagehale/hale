@@ -1,13 +1,18 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte } from 'drizzle-orm';
 import { replyLanguage } from '~/lib/channel/language';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import {
+  type FamilyFacts,
   type FamilyPlace,
   type GeneralAnswerComposer,
   type GeneralAnswerFallback,
+  type GeneralAnswerOutcome,
+  type PendingAsk,
   createGeneralAnswer,
+  generalAnswerSearchEnabled,
   localDate,
 } from './answer';
 import {
@@ -70,7 +75,9 @@ import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScree
  * outcome — the deflection still went out, and the founder's weekly count is short one
  * row that the log line accounts for. `not_applicable` is the medical-symptom answer
  * lane: Hale ANSWERED it, so it was never an unmet intent and no row was written
- * (founder-locked 2026-08-17) — named rather than faked as a failed write (rule #11). */
+ * (founder-locked 2026-08-17) — named rather than faked as a failed write (rule #11). It
+ * is also a parent's reply to a question Hale left open: that question was counted when
+ * it was first asked, and its answer ("Toronto") is not a second one. */
 export type UnmetSignalOutcome = 'recorded' | 'not_recorded' | 'not_applicable';
 
 /**
@@ -107,6 +114,12 @@ export type OffDomainVerdict =
        */
       medicalSource: MedicalReplySource | null;
       signal: UnmetSignalOutcome;
+      /**
+       * The question this reply left open, for the router to keep on the reply's own
+       * ledger row (see {@link OffDomainPorts.pendingAsk}), or null. Only a lit general
+       * answer ever sets it.
+       */
+      pendingAsk: PendingAsk | null;
     };
 
 export interface OffDomainPorts {
@@ -124,6 +137,17 @@ export interface OffDomainPorts {
    * the family is. Non-nullable (rule #11): a place that is not known is an answer this
    * read gives by name, not a reader that is missing. */
   place(familyId: string): Promise<FamilyPlace>;
+  /**
+   * The question Hale's last word to this parent left open, or null. Read once a turn,
+   * ahead of the screen, and only while the general answer's search is lit. `asOf` is the
+   * turn's own clock: nothing this turn sends while it works (the holding line) may close
+   * the ask the turn is about to read.
+   */
+  pendingAsk(input: {
+    familyId: string;
+    parentUserId: string;
+    asOf: Date;
+  }): Promise<PendingAsk | null>;
   /** Answers a medical-symptom text: a web-grounded, coarse-age-aware reply with its own
    * triage, or the fixed 811/911 line as a last resort. Non-nullable for the same reason
    * (rule #11) — its own failure modes are named inside it, never a missing dependency. */
@@ -141,8 +165,12 @@ export interface OffDomainPorts {
 export interface OffDomainLane {
   consider(input: {
     familyId: string;
+    /** Whose text this is. A question Hale left open was put to one parent's phone. */
+    parentUserId: string;
     channelMessageId: string;
     text: string;
+    /** The turn's clock. */
+    now: Date;
   }): Promise<OffDomainVerdict>;
 }
 
@@ -166,7 +194,34 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
           replySource: 'fixed',
           medicalSource: null,
           signal,
+          pendingAsk: null,
         };
+      }
+
+      const family: FamilyFacts = {
+        today: () => ports.today(input.familyId),
+        place: () => ports.place(input.familyId),
+      };
+
+      // A REPLY TO A QUESTION HALE LEFT OPEN is read before the screen, not after it.
+      // "Toronto" on its own is not a question about the world, and a screen that never
+      // saw the ask would hand it to the coach. The composer judges whether the text
+      // completes the question; one that does not comes back and is routed below as any
+      // other text is. The demand signal is not written twice: the question was counted
+      // on the text that first asked it.
+      const pending = await standingAsk(ports, input);
+      if (pending !== null) {
+        const continued = await ports.answer.continueAsk(input.text, pending, family);
+        if (continued.status !== 'unrelated') {
+          return {
+            status: 'deflected',
+            lane: 'off_domain_general',
+            category: 'other',
+            ...replyFor(continued, input.text),
+            medicalSource: null,
+            signal: 'not_applicable',
+          };
+        }
       }
 
       const reading = await ports.screen.read(input.text);
@@ -192,6 +247,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
           replySource,
           medicalSource: replySource,
           signal: 'not_applicable',
+          pendingAsk: null,
         };
       }
 
@@ -213,14 +269,14 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // Which LANGUAGE those fixed sentences go out in is decided the same way and for
       // the same reason — off the words in front of it, with no model consulted.
       const language = replyLanguage(input.text);
-      const { reply, replySource } =
+      const { reply, replySource, pendingAsk } =
         lane === 'safety_critical'
           ? namesAMentalCrisis(input.text) || reading.category === 'mental-health'
-            ? { reply: MENTAL_CRISIS_REPLY, replySource: 'fixed' as const }
-            : { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
+            ? fixedLine(MENTAL_CRISIS_REPLY)
+            : fixedLine(SAFETY_REPLY_BY_LANGUAGE[language])
           : lane === 'provider_access'
-            ? { reply: referralReply(input.text, language), replySource: 'fixed' as const }
-            : await answerOrFallback(ports, input.familyId, input.text);
+            ? fixedLine(referralReply(input.text, language))
+            : replyFor(await ports.answer.compose(input.text, family), input.text);
 
       const signal = await ports.recordUnmetIntent({
         channelMessageId: input.channelMessageId,
@@ -240,9 +296,43 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         // deliberate door in the safety row's fallback count.
         medicalSource: null,
         signal,
+        pendingAsk,
       };
     },
   };
+}
+
+/** What the lane sends and what the router keeps beside it. */
+interface LaneReply {
+  reply: string;
+  replySource: ReplySource;
+  pendingAsk: PendingAsk | null;
+}
+
+/** One of the doors in copy.ts. It leaves no question open. */
+function fixedLine(reply: string): LaneReply {
+  return { reply, replySource: 'fixed', pendingAsk: null };
+}
+
+/**
+ * The question Hale's last word to this parent left open, or null with the reason named
+ * (rule #11). Nothing is read while the general answer's search is dark: a dark lane
+ * leaves no question open, so there is nothing to find.
+ */
+async function standingAsk(
+  ports: OffDomainPorts,
+  input: { familyId: string; parentUserId: string; now: Date },
+): Promise<PendingAsk | null> {
+  if (!generalAnswerSearchEnabled()) return null;
+  const pending = await ports.pendingAsk({
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    asOf: input.now,
+  });
+  if (pending === null) {
+    console.info({ pendingAsk: 'none' }, 'off-domain lane: no pending ask for this parent');
+  }
+  return pending;
 }
 
 /**
@@ -254,28 +344,67 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
  * under v3 there is no boundary here to recite: the same question tomorrow gets a real
  * answer, and a line claiming otherwise would be the one false thing in the exchange.
  */
-async function answerOrFallback(
-  ports: OffDomainPorts,
-  familyId: string,
-  text: string,
-): Promise<{ reply: string; replySource: ReplySource }> {
-  const composed = await ports.answer.compose(text, {
-    today: () => ports.today(familyId),
-    place: () => ports.place(familyId),
-  });
-  if (composed.status === 'composed') return { reply: composed.reply, replySource: 'composed' };
+function replyFor(composed: GeneralAnswerOutcome, text: string): LaneReply {
+  if (composed.status === 'composed') {
+    return {
+      reply: composed.reply,
+      replySource: 'composed',
+      pendingAsk: composed.pendingAsk ?? null,
+    };
+  }
   const language = replyLanguage(text);
   // A question about the world that turned out to be about a hurt child. It leaves by
   // the same door a screened symptom does, words and all, and `fixed` says so — crediting
   // the composer for a sentence it did not write would cost the founder's weekly count
   // the one distinction it is for (skill audit P0 #3).
   if (composed.status === 'safety') {
-    return {
-      reply: namesAnEmergency(text) ? EMERGENCY_REPLY : SAFETY_REPLY_BY_LANGUAGE[language],
-      replySource: 'fixed',
-    };
+    return fixedLine(namesAnEmergency(text) ? EMERGENCY_REPLY : SAFETY_REPLY_BY_LANGUAGE[language]);
   }
-  return { reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE[language], replySource: composed.reason };
+  return {
+    reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE[language],
+    replySource: composed.reason,
+    pendingAsk: null,
+  };
+}
+
+/**
+ * The production read behind {@link OffDomainPorts.pendingAsk}.
+ *
+ * NO STATE OF ITS OWN, the readiness and check-in asks' pattern: a question is open while
+ * the reply that left it is Hale's last word to this parent, so "is it still pending" is
+ * a read of the ledger and not a flag every other sender would have to remember to clear.
+ * That also makes it one-shot by construction. Whatever answers the parent's next text,
+ * the completed question or anything else, is a newer last word.
+ *
+ * PER PARENT, like those asks: it was put to one phone. A send that failed reached no
+ * phone and is not a last word (SENT_STATUSES).
+ */
+export function readPendingAsk(database: Database) {
+  return async (input: {
+    familyId: string;
+    parentUserId: string;
+    asOf: Date;
+  }): Promise<PendingAsk | null> => {
+    const [last] = await database
+      .select({
+        question: schema.channelMessages.pendingQuestion,
+        missing: schema.channelMessages.pendingMissing,
+      })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.familyId, input.familyId),
+          eq(schema.channelMessages.parentUserId, input.parentUserId),
+          eq(schema.channelMessages.direction, 'out'),
+          inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+          lte(schema.channelMessages.createdAt, input.asOf),
+        ),
+      )
+      .orderBy(desc(schema.channelMessages.createdAt))
+      .limit(1);
+    if (!last || last.question === null) return null;
+    return { question: last.question, missing: last.missing ?? '' };
+  };
 }
 
 /**
@@ -347,6 +476,7 @@ export function productionOffDomainLane(
     answer: createGeneralAnswer(client),
     today: async (familyId) => localDate(new Date(), await readFamilyTimezone(database, familyId)),
     place: (familyId) => readFamilyPlace(database, familyId),
+    pendingAsk: readPendingAsk(database),
     medical: createMedicalComposer(client),
     recordUnmetIntent: recordUnmetIntent(database),
   });
