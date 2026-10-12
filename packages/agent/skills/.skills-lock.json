@@ -231,6 +231,10 @@
     "file": "week-summary.md",
     "sha256": "2a01ea52cfc2cd1268bc23c60f15fbbc11e95eab00365169f9164a6e06331e50"
   },
+  "weekday-care-ask.md": {
+    "file": "weekday-care-ask.md",
+    "sha256": "138300c63a4ed2f5ac62159962d2bcee22b6f0507651a12d3fab808e1a2e2410"
+  },
   "workstream-followup.md": {
     "file": "workstream-followup.md",
     "sha256": "96ee07a5fe9a4a28029ef04a79880f2bf59af03a9eb4c25dab10dbcbbf2f9b8a"

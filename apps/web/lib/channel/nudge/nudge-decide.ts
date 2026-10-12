@@ -659,9 +659,6 @@ export function decideWeekdayDropIn(input: DecideNudgeInput): LegOutcome<Weekday
 
 const BREAK_EVENT_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}$/;
 
-/** The longest given name the named ask carries; a longer one gets the household ask. */
-const WEEKDAY_ASK_NAME_MAX = 24;
-
 function breakAskFits(label: string): boolean {
   if (!isPrintableGsm7Basic(label)) return false;
   if (label.length === 0 || label.length > 40 || label.includes('?') || label.includes('\n')) {
@@ -772,12 +769,6 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
     childId: roster.child.id,
     name,
   };
-  if (name.length > WEEKDAY_ASK_NAME_MAX) {
-    return {
-      nudge: { kind: 'weekday_care', ask: { prompt: 'after_school_household' } },
-      skips: [...skips, 'name_not_printable'],
-    };
-  }
   return { nudge: { kind: 'weekday_care', ask }, skips };
 }
 

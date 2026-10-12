@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,7 +24,9 @@ import { channelRouterDeps } from '~/lib/channel/router/wiring';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { loadAgentContext } from '~/lib/coach/context';
+import { pipelineClient } from '~/lib/pipeline/client';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordedModel } from '~/lib/testing/recorded-model';
 
 /**
  * THE WEEKDAY-CARE ARC, end to end, over real Postgres and the real readers.
@@ -58,6 +62,9 @@ const FRIDAY = new Date('2026-08-07T14:00:00.000Z');
 /** The Tuesday after it, in the family's own zone. */
 const TUESDAY_KEY = '2026-08-11';
 const PHONE = '+15551230000';
+/** The weekday-care ask, written by real Claude once and replayed (hard rule #8). */
+const ASK_RECORDINGS = join(import.meta.dirname, '__recordings__', 'weekday-care-ask.json');
+const askWriter = (): AgentClient => recordedModel(ASK_RECORDINGS, pipelineClient).client();
 
 let db: TestDb;
 let familyId: string;
@@ -144,7 +151,7 @@ const openGate = (): OutboundGatePorts => ({
  * `selectFamilies` and `loadRecipients` are overridden because both join
  * `parent_channels`, which needs an encryption key this journey has no use for.
  */
-function nudgeDeps(transport: FakeTransport): NudgeRunDeps {
+function nudgeDeps(transport: FakeTransport, client: AgentClient | null = null): NudgeRunDeps {
   return {
     ...defaultNudgeRunDeps(),
     selectFamilies: async () => [
@@ -161,9 +168,9 @@ function nudgeDeps(transport: FakeTransport): NudgeRunDeps {
     weather: { getDailyOutlook: async () => [] },
     buildGate: openGate,
     transport,
-    // No model: the deterministic render IS the message for the ask, and for the find it
-    // is the grounded floor. Either way the words below are Hale's own.
-    client: null,
+    // The ask runs pass the recorded writer. The find runs pass none, so its words are
+    // the grounded floor and the assertions below can name them.
+    client,
   };
 }
 
@@ -268,11 +275,17 @@ describe('the weekday-care arc', () => {
 
     // ── the ask ───────────────────────────────────────────────────────────────
     const askTransport = new FakeTransport();
-    const asked = await runNudgeCron(db.database, nudgeDeps(askTransport), FRIDAY);
+    const asked = await runNudgeCron(db.database, nudgeDeps(askTransport, askWriter()), FRIDAY);
 
-    expect(asked).toMatchObject({ sent: 0, quiet: 1 });
-    expect(askTransport.sent).toEqual([]);
-    expect(await outbound('proactive_nudge:weekday_care')).toEqual([]);
+    expect(asked.sent).toBe(1);
+    const askBody = askTransport.sent[0]?.body ?? '';
+    expect(askBody.toLowerCase()).toContain('weekday');
+    expect(askBody.match(/\?/g)).toHaveLength(1);
+    expect(askBody).not.toContain('Mia');
+    expect(askBody).not.toContain('Ava');
+    expect(askBody.toLowerCase()).not.toContain('pa day');
+    const [askRow] = await outbound('proactive_nudge:weekday_care');
+    expect(askRow?.dedupeKey).toBe(`nudge:${familyId}:weekday_care:household:${parentUserId}`);
 
     // A yes to the finder ask is not a care fact.
     const answeredAt = new Date(FRIDAY.getTime() + 20 * 60_000);
@@ -333,20 +346,35 @@ describe('the weekday-care arc', () => {
     expect(await outbound('proactive_nudge:weekday_dropin')).toHaveLength(1);
   });
 
-  it('does not mark a household asked when the writer sent nothing', async () => {
+  it('never asks the same household twice', async () => {
     await seedWeekendFind();
     const transport = new FakeTransport();
 
-    await runNudgeCron(db.database, nudgeDeps(transport), FRIDAY);
+    const first = await runNudgeCron(db.database, nudgeDeps(transport, askWriter()), FRIDAY);
+    expect(first.sent).toBe(1);
+    // A week later, with the question unanswered: the ledger row is the permanent
+    // answer to "have we asked?", so the reason is `already_asked` rather than a
+    // dedupe collision.
     const again = await runNudgeCron(
       db.database,
-      nudgeDeps(transport),
+      nudgeDeps(transport, askWriter()),
       new Date('2026-08-14T14:00:00.000Z'),
     );
 
-    expect(again).toMatchObject({ sent: 0, quiet: 1 });
-    expect(again.skips.already_asked ?? 0).toBe(0);
+    expect(again.sent).toBe(0);
+    expect(again.skips.already_asked).toBe(1);
+    expect(transport.sent).toHaveLength(1);
+  });
+
+  it('asks nothing and records nothing when there is no writer', async () => {
+    await seedWeekendFind();
+    const transport = new FakeTransport();
+
+    const result = await runNudgeCron(db.database, nudgeDeps(transport), FRIDAY);
+
+    expect(result).toMatchObject({ sent: 0, quiet: 1 });
     expect(transport.sent).toEqual([]);
+    expect(await outbound('proactive_nudge:weekday_care')).toEqual([]);
   });
 
   it('asks nobody it has not sent a weekend find to (D23)', async () => {
@@ -362,7 +390,7 @@ describe('the weekday-care arc', () => {
 
   it('files a daycare answer and comes back once, days later, to ask how it is going', async () => {
     await seedWeekendFind();
-    await runNudgeCron(db.database, nudgeDeps(new FakeTransport()), FRIDAY);
+    await runNudgeCron(db.database, nudgeDeps(new FakeTransport(), askWriter()), FRIDAY);
 
     const answeredAt = new Date(FRIDAY.getTime() + 20 * 60_000);
     await recordWeekdayCare(db.database, {
@@ -385,7 +413,7 @@ describe('the weekday-care arc', () => {
 
     // The find is OFF for this household now — the same context read, a different answer.
     const context = await loadWeekdayCareContext(db.database, familyId);
-    expect(context.askedBefore).toBe(false);
+    expect(context.askedBefore).toBe(true);
     expect(context.stated[0]?.care).toBe('daycare');
 
     vi.stubEnv(FOLLOWUP_ASKS_ENABLED_ENV, 'true');

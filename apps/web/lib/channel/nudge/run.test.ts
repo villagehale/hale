@@ -1320,12 +1320,12 @@ describe('runNudgeCron — the weekday-care ask', () => {
     expect(text).not.toContain('Maya');
   }
 
-  it('does not send a template for the fallback ask', async () => {
+  it('with no model, sends no template for the fallback ask', async () => {
     const h = ask([TODDLER]);
     expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
   });
 
-  it('stays quiet on a re-fire, because nothing was sent to dedupe', async () => {
+  it('with no model, stays quiet on a re-fire, because nothing was sent to dedupe', async () => {
     const h = ask([TODDLER]);
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
     const again = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
@@ -1333,17 +1333,17 @@ describe('runNudgeCron — the weekday-care ask', () => {
     expect(h.transport.bodies()).toEqual([]);
   });
 
-  it('sends nothing when a toddler and a teenager share the house', async () => {
+  it('with no model, sends nothing when a toddler and a teenager share the house', async () => {
     const h = ask([TEEN, TODDLER]);
     expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
   });
 
-  it('sends nothing to a teen-only household, and does not name them', async () => {
+  it('with no model, sends nothing to a teen-only household, and does not name them', async () => {
     const h = ask([TEEN]);
     expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
   });
 
-  it('sends nothing for one school-age child', async () => {
+  it('with no model, sends nothing for one school-age child', async () => {
     const h = ask([
       {
         id: 'child-maya',

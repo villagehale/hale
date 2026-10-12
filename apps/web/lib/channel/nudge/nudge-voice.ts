@@ -1,12 +1,13 @@
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import { loadNudgeVoiceSkill } from '~/lib/cron/skill';
+import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
+import { forceToolJson } from '~/lib/pipeline/structured';
 import type {
   EmptySaturdayNudge,
   HealthCheckpointNudge,
@@ -14,6 +15,13 @@ import type {
   WeekdayCareAsk,
 } from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
+import {
+  WEEKDAY_ASK_MAX_TOKENS,
+  WEEKDAY_ASK_TOOL,
+  WEEKDAY_ASK_TOOL_SCHEMA,
+  readWeekdayAsk,
+  weekdayAskContext,
+} from './weekday-ask-tools';
 
 /**
  * VIL-239 · M4 — COMPOSE: the decision object, said out loud in Hale's voice.
@@ -283,12 +291,57 @@ async function composeEmptySaturday(
   return linked;
 }
 
+export const WEEKDAY_ASK_SKILL = 'weekday-care-ask';
+
+/**
+ * The weekday-care offer, written by the model and checked against the offer that was
+ * chosen (weekday-ask-tools.ts). No canned sentence: a missing client, a failed call or
+ * a text that fails the check is silence, named `unvoiced` by the caller.
+ */
+async function composeWeekdayCareAsk(
+  nudge: WeekdayCareAsk,
+  deps: { familyId: string; client: AgentClient | null },
+): Promise<string | null> {
+  if (!deps.client) return null;
+  const skill = await loadCronSkill(WEEKDAY_ASK_SKILL);
+  let value: unknown;
+  try {
+    const result = await forceToolJson({
+      client: deps.client,
+      lane: pickLane(skill.meta.task),
+      system: skill.instructions,
+      userMessage: weekdayAskContext(nudge.ask),
+      toolName: WEEKDAY_ASK_TOOL,
+      toolDescription: 'The one text Hale sends.',
+      inputJsonSchema: WEEKDAY_ASK_TOOL_SCHEMA,
+      schema: z.unknown(),
+      maxTokens: WEEKDAY_ASK_MAX_TOKENS,
+    });
+    value = result.value;
+  } catch (err) {
+    console.error(
+      { err: err instanceof Error ? err.message : 'unknown', familyId: deps.familyId },
+      'nudge: weekday ask model call failed - unvoiced',
+    );
+    return null;
+  }
+  const read = readWeekdayAsk(value, nudge.ask);
+  if ('skipped' in read) {
+    console.error(
+      { familyId: deps.familyId, reason: read.skipped, prompt: nudge.ask.prompt },
+      'nudge: weekday ask refused - unvoiced',
+    );
+    return null;
+  }
+  return read.message;
+}
+
 export async function composeNudgeMessage(
   nudge: Nudge,
   deps: { familyId: string; database: Database; client: AgentClient | null },
 ): Promise<string | null> {
   if (nudge.kind === 'empty_saturday') return composeEmptySaturday(nudge, deps);
-  if (nudge.kind === 'weekday_care') return null;
+  if (nudge.kind === 'weekday_care') return composeWeekdayCareAsk(nudge, deps);
   const deterministic = renderNudgeDeterministically(nudge);
   // A health checkpoint never reaches the model (VIL-243 · M8): deterministic copy is
   // REVIEWABLE copy, and this is the one message class where a warmer sentence is not
