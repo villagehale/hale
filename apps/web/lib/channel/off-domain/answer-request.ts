@@ -75,10 +75,28 @@ export const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
   ],
 };
 
+/**
+ * `grounding` comes first because the model writes its fields in this order: every
+ * specific the answer is about to state, beside the words in the research it comes from
+ * (general-answer.md), and only then the answer. Both are required OF THE MODEL. The lane
+ * reads `answer` and nothing else (answer.ts), so the list is never sent, kept or logged,
+ * and a reply that arrives without it is still the reply. The eval keeps the whole object
+ * with its recording.
+ */
 export const answerJsonSchema = {
   type: 'object',
-  properties: { answer: { type: 'string' } },
-  required: ['answer'],
+  properties: {
+    grounding: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { states: { type: 'string' }, from: { type: 'string' } },
+        required: ['states', 'from'],
+      },
+    },
+    answer: { type: 'string' },
+  },
+  required: ['grounding', 'answer'],
 } as const;
 
 /**

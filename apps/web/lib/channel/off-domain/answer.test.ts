@@ -36,6 +36,7 @@ interface SystemBlock {
 interface Captured {
   model?: string;
   max_tokens?: number;
+  output_config?: { format?: { schema?: Record<string, unknown> } };
   system?: string | SystemBlock[];
   tools?: Array<{ name?: string; type?: string; max_uses?: number }>;
   messages?: Array<{ role: string; content: string }>;
@@ -339,6 +340,103 @@ describe('createGeneralAnswer', () => {
     expect(instructions).toContain(ANSWER_HEADING);
     // The skill body is the whole cached prefix: no context block spliced after it.
     expect(instructions.endsWith('point at an app.')).toBe(true);
+  });
+
+  /**
+   * Sloane's finding 4. A direction alone did not stop an invented specific, so the
+   * compose WRITES its sources down before it writes the reply: each specific the answer
+   * is going to state, beside the words in the research it comes from. The model writes
+   * its fields in the order the schema lists them, so `grounding` is first, both are
+   * required of it, and the list's entries are sealed.
+   */
+  it('asks the compose to write its grounding before the answer', async () => {
+    const seen = seenNothing();
+    await createGeneralAnswer(clientReturning({ grounding: [], answer: 'Lima.' }, seen)).compose(
+      ASK,
+      family,
+    );
+
+    expect(seen.compose[0]?.output_config?.format?.schema).toEqual({
+      type: 'object',
+      properties: {
+        grounding: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { states: { type: 'string' }, from: { type: 'string' } },
+            required: ['states', 'from'],
+            additionalProperties: false,
+          },
+        },
+        answer: { type: 'string' },
+      },
+      required: ['grounding', 'answer'],
+      additionalProperties: false,
+    });
+    const schema = seen.compose[0]?.output_config?.format?.schema as {
+      properties: Record<string, unknown>;
+    };
+    expect(Object.keys(schema.properties)).toEqual(['grounding', 'answer']);
+  });
+
+  /**
+   * The grounding is the model's working. The lane reads `answer` and nothing else, so
+   * none of it is in the reply, in what the router keeps beside the reply (the pending
+   * ask), or in a log line, on the paths that send and on the ones that refuse.
+   */
+  it('reads only the answer: the grounding is not sent, kept or logged', async () => {
+    lit();
+    const logged: unknown[][] = [];
+    for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args);
+      });
+    }
+    const grounding = [{ states: 'GROUNDED-SPECIFIC', from: 'GROUNDED-SOURCE-WORDS' }];
+    const turn = (script: Script) => createGeneralAnswer(scripted(script)).compose(ASK, family);
+
+    const answered = await turn({
+      sanitize: reading({ needs_search: 'yes' }),
+      search: searchFound(),
+      answer: { grounding, answer: 'The Leafs won 4-2.' },
+    });
+    const leftOpen = await turn({
+      sanitize: reading({ missing_detail: 'which city', needs_search: 'missing_detail' }),
+      answer: { grounding, answer: 'Which city?' },
+    });
+    const refused = await turn({ answer: { grounding, answer: 'See https://example.com' } });
+
+    expect(answered).toEqual({
+      status: 'composed',
+      reply: 'The Leafs won 4-2.',
+      search: 'searched',
+    });
+    expect(leftOpen).toEqual({
+      status: 'composed',
+      reply: 'Which city?',
+      search: 'missing_detail',
+      pendingAsk: { question: ASK, missing: 'which city' },
+    });
+    expect(refused).toEqual({ status: 'unavailable', reason: 'unsendable' });
+    // Positive control: these turns did log, and the answer is where the grounding is not.
+    expect(logged.length).toBeGreaterThanOrEqual(3);
+    const everything = JSON.stringify([answered, leftOpen, refused, logged]);
+    expect(everything).toContain('The Leafs won 4-2.');
+    expect(everything).not.toContain('GROUNDED');
+  });
+
+  /** Nothing reads the grounding, so nothing depends on it: a reply that arrives without
+   * it, or with it in some other shape, is still the reply. */
+  it.each([
+    ['no grounding at all', { answer: 'Lima.' }],
+    ['a grounding that is not a list', { grounding: 'Lima: settled', answer: 'Lima.' }],
+    ['an entry with a field missing', { grounding: [{ states: 'Lima' }], answer: 'Lima.' }],
+  ])('sends the answer when the model returns %s', async (_label, answer) => {
+    expect(await createGeneralAnswer(clientReturning(answer)).compose(ASK, family)).toEqual({
+      status: 'composed',
+      reply: 'Lima.',
+      search: 'not_needed',
+    });
   });
 
   it('names a missing client rather than throwing', async () => {
