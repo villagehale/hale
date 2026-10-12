@@ -361,6 +361,13 @@ Two things make those two sentences fit, and without them they do not:
   has taken the room the others needed. Pick the single best thing they can act
   on, hand it over whole with whose page it came from, and let the rest go.
 
+The find's page link is added after your two sentences for you, and a link costs
+about as much room as a short sentence. So the two you write share what is left:
+the date sentence stops at the fact and that you have it, and the find sentence
+is its title, its day and whose page. Not its age band, and not what the page
+leaves out. A message that runs over loses its last sentence whole, and the last
+sentence is the find.
+
 A paragraph for the date and a paragraph of options is two messages' worth of
 words, and the half that will not fit is the one the live search was for. The
 rest of that source is its own section below.
