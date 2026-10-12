@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
 import {
   WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
   WEEKDAY_BREAK_TEMPLATE_KEY,
@@ -135,6 +135,7 @@ interface QueuedItem extends OpenCandidate {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
 
 export async function runProactiveReview(
   database: Database,
@@ -541,6 +542,7 @@ async function sendChosen(
       ...new Set([
         ...seats.map((seat) => seat.parentUserId),
         ...perParent.map((copy) => copy.parentUserId),
+        ...(await chatMemberUserIds(database, target.chatId)),
       ]),
     ];
     copies = householdCopies(target, perParent).map((copy) => ({
@@ -677,6 +679,29 @@ async function sendChosen(
     });
   }
   await alertVolume(database, familyId, now);
+}
+
+/**
+ * Every Hale user still in the chat. The recipient list drops a parent whose own 1:1
+ * line is revoked, but a 1:1 STOP does not take their seat in the group, so the chat's
+ * roster is who the bubble actually reaches.
+ */
+async function chatMemberUserIds(database: Database, chatId: string): Promise<string[]> {
+  const rows = await database
+    .select({
+      userId: schema.linqGroupRosterMembers.userId,
+      knownUserId: schema.linqGroupRosterMembers.knownUserId,
+    })
+    .from(schema.linqGroupRosterMembers)
+    .where(
+      and(
+        eq(schema.linqGroupRosterMembers.chatId, chatId),
+        notInArray(schema.linqGroupRosterMembers.status, GONE),
+      ),
+    );
+  return rows.flatMap((row) =>
+    [row.userId, row.knownUserId].filter((id): id is string => id !== null),
+  );
 }
 
 function latestHold(items: readonly OpenCandidate[]): Date | null {

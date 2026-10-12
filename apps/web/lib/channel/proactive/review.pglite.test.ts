@@ -584,6 +584,51 @@ describe('runProactiveReview', () => {
       expect(new Set(gated)).toEqual(new Set([parentUserId, coParentId]));
       expect(await candidate(id)).toMatchObject({ status: 'sent' });
     });
+
+    it('gates a parent still in the chat whose own 1:1 line was stopped', async () => {
+      const id = await enqueue();
+      const [roster] = await db.database
+        .insert(schema.linqGroupRosters)
+        .values({ chatId: CHAT, familyId, source: 'new_group', status: 'confirmed' })
+        .returning({ id: schema.linqGroupRosters.id });
+      const rosterId = roster?.id as string;
+      await db.database.insert(schema.linqGroupRosterMembers).values([
+        {
+          rosterId,
+          chatId: CHAT,
+          phoneE164Hash: 'hash-primary',
+          knownUserId: parentUserId,
+          status: 'known_parent',
+        },
+        {
+          rosterId,
+          chatId: CHAT,
+          phoneE164Hash: 'hash-co-parent',
+          userId: coParentId,
+          status: 'confirmed',
+          confirmedRole: 'co_parent',
+        },
+      ]);
+      // A 1:1 STOP revokes the co-parent's channel, so the recipient list no longer
+      // carries them; the chat still does.
+      const h = harness(sendAll, {
+        outboundTarget: async () => ({ channel: 'group', chatId: CHAT, familyId }),
+        loadRecipients: async () => [{ parentUserId, timeZone: TZ, role: 'primary_parent' }],
+        buildGate: () => ({
+          ...openGate(),
+          channelEnrolled: async (userId) => userId !== coParentId,
+        }),
+        fetch: linqFetch,
+      });
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ sent: 0, held: 1 });
+      expect(linqCalls).toBe(0);
+      expect(await candidate(id)).toMatchObject({ status: 'held', reason: 'not_enrolled' });
+      const [held] = await audits('proactive_cadence_held');
+      expect(held?.after).toMatchObject({ reason: 'not_enrolled', parentUserId: coParentId });
+    });
   });
 
   it('shows the decider a candidate by kind and label, and only the writer its text', async () => {
@@ -708,5 +753,33 @@ describe('runProactiveReview', () => {
     await runProactiveReview(db.database, h.deps, morning);
     expect(h.snapshots).toHaveLength(2);
     expect(await candidate(id)).toMatchObject({ status: 'sent' });
+  });
+
+  it('keeps a clock-less code hold from the model until something new arrives', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue();
+    const h = harness(sendAll, { linePaused: async () => true });
+    const nextEvening = new Date(THURSDAY_EVENING.getTime() + 24 * 60 * 60_000);
+    const hourAfter = new Date(nextEvening.getTime() + 60 * 60_000);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(await candidate(id)).toMatchObject({
+      status: 'held',
+      reason: 'line_health',
+      decision: 'send_now',
+      holdUntil: null,
+    });
+
+    await runProactiveReview(db.database, h.deps, nextEvening);
+    expect(h.snapshots).toHaveLength(1);
+
+    await db.database.insert(schema.linqLineHealth).values({
+      phoneNumber: '+15555550199',
+      status: 'active',
+      paused: false,
+      updatedAt: nextEvening,
+    });
+    await runProactiveReview(db.database, h.deps, hourAfter);
+    expect(h.snapshots).toHaveLength(2);
   });
 });
