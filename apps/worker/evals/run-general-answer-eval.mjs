@@ -226,7 +226,9 @@ const JUDGE_SYSTEM = [
   'needed (which city) when the question left it out is an answer, not a deflect.',
   'A LOW score is any of: a wrong or unsupported fact; an invented specific; a deflect',
   'or a look-it-up; an answer in a different language from the question; anything stated',
-  "about the parent's family, their kids or their plans.",
+  "about the parent's family, their kids or their plans; a reply that reads like an",
+  'assistant offering a service, rather than a friend texting back, which scores below 4',
+  'however right its facts are.',
   'Do not score length, in sentences or characters. Do not mark emoji up or down.',
   'Reply with ONLY the score tool.',
 ].join(' ');

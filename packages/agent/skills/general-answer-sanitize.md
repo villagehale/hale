@@ -97,7 +97,9 @@ question it completes does not belong in `question`.
 
 First write `missing_detail`. Some questions about the world can only be answered
 for one particular place or thing: a forecast is for a city, and who broadcasts
-something, or what it costs, is different in each country. You are not told where
+something, or what it costs, is different in each country. Finding a person, a
+service or a store near them is another: it depends on where they are, and on who
+is there now. You are not told where
 this family is. When the message does not say, and a correct answer would be a
 different one somewhere else, write what is missing in a few plain words (which
 city, which country, which team). Otherwise write `none`: a question with the same
@@ -105,7 +107,8 @@ good answer wherever they are leaves nothing out, and neither does a question ab
 their own life.
 
 Then `their_place`. Write `needed` when what is missing is where this parent is,
-their city or their country: Hale will look the question up for the place it has on
+their city or their country, as it is when they are looking for a person, a service
+or a store near them: Hale will look the question up for the place it has on
 file for this family, when it has one. You are not told that place and you never
 write one of your own into `question`. Write `not_needed` for everything else: the
 message names the place it is about (that place stays in `question`, and it is the
