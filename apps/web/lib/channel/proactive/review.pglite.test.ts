@@ -1626,12 +1626,13 @@ describe('runProactiveReview', () => {
     title: string,
     messageId: string,
     resolution: 'declined' | null = null,
+    askedParent = parentUserId,
   ): Promise<Date> {
     const [carried] = await db.database
       .insert(schema.channelMessages)
       .values({
         familyId,
-        parentUserId,
+        parentUserId: askedParent,
         channel: 'sms',
         direction: 'out',
         category: 'reply',
@@ -1643,7 +1644,7 @@ describe('runProactiveReview', () => {
     const startsAt = new Date(THURSDAY_EVENING.getTime() + 3 * 24 * 60 * 60_000);
     await db.database.insert(schema.emailAlertOffers).values({
       familyId,
-      parentUserId,
+      parentUserId: askedParent,
       integrationId: '00000000-0000-4000-8000-000000000001',
       messageId,
       kind: 'deadline',
@@ -1998,6 +1999,92 @@ describe('runProactiveReview', () => {
 
     expect(h.snapshots[1]?.parentTextsWithheld).toBe('mixed_batch');
     expect(h.snapshots[1]?.calendar.map((entry) => entry.label)).toEqual(['busy', 'busy', 'busy']);
+  });
+
+  /**
+   * Three reviews, each of one batch: the first parent's, then the co-parent's, then one
+   * both own. A drop settles each batch, so the next review holds only what was queued
+   * for it.
+   */
+  async function reviewEachOwnership(coParentId: string): Promise<FamilySnapshot[]> {
+    const h = harness((snapshot) => ({ ...sendAll(snapshot), action: 'drop' }));
+    const theirs = { parentUserId: coParentId, why: 'weekday_dropin' };
+    await enqueue('nudge:weather:w41');
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    await enqueue('nudge:dropin:w41', theirs);
+    await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+    await enqueue('nudge:weather:w42');
+    await enqueue('nudge:dropin:w42', theirs);
+    await runProactiveReview(db.database, h.deps, new Date(HOUR_AFTER.getTime() + 60 * 60_000));
+    expect(h.snapshots.map((snapshot) => snapshot.parentTextsWithheld)).toEqual([
+      undefined,
+      undefined,
+      'mixed_batch',
+    ]);
+    return h.snapshots;
+  }
+
+  it('shows a Gmail offer title and a decline only in a batch that is wholly their own parent’s', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const coParentId = await addCoParent();
+    await offer('Swim tryouts sign-up', 'msg-mine');
+    await offer('Hockey camp', 'msg-mine-declined', 'declined');
+    await offer('Chess club deposit', 'msg-theirs', null, coParentId);
+    await offer('Choir retreat', 'msg-theirs-declined', 'declined', coParentId);
+
+    const [mine, theirs, mixed] = await reviewEachOwnership(coParentId);
+
+    const titles = (snapshot: FamilySnapshot | undefined) => ({
+      deadlines: snapshot?.deadlines.map((deadline) => deadline.what).sort(),
+      declines: [...(snapshot?.declines ?? [])].sort(),
+    });
+    expect(titles(mine)).toEqual({
+      deadlines: ['Swim tryouts sign-up', WITHHELD_LABEL],
+      declines: ['Hockey camp', WITHHELD_LABEL],
+    });
+    expect(titles(theirs)).toEqual({
+      deadlines: ['Chess club deposit', WITHHELD_LABEL],
+      declines: ['Choir retreat', WITHHELD_LABEL],
+    });
+    expect(titles(mixed)).toEqual({
+      deadlines: [WITHHELD_LABEL, WITHHELD_LABEL],
+      declines: [WITHHELD_LABEL, WITHHELD_LABEL],
+    });
+    expect(JSON.stringify(mine)).not.toMatch(/Chess club|Choir retreat/);
+    expect(JSON.stringify(theirs)).not.toMatch(/Swim tryouts|Hockey camp/);
+    // A withheld offer keeps its time, and no snapshot says whose it was.
+    expect(new Set(mixed?.deadlines.map((deadline) => Object.keys(deadline).join()))).toEqual(
+      new Set(['what,at']),
+    );
+    expect(JSON.stringify([mine, theirs, mixed])).not.toContain(coParentId);
+    expect(JSON.stringify([mine, theirs, mixed])).not.toContain(parentUserId);
+  });
+
+  it('shows a watch label only in a batch that is wholly its own parent’s', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const coParentId = await addCoParent();
+    const watch = (owner: string, label: string) =>
+      db.database.insert(schema.watchedSpots).values({
+        familyId,
+        parentUserId: owner,
+        sourceUrl: `https://example.test/class/${label.length}`,
+        label,
+        expiresAt: new Date(THURSDAY_EVENING.getTime() + 30 * 24 * 60 * 60_000),
+        createdFrom: `msg-watch-${label.length}`,
+      });
+    await watch(parentUserId, 'Saturday pottery');
+    await watch(coParentId, 'Evening lane swim');
+
+    const [mine, theirs, mixed] = await reviewEachOwnership(coParentId);
+
+    const labels = (snapshot: FamilySnapshot | undefined) =>
+      snapshot?.watches.map((watched) => watched.what).sort();
+    expect(labels(mine)).toEqual(['Saturday pottery', WITHHELD_LABEL]);
+    expect(labels(theirs)).toEqual(['Evening lane swim', WITHHELD_LABEL]);
+    expect(labels(mixed)).toEqual([WITHHELD_LABEL, WITHHELD_LABEL]);
+    expect(mixed?.watches).toEqual([{ what: WITHHELD_LABEL }, { what: WITHHELD_LABEL }]);
+    expect(JSON.stringify([mine, theirs, mixed])).not.toContain(coParentId);
+    expect(JSON.stringify([mine, theirs, mixed])).not.toContain(parentUserId);
   });
 
   it('shows a prior hold’s reason only in a batch that is wholly its owner’s', async () => {

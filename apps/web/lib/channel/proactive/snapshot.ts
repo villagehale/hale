@@ -25,7 +25,10 @@ import { boundedLine } from './tools';
  * once per mode (`ParentTextsRead`), and only those rows' bodies are read. Calendar
  * titles, Gmail offer titles and watch labels are each one bounded line, like the parent
  * texts. A title from one parent's own connected calendar is shown only in a batch that
- * is wholly theirs, and reads as "busy" in anyone else's (rule #5).
+ * is wholly theirs, and reads as "busy" in anyone else's (rule #5). A Gmail offer title, a
+ * decline and a watch label follow the same rule: each came from one parent's mailbox or
+ * was asked for by one parent, and reads as `WITHHELD_LABEL` in any batch that is not
+ * wholly that parent's.
  */
 
 export interface FreeWindow {
@@ -268,15 +271,24 @@ export interface LoadedCalendarEntry extends CalendarEntry {
   personal: TimedRow['personal'];
 }
 
+/**
+ * A line as loaded, before the batch's owner is known: `parentUserId` is whose mailbox
+ * the offer came from, or who asked for the watch. Never handed to the model:
+ * `loadFamilySnapshot` reads it and leaves it behind.
+ */
+interface Owned {
+  parentUserId: string;
+}
+
 export interface LoadedFamilyContext {
   timeZone: string;
   household: HouseholdContext;
   calendar: LoadedCalendarEntry[];
   calendarOmitted: number;
   freeWindows: FreeWindow[];
-  deadlines: { what: string; at: string }[];
-  watches: { what: string }[];
-  declines: string[];
+  deadlines: ({ what: string; at: string } & Owned)[];
+  watches: ({ what: string } & Owned)[];
+  declines: ({ what: string } & Owned)[];
   /** A child here is 13 or older. */
   teenInHousehold: boolean;
 }
@@ -386,12 +398,13 @@ export async function loadFamilyContext(
       startsAt: schema.emailAlertOffers.startsAt,
       resolution: schema.emailAlertOffers.resolution,
       expiresAt: schema.emailAlertOffers.expiresAt,
+      parentUserId: schema.emailAlertOffers.parentUserId,
     })
     .from(schema.emailAlertOffers)
     .where(eq(schema.emailAlertOffers.familyId, familyId))
     .limit(DEADLINE_ROWS);
   const watches = await database
-    .select({ label: schema.watchedSpots.label })
+    .select({ label: schema.watchedSpots.label, parentUserId: schema.watchedSpots.parentUserId })
     .from(schema.watchedSpots)
     .where(and(eq(schema.watchedSpots.familyId, familyId), isNull(schema.watchedSpots.releasedAt)))
     .limit(WATCH_ROWS);
@@ -409,11 +422,18 @@ export async function loadFamilyContext(
     ),
     deadlines: offers
       .filter((offer) => offer.resolution === null && offer.expiresAt.getTime() > now.getTime())
-      .map((offer) => ({ what: line(offer.title), at: offer.startsAt.toISOString() })),
-    watches: watches.map((watch) => ({ what: line(watch.label) })),
+      .map((offer) => ({
+        what: line(offer.title),
+        at: offer.startsAt.toISOString(),
+        parentUserId: offer.parentUserId,
+      })),
+    watches: watches.map((watch) => ({
+      what: line(watch.label),
+      parentUserId: watch.parentUserId,
+    })),
     declines: offers
       .filter((offer) => offer.resolution === 'declined')
-      .map((offer) => line(offer.title)),
+      .map((offer) => ({ what: line(offer.title), parentUserId: offer.parentUserId })),
     teenInHousehold: redactLabels,
   };
 }
@@ -589,6 +609,8 @@ export async function loadFamilySnapshot(
     reader !== null && newest !== undefined
       ? { parentUserId: reader, through: newest.stamp }
       : null;
+  const ownLine = (what: string, parentUserId: string): string =>
+    parentUserId === owner ? what : WITHHELD_LABEL;
   const shown = newTexts
     .reverse()
     .map((row) => ({ author: row.parentUserId, text: boundedLine(row.body ?? '') }))
@@ -605,13 +627,18 @@ export async function loadFamilySnapshot(
     ),
     ...(context.calendarOmitted > 0 ? { calendarOmitted: context.calendarOmitted } : {}),
     freeWindows: context.freeWindows,
-    deadlines: context.deadlines,
-    watches: context.watches,
+    deadlines: context.deadlines.map(({ parentUserId, what, at }) => ({
+      what: ownLine(what, parentUserId),
+      at,
+    })),
+    watches: context.watches.map(({ parentUserId, what }) => ({
+      what: ownLine(what, parentUserId),
+    })),
     candidates: input.candidates,
     recentSends,
     unansweredStreak: unansweredStreak(recentSends),
     frequencyPreference: cadence ? { direction: cadence.direction } : null,
-    declines: context.declines,
+    declines: context.declines.map(({ parentUserId, what }) => ownLine(what, parentUserId)),
     recentParentTexts: shown.map((row) => row.text),
     ...(textsCut > 0 ? { parentTextsCut: textsCut } : {}),
     ...(context.teenInHousehold
