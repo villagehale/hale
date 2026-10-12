@@ -651,6 +651,10 @@ export const JUDGE_SAMPLES_MEDIAN = 3;
  * `samples` defaults to ONE, and sample zero keeps the historical cache key byte for byte,
  * so the twenty-odd suites that take a single verdict replay their committed corpus
  * unchanged and only a suite that opts in pays for the extra draws.
+ *
+ * `schema` is for a suite whose judge says more than a reason and a score. It replaces
+ * JUDGE_SCHEMA for that suite and, unlike it, IS part of the key, so a verdict recorded
+ * against one shape is never replayed as another. It still has to end in `score`.
  */
 /**
  * IS THIS A VERDICT, OR THE WRECKAGE OF ONE?
@@ -697,7 +701,10 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
   async function draw(tag, userMessage, index) {
     const sampleTag =
       index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
-    const key = cacheKey(sampleTag, `${model}\n${judgeSystem}\n${userMessage}`);
+    const key = cacheKey(
+      sampleTag,
+      `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}`,
+    );
     const cached = await cacheGet(key);
     if (cached && isVerdict(cached.parsed)) return cached.parsed;
     if (cachedOnly) failCachedMiss(sampleTag, key);
@@ -734,7 +741,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
         userMessage,
         toolName: 'score',
         toolDescription: 'Return the score.',
-        inputJsonSchema: JUDGE_SCHEMA,
+        inputJsonSchema: options?.schema ?? JUDGE_SCHEMA,
         schema: ANY_INPUT,
       });
     } catch (err) {

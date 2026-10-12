@@ -6,11 +6,13 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { formatLongDate } from '~/lib/format/datetime';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import {
+  ANSWER_MAX_TOKENS,
   type HomePlace,
   type LiveSearch,
   type PendingAsk,
   answerJsonSchema,
   answersPending,
+  describesHurtIllOrDanger,
   generalAnswerUserMessage,
   needsSearch,
   questionSanitizeUserMessage,
@@ -19,14 +21,8 @@ import {
   searchUserMessage,
   turnsOnTheirPlace,
 } from './answer-request';
-import {
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
-  namesAMentalCrisis,
-  namesAnEmergency,
-  reachesForTheHealthLine,
-} from './copy';
-import { COMPOSE_MAX_TOKENS, normalizeLanguage } from './medical';
+import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, namesAMentalCrisis, namesAnEmergency } from './copy';
+import { normalizeLanguage } from './medical';
 import TOP_LEVEL_DOMAINS from './top-level-domains/tlds.json';
 
 export {
@@ -133,15 +129,6 @@ const MAX_SEARCHES = 2;
 const SANITIZE_MAX_TOKENS = 512;
 /** The medical GROUND turn's ceiling: thinking and the notes share it. */
 const SEARCH_MAX_TOKENS = 4096;
-/**
- * The compose call's budget, thinking and reply together, and the one bound on what goes
- * out. It is the medical compose's (medical.ts), generous for the same reason:
- * forceToolJson throws on a max_tokens cutoff, and a reply cut off there is swapped for
- * the fixed line. At 256 a compose handed long research notes wrote past it, live. There
- * is no segment or character cap on the reply: a correct answer that ran long is still
- * the answer.
- */
-const MAX_TOKENS = COMPOSE_MAX_TOKENS;
 
 /**
  * Why the answer did not happen. Deliberately four separate stories and not one:
@@ -165,8 +152,9 @@ export type GeneralAnswerOutcome =
    * what the parent's next text is read beside. */
   | { status: 'composed'; reply: string; search?: LiveSearch; pendingAsk?: PendingAsk }
   /**
-   * The question turned out to be about someone hurt or ill, and the model answered it
-   * with a referral of its own (skill audit P0 #3). This branch carries NO reply on
+   * The question turned out to describe someone hurt, ill or in danger, and the compose
+   * said so in its own field (skill audit P0 #3; Sloane, 2026-10-12: "the AI reads a
+   * crisis and nothing keys off words or digits"). This branch carries NO reply on
    * purpose: the words a parent gets in that moment are the reviewed ones in copy.ts,
    * and a variant with a text field is one an edit could later fill from the model.
    */
@@ -243,9 +231,10 @@ const sanitizeSchema = z.object({
   needs_search: z.string().nullish(),
 });
 
-/** `answer` and nothing else. The compose also writes its `grounding` (answer-request.ts);
- * zod drops it here, so no line after this one has it to send, keep or log. */
-const answerSchema = z.object({ answer: z.string() });
+/** The compose's reading of the text and its `answer`, and nothing else. It also writes
+ * its `grounding` (answer-request.ts); zod drops it here, so no line after this one has
+ * it to send, keep or log. The reading is taken loosely, like the sanitizer's. */
+const answerSchema = z.object({ hurt_ill_or_danger: z.unknown(), answer: z.string() });
 
 /**
  * Today's date as the search and the compose are told it: the weekday and the full date
@@ -485,19 +474,21 @@ function carriesUnsearchedLink(body: string, searched: readonly string[]): boole
  * cannot exist without.
  */
 function sendable(
-  raw: string,
+  composed: z.infer<typeof answerSchema>,
   search: LiveSearch,
   searched: readonly string[],
   pendingAsk: PendingAsk | null,
 ): GeneralAnswerOutcome {
-  const flattened = plainText(raw);
   // Before every other gate, because this one SUBSTITUTES where the rest refuse: a
   // parent who turns out to be describing a hurt child must get the fixed line, never
-  // the "couldn't get to that one" a refusal would send them.
-  if (reachesForTheHealthLine(flattened)) {
-    console.error('off-domain answer: composer reached for a referral; sent the fixed line');
+  // the "couldn't get to that one" a refusal would send them. It is the compose's own
+  // reading that decides, never a word or a digit in what it wrote, and nothing it wrote
+  // goes past this line.
+  if (describesHurtIllOrDanger(composed.hurt_ill_or_danger)) {
+    console.error('off-domain answer: the compose read someone hurt; the safety door answers');
     return { status: 'safety' };
   }
+  const flattened = plainText(composed.answer);
   if (flattened === '') return unavailable('unsendable', 'empty');
   if (carriesUnsearchedLink(flattened, searched)) {
     return unavailable('unsendable', 'link_not_from_search');
@@ -615,9 +606,9 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
         toolDescription: 'Return the one brief answer to this question.',
         inputJsonSchema: answerJsonSchema,
         schema: answerSchema,
-        maxTokens: MAX_TOKENS,
+        maxTokens: ANSWER_MAX_TOKENS,
       });
-      return sendable(value.answer, search, findings.urls, leftOpen(search, question, missing));
+      return sendable(value, search, findings.urls, leftOpen(search, question, missing));
     } catch (err) {
       return unavailable('model_failed', failureName(err));
     }

@@ -14,6 +14,7 @@ import {
   scrubDirectIdentifiers,
   searchUserMessage,
 } from './answer';
+import { ANSWER_ENDS_ON_THE_ANSWER, ANSWER_MAX_TOKENS, answerJsonSchema } from './answer-request';
 import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from './copy';
 import { COMPOSE_MAX_TOKENS } from './medical';
 
@@ -78,6 +79,7 @@ function familyAt(place: FamilyPlace): FamilyFacts & { placeReads: number } {
 }
 const TORONTO: FamilyPlace = { status: 'known', city: 'Toronto', country: 'Canada' };
 const ASK = 'whos the goat in football';
+const PENDING_CITY: PendingAsk = { question: 'hows the weather tomorrow', missing: 'which city' };
 
 /** What each of the three calls returns. An Error is thrown by that call. */
 interface Script {
@@ -352,7 +354,7 @@ describe('createGeneralAnswer', () => {
     const instructions = systemText(seen.compose[0]?.system);
     expect(instructions).toContain(ANSWER_HEADING);
     // The skill body is the whole cached prefix: no context block spliced after it.
-    expect(instructions.endsWith('point at an app.')).toBe(true);
+    expect(instructions.endsWith('nothing after it points them\n  somewhere else.')).toBe(true);
   });
 
   /**
@@ -362,7 +364,7 @@ describe('createGeneralAnswer', () => {
    * its fields in the order the schema lists them, so `grounding` is first, both are
    * required of it, and the list's entries are sealed.
    */
-  it('asks the compose to write its grounding before the answer', async () => {
+  it('asks the compose for its reading of the text, then its grounding, then the answer', async () => {
     const seen = seenNothing();
     await createGeneralAnswer(clientReturning({ grounding: [], answer: 'Lima.' }, seen)).compose(
       ASK,
@@ -372,6 +374,7 @@ describe('createGeneralAnswer', () => {
     expect(seen.compose[0]?.output_config?.format?.schema).toEqual({
       type: 'object',
       properties: {
+        hurt_ill_or_danger: { type: 'string', enum: ['yes', 'no'] },
         grounding: {
           type: 'array',
           items: {
@@ -381,15 +384,27 @@ describe('createGeneralAnswer', () => {
             additionalProperties: false,
           },
         },
-        answer: { type: 'string' },
+        answer: { type: 'string', description: ANSWER_ENDS_ON_THE_ANSWER },
       },
-      required: ['grounding', 'answer'],
+      required: ['hurt_ill_or_danger', 'grounding', 'answer'],
       additionalProperties: false,
     });
     const schema = seen.compose[0]?.output_config?.format?.schema as {
       properties: Record<string, unknown>;
     };
-    expect(Object.keys(schema.properties)).toEqual(['grounding', 'answer']);
+    expect(Object.keys(schema.properties)).toEqual(['hurt_ill_or_danger', 'grounding', 'answer']);
+  });
+
+  /**
+   * Sloane's finding 1b. How a reply ends is said once in the skill, and again here,
+   * where the model reads it as it writes the field. The words are pinned so that an
+   * edit which drops them from the schema has to change this test to do it.
+   */
+  it('tells the model, on the answer field itself, that the reply ends on the answer', () => {
+    expect(ANSWER_ENDS_ON_THE_ANSWER).toBe(
+      'The text message, and nothing but it. Its last words are the answer itself, or with missing_detail the question. Nothing is offered after it, and nothing after it points them somewhere else.',
+    );
+    expect(answerJsonSchema.properties.answer.description).toBe(ANSWER_ENDS_ON_THE_ANSWER);
   });
 
   /**
@@ -509,17 +524,19 @@ describe('createGeneralAnswer', () => {
   });
 
   /**
-   * The budget is where a reply is bounded, and a reply cut off there never arrives: the
-   * seam throws and the parent gets the fixed line. Live, a compose handed long research
-   * notes wrote past 256 tokens of text. So it gets the medical compose's budget, which is
-   * generous for that reason.
+   * The ceiling is where a reply is bounded, and thinking shares it: a compose that spends
+   * it thinking is asked a second time with thinking off (structured.ts), and one still
+   * cut off never arrives. At the medical compose's 1,024 about one compose in five of
+   * this lane's ran out that way, so the lane has a ceiling of its own with room to
+   * finish. The medical compose's is not moved.
    */
-  it("gives the compose the medical compose's token budget", async () => {
+  it("gives the compose a token ceiling of its own, above the medical compose's", async () => {
     const seen = seenNothing();
     await createGeneralAnswer(clientReturning({ answer: 'Lima.' }, seen)).compose(ASK, family);
 
+    expect(ANSWER_MAX_TOKENS).toBe(4096);
+    expect(seen.compose[0]?.max_tokens).toBe(ANSWER_MAX_TOKENS);
     expect(COMPOSE_MAX_TOKENS).toBe(1024);
-    expect(seen.compose[0]?.max_tokens).toBe(COMPOSE_MAX_TOKENS);
   });
 
   it('refuses an answer that is empty once flattened', async () => {
@@ -560,10 +577,9 @@ describe('createGeneralAnswer', () => {
 
   /**
    * Sloane's finding 5. The eval's recorded `melatonin-adults` reply points at a
-   * pharmacist or a doctor, and production runs one gate the eval does not mirror:
-   * `reachesForTheHealthLine`, which swaps a reply for the fixed safety line. That gate
-   * reads the two numbers and nothing else, so a pointer to a person passes it and the
-   * reply the judge graded is the reply the parent gets.
+   * pharmacist or a doctor. A pointer to a person is not what hands a turn to the safety
+   * door: the compose's own reading of the text is (below), so the reply the judge graded
+   * is the reply the parent gets.
    */
   it('sends the recorded melatonin reply as written, not the fixed health line', async () => {
     const recorded =
@@ -2097,15 +2113,94 @@ describe('the one path', () => {
   });
 });
 
-describe('safety refusal', () => {
-  it.each(['Not medical advice, but 811 can help any time.', 'That needs a person - call 911.'])(
-    'hands a composed referral to the fixed line instead of sending it: %s',
-    async (body) => {
-      quiet();
+/**
+ * Sloane's ruling, 2026-10-12: "the AI reads a crisis and nothing keys off words or
+ * digits". The screen sends a question about the world to this stage, and the text
+ * sometimes turns out to describe someone hurt, ill or in danger. The compose says so in
+ * a field of its own, and that reading alone hands the turn to the safety door: nothing it
+ * wrote is sent, kept or logged. What the door says is the lane's (lane.test.ts).
+ */
+describe('the compose reads someone hurt, ill or in danger', () => {
+  const WROTE = 'MODEL-WROTE-THIS';
+  const hurt = (answer = WROTE) => ({
+    hurt_ill_or_danger: 'yes',
+    grounding: [{ states: 'MODEL-GROUNDED-THIS', from: 'settled' }],
+    answer,
+  });
 
+  it('hands the turn to the safety door, and sends, keeps and logs nothing it wrote', async () => {
+    lit();
+    const logged: unknown[][] = [];
+    for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args);
+      });
+    }
+
+    const answered = await createGeneralAnswer(clientReturning(hurt())).compose(ASK, family);
+    // A turn that would otherwise leave its question open keeps nothing either.
+    const asked = await createGeneralAnswer(
+      scripted({
+        sanitize: reading({ missing_detail: 'which city', needs_search: 'missing_detail' }),
+        answer: hurt(),
+      }),
+    ).compose(ASK, family);
+    // The model was told to leave the answer empty. An empty one is still the door, not
+    // the could-not-get-to-it line an empty reply gets.
+    const empty = await createGeneralAnswer(clientReturning(hurt(''))).compose(ASK, family);
+
+    expect([answered, asked, empty]).toEqual([
+      { status: 'safety' },
+      { status: 'safety' },
+      { status: 'safety' },
+    ]);
+    // Positive control: each turn logged that the door answered.
+    expect(logged.filter(([line]) => String(line).includes('safety door'))).toHaveLength(3);
+    expect(JSON.stringify(logged)).not.toMatch(/MODEL-WROTE|MODEL-GROUNDED/);
+  });
+
+  it('does not continue an open question either', async () => {
+    lit();
+    quietInfo();
+    quiet();
+
+    expect(
+      await createGeneralAnswer(
+        scripted({
+          sanitize: reading({ answers_pending: 'yes', needs_search: 'no' }),
+          answer: hurt(),
+        }),
+      ).continueAsk('Toronto. he fell and will not wake up properly', PENDING_CITY, family),
+    ).toEqual({ status: 'safety' });
+  });
+
+  /**
+   * The other direction. A reply is not read for what it says: one that names 911 or 811
+   * to somebody who asked an ordinary question goes out as written. A match on those
+   * digits used to swap such a reply for the safety line.
+   */
+  it.each([
+    'In the US and Canada it is 911.',
+    'Not medical advice, but 811 can help any time.',
+    'That needs a person - call 911.',
+  ])('sends %j as written when the reading is no', async (body) => {
+    expect(
+      await createGeneralAnswer(
+        clientReturning({ hurt_ill_or_danger: 'no', grounding: [], answer: body }),
+      ).compose(ASK, family),
+    ).toEqual({ status: 'composed', reply: body, search: 'not_needed' });
+  });
+
+  /** Only an explicit `yes` is the door. The request's schema allows two values, so
+   * anything else is a reply that arrived without a reading, and it is still the reply. */
+  it.each(['no', 'maybe', '', null, undefined, true])(
+    'sends the reply when the reading is %j',
+    async (hurt_ill_or_danger) => {
       expect(
-        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, family),
-      ).toEqual({ status: 'safety' });
+        await createGeneralAnswer(
+          clientReturning({ hurt_ill_or_danger, answer: 'Lima.' }),
+        ).compose(ASK, family),
+      ).toEqual({ status: 'composed', reply: 'Lima.', search: 'not_needed' });
     },
   );
 });

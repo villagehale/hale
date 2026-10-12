@@ -244,12 +244,13 @@ describe('what each lane says', () => {
   );
 
   /**
-   * Skill audit P0 #3. The general terminal has a fourth outcome: the composer wrote a
-   * referral. The words are not its to carry — `{ status: 'safety' }` has no reply
-   * field — so what goes out is the same reviewed sentence a screened symptom gets, and
-   * `replySource` says `fixed` rather than crediting the model for words it did not send.
+   * Skill audit P0 #3. The general terminal has a fourth outcome: the composer read the
+   * text as someone hurt, ill or in danger. The words are not its to carry —
+   * `{ status: 'safety' }` has no reply field — so what goes out is the same reviewed
+   * sentence a screened symptom gets, and `replySource` says `fixed` rather than crediting
+   * the model for words it did not send.
    */
-  it('sends the fixed line, exactly, when the composer reached for a referral', async () => {
+  it('sends the fixed line, exactly, when the composer read someone hurt, ill or in danger', async () => {
     const p = ports({ answer: { status: 'safety' } });
 
     const verdict = await consider(p);
@@ -1110,7 +1111,12 @@ describe('the screen reads a reply to an open question first', () => {
   });
 
   /** One client for the turn. `calls` is the order the model stages ran in. */
-  function scripted(script: { screen: unknown; answersPending?: 'yes' | 'no' }) {
+  function scripted(script: {
+    screen: unknown;
+    answersPending?: 'yes' | 'no' | 'nothing_pending';
+    /** What the compose returns. A plain answer about Toronto unless a test says. */
+    composed?: unknown;
+  }) {
     const calls: string[] = [];
     const searched: string[] = [];
     const client = () =>
@@ -1138,7 +1144,7 @@ describe('the screen reads a reply to an open question first', () => {
               });
             }
             calls.push('compose');
-            return structured({ answer: 'Sunny in Toronto, high of 14.' });
+            return structured(script.composed ?? { answer: 'Sunny in Toronto, high of 14.' });
           },
           stream(request: Request) {
             calls.push('search');
@@ -1165,9 +1171,10 @@ describe('the screen reads a reply to an open question first', () => {
     return { client, calls, searched };
   }
 
-  /** The lane on the real screen and composer, with an open question on the ledger. */
-  function laneWith(turn: ReturnType<typeof scripted>) {
-    const p = ports({ pending: PENDING });
+  /** The lane on the real screen and composer, with an open question on the ledger
+   * unless a test says there is none. */
+  function laneWith(turn: ReturnType<typeof scripted>, pending: PendingAsk | null = PENDING) {
+    const p = ports({ pending });
     const lane = offDomainLane({
       ...p,
       screen: createInboundLaneScreen(turn.client),
@@ -1294,6 +1301,107 @@ describe('the screen reads a reply to an open question first', () => {
     expect(p.pendingAskedFor).toEqual([]);
   });
 
+  /**
+   * Sloane's ruling on the tripwire: the compose says in a field of its own when a text
+   * turns out to describe someone hurt, ill or in danger, and then "sends nothing
+   * composed and answers through the same door the screen's safety reading uses". So the
+   * door is asserted against that reading's own, on the same text, and not by its words:
+   * the lines in copy.ts are VIL-413's to replace.
+   */
+  describe('when the compose reads the text as someone hurt, ill or in danger', () => {
+    const GENERAL = { lane: 'off_domain_general', category: 'general-knowledge', reason: 'x' };
+    const HURT = {
+      hurt_ill_or_danger: 'yes',
+      grounding: [{ states: 'MODEL-GROUNDED-THIS', from: 'settled' }],
+      answer: 'MODEL-WROTE-THIS',
+    };
+    const TEXT = 'is it ok to let him nap, he fell off the top bunk and has thrown up twice';
+
+    /** What the screen's own safety reading sends for this text. */
+    async function screenedSafetyDoor(text: string) {
+      const screened = laneWith(
+        scripted({ screen: { lane: 'safety_critical', category: 'child-safety', reason: 'x' } }),
+        null,
+      );
+      const verdict = await screened.run(text);
+      if (verdict.status !== 'deflected') throw new Error('the screen did not send it to a door');
+      expect(verdict.replySource).toBe('fixed');
+      return verdict.reply;
+    }
+
+    it('answers through the door the screen uses for a safety reading, and sends, keeps and logs nothing the model wrote', async () => {
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+      const logged: unknown[][] = [];
+      for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
+        vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+          logged.push(args);
+        });
+      }
+      expect(namesAnEmergency(TEXT) || namesAMentalCrisis(TEXT)).toBe(false);
+      const turn = scripted({ screen: GENERAL, answersPending: 'nothing_pending', composed: HURT });
+      const { p, run } = laneWith(turn, null);
+
+      const verdict = await run(TEXT);
+
+      expect(turn.calls).toEqual(['screen', 'sanitize', 'search', 'compose']);
+      expect(verdict).toEqual({
+        status: 'deflected',
+        lane: 'off_domain_general',
+        category: 'general-knowledge',
+        reply: await screenedSafetyDoor(TEXT),
+        replySource: 'fixed',
+        medicalSource: null,
+        signal: 'recorded',
+        pendingAsk: null,
+      });
+      // The demand signal is the screen's own reading, as for any text it filed there.
+      expect(p.recorded).toEqual([
+        { lane: 'off_domain_general', category: 'general-knowledge', channelMessageId: MESSAGE },
+      ]);
+      expect(logged.length).toBeGreaterThan(0);
+      expect(JSON.stringify([verdict, logged])).not.toMatch(/MODEL-WROTE|MODEL-GROUNDED/);
+    });
+
+    it('answers a reply to an open question through the same door, and not with the completed question', async () => {
+      lit();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const text = 'Toronto. he fell off the top bunk and has thrown up twice';
+      expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
+      const turn = scripted({ screen: GENERAL, composed: HURT });
+      const { run } = laneWith(turn);
+
+      const verdict = await run(text);
+
+      expect(turn.calls).toEqual(['screen', 'sanitize', 'search', 'compose']);
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        reply: await screenedSafetyDoor(text),
+        replySource: 'fixed',
+        pendingAsk: null,
+      });
+    });
+
+    /** The other direction: a reply is not read for its words. An ordinary question whose
+     * answer is the emergency number gets that answer. */
+    it('sends an ordinary answer that says 911 as the model wrote it', async () => {
+      lit();
+      const answer = 'In the US it is 911, same as here.';
+      const turn = scripted({
+        screen: GENERAL,
+        answersPending: 'nothing_pending',
+        composed: { hurt_ill_or_danger: 'no', grounding: [], answer },
+      });
+      const { run } = laneWith(turn, null);
+
+      expect(await run('what number do americans call in an emergency')).toMatchObject({
+        status: 'deflected',
+        lane: 'off_domain_general',
+        reply: answer,
+        replySource: 'composed',
+      });
+    });
+  });
+
   /** "Toronto" alone is not a question about the world, so the screen files it with the
    * family's week. The open question is what makes it the general answer's turn. */
   it('continues the question for a reply the screen reads as in-domain, on one search of the whole question', async () => {
@@ -1408,10 +1516,10 @@ describe('the lane answers in the language the question was asked in', () => {
   });
 
   /**
-   * The composer reaching for a referral on a French question. The words are the reviewed
-   * French ones, and `fixed` still says the model did not write them.
+   * The composer reading a French text as someone hurt. The words are the reviewed French
+   * ones, and `fixed` still says the model did not write them.
    */
-  it('substitutes the French safety line when the composer reached for a referral', async () => {
+  it('substitutes the French safety line when the composer read someone hurt', async () => {
     const p = ports({ answer: { status: 'safety' } });
 
     const fr = await consider(p, 'Mon fils est tombe de la table, il pleure beaucoup');

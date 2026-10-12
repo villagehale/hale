@@ -1044,6 +1044,99 @@ describe('the off-domain lane', () => {
     ).not.toContain('GROUNDED');
   });
 
+  /**
+   * The compose's own reading that the text describes someone hurt, ill or in danger
+   * (answer-request.ts). Through the real composer and the real lane the turn is answered
+   * by the lane's safety door, and nothing the model wrote reaches the parent, the
+   * ledger, the table of open questions or a log line. On a turn that would otherwise
+   * have left its question open, so that "kept" has something it could have been.
+   */
+  it('sends, keeps and logs nothing the compose wrote when it read someone hurt', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const consoleLines: unknown[][] = [];
+    for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        consoleLines.push(args);
+      });
+    }
+    const structured = (payload: unknown) => ({
+      content: [{ type: 'text', text: JSON.stringify(payload) }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    const client = () =>
+      ({
+        messages: {
+          async create(request: { system: Array<{ text: string }> }) {
+            const sanitizing = request.system
+              .map((block) => block.text)
+              .join('')
+              .includes('Take the family out, keep the question');
+            return structured(
+              sanitizing
+                ? {
+                    language: 'en',
+                    answers_pending: 'nothing_pending',
+                    question: 'is it ok to let a child nap after a fall',
+                    missing_detail: 'which city',
+                    their_place: 'needed',
+                    current_fact: 'none',
+                    needs_search: 'missing_detail',
+                  }
+                : {
+                    hurt_ill_or_danger: 'yes',
+                    grounding: [{ states: 'MODEL-GROUNDED-THIS', from: 'settled' }],
+                    answer: 'MODEL-WROTE-THIS',
+                  },
+            );
+          },
+        },
+      }) as unknown as AgentClient;
+    const lane = offDomainLane({
+      screen: {
+        read: async () => ({
+          lane: 'off_domain_general',
+          category: 'general-knowledge',
+          fallback: null,
+        }),
+      },
+      answer: createGeneralAnswer(client),
+      today: async () => 'monday, oct 12, 2026',
+      place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      pendingAsk: async () => ({ status: 'none' }),
+      medical: {
+        answer: async () => {
+          throw new Error('not a medical turn');
+        },
+      },
+      recordUnmetIntent: async () => 'recorded',
+    });
+    const h = harness({
+      context: { body: 'is it ok to let him nap, he fell off the top bunk' },
+      offDomain: lane,
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    // Positive control: a reply did go out, it is the lane's own fixed line, and the
+    // turn logged.
+    expect(h.transport.bodies()).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ replySource: 'fixed', body: null });
+    expect(pendingAskRows(h.fake)).toEqual([]);
+    expect(consoleLines.length).toBeGreaterThan(0);
+    expect(
+      JSON.stringify([
+        h.transport.sent,
+        ledgerRows(h.fake),
+        pendingAskRows(h.fake),
+        messageRows(h.fake),
+        h.logs,
+        consoleLines,
+      ]),
+    ).not.toMatch(/MODEL-WROTE|MODEL-GROUNDED/);
+  });
+
   it('keeps no question on a reply that left none open, or on a coach answer', async () => {
     vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
     const answered = harness({
