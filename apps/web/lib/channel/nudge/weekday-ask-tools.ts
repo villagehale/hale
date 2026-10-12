@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { findInventedFacts } from '../../loop/voice/facts-lint';
+import { TEXT_CHARS } from '../proactive/tools';
 import type { WeekdayFinderAsk } from './weekday-care-ask';
 
 /**
@@ -8,9 +9,11 @@ import type { WeekdayFinderAsk } from './weekday-care-ask';
  * Relative imports only, so apps/worker/evals grades the model against this exact file.
  *
  * The ask is a yes-or-no offer. The model chooses every word, the length and the script;
- * this file refuses only a text that is not the tool's shape or that carries a link or a
- * time nobody gave it. Whether the text is the offer that was chosen, in the family's
- * language and tone, is graded by the eval's judge, not counted here.
+ * this file refuses only a text that is not the tool's shape, that carries a link or a
+ * time nobody gave it, or that runs past one text (`TEXT_CHARS`, the writer's infra
+ * bound: WEEKDAY_ASK_MAX_TOKENS bounds tokens, and the Linq door takes far more).
+ * Whether the text is the offer that was chosen, in the family's language and tone, is
+ * graded by the eval's judge, not counted here.
  */
 
 export const WEEKDAY_ASK_TOOL = 'weekday_ask';
@@ -29,7 +32,7 @@ const askSchema = z
   .object({ message: z.string().refine((value) => value.trim().length > 0) })
   .strict();
 
-export type WeekdayAskSkip = 'unparsed' | 'invented';
+export type WeekdayAskSkip = 'unparsed' | 'invented' | 'over_length';
 
 export type WeekdayAskResult = { message: string } | { skipped: WeekdayAskSkip };
 
@@ -63,5 +66,6 @@ export function readWeekdayAsk(value: unknown, ask: WeekdayFinderAsk): WeekdayAs
   if (findInventedFacts(message, subject === null ? [] : [subject]).length > 0) {
     return { skipped: 'invented' };
   }
+  if (message.length > TEXT_CHARS) return { skipped: 'over_length' };
   return { message };
 }

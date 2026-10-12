@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TEXT_CHARS } from '../proactive/tools';
 import { readWeekdayAsk, weekdayAskContext } from './weekday-ask-tools';
 
 const NAMED = { prompt: 'after_school_named', childId: 'child-1', name: 'Nell' } as const;
@@ -29,11 +30,21 @@ describe('readWeekdayAsk', () => {
     }
   });
 
-  it("keeps a long text: the length is the model's to choose, never a refusal", () => {
+  it("keeps a long text that fits one text: the length is the model's to choose", () => {
     const long = `${'Those were weekend options for the family. '.repeat(8)}Want weekdays too?`;
     expect(readWeekdayAsk({ message: long }, FALLBACK)).toEqual({ message: long });
     const longChinese = `${'那些都是周末的活动。'.repeat(12)}要我也看看工作日吗？`;
     expect(readWeekdayAsk({ message: longChinese }, FALLBACK)).toEqual({ message: longChinese });
+  });
+
+  it('refuses a runaway text longer than one text, by name', () => {
+    const sentence = 'Those were weekend options for the family. ';
+    const atBound = `${sentence.repeat(Math.floor(TEXT_CHARS / sentence.length)).trim()}`;
+    expect(atBound.length).toBeLessThanOrEqual(TEXT_CHARS);
+    expect(readWeekdayAsk({ message: atBound }, FALLBACK)).toEqual({ message: atBound });
+    const over = `${sentence.repeat(Math.ceil(TEXT_CHARS / sentence.length) + 1)}Want weekdays too?`;
+    expect(over.trim().length).toBeGreaterThan(TEXT_CHARS);
+    expect(readWeekdayAsk({ message: over }, FALLBACK)).toEqual({ skipped: 'over_length' });
   });
 
   it('refuses a link or a clock time nobody gave it', () => {
