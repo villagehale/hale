@@ -28,8 +28,6 @@ describe('what may not be sent as a holding line', () => {
 
   it.each([
     ['nothing at all', '', 'empty'],
-    ['two sentences', "I'm on it. Your answer is coming.", 'not_one_sentence'],
-    ['a question', "I'm on it - can you hold on?", 'carries_question'],
     ['a number', "I'm on it, give me 2 minutes.", 'carries_number'],
     ['a promised time', "I'm on it and will have it shortly.", 'promised_a_time'],
     ['a link', "I'm on it, see https://villagehale.com meanwhile.", 'carries_link'],
@@ -38,10 +36,14 @@ describe('what may not be sent as a holding line', () => {
     expect(refusals(body)).toContain(reason);
   });
 
-  it('refuses a line that needs more than one text', () => {
-    expect(refusals(`I'm on it ${'and still working through your answer '.repeat(5)}`)).toContain(
-      'over_one_segment',
-    );
+  // Only facts are gated. How the line is worded — its sentences, a question, its length —
+  // is the model's, and a long line is the transport's to split, never a refusal.
+  it.each([
+    ['two sentences', "I'm on it. Your answer is coming."],
+    ['a question', "I'm on it - you good to hang on?"],
+    ['a line longer than one text', `I'm on it ${'and still working through your answer '.repeat(5)}`],
+  ])('sends %s as written', (_name, body) => {
+    expect(refusals(body)).toEqual([]);
   });
 });
 
@@ -77,13 +79,16 @@ describe('createHoldingLine', () => {
     const seen: unknown[] = [];
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
     const outcome = await createHoldingLine(
-      clientSaying(['On it. Back soon?', 'On it. Back soon?', 'On it. Back soon?'], seen),
+      clientSaying(
+        ['On it, back shortly with 2 options.', 'On it, back shortly with 2 options.'],
+        seen,
+      ),
     ).compose('en');
     expect(outcome).toEqual({ status: 'unavailable', reason: 'gate_exhausted' });
     expect(seen).toHaveLength(MAX_COMPOSE_ATTEMPTS);
     const second = seen[1] as { messages: { content: string }[] };
     expect(JSON.parse(second.messages[0]?.content ?? '{}').rejected[0].problems).toEqual(
-      expect.arrayContaining(['not_one_sentence', 'carries_question']),
+      expect.arrayContaining(['promised_a_time', 'carries_number']),
     );
     quiet.mockRestore();
   });

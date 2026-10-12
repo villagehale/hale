@@ -2,7 +2,6 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -34,7 +33,6 @@ export const MAX_COMPOSE_ATTEMPTS = 2;
 const MAX_TOKENS = 96;
 
 const LINK_SHAPE = /https?:\/\/|www\./i;
-const INTERNAL_TERMINATOR = /[.!?]["')\]]?\s+\S/;
 /** A time nobody scheduled: nobody knows when the answer lands. */
 const PROMISED_TIME =
   /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
@@ -42,22 +40,20 @@ const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b
 
 export type HoldingLineRefusal =
   | 'empty'
-  | 'over_one_segment'
   | 'carries_link'
-  | 'not_one_sentence'
-  | 'carries_question'
   | 'carries_number'
   | 'promised_a_time'
   | 'points_at_the_app';
 
-/** Every reason this line cannot go out, all at once, fed back on the next attempt. */
+/**
+ * Every reason this line cannot go out, all at once, fed back on the next attempt. These
+ * guard facts only — a time, a number, a link or an app nobody gave it. How the line is
+ * worded is the model's.
+ */
 export function refusals(body: string): HoldingLineRefusal[] {
   if (body === '') return ['empty'];
   const found: HoldingLineRefusal[] = [];
-  if (smsSegments(body) > 1) found.push('over_one_segment');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
-  if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
-  if (body.includes('?')) found.push('carries_question');
   if (/\d/.test(body)) found.push('carries_number');
   if (PROMISED_TIME.test(body)) found.push('promised_a_time');
   if (APP_POINTER.test(body)) found.push('points_at_the_app');

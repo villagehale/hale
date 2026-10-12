@@ -7,7 +7,7 @@
 // so a skill edit or a re-tiering re-keys the cache and shows up as a miss.
 //
 // WHAT IS AT STAKE. This line goes out while a slow answer is still being written, ahead
-// of it. A line that answers, hints, reassures, promises a time or asks something is worse
+// of it. A line that answers, hints, reassures or promises a time is worse
 // than no line, because the real answer lands seconds later and contradicts it.
 //
 // Usage (from apps/worker):
@@ -37,7 +37,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'holding-line.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 
 // ── the corpus: draws, since the stage is blind ─────────────────────────────
 
@@ -45,7 +44,7 @@ const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-s
 const MIN_DISTINCT = 3;
 
 const WATCH =
-  'One sentence saying Hale is on it and the answer is coming. Nothing about what the answer is, what Hale is doing, or when it lands. No apology, no question.';
+  'Says Hale is on it and the answer is coming. Nothing about what the answer is, what Hale is doing, or when it lands. No apology.';
 
 const FIXTURES = [
   ...Array.from({ length: 5 }, (_, i) => ({
@@ -63,16 +62,16 @@ const FIXTURES = [
     watchFor: `${WATCH} It must be written in FRENCH.`,
   })),
   {
-    id: 'recompose-time-and-question',
+    id: 'recompose-promised-time',
     language: 'en',
     rejected: [
       {
-        line: "I'm on it - back in a minute, ok?",
-        problems: ['promised_a_time', 'carries_question'],
+        line: "I'm on it - back in a minute.",
+        problems: ['promised_a_time'],
       },
     ],
     countsTowardVariance: false,
-    watchFor: `${WATCH} The refused body promised a time and asked a question; the fix drops both and keeps the meaning.`,
+    watchFor: `${WATCH} The refused body promised a time; the fix drops it and keeps the meaning.`,
   },
 ];
 
@@ -113,18 +112,14 @@ function flatten(text) {
 
 // Mirrors `refusals` in holding-line.ts.
 const LINK_SHAPE = /https?:\/\/|www\./i;
-const INTERNAL_TERMINATOR = /[.!?]["')\]]?\s+\S/;
 const PROMISED_TIME =
   /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
 const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
 
-function refusals(body, smsSegments) {
+function refusals(body) {
   if (body === '') return ['empty'];
   const found = [];
-  if (smsSegments(body) > 1) found.push('over_one_segment');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
-  if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
-  if (body.includes('?')) found.push('carries_question');
   if (/\d/.test(body)) found.push('carries_number');
   if (PROMISED_TIME.test(body)) found.push('promised_a_time');
   if (APP_POINTER.test(body)) found.push('points_at_the_app');
@@ -139,9 +134,9 @@ const JUDGE_SYSTEM = [
   'while their answer is still being written. Hale composed it BLIND: it was shown nothing',
   'about the parent or what they asked - only that the answer is still coming, and which',
   'language to write in. The real answer arrives right after this line.',
-  'IMPORTANT: sentence count, length, punctuation, links, digits and times are ALREADY',
-  'verified mechanically. Do not score them. Judge only what the message MEANS and whether',
-  'it sounds like Hale.',
+  'IMPORTANT: links, digits and times are ALREADY verified mechanically, and sentence count,',
+  'length and punctuation are the writer\'s own. Do not score any of them. Judge only what the',
+  'message MEANS and whether it sounds like Hale.',
   'You are given the message, the language and watchFor. Score 1-5.',
   'A 5 says plainly, in the first person and in the requested language, that Hale is on it',
   'and the answer is coming - like a competent friend glancing up from their phone.',
@@ -163,7 +158,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const subjectLane = agent.pickLane(skill.meta.task);
@@ -197,7 +191,7 @@ async function main() {
         ).value.line;
 
     const body = flatten(String(raw ?? ''));
-    const failures = refusals(body, smsSegments);
+    const failures = refusals(body);
     // Skipped in broken mode: the deterministic layer alone must reject the stand-in.
     if (!broken) {
       const verdict = await judge(fixture.id, {
