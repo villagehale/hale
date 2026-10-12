@@ -1280,8 +1280,8 @@ async function routeChannelMessageInner(
     // GATE 4 — the family's week, or the world. The screen reads the LEDGER body (the same
     // words the handlers just declined), stamps its verdict on that same row, and either
     // answers it briefly or hands over one of the two fixed doors — so an off-domain turn
-    // costs two Haiku calls and no coach turn at all. An in-domain verdict, including
-    // every fail-open one, falls through untouched.
+    // costs the screen and the lane's own calls and no coach turn at all. An in-domain
+    // verdict, including every fail-open one, falls through untouched.
     let verdict: Awaited<ReturnType<OffDomainLane['consider']>>;
     try {
       verdict = await withTimeout(

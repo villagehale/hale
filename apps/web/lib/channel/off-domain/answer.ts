@@ -1,4 +1,5 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import type Anthropic from '@anthropic-ai/sdk';
+import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import {
@@ -9,8 +10,8 @@ import {
   isCheerUpAsk,
   isLiveLookupAsk,
 } from '~/lib/channel/intake/live-lookup';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { formatLongDate } from '~/lib/format/datetime';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import {
   EMERGENCY_REPLY,
@@ -19,6 +20,12 @@ import {
   namesAnEmergency,
   reachesForTheHealthLine,
 } from './copy';
+import {
+  COMPOSE_MAX_TOKENS,
+  type ReplyLanguage,
+  normalizeLanguage,
+  scrubResidualPii,
+} from './medical';
 
 /**
  * Boundary v3 — the general answer.
@@ -27,50 +34,87 @@ import {
  * was over-applied. A parent who texted "who's the goat in football" got charm and a
  * closed door, and a closed door to a question a friend would just answer reads as a
  * product that cannot, not one that chooses not to. So the `off_domain_general` terminal
- * flips: one good, honest, brief answer, and then done. The other two doors do not move
- * — a symptom still gets 811 and a parent hunting a paediatrician still gets Health Care
- * Connect, both from fixed copy no model touches (see copy.ts).
+ * answers: brief, correct, in the tone of a friend texting back, and then done. Where the
+ * answer turns on something current — a score, a forecast, a price, who holds a job —
+ * Hale looks it up first (founder, 2026-10-12). It never deflects and never sends the
+ * parent off to find out for themselves. The other two doors do not move — a symptom
+ * still gets 811 and a parent hunting a paediatrician still gets Health Care Connect,
+ * both from fixed copy no model touches (see copy.ts).
  *
- * Three properties keep this cheap and safe to put on the hot path:
+ * Three phases, the medical lane's shape (medical.ts) and for its reasons:
  *
- *   IT IS BLIND, DELIBERATELY. The model sees the question and NOTHING else. No family,
- *   no children, no calendar, no transcript — none of it is even loaded. That is rule #1
- *   at its cheapest (a trivia answer needs nothing about the kids, so nothing about the
- *   kids is at risk), and it is also why this stage costs a fraction of a coach turn:
- *   there is no context to assemble and no tool loop to run.
+ *   0. SANITIZE. The one and only stage that sees the parent's raw words. It returns the
+ *      question with the family taken out of it, the language they wrote in, and its
+ *      judgment of whether a correct answer needs something current. The deterministic
+ *      {@link scrubResidualPii} backstop then runs under it, before the question goes
+ *      anywhere.
  *
- *   IT HAS NO TOOLS AND NO LIVE DATA. Which makes "the weather tomorrow" an honesty
- *   test rather than a lookup, and the skill answers it as one.
+ *   1. SEARCH. Only when the sanitizer judged the answer needs current facts AND
+ *      {@link generalAnswerSearchEnabled} is lit: one STREAMED `web_search` server-tool
+ *      turn on the de-identified question and today's date. The result items actually
+ *      returned are counted, and zero is not a search.
  *
- *   IT CANNOT COST A PARENT THEIR REPLY. Every degraded path — no client, no skill, an
- *   outage, an answer that cannot be sent — comes back NAMED (rule #11) and the lane
- *   sends the fixed deflect line instead. The parent always gets something.
+ *   2. COMPOSE. The skill writes the one reply from the de-identified question, today's
+ *      date and the research when there is any, in the parent's language.
  *
- * PRIVACY. The question goes to the model (as it already did to the screen one call
- * earlier) and nowhere else. Nothing here logs it.
+ * NOTHING ABOUT THE FAMILY IS LOADED. No children, no calendar, no transcript. That is
+ * rule #1 at its cheapest: an off-topic answer needs nothing about the kids, so nothing
+ * about the kids is at risk. The one thing it is handed from outside the message is
+ * today's date where the family is, worked out by the lane.
+ *
+ * EVERY WAY THE SEARCH DOES NOT HAPPEN IS NAMED ({@link LiveSearch}, rule #11), and none
+ * of them costs the parent a reply or buys them an invented one: the compose is told that
+ * nothing could be checked, and says so.
+ *
+ * IT CANNOT COST A PARENT THEIR REPLY. Every degraded path — no client, no skill, an
+ * outage, an answer that cannot be sent — comes back NAMED (rule #11) and the lane
+ * sends its fixed could-not-get-to-it line instead. The parent always gets something.
+ *
+ * PRIVACY. The raw message reaches ONLY the sanitize call; the search and the compose see
+ * the de-identified question alone. Nothing here logs the question in either form, or
+ * any provider text — only a named reason and a named detail (rule #1).
+ *
+ * ONE BRANCH IS OLDER THAN THIS SHAPE AND IS NOT PART OF IT. A text the VIL-327 matchers
+ * claim (intake/live-lookup.ts isLiveLookupAsk) leaves before the sanitize call, by that
+ * module's own search and its own de-identification, and is not behind this flag.
  */
+
+export const GENERAL_ANSWER_SEARCH_ENABLED_ENV = 'GENERAL_ANSWER_SEARCH_ENABLED';
 
 /**
- * The hard ceiling on what goes out, in SMS segments.
- *
- * Two segments is about two sentences — the same budget the coach's own replies are
- * fitted to (coach/reply.ts MAX_REPLY_SEGMENTS), and what the skill asks for. It is a
- * SEGMENT count rather than a character count on purpose: a parent who texts in French
- * or Chinese gets an answer in kind (general-answer.md), and a non-Latin body is UCS-2,
- * where two segments is 134 characters rather than 306. `smsSegments` counts in the
- * currency the carrier actually bills, so the one ceiling is correct in every language —
- * which is exactly why the older GSM-7-only reject is gone: it fell every accented-French
- * and every Chinese answer closed to the English line.
+ * The live search is a new outbound data flow with a per-request fee, so it is dark until
+ * lit. STRICT equality on the literal 'true': a piped `vercel env add` stores 'true\n',
+ * which must stay off.
  */
-export const MAX_ANSWER_SEGMENTS = 2;
+export function generalAnswerSearchEnabled(): boolean {
+  return process.env[GENERAL_ANSWER_SEARCH_ENABLED_ENV] === 'true';
+}
 
-const MAX_TOKENS = 256;
+/** Bounded because the provider bills per search. The same bound intake/live-lookup.ts
+ * holds for this class of question. */
+const MAX_SEARCHES = 2;
+const SANITIZE_MAX_TOKENS = 512;
+/** The medical GROUND turn's ceiling: thinking and the notes share it. */
+const SEARCH_MAX_TOKENS = 4096;
+/**
+ * The compose call's budget, thinking and reply together, and the one bound on what goes
+ * out. It is the medical compose's (medical.ts), generous for the same reason:
+ * forceToolJson throws on a max_tokens cutoff, and a reply cut off there is swapped for
+ * the fixed line. At 256 a compose handed long research notes wrote past it, live. There
+ * is no segment or character cap on the reply: a correct answer that ran long is still
+ * the answer.
+ */
+const MAX_TOKENS = COMPOSE_MAX_TOKENS;
 
 /**
  * Why the answer did not happen. Deliberately four separate stories and not one:
  * `client_unavailable` is configuration, `skill_unavailable` is a deploy bug,
  * `model_failed` is an outage, and `unsendable` is the model itself writing something
  * that must not go on the wire. Only the last one is a prompt problem.
+ *
+ * A failed SANITIZE rides as a detail of `model_failed` rather than as a fifth reason. It
+ * is that story — a model call that did not come back usable — and these four are
+ * persisted (channel_messages.reply_source) against a vocabulary a migration restates.
  */
 export type GeneralAnswerFallback =
   | 'client_unavailable'
@@ -78,8 +122,24 @@ export type GeneralAnswerFallback =
   | 'model_failed'
   | 'unsendable';
 
+/**
+ * What happened to the live search this turn. `searched` is the only one that put
+ * research in front of the compose. The three after it are the ways a question that
+ * needed a search went without one — the flag is dark, the call failed, the call
+ * returned nothing to stand on — each logged by name and each answered by the compose
+ * saying plainly that it cannot check right now.
+ */
+export type LiveSearch =
+  | 'not_needed'
+  | 'searched'
+  | 'search_off'
+  | 'search_failed'
+  | 'nothing_usable';
+
 export type GeneralAnswerOutcome =
-  | { status: 'composed'; reply: string }
+  /** `search` is set whenever a model wrote the reply. The fixed lines above the model
+   * have no search to name. */
+  | { status: 'composed'; reply: string; search?: LiveSearch }
   /**
    * The question turned out to be about someone hurt or ill, and the model answered it
    * with a referral of its own (skill audit P0 #3). This branch carries NO reply on
@@ -90,12 +150,37 @@ export type GeneralAnswerOutcome =
   | { status: 'unavailable'; reason: GeneralAnswerFallback };
 
 export interface GeneralAnswerComposer {
-  compose(text: string): Promise<GeneralAnswerOutcome>;
+  /** `today` is today's date where the family is (see {@link localDate}). */
+  compose(text: string, today: string): Promise<GeneralAnswerOutcome>;
 }
+
+/** What the sanitizer may answer. Only an explicit `no` skips the search. */
+const SEARCH_READINGS = ['yes', 'no', 'unsure'] as const;
 
 /** Parsed loosely, for the reason screen.ts states at length: a strict schema turns a
  * parent's injected field name into a logged ZodError message (rule #1), and zod's
- * default strips unknown keys instead. */
+ * default strips unknown keys instead. The reading and the language are normalized in
+ * code for the same reason. */
+const sanitizeSchema = z.object({
+  language: z.string().nullish(),
+  question: z.string(),
+  current_fact: z.string().nullish(),
+  needs_search: z.string().nullish(),
+});
+
+const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
+  type: 'object',
+  // The language first: it is read off the parent's words before they are rewritten. The
+  // fact before the verdict: a reading that names what it is judging on first.
+  properties: {
+    language: { type: 'string' },
+    question: { type: 'string' },
+    current_fact: { type: 'string' },
+    needs_search: { type: 'string', enum: [...SEARCH_READINGS] },
+  },
+  required: ['language', 'question', 'current_fact', 'needs_search'],
+};
+
 const answerSchema = z.object({ answer: z.string() });
 
 const answerJsonSchema = {
@@ -104,9 +189,57 @@ const answerJsonSchema = {
   required: ['answer'],
 } as const;
 
-/** The user-turn payload. Shared with the eval, which REPLICATES this request shape. */
-export function generalAnswerUserMessage(text: string): string {
+/**
+ * Today's date as the search and the compose are told it: the weekday and the full date
+ * in the zone given, so "last night" and "tomorrow" have something to be read against.
+ */
+export function localDate(now: Date, timeZone: string): string {
+  const { weekday, month, day, year } = formatLongDate(now, timeZone);
+  return `${weekday}, ${month} ${day}, ${year}`;
+}
+
+/** The sanitize turn's payload — the ONLY call the raw message reaches. */
+export function questionSanitizeUserMessage(text: string): string {
   return JSON.stringify({ text });
+}
+
+/** What the search is given: the de-identified question and the date. Shared with the
+ * eval, which REPLICATES this request shape. */
+export function searchUserMessage(input: { question: string; today: string }): string {
+  return JSON.stringify({ question: input.question, today: input.today });
+}
+
+/**
+ * The compose payload. Shared with the eval, which REPLICATES this request shape.
+ *
+ * The three ways a needed search did not happen are ONE value here. To the writer they
+ * are the same fact — nothing could be checked — and which one it was belongs to the
+ * log and the outcome, not to the reply.
+ */
+export function generalAnswerUserMessage(input: {
+  question: string;
+  language: ReplyLanguage;
+  today: string;
+  search: LiveSearch;
+  notes: string;
+}): string {
+  const searched = input.search === 'searched';
+  return JSON.stringify({
+    question: input.question,
+    language: input.language,
+    today: input.today,
+    live: searched ? 'searched' : input.search === 'not_needed' ? 'not_needed' : 'unavailable',
+    ...(searched ? { research_notes: input.notes } : {}),
+  });
+}
+
+/**
+ * FAIL TOWARD LOOKING IT UP: only an explicit `no` skips the search. `unsure`, a missing
+ * reading and anything off the list all search, because the failure worth avoiding is a
+ * stale fact stated flat.
+ */
+function needsSearch(raw: unknown): boolean {
+  return raw !== 'no';
 }
 
 /** What the two setup catches log. Neither call is passed the question, so the message
@@ -115,10 +248,11 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown';
 }
 
-/** What a failed COMPOSE logs. Its request holds the question and a provider error can
- * quote the request back in its message, so this is the error's name and, for a
- * structured answer that came back unusable, why. Never the message (rule #1). */
-function composeFailure(err: unknown): string {
+/** What a failed MODEL call logs. Every request here holds the question in one form or
+ * another and a provider error can quote the request back in its message, so this is the
+ * error's name and, for a structured answer that came back unusable, why. Never the
+ * message (rule #1). */
+function failureName(err: unknown): string {
   if (err instanceof StructuredOutputError) return `${err.name}:${err.outcome}`;
   return err instanceof Error ? err.name : 'unknown';
 }
@@ -128,27 +262,130 @@ function unavailable(reason: GeneralAnswerFallback, detail?: string): GeneralAns
   return { status: 'unavailable', reason };
 }
 
+/** A question that needed a search and went without one, named (rule #11). The reply is
+ * still composed, so this is a warning and not a fallback. */
+function wentWithout<T extends LiveSearch>(search: T, detail?: string): T {
+  console.warn({ search, detail }, 'off-domain answer: no live search this turn');
+  return search;
+}
+
+interface SearchFindings {
+  /** The URL of every result item the search returned. */
+  urls: readonly string[];
+  /** What the turn wrote down. */
+  notes: string;
+}
+
+const NO_FINDINGS: SearchFindings = { urls: [], notes: '' };
+
+/**
+ * What a search turn returned. A search block that came back as an ERROR carries an
+ * object rather than a list, so it contributes nothing — which is the point (rule #11:
+ * "ran and found nothing" is not "was grounded"). Mirrors medical.ts countSearchResults.
+ */
+function readSearch(content: Anthropic.ContentBlock[]): SearchFindings {
+  const urls: string[] = [];
+  for (const block of content) {
+    if (block.type !== 'web_search_tool_result') continue;
+    if (!Array.isArray(block.content)) continue;
+    for (const result of block.content) urls.push(result.url);
+  }
+  const notes = content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+    .trim();
+  return { urls, notes };
+}
+
+/**
+ * Phase 1. One web_search turn on the de-identified question, through the medical lane's
+ * seam: the same injected client, the same server tool, the model its skill names.
+ *
+ * STREAMED. A server-tool turn runs its searches before the response is complete, and a
+ * non-streamed request gets no headers until it is: activity/deep.ts measured that shape
+ * dying at the client timeout while the identical request streamed finished. Streaming
+ * makes the client's bound time-to-headers.
+ *
+ * Notes with no results under them are what the model remembered, not what it found, so
+ * they are dropped with the rest.
+ */
+async function liveSearch(
+  client: AgentClient,
+  skill: Awaited<ReturnType<typeof loadCronSkill>>,
+  question: string,
+  today: string,
+): Promise<{ search: LiveSearch; findings: SearchFindings }> {
+  if (!generalAnswerSearchEnabled()) {
+    return { search: wentWithout('search_off'), findings: NO_FINDINGS };
+  }
+  let research: Anthropic.Message;
+  try {
+    research = await client.messages
+      .stream({
+        model: pickModel(skill.meta.task),
+        max_tokens: SEARCH_MAX_TOKENS,
+        system: skill.instructions,
+        tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
+        messages: [{ role: 'user', content: searchUserMessage({ question, today }) }],
+      })
+      .finalMessage();
+  } catch (err) {
+    return { search: wentWithout('search_failed', failureName(err)), findings: NO_FINDINGS };
+  }
+  const findings = readSearch(research.content);
+  if (findings.urls.length === 0) {
+    return { search: wentWithout('nothing_usable', 'no_results'), findings: NO_FINDINGS };
+  }
+  if (findings.notes === '') {
+    return { search: wentWithout('nothing_usable', 'empty_notes'), findings: NO_FINDINGS };
+  }
+  return { search: 'searched', findings };
+}
+
+const LINK = /(?:https?:\/\/|www\.)\S+/gi;
+
+/** A URL as it is compared: the scheme, a leading `www.`, and whatever punctuation the
+ * sentence put after it are not part of which page it is. */
+function linkKey(url: string): string {
+  return url
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/[.,;:!?)\]'"]+$/, '')
+    .replace(/\/$/, '');
+}
+
+/**
+ * A URL in a reply is real only when this turn's search returned it. Before this stage
+ * could search, any URL was one the model invented and all of them were refused; now one
+ * can be the thing the parent asked for, so what is refused is a URL the search did not
+ * return.
+ */
+function carriesUnsearchedLink(body: string, searched: readonly string[]): boolean {
+  const known = new Set(searched.map(linkKey));
+  return (body.match(LINK) ?? []).some((link) => !known.has(linkKey(link)));
+}
+
 /**
  * The composed answer, or a named reason it cannot be sent.
  *
- * The cap is a REFUSAL rather than a trim. The coach can trim, because it has an app
- * link to hand the remainder to; this stage has nothing to point at and nothing worth
- * pointing at, so an answer cut mid-clause would just be a worse message than the fixed
- * line it would have replaced. `detail` separates the ways a body can be unsendable in
- * the LOG without splitting the outcome the caller acts on — every one of them means the
- * same thing to the lane.
+ * LENGTH IS NOT A REASON. A correct answer that ran long used to be swapped for the fixed
+ * could-not-get-to-it line, which is a deflect sent in place of an answer. The reply is
+ * bounded where it is written, by the compose call's token budget, and what the model
+ * wrote is what goes out. `detail` separates the ways a body can be unsendable in the
+ * LOG without splitting the outcome the caller acts on.
  *
- * There is no GSM-7 gate. A parent who writes in French or Chinese is answered in kind
- * (general-answer.md), and those bodies are UCS-2 by nature — an em dash or an emoji that
- * a model reaches for gratuitously is still folded to ASCII by `plainText`, but an
- * accented é or a Chinese character is content the answer cannot exist without. The
- * segment budget is what keeps the message cheap, in the currency the carrier bills.
+ * There is no encoding gate either. A parent who writes in French or Chinese is answered
+ * in kind (general-answer.md): a typographic dash or a curly quote is still folded to
+ * ASCII by `plainText`, but an accented é or a Chinese character is content the answer
+ * cannot exist without.
  */
-/** "No links, ever" (general-answer.md), held structurally: a URL this stage composes
- * is a URL it invented — there is no tool it could have gotten one from. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
-
-function sendable(raw: string): GeneralAnswerOutcome {
+function sendable(
+  raw: string,
+  search: LiveSearch,
+  searched: readonly string[],
+): GeneralAnswerOutcome {
   const flattened = plainText(raw);
   // Before every other gate, because this one SUBSTITUTES where the rest refuse: a
   // parent who turns out to be describing a hurt child must get the fixed line, never
@@ -158,11 +395,10 @@ function sendable(raw: string): GeneralAnswerOutcome {
     return { status: 'safety' };
   }
   if (flattened === '') return unavailable('unsendable', 'empty');
-  if (smsSegments(flattened) > MAX_ANSWER_SEGMENTS) {
-    return unavailable('unsendable', 'over_segment_budget');
+  if (carriesUnsearchedLink(flattened, searched)) {
+    return unavailable('unsendable', 'link_not_from_search');
   }
-  if (LINK_SHAPE.test(flattened)) return unavailable('unsendable', 'carries_link');
-  return { status: 'composed', reply: flattened };
+  return { status: 'composed', reply: flattened, search };
 }
 
 /**
@@ -175,7 +411,7 @@ function sendable(raw: string): GeneralAnswerOutcome {
  */
 export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerComposer {
   return {
-    async compose(text) {
+    async compose(text, today) {
       // VIL-328: physical emergency is Call 911 now., never the 811 Telehealth
       // line. Mental crisis is the reviewed 988 line, no return ask.
       if (namesAnEmergency(text)) {
@@ -210,28 +446,70 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
         return { status: 'composed', reply: afterProvisionReplyFromNotes(ground.notes) };
       }
 
+      let sanitizeSkill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let searchSkill: Awaited<ReturnType<typeof loadCronSkill>>;
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
       try {
+        sanitizeSkill = await loadCronSkill('general-answer-sanitize');
+        searchSkill = await loadCronSkill('general-answer-search');
         skill = await loadCronSkill('general-answer');
       } catch (err) {
         return unavailable('skill_unavailable', message(err));
       }
 
+      // Phase 0 — SANITIZE (the family out of the question; the language; the reading).
+      let sanitized: z.infer<typeof sanitizeSchema>;
+      try {
+        ({ value: sanitized } = await forceToolJson({
+          client: resolved,
+          lane: pickLane(sanitizeSkill.meta.task),
+          system: sanitizeSkill.instructions,
+          userMessage: questionSanitizeUserMessage(text),
+          toolName: 'sanitize',
+          toolDescription: 'Return the de-identified question.',
+          inputJsonSchema: sanitizeJsonSchema,
+          schema: sanitizeSchema,
+          maxTokens: SANITIZE_MAX_TOKENS,
+        }));
+      } catch (err) {
+        return unavailable('model_failed', `sanitize_failed:${failureName(err)}`);
+      }
+      // Nothing is composed from a question nobody de-identified: the raw text may not go
+      // to the compose, and there is no other question to hand it.
+      if (sanitized.question.trim() === '') {
+        return unavailable('model_failed', 'sanitize_failed:empty_question');
+      }
+      // Deterministic backstop UNDER the sanitizer, before the question goes anywhere.
+      const question = scrubResidualPii(sanitized.question.trim());
+      const language = normalizeLanguage(sanitized.language);
+
+      // Phase 1 — SEARCH (only when judged needed, and only when lit).
+      const { search, findings } = needsSearch(sanitized.needs_search)
+        ? await liveSearch(resolved, searchSkill, question, today)
+        : { search: 'not_needed' as const, findings: NO_FINDINGS };
+
+      // Phase 2 — COMPOSE (blind: the question and the research, never the raw message).
       try {
         const { value } = await forceToolJson({
           client: resolved,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
-          userMessage: generalAnswerUserMessage(text),
+          userMessage: generalAnswerUserMessage({
+            question,
+            language,
+            today,
+            search,
+            notes: findings.notes,
+          }),
           toolName: 'answer',
           toolDescription: 'Return the one brief answer to this question.',
           inputJsonSchema: answerJsonSchema,
           schema: answerSchema,
           maxTokens: MAX_TOKENS,
         });
-        return sendable(value.answer);
+        return sendable(value.answer, search, findings.urls);
       } catch (err) {
-        return unavailable('model_failed', composeFailure(err));
+        return unavailable('model_failed', failureName(err));
       }
     },
   };
