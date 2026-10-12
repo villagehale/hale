@@ -141,10 +141,11 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // the teen is notified. The consume side (approving the request → granted=true,
   // and honouring an active grant on read) is a follow-up.
   'teen_content_access',
-  // CASL express consent to receive SMS service messages (weekly plan, reminders,
-  // approvals) on a verified phone. Per-PARENT, not per-family — co-parents enroll
-  // independently, so this never triggers the two-parent-consent rule (#5). Granted
-  // on OTP verify; a granted=false row records a withdrawal (in-app toggle / STOP).
+  // CASL express consent to receive SMS service messages (the kids' year: activities,
+  // registration dates, reminders, approvals) on a verified phone. Per-PARENT, not
+  // per-family — co-parents enroll independently, so this never triggers the
+  // two-parent-consent rule (#5). Granted on OTP verify; a granted=false row records
+  // a withdrawal (in-app toggle, or the parent asking to stop in any wording).
   // The channel seam (VIL-213) gates SMS on the live parent_channels state, not on
   // this append-only ledger.
   'sms_service_messages',

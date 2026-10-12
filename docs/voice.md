@@ -70,11 +70,11 @@ These are immovable, and the reason is written beside each one so a voice PR can
 
 **The registration ladder's legs** (`apps/web/lib/registration/sequence/copy.ts`). They stay deterministic and un-pooled — founder decision, confirmed. Those legs arrive at 6:15 a.m. under a quiet-hours exemption, and *"a generated sentence with a quiet-hours bypass is a sentence nobody approved waking a household for."* A leg fires once per window per season, so repetition is not the failure there. Only the FRAME around `ANSWER_MENU`'s quoted tokens is re-voiced; the tokens themselves (`"got in"`, `"waitlisted #12"`, `"missed it"`) are load-bearing — the reply parser reads them, and they are quoted verbatim so a parent who copies one back is guaranteed a match.
 
-**Which skills read the partial, and which read the rules in their own words.** The include is not a style preference, it is a change to a system prompt, and every one of these lanes has an eval suite that grades the message a parent would have received. The rule this list was built by is the one the suites enforce: *a skill takes the include if and only if its own corpus still passes with it in place.* Nine do.
+**Which skills read the partial, and which read the rules in their own words.** The include is not a style preference, it is a change to a system prompt, and every one of these lanes has an eval suite that grades the message a parent would have received. The rule this list was built by is the one the suites enforce: *a skill takes the include if and only if its own corpus still passes with it in place.* Eight do.
 
 | | skills | how it was decided |
 |---|---|---|
-| **read the partial** | `calendar-email-ask`, `calendar-invite-note`, `followup-voice`, `identity-ask`, `intake-voice`, `intro-voice`, `nudge-voice`, `reminder-voice`, `week-summary` | eight suites re-run live with the include in place, every gate held, caches committed |
+| **read the partial** | `calendar-email-ask`, `calendar-invite-note`, `followup-voice`, `identity-ask`, `intake-voice`, `intro-voice`, `nudge-voice`, `reminder-voice` | seven suites re-run live with the include in place, every gate held, caches committed |
 | **keep their own copy** | `coach-channel-sms`, `radar-voice`, `coach-plan`, `coach-plan-note`, `general-answer`, `intake-answer`, `turn-apology`, `voice-turn` | each suite went red on a live re-run; the numbers are below |
 | **not offered it yet** | `activity-finder`, `activity-deep`, `activity-synthesis`, `medical-symptom` | the finder lanes, PR6c. `activity-synthesis` has a runner (`apps/worker/evals/run-activity-synthesis-eval.mjs`) but no `eval:*` script and no CI step, so a live re-run of it would not be a gate anyone re-runs; it cannot be offered the include until it is wired |
 
@@ -110,7 +110,7 @@ A message a family reads every night of their life must not be one sentence. It 
 
 So the nightly and weekly one-shots use **pools**, selected by `pickVariant` (`apps/web/lib/channel/variant.ts`): `index = (occasion + sha256(poolName:familyId) mod N) mod N`. It is a ROTATION, not a draw — `Math.random` appears nowhere in production source, and the reason is already written down in `apps/web/lib/channel/spots/sweep.ts`: *"a sweep nobody can make deterministic is a sweep nobody can prove is spaced."* A rotation moves by exactly one, so a consecutive repeat is impossible by construction rather than by retry; `poolName` is in the offset so two pools that fire the same evening do not advance in lockstep; nothing is stored, so there is nothing to migrate, nothing to export under a subject-access request and nothing that can desynchronise.
 
-Pool sizes are a founder decision: **five** for the two check-in pools (the later evening ask and the noted ack, EN and FR), **three** for the weekly-plan and reminder folds. A pool must have at least 3 members and may not have a multiple of 7, because a nightly pool read on a weekly rhythm would lock to the weekday forever.
+Pool sizes are a founder decision: **five** for the two check-in pools (the later evening ask and the noted ack, EN and FR), **three** for the reminder fold. A pool must have at least 3 members and may not have a multiple of 7, because a nightly pool read on a weekly rhythm would lock to the weekday forever.
 
 **Not everything gets a pool.** Anything that can fire several times a day — the email and calendar alerts at 3 per 24h, spot openings at 4 per 24h — gets none in v1: a date-keyed seed would hand all of Monday's alerts the same variant, and a per-send seed is a hash again, which loses the one property the rotation exists for. Named, not forgotten.
 
@@ -119,13 +119,13 @@ Pool sizes are a founder decision: **five** for the two check-in pools (the late
 Every pool member, in every pool:
 
 - is GSM-7 and fits its own budget **measured with the full opt-out line on it** — not the body alone;
-- contains **exactly one** `?` (rule 5), except the fully-placed weekly pool, which contains **zero**: the week that asks nothing;
+- contains **exactly one** `?` (rule 5);
 - is not answerable by a bare yes or no (rule 11);
 - scores **below 0.65** on a Jaccard word-set overlap against every other member of its pool. A five-member pool whose members are the same sentence with a synonym swapped is not a pool. The detector and its 0.65 calibration are lifted from `apps/site/app/landing.test.ts`, where the threshold was measured rather than chosen.
 
 ## The two SMS folds
 
-The weekly plan and the reminder both already compose a human sentence through a model — at the Saturday converge tick and the evening one — and both used to throw it away on the surface a parent actually reads. `payload.voice` is on the shared payload; the SMS renderers now read it, behind a fold.
+The reminder already composes a human sentence through a model — at the evening converge tick — and used to throw it away on the surface a parent actually reads. `payload.voice` is on the shared payload; the SMS renderer now reads it, behind a fold.
 
 A composed sentence is used only when it clears the same mechanical bar the pooled copy is held to, and every condition is there because something went wrong silently without it:
 
