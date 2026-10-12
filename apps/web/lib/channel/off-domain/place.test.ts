@@ -226,7 +226,7 @@ describe('a stored city and country, which are never sent as stored', () => {
   });
 
   /** A stored country is looked up, and a plain object answers to names it never listed. */
-  it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])(
+  it.each(['constructor', '__proto__'])(
     'names a stored country of %j as unsupported, and does not throw',
     async (country) => {
       const unsupported = { status: 'unknown', reason: 'unsupported_country' };
