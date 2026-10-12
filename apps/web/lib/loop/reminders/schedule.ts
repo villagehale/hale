@@ -100,12 +100,6 @@ export type SuppressReason =
   /** Written by the retired grace window. Rows that already carry it keep it; nothing
    * writes it now. */
   | 'missed'
-  /**
-   * An evening-before reminder whose event's own day has come (family-local). The event
-   * has not started, but the reminder would call it tomorrow; the hour-before reminder
-   * still covers it.
-   */
-  | 'evening_passed'
   | 'interacted'
   /**
    * The recipient may not see this event any more — a caregiver seat whose event turned
@@ -132,13 +126,14 @@ export interface ClassifyOptions {
 /**
  * The don't-send gate. Ordered so the strongest "never send" wins: a gone/cancelled
  * event beats everything; a moved event is stale; an event that already started is
- * suppressed, and so is an evening-before reminder on the event's own day; a fresh
- * in-channel interaction suppresses; a future fire waits; otherwise fire. `event` is the
- * CURRENT live row (null when it no longer exists), re-read at send time — so this holds
- * regardless of whether any recompute hook ran.
+ * suppressed; a fresh in-channel interaction suppresses; a future fire waits; otherwise
+ * fire. `event` is the CURRENT live row (null when it no longer exists), re-read at send
+ * time — so this holds regardless of whether any recompute hook ran.
  *
  * HOW LATE a due reminder is decides nothing. One held while its lane was off, or caught
- * up after a cron gap, is still useful while its event has not started, so it fires.
+ * up after a cron gap, is still useful while its event has not started, so it fires —
+ * an evening-before one on the event's own day too: its lead is the event's date and its
+ * voice phrases the day from the event's local start and `now` (reminder-voice.ts).
  * Once the per-family send decider lands (#824) it owns that "still useful?" call, and
  * this rule becomes its input.
  */
@@ -156,12 +151,6 @@ export function classifyReminder(
 
   if (event.startsAt.getTime() <= now.getTime()) return { action: 'suppress', reason: 'started' };
   if (reminder.fireAt.getTime() > now.getTime()) return { action: 'wait' };
-  if (
-    reminder.offset === '-P1D' &&
-    dayKeyIn(now, timeZone) === dayKeyIn(event.startsAt, timeZone)
-  ) {
-    return { action: 'suppress', reason: 'evening_passed' };
-  }
   if (opts.recentInteraction) return { action: 'suppress', reason: 'interacted' };
   return { action: 'fire' };
 }

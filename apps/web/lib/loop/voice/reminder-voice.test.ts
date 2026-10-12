@@ -50,7 +50,8 @@ describe('reminderVoiceContext — rule #1: exactly the redacted view the templa
     const ctx = reminderVoiceContext([event()], [NEWBORN], 'first_name', TZ, '-PT1H', NOW);
     expect(ctx).toEqual({
       offset: '-PT1H',
-      events: [{ what: 'Mira — 6-month checkup', when: '10:00' }],
+      now: { day: 'Fri, Jul 24', time: '8:00 AM' },
+      events: [{ what: 'Mira — 6-month checkup', day: 'Fri, Jul 24', when: '10:00' }],
     });
   });
 
@@ -63,7 +64,8 @@ describe('reminderVoiceContext — rule #1: exactly the redacted view the templa
     const ctx = reminderVoiceContext([teenEvent], [TEEN], 'first_name', TZ, '-P1D', NOW);
     expect(ctx).toEqual({
       offset: '-P1D',
-      events: [{ what: 'an appointment', when: '5:00' }],
+      now: { day: 'Fri, Jul 24', time: '8:00 AM' },
+      events: [{ what: 'an appointment', day: 'Fri, Jul 24', when: '5:00' }],
     });
     expect(JSON.stringify(ctx)).not.toContain('Rowan');
     expect(JSON.stringify(ctx)).not.toContain('therapy');
@@ -79,6 +81,38 @@ describe('reminderVoiceContext — rule #1: exactly the redacted view the templa
       NOW,
     );
     expect(ctx.events[0]?.what).toBe('an appointment');
+  });
+});
+
+describe("reminderVoiceContext — the day is a fact in the family's zone, never the offset's word", () => {
+  it("hands a late evening-before reminder its event's own day and the send moment, both local", () => {
+    // The evening slot passed; it is 7:00 EDT on the event's day and the 10:00 event has
+    // not started. The day is the event's local day, read against now's local day.
+    const late = new Date('2026-07-25T11:00:00Z');
+    const ctx = reminderVoiceContext(
+      [event({ startsAt: '2026-07-25T14:00:00Z' })],
+      [NEWBORN],
+      'first_name',
+      TZ,
+      '-P1D',
+      late,
+    );
+    expect(ctx.now).toEqual({ day: 'Sat, Jul 25', time: '7:00 AM' });
+    expect(ctx.events).toEqual([{ what: 'Mira — 6-month checkup', day: 'Sat, Jul 25', when: '10:00' }]);
+  });
+
+  it("reads the event's day in the family's zone, not UTC's", () => {
+    const ctx = reminderVoiceContext(
+      [event({ startsAt: '2026-07-26T02:00:00Z' })],
+      [NEWBORN],
+      'first_name',
+      'America/Vancouver',
+      '-P1D',
+      NOW,
+    );
+    // 19:00 PDT on the 25th; NOW is 05:00 PDT on the 24th.
+    expect(ctx.events[0]).toMatchObject({ day: 'Sat, Jul 25', when: '7:00' });
+    expect(ctx.now).toEqual({ day: 'Fri, Jul 24', time: '5:00 AM' });
   });
 });
 

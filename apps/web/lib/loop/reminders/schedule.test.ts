@@ -110,15 +110,12 @@ describe('classifyReminder — the don\'t-send matrix (the trust test)', () => {
     expect(classifyReminder(r, event(), now, TZ)).toEqual({ action: 'fire' });
   });
 
-  it("suppresses (evening_passed) a T-24h reminder once the event's own day has come", () => {
-    // 08:00 EDT on the event's day: the event has not started, but an evening-before
-    // reminder would now say "tomorrow" about today. The T-1h reminder still covers it.
+  it("fires a late T-24h reminder on the event's own day while the event has not started", () => {
+    // 08:00 EDT on the event's day, the evening slot 14h behind: the event is still two
+    // hours off, so the reminder is still useful. The day it names is the voice's to phrase.
     const r = reminder({ offset: '-P1D', fireAt: new Date('2026-07-24T22:00:00Z') });
     const now = new Date('2026-07-25T12:00:00Z');
-    expect(classifyReminder(r, event(), now, TZ)).toEqual({
-      action: 'suppress',
-      reason: 'evening_passed',
-    });
+    expect(classifyReminder(r, event(), now, TZ)).toEqual({ action: 'fire' });
   });
 
   it('suppresses (interacted) when the parent just engaged the event in-channel', () => {
