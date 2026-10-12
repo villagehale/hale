@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly says the item is a clinic checkup for Wren, and the age of 18 months is supported by the children list, so the kid verdict follows. However, it mostly restates the title and leaves the 'why' implicit, never saying that a child's appointment is a kid item.",
+    "score": 4
+  }
+}

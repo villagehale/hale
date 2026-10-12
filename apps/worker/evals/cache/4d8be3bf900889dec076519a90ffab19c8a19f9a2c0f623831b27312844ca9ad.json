@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is accurate and well supported. It identifies the item as a swim outing for Wren, a named child whose age of 18 months comes from the context, and correctly concludes it is a kid activity. It is one plain clause that says what the item is and why it is kid, with no invented facts.",
+    "score": 5
+  }
+}

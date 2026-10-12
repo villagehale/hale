@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a single plain clause. It names the item as a physio appointment for a shoulder, and the rules list a parent's own physio as an adult item. That leads straight to the adult verdict. It invents no facts, matches the verdict, and is concise.",
+    "score": 5
+  }
+}

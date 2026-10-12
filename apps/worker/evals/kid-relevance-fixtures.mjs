@@ -283,15 +283,17 @@ export const KID_RELEVANCE_ONBOARDING = {
 };
 
 /**
- * One call at the runtime's per-call bound: the toddler calendar, the mailbox and the
- * group messages together, as a first connect would hand them over. This is the batch
- * that measures whether KID_JUDGE_ITEMS_PER_CALL fits under the output ceiling.
+ * More items than one call holds: the toddler calendar, the mailbox and the group
+ * messages together, as a first connect would hand them over. The runner splits it at
+ * the runtime's per-call bound, so its first call is a full one - the batch that measures
+ * whether KID_JUDGE_ITEMS_PER_CALL fits under the output ceiling - and the rest go in a
+ * second.
  */
 export const KID_RELEVANCE_FULL_BATCH = (() => {
   const byId = Object.fromEntries(KID_RELEVANCE_FAMILIES.map((family) => [family.id, family]));
   return {
     id: 'full-batch',
-    why: 'A first connect: every calendar, mailbox and group item in one call.',
+    why: 'A first connect: every calendar, mailbox and group item at once.',
     children: byId['toddler-calendar'].children,
     items: [...byId['toddler-calendar'].items, ...byId.mailbox.items, ...byId.group.items],
   };

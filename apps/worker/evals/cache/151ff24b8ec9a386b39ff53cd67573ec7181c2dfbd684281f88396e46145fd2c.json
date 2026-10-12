@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item names Wren, the family's 18-month-old, and asks who will take her to swim. That is a care and drop-off arrangement for a child's activity, so it supports `kid`. The classifier's reason is one plain clause. It identifies the item as Wren's swim, uses only the supported age and leads straight to the verdict. Calling it an 'outing' rather than a lesson stays within what the text says.",
+    "score": 5
+  }
+}

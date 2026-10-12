@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier reason correctly calls 'Hold' a bare calendar block with no activity, name or detail. That ambiguity is exactly what leads to unsure. It is one short clause that supports the verdict without inventing facts. It could have noted that nothing in children, activityTitles or notMineHints settles it, but it is adequate and plain.",
+    "score": 5
+  }
+}

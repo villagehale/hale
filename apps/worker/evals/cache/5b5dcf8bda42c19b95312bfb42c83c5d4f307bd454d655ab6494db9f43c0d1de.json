@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is only 'Busy', a bare calendar block with no activity, place or name, so nothing ties it to Wren, Theo or the parent; the classifier's reason says exactly this in one plain clause that supports unsure.",
+    "score": 5
+  }
+}

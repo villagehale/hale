@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The calendar entry is just the word \"Hold\", a placeholder with no activity, place or name, and nothing in children, activityTitles or notMineHints settles whose it is, so unsure is right. The classifier's single plain clause says it is a bare word with nothing identifying, and that it could be anyone's, which is the what and the why behind unsure. It adds no unsupported facts.",
+    "score": 5
+  }
+}

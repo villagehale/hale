@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a dentist appointment and matches the adult verdict in one plain sentence. Its logic is thin, though: having no child named does not by itself make it the parent's own visit, because a 30-month-old can also see a dentist.",
+    "score": 4
+  }
+}

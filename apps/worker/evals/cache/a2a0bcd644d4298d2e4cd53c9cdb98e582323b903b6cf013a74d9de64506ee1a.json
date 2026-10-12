@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It names the item as a baby rhyme time program at the library and says why it is a kid item: it is made for babies and toddlers. That matches the rule for programs made for young children and supports the kid verdict. Calling it a class for toddlers is a fair reading of a baby program, not an invented fact, so the reason invents nothing.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item text is Chinese for \"Lina's music class\", and it names the family's only child, so it is a kid activity for her. The classifier's reason gets this right: it says what the item is (a music class), points to the child's name, and leads to the kid verdict. It is one plain clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

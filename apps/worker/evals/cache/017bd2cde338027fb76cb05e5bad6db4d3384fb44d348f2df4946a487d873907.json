@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason states the kind of thing correctly: generic errands, with no child named and no kid activity. It ties that to unsure by noting the item could be either way. One plain clause, no invented facts. Minor wordiness aside, it fully meets the bar.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel booking that names no child, and the parent's hint covers a hotel stay, so it is the parent's own and the adult verdict follows. The classifier's reason says exactly this in one short clause, with nothing invented, and it supports the given verdict.",
+    "score": 5
+  }
+}

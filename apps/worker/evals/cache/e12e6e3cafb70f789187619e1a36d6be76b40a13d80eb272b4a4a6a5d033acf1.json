@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly says the item is a car service reminder, which is the parent's own errand. That supports the adult verdict in one short plain clause. Calling it a 'booking' slightly overstates a reminder that service is due, but this is a minor imprecision and not an invented fact about who, where or how old.",
+    "score": 5
+  }
+}

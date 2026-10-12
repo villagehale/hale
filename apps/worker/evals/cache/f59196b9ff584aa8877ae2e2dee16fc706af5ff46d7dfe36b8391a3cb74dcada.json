@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a hotel reservation that names no child and shows no family booking. Under the trip rule, a booking alone does not say who is going, so this directly supports unsure. It adds no unsupported facts and stays one plain clause.",
+    "score": 5
+  }
+}

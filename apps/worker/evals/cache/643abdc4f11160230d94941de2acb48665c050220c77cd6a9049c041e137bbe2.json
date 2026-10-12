@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the kid verdict. It reads 'Seb' as Sebastian, which the nickname rules support, and the 15-month age matches his age in months. It says what the item is (a child's checkup) and why it leads to kid (he is one of the children), and every fact it uses is supported. It is a single short, plain clause.",
+    "score": 5
+  }
+}

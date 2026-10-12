@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short plain clause. It correctly calls the item a car service reminder, a parent's errand with no tie to the children, which supports the adult verdict. Calling it a 'booking' when the email is only a due-for-service reminder is a slight stretch, but it does not change the kind of item or the verdict.",
+    "score": 5
+  }
+}

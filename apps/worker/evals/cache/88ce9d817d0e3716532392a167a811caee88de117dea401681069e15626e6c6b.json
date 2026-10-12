@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly reads the item as a restaurant reservation for two, which is the parent's own dinner, and says so in one plain clause that supports the adult verdict. It adds no unsupported facts.",
+    "score": 5
+  }
+}

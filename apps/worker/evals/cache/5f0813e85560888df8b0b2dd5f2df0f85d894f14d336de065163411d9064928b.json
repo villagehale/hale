@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a registration for a preschool swim class, which the rules treat as a kid item even when no child is named, and it supports the kid verdict in one plain clause. The tail 'for a toddler-aged child' is a little loose: a preschool class usually suits children older than 18-month Wren, so it slightly blurs the age reading instead of resting on the class being made for kids.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a flight check-in. It also points to the decisive gap: no child is named and nothing marks a family booking. Under the trip rule that leaves it open, which matches the unsure verdict. It is one plain clause, invents nothing, and argues for the verdict given.",
+    "score": 5
+  }
+}

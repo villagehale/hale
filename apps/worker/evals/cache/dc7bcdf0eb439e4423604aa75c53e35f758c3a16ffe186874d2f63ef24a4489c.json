@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause. It names what the item is, a library hold for a grown-up novel, and ties that to the adult verdict as the parent's own book, which matches the rule for adult library holds. The 'parent's own' part is a fair reading of an adult book in a family whose children are 15 and 72 months old, so nothing is invented.",
+    "score": 5
+  }
+}

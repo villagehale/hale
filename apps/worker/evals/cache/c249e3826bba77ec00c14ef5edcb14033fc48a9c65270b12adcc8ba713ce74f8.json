@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads the item as a restaurant table booking, a kind the rules list as the parent's own, and links that straight to the adult verdict. It is one plain clause with no invented facts. 'Adult dinner' is a fair reading, since a table for two with an 18-month-old is a parent's dinner out.",
+    "score": 5
+  }
+}

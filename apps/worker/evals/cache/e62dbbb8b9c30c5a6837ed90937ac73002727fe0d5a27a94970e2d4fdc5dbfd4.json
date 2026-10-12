@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls this a flight check-in that names no child and is not plainly a work or family booking, which matches the trip rule for unsure. It is one plain clause that says what the item is and why it gets the verdict beside it.",
+    "score": 5
+  }
+}

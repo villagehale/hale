@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a household chat question about taking Wren, the 18-month-old, to a swim activity, so it is plainly that child's item. The classifier's reason is accurate and supports the kid verdict by naming a kid activity and the child it involves. However, it largely echoes the title and repeats Wren twice. It also misses that the question is really about a drop-off arrangement. That makes it correct but not the sharpest one-clause statement of what the item is.",
+    "score": 4
+  }
+}

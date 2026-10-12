@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that names the kind of item (a choir rehearsal) and ties it to the matching notMineHints entry, which by rule makes it adult since no child is named; it supports the verdict and adds no unsupported fact.",
+    "score": 5
+  }
+}

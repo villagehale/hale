@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that names the item (a dentist cleaning) and gives the deciding fact: no person is named. That fits the unsure verdict, since a cleaning suits a parent or a 4-year-old like Theo equally. It invents nothing and does not argue for another verdict.",
+    "score": 5
+  }
+}

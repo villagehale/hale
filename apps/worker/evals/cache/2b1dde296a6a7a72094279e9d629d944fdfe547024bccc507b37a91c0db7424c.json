@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a household chat asking who will take Wren, the 18-month-old, to swim, which is a child's activity and a drop-off arrangement that names her, so `kid` is correct. The classifier's reason supports that verdict with no invented facts: it calls swim a kid activity and points to Wren being named. It mostly echoes the title, though, says Wren twice, and misses that the question itself is about arranging her transport, so it falls just short of a crisp 5.",
+    "score": 4
+  }
+}

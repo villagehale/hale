@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short plain clause. It names what the item is, a car service reminder, and links it to the adult verdict because the vehicle is the parent's. The item never says whose car it is, but an 18-month-old cannot own one, so calling it the parent's is a fair reading rather than an invented fact.",
+    "score": 5
+  }
+}

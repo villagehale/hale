@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads 'Réunion' as a bare meeting with no child, activity or hint attached. It explains in one clause why that leaves it open: it could be the parent's work or something like a daycare meeting. That supports the unsure verdict without inventing anything.",
+    "score": 5
+  }
+}

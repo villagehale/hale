@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a bare initial \"J.\" that matches neither child (Wren, Theo), and no activityTitles or notMineHints apply, so it could be anyone. The classifier's single plain clause names what the item is (an initial alone) and why that means unsure, in line with the rule on initials. It invents no facts and supports the given verdict.",
+    "score": 5
+  }
+}

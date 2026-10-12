@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item text means 'company quarterly meeting', and the reason translates it correctly. In one plain clause it says what the item is, a work meeting, and why that makes it the parent's own, which matches the adult verdict. It adds no unsupported facts.",
+    "score": 5
+  }
+}

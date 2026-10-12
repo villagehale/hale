@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly says this is an appointment reminder that names no person, so it could be the toddler's checkup or the parent's own visit; that supports unsure in one plain clause with no invented facts.",
+    "score": 5
+  }
+}

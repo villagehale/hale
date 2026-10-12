@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says the item is a family room booking that names both children, and the trip rule makes that kid. It is one plain clause, it supports the verdict, and every fact is in the text.",
+    "score": 5
+  }
+}

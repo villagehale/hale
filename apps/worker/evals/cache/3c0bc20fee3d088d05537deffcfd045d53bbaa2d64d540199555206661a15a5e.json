@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short, plain clause. It names the item as an alumni dinner, which matches the text, and says it is the parent's own social event, which is the rule behind the adult verdict. It adds no unsupported facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a restaurant booking from Tablebook. The rules list restaurant bookings as the parent's own, so the reason supports the adult verdict in one plain clause that says what the item is and why. It adds no unsupported facts.",
+    "score": 5
+  }
+}

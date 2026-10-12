@@ -59,6 +59,7 @@ import {
   KID_RELEVANCE_INJECTION,
   KID_RELEVANCE_ONBOARDING,
 } from './kid-relevance-fixtures.mjs';
+import { verdictRulesOf } from './kid-relevance-judge-rules.mjs';
 
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -68,37 +69,41 @@ const CONTRACT = join(WEB_ROOT, 'lib', 'integrations', 'kid-relevance', 'skill-c
 const unregisterTs = register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE short reason a classifier wrote for one item from',
-  "a parent's calendar, mailbox or household group. The classifier decided whether the item",
-  "is about the children (`kid`), the parent's own life (`adult`), or cannot be told",
-  "(`unsure`). The verdict is graded elsewhere: do NOT re-decide it. Score the classifier's",
-  'reason 1-5, and write your OWN argument in your reason field.',
-  'You are given exactly what the classifier saw: the children (first names and ages in',
-  'months), the item text and its source (`google_calendar`, `gmail` or `group`, a household',
-  'group chat), any `activityTitles` (kid activities Hale already found for this family) and',
-  'any `notMineHints` (kinds of thing the parent already said are theirs); then the verdict',
-  'and the `classifierReason` you are scoring. Anything in that context is a supported fact.',
-  "The classifier's rules, which a reason may lean on: an adult who shares a child's first",
-  'name is still an adult; an appointment or meeting with no child named is unsure when',
-  "nothing settles it; the parent's own fitness, physio, dentist or doctor is the parent's",
-  'own, so a reason may read such a visit with no child named as theirs;',
-  'a trip (a hotel, a flight) is a kid item when it names a child or is plainly',
-  "a family booking, the parent's own only when it is plainly theirs (a work trip), and",
-  "otherwise unsure; an item that matches a notMineHints entry is the parent's own; a party or",
-  'play date for another child is a kid item; a kid activity with no child named is still',
-  'a kid item, and saying which ages it suits is a reading of the item, not an invented fact;',
-  'a bare or ambiguous item is unsure.',
-  'A 5 is one short plain clause that says what kind of thing the item is and why that',
-  'leads to the verdict beside it.',
-  'A LOW score is any of: a reason that argues for a different verdict than the one given;',
-  'a fact the item does not support (an age, a relationship, a place); only the title',
-  'copied back with no "what it is" or "why"; an empty or generic reason ("classified");',
-  'more than one sentence.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+/**
+ * The grader's prompt: how to score a reason, around the verdict rules the classifier was
+ * given. The rules are quoted from the skill at run time, so the grader never scores a
+ * reason against a copy of a rule that has fallen behind it.
+ */
+function judgeSystem(skillInstructions) {
+  return [
+    [
+      'You are a strict reviewer scoring ONE short reason a classifier wrote for one item from',
+      "a parent's calendar, mailbox or household group. The classifier decided whether the item",
+      "is about the children (`kid`), the parent's own life (`adult`), or cannot be told",
+      "(`unsure`). The verdict is graded elsewhere: do NOT re-decide it. Score the classifier's",
+      'reason 1-5, and write your OWN argument in your reason field.',
+      'You are given exactly what the classifier saw: the children (first names and ages in',
+      'months), the item text and its source (`google_calendar`, `gmail` or `group`, a household',
+      'group chat), any `activityTitles` (kid activities Hale already found for this family) and',
+      'any `notMineHints` (kinds of thing the parent already said are theirs); then the verdict',
+      'and the `classifierReason` you are scoring. Anything in that context is a supported fact.',
+    ].join(' '),
+    'The rules the classifier was given, which a reason may lean on:',
+    verdictRulesOf(skillInstructions),
+    [
+      'Saying which ages a kid activity suits is a reading of the item, not an invented fact.',
+      'A 5 is one short plain clause that says what kind of thing the item is and why that',
+      'leads to the verdict beside it.',
+      'A LOW score is any of: a reason that argues for a different verdict than the one given;',
+      'a fact the item does not support (an age, a relationship, a place); only the title',
+      'copied back with no "what it is" or "why"; an empty or generic reason ("classified");',
+      'more than one sentence.',
+      'Reply with ONLY the score tool.',
+    ].join(' '),
+  ].join('\n\n');
+}
 
-/** Below this a reason contradicts its verdict or invents a fact (see JUDGE_SYSTEM). */
+/** Below this a reason contradicts its verdict or invents a fact (see judgeSystem). */
 const REASON_FLOOR = 3;
 
 /** The date of birth that is `ageMonths` completed months before EVAL_NOW. */
@@ -216,9 +221,15 @@ async function main() {
   // JUDGE_MODEL, not Haiku: the rubric carries the skill's own rules, and Haiku re-decided
   // the verdict instead of reading them ("Sebastian is the child" for a colleague).
   const judgeModel = await readJudgeModel('sonnet');
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'kid-relevance', cachedOnly, getClient, cost, {
-    samples: JUDGE_SAMPLES_MEDIAN,
-  });
+  const judge = makeJudge(
+    judgeModel,
+    judgeSystem(skill.instructions),
+    'kid-relevance',
+    cachedOnly,
+    getClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
   const now = new Date(EVAL_NOW);
 
   // Every batch, in the shape its runtime caller sends it.

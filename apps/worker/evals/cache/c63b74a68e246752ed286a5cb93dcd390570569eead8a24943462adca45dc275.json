@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a choir rehearsal and ties it directly to the notMineHints entry for the parent's choir, which is exactly the rule that makes it adult since no child is named. It is one short clause supporting the given verdict, with no invented facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is only 'Busy' on the calendar, with no child named and no activity or adult mark, so it is a bare time block that fits either side. The classifier's reason says exactly this and backs the unsure verdict in one short, accurate clause.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a 4th birthday party for Mila, a child who is not in the family. Theo is 50 months old, a peer, so the family's kids would plausibly attend, which makes it a kid item under the other-child party rule. The classifier's reason is one plain clause that says what the item is, why that leads to kid, and matches the verdict. It invents nothing.",
+    "score": 5
+  }
+}

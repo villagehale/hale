@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is Chinese for \"Lina's music class\", and Lina is the family's 30-month-old, so it is her lesson. The classifier's reason reads it correctly, names the kind of thing (a music class), ties it to the child by name, and supports the kid verdict in one short plain clause.",
+    "score": 5
+  }
+}

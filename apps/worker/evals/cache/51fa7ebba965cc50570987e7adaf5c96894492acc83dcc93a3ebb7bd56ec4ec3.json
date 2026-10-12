@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason identifies the item as a shoulder physio appointment and ties that to the rules' list of the parent's own physio and health care. That supports the adult verdict. It is one short, plain clause with no invented facts.",
+    "score": 5
+  }
+}

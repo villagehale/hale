@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel booking that names no child, shows no family package and matches no hint, so under the trip rule it can only be unsure. The reason captures this: it says what the item is and why it stays open both ways. It is one sentence but a bit wordy, and 'for either side' is loose phrasing. Still accurate and on-verdict.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason holds up. Ezra is one of the children and is 74 months old, so 'who is 6' is supported. The reason says what the item is (a soccer practice naming Ezra) and why that makes it a kid's activity. It supports the kid verdict in one short clause.",
+    "score": 5
+  }
+}

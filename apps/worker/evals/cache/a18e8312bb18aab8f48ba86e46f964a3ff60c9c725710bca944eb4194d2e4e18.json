@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a flight check-in with no child named, no family seats and no work or conference marker, so under the trip rule a booking alone does not say who is going, and `unsure` follows. The classifier's reason captures this in one plain clause. It loses a point for wording: \"a trip for the child\" is imprecise for an 18-month-old, who would only travel as part of a family trip. It also never notes that nothing marks the flight as plainly the parent's own.",
+    "score": 4
+  }
+}

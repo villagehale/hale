@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It correctly says 'Busy' is a bare block with no activity, place or name, which is why the item is unsure. It supports the verdict and invents nothing.",
+    "score": 5
+  }
+}

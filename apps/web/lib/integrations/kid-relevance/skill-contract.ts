@@ -20,12 +20,12 @@ export const KID_VERDICT_TOOL_DESCRIPTION =
 export const KID_JUDGE_MAX_TOKENS = 4096;
 
 /**
- * The output one item may cost, thinking included. The recorded eval peaked at 120 tokens
- * per item on the screen lane (2026-10-12, the 9-item mailbox batch); this is that with
+ * The output one item may cost, thinking included. The recorded eval peaked at 147 tokens
+ * per item on the screen lane (2026-10-12, the 5-item injection batch); this is that with
  * headroom for a batch that thinks harder. The eval fails when a recorded batch spends
  * more per item than this, so the two numbers move together.
  */
-export const KID_JUDGE_PEAK_TOKENS_PER_ITEM = 128;
+export const KID_JUDGE_PEAK_TOKENS_PER_ITEM = 170;
 
 /** Items per call: as many as fit under the ceiling at the measured peak. */
 export const KID_JUDGE_ITEMS_PER_CALL = Math.floor(

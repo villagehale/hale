@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is Spanish for 'Lina's birthday party', and Lina is the family's child, so the reason correctly identifies it as a birthday party named for one of the children. That matches the rule for a kid verdict, adds no unsupported facts, and is one short plain clause.",
+    "score": 5
+  }
+}
