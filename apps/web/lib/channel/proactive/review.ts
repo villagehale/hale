@@ -72,6 +72,8 @@ export interface ProactiveReviewSummary {
   shadowed: number;
   held: number;
   dropped: number;
+  /** Batches whose drop the code refused because the parent asked for an item in them. */
+  dropRefused: number;
   skipped: number;
   failed: number;
 }
@@ -159,6 +161,7 @@ export async function runProactiveReview(
     shadowed: 0,
     held: 0,
     dropped: 0,
+    dropRefused: 0,
     skipped: 0,
     failed: 0,
   };
@@ -200,13 +203,37 @@ export async function runProactiveReview(
       await reviewFamily(database, deps, { familyId, items, now, mode, summary });
     } catch (err) {
       summary.failed += 1;
-      console.error(
-        { err: err instanceof Error ? err.message : 'unknown', familyId },
-        'proactive review: family failed',
-      );
+      // Never the message: a postgres-js message can carry a constraint's key values.
+      console.error({ err: errorLabel(err), familyId }, 'proactive review: family failed');
     }
   }
   return summary;
+}
+
+function errorLabel(err: unknown): string {
+  if (!(err instanceof Error)) return 'unknown';
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' ? `${err.name}:${code}` : err.name;
+}
+
+/**
+ * A hold never outlives what it holds. Past the earliest `worthlessAfter` of the chosen
+ * items the row would sit in the waiting set (hold.ts), where no signal reopens it.
+ */
+function clampHold(
+  holdUntil: string | null,
+  items: readonly QueuedItem[],
+): { holdUntil: string | null; clamped: boolean } {
+  if (holdUntil === null) return { holdUntil, clamped: false };
+  const bounds = items
+    .map((item) => item.worthlessAfter)
+    .filter((at): at is string => at !== null)
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  const earliest = bounds[0];
+  if (earliest === undefined || Date.parse(holdUntil) <= Date.parse(earliest)) {
+    return { holdUntil, clamped: false };
+  }
+  return { holdUntil: earliest, clamped: true };
 }
 
 async function audit(
@@ -394,7 +421,10 @@ async function reviewFamily(
   const context = await loadFamilyContext(database, familyId, now);
   if (!context) {
     summary.skipped += 1;
-    await audit(database, familyId, 'proactive_cadence_skipped', { reason: 'no_primary_parent' });
+    await audit(database, familyId, 'proactive_cadence_skipped', {
+      reason: 'no_primary_parent',
+      mode,
+    });
     return;
   }
   const anchor = latestHold(items);
@@ -425,12 +455,14 @@ async function reviewFamily(
   const offered = new Set(plan.candidates.map((candidate) => candidate.id));
   const chosen = items.filter((item) => offered.has(item.id) && decision.itemIds.includes(item.id));
   const unchosen = items.filter((item) => offered.has(item.id) && !chosen.includes(item));
+  const hold = clampHold(decision.holdUntil, chosen);
   await audit(database, familyId, 'proactive_cadence_decision', {
     action: decision.action,
     itemIds: chosen.map((item) => item.id),
     unchosen: unchosen.map((item) => item.id),
     reason,
-    holdUntil: decision.holdUntil,
+    holdUntil: hold.holdUntil,
+    ...(hold.clamped ? { holdClamped: 'worthless_after', askedHoldUntil: decision.holdUntil } : {}),
     mode,
   });
   await mark(
@@ -458,7 +490,27 @@ async function reviewFamily(
 
   const ids = chosen.map((item) => item.id);
   if (decision.action === 'drop') {
-    await mark(database, ids, {
+    // What the parent asked for is never dropped on the model's word (rule #3): the code
+    // refuses that part of the drop by name, and the decider sees it again.
+    const requested = chosen.filter((item) => item.parentRequested).map((item) => item.id);
+    if (requested.length > 0) {
+      await mark(database, requested, {
+        status: 'held',
+        reason: 'drop_refused_parent_requested',
+        decision: 'drop',
+        holdUntil: null,
+        now,
+      });
+      await audit(database, familyId, 'proactive_cadence_held', {
+        reason: 'drop_refused_parent_requested',
+        itemIds: requested,
+        mode,
+      });
+      summary.dropRefused += 1;
+    }
+    const droppable = ids.filter((id) => !requested.includes(id));
+    if (droppable.length === 0) return;
+    await mark(database, droppable, {
       status: 'dropped',
       reason,
       decision: 'drop',
@@ -473,7 +525,7 @@ async function reviewFamily(
       status: 'held',
       reason,
       decision: 'hold',
-      holdUntil: decision.holdUntil,
+      holdUntil: hold.holdUntil,
       now,
     });
     summary.held += 1;

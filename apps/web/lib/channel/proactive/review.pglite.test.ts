@@ -369,6 +369,121 @@ describe('runProactiveReview', () => {
     expect(await audits('proactive_cadence_decision')).toHaveLength(1);
   });
 
+  it('refuses, by name, a drop of something the parent asked for, and still drops the rest', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const asked = await enqueue('nudge:asked:w41', { parentRequested: true });
+    const other = await enqueue('nudge:weather:w41');
+    const h = harness((snapshot) => ({
+      reason: 'No free window fits it',
+      action: 'drop',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: null,
+      frequencyPreference: null,
+    }));
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ dropped: 1, dropRefused: 1, held: 0 });
+    expect(await candidate(asked)).toMatchObject({
+      status: 'held',
+      reason: 'drop_refused_parent_requested',
+      decision: 'drop',
+    });
+    expect(await candidate(other)).toMatchObject({
+      status: 'dropped',
+      reason: 'No free window fits it',
+    });
+    const held = await audits('proactive_cadence_held');
+    expect(held.map((row) => row.after)).toEqual([
+      { reason: 'drop_refused_parent_requested', itemIds: [asked], mode: 'live' },
+    ]);
+  });
+
+  it('drops a batch the parent asked for none of, with no refusal', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue();
+    const h = harness((snapshot) => ({
+      reason: 'No free window fits it',
+      action: 'drop',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: null,
+      frequencyPreference: null,
+    }));
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(summary).toMatchObject({ dropped: 1, dropRefused: 0 });
+    expect(await candidate(id)).toMatchObject({ status: 'dropped' });
+    expect(await audits('proactive_cadence_held')).toEqual([]);
+  });
+
+  it('never holds past the moment an item stops being worth sending, and names the clamp', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const worthless = new Date('2026-10-10T16:00:00.000Z');
+    const id = await enqueue('nudge:weather:w41', { worthlessAfter: worthless });
+    const asked = '2027-06-01T12:00:00.000Z';
+    const h = harness((snapshot) => ({
+      reason: 'Too early for a weekend find',
+      action: 'hold',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: asked,
+      frequencyPreference: null,
+    }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(worthless.toISOString());
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({
+      holdUntil: worthless.toISOString(),
+      holdClamped: 'worthless_after',
+      askedHoldUntil: asked,
+    });
+  });
+
+  it('keeps a hold inside the item’s window as the decider set it', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue('nudge:weather:w41', {
+      worthlessAfter: new Date('2026-10-10T16:00:00.000Z'),
+    });
+    const asked = '2026-10-09T21:00:00.000Z';
+    const h = harness((snapshot) => ({
+      reason: 'Too early for a weekend find',
+      action: 'hold',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: asked,
+      frequencyPreference: null,
+    }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(asked);
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({ holdUntil: asked });
+    expect(decision?.after).not.toHaveProperty('holdClamped');
+  });
+
+  it('logs a family that failed by its error name and code, never the message', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    await enqueue();
+    const failure = Object.assign(
+      new Error('duplicate key value violates unique constraint: Key (dedupe_key)=(leaked-key)'),
+      { name: 'PostgresError', code: '23505' },
+    );
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = harness(sendAll, {
+      decide: async () => {
+        throw failure;
+      },
+    });
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary.failed).toBe(1);
+    const logged = errors.mock.calls.find(([, line]) => line === 'proactive review: family failed');
+    expect(logged?.[0]).toEqual({ err: 'PostgresError:23505', familyId });
+    expect(JSON.stringify(errors.mock.calls)).not.toContain('leaked-key');
+    errors.mockRestore();
+  });
+
   it('still refuses a send the gate refuses at send time, by name', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const id = await enqueue();
@@ -436,7 +551,7 @@ describe('runProactiveReview', () => {
     expect(summary).toMatchObject({ decided: 0, skipped: 1 });
     expect(h.snapshots).toEqual([]);
     const [skipped] = await audits('proactive_cadence_skipped');
-    expect(skipped?.after).toMatchObject({ reason: 'no_primary_parent' });
+    expect(skipped?.after).toMatchObject({ reason: 'no_primary_parent', mode: 'shadow' });
   });
 
   it('holds, by name, a queued item the decision did not choose', async () => {
