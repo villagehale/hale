@@ -32,11 +32,13 @@
 // in that recorded turn, and scores one thing a pattern cannot: whether the reply is
 // right. JUDGE_MIN per fixture.
 //
-// Two checks are not about the reply at all. What the fixture marks
+// Three checks are not about the reply at all. What the fixture marks
 // `mustNotReachSearch` must be gone from everything handed on to the search and the
 // compose (rule #1); it lives beside the field, in general-answer-fixtures.mjs
-// (`identityLeaks`). And a fixture that hands the sanitizer a pending ask says whether the
-// text completes it (`expectAnswersPending`), which is the sanitizer's own reading.
+// (`identityLeaks`). What it marks `mustReachSearch` (the town a parent named) must be in
+// the request the search was sent (`searchOmissions`). And a fixture that hands the
+// sanitizer a pending ask says whether the text completes it (`expectAnswersPending`),
+// which is the sanitizer's own reading.
 //
 // CALIBRATION. Every run also puts two stand-ins in front of the judge, on a searched
 // fixture. The broken one is a confident wrong result and a "check the app". The near
@@ -47,7 +49,12 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { ANSWER_FIXTURES, EVAL_TODAY, identityLeaks } from './general-answer-fixtures.mjs';
+import {
+  ANSWER_FIXTURES,
+  EVAL_TODAY,
+  identityLeaks,
+  searchOmissions,
+} from './general-answer-fixtures.mjs';
 import {
   JUDGE_MIN,
   cacheGet,
@@ -465,6 +472,8 @@ async function main() {
       fixture,
       `${found.question} ${found.missing} ${found.searchMessage}`,
     );
+    // The town the parent named is what the search is made for.
+    failures.push(...searchOmissions(fixture, found.searchMessage));
     // The sanitizer's own reading of a text beside a pending ask, not a check on the reply.
     if (
       fixture.expectAnswersPending !== undefined &&
@@ -510,6 +519,9 @@ async function main() {
   }
 
   const leaks = results.filter((r) => r.failures.some((f) => f.startsWith('identity_leak:')));
+  const omissions = results.filter((r) =>
+    r.failures.some((f) => f.startsWith('not_sent_to_search:')),
+  );
   const misreads = results.filter((r) => r.failures.some((f) => f.startsWith('pending_misread:')));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
   const count = (search) => results.filter((r) => r.found.search === search).length;
@@ -522,6 +534,9 @@ async function main() {
   console.log(`judge below ${JUDGE_MIN}:               ${judgeFails.length}  (0 required)`);
   console.log(
     `identity reached the search:  ${leaks.length}  (0 required - a marked name left in what was handed on)`,
+  );
+  console.log(
+    `named town not searched:      ${omissions.length}  (0 required - a town the parent named, left out of the search)`,
   );
   console.log(
     `pending ask misread:          ${misreads.length}  (0 required - a reply read as a new question, or the reverse)`,
