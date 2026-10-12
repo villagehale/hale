@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,8 +9,16 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
+import {
+  GENERAL_ANSWER_SEARCH_ENABLED_ENV,
+  createGeneralAnswer,
+} from '~/lib/channel/off-domain/answer';
 import { EMERGENCY_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
+import {
+  type OffDomainLane,
+  type OffDomainVerdict,
+  offDomainLane,
+} from '~/lib/channel/off-domain/lane';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
@@ -913,6 +922,85 @@ describe('the off-domain lane', () => {
       pendingMissing: 'which city',
       body: null,
     });
+  });
+
+  /**
+   * The compose writes a `grounding` list before its answer (answer-request.ts). Through
+   * the real composer and the real lane, none of it reaches the parent, the reply's ledger
+   * row or a log line. The answer and the question it left open do.
+   */
+  it('sends, keeps and logs nothing of the grounding the compose wrote', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const consoleLines: unknown[][] = [];
+    for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        consoleLines.push(args);
+      });
+    }
+    const structured = (payload: unknown) => ({
+      content: [{ type: 'text', text: JSON.stringify(payload) }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    const client = () =>
+      ({
+        messages: {
+          async create(request: { system: Array<{ text: string }> }) {
+            const sanitizing = request.system
+              .map((block) => block.text)
+              .join('')
+              .includes('Take the family out, keep the question');
+            return structured(
+              sanitizing
+                ? {
+                    language: 'en',
+                    answers_pending: 'nothing_pending',
+                    question: 'hows the weather tomorrow',
+                    missing_detail: 'which city',
+                    their_place: 'needed',
+                    current_fact: 'the forecast',
+                    needs_search: 'missing_detail',
+                  }
+                : {
+                    grounding: [{ states: 'GROUNDED-SPECIFIC', from: 'GROUNDED-SOURCE-WORDS' }],
+                    answer: 'Which city are you in?',
+                  },
+            );
+          },
+        },
+      }) as unknown as AgentClient;
+    const lane = offDomainLane({
+      screen: {
+        read: async () => ({ lane: 'off_domain_general', category: 'weather', fallback: null }),
+      },
+      answer: createGeneralAnswer(client),
+      today: async () => 'monday, oct 12, 2026',
+      place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      pendingAsk: async () => ({ status: 'none' }),
+      medical: {
+        answer: async () => {
+          throw new Error('not a medical turn');
+        },
+      },
+      recordUnmetIntent: async () => 'recorded',
+    });
+    const h = harness({ context: { body: "how's the weather tomorrow" }, offDomain: lane });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    // Positive control: the answer went out, the question it left open was kept, and the
+    // turn logged.
+    expect(h.transport.bodies()).toEqual(['Which city are you in?']);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      replySource: 'composed',
+      pendingQuestion: 'hows the weather tomorrow',
+      pendingMissing: 'which city',
+    });
+    expect(consoleLines.length).toBeGreaterThan(0);
+    expect(
+      JSON.stringify([h.transport.sent, ledgerRows(h.fake), h.logs, consoleLines]),
+    ).not.toContain('GROUNDED');
   });
 
   it('keeps no question on a reply that left none open, or on a coach answer', async () => {

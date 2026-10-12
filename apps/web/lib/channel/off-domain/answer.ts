@@ -241,6 +241,8 @@ const sanitizeSchema = z.object({
   needs_search: z.string().nullish(),
 });
 
+/** `answer` and nothing else. The compose also writes its `grounding` (answer-request.ts);
+ * zod drops it here, so no line after this one has it to send, keep or log. */
 const answerSchema = z.object({ answer: z.string() });
 
 /**
