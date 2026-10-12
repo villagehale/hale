@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { schema, type Database } from '@hale/db';
 import type {
   EventType,
@@ -11,6 +11,11 @@ import { ageInMonths, deriveStage } from '@hale/types';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
+import {
+  AUTONOMY_STREAK_REQUIRED,
+  autonomyDeniedForKind,
+  streakSatisfiesAutonomy,
+} from '../orchestrator/autonomy-gate.js';
 
 /**
  * A Drizzle transaction handle — the same query surface as Database, scoped to
@@ -58,6 +63,9 @@ export async function recordTransition<T>(
 
 /** A query surface with `.insert` — satisfied by both Database and Tx. */
 type Inserter = Pick<Database, 'insert'>;
+
+/** A query surface with `.select` — satisfied by both Database and Tx. */
+type Reader = Pick<Database, 'select'>;
 
 interface RecordAgentRunInput {
   familyId: string;
@@ -963,14 +971,13 @@ export async function loadCrossParentConsent(
  * withdrawal) OR a revokedAt UPDATE on the grant (how loadCrossParentConsent reads)
  * — either makes the latest row fail the predicate, so a withdrawn opt-in never
  * reads as granted (the naive-granted=true trap). The switch-off writer is
- * revokeAutonomyForKind (append-only, either parent). No GRANT writer exists yet (it
- * lands with the C-phase AUTO surface); until then the gate holds every action for
- * approval — a pure tightening.
+ * revokeAutonomyForKind (append-only, either parent). The grant writer is
+ * recordHumanApproval: the primary parent's approval that completes the streak.
  */
 export async function hasAutonomousActionOptIn(
   familyId: string,
   actionType: ActionType,
-  database: Database = db(),
+  database: Reader = db(),
 ): Promise<boolean> {
   const parents = await familyParents(familyId, database);
   const primaryUserId = parents.find((p) => p.role === 'primary_parent')?.userId;
@@ -1008,7 +1015,7 @@ export async function hasAutonomousActionOptIn(
 
 async function familyParents(
   familyId: string,
-  database: Database,
+  database: Reader,
 ): Promise<Array<{ userId: string; role: string }>> {
   return database
     .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
@@ -1132,45 +1139,54 @@ export async function loadHumanApprover(
   return rows[0]?.actor ?? null;
 }
 
+const HUMAN_APPROVAL_VERB = 'action.approved_by_human';
+const AUTONOMY_REVOKED_VERB = 'autonomous_action_class.revoked';
+
 /**
- * Loads a family's recent action approval history, most-recent-first, for the
- * rule #4 per-action-type streak gate.
+ * One action kind's recent parent decisions, most-recent-first, for the rule #4
+ * streak: each approval of an action of that kind (recordHumanApproval's
+ * `action.approved_by_human` row) and each switch-off of the kind
+ * (revokeAutonomyForKind's `autonomous_action_class.revoked` row). An approval is
+ * `humanApproved`; a switch-off is not, so it ends the run and the streak restarts
+ * from it. An action Hale ran on its own has no approval row and is not in the
+ * history at all: it neither counts toward the streak nor breaks it, so autonomy can
+ * never bootstrap itself and never disarms itself.
  *
- * "human-approved completion" derivation (from the actions schema): an action
- * that was approved at review (reviewer_verdict = 'approved'), then EXECUTED
- * (executed_at IS NOT NULL), and whose final user_visible_state is NOT
- * 'autonomous'. recordExecution stamps user_visible_state='autonomous' for
- * actions Hale ran on its own; the human-approval path (a parent approving a
- * drafted_for_approval action in the product UI) executes the same action
- * WITHOUT that autonomous marker. Excluding 'autonomous' is what makes a streak
- * count consecutive HUMAN approvals, not Hale's own prior auto-executions —
- * otherwise autonomy would bootstrap itself. With no human-approval write path
- * shipped yet, this returns zero qualifying rows, so every streak is 0 and L3
- * stays dark by default (correct per rule #4).
+ * Read per kind, and only as far back as the streak needs, so another kind's
+ * decisions can never push this kind's approvals out of the window.
  */
 export async function loadActionApprovalHistory(
   familyId: string,
-  limit = 50,
-  database: Database = db(),
+  actionType: ActionType,
+  database: Reader = db(),
 ): Promise<{ actionType: string; humanApproved: boolean }[]> {
-  const rows = await database
-    .select({
-      actionType: schema.actions.actionType,
-      verdict: schema.actions.reviewerVerdict,
-      executedAt: schema.actions.executedAt,
-      userVisibleState: schema.actions.userVisibleState,
-    })
+  const actionsOfKind = database
+    .select({ id: sql<string>`${schema.actions.id}::text` })
     .from(schema.actions)
-    .where(eq(schema.actions.familyId, familyId))
-    .orderBy(sql`${schema.actions.executedAt} DESC NULLS LAST`)
-    .limit(limit);
+    .where(and(eq(schema.actions.familyId, familyId), eq(schema.actions.actionType, actionType)));
+  const rows = await database
+    .select({ actionTaken: schema.auditLog.actionTaken })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        or(
+          and(
+            eq(schema.auditLog.actionTaken, HUMAN_APPROVAL_VERB),
+            eq(schema.auditLog.targetTable, 'actions'),
+            inArray(schema.auditLog.targetId, actionsOfKind),
+          ),
+          and(
+            eq(schema.auditLog.actionTaken, AUTONOMY_REVOKED_VERB),
+            sql`${schema.auditLog.after}->>'consentScope' = ${actionType}`,
+          ),
+        ),
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(AUTONOMY_STREAK_REQUIRED);
 
-  return rows
-    .filter((r) => r.executedAt !== null)
-    .map((r) => ({
-      actionType: r.actionType,
-      humanApproved: r.verdict === 'approved' && r.userVisibleState !== 'autonomous',
-    }));
+  return rows.map((r) => ({ actionType, humanApproved: r.actionTaken === HUMAN_APPROVAL_VERB }));
 }
 
 /**
@@ -1203,9 +1219,19 @@ export type HumanApprovalClaim =
  * actions.approved contract carries approvedBy). Folding the checkpoint into the
  * same transaction means an approval is never recorded without the event being
  * staged for execution, and vice-versa.
+ *
+ * The same transaction writes the kind's autonomy grant when this approval completes
+ * the streak (grantAutonomyOnStreak), so the fifth approval and the grant it earns are
+ * one fact. `policyVersion` is the policy text in force, recorded on that grant.
  */
 export async function recordHumanApproval(
-  input: { familyId: string; eventId: string; actionId: string; approvedBy: string },
+  input: {
+    familyId: string;
+    eventId: string;
+    actionId: string;
+    approvedBy: string;
+    policyVersion: string;
+  },
   database: Database = db(),
 ): Promise<HumanApprovalClaim> {
   return database.transaction(async (tx) => {
@@ -1232,8 +1258,86 @@ export async function recordHumanApproval(
       targetId: input.actionId,
       after: { approvedBy: input.approvedBy },
     });
+    await grantAutonomyOnStreak(tx, input);
     return { claimed: true };
   });
+}
+
+/**
+ * Rule #4's explicit per-kind consent, as Barton set it (2026-10-11): once a parent
+ * has approved a kind AUTONOMY_STREAK_REQUIRED times, Hale may do that kind on its own.
+ * Called inside recordHumanApproval's transaction, after the approval's own audit row,
+ * so the streak it reads includes the approval being recorded.
+ *
+ * Writes exactly the row hasAutonomousActionOptIn reads: a granted
+ * 'autonomous_action_class' row scoped to the kind, under the PRIMARY parent, plus its
+ * audit row. So only the primary parent's own approval writes it. A co-parent's
+ * approvals count toward the streak, but a granted row under their id is also what
+ * loadCrossParentConsent reads as their consent to every cross-parent kind, which five
+ * approvals of one kind are not. A never-autonomous kind (booking, registration,
+ * paying) is never granted. After a switch-off the streak restarts from it, so the
+ * next grant takes AUTONOMY_STREAK_REQUIRED new approvals.
+ */
+async function grantAutonomyOnStreak(
+  tx: Tx,
+  input: { familyId: string; actionId: string; approvedBy: string; policyVersion: string },
+): Promise<void> {
+  const [action] = await tx
+    .select({ actionType: schema.actions.actionType })
+    .from(schema.actions)
+    .where(eq(schema.actions.id, input.actionId))
+    .limit(1);
+  if (!action) {
+    throw new Error(`grantAutonomyOnStreak: action ${input.actionId} not found`);
+  }
+  const kind = action.actionType as ActionType;
+  if (autonomyDeniedForKind(kind)) return;
+  if (!streakSatisfiesAutonomy(kind, await loadActionApprovalHistory(input.familyId, kind, tx))) {
+    return;
+  }
+  if (await hasAutonomousActionOptIn(input.familyId, kind, tx)) return;
+
+  const parents = await familyParents(input.familyId, tx);
+  const approver = parents.find((p) => p.userId === input.approvedBy);
+  if (approver?.role !== 'primary_parent') {
+    logger.info(
+      { familyId: input.familyId, kind },
+      'memory-writer: approval streak reached, but the approver is not the primary parent — no autonomy grant written',
+    );
+    return;
+  }
+
+  const [row] = await tx
+    .insert(schema.consentRecords)
+    .values({
+      familyId: input.familyId,
+      userId: input.approvedBy,
+      consentType: 'autonomous_action_class',
+      consentScope: kind,
+      granted: true,
+      grantedAt: new Date(),
+      policyVersion: input.policyVersion,
+    })
+    .returning({ id: schema.consentRecords.id });
+  if (!row) {
+    throw new Error('grantAutonomyOnStreak: consent_records insert returned no row');
+  }
+  await tx.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: input.approvedBy,
+    actionTaken: 'autonomous_action_class.granted',
+    targetTable: 'consent_records',
+    targetId: row.id,
+    after: {
+      consentType: 'autonomous_action_class',
+      consentScope: kind,
+      approvals: AUTONOMY_STREAK_REQUIRED,
+    },
+  });
+  logger.info(
+    { familyId: input.familyId, kind },
+    'memory-writer: approval streak reached — autonomy granted for this kind',
+  );
 }
 
 /**

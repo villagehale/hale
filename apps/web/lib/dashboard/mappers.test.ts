@@ -125,6 +125,18 @@ describe('toTrailView — the honest frame', () => {
     expect(view.summary).toBe('you stopped Hale doing this on its own');
   });
 
+  it('a kind turning autonomous is the approving parent’s row, and names how many approvals it took', () => {
+    const view = trail({
+      actor: PRIMARY,
+      actionTaken: 'autonomous_action_class.granted',
+      targetTable: 'consent_records',
+      targetId: 'consent-2',
+    });
+    expect(view.actor).toBe('you');
+    expect(view.summary).toBe('approved five times — Hale can now do this on its own');
+    expect(view.tone).toBe('done');
+  });
+
   it('shows a noun with no link when the target has no viewable surface', () => {
     const view = trail({ targetTable: 'events', targetId: 'evt-1' });
     expect(view.noun).toBe('signal');

@@ -242,7 +242,12 @@ describe('runOrchestrator — no plan gate; the execute lane is the only added b
         : { claimed: false as const, eventStatus: String(lastStage) },
     );
     await executeApprovedAction(
-      { actionId: 'action-1', familyId: 'fam-1', approvedBy: 'parent-1' },
+      {
+        actionId: 'action-1',
+        familyId: 'fam-1',
+        approvedBy: 'parent-1',
+        policyVersion: 'test-policy',
+      },
       {
         ...defaultExecuteApprovedDeps(),
         loadAction: async () => ({

@@ -229,7 +229,12 @@ describe('runOrchestrator — booking, registration and paying are never autonom
     expect(runExecutor).not.toHaveBeenCalled();
 
     await executeApprovedAction(
-      { actionId: 'action-1', familyId: 'fam-1', approvedBy: 'parent-1' },
+      {
+        actionId: 'action-1',
+        familyId: 'fam-1',
+        approvedBy: 'parent-1',
+        policyVersion: 'test-policy',
+      },
       {
         ...defaultExecuteApprovedDeps(),
         loadAction: async () => ({

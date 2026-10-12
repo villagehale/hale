@@ -172,7 +172,12 @@ describe('runOrchestrator — accepted village item routes to add_to_routine', (
     };
 
     await executeApprovedAction(
-      { actionId: 'action-1', familyId: villageJob.family_id, approvedBy: 'parent-a' },
+      {
+        actionId: 'action-1',
+        familyId: villageJob.family_id,
+        approvedBy: 'parent-a',
+        policyVersion: 'test-policy',
+      },
       deps,
     );
 

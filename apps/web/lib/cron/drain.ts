@@ -37,6 +37,7 @@ import {
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
 import type { LoopMessage } from '~/lib/channel/types';
+import { POLICY_VERSION } from '~/lib/consent';
 
 /**
  * Serverless drain of the two HOT worker queues — `events.ingested` and
@@ -253,6 +254,7 @@ async function processApprovedJob(
     actionId: parsed.data.action_id,
     familyId: parsed.data.family_id,
     approvedBy: parsed.data.approved_by,
+    policyVersion: POLICY_VERSION,
   });
   return 'processed';
 }

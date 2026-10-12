@@ -607,7 +607,7 @@ export async function runOrchestrator(
 
   // Rule #4 — the per-action-type 5-streak. Autonomy of an action type unlocks
   // only after ≥5 consecutive most-recent human-approved completions of it.
-  const approvalHistory = await loadActionApprovalHistory(familyId);
+  const approvalHistory = await loadActionApprovalHistory(familyId, draft.actionType);
   if (!streakSatisfiesAutonomy(draft.actionType, approvalHistory)) {
     await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
@@ -628,8 +628,8 @@ export async function runOrchestrator(
   // reliable at this action type; this gate proves the parent has explicitly TURNED
   // IT ON (a standing consent_records opt-in). Both must hold before Hale acts
   // unprompted (rule #4). Pure tightening: it can only hold an action for approval,
-  // never make a family more autonomous. The AUTO surface that grants this ships in
-  // the C-phase; until then every action is held here (safe by construction).
+  // never make a family more autonomous. The grant is written by the primary parent's
+  // approval that completes the streak (recordHumanApproval); a switch-off revokes it.
   if (!(await hasAutonomousActionOptIn(familyId, draft.actionType))) {
     await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
@@ -889,10 +889,10 @@ export function defaultExecuteApprovedDeps(): ExecuteApprovedDeps {
  * (audited action.gated.cross_parent_consent), even with a valid human approval.
  */
 export async function executeApprovedAction(
-  input: { actionId: string; familyId: string; approvedBy: string },
+  input: { actionId: string; familyId: string; approvedBy: string; policyVersion: string },
   deps: ExecuteApprovedDeps = defaultExecuteApprovedDeps(),
 ): Promise<void> {
-  const { actionId, familyId, approvedBy } = input;
+  const { actionId, familyId, approvedBy, policyVersion } = input;
 
   const action = await deps.loadAction(actionId);
   if (!action) {
@@ -966,6 +966,7 @@ export async function executeApprovedAction(
     eventId: action.eventId,
     actionId,
     approvedBy,
+    policyVersion,
   });
   if (!approval.claimed) {
     if (approval.eventStatus !== 'approved_pending_execute') {

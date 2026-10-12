@@ -357,6 +357,8 @@ export const AUDIT_VERBS = [
   'action.gated.autonomy_denied_kind',
   // A parent turned Hale's autonomy off for one kind of action.
   'autonomous_action_class.revoked',
+  // The primary parent's approval that completed the streak turned it on.
+  'autonomous_action_class.granted',
   // ── the weekly loop + calendar subscription ─────────────────────────────
   'compose_week_plan',
   'week_plan.calendar_drafted',
@@ -1309,6 +1311,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   'action.gated.autonomy_denied_kind': { sentence: 'brought a draft to you', family: 'awaiting' },
   'autonomous_action_class.revoked': {
     sentence: 'you stopped Hale doing this on its own',
+    family: 'done',
+  },
+  'autonomous_action_class.granted': {
+    sentence: 'approved five times — Hale can now do this on its own',
     family: 'done',
   },
   // ── the weekly loop + calendar subscription ─────────────────────────────

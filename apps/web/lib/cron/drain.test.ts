@@ -13,6 +13,7 @@ import {
   TURN_DEADLINE_MS,
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
+import { POLICY_VERSION } from '~/lib/consent';
 import {
   DRAINABLE_QUEUES,
   type DrainBoss,
@@ -411,6 +412,7 @@ describe('drainHotQueues', () => {
       actionId: ACTION,
       familyId: FAMILY,
       approvedBy: 'user-1',
+      policyVersion: POLICY_VERSION,
     });
     expect(completed(ACTIONS)).toEqual(['a1']);
     expect(summary.processed).toBe(1);

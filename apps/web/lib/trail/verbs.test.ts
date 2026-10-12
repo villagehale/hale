@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ActorResolver, AuditLogEntry } from '~/lib/dashboard/mappers';
 import { toTrailView } from '~/lib/dashboard/mappers';
+import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 import { AUDIT_VERBS, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
 
 /** No trail row may ever render a raw table name, a raw snake_case/dotted action
@@ -111,6 +112,13 @@ describe('a departure’s rows never tell the parent who stayed that they did it
 
     expect(view.actor).toBe('hale');
     expect(view.summary).toBe('a co-parent’s texting with Hale ended when they left this family');
+  });
+});
+
+describe('the streak sentence names the number the worker enforces', () => {
+  it('says five while AUTONOMY_STREAK_REQUIRED is five', () => {
+    expect(AUTONOMY_STREAK_REQUIRED).toBe(5);
+    expect(trailVerb('autonomous_action_class.granted').sentence).toContain('five times');
   });
 });
 
