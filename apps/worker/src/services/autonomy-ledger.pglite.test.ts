@@ -294,6 +294,19 @@ async function dismiss(fam: SeededFamily, kind: ActionType, declinedBy = fam.par
   });
 }
 
+/** The row `reverseExecutedCalendarAction` writes on the action when a parent undoes it (apps/web/lib/actions/reverse-calendar.ts). */
+async function undo(fam: SeededFamily, kind: ActionType, revertedBy = fam.parentUserId) {
+  sequence += 1;
+  const { actionId } = await seedAction(fam.familyId, `undone-${sequence}`, kind);
+  await db.database.insert(schema.auditLog).values({
+    familyId: fam.familyId,
+    actor: revertedBy,
+    actionTaken: 'action.reverted_by_human',
+    targetTable: 'actions',
+    targetId: actionId,
+  });
+}
+
 async function approveTimes(
   fam: SeededFamily,
   kind: ActionType,
@@ -452,6 +465,34 @@ describe('a dismissed draft breaks the streak', () => {
 
     expect(await armed(fam.familyId, 'send_email')).toBe(false);
     expect(await optedIn(fam.familyId, 'send_email')).toBe(true);
+  });
+});
+
+describe('undoing something Hale did breaks the streak, the same as a dismissal', () => {
+  it('four approvals, one undo, one approval: not armed, and no grant is written', async () => {
+    const fam = await seedFamily(db.database);
+
+    await approveTimes(fam, 'calendar_add', AUTONOMY_STREAK_REQUIRED - 1);
+    await undo(fam, 'calendar_add');
+    await approve(fam, 'calendar_add');
+
+    expect(await streakReached(fam, 'calendar_add')).toBe(false);
+    expect(await autonomyConsentRows(fam.familyId)).toEqual([]);
+
+    await approveTimes(fam, 'calendar_add', AUTONOMY_STREAK_REQUIRED - 1);
+    expect(await armed(fam.familyId, 'calendar_add')).toBe(true);
+  });
+
+  it('an undo after arming holds the kind again; the other parent’s undo does not', async () => {
+    const fam = await seedFamily(db.database);
+    const coParentId = await addMember(fam.familyId, 'co_parent');
+    await approveTimes(fam, 'calendar_add', AUTONOMY_STREAK_REQUIRED);
+
+    await undo(fam, 'calendar_add', coParentId);
+    expect(await armed(fam.familyId, 'calendar_add')).toBe(true);
+
+    await undo(fam, 'calendar_add');
+    expect(await armed(fam.familyId, 'calendar_add')).toBe(false);
   });
 });
 

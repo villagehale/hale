@@ -2,16 +2,20 @@ import { schema } from '@hale/db';
 import type { ActionType } from '@hale/types';
 import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 import { loadAutonomyStanding, recordHumanApproval } from '@hale/worker/memory-writer';
+import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { declineDraftedAction } from './decline';
+import { reverseExecutedCalendarAction } from './reverse-calendar';
 
 /**
- * A dismissed draft ends the approval streak (rule #4: consecutive means consecutive).
- * The dismissal here is the production one, `declineDraftedAction`, the function both
- * the text reply and the web button call, and the streak is read by the worker's own
- * reader. A hand-seeded audit row could not show that the two agree on its shape.
+ * A dismissed draft ends the approval streak (rule #4: consecutive means consecutive),
+ * and so does undoing something Hale did. The dismissal and the undo here are the
+ * production ones, `declineDraftedAction` and `reverseExecutedCalendarAction`, the
+ * functions both the text reply and the web button call, and the streak is read by the
+ * worker's own reader. A hand-seeded audit row could not show that they agree on its
+ * shape.
  */
 
 let db: TestDb;
@@ -75,6 +79,29 @@ async function dismiss(fam: SeededFamily, kind: ActionType) {
   });
 }
 
+/** Undoes a calendar entry Hale placed, through the production undo. Nothing leaves the process. */
+async function undoPlacement(fam: SeededFamily) {
+  const { actionId } = await draft(fam, 'calendar_add');
+  const executedAt = new Date();
+  await db.database
+    .update(schema.actions)
+    .set({
+      userVisibleState: 'autonomous',
+      executedAt,
+      executorResult: { kind: 'calendar_placed', reversalHandle: randomUUID() },
+    })
+    .where(eq(schema.actions.id, actionId));
+  return reverseExecutedCalendarAction(db.database, {
+    actionId,
+    familyId: fam.familyId,
+    revertedBy: fam.parentUserId,
+    now: executedAt,
+    capture: async () => 'not_configured' as const,
+    withdrawInvites: async () => ({ status: 'not_configured' }),
+    googleCalendar: { sync: async () => ({ status: 'skipped', reason: 'flag_off' }) },
+  });
+}
+
 async function grants(familyId: string) {
   return db.database
     .select({ consentScope: schema.consentRecords.consentScope })
@@ -111,5 +138,32 @@ describe('a draft dismissed through declineDraftedAction breaks the approval str
 
     expect(fifth).toMatchObject({ claimed: true, autonomy: { outcome: 'granted' } });
     expect(await grants(fam.familyId)).toEqual([{ consentScope: 'send_email' }]);
+  });
+});
+
+describe('a calendar entry undone through reverseExecutedCalendarAction breaks the approval streak', () => {
+  it('four approvals, one undo, one approval: the kind is not armed', async () => {
+    const fam = await seedFamily(db.database);
+    for (let i = 0; i < AUTONOMY_STREAK_REQUIRED - 1; i += 1) await approve(fam, 'calendar_add');
+
+    expect(await undoPlacement(fam)).toMatchObject({ status: 200 });
+    const afterUndo = await approve(fam, 'calendar_add');
+
+    expect(afterUndo).toEqual({ claimed: true, autonomy: { outcome: 'not_reached' } });
+    expect(await grants(fam.familyId)).toEqual([]);
+  });
+
+  it('an undo after the kind turned on holds it again', async () => {
+    const fam = await seedFamily(db.database);
+    for (let i = 0; i < AUTONOMY_STREAK_REQUIRED; i += 1) await approve(fam, 'calendar_add');
+    expect(await loadAutonomyStanding(fam.familyId, 'calendar_add', db.database)).toEqual([
+      { parentUserId: fam.parentUserId, streakReached: true, optedIn: true },
+    ]);
+
+    expect(await undoPlacement(fam)).toMatchObject({ status: 200 });
+
+    expect(await loadAutonomyStanding(fam.familyId, 'calendar_add', db.database)).toEqual([
+      { parentUserId: fam.parentUserId, streakReached: false, optedIn: true },
+    ]);
   });
 });

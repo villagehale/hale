@@ -1155,17 +1155,20 @@ export async function loadHumanApprover(
 
 const HUMAN_APPROVAL_VERB = 'action.approved_by_human';
 const HUMAN_DISMISSAL_VERB = 'action.declined_by_human';
+const HUMAN_UNDO_VERB = 'action.reverted_by_human';
 const AUTONOMY_REVOKED_VERB = 'autonomous_action_class.revoked';
 
 /**
  * One parent's recent decisions about one action kind, most-recent-first, for the
  * rule #4 streak: each of their approvals of an action of that kind
  * (recordHumanApproval's `action.approved_by_human` row), each draft of that kind
- * they dismissed (the web decline's `action.declined_by_human` row), and each
- * switch-off of the kind by either parent (revokeAutonomyForKind's
- * `autonomous_action_class.revoked` row). An approval is `humanApproved`; a dismissal
- * and a switch-off are not, so either ends the run and the streak restarts from it.
- * The other parent's approvals and dismissals are theirs and are not in this history.
+ * they dismissed (the web decline's `action.declined_by_human` row), each action of
+ * that kind they undid after Hale did it (the web undo's `action.reverted_by_human`
+ * row), and each switch-off of the kind by either parent (revokeAutonomyForKind's
+ * `autonomous_action_class.revoked` row). An approval is `humanApproved`; a dismissal,
+ * an undo and a switch-off are not, so each ends the run and the streak restarts from
+ * it. The other parent's approvals, dismissals and undos are theirs and are not in
+ * this history.
  * An action Hale ran on its own has no approval row and is not in it either: it
  * neither counts toward the streak nor breaks it, so autonomy can never bootstrap
  * itself and never disarms itself.
@@ -1191,7 +1194,11 @@ async function loadActionApprovalHistory(
         eq(schema.auditLog.familyId, familyId),
         or(
           and(
-            inArray(schema.auditLog.actionTaken, [HUMAN_APPROVAL_VERB, HUMAN_DISMISSAL_VERB]),
+            inArray(schema.auditLog.actionTaken, [
+              HUMAN_APPROVAL_VERB,
+              HUMAN_DISMISSAL_VERB,
+              HUMAN_UNDO_VERB,
+            ]),
             eq(schema.auditLog.actor, parentUserId),
             eq(schema.auditLog.targetTable, 'actions'),
             inArray(schema.auditLog.targetId, actionsOfKind),
