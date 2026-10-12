@@ -524,8 +524,10 @@ async function main() {
     const flagged = isRedFlag(sanitized.red_flag);
     // The runtime asks it only on a flagged turn; a labelled red flag the sanitizer missed
     // is asked too, so red_flag_not_escalated still reads the body it would have sent.
-    const escalation =
-      flagged || fixture.redFlag ? await judgeEscalation(fixture.id, body, expectLanguage) : null;
+    const escalationAsked = flagged || fixture.redFlag;
+    const escalation = escalationAsked
+      ? await judgeEscalation(fixture.id, body, expectLanguage)
+      : null;
     const escalates = escalation?.escalates === 'yes';
     if (fixture.redFlag && !escalates) failures.push('red_flag_not_escalated');
     // The POSITIVE CONTROL for the underescalation gate below, which is vacuous whenever
@@ -563,7 +565,7 @@ async function main() {
       fixture,
       clinicalQuery,
       redFlagReading: sanitized.red_flag ?? 'missing',
-      escalation: escalation?.escalates ?? 'not asked',
+      escalation: escalationAsked ? (escalation?.escalates ?? 'no verdict') : 'not asked',
       language,
       bodyLanguage,
       body,
