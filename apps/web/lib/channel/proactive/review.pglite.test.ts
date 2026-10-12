@@ -12,7 +12,7 @@ import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { WriterResult } from './compose';
 import type { DecideResult, DeciderDecision } from './decide';
 import { type CandidateDraft, handOffProactive } from './queue';
-import { type ProactiveReviewDeps, runProactiveReview } from './review';
+import { type ProactiveReviewDeps, mark, runProactiveReview } from './review';
 import { CALENDAR_ROWS, type FamilySnapshot, WITHHELD_LABEL } from './snapshot';
 import { LINE_CHARS, type ToolCandidate, boundedLine } from './tools';
 
@@ -1212,6 +1212,47 @@ describe('runProactiveReview', () => {
     await runProactiveReview(db.database, h.deps, morning);
     expect(h.snapshots).toHaveLength(2);
     expect(await candidate(id)).toMatchObject({ status: 'sent' });
+  });
+
+  it('moves only the family’s own candidate rows, whatever ids it is handed', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const own = await enqueue();
+    const other = await seedFamily(db.database, 'Other Family');
+    await handOffProactive(
+      db.database,
+      [
+        {
+          familyId: other.familyId,
+          parentUserId: other.parentUserId,
+          kind: 'nudge',
+          category: 'nudge',
+          templateKey: 'proactive_nudge:weather_swap',
+          what: 'Indoor climbing by the river',
+          why: 'weather_swap',
+          sourceUrl: null,
+          worthlessAfter: null,
+          parentRequested: false,
+          dedupeKey: 'nudge:weather:other',
+        },
+      ],
+      'candidate',
+    );
+    const [theirs] = await db.database
+      .select({ id: schema.proactiveCandidates.id })
+      .from(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, other.familyId));
+    const theirId = theirs?.id as string;
+
+    await mark(db.database, familyId, [own, theirId], {
+      status: 'dropped',
+      reason: 'test_drop',
+      decision: 'drop',
+      holdUntil: null,
+      now: THURSDAY_EVENING,
+    });
+
+    expect(await candidate(own)).toMatchObject({ status: 'dropped', reason: 'test_drop' });
+    expect(await candidate(theirId)).toMatchObject({ status: 'queued', reason: null });
   });
 
   it('keeps a clock-less code hold from the model until something new arrives', async () => {

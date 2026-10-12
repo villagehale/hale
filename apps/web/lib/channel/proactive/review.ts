@@ -182,7 +182,7 @@ export async function runProactiveReview(
     if (row.status !== 'queued' && row.status !== 'held') continue;
     if (!isProactiveSendKind(row.kind)) {
       // The gate has no class for it, so no send of it can be gated: never offered.
-      await mark(database, [row.id], {
+      await mark(database, row.familyId, [row.id], {
         status: 'dropped',
         reason: 'unknown_kind',
         decision: null,
@@ -280,8 +280,10 @@ async function audit(
   });
 }
 
-async function mark(
+/** Moves this family's candidate rows. The family is in the write, not only the caller. */
+export async function mark(
   database: Database,
+  familyId: string,
   ids: readonly string[],
   set: {
     status: 'held' | 'dropped' | 'sent' | 'shadowed';
@@ -301,7 +303,12 @@ async function mark(
       holdUntil: set.holdUntil ? new Date(set.holdUntil) : null,
       decidedAt: set.now,
     })
-    .where(inArray(schema.proactiveCandidates.id, [...ids]));
+    .where(
+      and(
+        eq(schema.proactiveCandidates.familyId, familyId),
+        inArray(schema.proactiveCandidates.id, [...ids]),
+      ),
+    );
 }
 
 /**
@@ -318,7 +325,7 @@ async function holdByName(
   held: { holdUntil?: Date; parentUserId?: string } = {},
 ): Promise<void> {
   const itemIds = items.map((item) => item.id);
-  await mark(database, itemIds, {
+  await mark(database, familyId, itemIds, {
     status: 'held',
     reason,
     decision: 'send_now',
@@ -391,7 +398,7 @@ async function dropAlreadySent(
   }
   for (const [reason, group] of dropped) {
     const itemIds = group.map((item) => item.id);
-    await mark(database, itemIds, {
+    await mark(database, familyId, itemIds, {
       status: 'dropped',
       reason,
       decision: 'send_now',
@@ -503,6 +510,7 @@ async function reviewFamily(
   });
   await mark(
     database,
+    familyId,
     unchosen.map((item) => item.id),
     { status: 'held', reason: 'not_chosen', decision: null, holdUntil: null, now },
   );
@@ -515,7 +523,7 @@ async function reviewFamily(
     // refuses that part of the drop by name, and the decider sees it again.
     const requested = chosen.filter((item) => item.parentRequested).map((item) => item.id);
     if (requested.length > 0) {
-      await mark(database, requested, {
+      await mark(database, familyId, requested, {
         status: 'held',
         reason: 'drop_refused_parent_requested',
         decision: 'drop',
@@ -531,7 +539,7 @@ async function reviewFamily(
     }
     const droppable = ids.filter((id) => !requested.includes(id));
     if (droppable.length === 0) return;
-    await mark(database, droppable, {
+    await mark(database, familyId, droppable, {
       status: 'dropped',
       reason,
       decision: 'drop',
@@ -550,7 +558,7 @@ async function reviewFamily(
       ? chosen.filter((item) => item.parentRequested).map((item) => item.id)
       : [];
     if (requested.length > 0) {
-      await mark(database, requested, {
+      await mark(database, familyId, requested, {
         status: 'held',
         reason: 'hold_refused_parent_requested_unbounded',
         decision: 'hold',
@@ -566,7 +574,7 @@ async function reviewFamily(
     }
     const holdable = ids.filter((id) => !requested.includes(id));
     if (holdable.length === 0) return;
-    await mark(database, holdable, {
+    await mark(database, familyId, holdable, {
       status: 'held',
       reason,
       decision: 'hold',
@@ -577,7 +585,7 @@ async function reviewFamily(
     return;
   }
   if (mode === 'shadow') {
-    await mark(database, ids, {
+    await mark(database, familyId, ids, {
       status: 'shadowed',
       reason,
       decision: 'send_now',
@@ -779,7 +787,7 @@ async function sendChosen(
       },
     });
     if (firstMessageId === null) firstMessageId = messageId;
-    await mark(database, coveredIds, {
+    await mark(database, familyId, coveredIds, {
       status: 'sent',
       reason: input.reason,
       decision: 'send_now',
