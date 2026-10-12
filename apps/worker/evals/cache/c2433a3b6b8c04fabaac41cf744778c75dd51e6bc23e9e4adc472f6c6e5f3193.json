@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "question": "Who's the GOAT in football?",
+    "missing_detail": "none",
+    "current_fact": "career records and achievements of players, some still playing",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1615
+}

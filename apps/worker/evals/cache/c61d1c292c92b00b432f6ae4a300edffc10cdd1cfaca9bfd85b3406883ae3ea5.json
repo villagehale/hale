@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "question": "whats the best minivan these days",
+    "missing_detail": "none",
+    "current_fact": "which minivan is currently considered best",
+    "needs_search": "yes"
+  },
+  "latencyMs": 2256
+}

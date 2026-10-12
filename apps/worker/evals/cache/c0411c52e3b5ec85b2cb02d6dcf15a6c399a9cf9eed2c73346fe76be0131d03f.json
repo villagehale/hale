@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "question": "How's the weather tomorrow",
+    "missing_detail": "which city",
+    "current_fact": "weather forecast for tomorrow",
+    "needs_search": "missing_detail"
+  },
+  "latencyMs": 1892
+}

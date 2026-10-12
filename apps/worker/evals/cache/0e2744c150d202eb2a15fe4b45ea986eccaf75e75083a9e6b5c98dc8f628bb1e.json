@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "zh",
+    "question": "足球史上谁是最伟大的球员",
+    "missing_detail": "none",
+    "current_fact": "有球员仍在踢球,成就和纪录可能还在变化,争论所依据的数据会更新",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1940
+}

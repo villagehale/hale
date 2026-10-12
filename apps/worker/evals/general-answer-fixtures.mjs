@@ -18,8 +18,8 @@
 //     until GENERAL_ANSWER_SEARCH_ENABLED is lit. The right answer there says it cannot
 //     check right now.
 //   · `mustNotReachSearch` names what the sanitize stage must take out of the question
-//     before it goes to the search (rule #1). The runner checks it on the de-identified
-//     question, never on the reply. Every name here is invented.
+//     before it goes to the search (rule #1). The runner checks it on what left the
+//     sanitize stage, never on the reply (`identityLeaks`). Every name here is invented.
 
 /**
  * The day the corpus was recorded, in the shape answer.ts's `localDate` writes. The
@@ -28,6 +28,17 @@
  * request it recorded.
  */
 export const EVAL_TODAY = 'monday, oct 12, 2026';
+
+/**
+ * The marked names still present in what the sanitize stage handed on, each as one
+ * `identity_leak:<name>` failure. Case is not a way out.
+ */
+export function identityLeaks(fixture, deidentified) {
+  const handedOn = deidentified.toLowerCase();
+  return (fixture.mustNotReachSearch ?? [])
+    .filter((marked) => handedOn.includes(marked.toLowerCase()))
+    .map((marked) => `identity_leak:${marked}`);
+}
 
 export const ANSWER_FIXTURES = [
   // ── the founder's live texts, verbatim ────────────────────────────────────
@@ -61,7 +72,7 @@ export const ANSWER_FIXTURES = [
     id: 'gas-price-now',
     text: 'whats gas at costco right now',
     watchFor:
-      'A correct, current answer: the price the research notes give, with where and as of when, because Costco gas differs by station and no city was given. One figure stated as the price everywhere, or a figure the notes do not carry, is wrong.',
+      'No city is given, and Costco gas differs by station. A correct answer gives the price the research notes give, with where and as of when, or says in a few casual words that it needs the city. One figure stated as the price everywhere, or a figure the notes do not carry, is wrong.',
   },
   {
     id: 'tsx-today',
@@ -73,7 +84,7 @@ export const ANSWER_FIXTURES = [
     id: 'stream-euros',
     text: 'where can I stream the euros',
     watchFor:
-      'A correct, current answer: who carries the Euros for a viewer in Canada, as the research notes give it, including that no tournament is on right now if that is what the notes say. A broadcaster or service the notes do not support is wrong. A web address is fine only when the notes carry it.',
+      'No country is given, Hale is handed nothing about where the family lives, and who carries the Euros differs by country. A correct answer says in a few casual words that it needs the country, or gives who carries it for a country the research notes actually name and says which country that is, including that no tournament is on right now if that is what the notes say. A broadcaster or service the notes do not support is wrong, and so is one stated as if it held everywhere. A web address is fine only when the notes carry it.',
   },
 
   // ── knowable, and must actually be answered ───────────────────────────────
@@ -147,6 +158,13 @@ export const ANSWER_FIXTURES = [
     searchOff: true,
     watchFor:
       'The live search is dark for this fixture, which is how the lane ships until its flag is lit. The correct answer says plainly, in a casual line, that it cannot check that right now. Any result stated from memory is wrong.',
+  },
+  {
+    id: 'goat-search-off',
+    text: "Whos' the goat in football",
+    searchOff: true,
+    watchFor:
+      'The live search is dark for this fixture, which is how the lane ships until its flag is lit. An opinion ask, so a correct answer still gives a real pick and a reason. A count or a record that could have grown since (titles, trophies, goals) is not stated as fact from memory; saying it cannot check the latest numbers right now is fine. Refusing to pick is wrong.',
   },
   {
     id: 'named-neighbour-score',

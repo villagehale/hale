@@ -1,9 +1,0 @@
-{
-  "value": {
-    "language": "en",
-    "question": "did the leafs win last night",
-    "current_fact": "result of the Toronto Maple Leafs game last night",
-    "needs_search": "yes"
-  },
-  "latencyMs": 3262
-}

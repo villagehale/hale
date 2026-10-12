@@ -1,9 +1,0 @@
-{
-  "value": {
-    "language": "en",
-    "question": "whats gas at costco right now",
-    "current_fact": "current gas price at Costco",
-    "needs_search": "yes"
-  },
-  "latencyMs": 1798
-}

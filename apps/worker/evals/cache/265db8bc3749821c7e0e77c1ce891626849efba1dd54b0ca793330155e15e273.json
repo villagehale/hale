@@ -1,9 +1,0 @@
-{
-  "value": {
-    "language": "fr",
-    "question": "c'est quoi la capitale de la france",
-    "current_fact": "none",
-    "needs_search": "no"
-  },
-  "latencyMs": 2965
-}

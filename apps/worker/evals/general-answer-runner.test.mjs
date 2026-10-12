@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { ANSWER_FIXTURES, EVAL_TODAY } from './general-answer-fixtures.mjs';
+import { ANSWER_FIXTURES, EVAL_TODAY, identityLeaks } from './general-answer-fixtures.mjs';
 
 /**
  * What grades a reply in this suite, taken off the runner's own report.
@@ -64,6 +64,7 @@ describe('the general-answer runner', () => {
       'family-probe',
       'melatonin-adults',
       'score-search-off',
+      'goat-search-off',
       'named-neighbour-score',
       'fr-pineapple-pizza',
       'zh-goat-football',
@@ -87,9 +88,10 @@ describe('the general-answer runner', () => {
     expect(ANSWER_FIXTURES.filter((fixture) => !fixture.watchFor).map((f) => f.id)).toEqual([]);
   });
 
-  it('runs one fixture with the search off and marks one name that must not reach the search', () => {
+  it('runs two fixtures with the search off and marks one name that must not reach the search', () => {
     expect(ANSWER_FIXTURES.filter((fixture) => fixture.searchOff).map((f) => f.id)).toEqual([
       'score-search-off',
+      'goat-search-off',
     ]);
     expect(
       ANSWER_FIXTURES.filter((fixture) => fixture.mustNotReachSearch).map((fixture) => [
@@ -97,6 +99,20 @@ describe('the general-answer runner', () => {
         fixture.mustNotReachSearch,
       ]),
     ).toEqual([['named-neighbour-score', ['priya']]]);
+  });
+
+  /**
+   * The one check that is not the judge's, on its own: a marked name still in what the
+   * sanitize stage handed on is a failure, in any case, and a clean question is not.
+   */
+  it('fails a marked name that is still in the de-identified question, and only then', () => {
+    const marked = { mustNotReachSearch: ['priya'] };
+
+    expect(identityLeaks(marked, 'did Priya say the jays won last night')).toEqual([
+      'identity_leak:priya',
+    ]);
+    expect(identityLeaks(marked, 'did the jays win last night')).toEqual([]);
+    expect(identityLeaks({}, 'did Priya say the jays won last night')).toEqual([]);
   });
 
   /** The search is live when recorded and replayed after, so the day it was recorded on
