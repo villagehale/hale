@@ -1,11 +1,11 @@
 {
   "activity-deep.md": {
     "file": "activity-deep.md",
-    "sha256": "52089c15d9d945c296b0a684b383a522f7e0b68b93318e398bd525aa458919eb"
+    "sha256": "d7c0934194e52e849f4f8909793a4834ce11c0df097222ca8270df447265ca43"
   },
   "activity-finder.md": {
     "file": "activity-finder.md",
-    "sha256": "85b3238cd2da51a664d390b4ddb808feca9855d30612f08c202e706604c4261f"
+    "sha256": "78a4112c4a60fa5b745879ba43a9b18d3db9dd85d027a21361649f9e6cf387d4"
   },
   "activity-synthesis.md": {
     "file": "activity-synthesis.md",
@@ -85,7 +85,7 @@
   },
   "general-answer.md": {
     "file": "general-answer.md",
-    "sha256": "7244f219dd0968f50bf6aaff0d4345745e05a9b4b13fda329edf6a9d076c127a"
+    "sha256": "0547511cfda447b856d0ce8155b228efe4c8276baec475898640572b9b5b541d"
   },
   "gmail-draft-coach.md": {
     "file": "gmail-draft-coach.md",
@@ -103,9 +103,13 @@
     "file": "group-roster-reading.md",
     "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"
   },
+  "holding-line.md": {
+    "file": "holding-line.md",
+    "sha256": "c319077f4a0a90be449a63c95bc003bd6bb4ab72ad14dee4cb796a8a8273fe8d"
+  },
   "identity-ask.md": {
     "file": "identity-ask.md",
-    "sha256": "85602f9dcaedf34dc490c99f42bf272ebc3555c40efddf2ef1eb553d1224c36c"
+    "sha256": "3580c4049c71787dbe18b30d71c388395a8fe525ceb4c3286859b7007284cc46"
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
@@ -157,7 +161,7 @@
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
-    "sha256": "0058da39817bb85138bf334ab1b2e4f17cea042fb2de46cba4a82af95471a11c"
+    "sha256": "ff2d07e32fbf2323e658ff343a631dba28e0051446f4df7ea8081e41d202fff4"
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
@@ -181,7 +185,7 @@
   },
   "radar-voice.md": {
     "file": "radar-voice.md",
-    "sha256": "9256f73604bf6ffdd88848ef0dc4d4aec168f57b4ba997e6f4378354d4eadc8f"
+    "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
   "rank-recommendations.md": {
     "file": "rank-recommendations.md",
