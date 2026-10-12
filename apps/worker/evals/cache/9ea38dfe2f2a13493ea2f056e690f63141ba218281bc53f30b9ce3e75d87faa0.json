@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits its unsure verdict. 'Réunion' is French for meeting, and the reason correctly reads it as a bare meeting with no child or activity named. It then gives the right consequence: the item could belong to the parent or to the child. That is a single plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

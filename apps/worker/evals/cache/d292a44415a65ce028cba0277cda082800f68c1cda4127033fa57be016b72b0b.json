@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a daycare pickup for the named child Wren, which says what kind of thing it is and why that makes it a kid item, matching the verdict. Every fact it uses comes from the item, and it is one short plain clause. The tacked-on \"a care arrangement for a child\" adds little beyond the first half, but it does not hurt.",
-    "score": 5
-  }
-}

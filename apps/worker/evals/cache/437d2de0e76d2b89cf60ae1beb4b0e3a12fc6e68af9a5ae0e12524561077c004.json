@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It correctly says the item is a bare initial with no activity, which is ambiguous and so supports unsure. It invents nothing. It is slightly wordy, but it gives both the what and the why.",
-    "score": 5
-  }
-}

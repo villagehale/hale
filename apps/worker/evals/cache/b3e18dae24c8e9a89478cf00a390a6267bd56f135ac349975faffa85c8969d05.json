@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is just 'Call' with no name, topic or context, so it is a bare item and unsure is right. The classifier's reason says what it is (a bare call with nothing attached) and why that leaves it open to either the child or the parent. That supports the unsure verdict. It is one plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

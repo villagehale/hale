@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a swimming class) and why it is a kid item (it names Lina), which matches the verdict. Lina's age of 30 months comes from the supplied context, so it is supported, though it is extra detail. It is one short clause. Minor redundancy keeps it from a perfect score.",
-    "score": 4
-  }
-}

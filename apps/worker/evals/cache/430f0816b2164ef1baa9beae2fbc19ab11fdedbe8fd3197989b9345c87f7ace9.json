@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a daycare pickup, a child-care arrangement) and why that makes it a kid item even with no child named. It is one clause, it supports the kid verdict, and it invents no facts. The trailing hedge adds nothing but does not contradict the verdict.",
-    "score": 5
-  }
-}

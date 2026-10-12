@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one sentence, supports the kid verdict and uses only supported facts: Theo is a listed child aged 50 months. It names the item as a music class and ties it to Theo. The age detail is padding, since naming the child already settles it, but it is not wrong. This keeps it from a perfectly lean 5, though it remains clear and accurate.",
-    "score": 4
-  }
-}

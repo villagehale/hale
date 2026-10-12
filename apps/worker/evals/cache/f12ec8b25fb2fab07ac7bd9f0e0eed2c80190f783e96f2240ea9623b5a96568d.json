@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a dentist cleaning with no one named. That is why it is unsure: it could be a child's or the parent's. It matches the verdict, adds no unsupported facts, and is one plain clause.",
-    "score": 5
-  }
-}

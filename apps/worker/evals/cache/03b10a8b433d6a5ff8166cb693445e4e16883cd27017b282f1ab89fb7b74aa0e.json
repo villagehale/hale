@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause. It says what the item is, a generic appointment reminder, and why it is unsure: no one is named, so it could be a child's or the parent's. That supports the unsure verdict, matches the rule for appointments with no child named, and adds no facts the item does not support.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item names a 1:1 with Mia Chen and gives a department, \"Product\", which makes this a work meeting with an adult colleague who happens to share the child Mia's first name. The classifier's clause says what the item is and why that makes it the parent's own, which matches the adult verdict and adds no unsupported facts. Calling \"Product\" a \"work title\" is slightly loose, since it is a team rather than a title, but the point stands.",
-    "score": 5
-  }
-}

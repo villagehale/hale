@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a family room booking and points to the named children, Wren and Theo, which the trip rule says makes it a kid item. It matches the verdict, uses only facts in the item, and is one plain clause.",
-    "score": 5
-  }
-}

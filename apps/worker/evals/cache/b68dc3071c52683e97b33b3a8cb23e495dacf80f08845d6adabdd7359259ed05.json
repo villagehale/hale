@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a bare 'Busy' block with no detail and says it could belong to anyone, which supports unsure. It is one short clause, adds no facts the item lacks, and states both what the item is and why that gives the verdict.",
-    "score": 5
-  }
-}

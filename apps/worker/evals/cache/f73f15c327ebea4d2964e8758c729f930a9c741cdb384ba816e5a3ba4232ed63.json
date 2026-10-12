@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly calls the item a birthday party for another child, which the rules treat as a kid item, so it supports the 'kid' verdict in one plain clause. The '4th' comes straight from the title. Saying the family's kids would attend is a mild but reasonable reading rather than an invented fact.",
-    "score": 5
-  }
-}

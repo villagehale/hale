@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a restaurant reservation, which Tablebook supports, and it backs the adult verdict. However, the 'why' is mostly asserted. It labels the booking an adult dinner without pointing to what settles it, such as no child being named or an evening table for two. It is solid but not fully reasoned.",
-    "score": 4
-  }
-}

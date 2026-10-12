@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause that matches the item, a bare initial \"J.\". It says what the item is: a lone initial with no activity. It says why that leads to unsure: it could belong to a child or an adult. It invents no facts, and the initial matches neither child's name, so nothing settles it. The reason is short and consistent with the verdict.",
-    "score": 5
-  }
-}

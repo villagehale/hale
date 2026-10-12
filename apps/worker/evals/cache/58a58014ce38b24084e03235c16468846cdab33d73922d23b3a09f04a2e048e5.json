@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a party for another child, which the rules treat as a kid item, and it supports the verdict in one clause. However, 'which the family's kids would attend' is an unsupported assumption: the item doesn't say who attends, and the plural overreaches, since 18-month-old Wren is not clearly invited.",
-    "score": 4
-  }
-}

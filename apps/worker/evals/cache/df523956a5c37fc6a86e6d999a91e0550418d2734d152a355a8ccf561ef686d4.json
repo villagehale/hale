@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a bare 'Busy' block with no detail and says it could belong to a child or the parent, which supports unsure. It is one plain clause, adds nothing the item does not support, and says both what the item is and why that gives the verdict.",
-    "score": 5
-  }
-}

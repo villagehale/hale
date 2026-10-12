@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a 'spots left' notice for Parent and Tot Swim, which appears verbatim in activityTitles, so a kid verdict is well supported. The classifier's single clause names what the item is (a swim class), why it is kid (it matches a known kid activity) and adds a fair age-suitability reading. That reading uses Sebastian's given age of 15 months and claims only suitability, not enrolment, so nothing is invented.",
-    "score": 5
-  }
-}

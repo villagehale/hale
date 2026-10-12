@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It says the item is a checkup and ties it to a named child, Sebastian, which supports the kid verdict. Reading \"Seb\" as Sebastian is reasonable, and the 15-month age matches both the item and his age. It brings in no unsupported facts. It mostly restates the title, but it does add why it is a kid item: it is about one of the children.",
-    "score": 5
-  }
-}

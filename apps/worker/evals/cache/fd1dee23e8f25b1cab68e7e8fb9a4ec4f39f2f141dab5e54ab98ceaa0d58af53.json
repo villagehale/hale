@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a swimming lesson for Lina, and her age of 30 months comes from the given context, so it is a supported fact. The reason says what the item is, ties it to a named child and leads to the kid verdict. It is one short, plain clause.",
-    "score": 5
-  }
-}

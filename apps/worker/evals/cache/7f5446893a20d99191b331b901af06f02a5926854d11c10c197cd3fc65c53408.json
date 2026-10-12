@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a restaurant reservation from Tablebook and supports the adult verdict in one plain clause. Its 'why' is mostly a restatement, though: calling it 'an adult dinner booking' asserts the verdict. It doesn't point to what settles it, such as two seats at 7:30pm with no child named.",
-    "score": 4
-  }
-}

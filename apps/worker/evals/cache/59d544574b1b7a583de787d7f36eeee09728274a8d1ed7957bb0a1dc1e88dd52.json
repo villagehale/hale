@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a restaurant booking, and 'for 2' carries the logic: a table for two at 7:30 fits a parents' dinner, not an outing with an 18-month-old and a 4-year-old. It supports the adult verdict in one short clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

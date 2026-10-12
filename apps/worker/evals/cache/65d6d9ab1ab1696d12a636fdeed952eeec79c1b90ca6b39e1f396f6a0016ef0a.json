@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Item is just 'Réunion' (French for meeting), with no child, no activity and no hint attached. The reason correctly calls it a bare meeting with nothing naming a child, which fits the rule for unsure. It is one plain clause stating what the item is and why it is unsure. Strictly, the closing 'could be a child's event' is a slight stretch for a toddler, but it stays within the ambiguity the item allows.",
-    "score": 5
-  }
-}

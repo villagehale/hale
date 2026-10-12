@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause that names the item's kind (a child's checkup appointment) and ties it to Wren, the 18-month-old child the item names. That directly supports the kid verdict. The 18-month detail is in the item itself and matches Wren's listed age, so nothing is invented.",
-    "score": 5
-  }
-}

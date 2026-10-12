@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a daycare pickup request that names Wren, an 18-month-old child. The classifier's reason says what the item is (a pickup and care arrangement) and why it is a kid item (it names Wren). That supports the kid verdict. It adds no unsupported facts and stays one short clause, though it is slightly repetitive.",
-    "score": 5
-  }
-}

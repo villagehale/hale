@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a flight, notes that it names no traveller, and leaves it open between a family trip and the parent's own, which matches the trip rule and supports unsure. It adds no unsupported facts and is a single short clause.",
-    "score": 5
-  }
-}

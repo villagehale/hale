@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason identifies the item as a daycare pickup for Wren, who is a named child, so it supports the kid verdict. It adds no facts the item lacks and stays within one short clause. The trailing phrase 'a care arrangement for a child' is slightly redundant but still explains why the item is about a child.",
-    "score": 5
-  }
-}

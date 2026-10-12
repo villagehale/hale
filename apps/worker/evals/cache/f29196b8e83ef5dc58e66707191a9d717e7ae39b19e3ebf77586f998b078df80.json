@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason names the item correctly as shoulder physio and matches the adult verdict, but it simply asserts this is the parent's own appointment. It never says why, such as that shoulder physio is implausible for an 18-month-old and a four-year-old. It also gives no answer to the rule that an appointment with no child named is unsure, so the key justification is missing.",
-    "score": 3
-  }
-}

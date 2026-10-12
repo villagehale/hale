@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause. It identifies the item as a flight to a sales conference booked through corporate travel, which makes it plainly a work trip. Under the trip rule, a plainly work trip is the parent's own, so it supports the adult verdict. Every fact comes from the item and nothing is invented.",
-    "score": 5
-  }
-}

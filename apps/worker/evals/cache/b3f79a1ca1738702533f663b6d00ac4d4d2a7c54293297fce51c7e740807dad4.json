@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a flight with no one named, which is supported. That leads directly to unsure under the trip rule, since nothing marks it as a family booking or as the parent's own. It is one plain clause with no invented facts and it matches the verdict.",
-    "score": 5
-  }
-}

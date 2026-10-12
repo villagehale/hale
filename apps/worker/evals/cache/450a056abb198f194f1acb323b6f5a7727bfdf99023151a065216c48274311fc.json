@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is only the bare initial \"J.\", which matches neither child's name and gives no context. The reason correctly calls it an initial only and explains why that leaves it ambiguous between a child's and an adult's item, which supports unsure. It is one plain clause and invents no facts.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls it a hotel reservation, notes it names no child and is not plainly a family booking or a work trip, and correctly lands on unsure under the trip rule. It is one short clause with no invented facts. The closing phrase 'for either side' is slightly vague, but it supports the verdict.",
-    "score": 5
-  }
-}

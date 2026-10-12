@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason matches the adult verdict and names what the item is, a dental cleaning. But calling it 'the parent's own' visit is an assertion the item does not support. No one is named, there are no notMineHints, and two young children could just as easily be the patient. It gives no grounds for why this is the parent's visit and not a child's, so it rests on an invented ownership fact.",
-    "score": 2
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason names what the item is (a choir rehearsal) and why that makes it the parent's own: it matches the 'a choir the parent sings in' notMineHints entry. That is a supported fact, it backs the adult verdict, and it is a single short clause. Quoting the hint is slightly wordy, but the reason is still clear and plain.",
-    "score": 5
-  }
-}

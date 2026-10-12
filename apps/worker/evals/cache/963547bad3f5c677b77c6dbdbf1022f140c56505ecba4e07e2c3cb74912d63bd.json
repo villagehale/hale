@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This is a lodge booking that names both children, which makes it a family trip and a kid item under the trip rule. The classifier's reason says exactly that in one plain clause, adds no unsupported facts, and backs the verdict it sits beside.",
-    "score": 5
-  }
-}
