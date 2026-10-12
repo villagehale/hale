@@ -112,6 +112,7 @@ vi.mock('../services/memory-writer.js', () => ({
     actionType: 'send_email',
     payload: { to: 'a@b.com', subject: 'hi', body: 'hello' },
   })),
+  loadHumanApprover: vi.fn(async () => null),
   loadApprovedVerdictForAction: vi.fn(async () => ({
     kind: 'approve' as const,
     toolResults: [

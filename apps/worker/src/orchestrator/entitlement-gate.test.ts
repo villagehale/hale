@@ -100,6 +100,7 @@ vi.mock('../services/memory-writer.js', () => ({
     actionType: 'calendar_add',
     payload: {},
   })),
+  loadHumanApprover: vi.fn(async () => null),
   loadApprovedVerdictForAction: vi.fn(async () => ({
     kind: 'approve' as const,
     toolResults: CALENDAR_ADD_COVERAGE,

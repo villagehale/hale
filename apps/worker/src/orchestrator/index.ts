@@ -37,6 +37,7 @@ import {
   loadCrossParentConsent,
   loadFamilyContext,
   loadFamilyCreatedAt,
+  loadHumanApprover,
   loadResumePoint,
   markEventStage,
   recordAction,
@@ -49,6 +50,7 @@ import {
   recordReviewerVerdict,
 } from '../services/memory-writer.js';
 import {
+  autonomyDeniedForKind,
   streakSatisfiesAutonomy,
   teenRedactionCapApplies,
   withinObservationWindow,
@@ -539,6 +541,22 @@ export async function runOrchestrator(
     return;
   }
 
+  if (autonomyDeniedForKind(draft.actionType)) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, actionType: draft.actionType },
+      'orchestrator: action kind is never autonomous (booking, registration, paying) — drafted for approval',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      reason: 'autonomy_denied_kind',
+      detail: {},
+    });
+    return;
+  }
+
   if (classified.confidence < CONFIDENCE_AUTONOMY_THRESHOLD) {
     await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
@@ -701,18 +719,22 @@ async function executeAndRecord(
   googleCalendar?: GoogleCalendarPlacement,
   actorUserId?: string | null,
 ): Promise<void> {
+  const decision = {
+    source: actorUserId ? ('human' as const) : ('autonomous' as const),
+    reason: approved.verdict.rationale,
+  };
   try {
     const execution = await runExecutor(
       { familyId, approved, actorUserId: actorUserId ?? null },
       executorDeps(calendarInvites, googleCalendar),
     );
-    await recordExecution({ actionId, result: execution.detail, ok: execution.ok });
+    await recordExecution({ actionId, result: execution.detail, ok: execution.ok, decision });
     await markEventStage(familyId, eventId, execution.ok ? 'actioned' : 'failed');
     logger.info({ familyId, actionId, ok: execution.ok }, 'orchestrator: action executed');
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown executor error';
     logger.error({ familyId, actionId, err }, 'orchestrator: executor failed');
-    await recordExecution({ actionId, result: { error: message }, ok: false });
+    await recordExecution({ actionId, result: { error: message }, ok: false, decision });
     await markEventStage(familyId, eventId, 'failed');
   }
 }
@@ -762,6 +784,25 @@ async function resumeIntoExecutor(
     return;
   }
 
+  // A checkpoint is either an autonomous pass's or a human approval's claim; only the
+  // autonomous one is held for a denied kind, so a parent's approval is never rewound.
+  const humanApprover = await loadHumanApprover(existing.actionId);
+  if (humanApprover === null && autonomyDeniedForKind(existing.actionType)) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, eventId, actionId: existing.actionId, actionType: existing.actionType },
+      'orchestrator: never-autonomous action kind at approved_pending_execute with no human approval — re-gated on resume (executor not reached)',
+    );
+    await recordActionGate({
+      familyId,
+      actionId: existing.actionId,
+      actionType: existing.actionType,
+      reason: 'autonomy_denied_kind',
+      detail: { resumed: true },
+    });
+    return;
+  }
+
   const verdict = await loadApprovedVerdictForAction(existing.actionId);
   if (!verdict || verdict.kind !== 'approve') {
     throw new Error(
@@ -791,7 +832,7 @@ async function resumeIntoExecutor(
     approved,
     calendarInvites,
     googleCalendar,
-    null,
+    humanApprover,
   );
 }
 

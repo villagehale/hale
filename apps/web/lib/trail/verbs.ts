@@ -353,6 +353,10 @@ export const AUDIT_VERBS = [
   'action.gated.autonomy_not_opted_in',
   // The execute lane switched off. It reuses an existing sentence: no new copy.
   'action.gated.lane_off',
+  // Booking, registration and paying are never autonomous. Same reused sentence.
+  'action.gated.autonomy_denied_kind',
+  // A parent turned Hale's autonomy off for one kind of action.
+  'autonomous_action_class.revoked',
   // ── the weekly loop + calendar subscription ─────────────────────────────
   'compose_week_plan',
   'week_plan.calendar_drafted',
@@ -1302,6 +1306,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'awaiting',
   },
   'action.gated.lane_off': { sentence: 'brought a draft to you', family: 'awaiting' },
+  'action.gated.autonomy_denied_kind': { sentence: 'brought a draft to you', family: 'awaiting' },
+  'autonomous_action_class.revoked': {
+    sentence: 'you stopped Hale doing this on its own',
+    family: 'done',
+  },
   // ── the weekly loop + calendar subscription ─────────────────────────────
   compose_week_plan: { sentence: 'put together your week', family: 'done' },
   'week_plan.calendar_drafted': {

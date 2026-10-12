@@ -94,6 +94,37 @@ describe('toTrailView — the honest frame', () => {
     expect(trail({ actionTaken: 'action.executed', after: { kind: 'email_sent' } }).reversalKept).toBe(false);
   });
 
+  it("shows an email Hale sent on its own as Hale's executed row, never its decision payload", () => {
+    const view = trail({
+      actor: 'system',
+      actionTaken: 'action.executed',
+      targetTable: 'actions',
+      targetId: 'act-9',
+      after: {
+        kind: 'email_sent',
+        messageId: 'pm-1',
+        recipientDomain: 'example.test',
+        decision: { source: 'autonomous', reason: 'all checks green' },
+      },
+    });
+    expect(view.actor).toBe('hale');
+    expect(view.summary).toBe('carried out the action');
+    expect(view.tone).toBe('done');
+    expect(view.link).toBe('/approvals');
+    expect(JSON.stringify(view)).not.toContain('all checks green');
+  });
+
+  it('a parent switching autonomy off for a kind reads as their own act', () => {
+    const view = trail({
+      actor: PRIMARY,
+      actionTaken: 'autonomous_action_class.revoked',
+      targetTable: 'consent_records',
+      targetId: 'consent-1',
+    });
+    expect(view.actor).toBe('you');
+    expect(view.summary).toBe('you stopped Hale doing this on its own');
+  });
+
   it('shows a noun with no link when the target has no viewable surface', () => {
     const view = trail({ targetTable: 'events', targetId: 'evt-1' });
     expect(view.noun).toBe('signal');

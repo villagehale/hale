@@ -57,6 +57,36 @@ export function streakSatisfiesAutonomy(
 }
 
 /**
+ * Whether Hale may EVER do an action kind on its own (Barton, 2026-10-11). Booking,
+ * registration and paying are denied in code, not merely unwired, so wiring one of
+ * their executors later can never make it autonomous; a human approval still executes
+ * a denied kind. `satisfies Record<ActionType, …>` makes a new ActionType a compile
+ * error until it is classified here.
+ */
+const AUTONOMY_BY_KIND = {
+  send_email: 'allowed',
+  reply_to_email: 'allowed',
+  create_calendar_event: 'allowed',
+  update_calendar_event: 'allowed',
+  place_supply_order: 'denied',
+  cancel_supply_order: 'denied',
+  fill_pdf_form: 'denied',
+  submit_government_form: 'denied',
+  book_clinic_portal: 'denied',
+  cancel_clinic_appointment: 'denied',
+  share_photos_with_family: 'allowed',
+  add_to_digest_only: 'allowed',
+  add_to_routine: 'allowed',
+  calendar_add: 'allowed',
+  calendar_move: 'allowed',
+  calendar_cancel: 'allowed',
+} as const satisfies Record<ActionType, 'allowed' | 'denied'>;
+
+export function autonomyDeniedForKind(actionType: ActionType): boolean {
+  return AUTONOMY_BY_KIND[actionType] === 'denied';
+}
+
+/**
  * True iff the teen-redaction structural cap must fire: the family has at least
  * one teenager AND the classifier marked the event teen-content. When it fires,
  * routing is HARD-CAPPED at surface_only/drafted_for_approval regardless of the

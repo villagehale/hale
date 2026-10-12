@@ -13,7 +13,7 @@ interface ConsentRow {
 
 /**
  * Fakes the two reads the opt-in check runs:
- *   select(family_members).where().limit(1)          → the primary parent user id
+ *   select(family_members).where()                   → the family's parents (primary only here)
  *   select(consent_records).where().orderBy().limit(1) → the LATEST consent row for
  *     (primary parent, autonomous_action_class, scope=actionType), applying the real
  *     `desc(grantedAt)` ordering to the seeded rows so a test can prove latest-wins.
@@ -23,9 +23,9 @@ function fakeDb(opts: { primaryUserId: string | null; consentRows: ConsentRow[] 
     from: (table: unknown) => ({
       where: () => {
         if (table === schema.familyMembers) {
-          return {
-            limit: async () => (opts.primaryUserId ? [{ userId: opts.primaryUserId }] : []),
-          };
+          return Promise.resolve(
+            opts.primaryUserId ? [{ userId: opts.primaryUserId, role: 'primary_parent' }] : [],
+          );
         }
         // consent_records: honour desc(grantedAt) + limit so latest-row-wins is real.
         return {

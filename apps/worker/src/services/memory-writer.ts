@@ -143,6 +143,8 @@ interface RecordExecutionInput {
   actionId: string;
   result: Record<string, unknown>;
   ok: boolean;
+  /** Who decided this ran, and the reviewer's reason. Audited, never persisted on the action. */
+  decision: { source: 'autonomous' | 'human'; reason: string };
 }
 
 interface RecordDropInput {
@@ -432,7 +434,7 @@ export async function recordExecution(
         actionTaken: input.ok ? 'action.executed' : 'action.execution_failed',
         targetTable: 'actions',
         targetId: input.actionId,
-        after: input.result,
+        after: { ...input.result, decision: input.decision },
       },
     };
   }, database);
@@ -513,7 +515,8 @@ export type ActionGateReason =
   | 'cross_parent_consent'
   | 'teen_redaction'
   | 'autonomy_not_opted_in'
-  | 'lane_off';
+  | 'lane_off'
+  | 'autonomy_denied_kind';
 
 interface RecordActionGateInput {
   familyId: string;
@@ -959,49 +962,151 @@ export async function loadCrossParentConsent(
  * codebase — an append-only newer granted=false row (how SMS CASL records a
  * withdrawal) OR a revokedAt UPDATE on the grant (how loadCrossParentConsent reads)
  * — either makes the latest row fail the predicate, so a withdrawn opt-in never
- * reads as granted (the naive-granted=true trap). No writer for this scope exists
- * yet (the grant lands with the C-phase AUTO surface), so the reader is robust to
- * whichever convention that writer picks; until then the gate holds every action
- * for approval — a pure tightening.
+ * reads as granted (the naive-granted=true trap). The switch-off writer is
+ * revokeAutonomyForKind (append-only, either parent). No GRANT writer exists yet (it
+ * lands with the C-phase AUTO surface); until then the gate holds every action for
+ * approval — a pure tightening.
  */
 export async function hasAutonomousActionOptIn(
   familyId: string,
   actionType: ActionType,
   database: Database = db(),
 ): Promise<boolean> {
-  const primary = await database
-    .select({ userId: schema.familyMembers.userId })
-    .from(schema.familyMembers)
-    .where(
-      and(
-        eq(schema.familyMembers.familyId, familyId),
-        eq(schema.familyMembers.role, 'primary_parent'),
-      ),
-    )
-    .limit(1);
-  const primaryUserId = primary[0]?.userId;
+  const parents = await familyParents(familyId, database);
+  const primaryUserId = parents.find((p) => p.role === 'primary_parent')?.userId;
   if (!primaryUserId) {
     return false;
   }
 
-  const latest = await database
-    .select({
-      granted: schema.consentRecords.granted,
-      revokedAt: schema.consentRecords.revokedAt,
-    })
-    .from(schema.consentRecords)
+  // The primary's own latest row must be a live grant, AND the latest row across both
+  // parents must be too: either parent's switch-off (revokeAutonomyForKind) turns the
+  // kind off for the family until a newer grant.
+  const latestOf = async (userIds: string[]) => {
+    const latest = await database
+      .select({
+        granted: schema.consentRecords.granted,
+        revokedAt: schema.consentRecords.revokedAt,
+      })
+      .from(schema.consentRecords)
+      .where(
+        and(
+          inArray(schema.consentRecords.userId, userIds),
+          eq(schema.consentRecords.consentType, 'autonomous_action_class'),
+          eq(schema.consentRecords.consentScope, actionType),
+        ),
+      )
+      .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id))
+      .limit(1);
+    const row = latest[0];
+    return !!row && row.granted && row.revokedAt === null;
+  };
+
+  return (
+    (await latestOf([primaryUserId])) && (await latestOf(parents.map((p) => p.userId)))
+  );
+}
+
+async function familyParents(
+  familyId: string,
+  database: Database,
+): Promise<Array<{ userId: string; role: string }>> {
+  return database
+    .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+    .from(schema.familyMembers)
     .where(
       and(
-        eq(schema.consentRecords.userId, primaryUserId),
-        eq(schema.consentRecords.consentType, 'autonomous_action_class'),
-        eq(schema.consentRecords.consentScope, actionType),
+        eq(schema.familyMembers.familyId, familyId),
+        inArray(schema.familyMembers.role, ['primary_parent', 'co_parent']),
+      ),
+    );
+}
+
+export type AutonomyRevocation =
+  | { outcome: 'revoked'; consentRecordId: string }
+  | { outcome: 'not_a_parent' };
+
+/**
+ * Turns Hale's autonomy off for ONE action kind (Barton, 2026-10-11: one parent
+ * message in any wording). Appends a granted=false 'autonomous_action_class' row
+ * scoped to the kind — the ledger hasAutonomousActionOptIn reads, latest-row-wins —
+ * and its audit row in one transaction. Reading the parent's intent is the caller's
+ * job (an AI read of the message, never a keyword match); `evidence` is the parent's
+ * words plus that reading, kept on the consent row as every conversational consent
+ * is, and never copied into the audit row. Only a parent can switch it off: anyone
+ * else is the named `not_a_parent`, with nothing written.
+ */
+export async function revokeAutonomyForKind(
+  input: {
+    familyId: string;
+    actorUserId: string;
+    kind: ActionType;
+    now: Date;
+    policyVersion: string;
+    evidence: Record<string, unknown>;
+  },
+  database: Database = db(),
+): Promise<AutonomyRevocation> {
+  const parents = await familyParents(input.familyId, database);
+  if (!parents.some((p) => p.userId === input.actorUserId)) {
+    logger.warn(
+      { familyId: input.familyId, kind: input.kind },
+      'memory-writer: autonomy switch-off from someone who is not a parent of this family — refused',
+    );
+    return { outcome: 'not_a_parent' };
+  }
+
+  return recordTransition(async (tx) => {
+    const [row] = await tx
+      .insert(schema.consentRecords)
+      .values({
+        familyId: input.familyId,
+        userId: input.actorUserId,
+        consentType: 'autonomous_action_class',
+        consentScope: input.kind,
+        granted: false,
+        grantedAt: input.now,
+        policyVersion: input.policyVersion,
+        evidence: input.evidence,
+      })
+      .returning({ id: schema.consentRecords.id });
+    if (!row) {
+      throw new Error('revokeAutonomyForKind: consent_records insert returned no row');
+    }
+    return {
+      value: { outcome: 'revoked' as const, consentRecordId: row.id },
+      audit: {
+        familyId: input.familyId,
+        actor: input.actorUserId,
+        actionTaken: 'autonomous_action_class.revoked',
+        targetTable: 'consent_records',
+        targetId: row.id,
+        after: { consentType: 'autonomous_action_class', consentScope: input.kind },
+      },
+    };
+  }, database);
+}
+
+/**
+ * The parent whose approval claimed this action's execute checkpoint
+ * (recordHumanApproval's `action.approved_by_human` row), or null when no parent
+ * approved it — i.e. the checkpoint is Hale's own autonomous claim.
+ */
+export async function loadHumanApprover(
+  actionId: string,
+  database: Database = db(),
+): Promise<string | null> {
+  const rows = await database
+    .select({ actor: schema.auditLog.actor })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, 'action.approved_by_human'),
+        eq(schema.auditLog.targetTable, 'actions'),
+        eq(schema.auditLog.targetId, actionId),
       ),
     )
-    .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id))
     .limit(1);
-
-  const row = latest[0];
-  return !!row && row.granted && row.revokedAt === null;
+  return rows[0]?.actor ?? null;
 }
 
 /**
