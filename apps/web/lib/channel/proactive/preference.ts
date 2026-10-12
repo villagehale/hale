@@ -17,11 +17,17 @@ export interface CadencePreference {
   direction: 'less' | 'more';
 }
 
-/** Why a preference the decider heard was not kept. Named on the decision's audit row. */
+/**
+ * Why a preference the decider heard was not kept. Named on the decision's audit row:
+ * shadow keeps none; a batch two parents own and a teenager's household read no parent
+ * text, so there is no one whose words it could be; and with no new text from the owner
+ * the decider only restated the pace the snapshot showed it.
+ */
 export type CadenceNotKept =
   | 'not_written_shadow'
-  | 'not_written_no_single_author'
-  | 'not_written_author_not_owner';
+  | 'not_written_mixed_batch'
+  | 'not_written_teen_household'
+  | 'not_written_no_new_text';
 
 export function cadencePreference(
   parentUserId: string,

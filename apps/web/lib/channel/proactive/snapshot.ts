@@ -101,8 +101,13 @@ export interface FamilySnapshot {
   declines: string[];
   /** Lines the parent who owns every candidate actually sent. Cadence is read from these. */
   recentParentTexts: string[];
-  /** Why no parent text was read: a batch two parents own has no one pace to read. */
-  parentTextsWithheld?: 'mixed_batch';
+  /** New texts past `RECENT_PARENT_TEXTS`, left unread behind the read mark. Absent when none. */
+  parentTextsCut?: number;
+  /**
+   * Why no parent text was read: a teenager's household reads none at all, and a batch
+   * two parents own has no one pace to read.
+   */
+  parentTextsWithheld?: 'teen_household' | 'mixed_batch';
   priorDecisions: PriorDecision[];
 }
 
@@ -479,8 +484,6 @@ export interface LoadedSnapshot {
   snapshot: FamilySnapshot;
   /** Who sent the texts in `recentParentTexts`. Never handed to the model. */
   textAuthors: string[];
-  /** The one parent who owns every candidate, whose pace `frequencyPreference` is. */
-  owner: string | null;
   /** The owner's new texts this snapshot read. Null when it read none. */
   textsRead: ParentTextsRead | null;
 }
@@ -532,8 +535,23 @@ export async function loadFamilySnapshot(
   const reader = context.teenInHousehold ? null : owner;
   const readThrough =
     reader === null ? null : await textsReadThrough(database, input.familyId, reader, input.mode);
-  const newTexts =
+  const unread =
     reader === null
+      ? null
+      : and(
+          eq(schema.channelMessages.familyId, input.familyId),
+          eq(schema.channelMessages.parentUserId, reader),
+          eq(schema.channelMessages.direction, 'in'),
+          isNotNull(schema.channelMessages.body),
+          gte(schema.channelMessages.createdAt, since),
+          // A text stamped after this review's clock is the next review's.
+          lte(schema.channelMessages.createdAt, input.now),
+          readThrough === null
+            ? undefined
+            : sql`${schema.channelMessages.createdAt} > ${readThrough}::timestamptz`,
+        );
+  const newTexts =
+    unread === null
       ? []
       : await database
           .select({
@@ -542,22 +560,19 @@ export async function loadFamilySnapshot(
             stamp: TEXT_STAMP,
           })
           .from(schema.channelMessages)
-          .where(
-            and(
-              eq(schema.channelMessages.familyId, input.familyId),
-              eq(schema.channelMessages.parentUserId, reader),
-              eq(schema.channelMessages.direction, 'in'),
-              isNotNull(schema.channelMessages.body),
-              gte(schema.channelMessages.createdAt, since),
-              // A text stamped after this review's clock is the next review's.
-              lte(schema.channelMessages.createdAt, input.now),
-              readThrough === null
-                ? undefined
-                : sql`${schema.channelMessages.createdAt} > ${readThrough}::timestamptz`,
-            ),
-          )
+          .where(unread)
           .orderBy(desc(schema.channelMessages.createdAt))
           .limit(RECENT_PARENT_TEXTS);
+  // The read mark moves to the newest text, so older ones past the bound stay unread
+  // behind it: counted (no body leaves the database for them) and named.
+  const [unreadCount] =
+    unread === null || newTexts.length < RECENT_PARENT_TEXTS
+      ? []
+      : await database
+          .select({ count: sql<number>`count(*)::int` })
+          .from(schema.channelMessages)
+          .where(unread);
+  const textsCut = unreadCount ? unreadCount.count - newTexts.length : 0;
   const [newest] = newTexts;
   const textsRead =
     reader !== null && newest !== undefined
@@ -588,7 +603,12 @@ export async function loadFamilySnapshot(
     frequencyPreference: cadence ? { direction: cadence.direction } : null,
     declines: context.declines,
     recentParentTexts: shown.map((row) => row.text),
-    ...(owner === null ? { parentTextsWithheld: 'mixed_batch' as const } : {}),
+    ...(textsCut > 0 ? { parentTextsCut: textsCut } : {}),
+    ...(context.teenInHousehold
+      ? { parentTextsWithheld: 'teen_household' as const }
+      : owner === null
+        ? { parentTextsWithheld: 'mixed_batch' as const }
+        : {}),
     priorDecisions: input.priorDecisions.map((prior) =>
       prior.reason === null ? prior : { ...prior, reason: withheld(prior.reason) },
     ),
@@ -596,7 +616,6 @@ export async function loadFamilySnapshot(
   return {
     snapshot,
     textAuthors: [...new Set(shown.map((row) => row.author))],
-    owner,
     textsRead,
   };
 }

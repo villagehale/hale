@@ -999,7 +999,7 @@ describe('runProactiveReview', () => {
   });
 
   async function decisionFields(
-    field: 'cadencePreference' | 'parentTextsRead' | 'parentTextsWithheld',
+    field: 'cadencePreference' | 'parentTextsRead' | 'parentTextsWithheld' | 'parentTextsCut',
   ) {
     const decisions = await audits('proactive_cadence_decision');
     return decisions
@@ -1171,10 +1171,10 @@ describe('runProactiveReview', () => {
     expect(read).not.toContain('text me less');
     expect(read).not.toContain('we love the weekend ideas');
     const [decision] = await audits('proactive_cadence_decision');
-    expect(decision?.after).toMatchObject({ cadencePreference: 'not_written_no_single_author' });
+    expect(decision?.after).toMatchObject({ cadencePreference: 'not_written_mixed_batch' });
   });
 
-  it('when live, never keeps a pace for a parent who texted about a batch that is not theirs', async () => {
+  it('when live, never keeps a pace the decider restated with no new text from the owner, by name', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const coParentId = await addCoParent();
     const stored = { schemaVersion: 1, parentUserId, direction: 'less' };
@@ -1200,7 +1200,7 @@ describe('runProactiveReview', () => {
     expect(h.snapshots[0]?.recentParentTexts).toEqual([]);
     const decisions = await audits('proactive_cadence_decision');
     const reviewed = decisions.find((row) => 'action' in (row.after as object));
-    expect(reviewed?.after).toMatchObject({ cadencePreference: 'not_written_no_single_author' });
+    expect(reviewed?.after).toMatchObject({ cadencePreference: 'not_written_no_new_text' });
     const kept = decisions
       .map((row) => (row.after as { cadencePreference?: unknown }).cadencePreference)
       .filter((pace) => typeof pace === 'object');
@@ -1405,6 +1405,35 @@ describe('runProactiveReview', () => {
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
     expect(h.snapshots[0]?.recentParentTexts).toEqual([]);
+    expect(h.snapshots[0]?.parentTextsWithheld).toBe('teen_household');
+    expect(await decisionFields('parentTextsWithheld')).toEqual(['teen_household']);
+    expect(await decisionFields('parentTextsRead')).toEqual([]);
+  });
+
+  it('when live, keeps no pace in a household with a teenager, by name, whoever owns the batch', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Older', dateOfBirth: '2011-03-01' });
+    const coParentId = await addCoParent();
+    await parentText('text me less', HOUR_BEFORE);
+    await enqueue('nudge:weather:w41');
+    const h = harness(lessPlease);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    await enqueue('nudge:weather:w42');
+    await enqueue('nudge:dropin:w42', { parentUserId: coParentId, why: 'weekday_dropin' });
+    await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+
+    expect(h.snapshots.map((snapshot) => snapshot.recentParentTexts)).toEqual([[], []]);
+    expect(await decisionFields('cadencePreference')).toEqual([
+      'not_written_teen_household',
+      'not_written_teen_household',
+    ]);
+    expect(await decisionFields('parentTextsWithheld')).toEqual([
+      'teen_household',
+      'teen_household',
+    ]);
   });
 
   async function offer(
@@ -1575,6 +1604,9 @@ describe('runProactiveReview', () => {
 
     const newest = texts.slice(-RECENT_PARENT_TEXTS);
     expect(h.snapshots[0]?.recentParentTexts).toEqual(newest);
+    // The three past the newest are behind the read mark for good: named, not silent.
+    expect(h.snapshots[0]?.parentTextsCut).toBe(3);
+    expect(await decisionFields('parentTextsCut')).toEqual([3]);
     const read = JSON.stringify(returned);
     for (const older of texts.slice(0, -RECENT_PARENT_TEXTS)) {
       expect(read).not.toContain(`"${older}"`);
@@ -1595,6 +1627,45 @@ describe('runProactiveReview', () => {
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
     expect(h.snapshots[0]?.recentParentTexts).toEqual(texts);
+    expect(h.snapshots[0]?.parentTextsCut).toBeUndefined();
+    expect(await decisionFields('parentTextsCut')).toEqual([]);
+  });
+
+  it('reads no parent text from before the days the decider can see', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const edge = THURSDAY_EVENING.getTime() - SNAPSHOT_DAYS * 24 * 60 * 60_000;
+    await parentText('an old text outside the window', new Date(edge - 60 * 60_000));
+    await parentText('a text inside the window', new Date(edge + 60 * 60_000));
+    await enqueue('nudge:weather:w41');
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots[0]?.recentParentTexts).toEqual(['a text inside the window']);
+  });
+
+  it('reads a parent’s texts past this family’s own read mark, never another family’s', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const other = await seedFamily(db.database, 'Other Family');
+    await db.database.insert(schema.auditLog).values({
+      familyId: other.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_decision',
+      targetTable: 'families',
+      targetId: other.familyId,
+      after: {
+        parentTextsRead: { parentUserId, through: stamp(THURSDAY_EVENING) },
+        mode: 'live',
+      },
+      occurredAt: HOUR_BEFORE,
+    });
+    await parentText('weekends are best for us', HOUR_BEFORE);
+    await enqueue('nudge:weather:w41');
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots[0]?.recentParentTexts).toEqual(['weekends are best for us']);
   });
 
   it('reads no outbound body and no parent text from before the last look', async () => {

@@ -627,7 +627,7 @@ async function reviewFamily(
     return;
   }
   const offered = new Set(plan.candidates.map((candidate) => candidate.id));
-  const { snapshot, textAuthors, owner, textsRead } = await loadFamilySnapshot(database, {
+  const { snapshot, textAuthors, textsRead } = await loadFamilySnapshot(database, {
     familyId,
     context,
     candidates: plan.candidates,
@@ -653,10 +653,10 @@ async function reviewFamily(
   const chosen = items.filter((item) => offered.has(item.id) && decision.itemIds.includes(item.id));
   const unchosen = items.filter((item) => offered.has(item.id) && !chosen.includes(item));
   const hold = clampHold(decision.holdUntil, chosen, now);
-  const cadence = keptCadence(decision, mode, textAuthors, owner);
+  const cadence = keptCadence(decision, mode, textAuthors, snapshot.parentTextsWithheld);
   // The decision row is where a cadence preference is kept (preference.ts), and the
-  // reason it was not, by name. It also says whose texts it read (snapshot.ts), and when
-  // it read none because two parents own the batch.
+  // reason it was not, by name. It also says whose texts it read (snapshot.ts), how many
+  // it left unread past the bound, and why it read none when it was not allowed any.
   await audit(database, familyId, 'proactive_cadence_decision', {
     action: decision.action,
     itemIds: chosen.map((item) => item.id),
@@ -665,6 +665,7 @@ async function reviewFamily(
     ...(hold.clamped ? { holdClamped: hold.clamped, askedHoldUntil: decision.holdUntil } : {}),
     ...(cadence ? { cadencePreference: cadence } : {}),
     ...(textsRead ? { parentTextsRead: textsRead } : {}),
+    ...(snapshot.parentTextsCut ? { parentTextsCut: snapshot.parentTextsCut } : {}),
     ...(snapshot.parentTextsWithheld ? { parentTextsWithheld: snapshot.parentTextsWithheld } : {}),
     mode,
   });
@@ -760,23 +761,24 @@ async function reviewFamily(
 
 /**
  * What the decision row says about a pace the decider heard. Live keeps its direction,
- * never the words, for the one parent whose new texts it read, and only when the batch is
- * wholly theirs: the snapshot showed the owner's stored pace, which the decider may
- * restate, and that is never another parent's (rule #5). Anything else is named, never a
+ * never the words, for the one parent whose new texts it read. The snapshot reads texts
+ * only from the parent who owns every candidate, so that author is the owner and the pace
+ * is never another parent's (rule #5). The snapshot also showed the owner's stored pace,
+ * which the decider may restate with no new text. Anything not kept is named, never a
  * silent skip.
  */
 function keptCadence(
   decision: DeciderDecision,
   mode: 'shadow' | 'live',
   textAuthors: readonly string[],
-  owner: string | null,
+  withheld: FamilySnapshot['parentTextsWithheld'],
 ): CadencePreference | CadenceNotKept | null {
   const heard = decision.frequencyPreference;
   if (!heard) return null;
   if (mode === 'shadow') return 'not_written_shadow';
-  const [author, ...others] = textAuthors;
-  if (author === undefined || others.length > 0) return 'not_written_no_single_author';
-  if (author !== owner) return 'not_written_author_not_owner';
+  if (withheld) return `not_written_${withheld}`;
+  const [author] = textAuthors;
+  if (author === undefined) return 'not_written_no_new_text';
   return cadencePreference(author, heard.direction);
 }
 
