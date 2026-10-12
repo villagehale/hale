@@ -11,7 +11,7 @@ import {
 } from '~/lib/channel/intake/live-lookup';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { forceToolJson } from '~/lib/pipeline/structured';
+import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import {
   EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
@@ -115,10 +115,18 @@ export function generalAnswerUserMessage(text: string): string {
   return JSON.stringify({ text });
 }
 
-/** The only thing any catch here may log: a provider error can carry the request back,
- * so the message survives and the object does not (rule #1). */
+/** What the two setup catches log. Neither call is passed the question, so the message
+ * cannot hold it; the error object is still never logged (rule #1). */
 function message(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown';
+}
+
+/** What a failed COMPOSE logs. Its request holds the question and a provider error can
+ * quote the request back in its message, so this is the error's name and, for a
+ * structured answer that came back unusable, why. Never the message (rule #1). */
+function composeFailure(err: unknown): string {
+  if (err instanceof StructuredOutputError) return `${err.name}:${err.outcome}`;
+  return err instanceof Error ? err.name : 'unknown';
 }
 
 function unavailable(reason: GeneralAnswerFallback, detail?: string): GeneralAnswerOutcome {
@@ -229,7 +237,7 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
         });
         return sendable(value.answer);
       } catch (err) {
-        return unavailable('model_failed', message(err));
+        return unavailable('model_failed', composeFailure(err));
       }
     },
   };

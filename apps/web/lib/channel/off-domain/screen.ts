@@ -10,7 +10,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { parseModelMode } from '~/lib/pipeline/model-mode';
-import { forceToolJson } from '~/lib/pipeline/structured';
+import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 
 /**
  * VIL-273 — the screen in front of the coach.
@@ -170,11 +170,18 @@ export function laneUserMessage(text: string): string {
   return JSON.stringify({ text });
 }
 
-/** The only thing any catch here is allowed to log. A thrown error can carry a provider
- * payload that echoes the request back, so the class and the message survive and the
- * object does not (rule #1). */
+/** What the two setup catches log. Neither call is passed the parent's text, so the
+ * message cannot hold it; the error object is still never logged (rule #1). */
 function message(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown';
+}
+
+/** What a failed READ logs. Its request holds the parent's text and a provider error can
+ * quote the request back in its message, so this is the error's name and, for a
+ * structured answer that came back unusable, why. Never the message (rule #1). */
+function readFailure(err: unknown): { err: string; outcome?: string } {
+  if (err instanceof StructuredOutputError) return { err: err.name, outcome: err.outcome };
+  return { err: err instanceof Error ? err.name : 'unknown' };
 }
 
 /** The fail-open reading, logged and named. Never carries the message (rule #1). */
@@ -220,10 +227,8 @@ export function createInboundLaneScreen(
       try {
         resolved = client();
       } catch (err) {
-        // Only ever the message string, here and below. Neither of these can hold the
-        // parent's words today (the text is passed to neither call), but the third catch
-        // genuinely can, and one narrowing rule across all three is what stops the next
-        // edit from being the exception (rule #1).
+        // The message string, here and at the skill load: the text is passed to neither
+        // call. The read below is passed it, and logs its failure by name (rule #1).
         console.error({ err: message(err) }, 'off-domain screen: no client');
         return openTheGate('client_unavailable');
       }
@@ -269,7 +274,7 @@ export function createInboundLaneScreen(
         });
         return toReading(value);
       } catch (err) {
-        console.error({ err: message(err) }, 'off-domain screen: read failed');
+        console.error(readFailure(err), 'off-domain screen: read failed');
         return openTheGate('model_failed');
       }
     },

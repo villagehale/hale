@@ -288,6 +288,47 @@ describe('createGeneralAnswer', () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain(secret);
     log.mockRestore();
   });
+
+  /**
+   * The compose request holds the parent's question, and a provider error can quote the
+   * request back in its MESSAGE. So a failed call is logged by the error's name, and by
+   * why a structured answer was unusable, and by nothing else.
+   */
+  it('logs a failed model call by the error name, never the provider message', async () => {
+    const secret = 'is the Riverdale Montessori on Boulton any good';
+    const echoing = (): AgentClient =>
+      ({
+        messages: {
+          async create() {
+            throw new Error(`400 invalid_request_error: {"text":"${secret}"}`);
+          },
+        },
+      }) as unknown as AgentClient;
+    const truncated = (): AgentClient =>
+      ({
+        messages: {
+          async create() {
+            return { content: [], stop_reason: 'max_tokens', usage: {} };
+          },
+        },
+      }) as unknown as AgentClient;
+    const log = quiet();
+
+    await createGeneralAnswer(echoing).compose(secret);
+    await createGeneralAnswer(truncated).compose(secret);
+
+    expect(log.mock.calls).toEqual([
+      [
+        { reason: 'model_failed', detail: 'Error' },
+        'off-domain answer: falling back to the fixed line',
+      ],
+      [
+        { reason: 'model_failed', detail: 'StructuredOutputError:truncated' },
+        'off-domain answer: falling back to the fixed line',
+      ],
+    ]);
+    log.mockRestore();
+  });
 });
 
 /** The skill says "No links, ever" — this makes it structural rather than requested
