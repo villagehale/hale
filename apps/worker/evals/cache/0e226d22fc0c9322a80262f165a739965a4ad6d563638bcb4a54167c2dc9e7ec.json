@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct for missing_detail: it asks which country and states no rate from memory. The tone is a little assistant-like, offering a service ('tell me and I can look up the current 5 year fixed rate there') and explaining more than a friend would. Still casual enough.",
+    "score": 4
+  }
+}

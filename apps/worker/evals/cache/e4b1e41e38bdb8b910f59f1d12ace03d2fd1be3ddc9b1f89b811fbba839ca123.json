@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly asks which city or area, since Costco gas varies by station, and states no price from memory. But the opener 'Happy to check Costco gas prices for you' reads like an assistant offering a service rather than a friend texting back (e.g. 'which city?'). That caps it below 4.",
+    "score": 3
+  }
+}

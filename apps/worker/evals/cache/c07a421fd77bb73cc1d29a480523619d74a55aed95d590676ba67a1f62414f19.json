@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It correctly and plainly says it can't check the forecast right now, and it doesn't ask which city. But it then hedges into a seasonal generalization ('cooler mornings… light jacket is a safe bet'). That is close to a guess from memory, which contradicts its own 'I don't want to guess'. It also brings the parent's kids into the reply, which strays into their family. The tone is casual but padded.",
+    "score": 3
+  }
+}

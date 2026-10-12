@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer is correct. It asks which city and states no price from memory, which is what missing_detail calls for. It is also in the language of the question. The tone is a bit stiff for a friend's text, though: 'Happy to check... but I need to know which city or area you're in first' reads more like a service reply than a quick 'which city?'. The extra explanation is fine but adds formality. It does not deflect.",
-    "score": 4
-  }
-}

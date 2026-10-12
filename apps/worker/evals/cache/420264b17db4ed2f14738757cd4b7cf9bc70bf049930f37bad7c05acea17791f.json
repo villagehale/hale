@@ -1,0 +1,12 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "whats gas at costco right now",
+    "missing_detail": "which city or area",
+    "their_place": "needed",
+    "current_fact": "current gas price at Costco",
+    "needs_search": "missing_detail"
+  },
+  "latencyMs": 1564
+}
