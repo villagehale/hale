@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The input is a machine-style order draft (action_type plus item, vendor, price, quantity, and a terse reason field) rather than a family message addressed to anyone, so it lacks the warm, recipient-appropriate tone a family message should have. It is clear and contains no placeholders, but its robotic phrasing and internal signal label ('supply_low_signal') make it off-purpose for a family communication.",
+    "score": 2
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.4,
+    "rationale": "This is a teen's private journal entry, not a family logistics signal. None of the event types fit, and it touches on her emotional wellbeing and privacy, so a person needs to decide what happens next.",
+    "payload": {
+      "source": "notes_sync",
+      "content_kind": "private_personal_journal",
+      "authored_by_child": true,
+      "privacy_sensitive": true,
+      "wellbeing_flag": true,
+      "wellbeing_note": "Entry describes ongoing low mood and social comparison at school, and says she has not told anyone. No explicit mention of self-harm in the text.",
+      "do_not_quote_in_digest": true
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": "child-maya",
+    "teen_content": true
+  },
+  "latencyMs": 8136
+}

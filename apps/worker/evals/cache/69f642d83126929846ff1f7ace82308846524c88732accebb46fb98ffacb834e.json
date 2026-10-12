@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly cites the signal's data: 6 diapers on hand against a daily use of 7 leaves 1 day remaining, which justifies the supply_low_signal event type. It is specific and consistent with the figures, though it could have noted the urgency of restocking within a day.",
+    "score": 5
+  }
+}

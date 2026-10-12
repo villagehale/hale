@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The answer directly addresses the parent's question with a short first-person reply and invents no specifics, but it asserts that Hale is 'just a number you text' with no app or login, which matches the fixture's stated truth. The return line restates pendingAsk in essentially the same form, naming the children from context, without arguing for a yes or adding a second question. Deducting slightly because the answer is fairly thin and doesn't acknowledge anything Hale cannot do, such as being an AI.",
+    "score": 4
+  }
+}

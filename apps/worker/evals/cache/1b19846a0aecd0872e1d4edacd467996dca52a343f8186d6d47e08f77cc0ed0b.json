@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "Recipient is not on the family's allowlist and could not be verified, and the sender origin is untrusted. The reply is an affirmative commitment ('Sure, that sounds fine') to an unknown party, with unclear context and no verification of what is being agreed to. PII and idempotency checks passed, but the allowlist failures plus ambiguity about the recipient and the commitment require human review rather than an automatic approval. Not rejecting outright because the recipient is not confirmed blocklisted, so this is ambiguity rather than a clear policy violation.",
+    "remediation": "Ask the parent to confirm who the recipient is and what they are agreeing to. If the recipient is legitimate, add them to the allowlist and re-run verification. Otherwise, discard the draft or reply without making any commitment."
+  },
+  "latencyMs": 7879
+}

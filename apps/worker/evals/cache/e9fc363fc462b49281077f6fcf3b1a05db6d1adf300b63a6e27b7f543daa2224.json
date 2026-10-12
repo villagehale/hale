@@ -1,0 +1,25 @@
+{
+  "value": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.83,
+    "rationale": "Sunny Daycare, a daycare the family already knows, is offering Mira a toddler-room spot and asks for a reply by Friday to accept, so the parent needs to act.",
+    "payload": {
+      "daycare_name": "Sunny Daycare",
+      "sender": "admissions@sunnydaycare.ca",
+      "child_name": "Mira",
+      "outcome": "spot_offered",
+      "program": "toddler room",
+      "start_date": "September",
+      "response_required": true,
+      "response_deadline": "Friday",
+      "response_requested": "reply to accept the spot"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 6910
+}

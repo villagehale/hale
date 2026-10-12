@@ -1,0 +1,25 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.92,
+    "rationale": "Riverdale Peds, a clinic the family already uses, is offering an opening for Mira's 18-month visit and asks the parent to confirm it.",
+    "payload": {
+      "clinic_name": "Riverdale Peds",
+      "sender": "frontdesk@riverdale-peds.ca",
+      "child_name": "Mira",
+      "visit_type": "18-month well-child visit",
+      "proposed_date": "Tuesday June 23",
+      "proposed_time": "5:30 PM",
+      "timezone": "America/Toronto",
+      "requested_response": "confirm the proposed time works",
+      "known_clinic_match": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 5229
+}

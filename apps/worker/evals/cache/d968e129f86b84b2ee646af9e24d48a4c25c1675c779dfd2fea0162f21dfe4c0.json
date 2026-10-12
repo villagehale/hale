@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the message as a private teen disclosure rather than a family logistics signal, and explains the classification as unclassified with a clear privacy reason: the teen marked it private and it must be kept out of the parent digest. It is specific to the content (party, vaping, drinking, not telling parents), though it could more explicitly justify why the event type is unclassified rather than a named category.",
+    "score": 4
+  }
+}

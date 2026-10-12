@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "to": "admissions@sunnydaycare.ca",
+      "subject": "Re: Your application",
+      "body": "Hi there,\n\nThanks for the news about the toddler room. Yes, we'd like to accept the spot for Mira starting in September.\n\nPlease let us know the next steps, and what we need to send back.\n\nThanks,\n[Parent name]"
+    },
+    "confidence": 0.6,
+    "rationale": "Event asks for a reply accepting a September toddler-room spot by Friday; draft accepts and asks for next steps, using a placeholder for the parent's name since no voice profile or family memory was provided.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 1607
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly ties the supply_low_signal event to the data: 6 units on hand against a daily use of 7 leaves about 1 day of supply, which justifies a reorder. It is accurate and specific, though it could have noted the urgency of the single day remaining more explicitly.",
+    "score": 5
+  }
+}

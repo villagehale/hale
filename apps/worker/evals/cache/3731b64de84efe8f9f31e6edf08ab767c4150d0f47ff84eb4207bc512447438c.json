@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.9,
+    "rationale": "This is a teen's private note about their own confidential health care, not family logistics, so it is teen content and should stay out of the parent digest and get no drafted action.",
+    "payload": {
+      "teen_private": true,
+      "withhold_from_parent_surfaces": true,
+      "note": "Content not summarized or stored in payload because it is private teen content."
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": "child-riley",
+    "teen_content": true
+  },
+  "latencyMs": 8349
+}

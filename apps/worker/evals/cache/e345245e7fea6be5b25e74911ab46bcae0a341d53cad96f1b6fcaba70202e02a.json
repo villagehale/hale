@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale gives a specific, correct basis for the event type: the sender is a school counsellor sharing a wellbeing concern about a student (withdrawn, overwhelmed about exams), which fits school_communication, and it notes the message is an informational check-in rather than a formal request. It is slightly underspecified in not citing the 'Happy to talk' offer, but the reasoning matches the content.",
+    "score": 5
+  }
+}
