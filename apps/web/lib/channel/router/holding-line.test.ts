@@ -1,6 +1,18 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { structuredReply } from '~/lib/testing/structured-reply';
+
+const skillLoad = vi.hoisted(() => ({ error: null as Error | null }));
+vi.mock('~/lib/cron/skill', async (actual) => {
+  const real = await actual<typeof import('~/lib/cron/skill')>();
+  return {
+    ...real,
+    loadCronSkill: async (name: string) => {
+      if (skillLoad.error) throw skillLoad.error;
+      return real.loadCronSkill(name);
+    },
+  };
+});
 import {
   HOLDING_LINE_ENABLED_ENV,
   type HoldingLineComposer,
@@ -111,6 +123,7 @@ describe('createHoldingLine', () => {
         throw new Error('echo: her daughter is wheezing');
       },
     ],
+    ['skill_unavailable', () => ({}) as AgentClient],
     [
       'model_failed',
       () =>
@@ -124,10 +137,15 @@ describe('createHoldingLine', () => {
     ],
   ] as const)('logs %s by name, without the provider message', async (reason, client) => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const outcome = await createHoldingLine(client).compose('en');
-    expect(outcome).toEqual({ status: 'unavailable', reason });
-    expect(log.mock.calls).toEqual([[{ reason }, 'holding line: no line composed']]);
-    log.mockRestore();
+    if (reason === 'skill_unavailable') skillLoad.error = new Error('echo: her daughter is wheezing');
+    try {
+      const outcome = await createHoldingLine(client).compose('en');
+      expect(outcome).toEqual({ status: 'unavailable', reason });
+      expect(log.mock.calls).toEqual([[{ reason }, 'holding line: no line composed']]);
+    } finally {
+      skillLoad.error = null;
+      log.mockRestore();
+    }
   });
 });
 
