@@ -16,15 +16,6 @@ import {
   withoutThinking,
 } from './model.js';
 
-const HAIKU_TASKS: AgentTask[] = [
-  'simple-lookup',
-  'triage',
-  'acknowledge',
-  'screen',
-  'answer',
-  'speak',
-];
-
 describe('pickModel', () => {
   it.each<[AgentTask, string]>([
     ['classify', 'claude-sonnet-5-5'],
@@ -74,17 +65,24 @@ describe('laneRequestFields', () => {
   it.each<[AgentTask, string]>([
     ['simple-lookup', 'low'],
     ['triage', 'low'],
-    ['screen', 'low'],
+    ['screen', 'medium'],
     ['acknowledge', 'medium'],
     ['answer', 'medium'],
-    ['speak', 'medium'],
-  ])('sends the %s Haiku lane with thinking off at %s effort', (task, effort) => {
-    // Haiku 5.5 thinks by default (adaptive, medium). These lanes are budgeted in tens
-    // of tokens or sit on a live call, so the default would truncate or stall them.
+  ])('sends the %s Haiku lane adaptive at %s effort', (task, effort) => {
+    // Effort is Haiku 5.5's lever, not `disabled`: thinking off failed the acknowledge
+    // and answer lanes' evals that adaptive passes (2026-10-11 re-record).
     expect(laneRequestFields(pickLane(task))).toEqual({
       model: 'claude-haiku-5-5',
-      thinking: { type: 'disabled' },
+      thinking: { type: 'adaptive' },
       output_config: { effort },
+    });
+  });
+
+  it('keeps thinking off on the phone-call lane, where time to first token is the call', () => {
+    expect(laneRequestFields(pickLane('speak'))).toEqual({
+      model: 'claude-haiku-5-5',
+      thinking: { type: 'disabled' },
+      output_config: { effort: 'medium' },
     });
   });
 
@@ -171,7 +169,15 @@ describe('withoutThinking', () => {
     expect(withoutThinking({ model: OPUS_MODEL, thinking: 'adaptive', effort: 'low' })).toBeNull();
   });
 
-  it.each<AgentTask>(['draft', 'infer', ...HAIKU_TASKS])(
+  it('turns an adaptive Haiku lane off at the same effort', () => {
+    expect(withoutThinking(pickLane('answer'))).toEqual({
+      model: HAIKU_MODEL,
+      thinking: 'disabled',
+      effort: 'medium',
+    });
+  });
+
+  it.each<AgentTask>(['draft', 'infer', 'speak'])(
     'has no less-thinking form for %s',
     (task) => {
       expect(withoutThinking(pickLane(task))).toBeNull();

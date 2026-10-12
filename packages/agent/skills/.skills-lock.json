@@ -81,11 +81,11 @@
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
-    "sha256": "a40250614e7e1db958d96f55362ae1c46c6ca418b717e2ac9f842c7068837b79"
+    "sha256": "2b934d020eac24f34924c5d2bfe3c658e095b3f75afa2aa5d119ca0372cdad7b"
   },
   "general-answer.md": {
     "file": "general-answer.md",
-    "sha256": "c0a6f0eb71c7e9ab925407bbeac82ed77ad41498ee37612b0368c1b5ce520744"
+    "sha256": "7244f219dd0968f50bf6aaff0d4345745e05a9b4b13fda329edf6a9d076c127a"
   },
   "gmail-draft-coach.md": {
     "file": "gmail-draft-coach.md",
@@ -109,7 +109,7 @@
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
-    "sha256": "532cac2b7b41b6390dcfa1ac7adfbf1b9af5bb338335b357e5cdb6b782745ce3"
+    "sha256": "139c345496c998954fd3b09d9649d6b7fd73d5fdb07d95d425c5d6ca73ad728f"
   },
   "infer-memory.md": {
     "file": "infer-memory.md",

@@ -137,13 +137,16 @@ const TASK_LANE: Record<AgentTask, LaneConfig> = {
   // Run-rarely and judgment-dense: the one lane worth `xhigh`.
   'high-stakes-judgment': { model: OPUS_MODEL, thinking: 'adaptive', effort: 'xhigh' },
 
-  // Haiku lanes: thinking off, because these are latency-bound or budgeted in tens of
-  // tokens. `low` where the answer is a bool or a pick, `medium` where it is a sentence.
-  'simple-lookup': { model: HAIKU_MODEL, thinking: 'disabled', effort: 'low' },
-  triage: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'low' },
-  screen: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'low' },
-  acknowledge: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'medium' },
-  answer: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'medium' },
+  // Haiku lanes. Effort is Haiku 5.5's lever: with thinking off, the acknowledge and
+  // answer lanes failed evals that adaptive at `medium` passes (re-record 2026-10-11), and
+  // forceToolJson re-asks thinking-off any structured turn that spends its budget
+  // thinking. `low` where the answer is a bool. The phone call keeps thinking off: a
+  // parent holding the line hears time-to-first-token, and it writes about forty words.
+  'simple-lookup': { model: HAIKU_MODEL, thinking: 'adaptive', effort: 'low' },
+  triage: { model: HAIKU_MODEL, thinking: 'adaptive', effort: 'low' },
+  screen: { model: HAIKU_MODEL, thinking: 'adaptive', effort: 'medium' },
+  acknowledge: { model: HAIKU_MODEL, thinking: 'adaptive', effort: 'medium' },
+  answer: { model: HAIKU_MODEL, thinking: 'adaptive', effort: 'medium' },
   speak: { model: HAIKU_MODEL, thinking: 'disabled', effort: 'medium' },
 };
 
