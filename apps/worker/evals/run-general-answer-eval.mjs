@@ -243,7 +243,7 @@ const BROKEN_ANSWER =
 // The near miss: put after the suite's own reply to the calibration fixture, so the facts
 // are the right ones and the only thing wrong is that it reads like an assistant signing
 // off rather than a friend texting. A judge that passes it has no floor under tone.
-const NEAR_MISS_TAIL = 'Want me to check anything else for you? You can also check the app.';
+const NEAR_MISS_TAIL = 'Want me to check anything else for you?';
 
 /** Nearest-rank percentile over whole-millisecond latencies. */
 function percentile(values, q) {
@@ -338,7 +338,12 @@ async function main() {
     let notes = '';
     let searchMessage = '';
     let searchLatencyMs = 0;
-    if (!searching) {
+    if (fixture.research !== undefined) {
+      // A supplied search result is the fixture's whole point, so the turn is taken as
+      // searched whatever the sanitizer read.
+      search = 'searched';
+      notes = fixture.research.notes;
+    } else if (!searching) {
       search = 'not_needed';
     } else if (lit && sanitize.value.needs_search === 'missing_detail' && place === null) {
       search = 'missing_detail';
@@ -346,18 +351,15 @@ async function main() {
       search = 'search_off';
     } else {
       searchMessage = request.searchUserMessage({ question, today: EVAL_TODAY, place });
-      const found =
-        fixture.research !== undefined
-          ? { ...fixture.research, stopReason: 'end_turn', latencyMs: 0 }
-          : await cachedSearch({
-              tag: `general-answer-search:${fixture.id}`,
-              model: searchModel,
-              system: searchSkill.instructions,
-              userMessage: searchMessage,
-              cachedOnly,
-              getClient,
-              cost,
-            });
+      const found = await cachedSearch({
+        tag: `general-answer-search:${fixture.id}`,
+        model: searchModel,
+        system: searchSkill.instructions,
+        userMessage: searchMessage,
+        cachedOnly,
+        getClient,
+        cost,
+      });
       searchLatencyMs = found.latencyMs;
       // Mirrors `liveSearch`: a turn that did not finish is not research either.
       if (found.stopReason !== 'end_turn' || found.urls.length === 0 || found.notes === '') {
