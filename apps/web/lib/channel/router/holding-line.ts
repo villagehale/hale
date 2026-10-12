@@ -105,11 +105,6 @@ const lineJsonSchema = {
   required: ['line'],
 } as const;
 
-/** A provider error can carry the request back; only its message is logged (rule #1). */
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : 'unknown';
-}
-
 function unavailable(reason: HoldingLineFallback, detail?: string): HoldingLineCompose {
   console.error({ reason, detail }, 'holding line: no line composed');
   return { status: 'unavailable', reason };
@@ -122,14 +117,15 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
       let resolved: AgentClient;
       try {
         resolved = client();
-      } catch (err) {
-        return unavailable('client_unavailable', message(err));
+      } catch {
+        // No detail on purpose: a provider error can carry the request back (rule #1).
+        return unavailable('client_unavailable');
       }
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
       try {
         skill = await loadCronSkill('holding-line');
-      } catch (err) {
-        return unavailable('skill_unavailable', message(err));
+      } catch {
+        return unavailable('skill_unavailable');
       }
 
       const rejected: RejectedHoldingLine[] = [];
@@ -148,8 +144,8 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
             maxTokens: MAX_TOKENS,
           });
           raw = value.line;
-        } catch (err) {
-          return unavailable('model_failed', message(err));
+        } catch {
+          return unavailable('model_failed');
         }
         const line = plainText(raw);
         const problems = refusals(line);
@@ -162,13 +158,22 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
 }
 
 /**
+ * Why a turn past the gates is not armed at all: a re-driven turn already had its chance,
+ * an email is not watched as it is written, and a group thread is shared with other
+ * families, so one parent's wait is not covered in front of them.
+ */
+export type HoldingLineSkip = 're_driven' | 'email' | 'group_thread';
+
+/**
  * What became of the holding line on one turn (rule #11): sent, not needed because the
- * answer came first, not armed because the flag is dark, or not sent and why.
+ * answer came first, not armed because the flag is dark or the turn is skipped, or not
+ * sent and why.
  */
 export type HoldingLineOutcome =
   | 'sent'
   | 'answered_first'
   | 'lane_off'
+  | HoldingLineSkip
   | 'compose_failed'
   | 'send_failed';
 
@@ -179,6 +184,15 @@ export interface HoldingLine {
    * drops one still being composed. Idempotent.
    */
   settle(): Promise<HoldingLineOutcome>;
+}
+
+/** A turn that gets no holding line, with the reason named and logged. */
+export function holdingLineNotArmed(
+  reason: HoldingLineSkip,
+  log: Pick<Console, 'info'>,
+): HoldingLine {
+  log.info({ outcome: reason }, 'holding line: none armed for this turn');
+  return { settle: async () => reason };
 }
 
 /** Arm the one holding line for one turn. It fires at most once. */
@@ -194,6 +208,7 @@ export function armHoldingLine(input: {
     return { settle: async () => 'lane_off' };
   }
   let settled = false;
+  let reported = false;
   let outcome: HoldingLineOutcome | null = null;
   let sending: Promise<void> | null = null;
 
@@ -233,7 +248,12 @@ export function armHoldingLine(input: {
       settled = true;
       clearTimeout(timer);
       if (sending) await sending;
-      return outcome ?? 'answered_first';
+      if (outcome) return outcome;
+      if (!reported) {
+        reported = true;
+        input.log.info({ outcome: 'answered_first' }, 'holding line: the answer came first');
+      }
+      return 'answered_first';
     },
   };
 }

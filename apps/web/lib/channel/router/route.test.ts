@@ -4272,6 +4272,61 @@ describe('a slow answer gets one holding line first', () => {
 
     expect(h.transport.bodies()).toEqual(['the real answer']);
     expect(holding.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 're_driven' }, expect.any(String)]);
+  });
+
+  it("a group thread never gets one: it is not one parent's wait to cover in front of others", async () => {
+    const groupRoute: ReplyRoute = { ...IMESSAGE_ROUTE, chatId: 'chat-family-group' };
+    const turnIn = async (inGroup: boolean) => {
+      const holding = fakeHoldingLine("I'm on it.");
+      const h = harness({
+        coach: slowCoach(120, 'the real answer'),
+        holdingLine: holding,
+        holdingLineAfterMs: 10,
+        context: { reply: groupRoute, inGroup },
+      });
+      const result = await routeChannelMessage(h.deps, job());
+      return { result, holding, h };
+    };
+
+    const group = await turnIn(true);
+    expect(group.result.status).toBe('agent_replied');
+    expect(group.h.transport.bodies()).toEqual(['the real answer']);
+    expect(group.holding.calls).toBe(0);
+    expect(group.h.logs).toContainEqual([{ outcome: 'group_thread' }, expect.any(String)]);
+
+    // Positive control: the same slow turn in the parent's own chat still gets its line.
+    const direct = await turnIn(false);
+    expect(direct.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
+    expect(direct.holding.calls).toBe(1);
+    expect(direct.h.logs).toContainEqual([{ outcome: 'sent' }, expect.any(String)]);
+  });
+
+  it('an email turn names why it has none', async () => {
+    const holding = fakeHoldingLine();
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+      context: {
+        reply: { channel: 'email', to: 'sam@example.com', inReplyTo: '<msg-1@example.com>' },
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(holding.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 'email' }, expect.any(String)]);
+  });
+
+  it('an answer that beats the wait is recorded as answered_first', async () => {
+    const holding = fakeHoldingLine();
+    const h = harness({ holdingLine: holding, holdingLineAfterMs: 200 });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(holding.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 'answered_first' }, expect.any(String)]);
   });
 });
-

@@ -102,6 +102,33 @@ describe('createHoldingLine', () => {
     expect(outcome).toEqual({ status: 'unavailable', reason: 'client_unavailable' });
     quiet.mockRestore();
   });
+
+  // A provider error can carry the request back; the log names the reason, never the text.
+  it.each([
+    [
+      'client_unavailable',
+      () => {
+        throw new Error('echo: her daughter is wheezing');
+      },
+    ],
+    [
+      'model_failed',
+      () =>
+        ({
+          messages: {
+            create: vi.fn(async () => {
+              throw new Error('echo: her daughter is wheezing');
+            }),
+          },
+        }) as unknown as AgentClient,
+    ],
+  ] as const)('logs %s by name, without the provider message', async (reason, client) => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const outcome = await createHoldingLine(client).compose('en');
+    expect(outcome).toEqual({ status: 'unavailable', reason });
+    expect(log.mock.calls).toEqual([[{ reason }, 'holding line: no line composed']]);
+    log.mockRestore();
+  });
 });
 
 const log = () => ({ info: vi.fn(), warn: vi.fn() });

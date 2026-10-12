@@ -107,6 +107,7 @@ import {
   type HoldingLine,
   type HoldingLineComposer,
   armHoldingLine,
+  holdingLineNotArmed,
 } from './holding-line';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
@@ -1203,8 +1204,17 @@ async function routeChannelMessageInner(
   // up behind it. Armed only HERE, past every gate above: a deterministic reply, an
   // opt-out or a flood-held turn never has one, however slow its database. Once per text:
   // a re-driven turn already had its chance. Not on email, where a reply is not watched
-  // for as it is written.
-  if (!redriven && route.channel !== 'email') {
+  // for as it is written, and not in a group thread, which other families read.
+  const holdingSkip = redriven
+    ? 're_driven'
+    : route.channel === 'email'
+      ? 'email'
+      : context.inGroup
+        ? 'group_thread'
+        : null;
+  if (holdingSkip) {
+    holding = holdingLineNotArmed(holdingSkip, deps.log);
+  } else {
     holding = armHoldingLine({
       afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
       language: replyLanguage(context.body),
