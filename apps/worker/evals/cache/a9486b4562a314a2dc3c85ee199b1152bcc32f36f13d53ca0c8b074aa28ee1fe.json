@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Lead sentence states the registration fact plainly with 'I checked' (mandatory), uses only given facts (Toronto, Fall 2026, Sep 15), and the weekend pick (Riverdale Farm drop-in, Saturday, Maya, free, outdoor, dry forecast) is accurate and leads usefully. Nothing invented, no hype, concise. Minor: no offerQuestion phrasing, but that is not a faithfulness failure; stillOpenPage true means no closure warning is needed.",
+    "score": 5
+  }
+}

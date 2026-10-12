@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with the 'I looked up' phrase the contract requires, states the given registration absence (Fall 2026, opened Sep 15) plainly without hype, and includes the given firstFindBeat verbatim. Omits nextCycle and the closed-status claim, which is correct since stillOpenPage is true. Concise and faithful; no invented specifics. Minor: it doesn't clarify the parent can still act on the current cycle, but that is not required.",
+    "score": 5
+  }
+}

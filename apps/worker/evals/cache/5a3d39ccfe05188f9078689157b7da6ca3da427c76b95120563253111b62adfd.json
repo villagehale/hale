@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first sentence says \"I looked up Markham's Fall 2026 registration for Maya,\" so Hale attributes the find to a check it already made, and the registration fact lands in that same sentence. The facts supply the town, cycle, time, and child's name, so none of it is invented scope.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three slots (Tiny Gym, Rock n' Roll, Tumble & Learn) are real classes on programs.php, with age bands as printed. Leaving day and price null is honest, since the page says pricing sits behind the portal. The registration date has a provenance problem. Every slot cites programs.php, but the 'July 22, 8:00am' date is labelled 'per the home page', and no home page text appears in what was read. So the date the slots and message carry is not on the page it is cited to. The pass also never opened the linked 'Schedule at a glance' PDF while pageEvidence is page_has_schedule. That repeats the benchmark gap the watchFor warns about, although the message handles it correctly with a first-person 'I could not pin down the day or the price' rather than 'not posted'. The message leads with Tiny Gym by name and attributes with 'their site says'. With watch=true, 'I'll keep watching and text you' is properly first person, and there is no question and no link. However, it runs three sentences, and the attribution is awkwardly placed mid-sentence. Solid on tone, but the citation for the registration date is not traceable to the page cited.",
+    "score": 3
+  }
+}

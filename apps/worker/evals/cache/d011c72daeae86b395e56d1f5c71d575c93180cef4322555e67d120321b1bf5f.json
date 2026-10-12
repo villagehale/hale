@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Voice is plain, short, leads with the useful fact, and states only given facts (town, cycle, open time, kid names, approximate ages caveat). The lead includes 'I checked', which is mandated and not invented. Closing line honestly says nothing else is on the radar, matching null weekendPick and registrationAbsence. Minor: 'if the ages I'm working from still hold' is a reasonable hedge given ageApproximate, not padding. No inventions detected.",
+    "score": 5
+  }
+}

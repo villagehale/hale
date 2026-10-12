@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is plain, specific, and leads with the useful fact: Markham Fall 2026 registration opens Aug 11, 6:30 a.m. for Maya, with the checkpoint as a second short line. Facts all appear in the input (opensAtLocal, kidNames, checkpoint task). The 'I looked up' lead is the mandatory framing, not invented scope. Minor deductions: the 18-month visit line is slightly blunt about Maya's age ('where Maya is now' is inferred from kid data, not explicitly given) and the offerQuestion is not acted on, but nothing is invented or hyped.",
+    "score": 4
+  }
+}

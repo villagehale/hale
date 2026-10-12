@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first sentence opens with 'I looked up Toronto's calendar', a first-person checking verb that makes Hale the one who went and checked, and the fact (Fall 2026 registration opened Sep 15) lands in that same sentence. The look references Toronto and the Fall 2026 cycle, both of which appear in the facts payload, so nothing is invented.",
+    "score": 5
+  }
+}
