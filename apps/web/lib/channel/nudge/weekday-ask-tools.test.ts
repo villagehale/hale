@@ -16,31 +16,24 @@ describe('readWeekdayAsk', () => {
     ).toEqual({ message: 'Want me to look for one after-school option for Nell?' });
   });
 
-  it('refuses a named ask that drops the name', () => {
-    expect(readWeekdayAsk({ message: 'Want me to find an after-school option?' }, NAMED)).toEqual({
-      skipped: 'missing_subject',
-    });
+  it('keeps the wording the model chose, whether or not it names the subject or asks once', () => {
+    for (const [message, ask] of [
+      ['Want me to find an after-school thing?', NAMED],
+      ['A day off is coming. Want me to look?', BREAK],
+      ['I can look at weekdays too.', FALLBACK],
+      ['Weekdays too? Or just weekends?', FALLBACK],
+      ['我可以找一个课后活动，要我找吗？', { ...NAMED, name: '乐乐' }],
+      ['要找周末的吗？还是工作日？', FALLBACK],
+    ] as const) {
+      expect(readWeekdayAsk({ message }, ask)).toEqual({ message });
+    }
   });
 
-  it('refuses a break ask that does not say which break', () => {
-    expect(readWeekdayAsk({ message: 'A day off is coming. Want me to look?' }, BREAK)).toEqual({
-      skipped: 'missing_subject',
-    });
-    expect(
-      readWeekdayAsk(
-        { message: 'Winter break is coming up. Want me to find something nearby?' },
-        BREAK,
-      ),
-    ).toEqual({ message: 'Winter break is coming up. Want me to find something nearby?' });
-  });
-
-  it('refuses a text that asks nothing, or asks twice', () => {
-    expect(readWeekdayAsk({ message: 'I can look for weekday options too.' }, FALLBACK)).toEqual({
-      skipped: 'not_one_question',
-    });
-    expect(readWeekdayAsk({ message: 'Weekdays too? Or just weekends?' }, FALLBACK)).toEqual({
-      skipped: 'not_one_question',
-    });
+  it("keeps a long text: the length is the model's to choose, never a refusal", () => {
+    const long = `${'Those were weekend options for the family. '.repeat(8)}Want weekdays too?`;
+    expect(readWeekdayAsk({ message: long }, FALLBACK)).toEqual({ message: long });
+    const longChinese = `${'那些都是周末的活动。'.repeat(12)}要我也看看工作日吗？`;
+    expect(readWeekdayAsk({ message: longChinese }, FALLBACK)).toEqual({ message: longChinese });
   });
 
   it('refuses a link or a clock time nobody gave it', () => {
@@ -57,37 +50,11 @@ describe('readWeekdayAsk', () => {
     expect(readWeekdayAsk({ message: french }, NAMED)).toEqual({ message: french });
   });
 
-  it('keeps a Chinese text that asks once and names the child as given', () => {
-    const chinese = '我可以帮Nell找一个不错的课后活动，要我找一个吗？';
-    expect(readWeekdayAsk({ message: chinese }, NAMED)).toEqual({ message: chinese });
-    const named = '我可以帮乐乐找一个不错的课后活动，要我找吗？';
+  it('keeps a Chinese text that names the child as given', () => {
+    const named = '乐乐放学后想找点事做吗？我帮你看看～';
     expect(readWeekdayAsk({ message: named }, { ...NAMED, name: '乐乐' })).toEqual({
       message: named,
     });
-    expect(
-      readWeekdayAsk({ message: '我可以找一个课后活动，要我找吗？' }, { ...NAMED, name: '乐乐' }),
-    ).toEqual({ skipped: 'missing_subject' });
-    expect(readWeekdayAsk({ message: '要找周末的吗？还是工作日？' }, FALLBACK)).toEqual({
-      skipped: 'not_one_question',
-    });
-  });
-
-  it('counts a dash that changes the encoding against the budget, not as a refusal', () => {
-    const body =
-      'Those were all weekend options, and a weekday morning or two might suit the family better this time';
-    expect(readWeekdayAsk({ message: `${body} - want me to look?` }, FALLBACK)).toEqual({
-      message: `${body} - want me to look?`,
-    });
-    expect(readWeekdayAsk({ message: `${body} — want me to look?` }, FALLBACK)).toEqual({
-      skipped: 'too_long',
-    });
-  });
-
-  it('refuses a text longer than a nudge may be', () => {
-    const long = `${'Those were weekend options for the family. '.repeat(8)}Want weekdays too?`;
-    expect(readWeekdayAsk({ message: long }, FALLBACK)).toEqual({ skipped: 'too_long' });
-    const longChinese = `${'那些都是周末的活动。'.repeat(12)}要我也看看工作日吗？`;
-    expect(readWeekdayAsk({ message: longChinese }, FALLBACK)).toEqual({ skipped: 'too_long' });
   });
 
   it('refuses anything that is not the tool shape', () => {
