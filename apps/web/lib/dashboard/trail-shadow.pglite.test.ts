@@ -31,7 +31,14 @@ beforeEach(async () => {
   ({ familyId } = await seedFamily(db.database));
 });
 
-async function write(actionTaken: string, mode: 'shadow' | 'live'): Promise<void> {
+/** loadTrailForFamily reads the newest 50 rows. */
+const TRAIL_WINDOW_ROWS = 50;
+
+async function write(
+  actionTaken: string,
+  mode: 'shadow' | 'live',
+  occurredAt = new Date(),
+): Promise<void> {
   await db.database.insert(schema.auditLog).values({
     familyId,
     actor: 'system',
@@ -39,6 +46,7 @@ async function write(actionTaken: string, mode: 'shadow' | 'live'): Promise<void
     targetTable: 'families',
     targetId: familyId,
     after: { mode },
+    occurredAt,
   });
 }
 
@@ -48,6 +56,17 @@ describe('the receipts trail · proactive cadence rows', () => {
 
     expect(await loadTrailForFamily(db.database, familyId)).toEqual([]);
     expect(await db.database.select().from(schema.auditLog)).toHaveLength(SHADOW_VERBS.length);
+  });
+
+  it('keeps a live row on the receipts behind more shadow rows than the trail reads', async () => {
+    const start = Date.parse('2026-10-08T16:00:00.000Z');
+    await write('proactive_cadence_held', 'live', new Date(start));
+    for (let i = 1; i <= TRAIL_WINDOW_ROWS + 1; i += 1) {
+      await write('proactive_cadence_decision', 'shadow', new Date(start + i * 60_000));
+    }
+
+    const summaries = (await loadTrailForFamily(db.database, familyId)).map((row) => row.summary);
+    expect(summaries).toEqual(['Hale held a text for a better moment']);
   });
 
   it('still renders each of those verbs written live as its sentence', async () => {
