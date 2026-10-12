@@ -318,7 +318,13 @@ function askedInstead(): 'missing_detail' {
  */
 async function homePlace(family: FamilyFacts): Promise<HomePlace | null> {
   const place = await family.place();
-  if (place.status === 'known') return { city: place.city, country: place.country };
+  if (place.status === 'known') {
+    return {
+      city: place.city,
+      ...(place.provinceOrState ? { provinceOrState: place.provinceOrState } : {}),
+      country: place.country,
+    };
+  }
   console.info(
     { place: 'unknown', reason: place.reason },
     'off-domain answer: no place for this family',

@@ -37,11 +37,13 @@ export interface PendingAsk {
   missing: string;
 }
 
-/** The family's own city and country. The only two facts about where a family is that
- * ever leave for a search (founder, 2026-10-12): never the postal code, never anything
- * finer than the city. */
+/** The family's own city and country: what leaves for a search about where a family is
+ * (founder, 2026-10-12), never the postal code, never anything finer than the city. The
+ * province or state goes with them only when the city's name alone is more than one
+ * place (Sloane, 2026-10-12; place.ts). */
 export interface HomePlace {
   city: string;
+  provinceOrState?: string;
   country: string;
 }
 
@@ -118,10 +120,19 @@ export function searchUserMessage(input: {
   today: string;
   place?: HomePlace | null;
 }): string {
+  const place = input.place;
   return JSON.stringify({
     question: input.question,
     today: input.today,
-    ...(input.place ? { place: { city: input.place.city, country: input.place.country } } : {}),
+    ...(place
+      ? {
+          place: {
+            city: place.city,
+            ...(place.provinceOrState ? { province_or_state: place.provinceOrState } : {}),
+            country: place.country,
+          },
+        }
+      : {}),
   });
 }
 

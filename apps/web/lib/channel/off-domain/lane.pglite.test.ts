@@ -215,11 +215,11 @@ describe("the family's city and country, through the production wiring", () => {
     expect(sent).not.toContain('"ON"');
     // The place is the search's alone.
     expect(JSON.stringify([seen.sanitize, seen.compose])).not.toContain('Toronto');
-    // One read of the family's row, and the province is not among what it selects.
+    // One read of the family's row. The province it selects only chooses among the
+    // table's names for a shared city name (place.ts), and Toronto is not one.
     const reads = readsOfTheFamilyRow(queries);
     expect(reads).toHaveLength(1);
     expect(reads[0]).toContain('"postal_code"');
-    expect(reads[0]).not.toContain('province');
   });
 
   it("sends the family's own stored city and country when both are stored", async () => {
@@ -260,11 +260,13 @@ describe("the family's city and country, through the production wiring", () => {
       { city: 'Vancouver', country: 'Canada' },
       ['V6B', '1A1', 'British Columbia'],
     ],
+    // Denver is a name more than one state has, so the table's name for the ZIP's state
+    // goes with it. What the row holds for a province is not what is sent.
     [
       'a US family',
-      { country: 'United States', province: 'Colorado', postalCode: '80202', areaCoarse: '802' },
-      { city: 'Denver', country: 'United States' },
-      ['80202', '802', 'Colorado'],
+      { country: 'United States', province: 'CO', postalCode: '80202', areaCoarse: '802' },
+      { city: 'Denver', province_or_state: 'Colorado', country: 'United States' },
+      ['80202', '802', '"CO"'],
     ],
   ])('sends the search the city of %s, worked out from the postal code', async (_label, stored, place, never) => {
     vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
@@ -361,6 +363,80 @@ describe("the family's city and country, through the production wiring", () => {
       { city: 'Toronto', country: 'Canada' },
     ]);
     expect(readsOfTheFamilyRow(queries)).toHaveLength(1);
+  });
+
+  /**
+   * Sloane, 2026-10-12: where a family's home and its current active area differ, the
+   * active area is where they are. Its text is free text like the home row's, so the same
+   * rules hold: only the table's names leave.
+   */
+  it("sends the search the family's active area, not its home, with the table's own names", async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { familyId, parentUserId, channelMessageId } = await seedFamily({
+      country: 'Canada',
+      province: 'Ontario',
+      city: 'Toronto',
+      postalCode: 'M4K 1A1',
+      areaCoarse: 'M4K',
+    });
+    await db.database.insert(schema.familyAreas).values([
+      { familyId, city: 'Halifax', province: 'Nova Scotia', isActive: false },
+      { familyId, city: 'windsor', province: 'qc', note: 'the lake house', isActive: true },
+    ]);
+    const { client, seen } = scripted();
+
+    await productionOffDomainLane(db.database, client).consider({
+      familyId,
+      parentUserId,
+      channelMessageId,
+      text: 'hows the weather tomorrow',
+      now: NOW,
+      thread: DIRECT,
+    });
+
+    expect(seen.search.map((content) => JSON.parse(content).place)).toEqual([
+      { city: 'Windsor', province_or_state: 'Quebec', country: 'Canada' },
+    ]);
+    const sent = JSON.stringify(seen);
+    for (const never of ['Toronto', 'Ontario', 'M4K', 'Halifax', 'windsor', '"qc"', 'lake house']) {
+      expect(sent).not.toContain(never);
+    }
+  });
+
+  /** An active area that cannot be named is not swapped for the home city: that would be
+   * the weather for a place the family has said they are not in. */
+  it('asks which city when the active area cannot be named, and does not fall back to home', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { familyId, parentUserId, channelMessageId } = await seedFamily({
+      country: 'Canada',
+      province: 'Ontario',
+      city: 'Toronto',
+      postalCode: 'M4K 1A1',
+      areaCoarse: 'M4K',
+    });
+    await db.database
+      .insert(schema.familyAreas)
+      .values({ familyId, city: 'the cottage', isActive: true });
+    const { client, seen } = scripted();
+
+    await productionOffDomainLane(db.database, client).consider({
+      familyId,
+      parentUserId,
+      channelMessageId,
+      text: 'hows the weather tomorrow',
+      now: NOW,
+      thread: DIRECT,
+    });
+
+    expect(seen.search).toEqual([]);
+    expect(seen.compose.map((content) => JSON.parse(content).live)).toEqual(['missing_detail']);
+    expect(JSON.stringify(seen)).not.toMatch(/Toronto|cottage/);
+    expect(info.mock.calls).toContainEqual([
+      { place: 'unknown', reason: 'no_postal' },
+      'off-domain answer: no place for this family',
+    ]);
   });
 
   it('reads no place and sends none while the flag is dark', async () => {

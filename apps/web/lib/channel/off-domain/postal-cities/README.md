@@ -21,12 +21,28 @@ source names a city for every ZIP code.
 ## Shape
 
 ```json
-{ "codes": ["A1A", "..."], "cities": ["Abbotsford", "..."], "cityOf": [312, -1, -2] }
+{
+  "codes": ["A1A", "..."],
+  "cities": ["Abbotsford", "..."],
+  "cityOf": [312, -1, -2],
+  "regions": ["Alberta", "..."],
+  "regionCodes": ["AB", "..."],
+  "regionOf": [4, 4, 4],
+  "sharedCities": [17, "..."],
+  "sharedRegions": [[8, 10], "..."]
+}
 ```
 
 `codes` is sorted. `cityOf[i]` is the city of `codes[i]`: an index into `cities`, or `-1`
 or `-2`. Canada is keyed by forward sortation area (the first three characters of a postal
 code), the United States by five-digit ZIP code.
+
+`regions` is every province or state by name, sorted, and `regionCodes[j]` is the postal
+abbreviation of `regions[j]`. `regionOf[i]` is the province or state `codes[i]` is in: an
+index into `regions`, or `-1` where the source names none. `sharedCities` lists, by index
+into `cities`, every place name found in more than one province or state, and
+`sharedRegions[k]` is the `regions` that `sharedCities[k]` is found in. See "Provinces and
+states".
 
 ## Sources
 
@@ -111,8 +127,8 @@ node build.mjs <path>/CA.txt <path>/US.txt <path>/cgn_canada_csv_eng.csv <that d
 `us.json` beside itself and prints the counts under "Coverage". From the downloads above
 it rebuilds both files byte for byte:
 
-- `ca.json`: `b7723f040c4818f30f33760201cd38affd2633d2087d4288f85f2df5e3fecebd`
-- `us.json`: `b7433519fc4b100ff96626d4b520ae668f8102708e8c46852afd99ae08cd225c`
+- `ca.json`: `54c5737272a15e25ea045ada4552fed9338d142b1e8fb62212f2f2d01ac5adf4`
+- `us.json`: `4460c3f926b1d79cf4c8a88c240d2dbc958919948e16bf2cb0f730ee17ebde3c`
 
 `--review` as a fifth argument prints every Canadian area beside what it resolved to and
 how its land divides, and writes nothing. The downloads are untrusted data: the script
@@ -241,6 +257,29 @@ elsewhere in Québec (`Mercier`, `Saint-Michel`, `Saint-Henri`, `Saint-Pierre`),
 2. A ZIP code the source lists twice with two different places: ambiguous.
 3. Otherwise the place as the source gives it.
 
+### Provinces and states
+
+A city and a country do not always name one place: `J1S` (Quebec) and `N8P` (Ontario) are
+both `Windsor, Canada`. So each table also says which province or state an area is in, and
+which place names more than one of them has. `../place.ts` sends the province or state
+with a city only for such a name, and the name it sends is this table's.
+
+- **Canada.** The thirteen names and abbreviations are fixed in `build.mjs`
+  (`PROVINCES`), spelled as the names data base spells them. An area's province is the
+  one the postal source lists it under, and Statistics Canada's for the 13 areas only the
+  boundary file has. The two sources agree on every area both have, and the build fails
+  if they stop agreeing.
+- **United States.** A ZIP code's state is the one the postal source lists it under, by
+  the name and abbreviation that source gives: the fifty states and the District of
+  Columbia. A ZIP code with no state, or one listed under two, has none; it has no city
+  either.
+- **A place name is shared** when it is found in more than one province or state: an
+  area in each resolves to it, or, in Canada, the names data base lists an incorporated
+  municipality of that name there.
+
+A name two places in the SAME province or state share is not told apart by this, and
+neither is a postal city from a municipality of the same name.
+
 ## Coverage
 
 | | Areas | One city | Ambiguous | Unmapped | Place names |
@@ -262,6 +301,13 @@ Ontario) 73 of 74, `H` (Montréal and Laval) 103 of 121.
 
 The Canadian place names are the 450 some area resolves to and the rest of the names data
 base's incorporated municipalities.
+
+Shared names: 72 of Canada's 3,423 place names are found in more than one province
+(`Windsor`, `Stratford`, `Woodstock`, `Kingston`, `Burlington`, `Victoria`), and 70 of its
+1,340 resolved areas resolve to one of them. In the United States 4,019 of 18,572 place
+names are found in more than one state (`Springfield`, `Denver`, `Portland`), and 22,657
+of its 40,975 resolved ZIP codes resolve to one of them, so more than half carry their
+state.
 
 ## What this does not know
 
@@ -300,7 +346,7 @@ base's incorporated municipalities.
 
 ## Size and loading
 
-`ca.json` is 70,443 bytes and `us.json` 775,627 bytes. `../place.ts` loads one with a
+`ca.json` is 75,405 bytes and `us.json` 965,965 bytes. `../place.ts` loads one with a
 dynamic `import()` the first time a turn needs that country's table, and the module system
 keeps it. Neither is loaded at start-up, on a turn with the search dark, for a question
 that does not turn on where the family is, or for a family with neither a stored city nor

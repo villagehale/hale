@@ -19,8 +19,24 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** `cityOf` for an area that covers more than one town. */
 const AMBIGUOUS = -1;
+/** The province or state each code is listed under, by its abbreviation. A code the
+ * source lists under two is in neither. */
+function regionOfEach(rows) {
+  const byCode = new Map();
+  for (const row of rows) {
+    const before = byCode.get(row.code);
+    byCode.set(
+      row.code,
+      before === undefined || before === row.provinceCode ? row.provinceCode : '',
+    );
+  }
+  return byCode;
+}
+
 /** `cityOf` for an area the rule could not reduce to one municipality. */
 const UNMAPPED = -2;
+/** `regionOf` for an area whose source names no province or state. */
+const NO_REGION = -1;
 
 /** How far a municipality's point may be from a postal area's point and still be the
  * municipality that area is named for. See README.md, "Canada", rule 4. */
@@ -51,6 +67,27 @@ const CGNDB_PROVINCE = {
   'Northwest Territory': 'Northwest Territories',
   'Nunavut Territory': 'Nunavut',
 };
+
+/**
+ * Canada's provinces and territories: the postal abbreviation, the name the names data
+ * base uses, and Statistics Canada's code. Fixed here, so the name a table carries for a
+ * province is never one a download spelled. See README.md, "Provinces and states".
+ */
+const PROVINCES = [
+  ['AB', 'Alberta', '48'],
+  ['BC', 'British Columbia', '59'],
+  ['MB', 'Manitoba', '46'],
+  ['NB', 'New Brunswick', '13'],
+  ['NL', 'Newfoundland and Labrador', '10'],
+  ['NS', 'Nova Scotia', '12'],
+  ['NT', 'Northwest Territories', '61'],
+  ['NU', 'Nunavut', '62'],
+  ['ON', 'Ontario', '35'],
+  ['PE', 'Prince Edward Island', '11'],
+  ['QC', 'Quebec', '24'],
+  ['SK', 'Saskatchewan', '47'],
+  ['YT', 'Yukon', '60'],
+];
 
 const fold = (text) =>
   text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -418,9 +455,11 @@ async function readLand(directory) {
 
   const codes = [];
   const land = new Map();
+  const provinces = new Map();
   for await (const row of rowsOf(join(directory, 'fsa-all.ndjson'))) {
     const code = row.attributes.CFSAUID;
     codes.push(code);
+    provinces.set(code, row.attributes.PRUID);
     if (code[1] === '0') continue;
     const area = urban.get(code);
     if (area === undefined) throw new Error(`${code}: an urban area with no boundary`);
@@ -434,7 +473,7 @@ async function readLand(directory) {
     }
     land.set(code, measured.shares);
   }
-  return { codes, land };
+  return { codes, land, provinces };
 }
 
 /**
@@ -530,17 +569,59 @@ function resolveAll(rows, keyPattern, resolve) {
   return byCode;
 }
 
-/** `alsoNamed` are place names the table holds although no area resolves to them. */
-function table(byCode, alsoNamed = []) {
+/**
+ * `regionNames` is every province or state by its postal abbreviation, and `regionOfCode`
+ * the abbreviation of the one each area is in. `alsoNamed` are place names the table holds
+ * although no area resolves to them, each with the abbreviation of where it is.
+ *
+ * A place name is "shared" when it is found in more than one province or state: an area
+ * there resolves to it, or the names source lists it there. README.md, "Provinces and
+ * states".
+ */
+function table(byCode, regionNames, regionOfCode, alsoNamed = []) {
   const codes = [...byCode.keys()].sort();
   const cities = [
-    ...new Set([...[...byCode.values()].filter((city) => typeof city === 'string'), ...alsoNamed]),
+    ...new Set([
+      ...[...byCode.values()].filter((city) => typeof city === 'string'),
+      ...alsoNamed.map(({ name }) => name),
+    ]),
   ].sort();
+  const cityAt = new Map(cities.map((city, at) => [city, at]));
   const cityOf = codes.map((code) => {
     const city = byCode.get(code);
-    return typeof city === 'string' ? cities.indexOf(city) : city;
+    return typeof city === 'string' ? cityAt.get(city) : city;
   });
-  return { codes, cities, cityOf };
+
+  const regionCodes = [...regionNames.keys()].sort((a, b) =>
+    regionNames.get(a) < regionNames.get(b) ? -1 : 1,
+  );
+  const regionAt = new Map(regionCodes.map((code, at) => [code, at]));
+  const regionOf = codes.map((code) => regionAt.get(regionOfCode.get(code)) ?? NO_REGION);
+
+  const foundIn = new Map();
+  const found = (city, region) => {
+    if (region === undefined || region === NO_REGION) return;
+    foundIn.set(city, (foundIn.get(city) ?? new Set()).add(region));
+  };
+  codes.forEach((_, at) => {
+    if (cityOf[at] >= 0) found(cityOf[at], regionOf[at]);
+  });
+  for (const { name, region } of alsoNamed) found(cityAt.get(name), regionAt.get(region));
+  const sharedCities = [...foundIn.keys()]
+    .filter((city) => foundIn.get(city).size > 1)
+    .sort((a, b) => a - b);
+  const sharedRegions = sharedCities.map((city) => [...foundIn.get(city)].sort((a, b) => a - b));
+
+  return {
+    codes,
+    cities,
+    cityOf,
+    regions: regionCodes.map((code) => regionNames.get(code)),
+    regionCodes,
+    regionOf,
+    sharedCities,
+    sharedRegions,
+  };
 }
 
 function report(label, built) {
@@ -569,7 +650,7 @@ async function main() {
   const municipalities = readMunicipalities(cgndbPath);
   const caRows = readPostal(first);
   const byName = resolveAll(caRows, /^[A-Z]\d[A-Z]$/, (row) => canadianCity(row, municipalities));
-  const { codes, land } = await readLand(boundaries);
+  const { codes, land, provinces } = await readLand(boundaries);
 
   // The names decide first. The land places only what they could not, and an area the
   // postal source does not list at all (README.md, "Canada").
@@ -598,10 +679,33 @@ async function main() {
     }
     return;
   }
-  const everyMunicipality = [...municipalities.values()].flat().map(({ name }) => name);
+  // The province of a Canadian area is the postal source's, and Statistics Canada's for an
+  // area only the boundary file has. Where both have the area they must agree. A
+  // municipality is in the province the names data base lists it under.
+  const provinceByName = new Map(PROVINCES.map(([code, name]) => [name, code]));
+  const provinceByUid = new Map(PROVINCES.map(([code, , uid]) => [uid, code]));
+  const postalProvince = regionOfEach(caRows);
+  const caRegionOf = new Map();
+  for (const code of ca.keys()) {
+    const [postal, census] = [postalProvince.get(code), provinceByUid.get(provinces.get(code))];
+    if (postal !== undefined && census !== undefined && postal !== census) {
+      throw new Error(`${code}: the postal source says ${postal}, the boundary file ${census}`);
+    }
+    caRegionOf.set(code, postal ?? census);
+  }
+  const everyMunicipality = [...municipalities].flatMap(([province, list]) =>
+    list.map(({ name }) => ({ name, region: provinceByName.get(province) })),
+  );
+  // A state is named as the postal source names it. A ZIP with no state has no city either.
+  const usRows = readPostal(usPath).filter((row) => /^\d{5}$/.test(row.code));
+  const states = new Map(
+    usRows
+      .filter((row) => americanCity(row) !== UNMAPPED)
+      .map((row) => [row.provinceCode, row.province]),
+  );
   const built = {
-    ca: table(ca, everyMunicipality),
-    us: table(resolveAll(readPostal(usPath), /^\d{5}$/, americanCity)),
+    ca: table(ca, new Map(PROVINCES.map(([code, name]) => [code, name])), caRegionOf, everyMunicipality),
+    us: table(resolveAll(usRows, /^\d{5}$/, americanCity), states, regionOfEach(usRows)),
   };
   writeFileSync(join(HERE, 'ca.json'), `${JSON.stringify(built.ca)}\n`);
   writeFileSync(join(HERE, 'us.json'), `${JSON.stringify(built.us)}\n`);
@@ -611,6 +715,14 @@ async function main() {
     `Canada, by land: ${landed.length} areas the names left unmapped, ${landed.filter((city) => typeof city === 'string').length} resolve, ${landed.filter((city) => city === AMBIGUOUS).length} ambiguous, ${landed.filter((city) => city === UNMAPPED).length} unmapped\n`,
   );
   report('United States', built.us);
+  for (const [label, tableBuilt] of [
+    ['Canada', built.ca],
+    ['United States', built.us],
+  ]) {
+    process.stdout.write(
+      `${label}: ${tableBuilt.regions.length} provinces or states, ${tableBuilt.regionOf.filter((region) => region === NO_REGION).length} areas with none, ${tableBuilt.sharedCities.length} place names found in more than one\n`,
+    );
+  }
 }
 
 await main();

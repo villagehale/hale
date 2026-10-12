@@ -212,6 +212,19 @@ describe('the three payloads', () => {
     );
   });
 
+  /** Only when the lane says the city's name is more than one place (place.ts). */
+  it('hands the search the province or state between the city and the country, when the place has one', () => {
+    expect(
+      searchUserMessage({
+        question: 'hows the weather tomorrow',
+        today: TODAY,
+        place: { city: 'Windsor', provinceOrState: 'Quebec', country: 'Canada' },
+      }),
+    ).toBe(
+      '{"question":"hows the weather tomorrow","today":"monday, oct 12, 2026","place":{"city":"Windsor","province_or_state":"Quebec","country":"Canada"}}',
+    );
+  });
+
   it('hands the compose the question, the language, the date and what the search found', () => {
     expect(
       generalAnswerUserMessage({
@@ -1274,6 +1287,28 @@ describe("the family's city and country", () => {
     expect(searchMessage(seen).place).toEqual({ city: 'Toronto', country: 'Canada' });
   });
 
+  /** The province goes where the city goes and nowhere else: to the search. */
+  it('sends the search the province the lane read with a shared city name, and nobody else', async () => {
+    lit();
+    quietInfo();
+    const seen = seenNothing();
+
+    await createGeneralAnswer(
+      scripted(
+        { sanitize: WEATHER(), search: searchFound(), answer: { answer: 'Sunny, high of 14.' } },
+        seen,
+      ),
+    ).compose(
+      'hows the weather tomorrow',
+      familyAt({ status: 'known', city: 'Windsor', provinceOrState: 'Quebec', country: 'Canada' }),
+    );
+
+    expect(seen.search.map((request) => request.messages?.[0]?.content)).toEqual([
+      `{"question":"hows the weather tomorrow","today":"${TODAY}","place":{"city":"Windsor","province_or_state":"Quebec","country":"Canada"}}`,
+    ]);
+    expect(JSON.stringify([seen.sanitize, seen.compose])).not.toMatch(/Windsor|Quebec/);
+  });
+
   /** A question that names its own place is searched for that place. The home city would
    * be a wrong answer and a needless disclosure, so it is not read at all. */
   it('does not read or send the home city for a question that names another city', async () => {
@@ -1415,7 +1450,7 @@ describe("the family's city and country", () => {
 
   /** Rule #1. A log line says a search ran and how many results it stood on. Where the
    * family is appears in none of them, on the path that worked or the ones that did not. */
-  it('logs neither the city nor the country, on any path', async () => {
+  it('logs neither the city, the province nor the country, on any path', async () => {
     lit();
     const logged: unknown[][] = [];
     for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
@@ -1426,19 +1461,20 @@ describe("the family's city and country", () => {
     const turn = (script: Script) =>
       createGeneralAnswer(scripted({ sanitize: WEATHER(), ...script })).compose(
         'hows the weather tomorrow',
-        familyAt(TORONTO),
+        familyAt({ ...TORONTO, provinceOrState: 'Ontario' }),
       );
 
     await turn({ search: searchFound(), answer: { answer: 'Sunny in Toronto, Canada.' } });
-    await turn({ search: new Error('reset: Toronto, Canada'), answer: { answer: 'x' } });
+    await turn({ search: new Error('reset: Toronto, Ontario, Canada'), answer: { answer: 'x' } });
     await turn({ search: [], answer: { answer: 'x' } });
-    await turn({ search: searchFound(), answer: new Error('400: Toronto, Canada') });
+    await turn({ search: searchFound(), answer: new Error('400: Toronto, Ontario, Canada') });
     await turn({ search: searchFound(), answer: { answer: 'https://toronto.example/canada' } });
 
     // Positive control: these turns did log.
     expect(logged.length).toBeGreaterThanOrEqual(5);
     const text = JSON.stringify(logged);
     expect(text).not.toContain('Toronto');
+    expect(text).not.toContain('Ontario');
     expect(text).not.toContain('Canada');
     expect(text.toLowerCase()).not.toContain('toronto');
   });

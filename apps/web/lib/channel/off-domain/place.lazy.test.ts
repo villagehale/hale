@@ -18,7 +18,7 @@ vi.mock('./postal-cities/us.json', async (importOriginal) => {
   return importOriginal();
 });
 
-const ROW = { country: null, city: null, postalCode: null, areaCoarse: null };
+const ROW = { country: null, province: null, city: null, postalCode: null, areaCoarse: null };
 
 describe('when a postal table is opened', () => {
   it('opens neither on import, nor for a row that needs no table', async () => {
@@ -41,8 +41,8 @@ describe('when a postal table is opened', () => {
     expect(loaded).toEqual({ ca: 1, us: 0 });
 
     // A stored city is checked against the table, so it opens it too.
-    expect(await placeOf({ ...ROW, country: 'United States', city: 'denver' })).toMatchObject({
-      city: 'Denver',
+    expect(await placeOf({ ...ROW, country: 'United States', city: 'seattle' })).toMatchObject({
+      city: 'Seattle',
     });
     expect(loaded).toEqual({ ca: 1, us: 1 });
   });
