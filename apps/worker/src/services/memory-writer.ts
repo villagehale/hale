@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { schema, type Database } from '@hale/db';
 import type {
   EventType,
@@ -914,103 +914,117 @@ export async function loadFamilyContext(
 }
 
 /**
- * Resolves the rule-#5 cross-parent consent state for a family.
+ * Resolves the rule-#5 cross-parent consent state for one action kind in a family.
  *
  *   hasCoParent — does a family_members row with role 'co_parent' exist? If not,
  *     this is a single-parent household and cross-parent actions may proceed
  *     (the rule's own carve-out).
- *   coParentConsentGranted — is there an active (granted, not revoked)
- *     consent_records row of type 'autonomous_action_class' for that co-parent?
- *     That is the consent that authorizes Hale to act autonomously on the shared
- *     family data the co-parent's account contributes.
+ *   coParentConsentGranted — does a co-parent hold a live grant for THIS kind in THIS
+ *     family (parentsWithLiveGrant)? A grant is per parent and per kind, so a
+ *     co-parent's grant for one kind is never read as their consent to another.
  */
 export async function loadCrossParentConsent(
   familyId: string,
-  database: Database = db(),
+  actionType: ActionType,
+  database: Reader = db(),
 ): Promise<{ hasCoParent: boolean; coParentConsentGranted: boolean }> {
-  const coParents = await database
-    .select({ userId: schema.familyMembers.userId })
-    .from(schema.familyMembers)
-    .where(
-      and(
-        eq(schema.familyMembers.familyId, familyId),
-        eq(schema.familyMembers.role, 'co_parent'),
-      ),
-    );
-
+  const coParents = (await familyParents(familyId, database)).filter(
+    (parent) => parent.role === 'co_parent',
+  );
   if (coParents.length === 0) {
     return { hasCoParent: false, coParentConsentGranted: false };
   }
 
-  const coParentIds = coParents.map((r) => r.userId);
-  const consents = await database
-    .select({ userId: schema.consentRecords.userId })
-    .from(schema.consentRecords)
-    .where(
-      and(
-        eq(schema.consentRecords.consentType, 'autonomous_action_class'),
-        eq(schema.consentRecords.granted, true),
-        sql`${schema.consentRecords.revokedAt} IS NULL`,
-        inArray(schema.consentRecords.userId, coParentIds),
-      ),
-    )
-    .limit(1);
-
-  return { hasCoParent: true, coParentConsentGranted: consents.length > 0 };
+  const live = await parentsWithLiveGrant(familyId, actionType, database);
+  return {
+    hasCoParent: true,
+    coParentConsentGranted: coParents.some((parent) => live.has(parent.userId)),
+  };
 }
 
 /**
- * The rule-#4 per-action-type AUTONOMY OPT-IN (G1 / VIL-222). Beyond the 5-streak
- * (which measures Hale's demonstrated reliability), a PRIMARY parent must have
- * explicitly opted an action type into autonomous execution — a standing
- * consent_records row (type 'autonomous_action_class', scope = the actionType).
+ * The users whose own grant for a kind is live in this family: rule #4's per-kind
+ * autonomy consent, a consent_records row of type 'autonomous_action_class' scoped to
+ * the kind, one per parent. Written by that parent's own approval when it completes
+ * their streak (recordHumanApproval); switched off by either parent
+ * (revokeAutonomyForKind).
  *
- * Reads the LATEST such row by grantedAt and requires granted=true AND revokedAt
- * null. Latest-row-wins is correct under BOTH withdrawal conventions in this
- * codebase — an append-only newer granted=false row (how SMS CASL records a
- * withdrawal) OR a revokedAt UPDATE on the grant (how loadCrossParentConsent reads)
- * — either makes the latest row fail the predicate, so a withdrawn opt-in never
- * reads as granted (the naive-granted=true trap). The switch-off writer is
- * revokeAutonomyForKind (append-only, either parent). The grant writer is
- * recordHumanApproval: the primary parent's approval that completes the streak.
+ * Read newest first. A switch-off ends every grant before it, whoever wrote it, so the
+ * walk stops there. Above it, each user's newest row decides for them, and it counts
+ * only when it was never revoked: both withdrawal conventions in this table (an
+ * appended granted=false row, a revoked_at stamp on the grant) read as off. Rows that
+ * share an instant sort the switch-off first, so a tie reads as off.
  */
-export async function hasAutonomousActionOptIn(
+async function parentsWithLiveGrant(
+  familyId: string,
+  actionType: ActionType,
+  database: Reader,
+): Promise<Set<string>> {
+  const rows = await database
+    .select({
+      userId: schema.consentRecords.userId,
+      granted: schema.consentRecords.granted,
+      revokedAt: schema.consentRecords.revokedAt,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.familyId, familyId),
+        eq(schema.consentRecords.consentType, 'autonomous_action_class'),
+        eq(schema.consentRecords.consentScope, actionType),
+      ),
+    )
+    .orderBy(
+      desc(schema.consentRecords.grantedAt),
+      asc(schema.consentRecords.granted),
+      desc(schema.consentRecords.id),
+    );
+
+  const live = new Set<string>();
+  const decided = new Set<string>();
+  for (const row of rows) {
+    if (!row.granted) break;
+    if (decided.has(row.userId)) continue;
+    decided.add(row.userId);
+    if (row.revokedAt === null) live.add(row.userId);
+  }
+  return live;
+}
+
+/** One parent's standing for one action kind (rule #4). Hale may do the kind on its
+ * own only when one parent holds both halves. */
+export interface ParentAutonomyStanding {
+  parentUserId: string;
+  /** Their own approvals of the kind have reached the streak. */
+  streakReached: boolean;
+  /** Their own grant for the kind is live. */
+  optedIn: boolean;
+}
+
+/**
+ * Every parent's standing for one kind (Barton, 2026-10-12: grants are per parent, and
+ * each parent's own approvals arm the kind). Someone who is not a parent of the family
+ * has no standing, whatever they approved.
+ */
+export async function loadAutonomyStanding(
   familyId: string,
   actionType: ActionType,
   database: Reader = db(),
-): Promise<boolean> {
+): Promise<ParentAutonomyStanding[]> {
   const parents = await familyParents(familyId, database);
-  const primaryUserId = parents.find((p) => p.role === 'primary_parent')?.userId;
-  if (!primaryUserId) {
-    return false;
+  const live = await parentsWithLiveGrant(familyId, actionType, database);
+  const standing: ParentAutonomyStanding[] = [];
+  for (const parent of parents) {
+    standing.push({
+      parentUserId: parent.userId,
+      streakReached: streakSatisfiesAutonomy(
+        actionType,
+        await loadActionApprovalHistory(familyId, actionType, parent.userId, database),
+      ),
+      optedIn: live.has(parent.userId),
+    });
   }
-
-  // The primary's own latest row must be a live grant, AND the latest row across both
-  // parents must be too: either parent's switch-off (revokeAutonomyForKind) turns the
-  // kind off for the family until a newer grant.
-  const latestOf = async (userIds: string[]) => {
-    const latest = await database
-      .select({
-        granted: schema.consentRecords.granted,
-        revokedAt: schema.consentRecords.revokedAt,
-      })
-      .from(schema.consentRecords)
-      .where(
-        and(
-          inArray(schema.consentRecords.userId, userIds),
-          eq(schema.consentRecords.consentType, 'autonomous_action_class'),
-          eq(schema.consentRecords.consentScope, actionType),
-        ),
-      )
-      .orderBy(desc(schema.consentRecords.grantedAt), desc(schema.consentRecords.id))
-      .limit(1);
-    const row = latest[0];
-    return !!row && row.granted && row.revokedAt === null;
-  };
-
-  return (
-    (await latestOf([primaryUserId])) && (await latestOf(parents.map((p) => p.userId)))
-  );
+  return standing;
 }
 
 async function familyParents(
@@ -1057,20 +1071,21 @@ export type AutonomyRevocation =
 
 /**
  * Turns Hale's autonomy off for ONE action kind (Barton, 2026-10-11: one parent
- * message in any wording). Appends a granted=false 'autonomous_action_class' row
- * scoped to the kind — the ledger hasAutonomousActionOptIn reads, latest-row-wins —
- * and its audit row in one transaction. Reading the parent's intent is the caller's
- * job (an AI read of the message, never a keyword match); `evidence` is the parent's
- * words plus that reading, kept on the consent row as every conversational consent
- * is, and never copied into the audit row. Only a parent can switch it off: anyone
- * else is the named `not_a_parent`, with nothing written.
+ * message in any wording), for the whole family: either parent's switch-off ends
+ * every parent's grant for the kind. Appends a granted=false 'autonomous_action_class'
+ * row scoped to the kind (the ledger parentsWithLiveGrant reads) and its audit row in
+ * one transaction. The row takes the database's clock, the same one the grant takes,
+ * so the two always sort in the order they were written. Reading the parent's intent
+ * is the caller's job (an AI read of the message, never a keyword match); `evidence`
+ * is the parent's words plus that reading, kept on the consent row as every
+ * conversational consent is, and never copied into the audit row. Only a parent can
+ * switch it off: anyone else is the named `not_a_parent`, with nothing written.
  */
 export async function revokeAutonomyForKind(
   input: {
     familyId: string;
     actorUserId: string;
     kind: ActionType;
-    now: Date;
     policyVersion: string;
     evidence: Record<string, unknown>;
   },
@@ -1094,7 +1109,6 @@ export async function revokeAutonomyForKind(
         consentType: 'autonomous_action_class',
         consentScope: input.kind,
         granted: false,
-        grantedAt: input.now,
         policyVersion: input.policyVersion,
         evidence: input.evidence,
       })
@@ -1144,23 +1158,26 @@ const HUMAN_DISMISSAL_VERB = 'action.declined_by_human';
 const AUTONOMY_REVOKED_VERB = 'autonomous_action_class.revoked';
 
 /**
- * One action kind's recent parent decisions, most-recent-first, for the rule #4
- * streak: each approval of an action of that kind (recordHumanApproval's
- * `action.approved_by_human` row), each dismissed draft of that kind (the web
- * decline's `action.declined_by_human` row) and each switch-off of the kind
- * (revokeAutonomyForKind's `autonomous_action_class.revoked` row). An approval is
- * `humanApproved`; a dismissal and a switch-off are not, so either ends the run and
- * the streak restarts from it. An action Hale ran on its own has no approval row and
- * is not in the history at all: it neither counts toward the streak nor breaks it, so
- * autonomy can never bootstrap itself and never disarms itself.
+ * One parent's recent decisions about one action kind, most-recent-first, for the
+ * rule #4 streak: each of their approvals of an action of that kind
+ * (recordHumanApproval's `action.approved_by_human` row), each draft of that kind
+ * they dismissed (the web decline's `action.declined_by_human` row), and each
+ * switch-off of the kind by either parent (revokeAutonomyForKind's
+ * `autonomous_action_class.revoked` row). An approval is `humanApproved`; a dismissal
+ * and a switch-off are not, so either ends the run and the streak restarts from it.
+ * The other parent's approvals and dismissals are theirs and are not in this history.
+ * An action Hale ran on its own has no approval row and is not in it either: it
+ * neither counts toward the streak nor breaks it, so autonomy can never bootstrap
+ * itself and never disarms itself.
  *
  * Read per kind, and only as far back as the streak needs, so another kind's
  * decisions can never push this kind's approvals out of the window.
  */
-export async function loadActionApprovalHistory(
+async function loadActionApprovalHistory(
   familyId: string,
   actionType: ActionType,
-  database: Reader = db(),
+  parentUserId: string,
+  database: Reader,
 ): Promise<{ actionType: string; humanApproved: boolean }[]> {
   const actionsOfKind = database
     .select({ id: sql<string>`${schema.actions.id}::text` })
@@ -1175,6 +1192,7 @@ export async function loadActionApprovalHistory(
         or(
           and(
             inArray(schema.auditLog.actionTaken, [HUMAN_APPROVAL_VERB, HUMAN_DISMISSAL_VERB]),
+            eq(schema.auditLog.actor, parentUserId),
             eq(schema.auditLog.targetTable, 'actions'),
             inArray(schema.auditLog.targetId, actionsOfKind),
           ),
@@ -1192,6 +1210,21 @@ export async function loadActionApprovalHistory(
 }
 
 /**
+ * What an approval did to its kind's autonomy, named for every way it can end. Only
+ * `granted` wrote anything: a grant row under the approving parent and its audit row.
+ */
+export type AutonomyGrant =
+  | { outcome: 'granted'; consentRecordId: string }
+  /** The approver's own approvals of the kind have not reached the streak. */
+  | { outcome: 'not_reached' }
+  /** Booking, registration or paying: never autonomous, however many approvals. */
+  | { outcome: 'denied_kind' }
+  /** The approver's grant for the kind is already live. */
+  | { outcome: 'already_on' }
+  /** The approver is not a parent of this family. */
+  | { outcome: 'not_a_parent' };
+
+/**
  * What became of an approval-record attempt. `claimed: false` carries the event's
  * CURRENT status so the caller can tell the two unclaimed worlds apart:
  * 'approved_pending_execute' is a prior attempt's checkpoint (crash residue or a
@@ -1200,7 +1233,7 @@ export async function loadActionApprovalHistory(
  * outcome either way, never a silent one (rule #11).
  */
 export type HumanApprovalClaim =
-  | { claimed: true }
+  | { claimed: true; autonomy: AutonomyGrant }
   | { claimed: false; eventStatus: string | null };
 
 /**
@@ -1223,8 +1256,9 @@ export type HumanApprovalClaim =
  * staged for execution, and vice-versa.
  *
  * The same transaction writes the kind's autonomy grant when this approval completes
- * the streak (grantAutonomyOnStreak), so the fifth approval and the grant it earns are
- * one fact. `policyVersion` is the policy text in force, recorded on that grant.
+ * the approver's streak (grantAutonomyOnStreak), so the fifth approval and the grant it
+ * earns are one fact, and what happened to the grant is named on the claim.
+ * `policyVersion` is the policy text in force, recorded on that grant.
  */
 export async function recordHumanApproval(
   input: {
@@ -1260,30 +1294,26 @@ export async function recordHumanApproval(
       targetId: input.actionId,
       after: { approvedBy: input.approvedBy },
     });
-    await grantAutonomyOnStreak(tx, input);
-    return { claimed: true };
+    return { claimed: true, autonomy: await grantAutonomyOnStreak(tx, input) };
   });
 }
 
 /**
- * Rule #4's explicit per-kind consent, as Barton set it (2026-10-11): once a parent
- * has approved a kind AUTONOMY_STREAK_REQUIRED times, Hale may do that kind on its own.
- * Called inside recordHumanApproval's transaction, after the approval's own audit row,
- * so the streak it reads includes the approval being recorded.
+ * Rule #4's explicit per-kind consent, as Barton set it (2026-10-11, per parent
+ * 2026-10-12): once a parent has approved a kind AUTONOMY_STREAK_REQUIRED times in a
+ * row, Hale may do that kind on its own. Called inside recordHumanApproval's
+ * transaction, after the approval's own audit row, so the streak it reads includes the
+ * approval being recorded.
  *
- * Writes exactly the row hasAutonomousActionOptIn reads: a granted
- * 'autonomous_action_class' row scoped to the kind, under the PRIMARY parent, plus its
- * audit row. So only the primary parent's own approval writes it. A co-parent's
- * approvals count toward the streak, but a granted row under their id is also what
- * loadCrossParentConsent reads as their consent to every cross-parent kind, which five
- * approvals of one kind are not. A never-autonomous kind (booking, registration,
- * paying) is never granted. After a switch-off the streak restarts from it, so the
- * next grant takes AUTONOMY_STREAK_REQUIRED new approvals.
+ * Writes the row parentsWithLiveGrant reads, under the approving parent, plus its audit
+ * row. A never-autonomous kind (booking, registration, paying) is never granted, and
+ * neither is someone who is not a parent. After a switch-off the streak restarts from
+ * it, so the next grant takes AUTONOMY_STREAK_REQUIRED new approvals.
  */
 async function grantAutonomyOnStreak(
   tx: Tx,
   input: { familyId: string; actionId: string; approvedBy: string; policyVersion: string },
-): Promise<void> {
+): Promise<AutonomyGrant> {
   const [action] = await tx
     .select({ actionType: schema.actions.actionType })
     .from(schema.actions)
@@ -1293,21 +1323,14 @@ async function grantAutonomyOnStreak(
     throw new Error(`grantAutonomyOnStreak: action ${input.actionId} not found`);
   }
   const kind = action.actionType as ActionType;
-  if (autonomyDeniedForKind(kind)) return;
-  if (!streakSatisfiesAutonomy(kind, await loadActionApprovalHistory(input.familyId, kind, tx))) {
-    return;
-  }
-  if (await hasAutonomousActionOptIn(input.familyId, kind, tx)) return;
+  if (autonomyDeniedForKind(kind)) return { outcome: 'denied_kind' };
 
-  const parents = await familyParents(input.familyId, tx);
-  const approver = parents.find((p) => p.userId === input.approvedBy);
-  if (approver?.role !== 'primary_parent') {
-    logger.info(
-      { familyId: input.familyId, kind },
-      'memory-writer: approval streak reached, but the approver is not the primary parent — no autonomy grant written',
-    );
-    return;
-  }
+  const approver = (await loadAutonomyStanding(input.familyId, kind, tx)).find(
+    (parent) => parent.parentUserId === input.approvedBy,
+  );
+  if (!approver) return { outcome: 'not_a_parent' };
+  if (!approver.streakReached) return { outcome: 'not_reached' };
+  if (approver.optedIn) return { outcome: 'already_on' };
 
   const [row] = await tx
     .insert(schema.consentRecords)
@@ -1317,7 +1340,6 @@ async function grantAutonomyOnStreak(
       consentType: 'autonomous_action_class',
       consentScope: kind,
       granted: true,
-      grantedAt: new Date(),
       policyVersion: input.policyVersion,
     })
     .returning({ id: schema.consentRecords.id });
@@ -1336,10 +1358,7 @@ async function grantAutonomyOnStreak(
       approvals: AUTONOMY_STREAK_REQUIRED,
     },
   });
-  logger.info(
-    { familyId: input.familyId, kind },
-    'memory-writer: approval streak reached — autonomy granted for this kind',
-  );
+  return { outcome: 'granted', consentRecordId: row.id };
 }
 
 /**

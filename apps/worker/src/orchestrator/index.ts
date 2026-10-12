@@ -29,11 +29,10 @@ import {
 import type { GoogleCalendarPlacement } from '../services/google-calendar-placement.js';
 import {
   getMemorySlice,
-  hasAutonomousActionOptIn,
-  loadActionApprovalHistory,
   loadActionForApproval,
   loadActionForEvent,
   loadApprovedVerdictForAction,
+  loadAutonomyStanding,
   loadCrossParentConsent,
   loadFamilyContext,
   loadFamilyCreatedAt,
@@ -51,7 +50,6 @@ import {
 } from '../services/memory-writer.js';
 import {
   autonomyDeniedForKind,
-  streakSatisfiesAutonomy,
   teenRedactionCapApplies,
   withinObservationWindow,
 } from './autonomy-gate.js';
@@ -605,10 +603,10 @@ export async function runOrchestrator(
     return;
   }
 
-  // Rule #4 — the per-action-type 5-streak. Autonomy of an action type unlocks
-  // only after ≥5 consecutive most-recent human-approved completions of it.
-  const approvalHistory = await loadActionApprovalHistory(familyId, draft.actionType);
-  if (!streakSatisfiesAutonomy(draft.actionType, approvalHistory)) {
+  // Rule #4 — the per-action-type 5-streak, counted per parent. Autonomy of an action
+  // type unlocks only after one parent's own ≥5 consecutive most-recent approvals of it.
+  const standing = await loadAutonomyStanding(familyId, draft.actionType);
+  if (!standing.some((parent) => parent.streakReached)) {
     await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
       { familyId, actionId, actionType: draft.actionType },
@@ -625,12 +623,13 @@ export async function runOrchestrator(
   }
 
   // G1 (VIL-222) — per-action-type autonomy OPT-IN. The 5-streak proves Hale is
-  // reliable at this action type; this gate proves the parent has explicitly TURNED
-  // IT ON (a standing consent_records opt-in). Both must hold before Hale acts
-  // unprompted (rule #4). Pure tightening: it can only hold an action for approval,
-  // never make a family more autonomous. The grant is written by the primary parent's
-  // approval that completes the streak (recordHumanApproval); a switch-off revokes it.
-  if (!(await hasAutonomousActionOptIn(familyId, draft.actionType))) {
+  // reliable at this action type; this gate proves that same parent's grant for it is
+  // live (a standing consent_records opt-in). One parent must hold both before Hale
+  // acts unprompted (rule #4). Pure tightening: it can only hold an action for
+  // approval, never make a family more autonomous. The grant is written by the
+  // parent's own approval that completes their streak (recordHumanApproval); either
+  // parent's switch-off ends it.
+  if (!standing.some((parent) => parent.streakReached && parent.optedIn)) {
     await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
       { familyId, actionId, actionType: draft.actionType },
@@ -650,7 +649,7 @@ export async function runOrchestrator(
   // parents' data, a co-parent's presence requires an active consent record;
   // missing → never autonomous. No co-parent → single-parent household, proceeds.
   if (isCrossParentActionType(draft.actionType)) {
-    const consent = await loadCrossParentConsent(familyId);
+    const consent = await loadCrossParentConsent(familyId, draft.actionType);
     if (consent.hasCoParent && !consent.coParentConsentGranted) {
       await markEventStage(familyId, eventId, 'reviewed');
       logger.info(
@@ -918,7 +917,7 @@ export async function executeApprovedAction(
   // CONSENT BOUNDARY note above). Re-checked at approval time, not just at draft
   // time, because the co-parent may have signed up between draft and approval.
   if (isCrossParentActionType(action.actionType)) {
-    const consent = await deps.loadConsent(familyId);
+    const consent = await deps.loadConsent(familyId, action.actionType);
     if (consent.hasCoParent && !consent.coParentConsentGranted) {
       deps.log.warn(
         { familyId, actionId, actionType: action.actionType },
@@ -982,7 +981,13 @@ export async function executeApprovedAction(
     );
   } else {
     deps.log.info(
-      { familyId, actionId, approvedBy, actionType: action.actionType },
+      {
+        familyId,
+        actionId,
+        approvedBy,
+        actionType: action.actionType,
+        autonomy: approval.autonomy.outcome,
+      },
       'actions.approved: human-approved action driving into execution',
     );
   }

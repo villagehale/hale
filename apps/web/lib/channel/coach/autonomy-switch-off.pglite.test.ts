@@ -1,6 +1,7 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
-import { hasAutonomousActionOptIn } from '@hale/worker/memory-writer';
+import type { ActionType } from '@hale/types';
+import { loadAutonomyStanding } from '@hale/worker/memory-writer';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -45,6 +46,11 @@ async function grant(familyId: string, userId: string, kind: string) {
     grantedAt: new Date(NOW.getTime() - 60 * 60 * 1000),
     policyVersion: 'test-policy',
   });
+}
+
+/** Whether any parent's grant for the kind is live, read by the orchestrator's own reader. */
+async function optedIn(familyId: string, kind: ActionType) {
+  return (await loadAutonomyStanding(familyId, kind, db.database)).some((parent) => parent.optedIn);
 }
 
 async function emailAutonomousFamily() {
@@ -146,9 +152,9 @@ describe('turn_off_autonomy, through the production ports', () => {
     );
 
     expect(result).toEqual({ outcome: 'revoked', kinds: ['send_email', 'reply_to_email'] });
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(false);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'reply_to_email', db.database)).toBe(false);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'calendar_add', db.database)).toBe(true);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
+    expect(await optedIn(fam.familyId, 'reply_to_email')).toBe(false);
+    expect(await optedIn(fam.familyId, 'calendar_add')).toBe(true);
 
     const evidence = { parentWords: PARENT_WORDS, interpretation: INTERPRETATION };
     expect(
@@ -188,6 +194,6 @@ describe('turn_off_autonomy, through the production ports', () => {
 
     expect(result).toEqual({ outcome: 'not_a_parent' });
     expect(await revocations(fam.familyId)).toEqual([]);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(true);
   });
 });

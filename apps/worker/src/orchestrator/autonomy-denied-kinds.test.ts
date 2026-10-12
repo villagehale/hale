@@ -102,15 +102,14 @@ vi.mock('../services/memory-writer.js', () => ({
   loadHumanApprover: vi.fn(async () => humanApprover),
   loadFamilyCreatedAt: vi.fn(async () => new Date('2020-01-01T00:00:00.000Z')),
   loadActionForApproval: vi.fn(async () => null),
-  recordHumanApproval: vi.fn(async () => ({ claimed: true })),
-  loadActionApprovalHistory: vi.fn(async () =>
-    Array.from({ length: 5 }, () => ({ actionType: kind, humanApproved: true })),
-  ),
+  recordHumanApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
+  loadAutonomyStanding: vi.fn(async () => [
+    { parentUserId: 'parent-1', streakReached: true, optedIn: true },
+  ]),
   loadCrossParentConsent: vi.fn(async () => ({
     hasCoParent: false,
     coParentConsentGranted: false,
   })),
-  hasAutonomousActionOptIn: vi.fn(async () => true),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['toddler'],
@@ -245,7 +244,7 @@ describe('runOrchestrator — booking, registration and paying are never autonom
           verdict: { kind: 'approve', toolResults: fullCoverage('fill_pdf_form'), rationale: 'ok' },
         }),
         loadConsent: async () => ({ hasCoParent: false, coParentConsentGranted: false }),
-        recordApproval: vi.fn(async () => ({ claimed: true as const })),
+        recordApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
         recordGate: vi.fn(async () => {}),
       },
     );

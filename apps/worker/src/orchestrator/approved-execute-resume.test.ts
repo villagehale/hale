@@ -126,14 +126,13 @@ vi.mock('../services/memory-writer.js', () => ({
   // Fix-wave B gates all cleared so the FIX 1 resume path still executes:
   // old family, full send_email streak, single-parent, newborn stage.
   loadFamilyCreatedAt: vi.fn(async () => new Date('2020-01-01T00:00:00.000Z')),
-  loadActionApprovalHistory: vi.fn(async () =>
-    Array.from({ length: 5 }, () => ({ actionType: 'send_email', humanApproved: true })),
-  ),
+  loadAutonomyStanding: vi.fn(async () => [
+    { parentUserId: 'parent-1', streakReached: true, optedIn: true },
+  ]),
   loadCrossParentConsent: vi.fn(async () => ({
     hasCoParent: false,
     coParentConsentGranted: false,
   })),
-  hasAutonomousActionOptIn: vi.fn(async () => true),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['newborn'],

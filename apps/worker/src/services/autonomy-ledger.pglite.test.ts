@@ -2,11 +2,10 @@ import { schema } from '@hale/db';
 import type { ActionType } from '@hale/types';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AUTONOMY_STREAK_REQUIRED, streakSatisfiesAutonomy } from '../orchestrator/autonomy-gate.js';
+import { AUTONOMY_STREAK_REQUIRED } from '../orchestrator/autonomy-gate.js';
 import { createTestDb, seedFamily, type SeededFamily, type TestDb } from '../testing/pglite.js';
 import {
-  hasAutonomousActionOptIn,
-  loadActionApprovalHistory,
+  loadAutonomyStanding,
   loadCrossParentConsent,
   loadHumanApprover,
   recordExecution,
@@ -58,6 +57,29 @@ async function grantOptIn(familyId: string, userId: string, kind: string, grante
   });
 }
 
+/** Each parent's standing for a kind, by user id. */
+async function standing(familyId: string, kind: ActionType) {
+  const rows = await loadAutonomyStanding(familyId, kind, db.database);
+  return new Map(
+    rows.map((row) => [
+      row.parentUserId,
+      { streakReached: row.streakReached, optedIn: row.optedIn },
+    ]),
+  );
+}
+
+/** Whether any parent's grant for the kind is live. */
+async function optedIn(familyId: string, kind: ActionType) {
+  return [...(await standing(familyId, kind)).values()].some((parent) => parent.optedIn);
+}
+
+/** What the orchestrator requires before Hale acts on its own: one parent holding both. */
+async function armed(familyId: string, kind: ActionType) {
+  return [...(await standing(familyId, kind)).values()].some(
+    (parent) => parent.streakReached && parent.optedIn,
+  );
+}
+
 async function seedOptedInFamily() {
   const fam = await seedFamily(db.database);
   const earlier = new Date(Date.now() - HOUR_MS);
@@ -95,14 +117,13 @@ const evidence = { reply: 'parent words', interpretation: 'stop doing this on yo
 describe('revokeAutonomyForKind — one parent message turns a kind off', () => {
   it('the primary parent revokes send_email → that kind is off, calendar_add is untouched, audited', async () => {
     const fam = await seedOptedInFamily();
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(true);
 
     const result = await revokeAutonomyForKind(
       {
         familyId: fam.familyId,
         actorUserId: fam.parentUserId,
         kind: 'send_email',
-        now: new Date(),
         policyVersion: POLICY_VERSION,
         evidence,
       },
@@ -110,8 +131,8 @@ describe('revokeAutonomyForKind — one parent message turns a kind off', () => 
     );
 
     expect(result.outcome).toBe('revoked');
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(false);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'calendar_add', db.database)).toBe(true);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
+    expect(await optedIn(fam.familyId, 'calendar_add')).toBe(true);
 
     const audit = await db.database
       .select({ actor: schema.auditLog.actor, after: schema.auditLog.after })
@@ -139,15 +160,14 @@ describe('revokeAutonomyForKind — one parent message turns a kind off', () => 
         familyId: fam.familyId,
         actorUserId: coParentId,
         kind: 'calendar_add',
-        now: new Date(),
         policyVersion: POLICY_VERSION,
         evidence,
       },
       db.database,
     );
 
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'calendar_add', db.database)).toBe(false);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+    expect(await optedIn(fam.familyId, 'calendar_add')).toBe(false);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(true);
   });
 
   it('a caregiver is not a parent: refused by name, nothing written', async () => {
@@ -159,7 +179,6 @@ describe('revokeAutonomyForKind — one parent message turns a kind off', () => 
         familyId: fam.familyId,
         actorUserId: caregiverId,
         kind: 'send_email',
-        now: new Date(),
         policyVersion: POLICY_VERSION,
         evidence,
       },
@@ -167,7 +186,7 @@ describe('revokeAutonomyForKind — one parent message turns a kind off', () => 
     );
 
     expect(result).toEqual({ outcome: 'not_a_parent' });
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(true);
     const rows = await db.database
       .select({ id: schema.consentRecords.id })
       .from(schema.consentRecords)
@@ -233,11 +252,12 @@ describe('loadHumanApprover — whose claim a checkpoint is', () => {
 });
 
 /**
- * How a kind becomes autonomous (Sloane's answers, 2026-10-12): the fifth parent
- * approval of a kind writes its grant, an approval is the action.approved_by_human
- * row and nothing else, and a switch-off restarts the count. Each approval below is
- * the production sequence, recordHumanApproval then recordExecution, because the
- * execution is what stamps user_visible_state.
+ * How a kind becomes autonomous (Barton, 2026-10-12): each parent's own five approvals
+ * in a row arm it under that parent, a dismissed draft or a switch-off ends the run,
+ * and either parent's switch-off turns the kind off for the family. An approval is the
+ * action.approved_by_human row and nothing else. Each approval below is the production
+ * sequence, recordHumanApproval then recordExecution, because the execution is what
+ * stamps user_visible_state.
  */
 
 let sequence = 0;
@@ -245,7 +265,7 @@ let sequence = 0;
 async function approve(fam: SeededFamily, kind: ActionType, approvedBy = fam.parentUserId) {
   sequence += 1;
   const { eventId, actionId } = await seedAction(fam.familyId, `approved-${sequence}`, kind);
-  await recordHumanApproval(
+  const claim = await recordHumanApproval(
     { familyId: fam.familyId, eventId, actionId, approvedBy, policyVersion: POLICY_VERSION },
     db.database,
   );
@@ -258,6 +278,7 @@ async function approve(fam: SeededFamily, kind: ActionType, approvedBy = fam.par
     },
     db.database,
   );
+  return claim;
 }
 
 /** The row `declineDraftedAction` writes when a parent dismisses a draft (apps/web/lib/actions/decline.ts). */
@@ -273,9 +294,14 @@ async function dismiss(fam: SeededFamily, kind: ActionType, declinedBy = fam.par
   });
 }
 
-async function approveTimes(fam: SeededFamily, kind: ActionType, times: number) {
+async function approveTimes(
+  fam: SeededFamily,
+  kind: ActionType,
+  times: number,
+  approvedBy = fam.parentUserId,
+) {
   for (let i = 0; i < times; i += 1) {
-    await approve(fam, kind);
+    await approve(fam, kind, approvedBy);
   }
 }
 
@@ -293,11 +319,8 @@ async function runOnItsOwn(fam: SeededFamily, kind: ActionType) {
   );
 }
 
-async function streakReached(fam: SeededFamily, kind: ActionType) {
-  return streakSatisfiesAutonomy(
-    kind,
-    await loadActionApprovalHistory(fam.familyId, kind, db.database),
-  );
+async function streakReached(fam: SeededFamily, kind: ActionType, parent = fam.parentUserId) {
+  return (await standing(fam.familyId, kind)).get(parent)?.streakReached;
 }
 
 async function autonomyConsentRows(familyId: string) {
@@ -341,7 +364,6 @@ function switchOff(fam: SeededFamily, kind: ActionType, actorUserId = fam.parent
       familyId: fam.familyId,
       actorUserId,
       kind,
-      now: new Date(),
       policyVersion: POLICY_VERSION,
       evidence,
     },
@@ -382,7 +404,7 @@ describe('the approval streak is counted from the parent approval rows', () => {
     await runOnItsOwn(fam, 'send_email');
 
     expect(await streakReached(fam, 'send_email')).toBe(true);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+    expect(await armed(fam.familyId, 'send_email')).toBe(true);
   });
 });
 
@@ -395,7 +417,7 @@ describe('a dismissed draft breaks the streak', () => {
     await approve(fam, 'send_email');
 
     expect(await streakReached(fam, 'send_email')).toBe(false);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(false);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
     expect(await autonomyConsentRows(fam.familyId)).toEqual([]);
   });
 
@@ -408,8 +430,7 @@ describe('a dismissed draft breaks the streak', () => {
     expect(await streakReached(fam, 'send_email')).toBe(false);
 
     await approve(fam, 'send_email');
-    expect(await streakReached(fam, 'send_email')).toBe(true);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+    expect(await armed(fam.familyId, 'send_email')).toBe(true);
   });
 
   it('dismissing a draft of another kind leaves this kind’s streak alone', async () => {
@@ -421,19 +442,44 @@ describe('a dismissed draft breaks the streak', () => {
 
     expect(await streakReached(fam, 'send_email')).toBe(true);
   });
+
+  it('a dismissal after arming holds the kind again, with the grant still on the ledger', async () => {
+    const fam = await seedFamily(db.database);
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED);
+    expect(await armed(fam.familyId, 'send_email')).toBe(true);
+
+    await dismiss(fam, 'send_email');
+
+    expect(await armed(fam.familyId, 'send_email')).toBe(false);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(true);
+  });
 });
 
 describe('the fifth approval of a kind writes its grant', () => {
   it('four approvals write nothing; the fifth writes one grant for that kind and logs it', async () => {
     const fam = await seedFamily(db.database);
 
-    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
+    const early = [];
+    for (let i = 0; i < AUTONOMY_STREAK_REQUIRED - 1; i += 1) {
+      early.push(await approve(fam, 'send_email'));
+    }
+    expect(early).toEqual(
+      early.map(() => ({ claimed: true, autonomy: { outcome: 'not_reached' } })),
+    );
     expect(await autonomyConsentRows(fam.familyId)).toEqual([]);
     expect(await grantAuditRows(fam.familyId)).toEqual([]);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(false);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
 
-    await approve(fam, 'send_email');
+    const fifth = await approve(fam, 'send_email');
 
+    const [grantRow] = await db.database
+      .select({ id: schema.consentRecords.id })
+      .from(schema.consentRecords)
+      .where(eq(schema.consentRecords.familyId, fam.familyId));
+    expect(fifth).toEqual({
+      claimed: true,
+      autonomy: { outcome: 'granted', consentRecordId: grantRow?.id },
+    });
     expect(await autonomyConsentRows(fam.familyId)).toEqual([
       {
         userId: fam.parentUserId,
@@ -454,10 +500,13 @@ describe('the fifth approval of a kind writes its grant', () => {
         },
       },
     ]);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'reply_to_email', db.database)).toBe(false);
+    expect(await armed(fam.familyId, 'send_email')).toBe(true);
+    expect(await optedIn(fam.familyId, 'reply_to_email')).toBe(false);
 
-    await approve(fam, 'send_email');
+    expect(await approve(fam, 'send_email')).toEqual({
+      claimed: true,
+      autonomy: { outcome: 'already_on' },
+    });
     expect(await autonomyConsentRows(fam.familyId)).toHaveLength(1);
   });
 
@@ -466,7 +515,12 @@ describe('the fifth approval of a kind writes its grant', () => {
     async (deniedKind) => {
       const fam = await seedFamily(db.database);
 
-      await approveTimes(fam, deniedKind, AUTONOMY_STREAK_REQUIRED + 2);
+      for (let i = 0; i < AUTONOMY_STREAK_REQUIRED + 2; i += 1) {
+        expect(await approve(fam, deniedKind)).toEqual({
+          claimed: true,
+          autonomy: { outcome: 'denied_kind' },
+        });
+      }
       expect(await autonomyConsentRows(fam.familyId)).toEqual([]);
       expect(await grantAuditRows(fam.familyId)).toEqual([]);
 
@@ -478,26 +532,147 @@ describe('the fifth approval of a kind writes its grant', () => {
     },
   );
 
-  it("a co-parent's approvals count, but only the primary parent's own approval writes the grant", async () => {
+  it('someone who is not a parent never gets a grant, whatever they approve', async () => {
+    const fam = await seedFamily(db.database);
+    const caregiverId = await addMember(fam.familyId, 'grandparent');
+
+    for (let i = 0; i < AUTONOMY_STREAK_REQUIRED; i += 1) {
+      expect(await approve(fam, 'send_email', caregiverId)).toEqual({
+        claimed: true,
+        autonomy: { outcome: 'not_a_parent' },
+      });
+    }
+
+    expect(await autonomyConsentRows(fam.familyId)).toEqual([]);
+    expect(await armed(fam.familyId, 'send_email')).toBe(false);
+  });
+});
+
+describe('grants are per parent: each parent’s own approvals arm the kind under them', () => {
+  it('a co-parent’s five approvals write the grant under the co-parent, with no primary approval', async () => {
+    const fam = await seedFamily(db.database);
+    const coParentId = await addMember(fam.familyId, 'co_parent');
+
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED, coParentId);
+
+    expect((await autonomyConsentRows(fam.familyId)).map((row) => row.userId)).toEqual([coParentId]);
+    expect((await grantAuditRows(fam.familyId)).map((row) => row.actor)).toEqual([coParentId]);
+    expect(await standing(fam.familyId, 'send_email')).toEqual(
+      new Map([
+        [fam.parentUserId, { streakReached: false, optedIn: false }],
+        [coParentId, { streakReached: true, optedIn: true }],
+      ]),
+    );
+    expect(await armed(fam.familyId, 'send_email')).toBe(true);
+  });
+
+  it('approvals are not pooled: four from one parent and four from the other arm nobody', async () => {
     const fam = await seedFamily(db.database);
     const coParentId = await addMember(fam.familyId, 'co_parent');
 
     await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
-    await approve(fam, 'send_email', coParentId);
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1, coParentId);
 
-    // No row under the co-parent: a granted one would also read as their cross-parent consent.
     expect(await autonomyConsentRows(fam.familyId)).toEqual([]);
-    expect(await loadCrossParentConsent(fam.familyId, db.database)).toEqual({
-      hasCoParent: true,
-      coParentConsentGranted: false,
-    });
+    expect(await armed(fam.familyId, 'send_email')).toBe(false);
 
+    // Positive control: one more from either parent completes that parent's own five.
     await approve(fam, 'send_email');
-
     expect((await autonomyConsentRows(fam.familyId)).map((row) => row.userId)).toEqual([
       fam.parentUserId,
     ]);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+  });
+
+  it('each parent who reaches five gets their own grant row', async () => {
+    const fam = await seedFamily(db.database);
+    const coParentId = await addMember(fam.familyId, 'co_parent');
+
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED);
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED, coParentId);
+
+    expect((await autonomyConsentRows(fam.familyId)).map((row) => row.userId)).toEqual([
+      fam.parentUserId,
+      coParentId,
+    ]);
+  });
+
+  it('a parent’s dismissal breaks their own streak and leaves the other parent’s alone', async () => {
+    const fam = await seedFamily(db.database);
+    const coParentId = await addMember(fam.familyId, 'co_parent');
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1, coParentId);
+
+    await dismiss(fam, 'send_email', coParentId);
+    await approve(fam, 'send_email');
+    await approve(fam, 'send_email', coParentId);
+
+    expect(await standing(fam.familyId, 'send_email')).toEqual(
+      new Map([
+        [fam.parentUserId, { streakReached: true, optedIn: true }],
+        [coParentId, { streakReached: false, optedIn: false }],
+      ]),
+    );
+  });
+
+  it('a parent in two families: a grant or a switch-off in one is not read in the other', async () => {
+    const famA = await seedFamily(db.database);
+    const famB = await seedFamily(db.database);
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: famB.familyId, userId: famA.parentUserId, role: 'co_parent' });
+    await approveTimes(famA, 'send_email', AUTONOMY_STREAK_REQUIRED);
+
+    expect((await standing(famB.familyId, 'send_email')).get(famA.parentUserId)).toEqual({
+      streakReached: false,
+      optedIn: false,
+    });
+
+    await switchOff(famB, 'send_email', famA.parentUserId);
+
+    expect(await armed(famA.familyId, 'send_email')).toBe(true);
+  });
+});
+
+describe('a co-parent’s grant for one kind is not their consent to a cross-parent kind', () => {
+  it('reads only the co-parent’s own live grant for the kind being asked about, in this family', async () => {
+    const fam = await seedFamily(db.database);
+    const coParentId = await addMember(fam.familyId, 'co_parent');
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED, coParentId);
+
+    expect(await loadCrossParentConsent(fam.familyId, 'create_calendar_event', db.database)).toEqual({
+      hasCoParent: true,
+      coParentConsentGranted: false,
+    });
+    expect(
+      await loadCrossParentConsent(fam.familyId, 'share_photos_with_family', db.database),
+    ).toEqual({ hasCoParent: true, coParentConsentGranted: false });
+
+    // Positive control: a grant for that kind, under the co-parent, in this family.
+    await grantOptIn(fam.familyId, coParentId, 'create_calendar_event', new Date());
+    expect(await loadCrossParentConsent(fam.familyId, 'create_calendar_event', db.database)).toEqual({
+      hasCoParent: true,
+      coParentConsentGranted: true,
+    });
+    expect(
+      await loadCrossParentConsent(fam.familyId, 'share_photos_with_family', db.database),
+    ).toEqual({ hasCoParent: true, coParentConsentGranted: false });
+  });
+
+  it('a switch-off of the kind ends it; a household with no co-parent has nothing to ask', async () => {
+    const fam = await seedFamily(db.database);
+    const coParentId = await addMember(fam.familyId, 'co_parent');
+    await grantOptIn(fam.familyId, coParentId, 'create_calendar_event', new Date(Date.now() - HOUR_MS));
+
+    await switchOff(fam, 'create_calendar_event');
+
+    expect(await loadCrossParentConsent(fam.familyId, 'create_calendar_event', db.database)).toEqual({
+      hasCoParent: true,
+      coParentConsentGranted: false,
+    });
+    const single = await seedFamily(db.database);
+    expect(
+      await loadCrossParentConsent(single.familyId, 'create_calendar_event', db.database),
+    ).toEqual({ hasCoParent: false, coParentConsentGranted: false });
   });
 });
 
@@ -505,19 +680,18 @@ describe('a switch-off restarts the streak', () => {
   it('four approvals after it do not re-arm the kind; the fifth does', async () => {
     const fam = await seedFamily(db.database);
     await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+    expect(await armed(fam.familyId, 'send_email')).toBe(true);
 
     await switchOff(fam, 'send_email');
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(false);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
     expect(await streakReached(fam, 'send_email')).toBe(false);
 
     await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
     expect(await streakReached(fam, 'send_email')).toBe(false);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(false);
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
 
     await approve(fam, 'send_email');
-    expect(await streakReached(fam, 'send_email')).toBe(true);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+    expect(await armed(fam.familyId, 'send_email')).toBe(true);
     expect((await autonomyConsentRows(fam.familyId)).map((row) => row.granted)).toEqual([
       true,
       false,
@@ -526,7 +700,7 @@ describe('a switch-off restarts the streak', () => {
     expect(await grantAuditRows(fam.familyId)).toHaveLength(2);
   });
 
-  it("a co-parent's switch-off restarts it too, and switching one kind off leaves another armed", async () => {
+  it('either parent’s switch-off turns the kind off for both, and leaves another kind armed', async () => {
     const fam = await seedFamily(db.database);
     const coParentId = await addMember(fam.familyId, 'co_parent');
     await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED);
@@ -534,11 +708,54 @@ describe('a switch-off restarts the streak', () => {
 
     await switchOff(fam, 'send_email', coParentId);
 
-    expect(await streakReached(fam, 'send_email')).toBe(false);
-    expect(await streakReached(fam, 'calendar_add')).toBe(true);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'calendar_add', db.database)).toBe(true);
+    expect(await standing(fam.familyId, 'send_email')).toEqual(
+      new Map([
+        [fam.parentUserId, { streakReached: false, optedIn: false }],
+        [coParentId, { streakReached: false, optedIn: false }],
+      ]),
+    );
+    expect(await armed(fam.familyId, 'calendar_add')).toBe(true);
 
     await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED);
-    expect(await hasAutonomousActionOptIn(fam.familyId, 'send_email', db.database)).toBe(true);
+    expect(await armed(fam.familyId, 'send_email')).toBe(true);
+  });
+
+  it('a switch-off made straight after arming reads as off', async () => {
+    const fam = await seedFamily(db.database);
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED);
+
+    expect(await switchOff(fam, 'send_email')).toMatchObject({ outcome: 'revoked' });
+
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
+  });
+
+  it('a grant and a switch-off stamped at the same instant read as off', async () => {
+    const fam = await seedFamily(db.database);
+    const instant = new Date(Date.now() - HOUR_MS);
+    await grantOptIn(fam.familyId, fam.parentUserId, 'send_email', instant);
+    await db.database.insert(schema.consentRecords).values({
+      familyId: fam.familyId,
+      userId: fam.parentUserId,
+      consentType: 'autonomous_action_class',
+      consentScope: 'send_email',
+      granted: false,
+      grantedAt: instant,
+      policyVersion: POLICY_VERSION,
+    });
+
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
+  });
+
+  it('a grant withdrawn by its revoked_at stamp reads as off', async () => {
+    const fam = await seedFamily(db.database);
+    await grantOptIn(fam.familyId, fam.parentUserId, 'send_email', new Date(Date.now() - HOUR_MS));
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(true);
+
+    await db.database
+      .update(schema.consentRecords)
+      .set({ revokedAt: new Date() })
+      .where(eq(schema.consentRecords.familyId, fam.familyId));
+
+    expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
   });
 });

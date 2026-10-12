@@ -80,7 +80,7 @@ vi.mock('../services/memory-writer.js', () => ({
   markEventStage: vi.fn(async () => {}),
   loadActionForEvent: vi.fn(async () => null),
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
-  loadActionApprovalHistory: vi.fn(async () => []),
+  loadAutonomyStanding: vi.fn(async () => []),
   loadCrossParentConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
@@ -165,7 +165,7 @@ describe('runOrchestrator — accepted village item routes to add_to_routine', (
         verdict: ADD_TO_ROUTINE_VERDICT,
       })),
       loadConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
-      recordApproval: vi.fn(async () => ({ claimed: true as const })),
+      recordApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
       recordGate: vi.fn(async () => {}),
       execute,
       log: { info: vi.fn(), warn: vi.fn() },

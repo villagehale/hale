@@ -60,6 +60,7 @@ function makeDeps(
   } = {},
 ): ExecuteApprovedDeps & {
   loadAction: ReturnType<typeof vi.fn>;
+  loadConsent: ReturnType<typeof vi.fn>;
   recordApproval: ReturnType<typeof vi.fn>;
   recordGate: ReturnType<typeof vi.fn>;
   execute: ReturnType<typeof vi.fn>;
@@ -80,7 +81,7 @@ function makeDeps(
     loadConsent: vi.fn(
       async () => overrides.consent ?? { hasCoParent: false, coParentConsentGranted: false },
     ),
-    recordApproval: vi.fn(async () => ({ claimed: true as const })),
+    recordApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
     recordGate: vi.fn(async () => {}),
     execute: vi.fn(async () => {}),
     log: { info: vi.fn(), warn: vi.fn() },
@@ -196,6 +197,8 @@ describe('executeApprovedAction', () => {
     });
     await executeApprovedAction(INPUT, deps);
 
+    // The consent asked about is for this action's own kind, never any grant at all.
+    expect(deps.loadConsent).toHaveBeenCalledWith(FAMILY, 'share_photos_with_family');
     expect(deps.execute).not.toHaveBeenCalled();
     expect(deps.recordApproval).not.toHaveBeenCalled();
     expect(deps.recordGate).toHaveBeenCalledTimes(1);

@@ -606,10 +606,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         autonomySwitchOff: {
           parentWords: turn.body,
           revoke: (input) =>
-            revokeAutonomyForKind(
-              { ...input, now: turn.now, policyVersion: POLICY_VERSION },
-              database,
-            ),
+            revokeAutonomyForKind({ ...input, policyVersion: POLICY_VERSION }, database),
         },
         parentUserId: turn.parentUserId,
         now: turn.now,

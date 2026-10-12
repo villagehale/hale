@@ -110,14 +110,13 @@ vi.mock('../services/memory-writer.js', () => ({
   // The human-approve path's own seams are passed explicitly in the test that uses it.
   loadActionForApproval: vi.fn(async () => null),
   recordHumanApproval: vi.fn(async () => ({ claimed: false, eventStatus: null })),
-  loadActionApprovalHistory: vi.fn(async () =>
-    Array.from({ length: 5 }, () => ({ actionType: 'calendar_add', humanApproved: true })),
-  ),
+  loadAutonomyStanding: vi.fn(async () => [
+    { parentUserId: 'parent-1', streakReached: true, optedIn: true },
+  ]),
   loadCrossParentConsent: vi.fn(async () => ({
     hasCoParent: false,
     coParentConsentGranted: false,
   })),
-  hasAutonomousActionOptIn: vi.fn(async () => true),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['toddler'],
@@ -238,7 +237,7 @@ describe('runOrchestrator — no plan gate; the execute lane is the only added b
     // in human-approval-claim.pglite.test.ts); this mirrors that predicate.
     const recordApproval = vi.fn(async () =>
       lastStage === 'reviewed'
-        ? { claimed: true as const }
+        ? { claimed: true as const, autonomy: { outcome: 'not_reached' as const } }
         : { claimed: false as const, eventStatus: String(lastStage) },
     );
     await executeApprovedAction(

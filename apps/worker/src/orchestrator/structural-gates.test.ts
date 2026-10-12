@@ -79,15 +79,11 @@ vi.mock('../services/executor.js', () => ({ runExecutor: () => runExecutor() }))
 // Injectable lookups, defaulted so a family CLEARS every gate unless a test
 // tightens one: old family, full streak, single-parent, newborn stage.
 let familyCreatedAt = new Date('2020-01-01T00:00:00.000Z');
-let approvalHistory: { actionType: string; humanApproved: boolean }[] = Array.from(
-  { length: 5 },
-  () => ({ actionType: 'send_email', humanApproved: true }),
-);
+let standing: { parentUserId: string; streakReached: boolean; optedIn: boolean }[] = [
+  { parentUserId: 'parent-1', streakReached: true, optedIn: true },
+];
 let crossParent = { hasCoParent: false, coParentConsentGranted: false };
 let childStages: FamilyStage[] = ['newborn'];
-// G1 (VIL-222): default opted-in so the baseline clears the new gate; a test flips
-// it to prove the gate holds a streak-satisfied action without the standing opt-in.
-let optedIn = true;
 
 const recordActionGate = vi.fn(async () => {});
 const recordExecution = vi.fn(async () => {});
@@ -104,9 +100,8 @@ vi.mock('../services/memory-writer.js', () => ({
   markEventStage: vi.fn(async () => {}),
   loadActionForEvent: vi.fn(async () => null),
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
-  loadActionApprovalHistory: vi.fn(async () => approvalHistory),
+  loadAutonomyStanding: vi.fn(async () => standing),
   loadCrossParentConsent: vi.fn(async () => crossParent),
-  hasAutonomousActionOptIn: vi.fn(async () => optedIn),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: childStages,
@@ -139,13 +134,9 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
     teenContent = false;
     draftActionType = 'send_email';
     familyCreatedAt = new Date('2020-01-01T00:00:00.000Z');
-    approvalHistory = Array.from({ length: 5 }, () => ({
-      actionType: 'send_email',
-      humanApproved: true,
-    }));
+    standing = [{ parentUserId: 'parent-1', streakReached: true, optedIn: true }];
     crossParent = { hasCoParent: false, coParentConsentGranted: false };
     childStages = ['newborn'];
-    optedIn = true;
   });
 
   it('baseline (old family, full streak, single-parent, newborn) → executes autonomously', async () => {
@@ -163,11 +154,8 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
     );
   });
 
-  it('rule #4 streak: only 4 consecutive human approvals → gated, never executes', async () => {
-    approvalHistory = Array.from({ length: 4 }, () => ({
-      actionType: 'send_email',
-      humanApproved: true,
-    }));
+  it('rule #4 streak: no parent has reached the streak → gated, never executes', async () => {
+    standing = [{ parentUserId: 'parent-1', streakReached: false, optedIn: false }];
     await runOrchestrator(job);
     expect(runExecutor).not.toHaveBeenCalled();
     expect(recordActionGate).toHaveBeenCalledWith(
@@ -178,10 +166,6 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
   it('rule #5 cross-parent: co-parent exists but no consent → gated, never executes', async () => {
     suggestion = { kind: 'autonomous_action', actionType: 'share_photos_with_family' };
     draftActionType = 'share_photos_with_family';
-    approvalHistory = Array.from({ length: 5 }, () => ({
-      actionType: 'share_photos_with_family',
-      humanApproved: true,
-    }));
     crossParent = { hasCoParent: true, coParentConsentGranted: false };
     await runOrchestrator(job);
     expect(runExecutor).not.toHaveBeenCalled();
@@ -196,10 +180,6 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
   it('rule #5 cross-parent: co-parent exists WITH consent → proceeds and executes', async () => {
     suggestion = { kind: 'autonomous_action', actionType: 'share_photos_with_family' };
     draftActionType = 'share_photos_with_family';
-    approvalHistory = Array.from({ length: 5 }, () => ({
-      actionType: 'share_photos_with_family',
-      humanApproved: true,
-    }));
     crossParent = { hasCoParent: true, coParentConsentGranted: true };
     await runOrchestrator(job);
     expect(runExecutor).toHaveBeenCalledTimes(1);
@@ -209,10 +189,6 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
   it('rule #5 cross-parent: NO co-parent (single-parent household) → proceeds and executes', async () => {
     suggestion = { kind: 'autonomous_action', actionType: 'share_photos_with_family' };
     draftActionType = 'share_photos_with_family';
-    approvalHistory = Array.from({ length: 5 }, () => ({
-      actionType: 'share_photos_with_family',
-      humanApproved: true,
-    }));
     crossParent = { hasCoParent: false, coParentConsentGranted: false };
     await runOrchestrator(job);
     expect(runExecutor).toHaveBeenCalledTimes(1);
@@ -220,7 +196,7 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
   });
 
   it('G1 opt-in: streak satisfied but action type NOT opted into autonomy → gated, never executes', async () => {
-    optedIn = false;
+    standing = [{ parentUserId: 'parent-1', streakReached: true, optedIn: false }];
     await runOrchestrator(job);
     expect(runExecutor).not.toHaveBeenCalled();
     expect(recordActionGate).toHaveBeenCalledWith(
@@ -229,7 +205,28 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
   });
 
   it('G1 opt-in: streak satisfied AND opted in → proceeds and executes', async () => {
-    optedIn = true;
+    await runOrchestrator(job);
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+    expect(recordActionGate).not.toHaveBeenCalled();
+  });
+
+  it('per parent: one parent holds the streak and the other the grant → gated, never executes', async () => {
+    standing = [
+      { parentUserId: 'parent-1', streakReached: true, optedIn: false },
+      { parentUserId: 'parent-2', streakReached: false, optedIn: true },
+    ];
+    await runOrchestrator(job);
+    expect(runExecutor).not.toHaveBeenCalled();
+    expect(recordActionGate).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'autonomy_not_opted_in', actionType: 'send_email' }),
+    );
+  });
+
+  it('per parent: the co-parent alone holds both → proceeds and executes', async () => {
+    standing = [
+      { parentUserId: 'parent-1', streakReached: false, optedIn: false },
+      { parentUserId: 'parent-2', streakReached: true, optedIn: true },
+    ];
     await runOrchestrator(job);
     expect(runExecutor).toHaveBeenCalledTimes(1);
     expect(recordActionGate).not.toHaveBeenCalled();

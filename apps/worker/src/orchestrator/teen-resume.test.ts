@@ -129,9 +129,9 @@ vi.mock('../services/memory-writer.js', () => ({
   // the teen-redaction cap: old family, full streak, single-parent, AND a
   // teenager in the stages (so teen_content × teenager fires the cap).
   loadFamilyCreatedAt: vi.fn(async () => new Date('2020-01-01T00:00:00.000Z')),
-  loadActionApprovalHistory: vi.fn(async () =>
-    Array.from({ length: 5 }, () => ({ actionType: 'send_email', humanApproved: true })),
-  ),
+  loadAutonomyStanding: vi.fn(async () => [
+    { parentUserId: 'parent-1', streakReached: true, optedIn: true },
+  ]),
   loadCrossParentConsent: vi.fn(async () => ({
     hasCoParent: false,
     coParentConsentGranted: false,
