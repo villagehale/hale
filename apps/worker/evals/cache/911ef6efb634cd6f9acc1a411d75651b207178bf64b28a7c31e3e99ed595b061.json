@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says the item is a bare errands note with no child named, so it could belong to the parent alone or to the household. That ambiguity supports the unsure verdict, it adds no unsupported facts, and it is a single plain clause. It is slightly weak only because it partly copies the title back rather than naming the item as a vague errand note.",
-    "score": 5
-  }
-}

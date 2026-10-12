@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as another child's birthday party, which by rule is a kid item, so it supports the kid verdict. It is one short clause. The claim that 'the family's kids would attend' is a small assumption, though, because the item never says which child, or whether both, is invited. A tighter reason would simply be 'another child's birthday party, so a kid item'.",
-    "score": 4
-  }
-}

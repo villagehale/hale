@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a dentist appointment in French that names no child, so by the rule it belongs to the parent. The classifier's reason says exactly this in one plain clause, matches the adult verdict, and adds no unsupported facts.",
-    "score": 5
-  }
-}

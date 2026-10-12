@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a bare initial, so there is nothing to tie it to a child or to the parent, and unsure is the right call under the bare-item rule. The reason says exactly this in one plain clause, adds no facts the item doesn't support, and backs the verdict given.",
-    "score": 5
-  }
-}

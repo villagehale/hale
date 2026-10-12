@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause. It identifies the item as a daycare pickup, a childcare logistics task, and links that directly to the kid verdict. It adds no unsupported facts, such as naming which child, and it doesn't just repeat the title.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Marco is correctly noted as not one of the children, but the reason only builds the case for the parent's own (no child named, could be the parent's). It never says why the item is ambiguous, for instance that tennis could equally be a child's lesson. So it argues toward `adult` rather than explaining the `unsure` verdict beside it.",
-    "score": 2
-  }
-}

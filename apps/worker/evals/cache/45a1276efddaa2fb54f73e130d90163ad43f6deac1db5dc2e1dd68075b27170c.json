@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a dentist appointment in French that names no child, so the rule makes it the parent's own. The classifier's reason is one plain clause that says what the item is, gives that rule as the cause, and matches the adult verdict. It adds no unsupported facts.",
-    "score": 5
-  }
-}

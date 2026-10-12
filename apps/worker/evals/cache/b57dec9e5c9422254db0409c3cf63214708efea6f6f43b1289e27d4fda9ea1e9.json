@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item names Mia Chen with a department in brackets, which marks an adult coworker who only shares the child's first name, so a one-to-one meeting is the parent's own. The classifier's reason captures this: a work 1:1, an adult named with a surname and team, therefore the parent's. One small slip is calling '(Product)' a work title when it is more a team or department. Still one clear clause that matches the verdict.",
-    "score": 4
-  }
-}

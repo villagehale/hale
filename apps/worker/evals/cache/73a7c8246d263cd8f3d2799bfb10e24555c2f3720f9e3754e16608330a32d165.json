@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause that names the item as a physio appointment for a shoulder. It calls it the parent's own health appointment, which fits the rule that an appointment with no child named belongs to the parent. It does not spell out \"no child named\", but the explanation is clear and fully supports the adult verdict.",
-    "score": 5
-  }
-}

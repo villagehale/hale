@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A daily standup is a recurring work meeting with no child named, so it belongs to the parent. The classifier's reason says this in one plain clause, supports the adult verdict, and adds no unsupported facts.",
-    "score": 5
-  }
-}

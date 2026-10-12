@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is a single plain clause that matches the unsure verdict. It notes that the item names no child and treats a bare errand as ambiguous between the parent's own task and a family one. It invents nothing. The wording 'a family's' is slightly awkward, but the logic is sound.",
-    "score": 5
-  }
-}

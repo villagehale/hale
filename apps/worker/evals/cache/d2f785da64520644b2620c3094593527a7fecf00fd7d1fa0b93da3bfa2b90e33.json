@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It says what the item is (a bare initial) and why it can't be placed (nothing ties it to a child or to the parent), which supports the unsure verdict. It adds no facts the item doesn't support.",
-    "score": 5
-  }
-}

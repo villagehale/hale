@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one short clause, fits the item, and supports the kid verdict. It says what the item is (a family room booking) and why it leads there: it names both children, which the trip rule counts as a kid item. Calling it a trip 'for the children' slightly overstates a family booking, but the item supports it and it adds no invented fact.",
-    "score": 5
-  }
-}

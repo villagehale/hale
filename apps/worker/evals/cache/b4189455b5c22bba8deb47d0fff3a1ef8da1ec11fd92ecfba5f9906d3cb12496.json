@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a preschool swim class registration, a kid activity, which supports the kid verdict in one short clause. However, 'for the family's only child' assumes the class is for Wren when the item never names her. The rule already counts a kid activity with no child named as a kid item, so this assumption is a mild overreach rather than a needed point.",
-    "score": 4
-  }
-}

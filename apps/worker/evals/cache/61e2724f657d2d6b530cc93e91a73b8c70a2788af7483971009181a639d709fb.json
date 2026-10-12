@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is a single plain clause and every fact in it is supported. It names the kind of thing, a checkup. It ties it to Wren, who is a listed child, and the 18-month detail matches both the item and Wren's age. It concludes that this is a child's appointment, which supports the kid verdict. The 'a 18-month' grammar slip is minor.",
-    "score": 5
-  }
-}

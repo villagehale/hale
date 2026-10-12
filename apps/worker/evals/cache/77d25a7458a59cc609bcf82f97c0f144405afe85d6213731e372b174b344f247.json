@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is an alumni dinner RSVP, which plainly belongs to the parent. Alumni events are adult social commitments, and neither Sebastian (15 months) nor Mia (6 years) could be an alumnus. The classifier's single short clause says what the item is (an alumni dinner RSVP) and why that makes it adult (the parent's own social event). It invents no facts and supports the given verdict.",
-    "score": 5
-  }
-}

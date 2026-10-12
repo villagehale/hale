@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause. It names the item as a hotel booking and notes that no child is named. It weighs a family trip against the parent's own stay, which is why unsure fits, matching the trip rule. It adds no unsupported facts.",
-    "score": 5
-  }
-}

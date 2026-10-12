@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item names Wren and asks for a daycare pickup, which is plainly about the child. The classifier's reason is one short plain clause. It says what the item is (a pickup request) and why that means kid (care for a named child). It adds nothing the item doesn't support.",
-    "score": 5
-  }
-}

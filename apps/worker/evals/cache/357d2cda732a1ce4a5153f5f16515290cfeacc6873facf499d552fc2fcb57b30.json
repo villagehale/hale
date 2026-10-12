@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It says what the item is, a flight for a sales conference, and why that makes it adult: it is plainly the parent's work trip, which the trip rule covers. Every fact comes from the item, and the reason supports the verdict given.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause. It names what the item is, a restaurant booking for two, and draws the adult verdict from it: no child is named and a table for two reads as the parent's own night out. It adds no unsupported facts and matches the verdict.",
-    "score": 5
-  }
-}

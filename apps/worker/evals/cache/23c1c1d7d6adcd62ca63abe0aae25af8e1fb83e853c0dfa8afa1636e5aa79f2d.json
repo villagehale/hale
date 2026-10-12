@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause. It says what the item is (a birthday party) and why it is a kid item (it names Mia, one of the listed children). It supports the kid verdict and adds no facts the item lacks.",
-    "score": 5
-  }
-}

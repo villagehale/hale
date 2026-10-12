@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a restaurant booking for two) and why that makes it adult (it is the parent's own dinner). It matches the verdict, adds no unsupported facts and is one short clause. Calling it a dinner is a fair reading of a 7:30 table booking.",
-    "score": 5
-  }
-}

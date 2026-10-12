@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a music class), points to the deciding fact (it names the child Theo), and lands on the given kid verdict. The 50-month age comes from the supplied children list, so it is a supported fact, not an invented one. It is one short clause, though restating the age adds a little bulk.",
-    "score": 5
-  }
-}

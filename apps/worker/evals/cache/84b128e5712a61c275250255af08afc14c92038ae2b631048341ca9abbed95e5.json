@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly treats the item as a check-in email for a flight that names no child and is neither plainly a work trip nor plainly a family booking, which the trip rule makes unsure. Its one clause explains that cleanly. However, calling Port Haven 'a port' reads a place type into a destination name the item does not support, a small unsupported detail.",
-    "score": 4
-  }
-}

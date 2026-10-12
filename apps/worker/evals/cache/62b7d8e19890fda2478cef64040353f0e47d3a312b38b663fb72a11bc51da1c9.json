@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier correctly calls the item a library storytime, a children's activity, which supports the kid verdict, and it invents no facts. But the added 'names no adult' is a weak, off-rule justification. The real rule is that a kid activity with no child named is still a kid item.",
-    "score": 4
-  }
-}

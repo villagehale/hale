@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a bare placeholder with no detail. That matches the rule that a bare or ambiguous item is unsure, so it supports the given verdict. It is one short plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

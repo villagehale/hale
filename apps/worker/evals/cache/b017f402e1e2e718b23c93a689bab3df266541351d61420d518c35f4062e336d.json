@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It says what the item is, a hotel reservation, and why that makes it unsure: no child is named and it is not plainly a family or work booking. That is the trip rule applied directly, and it adds no facts the item doesn't support.",
-    "score": 5
-  }
-}

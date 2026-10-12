@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason rightly treats the email as a flight check-in that names no child and is not plainly a work trip, which supports unsure under the trip rule. But it reads the place name 'Port Haven' as 'a port', a small fact the item does not support, so it falls short of a 5.",
-    "score": 4
-  }
-}

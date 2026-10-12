@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a bare 'Busy' block with no detail, and that lack of detail correctly supports the unsure verdict under the bare-item rule. It is one short plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

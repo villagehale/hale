@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is Chinese for 'Lina's music class', and Lina is a 30-month-old child in the family, so this is a child's activity. The classifier's reason is one plain clause that says what the item is (a music class), why it leads to the verdict (it names Lina), and that it is a kid activity. It adds no unsupported facts and matches the given verdict.",
-    "score": 5
-  }
-}

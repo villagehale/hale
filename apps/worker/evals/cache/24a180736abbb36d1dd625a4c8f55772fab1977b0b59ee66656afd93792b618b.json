@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a generic errands note, which is what it is, and correctly notes that no child is named. That makes it a bare item, so 'unsure' follows. It is one short clause, supports the verdict, and adds no invented facts.",
-    "score": 5
-  }
-}

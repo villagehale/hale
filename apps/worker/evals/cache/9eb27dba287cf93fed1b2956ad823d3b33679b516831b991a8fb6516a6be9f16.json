@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason fits the unsure verdict: it identifies the item as a bare call with no person or activity named, and the classifier's rules make a bare item unsure. It adds no unsupported facts and is a single plain clause. Its only weakness is the tacked-on 'could be a child's or the parent's', which is slightly generic but still states the why.",
-    "score": 5
-  }
-}

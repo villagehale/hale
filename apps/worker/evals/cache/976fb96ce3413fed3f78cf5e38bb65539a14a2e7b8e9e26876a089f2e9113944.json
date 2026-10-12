@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits the verdict. It says the item is a bare initial and that nothing in it ties it to the children or the parent, which leads straight to unsure. It is one short clause and adds no facts the item does not support.",
-    "score": 5
-  }
-}

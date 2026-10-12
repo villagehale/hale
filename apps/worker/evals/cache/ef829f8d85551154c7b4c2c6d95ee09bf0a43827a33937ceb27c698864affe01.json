@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a dentist cleaning) and treats it as the parent's own visit, which fits the rule that an appointment with no child named is the parent's. It doesn't spell out that no child is named, but that is implied and it supports the adult verdict. It is one clause and invents no facts.",
-    "score": 5
-  }
-}

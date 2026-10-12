@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause that does the job. It says the item is a 1:1 meeting, gives the evidence (a full surname and a 'design' work tag), and concludes it is an adult's meeting, which matches the adult verdict. That correctly applies the rule that an adult sharing a child's first name is still an adult. It also invents no facts, since the surname and the design label both appear in the item.",
-    "score": 5
-  }
-}
