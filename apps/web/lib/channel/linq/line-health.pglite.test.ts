@@ -176,6 +176,28 @@ describe('the Linq door · line health', () => {
     expect(await readLinePaused(db.database)).toBe(true);
   });
 
+  it('names a line status with no sending line configured, and stores nothing', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('LINQ_FROM_E164', '');
+    const outcomes: InboundRouteOutcome[] = [];
+
+    const response = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
+    expect(await response.json()).toEqual({ outcome: 'no_sending_line' });
+    expect(await db.database.select().from(schema.linqLineHealth)).toEqual([]);
+  });
+
+  it('reads a pause only for the sending line, whoever wrote the row', async () => {
+    await db.database
+      .insert(schema.linqLineHealth)
+      .values({ phoneNumber: OTHER_LINE, status: 'flagged', paused: true, updatedAt: NOW });
+    expect(await readLinePaused(db.database)).toBe(false);
+
+    await db.database
+      .insert(schema.linqLineHealth)
+      .values({ phoneNumber: LINE, status: 'flagged', paused: true, updatedAt: NOW });
+    expect(await readLinePaused(db.database)).toBe(true);
+  });
+
   it('writes nothing while the flag is unset', async () => {
     const outcomes: InboundRouteOutcome[] = [];
     const response = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));

@@ -27,6 +27,7 @@ import {
 } from '~/lib/channel/family-recipients';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { dedupeActive } from '~/lib/channel/ledger';
+import { linqFromE164 } from '~/lib/channel/linq/config';
 import {
   type FamilyOutboundTarget,
   deliverFamilyOutbound,
@@ -143,12 +144,19 @@ export function defaultProactiveReviewDeps(): ProactiveReviewDeps {
   };
 }
 
-/** True when Linq has flagged or throttled Hale's sending line, the one line the door stores. */
+/** True when Linq has flagged or throttled Hale's sending line (`LINQ_FROM_E164`). */
 export async function readLinePaused(database: Database): Promise<boolean> {
+  const sendingLine = linqFromE164();
+  if (sendingLine === null) return false;
   const [row] = await database
     .select({ paused: schema.linqLineHealth.paused })
     .from(schema.linqLineHealth)
-    .where(eq(schema.linqLineHealth.paused, true))
+    .where(
+      and(
+        eq(schema.linqLineHealth.phoneNumber, sendingLine),
+        eq(schema.linqLineHealth.paused, true),
+      ),
+    )
     .limit(1);
   return row !== undefined;
 }

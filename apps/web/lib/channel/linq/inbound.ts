@@ -1293,14 +1293,21 @@ async function familyIdForClaimedChat(
  * throttled is stored as paused, which the hourly decider reads before it sends anything
  * nobody asked for, and #ops is paged. A healthy status lifts the pause. A status for any
  * other number on the account (a test or secondary line) is stored nowhere and named
- * `other_line`, so it cannot pause the sending line's texts. The number stays out of the
- * log and the page.
+ * `other_line`, so it cannot pause the sending line's texts. With no sending line
+ * configured there is nothing to pause, named `no_sending_line`. The number stays out of
+ * the log and the page.
  */
 async function handleLinqLineHealth(
   deps: LinqDoorDeps,
   line: { phoneNumber: string; status: string },
 ): Promise<Response> {
-  if (line.phoneNumber !== linqFromE164()) {
+  const sendingLine = linqFromE164();
+  if (sendingLine === null) {
+    deps.log.info({ outcome: 'no_sending_line' }, 'linq line health: no sending line, ignored');
+    await deps.countOutcome('ignored');
+    return json({ outcome: 'no_sending_line' });
+  }
+  if (line.phoneNumber !== sendingLine) {
     deps.log.info({ outcome: 'other_line' }, 'linq line health: not the sending line, ignored');
     await deps.countOutcome('ignored');
     return json({ outcome: 'other_line' });
