@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The answer engages with the health question, includes an appropriate 'I'm not a doctor' qualifier, and gives brief, general guidance without inventing clinics, prices, or schedules. It doesn't claim to already be watching the family. The return line re-asks the consent question, though it broadens pendingAsk slightly by saying 'family week' rather than the exact framing, which is a minor drift but not a second unrelated ask or an argument for saying yes.",
+    "score": 4
+  }
+}
