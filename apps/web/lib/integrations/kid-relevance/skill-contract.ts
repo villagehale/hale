@@ -86,13 +86,11 @@ function namesSomething(word: string): boolean {
 /** True when `text` carries any one naming word of any of `own`. */
 export function sharesAnyWord(text: string, own: readonly (string | null)[]): boolean {
   const words = new Set(foldWords(text).split(' '));
-  return own.some(
-    (value) =>
-      value !== null &&
-      value
-        .normalize('NFKC')
-        .split(/[^\p{L}\p{M}\p{N}]+/u)
-        .some((word) => namesSomething(word) && words.has(foldWords(word))),
+  return own.some((value) =>
+    value
+      ?.normalize('NFKC')
+      .split(/[^\p{L}\p{M}\p{N}]+/u)
+      .some((word) => namesSomething(word) && words.has(foldWords(word))),
   );
 }
 
