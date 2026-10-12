@@ -1662,7 +1662,8 @@ describe('runProactiveReview', () => {
 
   it('keeps a clock-less code hold from the model until something new arrives', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    vi.stubEnv('LINQ_FROM_E164', '+15555550199');
+    // Spelled as an env var may be: the stored row below is the same line.
+    vi.stubEnv('LINQ_FROM_E164', ' +1 (555) 555-0199 ');
     const id = await enqueue();
     const h = harness(sendAll, { linePaused: async () => true });
     const nextEvening = new Date(THURSDAY_EVENING.getTime() + 24 * 60 * 60_000);
