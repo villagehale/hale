@@ -40,7 +40,7 @@ function toolMessage(body: string): Anthropic.Message {
     model: 'claude-haiku',
     stop_reason: 'end_turn',
     stop_sequence: null,
-    content: [{ type: 'text', text: JSON.stringify({ body }) }],
+    content: [{ type: 'text', text: JSON.stringify({ body }), citations: null }],
     usage: usage(),
   };
 }
