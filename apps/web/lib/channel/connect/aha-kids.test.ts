@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { KID_VERDICT_TOOL } from '~/lib/integrations/kid-relevance/skill-contract';
+import { structuredReply } from '~/lib/testing/structured-reply';
 import {
   type KidItemClassifier,
   type KidItemsInput,
@@ -235,26 +236,20 @@ describe('kidRelatedAha', () => {
 describe('createKidItemClassifier', () => {
   /** A scripted AgentClient: the port under the classifier, never the model (rule #8). */
   function scriptedClient(childName: string | null) {
-    const requests: { tools: { input_schema: unknown }[] }[] = [];
-    const respond = async (request: { tools: { input_schema: unknown }[] }) => {
+    const requests: { output_config: { format: { schema: unknown } } }[] = [];
+    const respond = async (request: { output_config: { format: { schema: unknown } } }) => {
       requests.push(request);
-      return {
-        content: [
-          {
-            type: 'tool_use',
-            id: 't',
-            name: KID_VERDICT_TOOL,
-            input: { verdicts: [{ ref: 'c0', reason: 'a swim class', verdict: 'kid', childName }] },
-          },
-        ],
-        stop_reason: 'tool_use',
-        usage: { input_tokens: 1, output_tokens: 1 },
-      };
+      return structuredReply(
+        request,
+        KID_VERDICT_TOOL,
+        { verdicts: [{ ref: 'c0', reason: 'a swim class', verdict: 'kid', childName }] },
+        { input_tokens: 1, output_tokens: 1 },
+      );
     };
     const client = {
       messages: {
         create: respond,
-        stream: (request: { tools: { input_schema: unknown }[] }) => ({
+        stream: (request: { output_config: { format: { schema: unknown } } }) => ({
           finalMessage: () => respond(request),
         }),
       },
@@ -267,8 +262,8 @@ describe('createKidItemClassifier', () => {
     vi.stubEnv('HALE_LLM_NO_STREAM', '1');
     const { client, requests } = scriptedClient('Mia');
     await createKidItemClassifier(client).classify(input);
-    expect(JSON.stringify(requests[0]?.tools[0]?.input_schema)).toContain(
-      '"enum":["Sebastian","Mia",null]',
+    expect(JSON.stringify(requests[0]?.output_config.format.schema)).toContain(
+      '"childName":{"anyOf":[{"type":"string","enum":["Sebastian","Mia"]},{"type":"null"}]}',
     );
     vi.unstubAllEnvs();
   });

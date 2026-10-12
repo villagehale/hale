@@ -3,6 +3,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
+import { structuredReply } from '~/lib/testing/structured-reply';
 import { judgeKidRelevance, seriesKeyForEvent } from './judge';
 import {
   KID_JUDGE_ITEMS_PER_CALL,
@@ -50,11 +51,10 @@ function scriptedClient(...steps: Scripted[]) {
     if (answer && typeof answer === 'object' && 'stop_reason' in answer) {
       return { content: [], usage: { input_tokens: 1, output_tokens: 1 }, ...answer };
     }
-    return {
-      content: [{ type: 'tool_use', id: 't', name: KID_VERDICT_TOOL, input: answer }],
-      stop_reason: 'tool_use',
-      usage: { input_tokens: 1, output_tokens: 1 },
-    };
+    return structuredReply(request, KID_VERDICT_TOOL, answer, {
+      input_tokens: 1,
+      output_tokens: 1,
+    });
   };
   const client = {
     messages: {
@@ -314,8 +314,10 @@ describe('judgeKidRelevance', () => {
   it("offers the model only this family's children as names", async () => {
     const { client, calls } = scriptedClient(byText({ Swim: { verdict: 'kid' } }));
     await judge(client, [item('a', 'Swim')]);
-    const tools = calls[0]?.request.tools as { input_schema: unknown }[];
-    expect(JSON.stringify(tools[0]?.input_schema)).toContain('"enum":["Wren","Juno",null]');
+    const format = calls[0]?.request.output_config as { format: { schema: unknown } };
+    expect(JSON.stringify(format.format.schema)).toContain(
+      '"childName":{"anyOf":[{"type":"string","enum":["Wren","Juno"]},{"type":"null"}]}',
+    );
   });
 
   it('a child name the family does not have fails validation and is held, never stored', async () => {
@@ -377,7 +379,7 @@ describe('judgeKidRelevance', () => {
 
   it('retries a failed call once with thinking off, then holds it and writes nothing', async () => {
     const { client, calls } = scriptedClient(
-      () => ({ stop_reason: 'end_turn' }),
+      () => ({ stop_reason: 'max_tokens' }),
       () => ({ stop_reason: 'max_tokens' }),
     );
     const judged = await judge(client, [item('a', 'Swim')]);
@@ -395,7 +397,7 @@ describe('judgeKidRelevance', () => {
     });
     const { client, calls } = scriptedClient((input, request) =>
       input.items.length > 1 || input.items[0]?.text.includes('Poison')
-        ? { stop_reason: 'end_turn' }
+        ? { stop_reason: 'max_tokens' }
         : answer(input, request),
     );
     const judged = await judge(client, [

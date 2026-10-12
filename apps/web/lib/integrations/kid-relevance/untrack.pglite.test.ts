@@ -8,6 +8,7 @@ import {
 } from '~/lib/integrations/calendar-alert';
 import { emailAlertDedupeKey } from '~/lib/integrations/email-alert';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
+import { structuredReply } from '~/lib/testing/structured-reply';
 import { judgeKidRelevance, loadNotMineHints } from './judge';
 import { KID_VERDICT_TOOL } from './skill-contract';
 import { UntrackActorNotParentError, untrackItem } from './untrack';
@@ -360,22 +361,14 @@ describe('untrackItem', () => {
     let modelCalls = 0;
     const client = {
       messages: {
-        create: async () => {
+        create: async (request: unknown) => {
           modelCalls += 1;
-          return {
-            content: [
-              {
-                type: 'tool_use',
-                id: 't',
-                name: KID_VERDICT_TOOL,
-                input: {
-                  verdicts: [{ ref: 'i0', reason: 'swim', verdict: 'kid', childName: null }],
-                },
-              },
-            ],
-            stop_reason: 'tool_use',
-            usage: { input_tokens: 1, output_tokens: 1 },
-          };
+          return structuredReply(
+            request,
+            KID_VERDICT_TOOL,
+            { verdicts: [{ ref: 'i0', reason: 'swim', verdict: 'kid', childName: null }] },
+            { input_tokens: 1, output_tokens: 1 },
+          );
         },
       },
     } as unknown as AgentClient;

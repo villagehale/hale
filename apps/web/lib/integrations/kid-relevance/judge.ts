@@ -5,7 +5,7 @@ import { deriveStage } from '@hale/types';
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { loadKidItemClassifierSkill } from '~/lib/cron/skill';
 import { kidRelevanceInputIndex } from '~/lib/crypto/blind-index';
-import { StructuredRefusalError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
+import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import {
   KID_JUDGE_ITEMS_PER_CALL,
   KID_JUDGE_MAX_TOKENS,
@@ -254,12 +254,14 @@ async function callJudge(
   try {
     return await ask(lane);
   } catch (err) {
-    if (err instanceof StructuredRefusalError) return { kind: 'refused' };
+    if (err instanceof StructuredOutputError && err.outcome === 'refusal')
+      return { kind: 'refused' };
   }
   try {
     return await ask(withoutThinking(lane) ?? lane);
   } catch (err) {
-    if (err instanceof StructuredRefusalError) return { kind: 'refused' };
+    if (err instanceof StructuredOutputError && err.outcome === 'refusal')
+      return { kind: 'refused' };
     return { kind: 'failed' };
   }
 }

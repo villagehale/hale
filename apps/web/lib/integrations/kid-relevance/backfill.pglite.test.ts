@@ -4,6 +4,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
+import { structuredReply } from '~/lib/testing/structured-reply';
 import { revertKidRelevanceBackfill, runKidRelevanceBackfill } from './backfill';
 import { KID_VERDICT_TOOL, type KidSkillInput } from './skill-contract';
 
@@ -48,25 +49,19 @@ const client = {
       await duringJudge?.();
       const input = JSON.parse(request.messages[0]?.content ?? '{}') as KidSkillInput;
       seenTexts.push(...input.items.map((item) => item.text));
-      return {
-        content: [
-          {
-            type: 'tool_use',
-            id: 't',
-            name: KID_VERDICT_TOOL,
-            input: {
-              verdicts: input.items.map((item) => ({
-                ref: item.ref,
-                reason: 'scripted',
-                verdict: scriptedVerdict(item.text),
-                childName: null,
-              })),
-            },
-          },
-        ],
-        stop_reason: 'tool_use',
-        usage: { input_tokens: 1, output_tokens: 1 },
-      };
+      return structuredReply(
+        request,
+        KID_VERDICT_TOOL,
+        {
+          verdicts: input.items.map((item) => ({
+            ref: item.ref,
+            reason: 'scripted',
+            verdict: scriptedVerdict(item.text),
+            childName: null,
+          })),
+        },
+        { input_tokens: 1, output_tokens: 1 },
+      );
     },
   },
 } as unknown as AgentClient;
@@ -420,7 +415,12 @@ describe('runKidRelevanceBackfill', () => {
       .select({ title: schema.emailAlertOffers.title, location: schema.emailAlertOffers.location })
       .from(schema.emailAlertOffers)
       // The pglite database is not reset between tests, so scope to this seed's connection.
-      .where(and(eq(schema.emailAlertOffers.messageId, 'msg-dinner'), eq(schema.emailAlertOffers.integrationId, gmail)));
+      .where(
+        and(
+          eq(schema.emailAlertOffers.messageId, 'msg-dinner'),
+          eq(schema.emailAlertOffers.integrationId, gmail),
+        ),
+      );
     expect(offer).toEqual({ title: '', location: null });
   });
 
