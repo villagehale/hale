@@ -302,6 +302,7 @@ describe('handleLinqInboundRequest', () => {
         channel_message_id: message?.id,
         provider_message_id: MESSAGE_ID,
         received_at: NOW.toISOString(),
+        in_group: false,
       },
     ]);
   });
@@ -387,6 +388,8 @@ describe('handleLinqInboundRequest', () => {
     await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
     expect(h.reads).toEqual([]);
     expect(h.jobs).toHaveLength(1);
+    // Group onboarding v2 is dark here, and the job still says the text came from a group.
+    expect(h.jobs[0]?.in_group).toBe(true);
     const message = h.fake
       .rows(schema.channelMessages)
       .find((row) => row.providerMessageId === MESSAGE_ID);
