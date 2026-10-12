@@ -23,6 +23,7 @@ import {
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
+  PROACTIVE_CAP,
   PROACTIVE_QUIET_HOURS,
   type ProactiveHoldReason,
   type ProactiveSendKind,
@@ -36,7 +37,6 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { dayKeyOf } from '~/lib/format/datetime';
 import { voiceClient } from '~/lib/loop/voice/compose';
-import { writeFact } from '~/lib/memory/facts';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WriterResult, composeProactiveBatch } from './compose';
@@ -49,7 +49,7 @@ import {
 } from './finalize';
 import { type ProactiveCadence, proactiveCadence, requestedCadence, unroutedKinds } from './flag';
 import { type OpenCandidate, planHourlyReview } from './hold';
-import { CADENCE_FACT_KEY, cadenceFactValue } from './preference';
+import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import { type FamilySnapshot, loadFamilyContext, loadFamilySnapshot } from './snapshot';
 import { type ToolCandidate, boundedLine } from './tools';
 import { volumeIsUnusual } from './volume';
@@ -74,6 +74,10 @@ export interface ProactiveReviewSummary {
   dropped: number;
   /** Batches whose drop the code refused because the parent asked for an item in them. */
   dropRefused: number;
+  /** Batches whose unbounded hold the code refused over an item the parent asked for. */
+  holdRefused: number;
+  /** Rows whose kind the outbound gate has no class for, dropped by name before review. */
+  unknownKind: number;
   skipped: number;
   failed: number;
 }
@@ -162,6 +166,8 @@ export async function runProactiveReview(
     held: 0,
     dropped: 0,
     dropRefused: 0,
+    holdRefused: 0,
+    unknownKind: 0,
     skipped: 0,
     failed: 0,
   };
@@ -174,11 +180,29 @@ export async function runProactiveReview(
   const byFamily = new Map<string, QueuedItem[]>();
   for (const row of open) {
     if (row.status !== 'queued' && row.status !== 'held') continue;
+    if (!isProactiveSendKind(row.kind)) {
+      // The gate has no class for it, so no send of it can be gated: never offered.
+      await mark(database, [row.id], {
+        status: 'dropped',
+        reason: 'unknown_kind',
+        decision: null,
+        holdUntil: null,
+        now,
+      });
+      await audit(database, row.familyId, 'proactive_cadence_skipped', {
+        reason: 'unknown_kind',
+        itemId: row.id,
+        kind: boundedLine(row.kind),
+        mode,
+      });
+      summary.unknownKind += 1;
+      continue;
+    }
     const item: QueuedItem = {
       id: row.id,
       familyId: row.familyId,
       parentUserId: row.parentUserId,
-      kind: row.kind as ProactiveSendKind,
+      kind: row.kind,
       category: row.category,
       templateKey: row.templateKey,
       dedupeKey: row.dedupeKey,
@@ -208,6 +232,10 @@ export async function runProactiveReview(
     }
   }
   return summary;
+}
+
+function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
+  return Object.hasOwn(PROACTIVE_CAP, kind);
 }
 
 function errorLabel(err: unknown): string {
@@ -301,6 +329,7 @@ async function holdByName(
     reason,
     itemIds,
     ...(held.parentUserId ? { parentUserId: held.parentUserId } : {}),
+    mode: 'live',
   });
 }
 
@@ -369,7 +398,7 @@ async function dropAlreadySent(
       holdUntil: null,
       now,
     });
-    await audit(database, familyId, 'proactive_cadence_skipped', { reason, itemIds });
+    await audit(database, familyId, 'proactive_cadence_skipped', { reason, itemIds, mode: 'live' });
     summary.dropped += 1;
   }
   return kept;
@@ -434,10 +463,14 @@ async function reviewFamily(
     summary.skipped += 1;
     return;
   }
-  const snapshot = await loadFamilySnapshot(database, {
+  const offered = new Set(plan.candidates.map((candidate) => candidate.id));
+  const { snapshot, textAuthors } = await loadFamilySnapshot(database, {
     familyId,
     context,
     candidates: plan.candidates,
+    candidateParents: [
+      ...new Set(items.filter((item) => offered.has(item.id)).map((item) => item.parentUserId)),
+    ],
     priorDecisions: plan.priorDecisions,
     now,
   });
@@ -452,10 +485,12 @@ async function reviewFamily(
   // line before it reaches an immutable audit row or the candidate row.
   const reason = boundedLine(decision.reason);
 
-  const offered = new Set(plan.candidates.map((candidate) => candidate.id));
   const chosen = items.filter((item) => offered.has(item.id) && decision.itemIds.includes(item.id));
   const unchosen = items.filter((item) => offered.has(item.id) && !chosen.includes(item));
   const hold = clampHold(decision.holdUntil, chosen);
+  const cadence = keptCadence(decision, mode, textAuthors);
+  // The decision row is where a cadence preference is kept (preference.ts), and the
+  // reason it was not, by name.
   await audit(database, familyId, 'proactive_cadence_decision', {
     action: decision.action,
     itemIds: chosen.map((item) => item.id),
@@ -463,6 +498,7 @@ async function reviewFamily(
     reason,
     holdUntil: hold.holdUntil,
     ...(hold.clamped ? { holdClamped: 'worthless_after', askedHoldUntil: decision.holdUntil } : {}),
+    ...(cadence ? { cadencePreference: cadence } : {}),
     mode,
   });
   await mark(
@@ -471,21 +507,6 @@ async function reviewFamily(
     { status: 'held', reason: 'not_chosen', decision: null, holdUntil: null, now },
   );
 
-  if (decision.frequencyPreference) {
-    await writeFact(database, {
-      familyId,
-      childId: null,
-      factType: 'preference',
-      factKey: CADENCE_FACT_KEY,
-      factValue: cadenceFactValue(
-        decision.frequencyPreference.direction,
-        boundedLine(decision.frequencyPreference.note),
-      ),
-      confidence: 1,
-      inferredBy: 'proactive-decider',
-      validFrom: now,
-    });
-  }
   if (chosen.length === 0) return;
 
   const ids = chosen.map((item) => item.id);
@@ -521,7 +542,31 @@ async function reviewFamily(
     return;
   }
   if (decision.action === 'hold') {
-    await mark(database, ids, {
+    // A clock no `worthlessAfter` bounds would park what the parent asked for in the
+    // waiting set, out of every review until then: the code holds it open instead, by
+    // name, and the next review offers it again (hold.ts).
+    const unbounded = hold.holdUntil !== null && !chosen.some((item) => item.worthlessAfter);
+    const requested = unbounded
+      ? chosen.filter((item) => item.parentRequested).map((item) => item.id)
+      : [];
+    if (requested.length > 0) {
+      await mark(database, requested, {
+        status: 'held',
+        reason: 'hold_refused_parent_requested_unbounded',
+        decision: 'hold',
+        holdUntil: null,
+        now,
+      });
+      await audit(database, familyId, 'proactive_cadence_held', {
+        reason: 'hold_refused_parent_requested_unbounded',
+        itemIds: requested,
+        mode,
+      });
+      summary.holdRefused += 1;
+    }
+    const holdable = ids.filter((id) => !requested.includes(id));
+    if (holdable.length === 0) return;
+    await mark(database, holdable, {
       status: 'held',
       reason,
       decision: 'hold',
@@ -550,6 +595,23 @@ async function reviewFamily(
     now,
     summary,
   });
+}
+
+/**
+ * What the decision row says about a pace the decider heard. Live keeps it for the one
+ * parent whose new texts it read; anything else is named, never a silent skip.
+ */
+function keptCadence(
+  decision: DeciderDecision,
+  mode: 'shadow' | 'live',
+  textAuthors: readonly string[],
+): CadencePreference | CadenceNotKept | null {
+  const heard = decision.frequencyPreference;
+  if (!heard) return null;
+  if (mode === 'shadow') return 'not_written_shadow';
+  const [author, ...others] = textAuthors;
+  if (author === undefined || others.length > 0) return 'not_written_no_single_author';
+  return cadencePreference(author, heard.direction, boundedLine(heard.note));
 }
 
 async function sendChosen(

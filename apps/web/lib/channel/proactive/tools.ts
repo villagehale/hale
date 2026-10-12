@@ -90,9 +90,12 @@ const decisionSchema = z
     reason: z.string().refine((value) => value.trim().length > 0),
     action: z.enum(['send_now', 'hold', 'drop']),
     item_ids: z.array(z.string()),
+    // The parser is lenient (a trailing "(comment)" still parses), so only the instant it
+    // read is kept: the row and the immutable audit trail never hold the model's own text.
     hold_until: z
       .string()
       .refine((value) => !Number.isNaN(Date.parse(value)))
+      .transform((value) => new Date(value).toISOString())
       .nullable(),
     frequency_direction: z.enum(['less', 'more']).nullable(),
     frequency_note: z.string().nullable(),

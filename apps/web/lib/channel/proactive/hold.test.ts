@@ -120,4 +120,18 @@ describe('planHourlyReview', () => {
         .candidates,
     ).toMatchObject([{ id: 'paused' }]);
   });
+
+  it('offers a held-open item the parent asked for at the next review, the same day, with nothing new', () => {
+    const plan = planHourlyReview({
+      items: [
+        item({ id: 'asked', status: 'held', holdUntil: null, parentRequested: true }),
+        item({ id: 'open', status: 'held', holdUntil: null }),
+      ],
+      now: NOW,
+      timeZone: TZ,
+      externalSignal: false,
+    });
+    expect(plan.skipModel).toBe(false);
+    expect(plan.candidates.map((candidate) => candidate.id)).toEqual(['asked']);
+  });
 });

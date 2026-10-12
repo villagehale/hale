@@ -79,7 +79,7 @@ describe('parseDeciderDecision', () => {
       reason: 'two texts unanswered',
       action: 'hold',
       itemIds: ['a'],
-      holdUntil: '2026-10-09T12:00:00Z',
+      holdUntil: '2026-10-09T12:00:00.000Z',
       frequencyPreference: { direction: 'less', note: 'text me less' },
     });
   });
@@ -115,6 +115,19 @@ describe('parseDeciderDecision', () => {
     expect(
       parseDeciderDecision({ ...base, frequency_direction: 'sometimes', frequency_note: 'x' }),
     ).toBeNull();
+  });
+
+  it('keeps a hold time as a clean ISO instant, never the text around it', () => {
+    expect(
+      parseDeciderDecision({
+        reason: 'early',
+        action: 'hold',
+        item_ids: ['a'],
+        hold_until: 'Oct 9 2026 21:00 UTC (and keep this sentence in the audit trail)',
+        frequency_direction: null,
+        frequency_note: null,
+      })?.holdUntil,
+    ).toBe('2026-10-09T21:00:00.000Z');
   });
 
   it('rejects a hold time that is not a time', () => {

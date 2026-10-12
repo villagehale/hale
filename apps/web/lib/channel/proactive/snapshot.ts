@@ -1,9 +1,9 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNull, lt, max, ne } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, max, ne, sql } from 'drizzle-orm';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { familyHasTeenager } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
-import { CADENCE_FACT_KEY, type CadenceFact, readCadenceFact } from './preference';
+import { type CadencePreference, readCadencePreference } from './preference';
 import { boundedLine } from './tools';
 
 /**
@@ -87,7 +87,8 @@ export interface FamilySnapshot {
   candidates: SnapshotCandidate[];
   recentSends: RecentSend[];
   unansweredStreak: number;
-  frequencyPreference: Omit<CadenceFact, 'schemaVersion'> | null;
+  /** The pace the parent who owns every candidate asked for. Null for a mixed batch. */
+  frequencyPreference: Pick<CadencePreference, 'direction' | 'note'> | null;
   declines: string[];
   /** Lines the parent actually sent. The decider reads cadence from these. */
   recentParentTexts: string[];
@@ -362,6 +363,37 @@ export async function loadFamilyContext(
 
 const PROACTIVE_CATEGORIES = [...new Set(Object.values(PROACTIVE_CATEGORY))];
 
+/** The decision audit row a cadence preference is kept on (preference.ts). */
+const CADENCE_DECISION_ACTION = 'proactive_cadence_decision';
+
+/** The latest pace this one parent asked for, from the decision rows that kept it. */
+async function latestCadence(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<CadencePreference | null> {
+  const [row] = await database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, CADENCE_DECISION_ACTION),
+        sql`${schema.auditLog.after} -> 'cadencePreference' ->> 'parentUserId' = ${parentUserId}`,
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(1);
+  if (!row) return null;
+  return readCadencePreference((row.after as { cadencePreference?: unknown }).cadencePreference);
+}
+
+export interface LoadedSnapshot {
+  snapshot: FamilySnapshot;
+  /** Who sent the texts in `recentParentTexts`. Never handed to the model. */
+  textAuthors: string[];
+}
+
 /** The full snapshot for one family: the loaded context plus the thread's last 14 days. */
 export async function loadFamilySnapshot(
   database: Database,
@@ -369,13 +401,16 @@ export async function loadFamilySnapshot(
     familyId: string;
     context: LoadedFamilyContext;
     candidates: SnapshotCandidate[];
+    /** Every parent who owns one of `candidates`. */
+    candidateParents: readonly string[];
     priorDecisions: PriorDecision[];
     now: Date;
   },
-): Promise<FamilySnapshot> {
+): Promise<LoadedSnapshot> {
   const since = new Date(input.now.getTime() - SNAPSHOT_DAYS * DAY_MS);
   const messages = await database
     .select({
+      parentUserId: schema.channelMessages.parentUserId,
       direction: schema.channelMessages.direction,
       category: schema.channelMessages.category,
       createdAt: schema.channelMessages.createdAt,
@@ -401,19 +436,11 @@ export async function loadFamilySnapshot(
       at: row.createdAt.toISOString(),
       replied: inbound.some((text) => text.createdAt.getTime() > row.createdAt.getTime()),
     }));
-  const [pref] = await database
-    .select({ factValue: schema.familyMemoryFacts.factValue })
-    .from(schema.familyMemoryFacts)
-    .where(
-      and(
-        eq(schema.familyMemoryFacts.familyId, input.familyId),
-        eq(schema.familyMemoryFacts.factType, 'preference'),
-        eq(schema.familyMemoryFacts.factKey, CADENCE_FACT_KEY),
-        isNull(schema.familyMemoryFacts.validUntil),
-      ),
-    )
-    .limit(1);
-  const cadence = pref ? readCadenceFact(pref.factValue) : null;
+  const [owner, ...otherOwners] = input.candidateParents;
+  const cadence =
+    owner !== undefined && otherOwners.length === 0
+      ? await latestCadence(database, input.familyId, owner)
+      : null;
   const [lastReview] = await database
     .select({ at: max(schema.proactiveCandidates.decidedAt) })
     .from(schema.proactiveCandidates)
@@ -423,7 +450,11 @@ export async function loadFamilySnapshot(
   const newTexts = context.teenInHousehold
     ? []
     : inbound.filter((row) => lastReviewAt === null || row.createdAt > lastReviewAt);
-  return {
+  const shown = newTexts
+    .map((row) => ({ author: row.parentUserId, text: boundedLine(row.body ?? '') }))
+    .filter((row) => row.text.length > 0)
+    .slice(-RECENT_PARENT_TEXTS);
+  const snapshot: FamilySnapshot = {
     timeZone: context.timeZone,
     now: input.now.toISOString(),
     localNow: formatSnapshotLocalNow(input.now, context.timeZone),
@@ -437,10 +468,8 @@ export async function loadFamilySnapshot(
     unansweredStreak: unansweredStreak(recentSends),
     frequencyPreference: cadence ? { direction: cadence.direction, note: cadence.note } : null,
     declines: context.declines,
-    recentParentTexts: newTexts
-      .map((row) => boundedLine(row.body ?? ''))
-      .filter((text) => text.length > 0)
-      .slice(-RECENT_PARENT_TEXTS),
+    recentParentTexts: shown.map((row) => row.text),
     priorDecisions: input.priorDecisions,
   };
+  return { snapshot, textAuthors: [...new Set(shown.map((row) => row.author))] };
 }

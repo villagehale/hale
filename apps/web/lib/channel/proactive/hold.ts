@@ -12,6 +12,10 @@ import type { PriorDecision, SnapshotCandidate } from './snapshot';
  * consent, a paused line, no number, an unvoiced or undelivered text) keeps that
  * decision on the row. The day turning changes none of those, so it reopens only on
  * its clock (quiet hours carry their end) or when something new arrived.
+ *
+ * An item the parent asked for that the decider held open is offered at every review:
+ * nothing the decider says parks it out of sight, and its re-holds do not keep the
+ * family's other open holds on today's date.
  */
 
 export interface OpenCandidate extends SnapshotCandidate {
@@ -54,9 +58,11 @@ export function planHourlyReview(input: {
   const heldExpired = due.filter((item) => item.status === 'held' && item.holdUntil !== null);
   const heldOpen = due.filter((item) => item.status === 'held' && item.holdUntil === null);
   const deciderHeld = heldOpen.filter((item) => item.decision !== 'send_now');
+  const requested = deciderHeld.filter((item) => item.parentRequested);
+  const unrequested = deciderHeld.filter((item) => !item.parentRequested);
   const codeHeld = heldOpen.filter((item) => item.decision === 'send_now');
 
-  const latest = deciderHeld
+  const latest = unrequested
     .map((item) => item.decidedAt)
     .filter((at): at is string => typeof at === 'string')
     .sort()
@@ -70,7 +76,8 @@ export function planHourlyReview(input: {
   const actionable = [
     ...queued,
     ...heldExpired,
-    ...(reopen ? deciderHeld : []),
+    ...requested,
+    ...(reopen ? unrequested : []),
     ...(fresh ? codeHeld : []),
   ];
   return {
