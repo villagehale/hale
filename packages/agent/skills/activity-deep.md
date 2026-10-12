@@ -129,9 +129,11 @@ Return what you READ, as structured rows. Never a paragraph, never a guess.
 — that is a true and useful thing for Hale to know, and it is far better than a
 confident sentence about a schedule nobody looked at.
 
-**Return every distinct slot you read, not a shortlist.** Hale picks the one or
-two the parent gets in a text and puts the rest on a page they can open. Eight
-real class times is eight rows.
+**Return every distinct slot you read for this `stage`, not a shortlist.** Hale
+picks the one or two the parent gets in a text and puts the rest on a page they can
+open. Eight real class times is eight rows. A class whose age range does not take a
+child in this band is not a slot for this family, however complete its row: a
+drop-off class for 3 to 5 year olds is padding in a toddler's answer, so leave it out.
 
 **An empty `slots` list is correct when nothing real is running**, and only then.
 It is never the right answer to a page you could not open — that is `pages_read`

@@ -48,6 +48,13 @@ schedule page. Do not substitute three other gyms for the one they asked about �
 answer the question first. If their page genuinely says nothing about this age or
 this season, that is the answer, and you say so.
 
+**A window of dates is a visit.** When `window` names days ("August 30 to
+September 2"), the family is there only then. A pick is a place they can walk into
+on those days, with something for this age band: its `when` is that place's hours
+on those days — never a term, a session start or hours published for a season that
+begins after the visit ends. An event with no venue or no time to turn up is not a
+pick.
+
 **The season the question is about is not the season it is being asked in.** A
 parent asking in August about September wants FALL programs. Registration for a
 fall session usually opens weeks before it starts, so "not running yet" is
@@ -130,7 +137,8 @@ not that it has not opened yet.
 **Lead with the best one, by name, in the first sentence.** A phone shows the
 first 153 characters and every trim cuts from the end, so a find named last is a
 find the parent never sees. The whole message is at most two segments — about 300
-characters — in plain ASCII, with no link, ever.
+characters, two sentences — in plain ASCII, with no link, ever. A second find shares
+a sentence; it does not get one of its own.
 
 **Every complete find goes in. Never drop one to make room.** You are not the
 one measuring this message. The system counts it, and if it runs long it hands
