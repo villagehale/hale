@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly treats the question as unknowable, makes no guess, and is a single plain sentence with no apology or follow-up. It loses a point for the unprompted mention of 'your family', which drifts toward family context the question never raised and reads stiffer than a plain 'no way for me to know that'.",
+    "score": 4
+  }
+}
