@@ -63,6 +63,7 @@ import {
   errorLabel,
   handOffProactive,
   isQueuedForDecider,
+  stackFrames,
 } from '~/lib/channel/proactive/queue';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
@@ -1112,10 +1113,11 @@ export async function runNudgeCron(
       }
     } catch (err) {
       // One family's bad data must not silence every family after it. Never the error
-      // itself: a refused candidate insert reports the row, composed text and all.
+      // itself: a refused candidate insert reports the row, composed text and all. Its
+      // class and where it was thrown still find a bug.
       result.failed += 1;
       console.error(
-        { err: errorLabel(err), familyId: family.familyId },
+        { err: errorLabel(err), at: stackFrames(err), familyId: family.familyId },
         'nudge: family sweep failed',
       );
     }

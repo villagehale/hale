@@ -342,7 +342,7 @@ describe('the nudge hand-off', () => {
     expect(result).toMatchObject({ failed: 1, sent: 0, queued: 0, shadowUnqueued: 0 });
     expect(transport.sent).toEqual([]);
     const logged = errors.mock.calls.find(([, line]) => line === 'nudge: family sweep failed');
-    expect(logged?.[0]).toEqual({ err: 'error:23514', familyId });
+    expect(logged?.[0]).toEqual({ err: 'error:23514', at: expect.any(Array), familyId });
     expect(inspect(errors.mock.calls, { depth: null })).not.toContain('Toddler drop-in');
     errors.mockRestore();
   });

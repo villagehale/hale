@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import { schema } from '@hale/db';
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -811,6 +812,33 @@ describe('runNudgeCron — failure isolation', () => {
     expect(result.evaluated).toBe(2);
     expect(result.failed).toBe(1);
     expect(result.sent).toBe(1);
+  });
+
+  it('logs a bug by its class and where it was thrown, and none of its message', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ windows: [win()] });
+    const thrown: Error[] = [];
+    const loadChildren: NudgeRunDeps['loadChildren'] = async function loadChildrenWithABug() {
+      const bug = new TypeError("Cannot read properties of undefined (reading 'Maya')");
+      thrown.push(bug);
+      throw bug;
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await runNudgeCron(db(), { ...h.deps, loadChildren }, FRIDAY_10AM);
+
+    expect(result.failed).toBe(1);
+    expect(thrown[0]?.stack).toContain("reading 'Maya'");
+    const logged = errors.mock.calls.find(([, line]) => line === 'nudge: family sweep failed');
+    const fields = logged?.[0] as { err: string; at: string[]; familyId: string };
+    expect(fields).toEqual({ err: 'TypeError', at: fields.at, familyId: 'fam-1' });
+    expect(fields.at[0]).toMatch(/loadChildrenWithABug .*run\.test\.ts:\d+$/);
+    expect(fields.at.some((frame) => /nudge\/run\.ts:\d+$/.test(frame))).toBe(true);
+    for (const frame of fields.at) expect(frame).toMatch(/^[\w$.<>[\] ]+ [^\s()]+:\d+$/);
+    const everything = inspect(errors.mock.calls, { depth: null });
+    expect(everything).not.toContain('Maya');
+    expect(everything).not.toContain('Cannot read');
+    errors.mockRestore();
   });
 });
 

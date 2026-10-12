@@ -20,6 +20,15 @@ import { proactiveCadence } from './flag';
 
 export type CadenceLane = 'immediate' | 'candidate';
 
+/** The longest class name or code a log line carries. An infra bound on a log field. */
+export const ERROR_TOKEN_CHARS = 64;
+const ERROR_TOKEN = /^[a-z0-9_.-]+$/i;
+
+/** A class name or a code as one short plain token, or `other`: nothing bounds either. */
+function errorToken(part: string): string {
+  return part.length <= ERROR_TOKEN_CHARS && ERROR_TOKEN.test(part) ? part : 'other';
+}
+
 /**
  * What a log may say about a failed candidate write or review: the error's class and its
  * code. Never the error itself: Postgres reports a refused row in the detail ("Failing
@@ -28,7 +37,31 @@ export type CadenceLane = 'immediate' | 'candidate';
 export function errorLabel(err: unknown): string {
   if (!(err instanceof Error)) return 'unknown';
   const code = (err as { code?: unknown }).code;
-  return typeof code === 'string' ? `${err.name}:${code}` : err.name;
+  const name = errorToken(err.name);
+  return typeof code === 'string' ? `${name}:${errorToken(code)}` : name;
+}
+
+/** The most frames a failure log carries: the throw site and the calls that led to it. */
+export const STACK_FRAMES = 8;
+/** One V8 frame: an optional function, then `file:line:column`. */
+const STACK_FRAME = /^\s+at (?:((?:async |new )?[\w$.<>[\] ]+) \()?([^\s()]+):(\d+):\d+\)?$/;
+
+/**
+ * Where a failure was thrown, as `function file:line` per frame and nothing else, so a
+ * bug stays findable from a log that never carries the error. A stack opens with the
+ * error's message, which can carry a refused row: everything up to the message's end is
+ * cut before the frames are read, and a line that is not a frame is dropped.
+ */
+export function stackFrames(err: unknown): string[] {
+  if (!(err instanceof Error) || typeof err.stack !== 'string') return [];
+  const messageAt = err.message.length > 0 ? err.stack.indexOf(err.message) : -1;
+  const frames = messageAt < 0 ? err.stack : err.stack.slice(messageAt + err.message.length);
+  return frames
+    .split('\n')
+    .map((line) => STACK_FRAME.exec(line))
+    .filter((frame) => frame !== null)
+    .slice(0, STACK_FRAMES)
+    .map(([, fn, file, line]) => `${fn ?? '<anonymous>'} ${file}:${line}`);
 }
 
 export type ChannelCategory = (typeof schema.channelMessages.$inferInsert)['category'];
