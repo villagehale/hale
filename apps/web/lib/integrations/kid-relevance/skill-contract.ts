@@ -14,16 +14,16 @@ export const KID_VERDICT_TOOL_DESCRIPTION =
 
 /**
  * The output ceiling for one call. `max_tokens` caps thinking AND the answer together on
- * the classify lane, so it is sized from the eval's measured output, not guessed; the
- * judge derives its items-per-call from it (see judge.ts).
+ * the screen lane (Haiku 5.5), so it is sized from the eval's measured output, not
+ * guessed; the judge derives its items-per-call from it (see judge.ts).
  */
 export const KID_JUDGE_MAX_TOKENS = 4096;
 
 /**
- * The output one item may cost, thinking included. The recorded eval peaked at 59 tokens
- * per item on the classify lane (2026-10-11); this is that with headroom for a batch that
- * thinks harder. The eval fails when a recorded batch spends more per item than this, so
- * the two numbers move together.
+ * The output one item may cost, thinking included. The recorded eval peaked at 120 tokens
+ * per item on the screen lane (2026-10-12, the 9-item mailbox batch); this is that with
+ * headroom for a batch that thinks harder. The eval fails when a recorded batch spends
+ * more per item than this, so the two numbers move together.
  */
 export const KID_JUDGE_PEAK_TOKENS_PER_ITEM = 128;
 
@@ -33,9 +33,10 @@ export const KID_JUDGE_ITEMS_PER_CALL = Math.floor(
 );
 
 /**
- * The longest reason stored for a kid verdict. The recorded eval's longest reason was 81
- * characters (2026-10-11); a longer one is dropped at storage, never at the wire, so a
- * verbose answer still counts as a verdict.
+ * The longest reason stored for a kid verdict. The recorded eval's longest kid reason was
+ * 109 characters (2026-10-12; its longest reason, 131, was an adult one, which is never
+ * stored); a longer one is dropped at storage, never at the wire, so a verbose answer
+ * still counts as a verdict.
  */
 export const KID_REASON_MAX_CHARS = 120;
 
