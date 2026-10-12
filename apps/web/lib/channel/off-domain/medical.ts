@@ -295,12 +295,6 @@ export function escalationUserMessage(body: string, language: ReplyLanguage): st
   return JSON.stringify({ language, answer: body });
 }
 
-/** The one thing any catch may keep: the message string. A provider error can echo the
- * request, so the object never survives (rule #1). */
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : 'unknown';
-}
-
 function normalizeAgeBand(raw: unknown): AgeBand | null {
   return typeof raw === 'string' && (AGE_BANDS as readonly string[]).includes(raw)
     ? (raw as AgeBand)
@@ -465,8 +459,8 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
   let resolved: AgentClient;
   try {
     resolved = client();
-  } catch (err) {
-    throw new MedicalUnresolvable('client_unavailable', message(err));
+  } catch {
+    throw new MedicalUnresolvable('client_unavailable');
   }
 
   let sanitizeSkill: Awaited<ReturnType<typeof loadCronSkill>>;
@@ -476,8 +470,8 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
     sanitizeSkill = await loadCronSkill('medical-sanitize');
     medicalSkill = await loadCronSkill('medical-symptom');
     escalationSkill = await loadCronSkill('medical-escalation');
-  } catch (err) {
-    throw new MedicalUnresolvable('skill_unavailable', message(err));
+  } catch {
+    throw new MedicalUnresolvable('skill_unavailable');
   }
 
   // Phase 0 — SANITIZE (drop name + exact age; keep a coarse band).
@@ -530,8 +524,8 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
       messages: [{ role: 'user', content: groundUserMessage(query) }],
     });
-  } catch (err) {
-    throw new MedicalUnresolvable('ground_failed', message(err));
+  } catch {
+    throw new MedicalUnresolvable('ground_failed');
   }
   if (countSearchResults(research.content) === 0) throw new MedicalUnresolvable('not_grounded');
 
@@ -553,8 +547,8 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
       schema: composeSchema,
       maxTokens: COMPOSE_MAX_TOKENS,
     }));
-  } catch (err) {
-    throw new MedicalUnresolvable('compose_failed', message(err));
+  } catch {
+    throw new MedicalUnresolvable('compose_failed');
   }
 
   // Triage is required BEFORE assembly and confirmed AFTER it, so neither a model that
@@ -618,8 +612,8 @@ async function judgeEscalation(
       maxTokens: ESCALATION_MAX_TOKENS,
     });
     return value.escalates;
-  } catch (err) {
-    throw new MedicalUnresolvable('escalation_unjudged', message(err));
+  } catch {
+    throw new MedicalUnresolvable('escalation_unjudged');
   }
 }
 
@@ -644,7 +638,8 @@ function onMedicalTurnUnresolvable(text: string): MedicalReply {
 function logMedicalFailure(err: unknown, attempt: number): void {
   const reason: MedicalFallback | 'unknown' =
     err instanceof MedicalUnresolvable ? err.reason : 'unknown';
-  const detail = err instanceof MedicalUnresolvable ? err.detail : message(err);
+  // Named sub-reasons only: a provider's error text can carry the request back (rule #1).
+  const detail = err instanceof MedicalUnresolvable ? err.detail : undefined;
   console.error({ reason, attempt, detail }, 'off-domain medical: turn could not be answered');
 }
 
