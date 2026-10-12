@@ -1700,25 +1700,28 @@ const NEUTRAL: Verb = { sentence: 'recorded an update', family: 'neutral' };
  * NEUTRAL sentence — a fixed human phrase that never echoes the raw token, so the
  * trail can never render a snake_case/dotted internal string.
  */
-export function trailVerb(actionTaken: string, after: unknown = null): Verb {
-  if (SHADOW_ONLY_VERBS.has(actionTaken) && writtenInShadow(after)) return NEUTRAL;
+export function trailVerb(actionTaken: string): Verb {
   return VERBS[actionTaken as AuditVerb] ?? NEUTRAL;
 }
 
 /**
  * VIL-226 · while PROACTIVE_CADENCE is `shadow` the decider governs nothing that reaches
- * the phone (the old path still texts), so its rows must not tell the parent Hale decided
- * or held a text. The row's `after.mode` says which mode wrote it.
+ * the phone (the old path still texts), so the rows it writes there are not on the
+ * receipts at all: the trail query drops them, and the audit rows themselves stay. The
+ * row's `after.mode` says which mode wrote it.
  */
-const SHADOW_ONLY_VERBS: ReadonlySet<string> = new Set<AuditVerb>([
+export const SHADOW_ONLY_VERBS = [
   'proactive_cadence_decision',
   'proactive_cadence_held',
   'proactive_cadence_skipped',
-]);
+] as const satisfies readonly AuditVerb[];
 
-function writtenInShadow(after: unknown): boolean {
+export function isShadowOnlyRow(actionTaken: string, after: unknown): boolean {
   return (
-    typeof after === 'object' && after !== null && (after as { mode?: unknown }).mode === 'shadow'
+    (SHADOW_ONLY_VERBS as readonly string[]).includes(actionTaken) &&
+    typeof after === 'object' &&
+    after !== null &&
+    (after as { mode?: unknown }).mode === 'shadow'
   );
 }
 

@@ -1,13 +1,14 @@
 import { AGENT_TOOL_ACTION_PREFIX } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, notLike, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, notLike, sql } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE } from '../format/datetime';
 import {
   NO_TEEN_UNLOCKS,
   type TeenAccessUnlocks,
   redactsTeenContent,
 } from '../teen-access';
+import { SHADOW_ONLY_VERBS, isShadowOnlyRow } from '../trail/verbs';
 import { type ActorResolver, type TrailView, effectiveTeenContent, toTrailView } from './mappers';
 
 /**
@@ -155,12 +156,19 @@ export async function loadTrailForFamily(
       and(
         eq(schema.auditLog.familyId, familyId),
         notLike(schema.auditLog.actionTaken, `${AGENT_TOOL_ACTION_PREFIX}%`),
+        // VIL-226 · the proactive decider's shadow rows (trail/verbs.ts SHADOW_ONLY_VERBS):
+        // nothing the parent got, so not on their receipts, and not in the 50-row window.
+        sql`not (${inArray(schema.auditLog.actionTaken, [...SHADOW_ONLY_VERBS])} and coalesce(${schema.auditLog.after} ->> 'mode', '') = 'shadow')`,
       ),
     )
     .orderBy(desc(schema.auditLog.occurredAt))
     .limit(50);
   return rows
-    .filter((row) => !isAgentToolStep(row.entry.actionTaken))
+    .filter(
+      (row) =>
+        !isAgentToolStep(row.entry.actionTaken) &&
+        !isShadowOnlyRow(row.entry.actionTaken, row.entry.after),
+    )
     .map((row) => {
       const resolvedToEvent = row.teenContent !== null;
       // The child tag names the attributed child by NAME — including a teenager

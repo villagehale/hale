@@ -164,29 +164,3 @@ describe('toTrailView — teen-content redaction', () => {
     expect(trail({ actionTaken: 'action.executed' }, false).summary).toBe('carried out the action');
   });
 });
-
-describe('toTrailView — a proactive cadence row written while the decider only shadowed', () => {
-  // In shadow the old path still texts, so the decider decided and held nothing the
-  // parent got: the row must not say it did. The same rows written live still do.
-  const LIVE_SENTENCES: Record<string, string> = {
-    proactive_cadence_decision: 'Hale decided whether now was a good time to text you',
-    proactive_cadence_held: 'Hale held a text for a better moment',
-    proactive_cadence_skipped: 'Hale looked at what it had set aside and did not text you',
-  };
-
-  it('never tells the parent Hale decided, held or skipped a text in shadow', () => {
-    for (const [actionTaken, sentence] of Object.entries(LIVE_SENTENCES)) {
-      const shadow = trail({ actionTaken, targetTable: 'families', after: { mode: 'shadow' } });
-      expect(shadow.summary).toBe('recorded an update');
-      expect(shadow.summary).not.toBe(sentence);
-    }
-  });
-
-  it('still says so for the same row written live', () => {
-    for (const [actionTaken, sentence] of Object.entries(LIVE_SENTENCES)) {
-      expect(trail({ actionTaken, targetTable: 'families', after: { mode: 'live' } }).summary).toBe(
-        sentence,
-      );
-    }
-  });
-});

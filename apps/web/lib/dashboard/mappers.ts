@@ -141,7 +141,7 @@ export function toTrailView(
   childLabel: string | null = null,
   now: Date = new Date(),
 ): TrailView {
-  const { sentence, family } = trailVerb(entry.actionTaken, entry.after);
+  const { sentence, family } = trailVerb(entry.actionTaken);
   return {
     actionId: entry.targetTable === 'actions' ? entry.targetId : null,
     reversalKept: keptReversalHandle(entry),
