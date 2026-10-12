@@ -1,0 +1,9 @@
+{
+  "value": {
+    "language": "en",
+    "question": "who is the prime minister of canada",
+    "current_fact": "who currently holds the office of prime minister of Canada",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1486
+}

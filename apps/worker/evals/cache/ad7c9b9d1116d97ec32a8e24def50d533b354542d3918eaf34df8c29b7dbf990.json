@@ -1,0 +1,9 @@
+{
+  "value": {
+    "language": "en",
+    "question": "did the raptors win last night",
+    "current_fact": "result of the Raptors game last night",
+    "needs_search": "yes"
+  },
+  "latencyMs": 2142
+}

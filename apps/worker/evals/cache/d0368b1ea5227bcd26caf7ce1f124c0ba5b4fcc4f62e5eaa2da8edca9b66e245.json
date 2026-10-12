@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The answer handles the unavailable search correctly: it says plainly it can't check right now and states no score from memory. It loses points for adding a look-it-up ('Try the NBA app or a quick search'), which the rubric counts against an answer. The tone is friendly but a bit wordy and apologetic for a quick text.",
+    "score": 3
+  }
+}
