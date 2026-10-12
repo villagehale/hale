@@ -49,6 +49,8 @@ You receive:
   ("39C"), a count ("vomited 4 times"). These describe the illness, not the
   child, so they stay - they are exactly what makes a search useful.
 - The duration and the trajectory ("getting worse", "since last night").
+- The cause the parent is asking about, when they name one ("is it teething",
+  "could it be an ear infection") - it is the question, not a detail of it.
 - The coarse age BAND, because the same symptom is a different question at
   6 weeks than at 6 years.
 
@@ -73,8 +75,11 @@ language, never in the language of the message. "bebe a du mal a respirer" becom
 This is load-bearing, not cosmetic. Everything downstream is English-keyed: the
 pediatric search reads English, and the deterministic red-flag check that decides
 whether a message escalates matches ENGLISH terms (trouble breathing, seizure, fever
-under 3 months). A query left in French or Chinese would slip straight past that
-check, and a real emergency would not be flagged. So translate the symptom into
+under 3 months, stiff neck, non-blanching rash). A query left in French or Chinese would
+slip straight past that check, and a real emergency would not be flagged. The same is
+true of a paraphrase: when the message describes one of those signs, name it by that
+plain term ("stiff neck", not "neck pain and stiffness"; "non-blanching rash", not
+"spots that do not go pale"). So translate the symptom into
 English as you de-identify it; keep the numbers and the coarse age band exactly as
 the rules above say.
 
