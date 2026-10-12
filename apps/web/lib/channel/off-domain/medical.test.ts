@@ -382,6 +382,23 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
     log.mockRestore();
   });
 
+  it('logs an off-list verdict as off_list, never the text the model returned', async () => {
+    const log = quiet();
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(RED_FLAG_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(OK_COMPOSE),
+        escalation: escalationResult('the parent said her daughter is wheezing'),
+      }),
+    ).answer('raw message');
+
+    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    const details = log.mock.calls.map((c) => (c[0] as { detail?: string })?.detail);
+    expect(details).toEqual(['emergency:off_list', 'emergency:off_list']);
+    log.mockRestore();
+  });
+
   it('falls closed, under its own name, when the judgment cannot be had', async () => {
     const log = quiet();
     const out = await createMedicalComposer(
