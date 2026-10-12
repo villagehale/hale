@@ -12,9 +12,11 @@ import {
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
 import { captureAgentError } from '~/lib/analytics/server-capture';
+import { POLICY_VERSION } from '~/lib/consent';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
@@ -49,6 +51,7 @@ import {
   readSubjectVerdicts,
 } from '~/lib/reviews/aggregate';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
+import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { productionChannelDraftPort } from './draft';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
@@ -156,7 +159,7 @@ export interface ChannelRunRecord {
  * touch. There is no write port here, and that is the point.
  */
 export interface ChannelCoachPorts {
-  loadSkill(parentUserId?: string): Promise<Skill>;
+  loadSkill(parentUserId: string, familyId: string): Promise<Skill>;
   loadTranscript(conversationId: string): Promise<TranscriptMessage[]>;
   loadContext(input: LoadAgentContextInput): Promise<AgentContext>;
   /** Every child of the family, un-redacted — the redactor needs the real names to
@@ -252,7 +255,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
 
       const now = ports.now();
       const [loadedSkill, transcript, children, registrationWindows] = await Promise.all([
-        ports.loadSkill(turn.parentUserId),
+        ports.loadSkill(turn.parentUserId, turn.familyId),
         ports.loadTranscript(turn.conversationId),
         ports.loadChildren(turn.familyId),
         ports.loadRegistrationWindows(turn.familyId, now),
@@ -543,8 +546,14 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
   return {
     client: anthropicClient,
-    loadSkill: async (parentUserId) =>
-      augmentCoachSkillForGoogleDrafts(await loadCronSkill('coach-channel-sms'), parentUserId),
+    loadSkill: async (parentUserId, familyId) =>
+      augmentCoachSkillForAutonomySwitchOff(
+        await augmentCoachSkillForGoogleDrafts(
+          await loadCronSkill('coach-channel-sms'),
+          parentUserId,
+        ),
+        await familyHasAutonomyGrant(familyId, database),
+      ),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
@@ -594,6 +603,14 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         onWatch,
         gmailDrafts: productionGmailDraftPorts(database, anthropicClient),
         onGmailNotice,
+        autonomySwitchOff: {
+          parentWords: turn.body,
+          revoke: (input) =>
+            revokeAutonomyForKind(
+              { ...input, now: turn.now, policyVersion: POLICY_VERSION },
+              database,
+            ),
+        },
         parentUserId: turn.parentUserId,
         now: turn.now,
       });

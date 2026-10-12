@@ -10,7 +10,9 @@
     "./executor": "./src/services/executor.ts",
     "./google-calendar-api": "./src/services/google-calendar-api.ts",
     "./google-calendar-placement": "./src/services/google-calendar-placement.ts",
-    "./gmail-drafts": "./src/services/gmail-drafts.ts"
+    "./gmail-drafts": "./src/services/gmail-drafts.ts",
+    "./memory-writer": "./src/services/memory-writer.ts",
+    "./autonomy-gate": "./src/orchestrator/autonomy-gate.ts"
   },
   "scripts": {
     "build": "tsc -b",

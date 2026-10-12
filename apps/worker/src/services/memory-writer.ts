@@ -1021,6 +1021,29 @@ async function familyParents(
     );
 }
 
+/**
+ * Whether any parent of this family has ever opted a kind into autonomous execution —
+ * the condition for offering the coach's switch-off verb at all. A family that never
+ * granted one has nothing Hale does on its own, so there is nothing to turn off.
+ */
+export async function familyHasAutonomyGrant(
+  familyId: string,
+  database: Database = db(),
+): Promise<boolean> {
+  const rows = await database
+    .select({ id: schema.consentRecords.id })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.familyId, familyId),
+        eq(schema.consentRecords.consentType, 'autonomous_action_class'),
+        eq(schema.consentRecords.granted, true),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 export type AutonomyRevocation =
   | { outcome: 'revoked'; consentRecordId: string }
   | { outcome: 'not_a_parent' };

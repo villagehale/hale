@@ -86,6 +86,11 @@ export function autonomyDeniedForKind(actionType: ActionType): boolean {
   return AUTONOMY_BY_KIND[actionType] === 'denied';
 }
 
+/** The kinds Hale may do on its own once a parent opts in: the ones a parent can switch off. */
+export const AUTONOMY_ALLOWED_KINDS = (Object.keys(AUTONOMY_BY_KIND) as ActionType[]).filter(
+  (kind) => AUTONOMY_BY_KIND[kind] === 'allowed',
+);
+
 /**
  * True iff the teen-redaction structural cap must fire: the family has at least
  * one teenager AND the classifier marked the event teen-content. When it fires,
