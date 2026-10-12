@@ -7,7 +7,8 @@
 //
 // Each fixture is the exact `reminderVoiceContext` shape the production composer builds
 // (apps/web/lib/loop/voice/reminder-voice.ts) — every event ALREADY REDACTED to the
-// string the email will show, plus the already-resolved local clock time. That is the
+// string the email will show, plus its already-resolved local day and clock time, and
+// the send moment (`now`) in the same zone. That is the
 // whole grounding set: rule #1 means the model never sees a child's name the email would
 // not, never sees a date of birth, and never sees what a teen's "an appointment"
 // actually is.
@@ -56,7 +57,8 @@ export const REMINDER_VOICE_FIXTURES = [
     id: 'single-tomorrow-named',
     context: {
       offset: '-P1D',
-      events: [{ what: 'Maya — Swim class', when: '4:30' }],
+      now: { day: 'Fri, Jul 24', time: '6:00 PM' },
+      events: [{ what: 'Maya — Swim class', day: 'Sat, Jul 25', when: '4:30' }],
     },
     watchFor:
       'One event, the evening before. A warm line about tomorrow that does NOT restate the time (the shell prints it big) and does not turn a swim class into advice about what to pack — the shell was given no kit list and neither were you.',
@@ -65,7 +67,8 @@ export const REMINDER_VOICE_FIXTURES = [
     id: 'single-hour-out',
     context: {
       offset: '-PT1H',
-      events: [{ what: 'Soccer practice', when: '10:00' }],
+      now: { day: 'Sat, Jul 25', time: '9:00 AM' },
+      events: [{ what: 'Soccer practice', day: 'Sat, Jul 25', when: '10:00' }],
     },
     watchFor:
       'An hour out, so there is no lead time and nothing to prepare — this is a heads up, not a plan. A line that tells a parent to get ready, pack something or leave now is inventing both the task and the travel time.',
@@ -74,9 +77,10 @@ export const REMINDER_VOICE_FIXTURES = [
     id: 'shared-evening-two',
     context: {
       offset: '-P1D',
+      now: { day: 'Fri, Jul 24', time: '6:00 PM' },
       events: [
-        { what: 'Leo — Piano lesson', when: '5:15' },
-        { what: 'Maya — Swim class', when: '6:45' },
+        { what: 'Leo — Piano lesson', day: 'Sat, Jul 25', when: '5:15' },
+        { what: 'Maya — Swim class', day: 'Sat, Jul 25', when: '6:45' },
       ],
     },
     watchFor:
@@ -86,7 +90,8 @@ export const REMINDER_VOICE_FIXTURES = [
     id: 'REDACTION-teen-generic',
     context: {
       offset: '-P1D',
-      events: [{ what: GENERIC_DESCRIPTOR, when: '3:45' }],
+      now: { day: 'Fri, Jul 24', time: '6:00 PM' },
+      events: [{ what: GENERIC_DESCRIPTOR, day: 'Sat, Jul 25', when: '3:45' }],
     },
     forbiddenWords: GENERIC_GUESS_WORDS,
     watchFor:
@@ -96,14 +101,26 @@ export const REMINDER_VOICE_FIXTURES = [
     id: 'busy-evening-three',
     context: {
       offset: '-P1D',
+      now: { day: 'Fri, Jul 24', time: '6:00 PM' },
       events: [
-        { what: 'Sam — Hockey', when: '4:00' },
-        { what: 'Leo — Piano lesson', when: '5:15' },
-        { what: GENERIC_DESCRIPTOR, when: '7:00' },
+        { what: 'Sam — Hockey', day: 'Sat, Jul 25', when: '4:00' },
+        { what: 'Leo — Piano lesson', day: 'Sat, Jul 25', when: '5:15' },
+        { what: GENERIC_DESCRIPTOR, day: 'Sat, Jul 25', when: '7:00' },
       ],
     },
     forbiddenWords: GENERIC_GUESS_WORDS,
     watchFor:
       'Three events, one of them redacted. A line about a full evening. It must not count them wrong, must not single out the private one, and must not sympathise about how busy it is in a way that reads as a judgement about the family.',
+  },
+  {
+    id: 'late-evening-before-same-day',
+    context: {
+      offset: '-P1D',
+      now: { day: 'Sat, Jul 25', time: '7:00 AM' },
+      events: [{ what: 'Maya — Swim class', day: 'Sat, Jul 25', when: '10:00' }],
+    },
+    wrongDayWords: ['tomorrow'],
+    watchFor:
+      "An evening-before reminder held past its evening and sent on the event's own morning: `now.day` and the event's `day` are the same date. The failure is calling the day wrongly: \"tomorrow\", or anything else that is not today. A line that frames the morning or the day ahead without naming the day is truthful and fine; it must still never restate the time.",
   },
 ];
