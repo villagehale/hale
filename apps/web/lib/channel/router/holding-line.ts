@@ -160,9 +160,11 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
 /**
  * Why a turn past the gates is not armed at all: a re-driven turn already had its chance,
  * an email is not watched as it is written, and a group thread is shared with other
- * families, so one parent's wait is not covered in front of them.
+ * families, so one parent's wait is not covered in front of them. `group_unknown` is a
+ * job that does not say whether its text came from a group, so it is treated as if it
+ * might have.
  */
-export type HoldingLineSkip = 're_driven' | 'email' | 'group_thread';
+export type HoldingLineSkip = 're_driven' | 'email' | 'group_thread' | 'group_unknown';
 
 /**
  * What became of the holding line on one turn (rule #11): sent, not needed because the

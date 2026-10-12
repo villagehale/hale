@@ -87,6 +87,7 @@ function job(overrides: Partial<ChannelMessageReceivedJob> = {}): ChannelMessage
     channel_message_id: '33333333-3333-4333-8333-333333333333',
     provider_message_id: 'SM1',
     received_at: NOW.toISOString(),
+    in_group: false,
     ...overrides,
   };
 }
@@ -4287,7 +4288,7 @@ describe('a slow answer gets one holding line first', () => {
         holdingLineAfterMs: 10,
         context: { reply: groupRoute, inGroup },
       });
-      const result = await routeChannelMessage(h.deps, job());
+      const result = await routeChannelMessage(h.deps, job({ in_group: inGroup }));
       return { result, holding, h };
     };
 
@@ -4302,6 +4303,52 @@ describe('a slow answer gets one holding line first', () => {
     expect(direct.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
     expect(direct.holding.calls).toBe(1);
     expect(direct.h.logs).toContainEqual([{ outcome: 'sent' }, expect.any(String)]);
+  });
+
+  it("keys the group skip on the inbound's own group bit, so a dark group onboarding v2 cannot arm it", async () => {
+    // With v2 dark, wiring.ts derives `inGroup` as false for every message, a group one
+    // included. The door still knew the chat was a group, and that is the bit that counts.
+    const turnIn = async (in_group: boolean) => {
+      const holding = fakeHoldingLine("I'm on it.");
+      const h = harness({
+        coach: slowCoach(120, 'the real answer'),
+        holdingLine: holding,
+        holdingLineAfterMs: 10,
+        context: { reply: { ...IMESSAGE_ROUTE, chatId: 'chat-some-group' }, inGroup: false },
+      });
+      const result = await routeChannelMessage(h.deps, job({ in_group }));
+      return { result, holding, h };
+    };
+
+    const group = await turnIn(true);
+    expect(group.result.status).toBe('agent_replied');
+    expect(group.h.transport.bodies()).toEqual(['the real answer']);
+    expect(group.holding.calls).toBe(0);
+    expect(group.h.logs).toContainEqual([{ outcome: 'group_thread' }, expect.any(String)]);
+
+    // Positive control: the door said 1:1, and the same slow turn still gets its line.
+    const direct = await turnIn(false);
+    expect(direct.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
+    expect(direct.holding.calls).toBe(1);
+  });
+
+  it('a job that does not say whether it came from a group is not armed, and says so', async () => {
+    // A job queued before the door carried the bit, or re-driven by the reconciler, which
+    // reads the row and cannot know.
+    const holding = fakeHoldingLine("I'm on it.");
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+    });
+    const { in_group: _unsaid, ...unsaid } = job();
+
+    const result = await routeChannelMessage(h.deps, unsaid);
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(holding.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 'group_unknown' }, expect.any(String)]);
   });
 
   it('an email turn names why it has none', async () => {

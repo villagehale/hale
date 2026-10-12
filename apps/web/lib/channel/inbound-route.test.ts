@@ -338,8 +338,32 @@ describe('handoff to C1', () => {
         channel_message_id: message?.id,
         provider_message_id: 'SM11111111111111111111111111111111',
         received_at: NOW.toISOString(),
+        in_group: false,
       },
     ]);
+  });
+
+  it("carries the door's own group bit on the job while group onboarding v2 is dark", async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
+    const queued = async (isGroup: boolean) => {
+      const h = harness();
+      enrol(h.fake);
+      closeIntake(h.fake);
+      await routeInboundText(
+        h.deps,
+        {
+          ...inbound({ body: 'can you move swimming to Thursday?' }),
+          transport: 'imessage',
+          chatId: 'chat-1',
+          isGroup,
+        },
+        0,
+      );
+      return h.jobs;
+    };
+
+    expect((await queued(true)).map((queuedJob) => queuedJob.in_group)).toEqual([true]);
+    expect((await queued(false)).map((queuedJob) => queuedJob.in_group)).toEqual([false]);
   });
 
   it('NEVER hands a REVOKED number to C1 — an unsubscribed parent cannot be conversed with', async () => {
@@ -579,6 +603,7 @@ describe('handoff to C1', () => {
           channel_message_id: message?.id,
           provider_message_id: 'SM11111111111111111111111111111111',
           received_at: NOW.toISOString(),
+          in_group: false,
         },
       ]);
       expect(h.transport.bodies()).toEqual([]);

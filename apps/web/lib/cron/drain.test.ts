@@ -706,6 +706,19 @@ describe('channel.message.received', () => {
     expect(summary.processed).toBe(1);
   });
 
+  it("keeps the door's group bit through contract validation", async () => {
+    const { boss } = makeFakeBoss({
+      [INBOUND]: [{ id: 'i1', data: { ...inbound('SM1'), in_group: true } }],
+    });
+    const deps = makeDeps(boss);
+
+    await drainHotQueues(deps);
+
+    expect(deps.handlers.channelMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider_message_id: 'SM1', in_group: true }),
+    );
+  });
+
   /**
    * Two texts a second apart. They must be ROUTED in the order they were sent and
    * never concurrently: "move swim to Tuesday" then "actually Wednesday" produces the
