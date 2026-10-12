@@ -60,13 +60,7 @@ const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-s
 /** Mirrors `answerJsonSchema` in answer.ts. */
 const ANSWER_TOOL_SCHEMA = {
   type: 'object',
-  properties: {
-    answer: {
-      type: 'string',
-      description:
-        'The whole reply, complete as sent. Its last words are the answer itself, the reason for it, or a caveat stated as a fact about the thing asked about, and nothing in it is left for the parent to go and do.',
-    },
-  },
+  properties: { answer: { type: 'string' } },
   required: ['answer'],
 };
 

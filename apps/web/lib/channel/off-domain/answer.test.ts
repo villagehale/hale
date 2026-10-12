@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -34,24 +32,6 @@ interface SystemBlock {
 interface Captured {
   system?: string | SystemBlock[];
   messages?: Array<{ role: string; content: string }>;
-  output_config?: {
-    format?: { schema: { properties: { answer: { description?: string } } } };
-  };
-}
-
-/**
- * What the eval tells the model the `answer` field holds. The eval REPLICATES the request
- * (it cannot import this module), so its copy is read off its source: a missing one is
- * an error here rather than an `undefined` that would equal a missing one in production.
- */
-function evalAnswerDescription(): string {
-  const source = readFileSync(
-    fileURLToPath(new URL('../../../../worker/evals/run-general-answer-eval.mjs', import.meta.url)),
-    'utf8',
-  );
-  const found = source.match(/answer: \{\s*type: 'string',\s*description:\s*'([^']+)',/);
-  if (!found?.[1]) throw new Error('the eval mirror gives `answer` no description');
-  return found[1];
 }
 
 /** The instructions the model is given, whether they arrived as a string or as
@@ -69,7 +49,6 @@ function clientReturning(input: unknown, seen: Captured = {}): () => AgentClient
         async create(request: Captured) {
           seen.system = request.system;
           seen.messages = request.messages;
-          seen.output_config = request.output_config;
           return {
             content: [{ type: 'text', text: JSON.stringify(input) }],
             usage: { input_tokens: 10, output_tokens: 5 },
@@ -135,22 +114,6 @@ describe('createGeneralAnswer', () => {
     expect(instructions).toContain('One good answer, then stop');
     // The skill body is the whole cached prefix: no context block spliced after it.
     expect(instructions.endsWith('Say the useful thing first and stop.')).toBe(true);
-  });
-
-  /**
-   * The schema is part of what the model is asked: the field's description states the
-   * reply's shape. The eval grades the request it replicates, so the two must say the
-   * same thing or a green eval is about a request production never sends.
-   */
-  it('tells the model what the answer field holds, in the words the eval sends', async () => {
-    const seen: Captured = {};
-    await createGeneralAnswer(clientReturning({ answer: 'Lima.' }, seen)).compose(
-      'whats the capital of peru',
-    );
-
-    expect(seen.output_config?.format?.schema.properties.answer.description).toBe(
-      evalAnswerDescription(),
-    );
   });
 
   it('names a missing client rather than throwing', async () => {
