@@ -640,7 +640,8 @@ async function reviewFamily(
   const hold = clampHold(decision.holdUntil, chosen, now);
   const cadence = keptCadence(decision, mode, textAuthors, owner);
   // The decision row is where a cadence preference is kept (preference.ts), and the
-  // reason it was not, by name. A live one also says whose texts it read (snapshot.ts).
+  // reason it was not, by name. A live one also says whose texts it read (snapshot.ts),
+  // and either mode says when it read none because two parents own the batch.
   await audit(database, familyId, 'proactive_cadence_decision', {
     action: decision.action,
     itemIds: chosen.map((item) => item.id),
@@ -650,6 +651,7 @@ async function reviewFamily(
     ...(hold.clamped ? { holdClamped: hold.clamped, askedHoldUntil: decision.holdUntil } : {}),
     ...(cadence ? { cadencePreference: cadence } : {}),
     ...(mode === 'live' && textsRead ? { parentTextsRead: textsRead } : {}),
+    ...(snapshot.parentTextsWithheld ? { parentTextsWithheld: snapshot.parentTextsWithheld } : {}),
     mode,
   });
   await mark(

@@ -971,7 +971,9 @@ describe('runProactiveReview', () => {
       : null,
   });
 
-  async function decisionFields(field: 'cadencePreference' | 'parentTextsRead') {
+  async function decisionFields(
+    field: 'cadencePreference' | 'parentTextsRead' | 'parentTextsWithheld',
+  ) {
     const decisions = await audits('proactive_cadence_decision');
     return decisions
       .map((row) => (row.after as Record<string, unknown>)[field])
@@ -1257,6 +1259,8 @@ describe('runProactiveReview', () => {
     expect(h.snapshots[0]?.parentTextsWithheld).toBe('mixed_batch');
     expect(h.snapshots[0]?.recentParentTexts).toEqual([]);
     expect(await decisionFields('parentTextsRead')).toEqual([]);
+    expect(await decisionFields('cadencePreference')).toEqual([]);
+    expect(await decisionFields('parentTextsWithheld')).toEqual(['mixed_batch']);
 
     await enqueue('nudge:weather:w42');
     await runProactiveReview(db.database, h.deps, HOUR_AFTER);
@@ -1265,6 +1269,22 @@ describe('runProactiveReview', () => {
     expect(await decisionFields('cadencePreference')).toEqual([
       { schemaVersion: 1, parentUserId, direction: 'less', note: 'text me less' },
     ]);
+    expect(await audits('proactive_cadence_decision')).toHaveLength(2);
+    expect(await decisionFields('parentTextsWithheld')).toEqual(['mixed_batch']);
+  });
+
+  it('in shadow, names a batch two parents own on the decision row', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const coParentId = await addCoParent();
+    await parentText('text me less', HOUR_BEFORE);
+    await enqueue('nudge:weather:w41');
+    await enqueue('nudge:dropin:w41', { parentUserId: coParentId, why: 'weekday_dropin' });
+    const h = harness(hearsWhatItReads);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({ mode: 'shadow', parentTextsWithheld: 'mixed_batch' });
   });
 
   it('in shadow, leaves a parent text unread, so the first live review still reads it', async () => {
