@@ -5,10 +5,13 @@ import {
   createLinqChat,
   createLinqPhoneTransport,
   createLinqTextTransport,
+  LINQ_MALFORMED_CHAT_PAGE,
+  listLinqChatsPage,
   listLinqParticipantHandles,
   localityFromLocationPayload,
   markLinqChatRead,
   reactToLinqMessage,
+  readLinqChatPage,
   readListedDirectChatId,
   removeLinqParticipant,
   requestLinqLocation,
@@ -865,5 +868,111 @@ describe('createLinqPhoneTransport', () => {
     ).toBe(CHAT);
     expect(readListedDirectChatId({ chats: [] })).toBeNull();
     expect(readListedDirectChatId(null)).toBeNull();
+  });
+});
+
+describe('listLinqChatsPage', () => {
+  const PAGE = {
+    chats: [
+      {
+        id: CHAT,
+        is_group: false,
+        service: 'iMessage',
+        display_name: 'Avery Example',
+        handles: [{ handle: '+447700900123', is_me: false }],
+      },
+      { id: 'chat-b', is_group: true, service: 'RCS', handles: [] },
+      { id: 'chat-c', is_group: false, service: 'carrier-pigeon' },
+    ],
+    next_cursor: 'c2',
+  };
+
+  it('reads one page with GET /chats, a Bearer key, no body, and no line filter', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = jsonFetch(200, PAGE);
+
+    const page = await listLinqChatsPage({ limit: 100, cursor: 'c1', fetch: fetchMock });
+
+    expect(page).toEqual({
+      chats: [
+        { id: CHAT, isGroup: false, service: 'iMessage' },
+        { id: 'chat-b', isGroup: true, service: 'RCS' },
+        { id: 'chat-c', isGroup: false, service: 'other' },
+      ],
+      nextCursor: 'c2',
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    if (!init) throw new Error('expected a fetch init');
+    expect(url).toBe('https://api.linqapp.com/api/partner/v3/chats?limit=100&cursor=c1');
+    const params = new URL(String(url)).searchParams;
+    expect(params.has('from')).toBe(false);
+    expect(params.has('to')).toBe(false);
+    expect(init.method).toBe('GET');
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${API_KEY}`);
+    expect(init.body).toBeUndefined();
+  });
+
+  it('leaves the cursor off the first page', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = jsonFetch(200, { chats: [], next_cursor: null });
+
+    await expect(listLinqChatsPage({ limit: 100, fetch: fetchMock })).resolves.toEqual({
+      chats: [],
+      nextCursor: null,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://api.linqapp.com/api/partner/v3/chats?limit=100',
+    );
+  });
+
+  it('names a missing key without calling the network', async () => {
+    vi.stubEnv('LINQ_API_KEY', '');
+    const fetchMock = jsonFetch(200, PAGE);
+
+    await expect(listLinqChatsPage({ limit: 100, fetch: fetchMock })).rejects.toMatchObject({
+      code: 'not_configured',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('throws a refusal with its code and a malformed 2xx as its own code', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    await expect(
+      listLinqChatsPage({ limit: 100, fetch: jsonFetch(403, { error: { code: 1003 } }) }),
+    ).rejects.toMatchObject({ code: '1003', httpStatus: 403, permanent: true });
+    await expect(
+      listLinqChatsPage({ limit: 100, fetch: jsonFetch(200, { chats: 'nope' }) }),
+    ).rejects.toMatchObject({ code: LINQ_MALFORMED_CHAT_PAGE, httpStatus: 200 });
+  });
+});
+
+describe('readLinqChatPage', () => {
+  it('keeps id, group flag and service only, dropping handles and names', () => {
+    const page = readLinqChatPage({
+      chats: [
+        {
+          id: CHAT,
+          is_group: true,
+          service: 'SMS',
+          display_name: 'Avery Example',
+          handles: [{ handle: '+447700900123' }],
+        },
+      ],
+      next_cursor: '',
+    });
+
+    expect(page).toEqual({
+      chats: [{ id: CHAT, isGroup: true, service: 'SMS' }],
+      nextCursor: null,
+    });
+    expect(JSON.stringify(page)).not.toContain('7700900123');
+    expect(JSON.stringify(page)).not.toContain('Avery');
+  });
+
+  it('is null when chats is not an array or a chat has no id', () => {
+    expect(readLinqChatPage({ chats: { id: CHAT } })).toBeNull();
+    expect(readLinqChatPage(null)).toBeNull();
+    expect(readLinqChatPage({ chats: [{ is_group: false }] })).toBeNull();
   });
 });

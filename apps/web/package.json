@@ -16,6 +16,7 @@
     "probe:week-plan": "tsx scripts/probe-week-plan.ts",
     "booked-detection:dry-run": "tsx scripts/booked-detection-dry-run.ts",
     "probe:ics-feed": "tsx scripts/probe-ics-feed.ts",
+    "probe:linq-capacity": "tsx scripts/probe-linq-capacity.ts",
     "seed:registration-windows": "tsx scripts/seed-registration-windows.ts",
     "seed:e2e-smoke": "tsx scripts/seed-e2e-smoke.ts",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"

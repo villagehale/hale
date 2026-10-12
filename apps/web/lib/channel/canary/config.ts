@@ -43,6 +43,10 @@ if (!isSyntheticProbeNumber(CANARY_PHONE_E164)) {
  * green all night), not a join tag, not an add-command. */
 export const CANARY_BODY = 'CANARY';
 
+/** Prefix of the Linq chat id the canary posts. Not a real Linq chat, so a chat-ID
+ * count leaves it out. */
+export const CANARY_CHAT_ID_PREFIX = 'canary-';
+
 /**
  * The audit action that says the turn was answered. A DATA value: the handler
  * writes it and the cron's verification reads it back, so renaming it on one
