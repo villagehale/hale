@@ -131,6 +131,32 @@ describe('trailVerb — neutral fallback for an unknown verb still renders clean
   });
 });
 
+/**
+ * The spend ceiling and the plan allowance are gone (VIL-131), and their sentences
+ * with them. A family's old rows are still in audit_log, so they read as the neutral
+ * sentence rather than telling a parent about a cap that no longer exists.
+ */
+describe('retired spend-ceiling and plan-allowance verbs', () => {
+  const RETIRED = [
+    'event.dropped.spend_ceiling',
+    'spend_ceiling_exceeded_warn',
+    'action.gated.over_allowance',
+  ];
+
+  it.each(RETIRED)('%s is out of the inventory and reads as the neutral sentence', (verb) => {
+    expect(AUDIT_VERBS as readonly string[]).not.toContain(verb);
+    expect(trailVerb(verb)).toEqual({ sentence: 'recorded an update', family: 'neutral' });
+  });
+
+  it('no sentence in the registry mentions a spending cap, a cost ceiling or a plan allowance', () => {
+    const sentences = AUDIT_VERBS.map((verb) => trailVerb(verb).sentence);
+    expect(sentences).toContain('carried out the action');
+    for (const sentence of sentences) {
+      expect(sentence).not.toMatch(/spending cap|cost ceiling|allowance/);
+    }
+  });
+});
+
 describe('verbTone — the row tone follows the verb family (failures never read done)', () => {
   it('a completed action reads done', () => {
     expect(verbTone(trailVerb('action.executed').family)).toBe('done');
@@ -141,7 +167,6 @@ describe('verbTone — the row tone follows the verb family (failures never read
     expect(verbTone(trailVerb('action.execution_failed').family)).not.toBe('done');
     expect(verbTone(trailVerb('action.reviewer.rejected').family)).not.toBe('done');
     expect(verbTone(trailVerb('action.reviewed.reject').family)).not.toBe('done');
-    expect(verbTone(trailVerb('event.dropped.spend_ceiling').family)).not.toBe('done');
   });
 
   it('a held/awaiting-you gate reads as awaiting or needs-you, not done', () => {

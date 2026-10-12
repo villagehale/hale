@@ -60,8 +60,7 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo",
     "prompts:push": "node scripts/sync-prompts.mjs push",
     "prompts:pull": "node scripts/sync-prompts.mjs pull",
-    "prompts:check": "node scripts/sync-prompts.mjs check",
-    "replay:spend-ceiling": "tsx scripts/replay-spend-ceiling.ts"
+    "prompts:check": "node scripts/sync-prompts.mjs check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.41.0",

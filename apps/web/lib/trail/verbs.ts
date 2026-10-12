@@ -2,7 +2,7 @@ import type { EntryTone } from '../../components/hale/tone';
 
 /**
  * The verb registry. HARD rule (mirrors the label layer): a stored audit verb —
- * memory-writer's `actionTaken` token (`action.executed`, `event.dropped.spend_ceiling`,
+ * memory-writer's `actionTaken` token (`action.executed`, `event.dropped.low_confidence`,
  * …) — is NEVER rendered raw on the trail. Every row runs its verb through here,
  * which returns a warm human SENTENCE and a verb FAMILY. An unknown token degrades
  * to a NEUTRAL sentence + the `neutral` family — never the de-dotted token, never a
@@ -31,7 +31,7 @@ import type { EntryTone } from '../../components/hale/tone';
  *   done     — a settled, successful outcome (executed, approved, recorded)
  *   awaiting — held for a parent's decision (surfaced, gated on consent/window)
  *   note     — a quiet internal checkpoint (classified, drafted, per-stage)
- *   problem  — a failure or a hard block (execution failed, spend ceiling, rejected)
+ *   problem  — a failure or a hard block (execution failed, rejected)
  *   neutral  — an unknown verb; the safe, non-committal fallback
  */
 export type VerbFamily = 'done' | 'awaiting' | 'note' | 'problem' | 'neutral';
@@ -50,7 +50,7 @@ interface Verb {
  *     `event.dropped.${reason}`, `action.reviewer.${column}`, `action.gated.${reason}`,
  *     `event.stage.${stage}`, village discovery/routine;
  *   - web pipeline record.ts: `event.classified`, `action.drafted`,
- *     `action.reviewed.${kind}`, `event.dropped.spend_ceiling`, `action.gated.${reason}`;
+ *     `action.reviewed.${kind}`, `action.gated.${reason}`;
  *   - web household/onboarding/companion/rights/village/coach/plan writes
  *     (`family_created`, `tos_accepted`, `quick_log_${type}`, …).
  * `tool:<name>` sub-steps are excluded upstream (trail-query.ts) and are not
@@ -71,15 +71,12 @@ export const AUDIT_VERBS = [
   'event.dropped.low_confidence',
   'event.dropped.unknown_action_type',
   'event.dropped.needs_human',
-  'event.dropped.spend_ceiling',
-  'spend_ceiling_exceeded_warn',
   'action.surfaced_to_user',
   'action.entitlement_gated',
   'action.gated.observation_window',
   'action.gated.streak',
   'action.gated.cross_parent_consent',
   'action.gated.teen_redaction',
-  'action.gated.over_allowance',
   'action.send_skipped_duplicate',
   'event.stage.classified',
   'event.stage.drafted',
@@ -538,14 +535,6 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   'event.dropped.needs_human': { sentence: 'routed a signal to you', family: 'awaiting' },
-  'event.dropped.spend_ceiling': {
-    sentence: 'stopped at your spending cap',
-    family: 'problem',
-  },
-  spend_ceiling_exceeded_warn: {
-    sentence: 'noted the monthly cost ceiling and kept going',
-    family: 'note',
-  },
   'action.surfaced_to_user': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.entitlement_gated': {
     sentence: 'held an action for your plan',
@@ -565,10 +554,6 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   'action.gated.teen_redaction': {
     sentence: 'held to protect your teenager’s privacy',
-    family: 'awaiting',
-  },
-  'action.gated.over_allowance': {
-    sentence: 'held — past your plan’s allowance',
     family: 'awaiting',
   },
   'action.send_skipped_duplicate': { sentence: 'skipped a duplicate send', family: 'note' },

@@ -163,7 +163,6 @@ describe('toTrailView — the honest frame', () => {
   it('derives the row tone from the verb family — a failure never reads done', () => {
     expect(trail({ actionTaken: 'action.executed' }).tone).toBe('done');
     expect(trail({ actionTaken: 'action.execution_failed' }).tone).not.toBe('done');
-    expect(trail({ actionTaken: 'event.dropped.spend_ceiling' }).tone).not.toBe('done');
   });
 
   // The hard guarantee (defect: /trail leaked `families · family_created · <uuid>`):
