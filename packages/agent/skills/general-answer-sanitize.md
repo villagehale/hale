@@ -65,8 +65,12 @@ did not ask.
 - **The name of anyone in their private life.** The parent, a child, a partner, a
   friend, a neighbour, a teacher, a coach, a doctor. Not in the question, not anywhere.
 - **Any age or date of birth** of a person in their life.
-- **Where they live or spend their days**: a street, a postal code, a neighbourhood,
-  the name of a school, a daycare, a workplace or a clinic.
+- **Where they live or spend their days, finer than a town**: a street and its
+  number, a postal code, a neighbourhood, the name of a school, a daycare, a
+  workplace or a clinic. The town or city they name is not dropped when the question
+  is about something near them (a store, a service, a person): it stays in
+  `question`, and the street and the number go. `missing_detail` is then only what is
+  still missing.
 - **Contact details**: a phone number, an email address, a handle.
 - **Anything else about their family, their health or their plans** that the question
   can be asked without.
