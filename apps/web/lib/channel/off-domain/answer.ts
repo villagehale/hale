@@ -93,10 +93,11 @@ export type { HomePlace, LiveSearch, PendingAsk };
  * attached. A lit turn that could not answer (a detail was missing, or the search came
  * back with nothing) therefore hands out the question it was working on, de-identified
  * and scrubbed, with what it was missing ({@link PendingAsk}; the router keeps it on the
- * reply's own ledger row). The parent's next text is read beside it by the sanitizer,
- * which alone judges whether the text completes it ({@link GeneralAnswerComposer.continueAsk}).
- * There is no keyword and no time window. What is kept is never the parent's own words,
- * and nothing is kept or read while the flag is dark.
+ * reply's own ledger row). The parent's next text in that thread, once the lane's screen
+ * has read it, is read beside it by the sanitizer, which alone judges whether the text
+ * completes it ({@link GeneralAnswerComposer.continueAsk}). There is no keyword and no
+ * time window. What is kept is never the parent's own words, and nothing is kept or read
+ * while the flag is dark.
  *
  * EVERY WAY THE SEARCH DOES NOT HAPPEN IS NAMED ({@link LiveSearch}, rule #11), and none
  * of them costs the parent a reply or buys them an invented one: the compose is told that
@@ -173,11 +174,22 @@ export type GeneralAnswerOutcome =
 
 /**
  * Why a family's place cannot be named. Each is its own story: no country on the row
- * (never guessed, not even from a postal code), no postal code to work a city out from,
- * a postal area outside the towns the map covers, or one that spans two towns (never
- * resolved to the likelier one).
+ * (never guessed, not even from a postal code), a country the lane has no postal table
+ * for, no postal code to work a city out from, a postal area the table cannot give one
+ * municipality for, one that covers more than one town (never resolved to the likelier
+ * one), or a stored city or country that is not a place name and so is not sent at all.
+ * The last two are the lane's and not the row's: the text arrived in a group thread, or
+ * in one the job does not describe, and a family's home city is said in neither.
  */
-export type PlaceUnknown = 'no_country' | 'no_postal' | 'unmapped' | 'ambiguous';
+export type PlaceUnknown =
+  | 'no_country'
+  | 'unsupported_country'
+  | 'no_postal'
+  | 'unmapped'
+  | 'ambiguous'
+  | 'unusable_place'
+  | 'group_thread'
+  | 'thread_unknown';
 
 export type FamilyPlace =
   | ({ status: 'known' } & HomePlace)
@@ -207,7 +219,8 @@ export interface GeneralAnswerComposer {
    * The parent's next text after a reply that left `pending` open. Answered as the
    * completed question when the sanitizer judges it completes it; handed back as
    * `unrelated` otherwise, and also when that judgment could not be made at all, because
-   * this runs ahead of the screen on a text that may be about the kids' week.
+   * the text may be about the kids' week. The lane calls this only for a text its screen
+   * has read and sent to the coach or to the general answer (lane.ts).
    */
   continueAsk(
     text: string,
@@ -602,7 +615,8 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
     },
 
     async continueAsk(text, pending, family) {
-      // A crisis never waits on a model. The lane's own doors answer it.
+      // The backstop under the lane's screen, which read this text first: a crisis by
+      // name is never continued as a question, whatever the screen made of it.
       if (namesAnEmergency(text) || namesAMentalCrisis(text)) return notAReply();
 
       const stage = await setUp();
