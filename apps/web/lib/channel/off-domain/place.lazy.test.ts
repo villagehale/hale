@@ -25,8 +25,7 @@ describe('when a postal table is opened', () => {
     expect(loaded).toEqual({ ca: 0, us: 0 });
 
     await placeOf({ ...ROW, postalCode: 'M4K 1A1' });
-    await placeOf({ ...ROW, country: 'Canada', city: 'Toronto', postalCode: 'M4K 1A1' });
-    await placeOf({ ...ROW, country: 'France', postalCode: '80202' });
+    await placeOf({ ...ROW, country: 'France', city: 'Lyon', postalCode: '80202' });
     await placeOf({ ...ROW, country: 'Canada' });
     await placeOf({ ...ROW, country: 'Canada', areaCoarse: 'North York' });
     await placeOf({ ...ROW, country: 'United States', areaCoarse: '802' });
@@ -41,7 +40,8 @@ describe('when a postal table is opened', () => {
     await placeOf({ ...ROW, country: 'Canada', postalCode: 'V6B 1A1' });
     expect(loaded).toEqual({ ca: 1, us: 0 });
 
-    expect(await placeOf({ ...ROW, country: 'United States', postalCode: '80202' })).toMatchObject({
+    // A stored city is checked against the table, so it opens it too.
+    expect(await placeOf({ ...ROW, country: 'United States', city: 'denver' })).toMatchObject({
       city: 'Denver',
     });
     expect(loaded).toEqual({ ca: 1, us: 1 });

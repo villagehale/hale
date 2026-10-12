@@ -13,16 +13,10 @@ import us from './postal-cities/us.json';
 const ROW = { country: null, city: null, postalCode: null, areaCoarse: null };
 
 describe('placeOf', () => {
-  it("uses the family's own stored city and country when both are set, ahead of any postal code", async () => {
+  it("uses the family's own stored city when the country's table has it, ahead of any postal code", async () => {
     expect(
       await placeOf({ country: 'Canada', city: 'Halifax', postalCode: 'M4K 1A1', areaCoarse: 'M4K' }),
     ).toEqual({ status: 'known', city: 'Halifax', country: 'Canada' });
-    // A country with no postal table still has its stored city.
-    expect(await placeOf({ ...ROW, country: 'France', city: 'Lyon' })).toEqual({
-      status: 'known',
-      city: 'Lyon',
-      country: 'France',
-    });
   });
 
   /** A family that arrived by text has a country and a postal code and no city (intake
@@ -85,7 +79,7 @@ describe('placeOf', () => {
       expect(await placeOf({ ...ROW, country, areaCoarse: 'M4K' })).toEqual({
         status: 'known',
         city: 'Toronto',
-        country: country.trim(),
+        country: 'Canada',
       });
     },
   );
@@ -96,7 +90,7 @@ describe('placeOf', () => {
       expect(await placeOf({ ...ROW, country, postalCode: '80202' })).toEqual({
         status: 'known',
         city: 'Denver',
-        country,
+        country: 'United States',
       });
     },
   );
@@ -151,6 +145,11 @@ describe('placeOf', () => {
       status: 'unknown',
       reason: 'unsupported_country',
     });
+    // Nor is its stored city sent: there is no table to find the name in.
+    expect(await placeOf({ ...ROW, country: 'France', city: 'Lyon' })).toEqual({
+      status: 'unknown',
+      reason: 'unsupported_country',
+    });
   });
 
   it('treats a blank city or country as not stored', async () => {
@@ -167,34 +166,74 @@ describe('placeOf', () => {
 });
 
 /**
- * A stored city and country are free text (location-input.ts only trims them), and they
- * leave for a search. One that holds a direct identifier, or runs long, is not sent in
- * any form.
+ * NO STORED TEXT LEAVES ON THIS PATH. A stored city is used only when it is a place name
+ * in the table for the row's country, and what is sent is the table's spelling of it. The
+ * country is sent as the name place.ts fixes for it.
  */
-describe('a stored place that is not a place', () => {
+describe('a stored city and country, which are never sent as stored', () => {
   it.each([
-    ['a street address in the city', { city: '12 Maplewick Crescent', country: 'Canada' }],
-    ['an email address in the city', { city: 'pat@example.com', country: 'Canada' }],
-    ['a phone number in the city', { city: 'Toronto 416-555-0142', country: 'Canada' }],
-    ['a postal code in the city', { city: 'Toronto A1A 1A1', country: 'Canada' }],
-    ['a city that runs long', { city: 'Toronto '.repeat(12).trim(), country: 'Canada' }],
-    ['an email address in the country', { city: 'Toronto', country: 'pat@example.com' }],
-    ['a country that runs long', { city: null, country: 'Canada '.repeat(12).trim() }],
-  ])('is unusable for %s, and no fragment of it comes back', async (_label, stored) => {
-    const place = await placeOf({ ...ROW, postalCode: 'M4K 1A1', areaCoarse: 'M4K', ...stored });
-
-    expect(place).toEqual({ status: 'unknown', reason: 'unusable_place' });
+    ['a place with something about a child in front of it', "Maya's school, Oakville"],
+    ['a description of where they are', 'near Lincoln Elementary'],
+    ['a street address', '12 Maplewick Crescent'],
+    ['an email address', 'pat@example.com'],
+    ['a city with a phone number after it', 'Toronto 416-555-0142'],
+    ['a city with a postal code after it', 'Toronto A1A 1A1'],
+  ])('ignores a stored city that is %s, and tries the postal area next', async (_label, city) => {
+    expect(
+      await placeOf({ country: 'Canada', city, postalCode: 'V6B 1A1', areaCoarse: 'V6B' }),
+    ).toEqual({ status: 'known', city: 'Vancouver', country: 'Canada' });
+    expect(await placeOf({ ...ROW, country: 'Canada', city })).toEqual({
+      status: 'unknown',
+      reason: 'no_postal',
+    });
   });
 
-  /** Positive control: an ordinary name of more than one word is untouched. */
   it.each([
-    ['Richmond Hill', 'Canada'],
-    ["St. John's", 'Canada'],
-    ['Salt Lake City', 'United States of America'],
-    ['100 Mile House', 'Canada'],
-  ])('sends %s, %s as stored', async (city, country) => {
-    expect(await placeOf({ ...ROW, city, country })).toEqual({ status: 'known', city, country });
+    ['an email address', 'pat@example.com'],
+    ['a country name with something after it', 'Canada, near the lake'],
+  ])('reads no table for a stored country that is %s', async (_label, country) => {
+    expect(
+      await placeOf({ country, city: 'Toronto', postalCode: 'M4K 1A1', areaCoarse: 'M4K' }),
+    ).toEqual({ status: 'unknown', reason: 'unsupported_country' });
   });
+
+  /** Positive control: a stored city that is a place name is used, ahead of the postal
+   * area, in the table's own spelling. */
+  it.each([
+    ['toronto', 'Toronto'],
+    [' TORONTO ', 'Toronto'],
+    ['quebec', 'Québec'],
+    ['Montreal', 'Montréal'],
+    ['richmond  hill', 'Richmond Hill'],
+    ["st. john's", "St. John's"],
+  ])('sends a stored city of %j as the table spells it: %s', async (stored, city) => {
+    expect(
+      await placeOf({ country: 'Canada', city: stored, postalCode: 'V6B 1A1', areaCoarse: 'V6B' }),
+    ).toEqual({ status: 'known', city, country: 'Canada' });
+  });
+
+  it.each([
+    ['CA', 'Canada'],
+    ['can', 'Canada'],
+    ['usa', 'United States'],
+    ['United States of America', 'United States'],
+  ])('sends a country stored as %j as %s', async (stored, country) => {
+    const postalCode = country === 'Canada' ? 'M4K 1A1' : '80202';
+    expect(await placeOf({ ...ROW, country: stored, postalCode })).toMatchObject({
+      status: 'known',
+      country,
+    });
+  });
+
+  /** A stored country is looked up, and a plain object answers to names it never listed. */
+  it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])(
+    'names a stored country of %j as unsupported, and does not throw',
+    async (country) => {
+      const unsupported = { status: 'unknown', reason: 'unsupported_country' };
+      expect(await placeOf({ ...ROW, country, postalCode: 'M4K 1A1' })).toEqual(unsupported);
+      expect(await placeOf({ ...ROW, country, city: 'Toronto' })).toEqual(unsupported);
+    },
+  );
 });
 
 /**
