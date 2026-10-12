@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, desc, eq, gte, inArray, isNull, lt, max, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, max, ne, sql } from 'drizzle-orm';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { familyHasTeenager } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
@@ -15,8 +15,11 @@ import { boundedLine } from './tools';
  * A household with a teenager has every calendar label read as "busy", every offer title,
  * decline and watch label as `WITHHELD_LABEL`, and none of its parents' texts (rule #1's
  * double-miss fallback: a text names no child, so it cannot be shown not to be about the
- * teen). Other parent texts reach the decider only once, when
- * they arrived after its last look at this family. Calendar titles, Gmail offer titles
+ * teen). The decider's own earlier words are withheld there the same way: a kept pace
+ * keeps its direction with its note as `WITHHELD_LABEL`, and a prior hold's reason reads
+ * as `WITHHELD_LABEL`, since both were written with parent texts in view. Other parent
+ * texts reach the decider only once, when they arrived after its last look at this
+ * family, and only those rows' bodies are read. Calendar titles, Gmail offer titles
  * and watch labels are each one bounded line, like the parent texts.
  */
 
@@ -430,11 +433,9 @@ export async function loadFamilySnapshot(
   const since = new Date(input.now.getTime() - SNAPSHOT_DAYS * DAY_MS);
   const messages = await database
     .select({
-      parentUserId: schema.channelMessages.parentUserId,
       direction: schema.channelMessages.direction,
       category: schema.channelMessages.category,
       createdAt: schema.channelMessages.createdAt,
-      body: schema.channelMessages.body,
     })
     .from(schema.channelMessages)
     .where(
@@ -443,9 +444,7 @@ export async function loadFamilySnapshot(
         gte(schema.channelMessages.createdAt, since),
       ),
     );
-  const inbound = messages
-    .filter((row) => row.direction === 'in')
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const inbound = messages.filter((row) => row.direction === 'in');
   const recentSends: RecentSend[] = messages
     .filter(
       (row) =>
@@ -467,7 +466,22 @@ export async function loadFamilySnapshot(
   const { context } = input;
   const newTexts = context.teenInHousehold
     ? []
-    : inbound.filter((row) => lastReviewAt === null || row.createdAt > lastReviewAt);
+    : await database
+        .select({
+          parentUserId: schema.channelMessages.parentUserId,
+          body: schema.channelMessages.body,
+        })
+        .from(schema.channelMessages)
+        .where(
+          and(
+            eq(schema.channelMessages.familyId, input.familyId),
+            eq(schema.channelMessages.direction, 'in'),
+            gte(schema.channelMessages.createdAt, since),
+            lastReviewAt === null ? undefined : gt(schema.channelMessages.createdAt, lastReviewAt),
+          ),
+        )
+        .orderBy(asc(schema.channelMessages.createdAt));
+  const withheld = (text: string): string => (context.teenInHousehold ? WITHHELD_LABEL : text);
   const shown = newTexts
     .map((row) => ({ author: row.parentUserId, text: boundedLine(row.body ?? '') }))
     .filter((row) => row.text.length > 0)
@@ -485,10 +499,14 @@ export async function loadFamilySnapshot(
     candidates: input.candidates,
     recentSends,
     unansweredStreak: unansweredStreak(recentSends),
-    frequencyPreference: cadence ? { direction: cadence.direction, note: cadence.note } : null,
+    frequencyPreference: cadence
+      ? { direction: cadence.direction, note: withheld(cadence.note) }
+      : null,
     declines: context.declines,
     recentParentTexts: shown.map((row) => row.text),
-    priorDecisions: input.priorDecisions,
+    priorDecisions: input.priorDecisions.map((prior) =>
+      prior.reason === null ? prior : { ...prior, reason: withheld(prior.reason) },
+    ),
   };
   return { snapshot, textAuthors: [...new Set(shown.map((row) => row.author))], owner };
 }

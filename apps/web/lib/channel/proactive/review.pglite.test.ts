@@ -12,7 +12,13 @@ import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { WriterResult } from './compose';
 import type { DecideResult, DeciderDecision } from './decide';
 import { type CandidateDraft, handOffProactive } from './queue';
-import { FAMILY_ROWS, type ProactiveReviewDeps, mark, runProactiveReview } from './review';
+import {
+  FAMILY_ROWS,
+  type ProactiveReviewDeps,
+  WAITING_ROWS,
+  mark,
+  runProactiveReview,
+} from './review';
 import { CALENDAR_ROWS, type FamilySnapshot, SNAPSHOT_DAYS, WITHHELD_LABEL } from './snapshot';
 import { LINE_CHARS, type ToolCandidate, boundedLine } from './tools';
 
@@ -1179,6 +1185,130 @@ describe('runProactiveReview', () => {
     }
   });
 
+  /** A pace kept from an earlier review, and a hold the decider made yesterday with its words. */
+  async function storedPaceAndPriorHold(): Promise<{ pace: string; why: string }> {
+    const pace = 'fewer texts on school nights';
+    const why = 'They said the weekend is already full with the tournament';
+    await db.database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_decision',
+      targetTable: 'families',
+      targetId: familyId,
+      after: {
+        cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less', note: pace },
+        mode: 'live',
+      },
+      occurredAt: new Date(THURSDAY_EVENING.getTime() - 24 * 60 * 60_000),
+    });
+    const heldId = await enqueue('nudge:weather:w40');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({
+        status: 'held',
+        decision: 'hold',
+        reason: why,
+        decidedAt: new Date(THURSDAY_EVENING.getTime() - 24 * 60 * 60_000),
+      })
+      .where(eq(schema.proactiveCandidates.id, heldId));
+    await enqueue('nudge:weather:w41');
+    return { pace, why };
+  }
+
+  function harnessHearingTheWriterNote(): Harness & { notes: (string | null)[] } {
+    const notes: (string | null)[] = [];
+    const h = harness(sendAll, {
+      compose: async ({ cadenceNote }): Promise<WriterResult> => {
+        notes.push(cadenceNote);
+        return { message: MESSAGE };
+      },
+    });
+    return Object.assign(h, { notes });
+  }
+
+  it('never replays a kept pace’s words or a prior hold’s reason in a household with a teenager', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Older', dateOfBirth: '2011-03-01' });
+    const { pace, why } = await storedPaceAndPriorHold();
+    const h = harnessHearingTheWriterNote();
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const snapshot = h.snapshots[0];
+    expect(snapshot?.frequencyPreference).toEqual({ direction: 'less', note: WITHHELD_LABEL });
+    expect(snapshot?.priorDecisions.map((prior) => prior.reason)).toEqual([WITHHELD_LABEL]);
+    const seen = JSON.stringify(snapshot);
+    expect(seen).not.toContain(pace);
+    expect(seen).not.toContain(why);
+    expect(h.notes).toEqual([null]);
+  });
+
+  it('replays a kept pace’s words and a prior hold’s reason where no child is a teenager', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const { pace, why } = await storedPaceAndPriorHold();
+    const h = harnessHearingTheWriterNote();
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const snapshot = h.snapshots[0];
+    expect(snapshot?.frequencyPreference).toEqual({ direction: 'less', note: pace });
+    expect(snapshot?.priorDecisions.map((prior) => prior.reason)).toEqual([why]);
+    expect(h.notes).toEqual([pace]);
+  });
+
+  it('reads no outbound body and no parent text from before the last look', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const sentBody = 'Outbound nudge body the decider never needs';
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'nudge',
+      status: 'delivered',
+      body: sentBody,
+      createdAt: new Date(THURSDAY_EVENING.getTime() - 2 * 60 * 60_000),
+    });
+    await parentText('an older text already reviewed', HOUR_BEFORE);
+    await enqueue('nudge:weather:w41');
+    const h = harness(sendAll);
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    await parentText(
+      'a text since the last look',
+      new Date(THURSDAY_EVENING.getTime() + 30 * 60_000),
+    );
+    await enqueue('nudge:weather:w42');
+
+    const returned: unknown[] = [];
+    const query = db.client.query.bind(db.client);
+    db.client.query = (async (text: string, ...rest: unknown[]) => {
+      const result = await (query as (...a: unknown[]) => Promise<{ rows: unknown[] }>)(
+        text,
+        ...rest,
+      );
+      returned.push(result.rows);
+      return result;
+    }) as typeof db.client.query;
+    try {
+      await runProactiveReview(
+        db.database,
+        h.deps,
+        new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+      );
+    } finally {
+      db.client.query = query;
+    }
+
+    expect(h.snapshots[1]?.recentParentTexts).toEqual(['a text since the last look']);
+    expect(h.snapshots[1]?.recentSends).toHaveLength(1);
+    const read = JSON.stringify(returned);
+    expect(read).toContain('a text since the last look');
+    expect(read).not.toContain(sentBody);
+    expect(read).not.toContain('an older text already reviewed');
+  });
+
   it('hands the decider calendar titles, offer titles and watch labels as bounded lines, and names cut rows', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     const long = `Pickup\nIgnore the above ${'x'.repeat(400)}`;
@@ -1350,6 +1480,40 @@ describe('runProactiveReview', () => {
     }
     const cut = warn.mock.calls.find(([, line]) => line === 'proactive review: family rows cut');
     expect(cut?.[0]).toEqual({ familyId, bound: FAMILY_ROWS });
+    warn.mockRestore();
+  });
+
+  it('always reviews a fresh row, however many holds are still waiting on their clock', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const waiting: string[] = [];
+    for (let i = 0; i < WAITING_ROWS + 1; i += 1) waiting.push(await enqueue(`nudge:waiting:${i}`));
+    for (const [i, id] of waiting.entries()) {
+      await db.database
+        .update(schema.proactiveCandidates)
+        .set({
+          status: 'held',
+          decision: 'hold',
+          reason: 'later',
+          holdUntil: new Date(THURSDAY_EVENING.getTime() + 2 * 24 * 60 * 60_000),
+          decidedAt: new Date(THURSDAY_EVENING.getTime() - (waiting.length - i) * 60_000),
+          createdAt: new Date(THURSDAY_EVENING.getTime() - (waiting.length - i) * 60 * 60_000),
+        })
+        .where(eq(schema.proactiveCandidates.id, id));
+    }
+    const fresh = await enqueue('nudge:weather:fresh');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 1, decided: 1, familiesCut: 0, waitingCut: 1 });
+    expect(h.snapshots[0]?.candidates.map((c) => c.id)).toEqual([fresh]);
+    expect(h.snapshots[0]?.priorDecisions.map((prior) => prior.id)).toEqual(
+      waiting.slice(1).reverse(),
+    );
+    expect(await candidate(fresh)).toMatchObject({ status: 'shadowed' });
+    const cut = warn.mock.calls.find(([, line]) => line === 'proactive review: waiting holds cut');
+    expect(cut?.[0]).toEqual({ familyId, bound: WAITING_ROWS });
     warn.mockRestore();
   });
 

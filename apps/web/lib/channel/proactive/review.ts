@@ -1,6 +1,19 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, asc, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import {
   WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
   WEEKDAY_BREAK_TEMPLATE_KEY,
@@ -83,8 +96,10 @@ export interface ProactiveReviewSummary {
   holdRefused: number;
   /** Rows whose kind the outbound gate has no class for, dropped by name before review. */
   unknownKind: number;
-  /** Families with more open rows than `FAMILY_ROWS`: their newest wait for a later run. */
+  /** Families with more actionable rows than `FAMILY_ROWS`: their newest wait for a later run. */
   familiesCut: number;
+  /** Families with more holds still on their clock than `WAITING_ROWS`: their oldest unread. */
+  waitingCut: number;
   skipped: number;
   failed: number;
 }
@@ -149,11 +164,21 @@ interface QueuedItem extends OpenCandidate {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /**
- * An infra bound, not a send rule: the open rows one family's review reads, oldest first,
- * far above any real week's queue. A runaway sweep in one family then cannot stall the
- * hourly run for every other family; the rows past it wait for a later review, by name.
+ * An infra bound, not a send rule: the actionable rows (queued, or held with no clock or a
+ * clock already past) one family's review reads, oldest first. The nudge sweep, the one
+ * producer today, queues at most one row per parent in its one local slot a day, so a
+ * two-parent household reaches 40 only after weeks no review resolved. A runaway sweep in
+ * one family then cannot stall the hourly run for every other family; the rows past it
+ * wait for a later review, by name. Holds still on their clock are never in this count,
+ * so they cannot keep a fresh row out of the review.
  */
 export const FAMILY_ROWS = 40;
+/**
+ * An infra bound on the holds still on their clock that one review reads, newest first.
+ * They are never offered; they only show the decider its prior holds and anchor the
+ * same-day rule (hold.ts), so the oldest past it go unread, by name.
+ */
+export const WAITING_ROWS = 40;
 const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
 
 export async function runProactiveReview(
@@ -182,6 +207,7 @@ export async function runProactiveReview(
     holdRefused: 0,
     unknownKind: 0,
     familiesCut: 0,
+    waitingCut: 0,
     skipped: 0,
     failed: 0,
   };
@@ -206,7 +232,10 @@ export async function runProactiveReview(
   return summary;
 }
 
-/** This family's open rows, oldest first and at most `FAMILY_ROWS` of them. */
+/**
+ * This family's actionable rows, oldest first and at most `FAMILY_ROWS` of them, then its
+ * holds still on their clock, newest first and at most `WAITING_ROWS` of them.
+ */
 async function loadOpenItems(
   database: Database,
   familyId: string,
@@ -214,23 +243,48 @@ async function loadOpenItems(
   mode: 'shadow' | 'live',
   summary: ProactiveReviewSummary,
 ): Promise<QueuedItem[]> {
-  const open = await database
+  const actionable = await database
     .select()
     .from(schema.proactiveCandidates)
     .where(
       and(
         eq(schema.proactiveCandidates.familyId, familyId),
-        inArray(schema.proactiveCandidates.status, ['queued', 'held']),
+        or(
+          eq(schema.proactiveCandidates.status, 'queued'),
+          and(
+            eq(schema.proactiveCandidates.status, 'held'),
+            or(
+              isNull(schema.proactiveCandidates.holdUntil),
+              lte(schema.proactiveCandidates.holdUntil, now),
+            ),
+          ),
+        ),
       ),
     )
     .orderBy(asc(schema.proactiveCandidates.createdAt), asc(schema.proactiveCandidates.id))
     .limit(FAMILY_ROWS + 1);
-  if (open.length > FAMILY_ROWS) {
+  if (actionable.length > FAMILY_ROWS) {
     summary.familiesCut += 1;
     console.warn({ familyId, bound: FAMILY_ROWS }, 'proactive review: family rows cut');
   }
+  const waiting = await database
+    .select()
+    .from(schema.proactiveCandidates)
+    .where(
+      and(
+        eq(schema.proactiveCandidates.familyId, familyId),
+        eq(schema.proactiveCandidates.status, 'held'),
+        gt(schema.proactiveCandidates.holdUntil, now),
+      ),
+    )
+    .orderBy(desc(schema.proactiveCandidates.decidedAt), desc(schema.proactiveCandidates.id))
+    .limit(WAITING_ROWS + 1);
+  if (waiting.length > WAITING_ROWS) {
+    summary.waitingCut += 1;
+    console.warn({ familyId, bound: WAITING_ROWS }, 'proactive review: waiting holds cut');
+  }
   const items: QueuedItem[] = [];
-  for (const row of open.slice(0, FAMILY_ROWS)) {
+  for (const row of [...actionable.slice(0, FAMILY_ROWS), ...waiting.slice(0, WAITING_ROWS)]) {
     if (row.status !== 'queued' && row.status !== 'held') continue;
     if (!isProactiveSendKind(row.kind)) {
       // The gate has no class for it, so no send of it can be gated: never offered.
@@ -644,7 +698,8 @@ async function reviewFamily(
   await sendChosen(database, deps, {
     familyId,
     chosen,
-    cadenceNote: snapshot.frequencyPreference?.note ?? null,
+    // A teenager's household withholds the note from the decider; the writer gets none.
+    cadenceNote: context.teenInHousehold ? null : (snapshot.frequencyPreference?.note ?? null),
     reason,
     now,
     summary,
