@@ -322,8 +322,9 @@ async function composeWeekdayCareAsk(
     });
     value = result.value;
   } catch (err) {
+    // Never the message: a provider 400 can quote the request, parent words and all.
     console.error(
-      { err: err instanceof Error ? err.message : 'unknown', familyId: deps.familyId },
+      { err: err instanceof Error ? err.constructor.name : 'unknown', familyId: deps.familyId },
       'nudge: weekday ask model call failed - unvoiced',
     );
     return null;

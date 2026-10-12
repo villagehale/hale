@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DECIDER_TOOL_SCHEMA, decideForFamily, parseDeciderDecision } from './decide';
 import type { FamilySnapshot } from './snapshot';
 
@@ -40,6 +40,19 @@ function untouchedClient() {
     calls,
     client: { messages: { create: refuse, stream: refuse } } as never,
   };
+}
+
+/** A provider error whose message quotes the request back, the way a 400 can. */
+class ProviderError extends Error {
+  status = 400;
+}
+
+/** A client whose every call fails with a ProviderError. It never answers. */
+function failingClient() {
+  const fail = () => {
+    throw new ProviderError('400 invalid request: "recentParentTexts":["QUOTED-PARENT-TEXT"]');
+  };
+  return { messages: { create: fail, stream: fail } } as never;
 }
 
 describe('the decider tool schema', () => {
@@ -158,5 +171,20 @@ describe('decideForFamily', () => {
       client: null,
     });
     expect(result).toEqual({ decision: null, skipped: 'no_client' });
+  });
+
+  it('logs a failed model call by its error class, never the message', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await decideForFamily({
+      snapshot: { ...SNAPSHOT, candidates: [CANDIDATE] },
+      client: failingClient(),
+    });
+    expect(result).toEqual({ decision: null, skipped: 'model_failed' });
+    const logged = errors.mock.calls.find(
+      ([, line]) => line === 'proactive decider: model call failed',
+    );
+    expect(logged?.[0]).toEqual({ err: 'ProviderError' });
+    expect(JSON.stringify(errors.mock.calls)).not.toContain('QUOTED-PARENT-TEXT');
+    errors.mockRestore();
   });
 });

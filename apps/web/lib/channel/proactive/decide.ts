@@ -54,8 +54,9 @@ export async function decideForFamily(input: {
     });
     value = result.value;
   } catch (err) {
+    // Never the message: a provider 400 can quote the request, parent words and all.
     console.error(
-      { err: err instanceof Error ? err.message : 'unknown' },
+      { err: err instanceof Error ? err.constructor.name : 'unknown' },
       'proactive decider: model call failed',
     );
     return { decision: null, skipped: 'model_failed' };

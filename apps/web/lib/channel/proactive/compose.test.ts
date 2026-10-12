@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   WRITER_TOOL_SCHEMA,
   composeProactiveBatch,
@@ -66,6 +66,28 @@ describe('composeProactiveBatch', () => {
     await expect(
       composeProactiveBatch({ items: [ITEM], client: null, cadenceNote: null }),
     ).resolves.toEqual({ skipped: 'no_client' });
+  });
+
+  it('logs a failed model call by its error class, never the message', async () => {
+    class ProviderError extends Error {
+      status = 400;
+    }
+    const fail = () => {
+      throw new ProviderError('400 invalid request: "note":"QUOTED-CADENCE-NOTE"');
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await composeProactiveBatch({
+      items: [ITEM],
+      client: { messages: { create: fail, stream: fail } } as never,
+      cadenceNote: null,
+    });
+    expect(result).toEqual({ skipped: 'model_failed' });
+    const logged = errors.mock.calls.find(
+      ([, line]) => line === 'proactive writer: model call failed',
+    );
+    expect(logged?.[0]).toEqual({ err: 'ProviderError' });
+    expect(JSON.stringify(errors.mock.calls)).not.toContain('QUOTED-CADENCE-NOTE');
+    errors.mockRestore();
   });
 });
 

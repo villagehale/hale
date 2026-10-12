@@ -47,8 +47,9 @@ export async function composeProactiveBatch(input: {
     });
     value = result.value;
   } catch (err) {
+    // Never the message: a provider 400 can quote the request, parent words and all.
     console.error(
-      { err: err instanceof Error ? err.message : 'unknown' },
+      { err: err instanceof Error ? err.constructor.name : 'unknown' },
       'proactive writer: model call failed',
     );
     return { skipped: 'model_failed' };
