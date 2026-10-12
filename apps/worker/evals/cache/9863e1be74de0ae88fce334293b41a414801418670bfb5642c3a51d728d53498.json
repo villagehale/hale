@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "zh",
+    "clinical_query": "toddler fast labored breathing, ribs pulling in with each breath, bluish lips",
+    "age_band": "toddler",
+    "red_flag_sign": "working hard to breathe with ribs pulling in and bluish lips",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 1907
+}

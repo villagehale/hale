@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message contains the word 'name' and asks plainly for it, which fixes the prior failure. It covers both halves: 'I'll watch your dates' (Hale watches by itself) and 'you can text me a question' (the parent can ask anything). It is short, has no greeting, sign-off, or extras, and stays casual rather than stiff. It asks only one question, so it meets every requirement.",
+    "score": 5
+  }
+}

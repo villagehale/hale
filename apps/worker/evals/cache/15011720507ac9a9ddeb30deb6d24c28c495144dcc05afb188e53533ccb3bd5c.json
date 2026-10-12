@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "en",
+    "clinical_query": "preschooler spots in mouth with low fever, hand-foot-mouth going around",
+    "age_band": "preschooler",
+    "red_flag_sign": "none",
+    "red_flag": "not_emergency"
+  },
+  "latencyMs": 1998
+}

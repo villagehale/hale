@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "fr",
+    "clinical_query": "high fever, severe headache, stiff neck, light sensitivity school age",
+    "age_band": "school_age",
+    "red_flag_sign": "stiff neck together with fever",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 1810
+}

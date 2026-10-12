@@ -1,0 +1,11 @@
+{
+  "value": {
+    "language": "en",
+    "clinical_query": "school age child swelling of lips and face, hives all over, hoarse voice after eating peanuts",
+    "age_band": "school_age",
+    "duration": "20 minutes",
+    "red_flag_sign": "swelling of lips and face with widespread hives and hoarse voice after peanut ingestion, signs of a severe allergic reaction",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 2052
+}
