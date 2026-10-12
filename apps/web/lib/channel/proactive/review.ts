@@ -50,7 +50,12 @@ import {
 import { type ProactiveCadence, proactiveCadence, requestedCadence, unroutedKinds } from './flag';
 import { type OpenCandidate, planHourlyReview } from './hold';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
-import { type FamilySnapshot, loadFamilyContext, loadFamilySnapshot } from './snapshot';
+import {
+  type FamilySnapshot,
+  SNAPSHOT_DAYS,
+  loadFamilyContext,
+  loadFamilySnapshot,
+} from './snapshot';
 import { type ToolCandidate, boundedLine } from './tools';
 import { volumeIsUnusual } from './volume';
 
@@ -281,22 +286,28 @@ function errorLabel(err: unknown): string {
 
 /**
  * A hold never outlives what it holds. Past the earliest `worthlessAfter` of the chosen
- * items the row would sit in the waiting set (hold.ts), where no signal reopens it.
+ * items the row would sit in the waiting set (hold.ts), where no signal reopens it. With
+ * no `worthlessAfter` at all, a hold never reaches past the days the decider could see
+ * (`SNAPSHOT_DAYS`), so a far-off clock cannot park the row out of every review.
  */
 function clampHold(
   holdUntil: string | null,
   items: readonly QueuedItem[],
-): { holdUntil: string | null; clamped: boolean } {
-  if (holdUntil === null) return { holdUntil, clamped: false };
+  now: Date,
+): { holdUntil: string | null; clamped: 'worthless_after' | 'snapshot_window' | null } {
+  if (holdUntil === null) return { holdUntil, clamped: null };
   const bounds = items
     .map((item) => item.worthlessAfter)
     .filter((at): at is string => at !== null)
     .sort((a, b) => Date.parse(a) - Date.parse(b));
   const earliest = bounds[0];
-  if (earliest === undefined || Date.parse(holdUntil) <= Date.parse(earliest)) {
-    return { holdUntil, clamped: false };
+  if (earliest === undefined) {
+    const edge = new Date(now.getTime() + SNAPSHOT_DAYS * DAY_MS);
+    if (Date.parse(holdUntil) <= edge.getTime()) return { holdUntil, clamped: null };
+    return { holdUntil: edge.toISOString(), clamped: 'snapshot_window' };
   }
-  return { holdUntil: earliest, clamped: true };
+  if (Date.parse(holdUntil) <= Date.parse(earliest)) return { holdUntil, clamped: null };
+  return { holdUntil: earliest, clamped: 'worthless_after' };
 }
 
 async function audit(
@@ -529,7 +540,7 @@ async function reviewFamily(
 
   const chosen = items.filter((item) => offered.has(item.id) && decision.itemIds.includes(item.id));
   const unchosen = items.filter((item) => offered.has(item.id) && !chosen.includes(item));
-  const hold = clampHold(decision.holdUntil, chosen);
+  const hold = clampHold(decision.holdUntil, chosen, now);
   const cadence = keptCadence(decision, mode, textAuthors, owner);
   // The decision row is where a cadence preference is kept (preference.ts), and the
   // reason it was not, by name.
@@ -539,7 +550,7 @@ async function reviewFamily(
     unchosen: unchosen.map((item) => item.id),
     reason,
     holdUntil: hold.holdUntil,
-    ...(hold.clamped ? { holdClamped: 'worthless_after', askedHoldUntil: decision.holdUntil } : {}),
+    ...(hold.clamped ? { holdClamped: hold.clamped, askedHoldUntil: decision.holdUntil } : {}),
     ...(cadence ? { cadencePreference: cadence } : {}),
     mode,
   });

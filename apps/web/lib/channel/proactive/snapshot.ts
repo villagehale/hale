@@ -101,7 +101,8 @@ export interface FamilySnapshot {
 const WAKING_START = 9 * 60;
 const WAKING_END = 20 * 60;
 const MIN_WINDOW = 60;
-const SNAPSHOT_DAYS = 14;
+/** The days ahead the decider sees: the calendar, free windows and a clock-less hold. */
+export const SNAPSHOT_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RECENT_PARENT_TEXTS = 5;
 const DEADLINE_ROWS = 40;

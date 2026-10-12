@@ -13,7 +13,7 @@ import type { WriterResult } from './compose';
 import type { DecideResult, DeciderDecision } from './decide';
 import { type CandidateDraft, handOffProactive } from './queue';
 import { FAMILY_ROWS, type ProactiveReviewDeps, mark, runProactiveReview } from './review';
-import { CALENDAR_ROWS, type FamilySnapshot, WITHHELD_LABEL } from './snapshot';
+import { CALENDAR_ROWS, type FamilySnapshot, SNAPSHOT_DAYS, WITHHELD_LABEL } from './snapshot';
 import { LINE_CHARS, type ToolCandidate, boundedLine } from './tools';
 
 /**
@@ -461,6 +461,50 @@ describe('runProactiveReview', () => {
     expect(decision?.after).not.toHaveProperty('holdClamped');
   });
 
+  it('never parks an item with no window past the days the decider can see, and names the clamp', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue();
+    const asked = '2027-06-01T12:00:00.000Z';
+    const h = harness((snapshot) => ({
+      reason: 'Too early for a weekend find',
+      action: 'hold',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: asked,
+      frequencyPreference: null,
+    }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const edge = new Date(THURSDAY_EVENING.getTime() + SNAPSHOT_DAYS * 24 * 60 * 60_000);
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(edge.toISOString());
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({
+      holdUntil: edge.toISOString(),
+      holdClamped: 'snapshot_window',
+      askedHoldUntil: asked,
+    });
+  });
+
+  it('keeps a hold inside the days the decider can see on an item with no window', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue();
+    const asked = '2026-10-10T16:00:00.000Z';
+    const h = harness((snapshot) => ({
+      reason: 'Saturday morning is the moment',
+      action: 'hold',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: asked,
+      frequencyPreference: null,
+    }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(asked);
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({ holdUntil: asked });
+    expect(decision?.after).not.toHaveProperty('holdClamped');
+  });
+
   it('refuses, by name, a hold with no bound over something the parent asked for', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const asked = await enqueue('nudge:asked:w41', { parentRequested: true });
@@ -487,7 +531,9 @@ describe('runProactiveReview', () => {
       status: 'held',
       reason: 'Too early for a weekend find',
     });
-    expect((await candidate(other))?.holdUntil?.toISOString()).toBe(far);
+    expect((await candidate(other))?.holdUntil?.toISOString()).toBe(
+      new Date(THURSDAY_EVENING.getTime() + SNAPSHOT_DAYS * 24 * 60 * 60_000).toISOString(),
+    );
     const held = await audits('proactive_cadence_held');
     expect(held.map((row) => row.after)).toEqual([
       { reason: 'hold_refused_parent_requested_unbounded', itemIds: [asked], mode: 'live' },
