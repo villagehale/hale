@@ -108,6 +108,23 @@ function dobFor(ageMonths) {
   return born.toISOString().slice(0, 10);
 }
 
+/** Which of storedReason's checks dropped a reason. For the readout only: nothing gates on it. */
+function whyNotStored(contract, reason, item) {
+  const trimmed = reason.trim();
+  if (trimmed.length === 0) return 'empty';
+  if (trimmed.length > contract.KID_REASON_MAX_CHARS) {
+    return `too long (${trimmed.length} characters)`;
+  }
+  if (contract.repeatsAny(trimmed, [item.title])) {
+    return `repeats the title ${JSON.stringify(item.title)}`;
+  }
+  const own = [item.place ?? null, item.sender ?? null];
+  const tokens = trimmed
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
+    .filter((word) => contract.sharesAnyWord(word, own));
+  return `shares a naming word of the place or sender: ${tokens.map((word) => `"${word}"`).join(', ')} (place ${JSON.stringify(own[0])}, sender ${JSON.stringify(own[1])})`;
+}
+
 function chunk(list, size) {
   const out = [];
   for (let start = 0; start < list.length; start += size) out.push(list.slice(start, start + size));
@@ -281,6 +298,7 @@ async function main() {
   // passes but storage drops is visible.
   let storable = 0;
   let stored = 0;
+  const dropped = [];
 
   for (const batch of batches) {
     const verdictsContract = contract.kidVerdictsContract(
@@ -329,6 +347,11 @@ async function main() {
             sender: item.sender ?? null,
           });
           if (kept !== null) stored += 1;
+          else {
+            dropped.push(
+              `${batch.family.id}/${item.id}: ${whyNotStored(contract, answer.reason, item)} reason="${answer.reason}"`,
+            );
+          }
         }
       }
 
@@ -394,6 +417,7 @@ async function main() {
     `reasons: min ${Math.min(...judgeScores)} (each >= ${REASON_FLOOR}) mean ${meanReason.toFixed(2)} (>= ${JUDGE_MIN})`,
   );
   console.log(`stored reasons: ${stored}/${storable} (reported, not gated)`);
+  for (const row of dropped) console.log(`      not stored  ${row}`);
   console.log(
     `output per item: peak ${peakPerItem.toFixed(0)} tokens (bound ${contract.KID_JUDGE_PEAK_TOKENS_PER_ITEM}) ${peakOk ? 'ok' : 'OVER'}`,
   );
