@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "mainly cloudy, daytime high 23°C",
+        "from": "Environment Canada: Today's forecast is mainly cloudy. Its daytime high is 23°C."
+      },
+      {
+        "states": "a few showers tonight, low 16°C",
+        "from": "Environment Canada: Tonight it forecasts a few showers, with a low of 16°C."
+      }
+    ],
+    "answer": "Mostly no. Today's looking mainly cloudy and dry during the day, with a high around 23°C. The rain is more likely tonight, with a few showers and a low of about 16°C."
+  },
+  "latencyMs": 3839
+}

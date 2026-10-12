@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi as the pick",
+        "from": "settled"
+      },
+      {
+        "states": "Messi won the 2022 World Cup with Argentina",
+        "from": "settled"
+      },
+      {
+        "states": "Ronaldo as the other name people argue for",
+        "from": "settled"
+      }
+    ],
+    "answer": "Messi, for me. He won the 2022 World Cup with Argentina, which answered the one question people kept raising about him, and he was the best player in the world for well over a decade. Ronaldo is the other name people argue for, and he has a serious case, but Messi's the call."
+  },
+  "latencyMs": 4607
+}

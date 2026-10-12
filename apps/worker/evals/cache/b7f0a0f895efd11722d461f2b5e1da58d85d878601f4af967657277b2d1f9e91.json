@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "TSX is closed today, Monday Oct 12, for Thanksgiving; trading resumes Tuesday Oct 13",
+        "from": "TMX Group said the Toronto Stock Exchange, TSX Venture Exchange, TSX Alpha Exchange and Montréal Exchange are closed Monday, October 12, 2026 for the Thanksgiving holiday. Regular trading resumes Tuesday, October 13."
+      },
+      {
+        "states": "Last close Friday Oct 9: S&P/TSX composite up 519.24 points at 35,664.62 (about 1.48%)",
+        "from": "The S&P/TSX composite index was up 519.24 points at 35,664.62 (BNN Bloomberg/Canadian Press). That is a gain of about 1.48%. TMX Money and Yahoo Finance show the same close."
+      }
+    ],
+    "answer": "Markets are closed today for Thanksgiving, so the TSX isn't trading. It reopens tomorrow. Friday's last close was up about 1.5%, at 35,664.62 on the S&P/TSX composite."
+  },
+  "latencyMs": 2322
+}

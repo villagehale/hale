@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver BC Tuesday: sun and cloud mix",
+        "from": "Environment Canada: Tuesday is a mix of sun and cloud"
+      },
+      {
+        "states": "Vancouver BC Tuesday high 15°C",
+        "from": "Environment Canada: high of 15"
+      },
+      {
+        "states": "Vancouver BC Tuesday night showers, low 11°C",
+        "from": "Environment Canada: Tuesday night brings showers, with a low of 11"
+      },
+      {
+        "states": "Vancouver WA Tuesday mostly sunny",
+        "from": "National Weather Service point forecast: Tuesday is mostly sunny"
+      },
+      {
+        "states": "Vancouver WA Tuesday high near 64°F",
+        "from": "National Weather Service point forecast: high near 64°F"
+      },
+      {
+        "states": "Vancouver WA Tuesday night mostly cloudy, low around 48°F",
+        "from": "National Weather Service point forecast: Tuesday night is mostly cloudy with a low around 48°F"
+      }
+    ],
+    "answer": "There are two Vancouvers, so here's both. Vancouver BC: a mix of sun and cloud, high of 15°C, then showers tonight with a low of 11°C. Vancouver WA: mostly sunny and dry, high near 64°F, mostly cloudy tonight with a low around 48°F."
+  },
+  "latencyMs": 6029
+}

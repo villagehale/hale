@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC: Tuesday sun and cloud, high 15°C",
+        "from": "Environment Canada forecast issued 5:00 AM PDT Monday 12 Oct 2026: Tuesday is a mix of sun and cloud, with a high of 15"
+      },
+      {
+        "states": "Vancouver, BC: showers Tuesday night, low 11°C",
+        "from": "Environment Canada forecast issued 5:00 AM PDT Monday 12 Oct 2026: Tuesday night brings showers, with a low of 11"
+      },
+      {
+        "states": "Vancouver, WA: Tuesday mostly sunny, high near 64°F (about 18°C)",
+        "from": "National Weather Service point forecast, last updated 9:41 am PDT Oct 11, 2026: Tuesday is mostly sunny with a high near 64°F"
+      },
+      {
+        "states": "Vancouver, WA: Tuesday night low around 48°F (about 9°C)",
+        "from": "National Weather Service point forecast, last updated 9:41 am PDT Oct 11, 2026: Tuesday night is mostly cloudy with a low around 48°F"
+      },
+      {
+        "states": "Vancouver, WA: dry day",
+        "from": "research_notes: sources agree it will be dry, with a high of about 64–68°F"
+      }
+    ],
+    "answer": "Tomorrow (Tue) in Vancouver, BC: sun and cloud, high 15°C, showers coming in overnight, low 11°C. In Vancouver, WA: mostly sunny and dry, high near 64°F (about 18°C), low around 48°F. Which Vancouver are you in?"
+  },
+  "latencyMs": 6148
+}

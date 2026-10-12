@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "IM8 is the David Beckham co-founded powder, Daily Ultimate Essentials / Pro",
+        "from": "Assumption: The question doesn't say what \"im8\" is. These notes assume it means IM8, the David Beckham co-founded supplement powder (Daily Ultimate Essentials and Daily Ultimate Essentials Pro)."
+      },
+      {
+        "states": "NSF Certified for Sport",
+        "from": "IM8's own page says the product is clinically proven, third-party tested and NSF Certified for Sport."
+      },
+      {
+        "states": "about $78/month for Base",
+        "from": "It lists a price of about $78/month for Base and about $99/month for Pro."
+      },
+      {
+        "states": "about $99/month for Pro",
+        "from": "It lists a price of about $78/month for Base and about $99/month for Pro."
+      },
+      {
+        "states": "proprietary blends hide the doses",
+        "from": "proprietary blends hide key doses"
+      },
+      {
+        "states": "weak independent evidence for benefit claims",
+        "from": "They also agree it is expensive, uses proprietary blends that hide doses, and has weak independent evidence behind its benefit claims."
+      },
+      {
+        "states": "healthy people on a varied diet generally don't need this many supplements",
+        "from": "She says healthy people eating a varied diet generally don't need supplementation in this many things."
+      },
+      {
+        "states": "replacing 4 or 5 other supplements can make it worth it",
+        "from": "Running.reviews says it's undeniably expensive, but worth it if it replaces 4 or 5 other supplements."
+      },
+      {
+        "states": "customers mostly report better energy, sleep and digestion",
+        "from": "Positive reviewers mention better energy, sleep and digestion."
+      }
+    ],
+    "answer": "Mostly overrated for most people, I'd say. Assuming you mean the David Beckham powder: the formula is well chosen and NSF Certified for Sport, but it's about $78 a month for Base and about $99 for Pro, and the proprietary blends hide how much of each ingredient you're actually getting. Independent reviewers, including a dietitian, found the evidence for its benefits weak, and a healthy person eating a varied diet probably doesn't need this many supplements. It can make sense if it replaces four or five things you already take, and plenty of customers like how it makes them feel, but otherwise I'd skip it."
+  },
+  "latencyMs": 7016
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer checks out against research_notes. For soccer it backs Messi with eight Ballon d'Or, 672 Barcelona goals and the 2022 World Cup. For the NFL it backs Brady with seven Super Bowls and three MVPs, and names Jerry Rice as the usual runner-up. The alternatives it mentions (Ronaldo, Pelé) are supported too. It covers the soccer/NFL ambiguity and still makes a real pick for each. It reads casual and friend-like, in English, with no deflection and no assistant-style offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Pineapple on pizza is a matter of personal taste, and it is a common topping in many countries.",
+        "from": "settled"
+      }
+    ],
+    "answer": "Pour moi, oui, c'est tout à fait acceptable ! L'ananas apporte du sucré et de l'acidité qui contrastent bien avec le fromage salé et la charcuterie, comme sur une pizza hawaïenne. Ça reste une affaire de goût : si tu n'aimes pas, tu as raison de ne pas en mettre."
+  },
+  "latencyMs": 2023
+}

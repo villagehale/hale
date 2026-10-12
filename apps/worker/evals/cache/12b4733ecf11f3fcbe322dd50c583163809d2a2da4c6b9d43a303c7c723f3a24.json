@@ -1,0 +1,12 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "what number do you call for an emergency in the states, is it 911 or something else",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "current_fact": "none",
+    "needs_search": "no"
+  },
+  "latencyMs": 3098
+}

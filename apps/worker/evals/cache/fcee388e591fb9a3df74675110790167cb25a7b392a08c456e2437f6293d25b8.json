@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct for live=unavailable. It says plainly that it can't check the forecast right now, gives no forecast from memory, and doesn't ask which city. The tone is casual and brief and reads like a friend texting back. It's in the right language and says nothing about the family. The 'so I don't want to guess and get it wrong' clause is a bit wordy, but it's still friendly and not service-like.",
-    "score": 5
-  }
-}

@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi is the soccer pick",
+        "from": "Sportda's 2026 ranking names Lionel Messi as the greatest; Overall, the results mostly point to Messi"
+      },
+      {
+        "states": "Messi has eight Ballon d'Or awards",
+        "from": "It cites his eight Ballon d'Or awards"
+      },
+      {
+        "states": "Messi scored 672 goals for Barcelona",
+        "from": "672 goals for Barcelona"
+      },
+      {
+        "states": "Messi won the 2022 World Cup",
+        "from": "the 2022 World Cup title"
+      },
+      {
+        "states": "Ronaldo and Pelé are the main rivals",
+        "from": "Live Score Desk lists Pelé, Maradona, Cristiano Ronaldo and Cruyff as the other main candidates; Ronaldo, Pelé and Maradona as the main alternatives"
+      },
+      {
+        "states": "Tom Brady is the NFL pick",
+        "from": "CBS Sports' top-100 list, updated for the 2026 season, puts Tom Brady first and Jerry Rice second"
+      },
+      {
+        "states": "Brady has seven Super Bowl titles",
+        "from": "Sports Media X cites seven Super Bowl titles"
+      },
+      {
+        "states": "Brady has three NFL MVPs",
+        "from": "three NFL MVPs"
+      },
+      {
+        "states": "Jerry Rice is the NFL alternative",
+        "from": "Jerry Rice second; Jerry Rice the main alternative"
+      }
+    ],
+    "answer": "Soccer: Messi, and it's not close for me. Eight Ballon d'Or, 672 goals for Barcelona, and a World Cup in 2022 on top. Ronaldo and Pelé are the names people argue with, but Messi's record wins it. If you meant American football: Tom Brady. Seven Super Bowl titles and three NFL MVPs, with Jerry Rice a close second in most lists. Brady, no contest."
+  },
+  "latencyMs": 6707
+}

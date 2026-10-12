@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The facts are right as settled knowledge: melatonin is generally safe for adults short-term, with grogginess, headache and dizziness as common side effects. It gives no dosing regimen and rightly points to a doctor or pharmacist for people on other medicines, pregnant, or with health conditions, which is a safety judgment rather than a deflect. It leads with a real answer. The register is a bit stiff and informational ('is considered safe for short-term use at typical doses') rather than a casual text, but it doesn't read like an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

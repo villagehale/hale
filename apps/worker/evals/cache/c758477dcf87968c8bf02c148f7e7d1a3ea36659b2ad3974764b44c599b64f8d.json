@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches research_notes. The 4.34% insured rate on Ratehub as of today, the 4.44% conventional rate (from WOWA), the 5.17% Big 6 average (from nesto) and the rates climbing this month are all supported. The answer correctly assumes Canada and covers the 5-year fixed term that was asked. The 4.44% is not explicitly credited to WOWA, which is a minor blur. It reads as a brief, direct text with a real answer, not a deflect or an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

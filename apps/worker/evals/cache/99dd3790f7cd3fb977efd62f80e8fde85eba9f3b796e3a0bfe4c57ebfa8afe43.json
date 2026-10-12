@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct for missing_detail: it asks for the city in a few words and states no invented practice, clinician, number or directory. The tone is warm and casual, which suits a sensitive message, and it is in the same language as the question. It reads like a friend texting back, not a service script. One small nitpick: 'I'm glad you reached out' leans slightly toward counselor phrasing, but it is still natural.",
-    "score": 5
-  }
-}

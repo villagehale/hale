@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "a same calm routine before each nap",
+        "from": "settled"
+      },
+      {
+        "states": "dim, dark, quiet room",
+        "from": "settled"
+      },
+      {
+        "states": "put him down when he starts yawning or rubbing his eyes, before he gets overtired",
+        "from": "settled"
+      },
+      {
+        "states": "a familiar comfort item such as a blanket or toy",
+        "from": "settled"
+      }
+    ],
+    "answer": "Most little ones nap better with the same calm routine each time, like a book, dim lights and a quiet room. Try to put him down when he starts yawning or rubbing his eyes, since an overtired kid often fights sleep harder. A familiar blanket or toy can help too. How old is he?"
+  },
+  "latencyMs": 4279
+}

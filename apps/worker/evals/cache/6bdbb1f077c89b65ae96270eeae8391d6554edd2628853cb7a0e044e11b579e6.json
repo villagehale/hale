@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "lowest 5-year fixed insured rate is 4.34%",
+        "from": "WOWA, as of Oct 9: lowest 5-year fixed insured rate is 4.34%; Ratehub, as of Oct 12: lowest high-ratio 5-year fixed rate is 4.34%"
+      },
+      {
+        "states": "Frank Mortgage offers 4.34%",
+        "from": "WOWA names Frank Mortgage as the best 5-year fixed offer at 4.34%"
+      },
+      {
+        "states": "Big 6 banks average around 5.17%",
+        "from": "nesto's Oct 9 page lists a Big 6 Bank average 5-year fixed of 5.17%"
+      },
+      {
+        "states": "BMO raised its 5-year fixed by 20 bps to 5.14% on Oct 7",
+        "from": "BMO raised its standard 5-year fixed rate by 20 bps to 5.14% on October 7"
+      },
+      {
+        "states": "CIBC raised its 5-year fixed rates by 20 bps on Oct 9",
+        "from": "CIBC raised its 5-year fixed rates by 20 bps on October 9"
+      },
+      {
+        "states": "lowest uninsured 5-year rate is 4.64%",
+        "from": "WOWA, as of Oct 9: the lowest uninsurable 5-year rate is 4.64%"
+      }
+    ],
+    "answer": "Lowest 5-year fixed I can see right now is 4.34% for an insured mortgage (under 20% down), with Frank Mortgage at that rate. The big banks are higher, averaging around 5.17%, and rates are climbing again: BMO and CIBC both went up 20 bps this month. If you're putting down 20% or more, the lowest I can see is 4.64%."
+  },
+  "latencyMs": 7472
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Gives a real pick (Messi) with a reason, casual and friend-like. Messi winning the 2022 World Cup with Argentina is settled historical fact, not a count that could have grown, so it isn't a current fact from memory. 'Best player on the planet for a long stretch' is opinion. No invented specifics, no deflect, and the language matches the question. It reads slightly polished, but it's still a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

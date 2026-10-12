@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Pineapple on pizza is fine; it's a matter of taste",
+        "from": "settled"
+      }
+    ],
+    "answer": "Yes, it's ok. Sweet and salty works really well on pizza, and ham plus pineapple is a classic for a reason. If you hate it, that's fair too, but it isn't wrong to like it."
+  },
+  "latencyMs": 1771
+}

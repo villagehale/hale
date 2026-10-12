@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: 2006 Cardinals beat the Tigers 4-1, which is settled knowledge. It's brief and stated flat. It reads a touch formal, restating the question, but it's still a friend-like text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

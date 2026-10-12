@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Ontario Structured Psychotherapy gives free, publicly funded cognitive-behavioural therapy to adults with depression or anxiety-related concerns",
+        "from": "Adults with depression and anxiety-related concerns can get free, publicly funded cognitive-behavioural therapy through OSP. This is from Ontario Health."
+      },
+      {
+        "states": "No Ontario health card or family doctor is needed, and you can refer yourself",
+        "from": "No Ontario health card or primary care provider is required, and self-referrals are accepted. This is from CMHA Ontario."
+      },
+      {
+        "states": "Sessions can be virtual, by phone or in person",
+        "from": "It is available virtually, by phone and in person."
+      },
+      {
+        "states": "Referral starts at ontariohealth.ca/osp",
+        "from": "To use it, find your local network at ontariohealth.ca/osp and fill out the referral form."
+      },
+      {
+        "states": "The Affordable Therapy Network has a directory of over 500 therapists, most in Toronto or online",
+        "from": "The Affordable Therapy Network says it has a directory of over 500 therapists, most serving Toronto or online across Ontario. Its page is about 357 days old."
+      },
+      {
+        "states": "Get Reconnected has sessions with supervised student interns at $45 each",
+        "from": "Get Reconnected offers sessions with supervised student interns at $45 per session. Its page is about 462 days old."
+      }
+    ],
+    "answer": "I'm glad you reached out, and it makes sense to want someone to talk to. The free option is Ontario Structured Psychotherapy. It gives free, publicly funded CBT to adults in Ontario with depression or anxiety. You don't need an Ontario health card or a family doctor, and you can refer yourself at ontariohealth.ca/osp, where you find your local network and fill in the referral form. Sessions can be online, by phone or in person. If you'd rather pay privately, the Affordable Therapy Network has a directory of over 500 therapists, mostly in Toronto or online, and Get Reconnected has sessions with supervised student interns for $45 each. Those listings are a bit old, so prices may have changed."
+  },
+  "latencyMs": 8562
+}

@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi is the soccer GOAT pick",
+        "from": "Sportda's 2026 ranking names Lionel Messi as the greatest; Overall, the results mostly point to Messi"
+      },
+      {
+        "states": "Messi has eight Ballon d'Or awards",
+        "from": "Sportda's 2026 ranking cites his eight Ballon d'Or awards"
+      },
+      {
+        "states": "Messi won the 2022 World Cup",
+        "from": "Sportda's 2026 ranking cites the 2022 World Cup title"
+      },
+      {
+        "states": "Cristiano Ronaldo is the main soccer rival",
+        "from": "Overall, the results mostly point to Messi, with Ronaldo, Pelé and Maradona as the main alternatives"
+      },
+      {
+        "states": "Fan votes are nearly tied between Messi and Ronaldo",
+        "from": "Its raw vote totals have Messi at 527.7K and Ronaldo at 527.1K"
+      },
+      {
+        "states": "Tom Brady is the NFL GOAT pick",
+        "from": "Brady is the usual pick for NFL GOAT"
+      },
+      {
+        "states": "Brady has seven Super Bowl titles",
+        "from": "Sports Media X cites seven Super Bowl titles"
+      },
+      {
+        "states": "Jerry Rice is the main NFL alternative",
+        "from": "with Jerry Rice the main alternative"
+      }
+    ],
+    "answer": "Depends which football you mean. Soccer: Messi, with eight Ballon d'Or wins and the 2022 World Cup. Ronaldo is the main rival, and fan votes are almost dead even between the two. American football: Tom Brady, with seven Super Bowl titles. Jerry Rice is the name people usually raise against him."
+  },
+  "latencyMs": 5970
+}

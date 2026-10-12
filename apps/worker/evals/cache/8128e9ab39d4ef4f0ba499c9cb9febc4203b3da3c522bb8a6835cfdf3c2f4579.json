@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the notes: no Oakville Costco is open yet, one is slated for later in 2027, Burlington is at 1225 Brant St, and the Laird Rd Mississauga warehouse is at 3180 Laird Rd with a single site saying it serves Oakville. It invents nothing and says nothing about the family's street. It answers in English, flags the Ontario assumption, and is honest that it can't say which is closer. One gap: it skips the conflicting hours, including Apple Maps showing Burlington closed today, which matters for a parent heading out now. The 'which one site says' and 'I didn't find' hedges read a bit like a research report rather than a quick text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi is my pick",
+        "from": "settled"
+      },
+      {
+        "states": "Messi won the 2022 World Cup with Argentina",
+        "from": "settled"
+      },
+      {
+        "states": "Ronaldo has a strong case",
+        "from": "settled"
+      }
+    ],
+    "answer": "Messi, for me. He won the World Cup with Argentina in 2022 and was the best player on the planet for a long stretch, which is hard to beat. Ronaldo has a strong case too, but I'd still go with Messi."
+  },
+  "latencyMs": 4004
+}

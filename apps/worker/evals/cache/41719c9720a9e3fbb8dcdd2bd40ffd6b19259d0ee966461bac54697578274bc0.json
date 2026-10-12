@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toyota Sienna is the pick",
+        "from": "Edmunds ranks the 2026 Toyota Sienna #1; Quartz picks the Sienna; A Yahoo/AutoGuide four-way comparison also puts the Sienna first"
+      },
+      {
+        "states": "Sienna is the only minivan offered only as a hybrid, 35-36 mpg combined",
+        "from": "It is the only minivan offered only as a hybrid; MSRP is $41,320 to $58,710, with 35–36 mpg combined"
+      },
+      {
+        "states": "Sienna has available all-wheel drive",
+        "from": "It has a standard hybrid powertrain and available all-wheel drive"
+      },
+      {
+        "states": "Sienna price range $41,320 to $58,710",
+        "from": "MSRP is $41,320 to $58,710, with 35–36 mpg combined"
+      },
+      {
+        "states": "Honda Odyssey is top with U.S. News and drives most like a car",
+        "from": "U.S. News names the 2026 Honda Odyssey the best minivan, with an overall score of 9.3/10; It drives the most like a car, with responsive steering and a smooth V6"
+      }
+    ],
+    "answer": "In the US I'd go with the Toyota Sienna. Edmunds, Quartz and AutoGuide all put it first, it's hybrid-only with 35-36 mpg combined, and you can get all-wheel drive. It runs $41,320 to $58,710. The Honda Odyssey is the one to get if you care most about how it drives, since U.S. News has it at the top and it feels the most like a car."
+  },
+  "latencyMs": 6571
+}

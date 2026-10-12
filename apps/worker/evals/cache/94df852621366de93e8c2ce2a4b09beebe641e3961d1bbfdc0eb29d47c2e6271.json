@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "my pick is Lionel Messi",
+        "from": "settled"
+      }
+    ],
+    "answer": "Messi, for me. Eight Ballon d'Or wins, a World Cup with Argentina in 2022, and he kept producing at the top level for close to two decades. Ronaldo has a strong case on goals and longevity, but Messi's peak and his trophies with a World Cup on top settle it for me."
+  },
+  "latencyMs": 1999
+}

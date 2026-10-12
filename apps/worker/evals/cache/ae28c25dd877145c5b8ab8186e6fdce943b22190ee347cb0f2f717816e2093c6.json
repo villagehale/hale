@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "hard boiled egg takes about 10-12 minutes from when the water boils",
+        "from": "settled"
+      }
+    ],
+    "answer": "Put the eggs in boiling water and cook them for about 10 to 12 minutes. Then move them straight into cold water for a few minutes so they peel easier."
+  },
+  "latencyMs": 1888
+}

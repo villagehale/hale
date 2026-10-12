@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "High of 24 C, humidex 28, tomorrow Tuesday October 13",
+        "from": "Environment Canada: The high is 24 and the humidex is 28."
+      },
+      {
+        "states": "A few showers end near noon, then mostly cloudy with a 60 percent chance of showers",
+        "from": "Environment Canada: A few showers end near noon. The rest of the day is mainly cloudy with a 60 percent chance of showers"
+      },
+      {
+        "states": "Risk of thunderstorms in the morning and afternoon",
+        "from": "Environment Canada: there is a risk of a thunderstorm in the morning and afternoon."
+      },
+      {
+        "states": "10 to 20 mm of rain",
+        "from": "Environment Canada: Local rainfall amounts are 10 to 20 mm."
+      },
+      {
+        "states": "Southwest wind 20 km/h gusting to 40 near noon",
+        "from": "Environment Canada: Wind becomes southwest 20 km/h gusting to 40 near noon."
+      },
+      {
+        "states": "Low of 12 Tuesday night",
+        "from": "Environment Canada: Tuesday night is cloudy periods with a 60 percent chance of showers, and a low of 12."
+      },
+      {
+        "states": "Wednesday sun and cloud, 30 percent chance of showers, high of 19",
+        "from": "Environment Canada: Wednesday, October 14 is a mix of sun and cloud with a 30 percent chance of showers, and a high of 19."
+      }
+    ],
+    "answer": "Tomorrow in Toronto is warm and wet: a high of 24, feeling like 28 with the humidex. A few showers end around noon, then it's mostly cloudy with a 60 percent chance of showers and a risk of thunderstorms through the morning and afternoon. Expect 10 to 20 mm of rain, and gusty southwest wind up to 40 km/h near noon. Low of 12 overnight. Wednesday looks better, with sun and cloud and a 30 percent chance of showers."
+  },
+  "latencyMs": 5014
+}

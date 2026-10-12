@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the notes: 4.34% lowest insured 5-year fixed (Ratehub/WOWA, Oct 9-12), 4.44% lowest conventional, Big 6 around 5.14-5.17%, and rates climbing in October. It gives the 5-year fixed for Canada with dates and kind of rate, as watchFor asks. It reads like a well-informed friend texting back. The closing insured-or-not question is a natural follow-up, not a deflect.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

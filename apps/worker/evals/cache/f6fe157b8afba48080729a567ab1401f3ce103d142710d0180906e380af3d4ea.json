@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It writes a short poem about Mondays, as asked, with no service-style framing, so it reads like a friend texting back. There are no factual claims to check. The craft is slightly sloppy: 'not done' ends two lines in a row and the poem is run together as prose. It still fully answers the creative ask.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}
