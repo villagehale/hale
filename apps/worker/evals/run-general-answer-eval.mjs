@@ -307,6 +307,19 @@ const BROKEN_ANSWER =
 // off rather than a friend texting. A judge that passes it has no floor under tone.
 const NEAR_MISS_TAIL = 'Want me to check anything else for you?';
 
+/**
+ * Exit once the report has left the process. `process.exit` drops whatever a pipe has not
+ * yet taken, and this report is long: read by a process that is busy when the run ends
+ * (CI), its tail went missing and a fixture that had passed was not in it. The write's
+ * callback runs after everything printed before it has been handed over. The promise
+ * never settles, so a caller that awaits it does nothing more.
+ */
+function exitWhenPrinted(code) {
+  return new Promise(() => {
+    process.stdout.write('\n', () => process.exit(code));
+  });
+}
+
 /** Nearest-rank percentile over whole-millisecond latencies. */
 function percentile(values, q) {
   if (values.length === 0) return null;
@@ -526,7 +539,7 @@ async function main() {
     console.log(
       `broken-mode calibration (the judge must fail both stand-ins): ${calibrated ? 'PASS (exit 0)' : `FAIL (exit 1) - the judge scored the broken one ${calibration.score} and the near miss ${nearMiss.score}`}`,
     );
-    process.exit(calibrated ? 0 : 1);
+    await exitWhenPrinted(calibrated ? 0 : 1);
   }
 
   const results = [];
@@ -671,7 +684,7 @@ async function main() {
 
   console.log('\n--- gate ---');
   console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
-  process.exit(allPass ? 0 : 1);
+  await exitWhenPrinted(allPass ? 0 : 1);
 }
 
 main().catch((err) => {
