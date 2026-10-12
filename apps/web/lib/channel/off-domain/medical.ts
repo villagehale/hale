@@ -71,8 +71,8 @@ import { SAFETY_REPLY_BY_LANGUAGE } from './copy';
  * `toSmsReply`/`sendable`.
  *
  * PRIVACY. The raw message reaches ONLY the sanitize call; the search and the compose see
- * the de-identified query alone. Nothing here logs the raw body — only a coarse reason,
- * the attempt number, and a provider error's message string (rule #1).
+ * the de-identified query alone. Nothing here logs the raw body or any provider text —
+ * only a coarse reason, the attempt number and a named detail (rule #1).
  */
 
 /** The most a medical answer may run to. The founder's brief sets "~4 segments for this
