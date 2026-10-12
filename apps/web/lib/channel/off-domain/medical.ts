@@ -49,9 +49,10 @@ import { SAFETY_REPLY_BY_LANGUAGE } from './copy';
  * (see {@link isRedFlag}), not matched against an English word list; the clinical query
  * stays ENGLISH whatever the parent wrote (the pediatric search is English-keyed, and
  * {@link NON_ENGLISH_LETTERS} REFUSES a query that ignored it rather than trusting the
- * prompt); and the escalation gate below reads 911 in any language plus the en/fr/zh
- * directive phrases, so a correct "allez aux urgences" is not mistaken for an
- * under-escalation and a French under-escalation is not mistaken for a directive.
+ * prompt); and whether the composed answer ESCALATES is judged by a model reading that
+ * answer in its own language ({@link judgeEscalation}), so a correct "llévela a urgencias"
+ * is not mistaken for an under-escalation and "no hace falta llamar al 911" is not
+ * mistaken for a directive because it carries the digits.
  *
  * FAIL CLOSED, THROUGH ONE DOOR. Every degradation — no client, a skill that would not
  * load, zero searches, an empty/oversized body, missing triage — is a thrown
@@ -100,6 +101,8 @@ const GROUND_MAX_TOKENS = 4096;
 /** Generous on purpose: forceToolJson throws on a max_tokens cutoff, and a triage cut
  * mid-sentence is exactly what must never ship. */
 const COMPOSE_MAX_TOKENS = 1024;
+/** Thinking and the reason share this on an adaptive lane (max_tokens caps both). */
+const ESCALATION_MAX_TOKENS = 1024;
 
 export const AGE_BANDS = [
   'infant_under_3mo',
@@ -115,9 +118,9 @@ export type AgeBand = (typeof AGE_BANDS)[number];
  * only call that sees their words), as a language code (`es`, `ar`, `zh-Hant`).
  *
  * No list of languages: Hale answers in whatever language the parent wrote. The escalation
- * gate does not need one either — 911 is dialled, not translated, so a red-flag answer in
- * any language carries it ({@link hasEmergencyDirective}). A value that is not shaped like a
- * language code normalizes to `en` rather than throwing.
+ * gate does not need one either — it is a judgment of the composed answer in that language
+ * ({@link judgeEscalation}). A value that is not shaped like a language code normalizes to
+ * `en` rather than throwing.
  */
 export type ReplyLanguage = string;
 
@@ -153,8 +156,10 @@ export interface MedicalComposer {
  * ways the model's own output is unusable, deliberately not folded into one.
  * `not_grounded` is the invariant this lane exists to hold: a medical answer that did not
  * actually search is not a medical answer. `under_escalated` is its safety twin: a judged
- * red flag whose composed body never said "seek emergency care" (see {@link isRedFlag});
- * its detail names the reading, `emergency` or `unsure`. `sanitize_failed` carries one more
+ * red flag whose composed body was not judged an order to seek emergency care now (see
+ * {@link judgeEscalation}); its detail names the reading and the verdict.
+ * `escalation_unjudged` is that judgment not coming back at all — not the same story, so
+ * not the same name. `sanitize_failed` carries one more
  * than its name suggests: a query the sanitizer left in the parent's language (detail
  * `query_not_english`), which the English-keyed search cannot use.
  */
@@ -167,6 +172,7 @@ export type MedicalFallback =
   | 'compose_failed'
   | 'missing_triage'
   | 'under_escalated'
+  | 'escalation_unjudged'
   | 'unsendable';
 
 class MedicalUnresolvable extends Error {
@@ -225,6 +231,27 @@ const composeJsonSchema: Anthropic.Tool.InputSchema = {
   required: ['answer', 'triage'],
 };
 
+/** What the escalation judgment may answer. Only `yes` ships a red-flag answer. */
+const ESCALATION_VERDICTS = ['yes', 'no', 'unsure'] as const;
+
+const escalationSchema = z.object({
+  reason: z.string(),
+  // Parsed loosely like `red_flag`: anything but `yes` falls closed, so an off-list value
+  // needs no throw of its own.
+  escalates: z.string(),
+});
+
+const escalationJsonSchema: Anthropic.Tool.InputSchema = {
+  type: 'object',
+  // The reason before the verdict: the judgment says what the answer tells the parent
+  // before it decides whether that is an order.
+  properties: {
+    reason: { type: 'string' },
+    escalates: { type: 'string', enum: [...ESCALATION_VERDICTS] },
+  },
+  required: ['reason', 'escalates'],
+};
+
 interface ClinicalQuery {
   clinicalQuery: string;
   ageBand: AgeBand | null;
@@ -262,6 +289,12 @@ export function composeUserMessage(
   });
 }
 
+/** The escalation payload: the composed body the parent would receive and the language
+ * they read — never their message. Shared with the eval, which replicates this shape. */
+export function escalationUserMessage(body: string, language: ReplyLanguage): string {
+  return JSON.stringify({ language, answer: body });
+}
+
 /** The one thing any catch may keep: the message string. A provider error can echo the
  * request, so the object never survives (rule #1). */
 function message(err: unknown): string {
@@ -276,8 +309,8 @@ function normalizeAgeBand(raw: unknown): AgeBand | null {
 
 /**
  * FAIL CLOSED: only an explicit `not_emergency` is not a red flag. `unsure`, a missing
- * reading and anything off the list all are, so the answer must then carry an emergency
- * directive or the turn falls to the fixed line, which names 911 itself.
+ * reading and anything off the list all are, so the answer must then be judged an
+ * emergency order or the turn falls to the fixed line, which names 911 itself.
  */
 function isRedFlag(raw: unknown): boolean {
   return raw !== 'not_emergency';
@@ -324,77 +357,6 @@ function isEnglish(text: string): boolean {
  * one SUBSTITUTES the fixed line; this one REQUIRES the numbers be present. */
 function namesUrgentCare(body: string): boolean {
   return /\b(?:811|911)\b/.test(body);
-}
-
-/**
- * Whether a body carries an explicit EMERGENCY instruction — the positive half of the
- * escalation invariant. Unlike {@link namesUrgentCare}, the presence of 811 (the non-urgent
- * nurse line) does NOT satisfy this: "watch and wait, call 811" names a number but escalates
- * nothing. Only a real "call 911 / go to the ER / seek emergency care now" counts. Exported
- * for direct unit testing and mirrored by the eval gate.
- *
- * It reads 911 in every language, and the directive phrases of en/fr/zh, because an English-only matcher over a
- * French or Chinese body is wrong in BOTH directions: it falls a correct "emmenez-la aux
- * urgences" closed to the fixed English line, and — the direction that hurts — it cannot
- * tell that body apart from "ce n'est pas une urgence, appelez le 811", so the gate stops
- * gating the moment the parent stops writing in English.
- *
- * Four properties of the lists below are load-bearing:
- *
- *   · 911 IS THE UNIVERSAL ANCHOR. The digits mean the same thing in every language, and
- *     the skill requires the triage to name them, so this is the pattern that fires on
- *     nearly every real escalation. The per-language phrases are the belt to that braces:
- *     they carry a body that says "go now" without printing a number.
- *   · THE FRENCH LIST IS DIRECTIVES, NOT THE NOUN "urgence". A bare `urgence` also matches
- *     "ce n'est pas une urgence" — the exact under-escalation this check exists to catch —
- *     so only the go-there forms count: `aux urgences`, `a l'urgence` (Quebec), `salle
- *     d'urgence`, `soins d'urgence`. `ambulance` is spelled the same in both languages and
- *     lives in the English list; it is not repeated here.
- *   · CHINESE IS THE IMPERATIVE FORMS. 急诊 (the ER), 急救 / 救护车 (emergency aid, an
- *     ambulance) and 立即/马上/立刻 + 就医/就诊/送医 ("get seen NOW"). Deliberately absent:
- *     尽快就医 ("get seen soon"), which is the 811 register wearing an urgent coat. 急救 is
- *     the noun a first-aid KIT is named after, so 急救箱/急救包 in a cupboard is excluded.
- *   · A MATCH IS ONLY A DIRECTIVE WHEN NOTHING NEGATED IT — see {@link DIRECTIVE_NEGATION}.
- */
-const EMERGENCY_NUMBER = /\b911\b/;
-const EMERGENCY_DIRECTIVE_EN =
-  /\bER\b|\bA&E\b|emergency (?:room|department|care|services|help)|\bambulance\b|seek (?:emergency|immediate|urgent) (?:medical )?care|urgent medical care/i;
-const EMERGENCY_DIRECTIVE_FR =
-  /aux urgences|[àa] l['’ ]urgence|salle d['’ ]urgence|service des urgences|soins (?:m[ée]dicaux )?d['’ ]urgence/i;
-const EMERGENCY_DIRECTIVE_ZH = /急诊|急救(?![箱包])|救护车|(?:立即|马上|立刻)(?:就医|就诊|送医|去医院)/;
-
-/**
- * The negation guard: a directive term counts only when nothing NEGATED it. Every phrase above names the emergency, and naming
- * it is exactly how a body rules it OUT — "no need for the ER, call 811", "pas besoin
- * d'aller aux urgences", "不需要去急诊" all matched, all named 811 and no 911, and all
- * shipped as escalations of a detected red flag.
- *
- * A NEGATED CLAUSE IS NOT READ AT ALL — not the text after the negator, the whole clause.
- * All three languages rule a thing out by naming it first as readily as last ("a trip to
- * the ER is not necessary", "aller aux urgences n'est pas nécessaire", "去急诊不必要"), so a
- * guard that only looked backward from the match would take the ruling-out for the order.
- * The CLAUSE is what keeps that from swallowing the rest of the body: "no need to panic,
- * but take her to the ER now" escalates, because the second clause carries no negator.
- *
- * The negators are the "you don't have to" register, NOT bare `not`/`don't`: a real
- * directive is routinely written "don't wait, go to the ER" / "ne tardez pas" / "不要等",
- * so a bare-negator list would fall real emergencies closed. Bodies here have already been
- * through {@link plainText}, which folds en/em dashes to a spaced hyphen and curly quotes
- * to straight ones — the boundary set reads what actually arrives.
- */
-const CLAUSE_BOUNDARY = /[.!?;:,\n。！？；：、，]|\s-\s/;
-const DIRECTIVE_NEGATION =
-  /\bno (?:need|reason)\b|(?:\bnot|n['’]t)\s+(?:need|necessary|have to)|\bpas besoin\b|\bpas n[ée]cessaire\b|\bn['’]est pas\b|\binutile\b|不需要|不用|无需|不必/i;
-
-export function hasEmergencyDirective(body: string): boolean {
-  return body.split(CLAUSE_BOUNDARY).some(
-    (clause) =>
-      !DIRECTIVE_NEGATION.test(clause) &&
-      (EMERGENCY_NUMBER.test(clause) ||
-        EMERGENCY_DIRECTIVE_EN.test(clause) ||
-        EMERGENCY_DIRECTIVE_FR.test(clause) ||
-        EMERGENCY_DIRECTIVE_ZH.test(clause)),
-  );
 }
 
 /** How many real web-search results the model produced. An error result is not a result,
@@ -501,9 +463,11 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
 
   let sanitizeSkill: Awaited<ReturnType<typeof loadCronSkill>>;
   let medicalSkill: Awaited<ReturnType<typeof loadCronSkill>>;
+  let escalationSkill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
     sanitizeSkill = await loadCronSkill('medical-sanitize');
     medicalSkill = await loadCronSkill('medical-symptom');
+    escalationSkill = await loadCronSkill('medical-escalation');
   } catch (err) {
     throw new MedicalUnresolvable('skill_unavailable', message(err));
   }
@@ -600,14 +564,55 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
   }
   if (!namesUrgentCare(body)) throw new MedicalUnresolvable('missing_triage', 'lost in assembly');
   // The escalation invariant. namesUrgentCare only proves a number is PRESENT — 811 alone
-  // passes it, so a mis-triaged emergency ("probably viral, watch and wait, call 811") ships
-  // through every gate above. This is the one that catches it: a judged red flag — `unsure`
-  // included — whose body never says "seek emergency care" fails CLOSED to the fixed line,
-  // which itself names 911 — strictly safer than shipping an under-escalation.
-  if (isRedFlag(sanitized.red_flag) && !hasEmergencyDirective(body)) {
-    throw new MedicalUnresolvable('under_escalated', redFlagReading(sanitized.red_flag));
+  // passes it, and so does "no need to call 911" — so a mis-triaged emergency ships through
+  // every gate above. This is the one that catches it: a judged red flag — `unsure`
+  // included — whose body is not judged an order to get emergency care now fails CLOSED to
+  // the fixed line, which itself names 911 — strictly safer than shipping an
+  // under-escalation.
+  if (isRedFlag(sanitized.red_flag)) {
+    const verdict = await judgeEscalation(resolved, escalationSkill, body, language);
+    if (verdict !== 'yes') {
+      throw new MedicalUnresolvable(
+        'under_escalated',
+        `${redFlagReading(sanitized.red_flag)}:${verdict}`,
+      );
+    }
   }
   return body;
+}
+
+/**
+ * Whether the composed body tells the parent to get emergency care NOW, in the language
+ * they read — judged by a model over the body itself, in whatever language it is written.
+ *
+ * Not a phrase list: a list knows the languages it was written for, and a negation in any
+ * other ("no hace falta llamar al 911") carries the digits and no negator it holds, so it
+ * reads as the very order it rules out. The judgment sees the body and the language code
+ * only — never the parent's message — and anything but `yes` is the caller's to fail
+ * closed; a judgment that does not come back at all is `escalation_unjudged`.
+ */
+async function judgeEscalation(
+  client: AgentClient,
+  skill: Awaited<ReturnType<typeof loadCronSkill>>,
+  body: string,
+  language: ReplyLanguage,
+): Promise<string> {
+  try {
+    const { value } = await forceToolJson({
+      client,
+      lane: pickLane(skill.meta.task),
+      system: skill.instructions,
+      userMessage: escalationUserMessage(body, language),
+      toolName: 'escalation',
+      toolDescription: 'Return whether the answer orders emergency care now.',
+      inputJsonSchema: escalationJsonSchema,
+      schema: escalationSchema,
+      maxTokens: ESCALATION_MAX_TOKENS,
+    });
+    return value.escalates;
+  } catch (err) {
+    throw new MedicalUnresolvable('escalation_unjudged', message(err));
+  }
 }
 
 /**
