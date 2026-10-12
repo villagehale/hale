@@ -317,6 +317,11 @@ describe('the general-answer runner', () => {
     const realReport = `${run.stdout}${run.stderr}`;
     const realFailures = failuresById(realReport);
 
+    // The run has to have got as far as its answers, and to its gate. When it did not,
+    // the end of what it printed says why (a cache miss, a harness error, a cut-off report).
+    const howItEnded = `the run ended (status ${run.status}) with:\n${realReport.slice(-1500)}`;
+    expect(realReport, howItEnded).toContain('--- answers ---');
+    expect(realReport, howItEnded).toMatch(/^overall \(real\): /m);
     expect(realFailures['street-address-costco']).toContain(`not_sent_to_search:${unsentTown}`);
     expect(realFailures['street-address-costco']).not.toContain('not_sent_to_search:oakville');
     expect(realReport).toMatch(/^named town not searched: +1 {2}\(0 required/m);
