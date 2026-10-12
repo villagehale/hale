@@ -331,6 +331,30 @@ describe('judgeKidRelevance', () => {
     ]);
   });
 
+  it('a capitalized two-letter word or a non-Latin word of a sender names it; a lowercase short word does not', async () => {
+    await db.database.delete(schema.children).where(eq(schema.children.id, children[1]?.id ?? ''));
+    children = children.slice(0, 1);
+    const { client } = scriptedClient(
+      byText({
+        'Well visit': { verdict: 'kid', reason: 'a checkup with Li for a toddler' },
+        'Ear check': { verdict: 'kid', reason: 'a hearing check with 王 for a toddler' },
+        'Splash time': { verdict: 'kid', reason: 'a toddler swim class at noon' },
+      }),
+    );
+    await judge(client, [
+      item('a', 'Well visit', { sender: 'Dr Li' }),
+      item('b', 'Ear check', { sender: '王' }),
+      item('c', 'Splash time', { place: 'Pool at the Y' }),
+    ]);
+    const stored = await storedVerdicts();
+    expect(stored.map((row) => [row.itemKey, row.reason]).sort()).toEqual([
+      ['key-a', null],
+      ['key-b', null],
+      // "at" is lowercase and two letters, "Y" one letter: neither names the place.
+      ['key-c', 'a toddler swim class at noon'],
+    ]);
+  });
+
   it("marks a teenager's item as teen with the child set and stores no reason", async () => {
     const { client } = scriptedClient(
       byText({ 'Juno practice': { verdict: 'kid', childName: 'Juno' } }),

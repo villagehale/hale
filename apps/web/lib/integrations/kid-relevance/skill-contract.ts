@@ -43,10 +43,15 @@ export const KID_REASON_MAX_CHARS = 120;
 /** The longest not-mine hint kept: the kind of thing it was, in a few words. */
 export const KID_HINT_MAX_CHARS = 48;
 
-/** Lowercased words only, so "Wren Swim," and "wren swim" compare equal. */
+/**
+ * Lowercased, unaccented words only, so "Wren Swim," and "wren swim" compare equal, and
+ * so do "José" and "Jose". NFKC first folds width and compatibility forms.
+ */
 function foldWords(text: string): string {
   return text
     .normalize('NFKC')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
@@ -61,8 +66,22 @@ export function repeatsAny(text: string, own: readonly (string | null)[]): boole
   });
 }
 
-/** Shorter words of a place or sender ("a", "at", "12") name nothing on their own. */
+/** Below this, a lowercase Latin word of a place or sender ("at", "a") names nothing. */
 const SHORTEST_NAMING_WORD = 3;
+
+/**
+ * Whether one word of a place or sender, as written, can name someone or somewhere: three
+ * or more letters, a capitalized Latin word of two ("Li", "Wu"), or any word with a letter
+ * outside the Latin script (a Chinese surname is one character). Digits never name.
+ */
+function namesSomething(word: string): boolean {
+  const letters = [...word].filter((char) => /\p{L}/u.test(char));
+  return (
+    letters.length >= SHORTEST_NAMING_WORD ||
+    (letters.length >= 2 && /^\p{Lu}/u.test(word)) ||
+    letters.some((char) => !/\p{Script=Latin}/u.test(char))
+  );
+}
 
 /** True when `text` carries any one naming word of any of `own`. */
 export function sharesAnyWord(text: string, own: readonly (string | null)[]): boolean {
@@ -70,9 +89,10 @@ export function sharesAnyWord(text: string, own: readonly (string | null)[]): bo
   return own.some(
     (value) =>
       value !== null &&
-      foldWords(value)
-        .split(' ')
-        .some((word) => [...word].length >= SHORTEST_NAMING_WORD && words.has(word)),
+      value
+        .normalize('NFKC')
+        .split(/[^\p{L}\p{M}\p{N}]+/u)
+        .some((word) => namesSomething(word) && words.has(foldWords(word))),
   );
 }
 
