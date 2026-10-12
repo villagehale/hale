@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a daycare pickup, a childcare logistics task, and that plainly supports the kid verdict. It is one short clause, matches the verdict and adds no unsupported fact: it says 'the children' generally without naming who attends.",
+    "score": 5
+  }
+}

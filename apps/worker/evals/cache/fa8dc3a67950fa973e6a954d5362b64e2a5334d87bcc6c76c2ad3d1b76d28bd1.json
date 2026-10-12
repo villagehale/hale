@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The verdict is right: this is a medical checkup for Wren, a named child whose 18-month age matches. But the classifier's reason only restates the title. It does not say the item is a pediatric appointment for a named child or why that makes it a kid item, so it falls under the low-score case of a near-copy of the title with no 'what it is' or 'why'.",
+    "score": 2
+  }
+}

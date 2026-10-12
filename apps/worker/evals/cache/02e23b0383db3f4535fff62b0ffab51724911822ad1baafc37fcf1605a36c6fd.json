@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The calendar item is only \"J.\", a bare initial that names no child, activity or appointment type, so unsure fits. The classifier's reason states exactly that in one short clause: what the item is (a lone initial) and why it cannot be told (no context). It adds no unsupported facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is an airline check-in email for a flight that names no child and does not show it is a family or work trip, so under the trip rule it is unsure. The classifier's single clause says what the item is (a flight), why it cannot be placed (no named child or family booking), and ties that to unsure. It invents nothing and argues for the verdict given.",
+    "score": 5
+  }
+}

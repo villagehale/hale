@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is only \"Busy\", a bare calendar block that names no child and says nothing about the activity. The classifier's reason calls it a bare busy block, which says what the item is and implies why it can't be classified, so it fits the unsure verdict and the bare-item rule. It is a short single clause with no invented facts. It could state the 'why' slightly more explicitly, but it is adequate.",
+    "score": 5
+  }
+}

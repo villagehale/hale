@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a household question about getting Wren, an 18-month-old child, to a swim session, which makes it a kid item. The classifier's reason is little more than a paraphrase of the message. It never says that Wren is one of the children or that this is a kid activity, so the 'why' is only implied.",
+    "score": 3
+  }
+}

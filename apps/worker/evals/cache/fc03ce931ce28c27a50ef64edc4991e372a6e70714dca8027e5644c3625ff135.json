@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason calls the item a hotel booking that names no child, and says it could be either a family trip or a personal one. The trip rule sends exactly that case to unsure, so the reason supports the verdict it sits beside. It is one short clause and adds no facts the item does not contain.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is a single short clause that identifies the item as a bare calendar 'Hold' with no context, and that bareness is exactly why the verdict is unsure. It adds no unsupported facts. It only implies the why rather than stating it outright, which is acceptable here.",
+    "score": 5
+  }
+}

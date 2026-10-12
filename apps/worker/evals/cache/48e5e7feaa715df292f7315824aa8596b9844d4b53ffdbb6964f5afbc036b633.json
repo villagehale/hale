@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a birthday party for another child, which the rules count as a kid item, and that matches the kid verdict. It is one short clause. 'The kids would attend' slightly over-claims, since it implies both children are going, including the 18-month-old, which the item does not state, but the core reasoning is sound.",
+    "score": 4
+  }
+}

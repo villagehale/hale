@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason supports the adult verdict without inventing any facts: a daily standup is a work meeting, and no child is named. It is a single short clause that says what kind of thing the item is, a work meeting, so it is not just the title copied back. It only implies the why (work means the parent's own) rather than stating it, which makes it slightly thinner than ideal.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is accurate and supports the kid verdict, but it only rearranges the title ('Ezra soccer practice' becomes 'soccer practice for Ezra'). It never says that Ezra is one of the family's children, which is what makes this a kid activity, so it adds little beyond restating the item.",
+    "score": 3
+  }
+}

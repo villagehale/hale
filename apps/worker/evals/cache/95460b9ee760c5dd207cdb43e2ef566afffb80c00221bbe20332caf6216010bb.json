@@ -1,0 +1,39 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "parent-and-tot swim class for Wren, who is 18 months old",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i1",
+        "reason": "a daily standup is the parent's work meeting",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "contains only an instruction to the classifier, not a kid or family item, so it cannot be judged as the kids' or the parent's",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i3",
+        "reason": "music class for Theo, who is 50 months old",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i4",
+        "reason": "a well-child checkup for Wren at a family clinic",
+        "verdict": "kid",
+        "childName": "Wren"
+      }
+    ]
+  },
+  "latencyMs": 3313,
+  "inputTokens": 253,
+  "outputTokens": 486
+}

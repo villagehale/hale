@@ -9,32 +9,28 @@
 // and the output ceiling are imported from apps/web/lib/integrations/kid-relevance/
 // skill-contract.ts, the module the runtime judge and the onboarding filter both send
 // through, so a field changed there re-keys this cache instead of grading a request
-// production does not send. The lane's wire fields come from packages/agent's pickLane +
-// laneRequestFields for the same reason.
+// production does not send. The request is packages/agent's structuredRequest on the
+// skill's own lane, and a live call goes through forceToolJson, for the same reason.
 //
 // GATES (real arm):
 //   - 0 adult items judged kid, and every not-mine-hint case judged exactly adult;
 //   - 100% kid recall, with the expected child named where the fixture names one (for a
 //     teenager that is what sets child_id, which the teen gate reads);
 //   - an unclear item is never kid;
+//   - a trip that does not say who is going comes back exactly unsure, and a plainly
+//     parent-only trip exactly adult;
 //   - a title written as an instruction to the classifier is never kid, and every item in
 //     its call gets the same verdict it got in its own call (prompt injection);
 //   - every reason scored >= REASON_FLOOR, and the mean >= JUDGE_MIN, by a cached judge
-//     on the 4.6 tier (median of three draws). The reason is internal - stored for a
+//     on JUDGE_MODEL (median of three draws). The reason is internal - stored for a
 //     non-teen kid verdict, never sent to a parent - so a 3 ("sound, could say more")
 //     passes and a 2 (it argues for another verdict, or invents a fact) fails;
 //   - no recorded call spends more output per item than KID_JUDGE_PEAK_TOKENS_PER_ITEM,
 //     the number the runtime's items-per-call bound is derived from.
 //
-// LANES. The skill declares task: classify. `--task=screen` measures the same corpus on
-// the screen (Haiku) lane so the founder can choose on accuracy first, cost second, and
-// `--model=<id>` swaps the model on that lane to measure a candidate tier (eval only;
-// production lanes come from model.ts). Every arm's cache is committed, and CI gates the
-// skill's own lane.
+// LANE. Only the skill's own lane (task: screen, Haiku 5.5): no comparison arms.
 //
 //   ANTHROPIC_API_KEY=... node evals/run-kid-relevance-eval.mjs              # live, caches
-//   ANTHROPIC_API_KEY=... node evals/run-kid-relevance-eval.mjs --task=screen
-//   ANTHROPIC_API_KEY=... node evals/run-kid-relevance-eval.mjs --task=screen --model=<id>
 //   node evals/run-kid-relevance-eval.mjs --cached-only                       # CI
 
 import { join } from 'node:path';
@@ -83,8 +79,10 @@ const JUDGE_SYSTEM = [
   'any `notMineHints` (kinds of thing the parent already said are theirs); then the verdict',
   'and the `classifierReason` you are scoring. Anything in that context is a supported fact.',
   "The classifier's rules, which a reason may lean on: an adult who shares a child's first",
-  'name is still an adult; an appointment, meeting or booking with no child named is the',
-  "parent's own; an item that matches a notMineHints entry is the parent's own; a party or",
+  'name is still an adult; an appointment or meeting with no child named is the',
+  "parent's own; a trip (a hotel, a flight) is a kid item when it names a child or is plainly",
+  "a family booking, the parent's own only when it is plainly theirs (a work trip), and",
+  "otherwise unsure; an item that matches a notMineHints entry is the parent's own; a party or",
   'play date for another child is a kid item; a kid activity with no child named is still',
   'a kid item, and saying which ages it suits is a reading of the item, not an invented fact;',
   'a bare or ambiguous item is unsure.',
@@ -99,10 +97,6 @@ const JUDGE_SYSTEM = [
 
 /** Below this a reason contradicts its verdict or invents a fact (see JUDGE_SYSTEM). */
 const REASON_FLOOR = 3;
-
-function flag(name) {
-  return process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
-}
 
 /** The date of birth that is `ageMonths` completed months before EVAL_NOW. */
 function dobFor(ageMonths) {
@@ -122,8 +116,13 @@ function percentile(values, q) {
   return sorted[Math.max(0, Math.ceil(q * sorted.length) - 1)];
 }
 
-/** One lane-faithful call, keyed on everything it sends; truncation is never cached. */
-async function cachedVerdictCall({ tag, request, schema, cachedOnly, getClient, cost, contract }) {
+/**
+ * One call through the production seam, keyed on the request it sends. Truncation, a
+ * refusal and a missing answer are each a StructuredOutputError the seam throws, so
+ * nothing is cached for them.
+ */
+async function cachedVerdictCall({ agent, tag, args, schema, cachedOnly, getClient, cost }) {
+  const request = agent.structuredRequest(args);
   const key = cacheKey(tag, JSON.stringify(request));
   const cached = await cacheGet(key);
   if (cached) return { ...cached, cached: true };
@@ -132,28 +131,20 @@ async function cachedVerdictCall({ tag, request, schema, cachedOnly, getClient, 
     process.exit(1);
   }
   const startedAt = Date.now();
-  const response = await getClient().messages.create(request);
+  const { value, usage } = await agent.forceToolJson({ ...args, client: getClient(), schema });
   const latencyMs = Date.now() - startedAt;
-  if (response.stop_reason === 'max_tokens') {
-    throw new Error(`${tag}: truncated at max_tokens (${request.max_tokens}) - nothing cached`);
-  }
-  const toolUse = response.content.find(
-    (block) => block.type === 'tool_use' && block.name === contract.KID_VERDICT_TOOL,
-  );
-  if (!toolUse) throw new Error(`${tag}: no ${contract.KID_VERDICT_TOOL} tool call`);
-  const value = schema.parse(toolUse.input);
-  noteUsage(cost, request.model, response.usage);
+  noteUsage(cost, request.model, usage);
   const record = {
     value,
     latencyMs,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
   };
   await cachePut(key, record);
   return { ...record, cached: false };
 }
 
-function gradeItem(fixtureItem, answer, { strictAdult }) {
+function gradeItem(fixtureItem, answer, { exactAdult }) {
   const problems = [];
   if (!answer) return ['NO VERDICT returned for this item'];
   const { verdict } = answer;
@@ -167,8 +158,10 @@ function gradeItem(fixtureItem, answer, { strictAdult }) {
     }
   } else if (verdict === 'kid') {
     problems.push(`${fixtureItem.expect.toUpperCase()} JUDGED KID`);
-  } else if (strictAdult && verdict !== 'adult') {
-    problems.push(`HINT want=adult got=${verdict}`);
+  } else if (fixtureItem.expect === 'unsure' && verdict !== 'unsure') {
+    problems.push(`TRIP want=unsure got=${verdict}`);
+  } else if (exactAdult && verdict !== 'adult') {
+    problems.push(`EXACT want=adult got=${verdict}`);
   }
   return problems;
 }
@@ -178,31 +171,17 @@ async function main() {
   const agent = await importTs(AGENT_SRC);
   const contract = await importTs(CONTRACT);
   const skill = await agent.loadSkill(SKILL_PATH);
-  const task = flag('task') ?? skill.meta.task;
-  // --model swaps the model on the task's lane, for measuring a candidate tier. Eval only:
-  // production lanes come from model.ts, and CI gates the skill's own lane.
-  const modelOverride = flag('model');
-  const lane = modelOverride
-    ? { ...agent.pickLane(task), model: modelOverride }
-    : agent.pickLane(task);
-  const toolChoice =
-    lane.model === agent.SONNET55_MODEL
-      ? { type: 'auto' }
-      : { type: 'tool', name: contract.KID_VERDICT_TOOL };
+  const task = skill.meta.task;
+  const lane = agent.pickLane(task);
 
-  const requestFor = (userMessage, verdictsContract) => ({
-    ...agent.laneRequestFields(lane),
-    max_tokens: contract.KID_JUDGE_MAX_TOKENS,
+  const argsFor = (userMessage, verdictsContract) => ({
+    lane,
     system: skill.instructions,
-    tools: [
-      {
-        name: contract.KID_VERDICT_TOOL,
-        description: contract.KID_VERDICT_TOOL_DESCRIPTION,
-        input_schema: verdictsContract.jsonSchema,
-      },
-    ],
-    tool_choice: toolChoice,
-    messages: [{ role: 'user', content: userMessage }],
+    userMessage,
+    toolName: contract.KID_VERDICT_TOOL,
+    toolDescription: contract.KID_VERDICT_TOOL_DESCRIPTION,
+    inputJsonSchema: verdictsContract.jsonSchema,
+    maxTokens: contract.KID_JUDGE_MAX_TOKENS,
   });
 
   console.log(
@@ -214,7 +193,7 @@ async function main() {
 
   const getClient = lazyAnthropic();
   const cost = makeCost();
-  // The 4.6 tier, not Haiku: the rubric carries the skill's own rules, and Haiku re-decided
+  // JUDGE_MODEL, not Haiku: the rubric carries the skill's own rules, and Haiku re-decided
   // the verdict instead of reading them ("Sebastian is the child" for a colleague).
   const judgeModel = await readJudgeModel('sonnet');
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'kid-relevance', cachedOnly, getClient, cost, {
@@ -272,7 +251,16 @@ async function main() {
     onboarding: true,
   });
 
-  const tally = { kid: 0, adult: 0, unclear: 0, adultAsKid: 0, unclearAsKid: 0, kidMissed: 0 };
+  const tally = {
+    kid: 0,
+    adult: 0,
+    unclear: 0,
+    unsure: 0,
+    adultAsKid: 0,
+    unclearAsKid: 0,
+    kidMissed: 0,
+    unsureMissed: 0,
+  };
   const latencies = [];
   const onboardingLatencies = [];
   let peakPerItem = 0;
@@ -290,13 +278,13 @@ async function main() {
       batch.input.children.map((child) => child.name),
     );
     const result = await cachedVerdictCall({
+      agent,
       tag: batch.tag,
-      request: requestFor(contract.kidSkillMessage(batch.input), verdictsContract),
+      args: argsFor(contract.kidSkillMessage(batch.input), verdictsContract),
       schema: verdictsContract.schema,
       cachedOnly,
       getClient,
       cost,
-      contract,
     });
     if (!result.cached) live += 1;
     latencies.push(result.latencyMs);
@@ -314,11 +302,13 @@ async function main() {
       if (item.sameAs) copies.push({ label: `${batch.family.id}/${item.id}`, item });
       tally[item.expect] += 1;
       const problems = gradeItem(item, answer, {
-        strictAdult: Boolean(batch.family.notMineHints) && item.expect === 'adult',
+        exactAdult:
+          (Boolean(batch.family.notMineHints) || Boolean(item.trip)) && item.expect === 'adult',
       });
       if (answer?.verdict === 'kid' && item.expect === 'adult') tally.adultAsKid += 1;
       if (answer?.verdict === 'kid' && item.expect === 'unclear') tally.unclearAsKid += 1;
       if (answer?.verdict !== 'kid' && item.expect === 'kid') tally.kidMissed += 1;
+      if (answer?.verdict !== 'unsure' && item.expect === 'unsure') tally.unsureMissed += 1;
 
       if (answer) {
         const verdict = await judge(`${task}:${batch.family.id}:${item.id}`, {
@@ -362,16 +352,21 @@ async function main() {
     }
   }
 
-  const total = tally.kid + tally.adult + tally.unclear;
+  const total = tally.kid + tally.adult + tally.unclear + tally.unsure;
   const peakOk = peakPerItem <= contract.KID_JUDGE_PEAK_TOKENS_PER_ITEM;
   const meanReason = judgeScores.reduce((a, b) => a + b, 0) / judgeScores.length;
   const reasonsOk = meanReason >= JUDGE_MIN;
   console.log(`\nlive calls: ${live} | est. cost: $${totalUsd(cost).toFixed(4)}`);
   console.log('--- gate ---');
-  console.log(`items: ${total} (kid ${tally.kid}, adult ${tally.adult}, unclear ${tally.unclear})`);
+  console.log(
+    `items: ${total} (kid ${tally.kid}, adult ${tally.adult}, unclear ${tally.unclear}, ambiguous trip ${tally.unsure})`,
+  );
   console.log(`adult judged kid: ${tally.adultAsKid} (must be 0)`);
   console.log(`kid recall: ${tally.kid - tally.kidMissed}/${tally.kid} (must be all)`);
   console.log(`unclear judged kid: ${tally.unclearAsKid} (must be 0)`);
+  console.log(
+    `ambiguous trips judged unsure: ${tally.unsure - tally.unsureMissed}/${tally.unsure} (must be all)`,
+  );
   console.log(`verdicts moved by an injected title: ${moved}/${copies.length} (must be 0)`);
   console.log(
     `reasons: min ${Math.min(...judgeScores)} (each >= ${REASON_FLOOR}) mean ${meanReason.toFixed(2)} (>= ${JUDGE_MIN})`,

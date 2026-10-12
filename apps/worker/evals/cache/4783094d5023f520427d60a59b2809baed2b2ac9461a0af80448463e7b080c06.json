@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls the item general errands and notes that no child is named, which fits a bare, ambiguous item and so supports unsure. It is short, plain and invents nothing. Its weakness is that 'no child named' is also the rule's ground for the parent's own items. It never says the errands could be for anyone, so the link to unsure stays implicit rather than stated.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names the item as a restaurant booking and ties it to the adult verdict, but it states the table is 'for two adults', which the item does not say. 'Table for 2' could just as well include the 18-month-old Wren, so that is an added fact rather than a reading of the text.",
+    "score": 3
+  }
+}

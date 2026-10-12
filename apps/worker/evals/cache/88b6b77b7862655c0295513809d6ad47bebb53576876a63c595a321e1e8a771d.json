@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause, matches the unsure verdict and adds no unsupported facts. Its why is flawed, though: under the rules an appointment with no child named is the parent's own, so 'no child named' points to adult, not unsure.",
+    "score": 3
+  }
+}

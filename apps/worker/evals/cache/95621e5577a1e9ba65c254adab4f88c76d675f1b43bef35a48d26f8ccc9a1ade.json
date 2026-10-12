@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads 'Seb' as Sebastian, and his 15-month age matches the checkup, so it does name the child and say this is a pediatric checkup. That supports the kid verdict without inventing facts. It is mostly a rephrasing of the title, though, and never says the why outright (a checkup for a named child is a kid item).",
+    "score": 4
+  }
+}

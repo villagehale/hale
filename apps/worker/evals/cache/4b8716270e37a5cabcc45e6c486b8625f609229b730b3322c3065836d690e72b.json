@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is, a daycare pickup request, and names the child Wren, which is what makes it a kid item, all in one short clause with no invented facts. It supports the kid verdict, though it leaves the link to the child to be inferred rather than stating it.",
+    "score": 5
+  }
+}

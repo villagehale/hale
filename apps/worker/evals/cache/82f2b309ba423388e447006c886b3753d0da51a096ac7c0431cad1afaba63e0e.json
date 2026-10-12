@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one clause that names the item as a hotel reservation and notes that no child is named and nothing marks it as a family booking. Under the trip rule that leads to unsure, so it supports the verdict given and adds no unsupported facts.",
+    "score": 5
+  }
+}

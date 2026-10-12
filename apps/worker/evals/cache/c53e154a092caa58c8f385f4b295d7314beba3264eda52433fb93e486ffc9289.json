@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason names the item as a parent-and-tot swim class and says it is for Wren, a named child, which supports the kid verdict. It adds no unsupported facts and is one short clause. It leans close to the title and states the 'why' only implicitly (Wren is named), but it still gives the kind of thing the item is and who it is for.",
+    "score": 4
+  }
+}

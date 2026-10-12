@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that says what the item is (a physio appointment) and gives the grounds for the verdict, namely that no child is named, so the appointment is the parent's own. It leaves out 'shoulder', but it adds no unsupported facts and it backs the adult verdict.",
+    "score": 5
+  }
+}

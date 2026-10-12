@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason matches the adult verdict and correctly identifies the item as a physio appointment, which is consistent with the rule that an appointment with no child named is the parent's own. But it only asserts ownership and never gives the 'why' (no child is named), so it falls short of a full what-plus-why clause.",
+    "score": 4
+  }
+}

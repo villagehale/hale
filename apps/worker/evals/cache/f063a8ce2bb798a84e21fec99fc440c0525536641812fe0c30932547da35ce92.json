@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a household group request to collect Wren, an 18-month-old child, from daycare. The classifier's single clause says what the item is (a pickup request) and names the child, which supports the kid verdict. It adds no unsupported facts, though it leaves the link to the verdict implicit.",
+    "score": 5
+  }
+}

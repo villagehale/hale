@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason only reorders the title ('Ezra soccer practice'). It never says that Ezra is one of the children, so it gives no explicit why for the kid verdict. That makes it a near title copy-back with no real justification.",
+    "score": 2
+  }
+}

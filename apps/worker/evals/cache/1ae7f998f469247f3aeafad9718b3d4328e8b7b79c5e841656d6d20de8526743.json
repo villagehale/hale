@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item \"公司季度会议\" means a company quarterly meeting. That is a work meeting with no child named, so it is the parent's own, and the reason says exactly that in one short clause. It states what the item is and why that leads to adult, and adds no unsupported fact.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the adult verdict and says what the item is: a date night, which belongs to the parent. It is one short clause and adds no unsupported facts. It mostly restates the title, though. It would be stronger if it said why the item is adult, for example that a date night is a couples outing with no child involved.",
+    "score": 4
+  }
+}

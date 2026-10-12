@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a swimming lesson that names Lina, the 30-month-old child, so it is a kid item. The classifier's clause says exactly that: it identifies the item as a swimming class and gives the child's name as the reason for the kid verdict. The translation is accurate, it states no unsupported facts, and it is one short clause.",
+    "score": 5
+  }
+}

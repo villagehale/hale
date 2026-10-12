@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls the item a bare busy block with no detail, and a bare item supports the unsure verdict. It is one short clause and invents nothing. It names what the item is and implies why, though it does not state the 'why' outright (nothing indicates whose it is).",
+    "score": 5
+  }
+}

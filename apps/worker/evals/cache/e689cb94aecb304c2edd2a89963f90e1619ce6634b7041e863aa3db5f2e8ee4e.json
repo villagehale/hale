@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a physio appointment, and a shoulder physio slot with no child named is the parent's own under the rules, so it supports the adult verdict. It is one short plain clause and adds no unsupported facts. It could state the 'no child named' basis more explicitly, but that is implied.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short clause, makes no unsupported claims, and correctly calls the item a dentist visit with no child named. Its 'why' clashes with the rules, though. An appointment with no child named is the parent's own, so the very fact it cites points to adult, not unsure. It matches the verdict beside it, but the logic linking 'what it is' to 'why' is weak.",
+    "score": 3
+  }
+}

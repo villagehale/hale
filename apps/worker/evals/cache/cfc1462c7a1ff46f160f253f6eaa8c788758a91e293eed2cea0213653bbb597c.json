@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a restaurant booking and adds no unsupported facts. It mostly restates the title, though. It never says why that makes it adult: no child is named, and a table for two at 7:30 reads as the parent's own evening out. It names what the item is but leaves the why implicit.",
+    "score": 3
+  }
+}

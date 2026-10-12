@@ -1,0 +1,21 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a work trip to a regional sales conference, the parent's own",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a family room booking naming both Wren and Theo",
+        "verdict": "kid",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 2333,
+  "inputTokens": 163,
+  "outputTokens": 219
+}

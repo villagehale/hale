@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a work planning offsite, which matches 'Q4 planning offsite' since quarterly planning is a work event. That makes it the parent's own, so it supports the adult verdict without adding unsupported facts. It is one short plain clause, though it leaves the 'why' implicit rather than stating it.",
+    "score": 5
+  }
+}

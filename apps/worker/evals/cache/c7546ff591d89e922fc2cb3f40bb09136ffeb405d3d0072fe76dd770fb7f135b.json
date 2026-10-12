@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is just 'Hold' with no child, activity or context named, so a bare placeholder cannot be assigned to either side. The classifier's reason says exactly that in one plain clause, it supports the unsure verdict, and it adds no unsupported facts.",
+    "score": 5
+  }
+}

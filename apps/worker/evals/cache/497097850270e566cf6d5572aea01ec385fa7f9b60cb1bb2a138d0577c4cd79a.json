@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls the item a daycare pickup, but its only other point, 'child not named', is a fact that would lean toward unsure or adult rather than kid. It never says the decisive thing: daycare pickup is inherently a childcare task, so it counts as a kid item even with no child named.",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a choir rehearsal and ties it to the notMineHints entry for the parent's own choir. That match is what supports the adult verdict. It is one clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

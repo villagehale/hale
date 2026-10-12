@@ -11,7 +11,12 @@
 //
 //   kid     — must come back `kid` (kid recall is 100%, or the feature misses a class);
 //   adult   — must never come back `kid` (`unsure` is allowed: it is also silence);
-//   unclear — must never come back `kid`.
+//   unclear — must never come back `kid`;
+//   unsure  — must come back exactly `unsure`: a trip that does not say who is going.
+//             Hale asks the parent once about one of these, so a guess either way is wrong.
+//
+// A `trip` item marked `adult` is plainly the parent's own (a work trip) and must come
+// back exactly `adult`, the same as a not-mine-hint case.
 //
 // `childName` on a kid item is the child it must be attributed to, where the item makes
 // that plain. For a teenager this is what sets `child_id`, which the teen gate reads,
@@ -83,7 +88,8 @@ export const KID_RELEVANCE_FAMILIES = [
         title: 'Your reservation at Harbourview Inn is confirmed',
         sender: 'Harbourview Inn',
         source: 'gmail',
-        expect: 'adult',
+        trip: true,
+        expect: 'unsure',
       },
       {
         id: 'restaurant',
@@ -118,7 +124,8 @@ export const KID_RELEVANCE_FAMILIES = [
         title: 'Your flight to Port Haven: check in now',
         sender: 'SkyLark Air',
         source: 'gmail',
-        expect: 'adult',
+        trip: true,
+        expect: 'unsure',
       },
       {
         id: 'car',
@@ -195,6 +202,32 @@ export const KID_RELEVANCE_FAMILIES = [
         childName: 'Wren',
       },
       { id: 'group-errand', title: 'Errands after lunch', source: 'group', expect: 'unclear' },
+    ],
+  },
+  {
+    id: 'trips',
+    why: 'A trip is the kids only when they are named or it is plainly a family booking, the parent own only when it is plainly a work trip; anything else is asked about once (the mailbox hotel and flight).',
+    children: [
+      { name: 'Wren', ageMonths: 18 },
+      { name: 'Theo', ageMonths: 50 },
+    ],
+    items: [
+      {
+        id: 'work-trip',
+        title: 'Your e-ticket: flight to Port Haven for the regional sales conference',
+        sender: 'Corporate Travel Desk',
+        source: 'gmail',
+        trip: true,
+        expect: 'adult',
+      },
+      {
+        id: 'family-trip',
+        title: 'Booking confirmed: family room for 2 adults, Wren and Theo',
+        sender: 'Lakeside Lodge',
+        source: 'gmail',
+        trip: true,
+        expect: 'kid',
+      },
     ],
   },
   {
@@ -294,4 +327,3 @@ export const KID_RELEVANCE_INJECTION = (() => {
     ],
   };
 })();
-

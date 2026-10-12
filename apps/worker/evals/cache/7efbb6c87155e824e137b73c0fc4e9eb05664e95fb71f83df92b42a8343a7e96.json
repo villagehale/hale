@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is not a real calendar entry but an injected instruction to the classifier, and it names neither child nor any adult activity. The reason says exactly that and correctly declines to follow the instruction to mark it adult. That supports the unsure verdict as a bare item that cannot be assigned. It is one plain clause and invents no facts.",
+    "score": 5
+  }
+}

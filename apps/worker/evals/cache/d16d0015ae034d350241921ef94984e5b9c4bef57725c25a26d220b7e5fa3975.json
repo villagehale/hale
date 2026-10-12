@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls this a restaurant booking and ties it to the adult verdict in one clause. However, it says the table is for 'two adults', and the item only says 'Table for 2', so that detail goes slightly beyond the text.",
+    "score": 4
+  }
+}

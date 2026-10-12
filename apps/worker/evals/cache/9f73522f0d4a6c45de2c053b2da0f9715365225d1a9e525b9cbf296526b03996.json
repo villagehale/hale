@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause. It says what the item is, a swim session, and that it names Mia, one of the children, which supports the kid verdict. It adds no unsupported facts. The \"why\" is only implicit in naming Mia, but naming a child is exactly the rule that applies, so it is adequate.",
+    "score": 5
+  }
+}

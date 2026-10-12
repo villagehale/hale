@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that names the item as a clinic appointment reminder and matches the unsure verdict. Its 'why' is weak, though: under the rules, an appointment with no child named is the parent's own. So the very fact it cites points toward adult, not toward 'could be either', and the logic undercuts itself.",
+    "score": 3
+  }
+}

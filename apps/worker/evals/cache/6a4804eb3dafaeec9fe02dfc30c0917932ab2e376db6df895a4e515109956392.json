@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is the single word \"Call\" with no person, child or activity named, so it is ambiguous and unsure fits. The classifier's reason says exactly that in one short plain clause and adds no unsupported fact.",
+    "score": 5
+  }
+}

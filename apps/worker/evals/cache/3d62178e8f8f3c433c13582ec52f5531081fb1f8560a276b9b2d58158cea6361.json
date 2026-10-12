@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Wren, an 18-month-old, is named in a parent-and-tot swim session, so this is a kid activity and the kid verdict follows. The classifier's reason says what the item is (a parent and tot swim class) and names the child, and it adds no unsupported facts. It is short and plain and supports kid, though it leaves the 'why' implicit rather than stating it.",
+    "score": 5
+  }
+}

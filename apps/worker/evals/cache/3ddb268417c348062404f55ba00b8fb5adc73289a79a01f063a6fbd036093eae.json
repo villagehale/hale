@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The clause says what the item is (a bare clinic appointment reminder) and why it leads to unsure (it never says whose appointment it is), and it adds no unsupported facts. It is held back from a 5 because its 'no one is named' logic is the very condition the rules treat as the parent's own appointment, so the why is a weak fit.",
+    "score": 4
+  }
+}
