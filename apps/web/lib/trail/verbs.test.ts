@@ -116,9 +116,11 @@ describe('a departure’s rows never tell the parent who stayed that they did it
 });
 
 describe('the streak sentence names the number the worker enforces', () => {
-  it('says five while AUTONOMY_STREAK_REQUIRED is five', () => {
+  it('says the worker\'s own number, in the words Barton approved', () => {
+    expect(trailVerb('autonomous_action_class.granted').sentence).toBe(
+      `You've approved this ${AUTONOMY_STREAK_REQUIRED} times, so Hale will handle it on its own from now on`,
+    );
     expect(AUTONOMY_STREAK_REQUIRED).toBe(5);
-    expect(trailVerb('autonomous_action_class.granted').sentence).toContain('five times');
   });
 });
 
@@ -132,15 +134,17 @@ describe('trailVerb — neutral fallback for an unknown verb still renders clean
 });
 
 /**
- * The spend ceiling and the plan allowance are gone (VIL-131), and their sentences
- * with them. A family's old rows are still in audit_log, so they read as the neutral
- * sentence rather than telling a parent about a cap that no longer exists.
+ * The spend ceiling, the plan allowance and the plan gate are gone (VIL-131), and their
+ * sentences with them. A family's old rows are still in audit_log, so they read as the
+ * neutral sentence rather than telling a parent about a cap or a plan hold that no
+ * longer exists.
  */
-describe('retired spend-ceiling and plan-allowance verbs', () => {
+describe('retired spend-ceiling, plan-allowance and plan-gate verbs', () => {
   const RETIRED = [
     'event.dropped.spend_ceiling',
     'spend_ceiling_exceeded_warn',
     'action.gated.over_allowance',
+    'action.entitlement_gated',
   ];
 
   it.each(RETIRED)('%s is out of the inventory and reads as the neutral sentence', (verb) => {
@@ -148,11 +152,11 @@ describe('retired spend-ceiling and plan-allowance verbs', () => {
     expect(trailVerb(verb)).toEqual({ sentence: 'recorded an update', family: 'neutral' });
   });
 
-  it('no sentence in the registry mentions a spending cap, a cost ceiling or a plan allowance', () => {
+  it('no sentence in the registry mentions a spending cap, a cost ceiling, a plan allowance or a plan hold', () => {
     const sentences = AUDIT_VERBS.map((verb) => trailVerb(verb).sentence);
     expect(sentences).toContain('carried out the action');
     for (const sentence of sentences) {
-      expect(sentence).not.toMatch(/spending cap|cost ceiling|allowance/);
+      expect(sentence).not.toMatch(/spending cap|cost ceiling|allowance|for your plan/);
     }
   });
 });

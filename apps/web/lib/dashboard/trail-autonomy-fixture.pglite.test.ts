@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { seedSmokeAutonomyTrail } from '~/scripts/fixtures/smoke-autonomy-trail';
@@ -13,7 +13,9 @@ import { loadTrailForFamily } from './trail-query';
  */
 
 const NOW = new Date('2026-10-12T15:00:00.000Z');
-const ON_ITS_OWN = 'carried out the action on its own';
+const ON_ITS_OWN = 'Hale did this for you on its own';
+const TURNED_ON =
+  "You've approved this 5 times, so Hale will handle it on its own from now on";
 const PARENT_APPROVED = 'carried out the action';
 
 let db: TestDb;
@@ -35,10 +37,11 @@ async function trailRows() {
 }
 
 describe('the smoke family’s History shows what Hale did on its own', () => {
-  it('reads newest first: the switch-off, the email Hale sent on its own, the dismissed form, the form brought as a draft', async () => {
+  it('reads newest first: the switch-off, the email Hale sent on its own, the kind turning on, the dismissed form, the form brought as a draft', async () => {
     expect(await trailRows()).toEqual([
       { actor: 'you', summary: 'you stopped Hale doing this on its own', noun: 'consent' },
       { actor: 'hale', summary: ON_ITS_OWN, noun: 'draft' },
+      { actor: 'you', summary: TURNED_ON, noun: 'consent' },
       { actor: 'you', summary: 'you dismissed a draft', noun: 'draft' },
       { actor: 'hale', summary: 'brought a draft to you', noun: 'draft' },
     ]);
@@ -46,7 +49,33 @@ describe('the smoke family’s History shows what Hale did on its own', () => {
 
   it('gives each step its own day, so no row is folded into another', async () => {
     const trail = await loadTrailForFamily(db.database, fam.familyId);
-    expect(new Set(trail.map((row) => row.dayKey)).size).toBe(4);
+    expect(new Set(trail.map((row) => row.dayKey)).size).toBe(5);
+  });
+
+  it('seeds the grant before the email it allowed, and the switch-off after both', async () => {
+    const ledger = await db.database
+      .select({
+        userId: schema.consentRecords.userId,
+        consentScope: schema.consentRecords.consentScope,
+        granted: schema.consentRecords.granted,
+        grantedAt: schema.consentRecords.grantedAt,
+      })
+      .from(schema.consentRecords)
+      .where(eq(schema.consentRecords.consentType, 'autonomous_action_class'))
+      .orderBy(asc(schema.consentRecords.grantedAt));
+    const [email] = await db.database
+      .select({ executedAt: schema.actions.executedAt })
+      .from(schema.actions)
+      .where(eq(schema.actions.actionType, 'send_email'));
+    if (!email?.executedAt) throw new Error('fixture: no executed send_email action');
+
+    expect(ledger.map(({ grantedAt, ...row }) => row)).toEqual([
+      { userId: fam.parentUserId, consentScope: 'send_email', granted: true },
+      { userId: fam.parentUserId, consentScope: 'send_email', granted: false },
+    ]);
+    const [grant, switchOff] = ledger;
+    expect(grant?.grantedAt.getTime()).toBeLessThan(email.executedAt.getTime());
+    expect(switchOff?.grantedAt.getTime()).toBeGreaterThan(email.executedAt.getTime());
   });
 
   it('leaves nothing waiting on the parent, so the seeded Approvals queue stays empty', async () => {

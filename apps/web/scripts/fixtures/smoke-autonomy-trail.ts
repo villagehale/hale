@@ -1,10 +1,14 @@
 import { type Database, schema } from '@hale/db';
+import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 
 /**
  * The smoke family's History rows for what Hale does on its own (VIL-131), written
  * with the verbs and `after` shapes the worker writes them with:
  *
- *   - one email Hale sent on its own (`action.executed`, decision.source 'autonomous');
+ *   - email turning on for the parent whose approvals completed the streak
+ *     (`autonomous_action_class.granted`);
+ *   - one email Hale then sent on its own (`action.executed`, decision.source
+ *     'autonomous');
  *   - the parent switching email off (`autonomous_action_class.revoked`);
  *   - a registration form, a kind that is never autonomous, brought as a draft
  *     (`action.gated.autonomy_denied_kind`), which the parent later dismissed.
@@ -28,8 +32,9 @@ export async function seedSmokeAutonomyTrail(
   now: Date = new Date(),
 ): Promise<void> {
   const hoursAgo = (hours: number) => new Date(now.getTime() - hours * HOUR_MS);
-  const formBroughtAt = hoursAgo(125);
-  const formDismissedAt = hoursAgo(100);
+  const formBroughtAt = hoursAgo(150);
+  const formDismissedAt = hoursAgo(125);
+  const emailTurnedOnAt = hoursAgo(100);
   const emailSentAt = hoursAgo(75);
   const switchedOffAt = hoursAgo(50);
 
@@ -86,18 +91,24 @@ export async function seedSmokeAutonomyTrail(
     executedAt: emailSentAt,
     executorResult: emailDetail,
   });
+  const emailConsent = {
+    familyId: fam.familyId,
+    userId: fam.parentUserId,
+    consentType: 'autonomous_action_class' as const,
+    consentScope: 'send_email',
+    policyVersion: 'smoke',
+  };
+  const grant = one(
+    await db
+      .insert(schema.consentRecords)
+      .values({ ...emailConsent, granted: true, grantedAt: emailTurnedOnAt })
+      .returning({ id: schema.consentRecords.id }),
+    'grant consent record',
+  );
   const switchOff = one(
     await db
       .insert(schema.consentRecords)
-      .values({
-        familyId: fam.familyId,
-        userId: fam.parentUserId,
-        consentType: 'autonomous_action_class',
-        consentScope: 'send_email',
-        granted: false,
-        grantedAt: switchedOffAt,
-        policyVersion: 'smoke',
-      })
+      .values({ ...emailConsent, granted: false, grantedAt: switchedOffAt })
       .returning({ id: schema.consentRecords.id }),
     'switch-off consent record',
   );
@@ -119,6 +130,19 @@ export async function seedSmokeAutonomyTrail(
       targetTable: 'actions',
       targetId: form.id,
       occurredAt: formDismissedAt,
+    },
+    {
+      familyId: fam.familyId,
+      actor: fam.parentUserId,
+      actionTaken: 'autonomous_action_class.granted',
+      targetTable: 'consent_records',
+      targetId: grant.id,
+      after: {
+        consentType: 'autonomous_action_class',
+        consentScope: 'send_email',
+        approvals: AUTONOMY_STREAK_REQUIRED,
+      },
+      occurredAt: emailTurnedOnAt,
     },
     {
       familyId: fam.familyId,

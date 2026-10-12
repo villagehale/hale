@@ -72,7 +72,6 @@ export const AUDIT_VERBS = [
   'event.dropped.unknown_action_type',
   'event.dropped.needs_human',
   'action.surfaced_to_user',
-  'action.entitlement_gated',
   'action.gated.observation_window',
   'action.gated.streak',
   'action.gated.cross_parent_consent',
@@ -354,7 +353,7 @@ export const AUDIT_VERBS = [
   'action.gated.autonomy_denied_kind',
   // A parent turned Hale's autonomy off for one kind of action.
   'autonomous_action_class.revoked',
-  // The primary parent's approval that completed the streak turned it on.
+  // A parent's own approval that completed their streak turned it on for them.
   'autonomous_action_class.granted',
   // ── the weekly loop + calendar subscription ─────────────────────────────
   'compose_week_plan',
@@ -536,10 +535,6 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   'event.dropped.needs_human': { sentence: 'routed a signal to you', family: 'awaiting' },
   'action.surfaced_to_user': { sentence: 'brought a draft to you', family: 'awaiting' },
-  'action.entitlement_gated': {
-    sentence: 'held an action for your plan',
-    family: 'awaiting',
-  },
   'action.gated.observation_window': {
     sentence: 'held back during your first-week observation window',
     family: 'awaiting',
@@ -1299,7 +1294,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'done',
   },
   'autonomous_action_class.granted': {
-    sentence: 'approved five times — Hale can now do this on its own',
+    sentence: "You've approved this 5 times, so Hale will handle it on its own from now on",
     family: 'done',
   },
   // ── the weekly loop + calendar subscription ─────────────────────────────
@@ -1734,7 +1729,7 @@ export function isShadowOnlyRow(actionTaken: string, after: unknown): boolean {
  * apart, and History is the one place a parent sees the difference.
  */
 export const EXECUTED_ON_ITS_OWN: Verb = {
-  sentence: 'carried out the action on its own',
+  sentence: 'Hale did this for you on its own',
   family: 'done',
 };
 

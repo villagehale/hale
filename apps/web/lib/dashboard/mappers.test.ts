@@ -108,7 +108,7 @@ describe('toTrailView — the honest frame', () => {
       },
     });
     expect(view.actor).toBe('hale');
-    expect(view.summary).toBe('carried out the action on its own');
+    expect(view.summary).toBe('Hale did this for you on its own');
     expect(view.tone).toBe('done');
     expect(view.link).toBe('/approvals');
     expect(JSON.stringify(view)).not.toContain('all checks green');
@@ -150,7 +150,9 @@ describe('toTrailView — the honest frame', () => {
       targetId: 'consent-2',
     });
     expect(view.actor).toBe('you');
-    expect(view.summary).toBe('approved five times — Hale can now do this on its own');
+    expect(view.summary).toBe(
+      "You've approved this 5 times, so Hale will handle it on its own from now on",
+    );
     expect(view.tone).toBe('done');
   });
 

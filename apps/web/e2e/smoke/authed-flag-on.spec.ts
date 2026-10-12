@@ -140,12 +140,15 @@ test('/trail renders the audit tally', async ({ browser }) => {
   await assertHealthy(page, errors, '06-trail');
 });
 
-test('/trail shows what Hale did on its own, and the switch-off', async ({ browser }) => {
+test('/trail shows a kind turning on, what Hale then did on its own, and the switch-off', async ({ browser }) => {
   const { page, errors } = await openPage(browser, 'member');
   const response = await page.goto('/trail');
   expect(response?.status()).toBe(200);
   // The seed's rows (scripts/fixtures/smoke-autonomy-trail.ts), each on its own day.
-  await expect(page.getByText('carried out the action on its own')).toBeVisible();
+  await expect(
+    page.getByText("You've approved this 5 times, so Hale will handle it on its own from now on"),
+  ).toBeVisible();
+  await expect(page.getByText('Hale did this for you on its own')).toBeVisible();
   await expect(page.getByText('you stopped Hale doing this on its own')).toBeVisible();
   await expect(page.getByText('brought a draft to you')).toBeVisible();
   await assertHealthy(page, errors, '06b-trail-autonomy');
