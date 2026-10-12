@@ -36,6 +36,15 @@ describe('placeOf', () => {
     ['an area whose city the source spells without its accent', 'G1K 1A1', 'G1K', 'Québec'],
     ['a postal code typed without its space, in lower case', 'k1p1a1', null, 'Ottawa'],
     ['a family with only the area stored', null, 'L4C', 'Richmond Hill'],
+    // Named for a community inside a municipality: placed by where their land lies.
+    ['Woodbridge, which is in Vaughan', 'L4L 1A1', 'L4L', 'Vaughan'],
+    ['Kanata, which is in Ottawa', 'K2K 1A1', 'K2K', 'Ottawa'],
+    ['a Montréal district', 'H2X 1A1', 'H2X', 'Montréal'],
+    ['Georgetown, which is in Halton Hills', 'L7G 1A1', 'L7G', 'Halton Hills'],
+    ['Bowmanville, which is in Clarington', 'L1C 1A1', 'L1C', 'Clarington'],
+    // Thornhill is two areas, and each lies wholly in one municipality.
+    ['Thornhill east of Yonge Street', 'L3T 1A1', 'L3T', 'Markham'],
+    ['Thornhill west of Yonge Street', 'L4J 1A1', 'L4J', 'Vaughan'],
   ])('derives the city for a Canadian family: %s', async (_label, postalCode, areaCoarse, city) => {
     expect(await placeOf({ ...ROW, country: 'Canada', postalCode, areaCoarse })).toEqual({
       status: 'known',
@@ -96,6 +105,8 @@ describe('placeOf', () => {
     ['a rural area, which covers many towns', null, 'L0P'],
     ['an area the source lists under more than one town', 'L9X 1A1', 'L9X'],
     ['an area the source describes as two places', 'E2E 1A1', 'E2E'],
+    ['Acton, whose land is split among three municipalities', 'L7J 1A1', 'L7J'],
+    ['Stouffville, a tenth of whose land is in the next township', 'L4A 1A1', 'L4A'],
   ])('is ambiguous for %s, and picks none', async (_label, postalCode, areaCoarse) => {
     expect(await placeOf({ ...ROW, country: 'Canada', postalCode, areaCoarse })).toEqual({
       status: 'unknown',
@@ -105,7 +116,9 @@ describe('placeOf', () => {
 
   it.each([
     ['a code the table does not have', 'Canada', 'Z9Z 1A1', 'Z9Z'],
-    ['an area the source names for a neighbourhood, not a municipality', 'Canada', 'H2X 1A1', 'H2X'],
+    // Downtown Calgary. Its boundary is 98% Rocky View County, and the land is not
+    // believed over the name.
+    ['an area named for one municipality whose land is mostly another', 'Canada', 'T2P 1A1', 'T2P'],
     ['an area that is a neighbourhood name and not a postal area', 'Canada', null, 'North York'],
     ['a ZIP the table does not have', 'United States', '00000', '000'],
     ['military mail, which has no city', 'United States', '09001', '090'],
@@ -197,9 +210,11 @@ describe('the postal tables', () => {
     ambiguous: table.cityOf.filter((city) => city === AMBIGUOUS).length,
     unmapped: table.cityOf.filter((city) => city === UNMAPPED).length,
   });
+  /** The names some Canadian area resolves to. A reason is not an index, and names none. */
+  const resolvedTo = new Set(ca.cityOf.flatMap((city) => ca.cities[city] ?? []));
 
-  it('hold every area the source has, each with one city or a named reason for none', () => {
-    expect(shape(ca)).toEqual({ areas: 1651, oneCity: 1042, ambiguous: 190, unmapped: 419 });
+  it('hold every area the sources have, each with one city or a named reason for none', () => {
+    expect(shape(ca)).toEqual({ areas: 1664, oneCity: 1340, ambiguous: 290, unmapped: 34 });
     expect(shape(us)).toEqual({ areas: 41488, oneCity: 40975, ambiguous: 2, unmapped: 511 });
     for (const table of [ca, us]) {
       expect(table.cityOf).toHaveLength(table.codes.length);
@@ -221,26 +236,47 @@ describe('the postal tables', () => {
     expect(rural.filter((city) => city !== AMBIGUOUS)).toEqual([]);
   });
 
-  /** A neighbourhood, a former borough and a district are not municipalities, and the
-   * source's own descriptions (a parenthesised list, a compass point) never come out. */
-  it('name municipalities only', () => {
-    for (const notACity of ['North York', 'Scarborough', 'Etobicoke', 'Georgetown', 'Thornhill']) {
-      expect(ca.cities).not.toContain(notACity);
+  /** A neighbourhood, a former borough and a community are not municipalities, and the
+   * postal source's own descriptions (a parenthesised list, a compass point) never come
+   * out. No area resolves to one. */
+  it('resolve an area to a municipality only', () => {
+    for (const notACity of [
+      'North York',
+      'Scarborough',
+      'Etobicoke',
+      'Georgetown',
+      'Thornhill',
+      'Woodbridge',
+      'Kanata',
+    ]) {
+      expect(resolvedTo).not.toContain(notACity);
     }
-    expect(ca.cities.filter((city) => /[()/,]/.test(city))).toEqual([]);
+    expect([...resolvedTo].filter((city) => /[()/,]/.test(city))).toEqual([]);
     expect(us.cities.filter((city) => /[()/,\d]/.test(city))).toEqual([]);
     // Positive control: the cities the tests above derive are there.
-    expect(ca.cities).toEqual(expect.arrayContaining(['Toronto', 'Vancouver', 'Québec']));
+    expect([...resolvedTo]).toEqual(
+      expect.arrayContaining(['Toronto', 'Vancouver', 'Québec', 'Vaughan', 'Halton Hills']),
+    );
     expect(us.cities).toEqual(expect.arrayContaining(['Denver', 'Chicago', 'Seattle']));
   });
 
-  /** Two traps in the source, by name: an area named for a district that shares its name
-   * with a town elsewhere, and one named "<city> <compass point>" that is a town of its own. */
+  /** The Canadian table also holds every incorporated municipality the names data base
+   * lists, so a stored city can be recognised where no postal area resolves to it. */
+  it('hold the name of a municipality no area resolves to', () => {
+    expect(resolvedTo).not.toContain('Tobermory');
+    expect(resolvedTo).not.toContain('Northern Bruce Peninsula');
+    expect(ca.cities).toContain('Northern Bruce Peninsula');
+    expect(ca.cities).not.toContain('Tobermory');
+  });
+
+  /** Three traps in the postal source, by name: an area named for a district that shares
+   * its name with a town elsewhere, and two named "<city> <compass point>" that are mostly
+   * a town of their own. None comes out as the city in its name. */
   it.each([
-    ['H1M', 'Mercier West is a district of Montréal, not the town of Mercier'],
-    ['H1B', 'Montreal East is the town of Montréal-Est'],
-    ['V1Z', 'Kelowna West is West Kelowna'],
-  ])('leave %s unmapped: %s', (code) => {
-    expect(ca.cityOf[ca.codes.indexOf(code)]).toBe(UNMAPPED);
+    ['H1M', UNMAPPED, 'Mercier West is a district of Montréal, not the town of Mercier'],
+    ['H1B', AMBIGUOUS, 'Montreal East is mostly the town of Montréal-Est'],
+    ['V1Z', AMBIGUOUS, 'Kelowna West is mostly outside Kelowna'],
+  ])('leave %s without a city (%i): %s', (code, reason) => {
+    expect(ca.cityOf[ca.codes.indexOf(code)]).toBe(reason);
   });
 });
