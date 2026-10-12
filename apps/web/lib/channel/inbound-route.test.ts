@@ -338,7 +338,6 @@ describe('handoff to C1', () => {
         channel_message_id: message?.id,
         provider_message_id: 'SM11111111111111111111111111111111',
         received_at: NOW.toISOString(),
-        in_group: false,
       },
     ]);
   });
@@ -364,6 +363,31 @@ describe('handoff to C1', () => {
 
     expect((await queued(true)).map((queuedJob) => queuedJob.in_group)).toEqual([true]);
     expect((await queued(false)).map((queuedJob) => queuedJob.in_group)).toEqual([false]);
+  });
+
+  /**
+   * A door that was not told whether the chat is a group says nothing on the job. It used
+   * to say `false`, so a text from a chat Linq did not describe was queued as a 1:1 text
+   * and the router's `group_unknown` skip could never fire.
+   */
+  it('queues no group bit for a text whose door did not say', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    await routeInboundText(
+      h.deps,
+      {
+        ...inbound({ body: 'can you move swimming to Thursday?' }),
+        transport: 'imessage',
+        chatId: 'chat-1',
+      },
+      0,
+    );
+
+    expect(h.jobs).toHaveLength(1);
+    expect(h.jobs[0]).not.toHaveProperty('in_group', false);
+    expect(h.jobs[0]?.in_group).toBeUndefined();
   });
 
   it('NEVER hands a REVOKED number to C1 — an unsubscribed parent cannot be conversed with', async () => {
@@ -603,7 +627,6 @@ describe('handoff to C1', () => {
           channel_message_id: message?.id,
           provider_message_id: 'SM11111111111111111111111111111111',
           received_at: NOW.toISOString(),
-          in_group: false,
         },
       ]);
       expect(h.transport.bodies()).toEqual([]);
