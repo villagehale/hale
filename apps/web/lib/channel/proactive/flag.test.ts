@@ -1,44 +1,58 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cadenceSkipsNumericCaps, capDefersToDecider, proactiveCadence } from './flag';
+import {
+  PROACTIVE_ROUTING,
+  capDefersToDecider,
+  proactiveCadence,
+  requestedCadence,
+  unroutedKinds,
+} from './flag';
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
 describe('proactive cadence flag', () => {
-  it('is off unless the env is exactly shadow or live', () => {
+  it('reads off unless the env is exactly shadow or live', () => {
     vi.stubEnv('PROACTIVE_CADENCE', undefined);
-    expect(proactiveCadence()).toBe('off');
+    expect(requestedCadence()).toBe('off');
     vi.stubEnv('PROACTIVE_CADENCE', 'true');
-    expect(proactiveCadence()).toBe('off');
+    expect(requestedCadence()).toBe('off');
     vi.stubEnv('PROACTIVE_CADENCE', 'live\n');
-    expect(proactiveCadence()).toBe('off');
+    expect(requestedCadence()).toBe('off');
     vi.stubEnv('PROACTIVE_CADENCE', ' shadow');
-    expect(proactiveCadence()).toBe('off');
+    expect(requestedCadence()).toBe('off');
     vi.stubEnv('PROACTIVE_CADENCE', 'Live');
-    expect(proactiveCadence()).toBe('off');
+    expect(requestedCadence()).toBe('off');
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
-    expect(proactiveCadence()).toBe('shadow');
+    expect(requestedCadence()).toBe('shadow');
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    expect(proactiveCadence()).toBe('live');
+    expect(requestedCadence()).toBe('live');
   });
 
-  it('skips numeric caps only when live', () => {
-    vi.stubEnv('PROACTIVE_CADENCE', undefined);
-    expect(cadenceSkipsNumericCaps()).toBe(false);
-    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
-    expect(cadenceSkipsNumericCaps()).toBe(false);
+  it('runs a requested live as shadow while any class still sends on its own', () => {
+    expect(unroutedKinds()).toContain('followup');
+    expect(unroutedKinds()).not.toContain('nudge');
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    expect(cadenceSkipsNumericCaps()).toBe(true);
+    expect(proactiveCadence()).toBe('shadow');
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    expect(proactiveCadence()).toBe('shadow');
+    vi.stubEnv('PROACTIVE_CADENCE', undefined);
+    expect(proactiveCadence()).toBe('off');
+  });
+
+  it('keeps the registration ladder and instant spots out of the queue', () => {
+    expect(PROACTIVE_ROUTING.registration_sequence).toBe('immediate');
+    expect(PROACTIVE_ROUTING.spot_open_instant).toBe('immediate');
+    expect(PROACTIVE_ROUTING.nudge).toBe('decider');
   });
 });
 
 describe('which caps give way to the decider', () => {
   it('only the routed classes, and only when live', () => {
-    vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    expect(capDefersToDecider('nudge')).toBe(true);
-    expect(capDefersToDecider('email_alert')).toBe(false);
-    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
-    expect(capDefersToDecider('nudge')).toBe(false);
+    expect(capDefersToDecider('nudge', 'live')).toBe(true);
+    expect(capDefersToDecider('email_alert', 'live')).toBe(false);
+    expect(capDefersToDecider('registration_sequence', 'live')).toBe(false);
+    expect(capDefersToDecider('nudge', 'shadow')).toBe(false);
+    expect(capDefersToDecider('nudge', 'off')).toBe(false);
   });
 });

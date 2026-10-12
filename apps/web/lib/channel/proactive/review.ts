@@ -22,7 +22,7 @@ import { writeFact } from '~/lib/memory/facts';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { type WriterResult, composeProactiveBatch } from './compose';
 import { type DecideResult, type DeciderDecision, decideForFamily } from './decide';
-import { type ProactiveCadence, proactiveCadence } from './flag';
+import { type ProactiveCadence, proactiveCadence, requestedCadence, unroutedKinds } from './flag';
 import { type OpenCandidate, planHourlyReview } from './hold';
 import { CADENCE_FACT_KEY, cadenceFactValue } from './preference';
 import {
@@ -42,6 +42,8 @@ import { volumeIsUnusual } from './volume';
  */
 
 export interface ProactiveReviewSummary {
+  /** What PROACTIVE_CADENCE asked for. Differs from `mode` while live cannot arm yet. */
+  requested: ProactiveCadence;
   mode: ProactiveCadence;
   families: number;
   decided: number;
@@ -105,8 +107,16 @@ export async function runProactiveReview(
   deps: ProactiveReviewDeps,
   now: Date,
 ): Promise<ProactiveReviewSummary> {
+  const requested = requestedCadence();
   const mode = proactiveCadence();
+  if (requested !== mode) {
+    console.warn(
+      { requested, mode, unrouted: unroutedKinds() },
+      'proactive review: live requested, but these classes still send on their own - running shadow',
+    );
+  }
   const summary: ProactiveReviewSummary = {
+    requested,
     mode,
     families: 0,
     decided: 0,
@@ -173,7 +183,7 @@ async function audit(
     familyId,
     actor: 'system',
     actionTaken,
-    targetTable: 'proactive_candidates',
+    targetTable: 'families',
     targetId: familyId,
     after,
   });
@@ -395,29 +405,35 @@ async function sendChosen(
   }
   if (gated.length === 0) return;
 
-  const distinct = new Map<string, SnapshotCandidate>();
-  for (const item of gated.flatMap((copy) => copy.items)) {
-    const key = `${item.kind}\n${item.what}`;
-    if (!distinct.has(key)) distinct.set(key, item);
-  }
-  const written = await deps.compose({
-    items: [...distinct.values()],
-    client: deps.client,
-    cadenceNote: input.cadenceNote,
-  });
-  if ('skipped' in written) {
-    await holdByName(
-      database,
-      familyId,
-      gated.flatMap((copy) => copy.items),
-      `unvoiced:${written.skipped}`,
-      now,
-    );
-    summary.held += 1;
-    return;
+  // One text per distinct set of items: parents who share the same items share one
+  // composition, and a parent is never texted about an item that is not theirs.
+  const writtenFor = new Map<string, WriterResult>();
+  const voiced: Array<(typeof gated)[number] & { message: string }> = [];
+  for (const copy of gated) {
+    const distinct = new Map<string, SnapshotCandidate>();
+    for (const item of copy.items) {
+      const key = `${item.kind}\n${item.what}`;
+      if (!distinct.has(key)) distinct.set(key, item);
+    }
+    const setKey = [...distinct.keys()].sort().join('\n\n');
+    let written = writtenFor.get(setKey);
+    if (!written) {
+      written = await deps.compose({
+        items: [...distinct.values()],
+        client: deps.client,
+        cadenceNote: input.cadenceNote,
+      });
+      writtenFor.set(setKey, written);
+    }
+    if ('skipped' in written) {
+      await holdByName(database, familyId, copy.items, `unvoiced:${written.skipped}`, now);
+      summary.held += 1;
+      continue;
+    }
+    voiced.push({ ...copy, message: written.message });
   }
 
-  for (const copy of gated) {
+  for (const copy of voiced) {
     const to = await deps.resolveSendablePhone(database, copy.parentUserId);
     if (!to) {
       await holdByName(database, familyId, copy.items, 'no_send_target', now);
@@ -426,7 +442,7 @@ async function sendChosen(
     }
     const delivered = await deliverFamilyOutbound(database, {
       familyId,
-      body: withOptOut(written.message, copy.optOutFull ? 'full' : 'short'),
+      body: withOptOut(copy.message, copy.optOutFull ? 'full' : 'short'),
       to,
       legacy: deps.transport,
       target,

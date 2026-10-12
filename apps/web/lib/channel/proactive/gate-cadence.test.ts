@@ -6,6 +6,21 @@ import {
 } from '../outbound-gate';
 
 /**
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
+ * live path here is tested as it will run then; `routing.complete = false` is today's
+ * table, where a requested live runs as shadow.
+ */
+const routing = vi.hoisted(() => ({ complete: true }));
+vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
+  return {
+    ...actual,
+    proactiveCadence: () =>
+      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+  };
+});
+
+/**
  * VIL-226 · what the cadence flag changes at the gate. Live reads the counters as
  * context, not a hold. Shadow and live start quiet hours at 20:00 for a Florida or
  * Oklahoma number. Unset changes nothing, and reads no phone.
@@ -22,6 +37,7 @@ const FLORIDA = '+14075550100';
 const ELSEWHERE = '+12065550100';
 
 afterEach(() => {
+  routing.complete = true;
   vi.unstubAllEnvs();
 });
 
@@ -80,6 +96,15 @@ describe('the numeric cap under the cadence flag', () => {
     await expect(
       assertProactiveSendAllowed(nudge(MIDDAY), ports({ watchConsentGranted: async () => false })),
     ).resolves.toEqual({ allowed: false, reason: 'no_watch_consent' });
+  });
+
+  it('keeps the nudge cap for a requested live while any class is unrouted', async () => {
+    routing.complete = false;
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await expect(assertProactiveSendAllowed(nudge(MIDDAY), ports())).resolves.toEqual({
+      allowed: false,
+      reason: 'frequency_cap',
+    });
   });
 
   it('keeps the cap when live for a kind the decider does not see yet', async () => {

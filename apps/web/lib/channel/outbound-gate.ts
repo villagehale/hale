@@ -484,7 +484,9 @@ export async function assertProactiveSendAllowed(
   // VIL-226 · for a class the decider sees, live cadence reads the counter as context,
   // not a hold. The Record stays so every class still names its budget; off and shadow
   // keep it, and so does every class that still sends on its own.
-  const cap = capDefersToDecider(request.kind) ? null : PROACTIVE_CAP[request.kind];
+  const cap = capDefersToDecider(request.kind, proactiveCadence())
+    ? null
+    : PROACTIVE_CAP[request.kind];
   if (cap !== null) {
     const since = new Date(request.now.getTime() - cap.windowHours * 3_600_000);
     if ((await ports.countProactiveSends(request.familyId, request.kind, since)) >= cap.max) {

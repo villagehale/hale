@@ -25,7 +25,11 @@ import {
   readWindows as readRegistrationWindows,
   readCandidates as readVillageCandidates,
 } from '~/lib/channel/intake/radar';
-import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
+import {
+  type RadarCandidate,
+  type RadarChild,
+  upcomingWeekend,
+} from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
@@ -48,7 +52,11 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
+import {
+  type CadenceLane,
+  handOffProactive,
+  isQueuedForDecider,
+} from '~/lib/channel/proactive/queue';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -64,7 +72,7 @@ import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
-import { weekWindow } from '~/lib/plan/spine';
+import { addDaysToKey, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
@@ -441,6 +449,44 @@ export function dedupeKeyFor(
   }
 }
 
+/**
+ * When a queued nudge stops being worth a text: the end of the local day it is about,
+ * so the decider can drop it then. The weekday-care ask is about no day.
+ */
+export function nudgeWorthlessAfter(nudge: Nudge, now: Date, timeZone: string): Date | null {
+  const day = nudgeDay(nudge, now, timeZone);
+  return day === null ? null : zonedLocalInstant(addDaysToKey(day, 1), '00:00', timeZone);
+}
+
+function nudgeDay(nudge: Nudge, now: Date, timeZone: string): string | null {
+  switch (nudge.kind) {
+    case 'weekday_dropin':
+      return nudge.eventDate;
+    case 'empty_saturday':
+      return nudge.saturday;
+    case 'weather_swap': {
+      // The decide chose this day from the same weekend, so it is always there.
+      const slot = upcomingWeekend(now, timeZone).find((weekend) => weekend.day === nudge.day);
+      if (!slot) throw new Error(`nudgeWorthlessAfter: no ${nudge.day} in the coming weekend`);
+      return slot.date;
+    }
+    case 'registration':
+    case 'health_checkpoint':
+    case 'weekday_care':
+      return null;
+    default:
+      return assertNever(nudge);
+  }
+}
+
+/**
+ * A registration nudge is timed to a municipal clock and a health checkpoint is reviewed
+ * static copy, so neither ever waits for the decider.
+ */
+export function nudgeLane(kind: Nudge['kind']): CadenceLane {
+  return kind === 'registration' || kind === 'health_checkpoint' ? 'immediate' : 'candidate';
+}
+
 /** The compiler's own proof that a union was handled. Throws only if a caller reached
  * it through an `as` or an untyped boundary — it exists for the build error, not the
  * runtime one. */
@@ -709,9 +755,7 @@ async function runForFamily(
   }
 
   // VIL-226 · the family queue. Unset sends as before and writes nothing; shadow queues
-  // and still sends; live queues and the hourly decider sends. A registration nudge is
-  // timed to a municipal clock and a health checkpoint is reviewed static copy, so
-  // neither ever queues.
+  // and still sends; live queues and the hourly decider sends.
   const templateKey =
     nudge.kind === 'weekday_care'
       ? weekdayFinderTemplateKey(nudge.ask)
@@ -727,18 +771,18 @@ async function runForFamily(
       what: message,
       why: nudge.kind,
       sourceUrl: nudge.kind === 'empty_saturday' ? nudge.url : null,
-      worthlessAfter: null,
+      worthlessAfter: nudgeWorthlessAfter(nudge, now, family.timeZone),
       parentRequested: false,
       dedupeKey,
     })),
-    nudge.kind === 'registration' || nudge.kind === 'health_checkpoint' ? 'immediate' : 'candidate',
+    nudgeLane(nudge.kind),
   );
   if (handedOff === 'queued') {
     await deps.audit(database, {
       familyId: family.familyId,
       actor: 'system',
       actionTaken: 'proactive_nudge_queued',
-      targetTable: 'proactive_candidates',
+      targetTable: 'families',
       targetId: family.familyId,
       after: { kind: nudge.kind, cohort, copies: pending.length },
     });

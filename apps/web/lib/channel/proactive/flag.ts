@@ -8,7 +8,8 @@ import type { ProactiveSendKind } from '~/lib/channel/outbound-gate';
  * `shadow` — candidates are queued and the decider's choice is logged; the old path
  *   still sends.
  * `live` — numeric caps are skipped, queued kinds wait for the decider, and the decider
- *   sends.
+ *   sends. It arms only once every class in {@link PROACTIVE_ROUTING} is routed; until
+ *   then a requested `live` runs as `shadow`, and the review's summary says so.
  *
  * Strict equality, no trim: a trailing newline from `vercel env add` must not arm it.
  */
@@ -17,24 +18,61 @@ export const PROACTIVE_CADENCE_ENV = 'PROACTIVE_CADENCE';
 
 export type ProactiveCadence = 'off' | 'shadow' | 'live';
 
-export function proactiveCadence(): ProactiveCadence {
+/**
+ * How each proactive class reaches a phone once `live` is armed.
+ *
+ * `decider` — its sweep hands the send to the family queue.
+ * `immediate` — it sends on its own clock in every mode (brief §1: the registration
+ *   ladder and instant spot openings).
+ * `not_routed` — its sweep still sends on its own path with its own cap. Any class here
+ *   keeps `live` from arming, because live would leave it outside the decider and the
+ *   line-health pause.
+ *
+ * Every kind must be listed, so a new class cannot reach live unclassified.
+ */
+export const PROACTIVE_ROUTING = {
+  nudge: 'decider',
+  registration_sequence: 'immediate',
+  village_intro: 'not_routed',
+  followup: 'not_routed',
+  plan_check_in: 'not_routed',
+  activity_followup: 'not_routed',
+  spot_open: 'not_routed',
+  spot_open_instant: 'immediate',
+  email_alert: 'not_routed',
+  calendar_alert: 'not_routed',
+  evening_check_in: 'not_routed',
+  co_parent_departed: 'not_routed',
+  travel_brief: 'not_routed',
+  duty_ask: 'not_routed',
+} as const satisfies Record<ProactiveSendKind, 'decider' | 'immediate' | 'not_routed'>;
+
+/** The classes whose sweeps still send on their own, in table order. */
+export function unroutedKinds(): ProactiveSendKind[] {
+  return (Object.keys(PROACTIVE_ROUTING) as ProactiveSendKind[]).filter(
+    (kind) => PROACTIVE_ROUTING[kind] === 'not_routed',
+  );
+}
+
+/** What the env asks for, before the routing check. */
+export function requestedCadence(): ProactiveCadence {
   const value = process.env[PROACTIVE_CADENCE_ENV];
   if (value === 'shadow' || value === 'live') return value;
   return 'off';
 }
 
-/** Live is the only mode that stops a send. Shadow records and still sends. */
-export function cadenceSkipsNumericCaps(): boolean {
-  return proactiveCadence() === 'live';
+/** The mode every seam runs in. */
+export function proactiveCadence(): ProactiveCadence {
+  const requested = requestedCadence();
+  if (requested === 'live' && unroutedKinds().length > 0) return 'shadow';
+  return requested;
 }
 
 /**
- * The classes whose sweeps hand their sends to the decider. A numeric cap gives way to
- * the decider only for these: a class that still sends on its own keeps its counter in
- * live, or nothing would bound it at all.
+ * A numeric cap gives way to the decider only for a class the decider sends, and only
+ * when live: a class that still sends on its own keeps its counter, or nothing would
+ * bound it at all.
  */
-export const DECIDER_ROUTED_KINDS: ReadonlySet<ProactiveSendKind> = new Set(['nudge']);
-
-export function capDefersToDecider(kind: ProactiveSendKind): boolean {
-  return cadenceSkipsNumericCaps() && DECIDER_ROUTED_KINDS.has(kind);
+export function capDefersToDecider(kind: ProactiveSendKind, mode: ProactiveCadence): boolean {
+  return mode === 'live' && PROACTIVE_ROUTING[kind] === 'decider';
 }

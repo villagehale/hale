@@ -4,10 +4,31 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { WEEKDAY_CARE_ENABLED_ENV, recordWeekdayCare } from '~/lib/care/weekday';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
+import {
+  type NudgeRunDeps,
+  defaultNudgeRunDeps,
+  nudgeLane,
+  nudgeWorthlessAfter,
+  runNudgeCron,
+} from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+
+/**
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
+ * live path here is tested as it will run then; `routing.complete = false` is today's
+ * table, where a requested live runs as shadow.
+ */
+const routing = vi.hoisted(() => ({ complete: true }));
+vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
+  return {
+    ...actual,
+    proactiveCadence: () =>
+      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+  };
+});
 
 /**
  * VIL-226 · the nudge sweep's hand-off to the family queue, over real Postgres and the
@@ -36,6 +57,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  routing.complete = true;
   await db.exec('truncate table families, users cascade');
   vi.unstubAllEnvs();
   vi.stubEnv('F14_ENABLED', 'true');
@@ -172,6 +194,8 @@ describe('the nudge hand-off', () => {
       dedupeKey: row?.dedupeKey,
       status: 'queued',
       parentRequested: false,
+      // The end of the Tuesday the session is on, in the family's zone.
+      worthlessAfter: new Date('2026-08-12T04:00:00.000Z'),
     });
     expect(stored[0]?.what).toContain('Toddler drop-in');
   });
@@ -194,14 +218,106 @@ describe('the nudge hand-off', () => {
         ),
       );
     expect(skipped?.after).toMatchObject({ kind: 'weekday_dropin' });
+    expect(skipped).toMatchObject({ targetTable: 'families', targetId: familyId });
 
-    const again = await runNudgeCron(
-      db.database,
-      deps(transport),
-      new Date(MONDAY.getTime() + 60 * 60_000),
-    );
-    expect(again).toMatchObject({ sent: 0, queued: 0 });
+    // A re-fired cron on the same tick decides the same find. The queued row is what
+    // stops it, before the compose, so the re-fire costs nothing.
+    const again = await runNudgeCron(db.database, deps(transport), MONDAY);
+    expect(again).toMatchObject({ sent: 0, queued: 0, deduped: 1 });
     expect(transport.sent).toEqual([]);
     expect(await candidates()).toHaveLength(1);
+  });
+
+  it('runs a requested live as shadow while any class is unrouted', async () => {
+    routing.complete = false;
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const transport = new FakeTransport();
+    const result = await runNudgeCron(db.database, deps(transport), MONDAY);
+    expect(result).toMatchObject({ sent: 1, queued: 0 });
+    expect(await ledger()).toHaveLength(1);
+    expect(await candidates()).toHaveLength(1);
+  });
+});
+
+describe('when a queued nudge stops being worth a text', () => {
+  it('is the end of the local day it is about, and never for an ask about no day', () => {
+    const swap = {
+      kind: 'weather_swap' as const,
+      candidateRef: { id: 'c-1', title: 'Indoor climbing', venueName: null },
+      day: 'sunday' as const,
+      kidNames: [],
+      weatherFact: 'the weekend forecast is wet',
+      whyFacts: [],
+    };
+    // Monday in New York; the coming Sunday is 2026-08-16.
+    expect(nudgeWorthlessAfter(swap, MONDAY, TZ)).toEqual(new Date('2026-08-17T04:00:00.000Z'));
+    expect(
+      nudgeWorthlessAfter(
+        { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+        MONDAY,
+        TZ,
+      ),
+    ).toBeNull();
+  });
+});
+
+/**
+ * The two nudge kinds that never wait for the decider: a registration window runs on the
+ * town's clock, and a health checkpoint is reviewed static copy. Live sends them at once.
+ * The checkpoint runs end to end here (an Ontario area so the matcher has a region). A
+ * registration nudge needs a covered municipality and its postal codes, which fixtures
+ * do not carry, so its lane is pinned on the mapping the sweep uses.
+ */
+describe('the nudge kinds that never queue', () => {
+  it('maps registration and health checkpoints to the immediate lane, and nothing else', () => {
+    expect(nudgeLane('registration')).toBe('immediate');
+    expect(nudgeLane('health_checkpoint')).toBe('immediate');
+    for (const kind of [
+      'weather_swap',
+      'weekday_dropin',
+      'weekday_care',
+      'empty_saturday',
+    ] as const) {
+      expect(nudgeLane(kind)).toBe('candidate');
+    }
+  });
+
+  const AREA = 'K0A';
+
+  function areaDeps(transport: FakeTransport): NudgeRunDeps {
+    return {
+      ...deps(transport),
+      selectFamilies: async () => [
+        {
+          familyId,
+          parentUserId,
+          areaCoarse: AREA,
+          timeZone: TZ,
+          provisionedAt: new Date('2026-07-01T00:00:00.000Z'),
+        },
+      ],
+    };
+  }
+
+  it('when live, sends a health checkpoint at once and queues nothing', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Wren', dateOfBirth: '2026-02-10' });
+    const transport = new FakeTransport();
+    const result = await runNudgeCron(db.database, areaDeps(transport), MONDAY);
+    expect(result).toMatchObject({ sent: 1, queued: 0 });
+    expect(transport.sent).toHaveLength(1);
+    const health = await db.database
+      .select()
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.familyId, familyId),
+          eq(schema.channelMessages.templateKey, 'proactive_nudge:health_checkpoint'),
+        ),
+      );
+    expect(health).toHaveLength(1);
+    expect(await candidates()).toEqual([]);
   });
 });

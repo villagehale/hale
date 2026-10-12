@@ -4,6 +4,21 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { type CandidateDraft, handOffProactive, isQueuedForDecider } from './queue';
 
+/**
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
+ * live path here is tested as it will run then; `routing.complete = false` is today's
+ * table, where a requested live runs as shadow.
+ */
+const routing = vi.hoisted(() => ({ complete: true }));
+vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
+  return {
+    ...actual,
+    proactiveCadence: () =>
+      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+  };
+});
+
 let db: TestDb;
 let family: { familyId: string; parentUserId: string };
 
@@ -21,6 +36,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  routing.complete = true;
   vi.unstubAllEnvs();
 });
 

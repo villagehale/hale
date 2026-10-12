@@ -12,6 +12,21 @@ import { type ProactiveReviewDeps, runProactiveReview } from './review';
 import type { FamilySnapshot } from './snapshot';
 
 /**
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
+ * live path here is tested as it will run then; `routing.complete = false` is today's
+ * table, where a requested live runs as shadow.
+ */
+const routing = vi.hoisted(() => ({ complete: true }));
+vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
+  return {
+    ...actual,
+    proactiveCadence: () =>
+      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+  };
+});
+
+/**
  * The hourly review over real Postgres. The decider and the writer are ports here: their
  * judgment is graded against real cached Claude in apps/worker/evals
  * (run-proactive-decider-eval.mjs, run-proactive-writer-eval.mjs). What this file owns is
@@ -50,6 +65,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  routing.complete = true;
   vi.unstubAllEnvs();
 });
 
@@ -175,6 +191,20 @@ describe('runProactiveReview', () => {
     expect(await candidate(id)).toMatchObject({ status: 'shadowed', decision: 'send_now' });
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({ action: 'send_now', itemIds: [id], mode: 'shadow' });
+    expect(decision).toMatchObject({ targetTable: 'families', targetId: familyId });
+  });
+
+  it('runs a requested live as shadow while any class is unrouted, and says so', async () => {
+    routing.complete = false;
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue();
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ requested: 'live', mode: 'shadow', shadowed: 1, sent: 0 });
+    expect(h.transport.sent).toEqual([]);
+    expect(await candidate(id)).toMatchObject({ status: 'shadowed' });
   });
 
   it('hands the decider the wall clock and the family zone, never a default', async () => {
@@ -213,6 +243,60 @@ describe('runProactiveReview', () => {
     });
     const [sent] = await audits('proactive_cadence_sent');
     expect(sent?.after).toMatchObject({ itemIds: [id] });
+  });
+
+  it('writes each parent their own text when their items differ and there is no group', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ name: 'Second Parent', timezone: TZ })
+      .returning({ id: schema.users.id });
+    const coParentId = coParent?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: coParentId, role: 'co_parent' });
+    await enqueue();
+    await handOffProactive(
+      db.database,
+      [
+        {
+          familyId,
+          parentUserId: coParentId,
+          kind: 'nudge',
+          category: 'nudge',
+          templateKey: 'proactive_nudge:weekday_dropin',
+          what: 'Story hour at the east branch',
+          why: 'weekday_dropin',
+          sourceUrl: null,
+          worthlessAfter: null,
+          parentRequested: false,
+          dedupeKey: 'nudge:dropin:w41',
+        },
+      ],
+      'candidate',
+    );
+    const phones: Record<string, string> = {
+      [parentUserId]: PHONE,
+      [coParentId]: '+15555550101',
+    };
+    const asked: string[][] = [];
+    const h = harness(sendAll, {
+      resolveSendablePhone: async (_db, id) => phones[id] ?? null,
+      compose: async ({ items }) => {
+        asked.push(items.map((item) => item.what));
+        return { message: items.map((item) => item.what).join(' / ') };
+      },
+    });
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(asked.sort()).toEqual([
+      ['Indoor climbing by the river'],
+      ['Story hour at the east branch'],
+    ]);
+    const byPhone = Object.fromEntries(h.transport.sent.map((sent) => [sent.to, sent.body]));
+    expect(byPhone[PHONE]).toBe('Indoor climbing by the river');
+    expect(byPhone['+15555550101']).toBe('Story hour at the east branch');
   });
 
   it('holds with the decider’s clock and does not ask again before it', async () => {
