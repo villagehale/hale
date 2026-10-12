@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that names the item as a bare meeting and gives missing context as the cause of the unsure verdict, so it matches the verdict beside it. It is weakened by the rule that a meeting with no child named is the parent's own. Its 'could be work' hint actually points toward adult, so its logic for unsure is shaky, though it does not argue for a different verdict.",
+    "score": 4
+  }
+}

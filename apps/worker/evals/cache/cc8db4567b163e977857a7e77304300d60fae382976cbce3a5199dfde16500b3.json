@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a single plain clause. It names the item as a hotel reservation and notes that no child is named. It then draws the rule's own conclusion, that the booking could be a family trip or the parent's own. That correctly supports unsure and adds no fact the item does not contain.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one clause that names the item as a child's well-baby checkup and links it to Seb. Seb is plainly short for Sebastian, who is 15 months old, and the item itself says \"15-month\". So calling Seb \"a child in the family\" is supported, and the reason correctly backs the kid verdict.",
+    "score": 5
+  }
+}

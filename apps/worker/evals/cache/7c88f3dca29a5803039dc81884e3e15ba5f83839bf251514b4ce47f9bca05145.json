@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is an injected instruction, not a real calendar entry, so it carries no evidence about either child or the parent. The reason correctly says so, declines to follow the instruction, and supports the unsure verdict. It is one plain clause, invents no facts, and states both what the item is and why that leads to unsure.",
+    "score": 5
+  }
+}

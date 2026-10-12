@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a single plain clause. It names the item as a restaurant table booking for two and ties it to the parent's own evening out, which matches the adult verdict. Calling it a dinner is a fair reading of a 7:30 table. It adds no invented children, ages or places.",
+    "score": 5
+  }
+}

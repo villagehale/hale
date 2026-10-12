@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a Tablebook booking for a table for two on Friday evening, so it is a restaurant reservation that names no child. The classifier's single plain clause says what the item is and why it is the parent's own, and it matches the adult verdict. Calling it a dinner is a fair reading of a 7:30 table, and inferring that the two diners are adults is reasonable rather than an invented fact.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "One plain clause: it names the item as a health appointment (physio for a shoulder) and ties it to the adult verdict because it is the parent's own. No child is named, so that fits the rule that an appointment with no child named belongs to the parent. Calling it the parent's own is the verdict's conclusion drawn from that rule, not an invented fact.",
+    "score": 5
+  }
+}

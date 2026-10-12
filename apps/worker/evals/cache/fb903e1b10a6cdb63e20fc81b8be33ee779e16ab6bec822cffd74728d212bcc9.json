@@ -1,0 +1,21 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a flight for a regional sales conference, which is the parent's own work trip",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a family room booking that names Wren and Theo, so it is a family booking for the children",
+        "verdict": "kid",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 1689,
+  "inputTokens": 163,
+  "outputTokens": 113
+}

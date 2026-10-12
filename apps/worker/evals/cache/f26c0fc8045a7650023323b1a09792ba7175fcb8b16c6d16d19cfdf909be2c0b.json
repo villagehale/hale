@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a book club meeting) and why that points to adult (it is a social plan for adults), which matches the verdict. Book clubs are typically adult, and no child is named. Calling it 'adult' is a mild reading of the item rather than an invented fact. It is one plain clause.",
+    "score": 5
+  }
+}

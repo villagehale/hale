@@ -1,0 +1,195 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a daily standup is the parent's work meeting",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a parent-and-tot swim that names Wren, who is 18 months old",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i2",
+        "reason": "a 1:1 with a colleague with a surname and a design work context, not one of the children",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i3",
+        "reason": "a dental cleaning, which is the parent's own dentist visit",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "an 18-month checkup that names Wren, a child",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i5",
+        "reason": "physio for a shoulder, which is the parent's own care",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a library storytime, a kid activity, though it names no child",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i7",
+        "reason": "a quarterly planning offsite, which is work",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i8",
+        "reason": "a music class that names Theo, who is about four years old",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i9",
+        "reason": "a date night at a restaurant, which is the parent's own plan",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i10",
+        "reason": "a daycare pickup, a care arrangement for the children, though it names no child",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i11",
+        "reason": "a 4th birthday party for another child that the family's kids would attend",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i12",
+        "reason": "a bare word 'Hold' with no context, so it could be anything",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i13",
+        "reason": "an initial alone that could be a child's or an adult's name",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i14",
+        "reason": "a spin class at a cycle studio, which is the parent's own fitness",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i15",
+        "reason": "a mortgage call, which is the parent's own money matter",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i16",
+        "reason": "a baby shower for another adult, Dana",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i17",
+        "reason": "a bare word 'Busy' with no context, so it could be anything",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i18",
+        "reason": "a hotel reservation that names no one, so it could be a family trip or the parent's own",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i19",
+        "reason": "a restaurant table for two, which is the parent's own dinner",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i20",
+        "reason": "a preschool swim registration, and Theo at about four years old fits preschool age",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i21",
+        "reason": "a men's Bible study, a faith group for adults",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i22",
+        "reason": "a baby rhyme time class, a kid activity made for babies",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i23",
+        "reason": "a flight check-in that names no one, so it could be a family trip or the parent's own",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i24",
+        "reason": "a car service reminder, which is the parent's own errand",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i25",
+        "reason": "a playdate invitation that asks the family to bring Wren",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i26",
+        "reason": "an appointment reminder that names no one, so it could be a child's or the parent's",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i27",
+        "reason": "a group question about taking Wren to swim, a kid activity",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i28",
+        "reason": "a book club meeting, which is an adult social plan",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i29",
+        "reason": "a request to pick Wren up from daycare, a care arrangement for a child",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i30",
+        "reason": "general errands, which are the parent's own",
+        "verdict": "adult",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 9625,
+  "inputTokens": 1178,
+  "outputTokens": 2394
+}

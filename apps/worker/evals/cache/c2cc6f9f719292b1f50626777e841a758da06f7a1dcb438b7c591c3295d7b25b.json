@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a dental cleaning and matches the adult verdict in one short clause. But its 'why' is only a restatement of the conclusion ('the parent's own dentist visit'). It never names the rule that actually decides it: no child is named in the appointment. That makes it slightly circular rather than a full 5.",
+    "score": 4
+  }
+}

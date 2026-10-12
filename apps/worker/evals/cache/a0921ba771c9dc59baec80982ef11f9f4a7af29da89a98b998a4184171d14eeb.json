@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a tax filing deadline with no child named, so it is plainly an adult admin task. The classifier's single clause names it as the parent's own money matter, says what it is and why, matches the adult verdict and adds no unsupported facts.",
+    "score": 5
+  }
+}

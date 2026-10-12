@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly names the item as a birthday party for another child, which the rules count as a kid item, so it supports the given verdict. However, 'that the family's kids would attend' is an assumption the item does not state, which slightly pads an otherwise tight clause.",
+    "score": 4
+  }
+}

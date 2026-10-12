@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It correctly says the item is a bare placeholder with no detail, and that ambiguity supports the unsure verdict. It invents no facts and goes beyond copying the title back.",
+    "score": 5
+  }
+}

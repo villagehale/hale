@@ -44,7 +44,7 @@ When an item is the same kind of thing as a `notMineHints` entry, it is `adult` 
 For every item, return one entry:
 
 - `ref` - the item's `ref`, exactly as given;
-- `reason` - one short clause, in English, that says what kind of thing the item is and the fact from the item or from `children`, `activityTitles` or `notMineHints` that makes it the kids' or the parent's own ("a checkup for one of the children", "a match with someone who is not one of the children", "the parent's own dentist visit"). The title put in other words is not a reason: say why. Say nothing the item and the context do not say: do not call anyone an adult, a friend, a coach or a relative, or give anyone an age, unless the text or `children` does;
+- `reason` - one short clause, in English, with one deciding fact: what kind of thing the item is and the fact from the item or from `children`, `activityTitles` or `notMineHints` that makes it the kids' or the parent's own ("a checkup for one of the children", "a match with someone who is not one of the children", "the parent's own dentist visit"), or, for `unsure`, what leaves it open both ways ("an appointment that names no one, so it could be a child's or the parent's"). The title put in other words is not a reason: say why. Say nothing the item and the context do not say: do not call anyone an adult, a friend, a coach or a relative, or give anyone an age, unless the text or `children` does;
 - `verdict` - `kid`, `adult` or `unsure`, decided from that reason;
 - `childName` - for a `kid` item, the first name from `children` it is about when one is clear; otherwise null.
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that correctly calls the item a dentist appointment and notes that no child is named. Its logic, though, runs against the stated rule: an appointment that names no child is the parent's own. So the 'could be a child's' step is not a valid basis for unsure. It matches its verdict and invents nothing, but its justification is flawed.",
+    "score": 3
+  }
+}

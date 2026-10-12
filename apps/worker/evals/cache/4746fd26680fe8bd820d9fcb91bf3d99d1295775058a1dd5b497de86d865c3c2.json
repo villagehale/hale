@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is, a hotel booking. It gives the rule-based why: no child is named and nothing shows a family or work trip, so it could be either. That matches the unsure verdict, adds no unsupported facts, and is one plain clause.",
+    "score": 5
+  }
+}

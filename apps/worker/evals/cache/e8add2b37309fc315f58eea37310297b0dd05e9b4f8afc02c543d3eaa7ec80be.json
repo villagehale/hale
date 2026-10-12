@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason supports the kid verdict. It identifies the item as a daycare pickup and calls it childcare, which is plainly about the children even though no child is named. It adds no unsupported facts and stays one short clause.",
+    "score": 5
+  }
+}

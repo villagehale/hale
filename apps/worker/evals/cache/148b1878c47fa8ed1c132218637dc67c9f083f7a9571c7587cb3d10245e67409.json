@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a bare 'Call' with no name or context, so unsure fits under the bare-item rule. The reason is one short clause that says what the item is and why it can't be placed, and it adds no unsupported facts.",
+    "score": 5
+  }
+}

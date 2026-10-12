@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is only the letter \"J.\", so it names no activity, no child and no appointment, and unsure is the right call. The classifier's reason says exactly that in one plain clause, describing what the item is and why it can't be placed, with no invented facts.",
+    "score": 5
+  }
+}

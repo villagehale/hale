@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that says what the item is (an appointment reminder that names no one) and links that to the unsure verdict. It invents no facts. Its 'why' is weak, though. The rules say an appointment that names no child is the parent's own, so 'it could be a child's' is not well supported. Only the separate rule that a bare item is unsure fits, and the reason never invokes it.",
+    "score": 3
+  }
+}

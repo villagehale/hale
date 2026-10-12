@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a library hold for an adult novel) and ties it to the adult verdict, since the book is the parent's own. Every fact comes from the item, and it is one short clause.",
+    "score": 5
+  }
+}

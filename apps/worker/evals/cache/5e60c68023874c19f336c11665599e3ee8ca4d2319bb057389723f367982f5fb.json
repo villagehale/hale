@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause. It names the item as an appointment reminder with no one named and ties that ambiguity to the unsure verdict, adding no unsupported facts. It loses a point because it ignores the rule that an appointment naming no child is the parent's own; the 'bare item' reading justifies unsure only loosely.",
+    "score": 4
+  }
+}

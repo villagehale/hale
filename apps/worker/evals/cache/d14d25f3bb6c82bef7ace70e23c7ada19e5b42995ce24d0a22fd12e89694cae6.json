@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that names the item as an appointment reminder, notes that no one is named, and draws the unsure verdict from that, with no invented facts. Its logic, though, cuts against the rule that an appointment naming no child is the parent's own. It only holds by treating the bare generic reminder as ambiguous, which keeps it from a 5.",
+    "score": 4
+  }
+}

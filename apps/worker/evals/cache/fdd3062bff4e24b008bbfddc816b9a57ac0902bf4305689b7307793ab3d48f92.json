@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item \"公司季度会议\" translates to \"company quarterly meeting\", a work meeting with no child named. The classifier's single short clause names what the item is and why it is the parent's own, which supports the adult verdict. It adds no unsupported facts.",
+    "score": 5
+  }
+}

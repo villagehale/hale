@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason says what the item is: a library storytime, which is a kid activity. It also covers the missing child name, which matches the rule that a kid activity with no child named is still a kid item, so it supports the 'kid' verdict. It is one short clause with no invented facts.",
+    "score": 5
+  }
+}

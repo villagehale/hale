@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item 'Lina 的音乐课' means 'Lina's music class', and the classifier read it correctly. The reason says what the item is (a music lesson), gives the cue (it names Lina, one of the children), and ties that to the kid verdict. It adds no invented facts and is one short clause.",
+    "score": 5
+  }
+}

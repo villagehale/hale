@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason correctly identifies the item as a bare, contextless calendar block, which supports the unsure verdict under the bare-item rule. It is one clause and invents nothing. The phrasing \"could be anything\" is slightly generic, but it is still a clear what-and-why.",
+    "score": 5
+  }
+}

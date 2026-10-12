@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short clause saying what the item is (a music class) and why it is a kid item (it names Theo, who is one of the children). The age of 50 months comes from the given context. It supports the kid verdict without adding facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a health appointment, a physio session for a shoulder, with no child named, and that leads straight to the adult verdict. It is one short clause and adds nothing the item does not support, which fits the rule that an appointment naming no child is the parent's own.",
+    "score": 5
+  }
+}

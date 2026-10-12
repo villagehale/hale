@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item 'Lina 的音乐课' means 'Lina's music class', and it names Lina, a 30-month-old child. The reason says what the item is (a music lesson), gives why it is a kid item (it names a child), and agrees with the verdict. It is one clause with no unsupported facts. A small caveat: 'named for Lina' slightly hedges the adult-namesake rule, but at 30 months a toddler music class is plainly hers.",
+    "score": 5
+  }
+}

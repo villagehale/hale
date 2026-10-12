@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a hotel reservation) and why that gives unsure: no one is named, so it could be a family trip or the parent's own. That matches the trip rule. It is one short clause and invents nothing.",
+    "score": 5
+  }
+}

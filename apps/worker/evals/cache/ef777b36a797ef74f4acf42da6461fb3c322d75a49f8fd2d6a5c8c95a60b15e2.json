@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason says the item is a bare errand that names no one and could belong to either the parent or the family, which supports the verdict of unsure. It is one plain clause and adds no facts the item lacks. It slightly restates the title, but it gives both the 'what' and the 'why'.",
+    "score": 5
+  }
+}

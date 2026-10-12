@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a single clause. It correctly calls the item a bare, context-free calendar word and ties that to the unsure verdict. It adds no unsupported facts, though 'could be anything' is slightly loose phrasing.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a hotel booking that names no child. It correctly applies the trip rule: with no child named and no sign it is a family or work trip, the booking stays ambiguous, which matches the unsure verdict. It invents no facts and is one plain clause.",
+    "score": 5
+  }
+}

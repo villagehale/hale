@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a checkup), names the child Wren, and gives an age that matches the context (18 months), which supports the kid verdict in one short clause. It leaves the 'why' implicit, though a pediatric checkup for a named child plainly makes it a kid item. Nothing is invented and it argues for the verdict given.",
+    "score": 5
+  }
+}

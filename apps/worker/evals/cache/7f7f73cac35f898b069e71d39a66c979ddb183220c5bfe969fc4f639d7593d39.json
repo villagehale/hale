@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that names the item as a spin class, an adult fitness activity, and so ties it to the adult verdict. That inference is sound: the children are 18 and 50 months old, too young for a spin class, and no child is named. It adds no unsupported facts, though it could have said briefly why the class is adult.",
+    "score": 5
+  }
+}

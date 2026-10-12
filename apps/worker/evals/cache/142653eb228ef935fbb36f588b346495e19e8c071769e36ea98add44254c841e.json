@@ -1,0 +1,27 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a hotel booking, the same kind of thing the parent already said is their own hotel stays and names no child",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a choir rehearsal, the same kind of thing as the choir the parent sings in and it names no child",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "a gymnastics class with Theo, a child in the family, so a kid activity",
+        "verdict": "kid",
+        "childName": "Theo"
+      }
+    ]
+  },
+  "latencyMs": 2629,
+  "inputTokens": 168,
+  "outputTokens": 343
+}

@@ -1,0 +1,117 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a daily standup is the parent's own work meeting",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a parent and tot swim class for Wren, a child of 18 months",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i2",
+        "reason": "a 1:1 with a surnamed adult colleague, Wren Castillo, so not the child",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i3",
+        "reason": "a dentist cleaning that names no one, so it could be a child's or the parent's",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "a checkup for Wren at the 18-month mark",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i5",
+        "reason": "physio for a shoulder is the parent's own health appointment",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a library storytime, a kid activity, though it names no child",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i7",
+        "reason": "a quarterly planning offsite is the parent's own work event",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i8",
+        "reason": "a music class named for Theo, a child of 50 months",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i9",
+        "reason": "a date night at a restaurant is the parent's own social plan",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i10",
+        "reason": "a daycare pickup is a care arrangement for the children",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i11",
+        "reason": "a 4th birthday party for another child, Mila, that the family's kids would attend",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i12",
+        "reason": "a bare 'Hold' with no detail, so it could be anything",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i13",
+        "reason": "a bare initial with no activity, so it could be anyone's",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i14",
+        "reason": "a spin class at a studio is the parent's own fitness",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i15",
+        "reason": "a mortgage call is the parent's own money matter",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i16",
+        "reason": "a baby shower for another adult, Dana",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i17",
+        "reason": "a bare 'Busy' block with no detail, so it could be either",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 6236,
+  "inputTokens": 663,
+  "outputTokens": 1351
+}

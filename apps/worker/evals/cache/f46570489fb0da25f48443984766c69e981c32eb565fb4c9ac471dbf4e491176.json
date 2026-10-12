@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is accurate and supports the adult verdict. The item is a hotel booking. The notMineHints list includes 'a hotel stay', so the rule that an item matching a hint is the parent's own applies. The note that it names no child is correct. The reason is a single sentence, but it is a little wordy and ends on a trailing extra clause, so it falls just short of a crisp single clause.",
+    "score": 4
+  }
+}

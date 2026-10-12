@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a single short clause that names what the item is (a household-group question about taking Wren, a named child, to swim) and why that makes it a kid item, which matches the verdict. It invents nothing: Wren is a listed child and swim is plainly a kid activity here. It could have stated more explicitly that Wren is named, but it is not just a copy of the title.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that names the item as an adult fitness class at a cycle studio, which supports the adult verdict. The children are 18 and 50 months old, too young for a spin class, so the parent's-own reading holds and the reason adds no unsupported fact.",
+    "score": 5
+  }
+}

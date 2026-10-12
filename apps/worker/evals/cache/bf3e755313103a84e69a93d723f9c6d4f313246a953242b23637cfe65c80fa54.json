@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that names the item (a dentist visit) and links it to the unsure verdict. Its logic, though, runs against the stated rule: an appointment that names no child is the parent's own. So 'names no child, so it could be a child's' is a weak justification, since naming no child points to the parent rather than to ambiguity. No invented facts, but the 'why' is unsound.",
+    "score": 3
+  }
+}
