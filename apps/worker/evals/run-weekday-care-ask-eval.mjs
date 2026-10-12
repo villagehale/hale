@@ -83,10 +83,12 @@ const JUDGE_SYSTEM = [
   'Check two things in your argument before you weigh the tone. First, list everything',
   'the text asks the parent and say how many asks that is; the offer itself, put to the',
   'parent, is one ask. Second, quote the part of the text that makes the offer and judge',
-  'that part on its own against the 3 line: is it a hedged offer of service - help held',
-  'out on the condition that it would be useful or wanted, or said as what Hale is able',
-  'or willing to do - rather than the offer put straight? If it is, the text is a 3 at',
-  'most, however friendly the rest of it reads.',
+  'that part on its own against the 3 line: is it a hedged offer of service rather than',
+  'the offer put straight? Putting the offer to the parent as a plain question, asking',
+  'whether they want Hale to look, is the offer put straight, in any language. A hedge is',
+  'a condition added on top of the offer (whether it would help or be useful) or the offer',
+  'framed as what Hale could, is able to or is willing to do. If the offer is hedged, the',
+  'text is a 3 at most, however friendly the rest of it reads.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 

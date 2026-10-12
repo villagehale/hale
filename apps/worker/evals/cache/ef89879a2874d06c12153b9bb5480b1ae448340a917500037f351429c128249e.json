@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text makes ONE ask: the offer itself, put as a question to the parent about whether they want Hale to look for an after-school option for Nell. The offer quote is: \"¿quieres que le busque una buena opción para después de clases?\" - a straightforward offer of service phrased as a direct question. This is not hedged; the offer is put straight without conditions. The text is in Spanish (es), properly written with correct accents (Oye, estaba, pensando, tardes, cole, quieres, busque, opción, clases). The context specifies after_school_named with name Nell, and the text names Nell and offers to look for an after-school option - this is the right offer. The tone is casual and friendly (\"Oye\" as a casual opener, \"estaba pensando en Nell y en las tardes\" reads like a friend noticing something about this family's week and being curious about it), natural for how people text in Spanish. The text reads like a friend who is also a parent texting casually about the family's need, not like an assistant hedging its offer of service.",
-    "score": 5
-  }
-}

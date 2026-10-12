@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text offers exactly what the prompt requires: an after-school option nearby, with no child named (matching \"after_school_household\"). \n\nAsks: The text contains one ask—the offer itself, put as a question: \"want me to look for a good option nearby?\" This is a single ask.\n\nThe offer: \"want me to look for a good option nearby?\" This is a straightforward offer, not hedged. It's put directly as an action Hale is ready to take, not as conditional help dependent on whether it would be useful or wanted. The phrasing treats looking as something Hale will do if the parent says yes, not as something Hale could do if the parent thinks it would help.\n\nTone and language: The text is in English with proper spelling and no accent marks needed. It reads naturally and casually—\"Been thinking about you guys\" is conversational and personal, the kind of thing a friend-parent would text. There's no formal language, no sales pitch, no description of Hale's capabilities. The opening creates context about the family's week (afternoons after school), and the offer flows from genuine curiosity about their situation. It's the kind of text a friend notices a gap in another friend's schedule and asks to help fill it. The entire message is about the family's situation, not about what Hale can do.",
-    "score": 5
-  }
-}
