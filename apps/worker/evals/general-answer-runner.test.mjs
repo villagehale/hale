@@ -35,6 +35,70 @@ function failuresById(report) {
   return byId;
 }
 
+/**
+ * A module loaded ahead of the runner that changes what one recording REPLAYS AS, in
+ * memory, as the runner reads it. The file on disk is not touched, and no model is
+ * called: it is how a test asks "what does the runner do with THIS verdict" of a script
+ * that takes its verdicts from the committed recordings.
+ *
+ * `scores` gives the judge's verdicts new scores by the order the runner reads them: the
+ * broken stand-in's is the first, the near miss's the second, then one per fixture. `*`
+ * is every verdict not named. `sanitizedQuestion` is appended to the question in the
+ * first sanitize recording read.
+ */
+function replayedAs({ scores = {}, sanitizedQuestion = '' }) {
+  return `data:text/javascript,${encodeURIComponent(
+    `import fs from 'node:fs/promises';
+     import { syncBuiltinESMExports } from 'node:module';
+     const scores = ${JSON.stringify(scores)};
+     const appended = ${JSON.stringify(sanitizedQuestion)};
+     const read = fs.readFile;
+     let verdicts = 0;
+     let sanitized = 0;
+     fs.readFile = async (path, ...rest) => {
+       const text = await read(path, ...rest);
+       if (!String(path).includes('/evals/cache/')) return text;
+       const recorded = JSON.parse(text);
+       if (typeof recorded?.parsed?.score === 'number') {
+         verdicts += 1;
+         const score = scores[verdicts] ?? scores['*'];
+         return score === undefined
+           ? text
+           : JSON.stringify({ ...recorded, parsed: { ...recorded.parsed, score } });
+       }
+       if (appended !== '' && typeof recorded?.value?.question === 'string') {
+         sanitized += 1;
+         if (sanitized === 1) {
+           const question = recorded.value.question + appended;
+           return JSON.stringify({ ...recorded, value: { ...recorded.value, question } });
+         }
+       }
+       return text;
+     };
+     syncBuiltinESMExports();`,
+  )}`;
+}
+
+/** A module loaded ahead of the runner that cuts the corpus down to the fixtures named. */
+function onlyFixtures(ids) {
+  return `data:text/javascript,${encodeURIComponent(
+    `import { ANSWER_FIXTURES } from ${JSON.stringify(FIXTURES_URL)};
+     const keep = ${JSON.stringify(ids)};
+     ANSWER_FIXTURES.splice(0, ANSWER_FIXTURES.length, ...ANSWER_FIXTURES.filter((fixture) => keep.includes(fixture.id)));`,
+  )}`;
+}
+
+/** The runner as a process over the committed recordings: no API key, no model call. */
+function runRunner(args, preloads = []) {
+  const { ANTHROPIC_API_KEY: _key, ...env } = process.env;
+  const run = spawnSync(
+    process.execPath,
+    [...preloads.flatMap((preload) => ['--import', preload]), RUNNER, ...args, '--cached-only'],
+    { env, encoding: 'utf8' },
+  );
+  return { status: run.status, report: `${run.stdout}${run.stderr}` };
+}
+
 describe('the general-answer runner', () => {
   let report;
   let failures;
@@ -263,4 +327,106 @@ describe('the general-answer runner', () => {
       'broken-mode calibration (the judge must fail both stand-ins): PASS (exit 0)',
     );
   });
+
+  /**
+   * THE GATE IS THE EXIT CODE, which is what CI reads. The tests above read the report,
+   * and a report can say FAIL while the process exits 0. So each term of the gate is
+   * moved on its own here and the exit code is what is asserted. Every verdict is given
+   * a score, so what is pinned is the runner's arithmetic and not how this recording
+   * happened to be judged: both stand-ins failed (1) and every fixture passed (5) is the
+   * state that must exit 0, and each run below changes one thing from it.
+   */
+  describe('the gate, by exit code', () => {
+    const HOLDS = { 1: 1, 2: 1, '*': 5 };
+    const PASSING = 5;
+    const FAILING = 1;
+    // The calibration fixture has to be in the corpus: the stand-ins are graded on it.
+    const CORPUS = onlyFixtures(['leafs-last-night', 'capital-peru']);
+
+    it('exits 0 in broken mode when the judge fails both stand-ins', () => {
+      const run = runRunner(['--broken'], [replayedAs({ scores: HOLDS })]);
+
+      expect(run.report).toContain(
+        'broken-mode calibration (the judge must fail both stand-ins): PASS (exit 0)',
+      );
+      expect(run.status).toBe(0);
+    });
+
+    it.each([
+      ['the broken stand-in', 1],
+      ['the near miss', 2],
+    ])('exits 1 in broken mode when the judge passes %s', (_label, verdict) => {
+      const run = runRunner(
+        ['--broken'],
+        [replayedAs({ scores: { ...HOLDS, [verdict]: PASSING } })],
+      );
+
+      // Positive control: the run got as far as its gate, and it is this stand-in that
+      // passed. A cache miss exits 1 too.
+      expect(run.report).not.toContain('cache miss');
+      expect(run.report).toMatch(/broken-mode calibration .*: FAIL \(exit 1\)/);
+      const graded = [...run.report.matchAll(/^(PASS|FAIL) {2}(\S+)/gm)].map(([, tag, id]) => [
+        id,
+        tag,
+      ]);
+      expect(graded).toEqual([
+        ['leafs-last-night', verdict === 1 ? 'PASS' : 'FAIL'],
+        ['leafs-last-night:near-miss', verdict === 2 ? 'PASS' : 'FAIL'],
+      ]);
+      expect(run.status).toBe(1);
+    });
+
+    it('exits 0 in the real mode when the calibration holds and every fixture passes', () => {
+      const run = runRunner([], [CORPUS, replayedAs({ scores: HOLDS })]);
+
+      expect(run.report).toContain('corpus: 2 questions');
+      expect(run.report).toContain('overall (real): PASS (exit 0)');
+      expect(run.status).toBe(0);
+    });
+
+    it.each([
+      ['the judge passes the broken stand-in', { 1: PASSING }],
+      ['the judge passes the near miss', { 2: PASSING }],
+      ['one fixture is below the pass mark', { 3: FAILING }],
+    ])('exits 1 in the real mode when %s, and nothing else is wrong', (_label, change) => {
+      const run = runRunner([], [CORPUS, replayedAs({ scores: { ...HOLDS, ...change } })]);
+
+      expect(run.report).not.toContain('cache miss');
+      expect(run.report).toContain('overall (real): FAIL (exit 1)');
+      // Only the term this run moved is wrong.
+      expect(run.report).toMatch(
+        new RegExp(`^judge below 4: +${'3' in change ? 1 : 0} {2}\\(0 required\\)$`, 'm'),
+      );
+      expect(run.status).toBe(1);
+    });
+  });
+
+  /**
+   * The runner's own call to production's identifier scrub, between the sanitize
+   * recording and everything handed on. No recorded question has an identifier left in
+   * it, so the call changes nothing on the corpus and could be deleted unseen. Here one
+   * is put into the sanitize stage's replayed question, and what the runner hands the
+   * search is read off the cache key it then asks for: a question that left the sanitizer
+   * with a phone number in it, and the same question with that number already taken out,
+   * must be the SAME request.
+   */
+  it('scrubs what the sanitize stage wrote before it is handed to the search', () => {
+    const searchKey = (sanitizedQuestion) => {
+      const run = runRunner(['--broken'], [replayedAs({ sanitizedQuestion })]);
+      const miss = run.report.match(
+        /cache miss in --cached-only mode \(general-answer-search:leafs-last-night, key ([0-9a-f]{64})\)/,
+      );
+      expect(miss, run.report).not.toBeNull();
+      return miss[1];
+    };
+
+    const withNumber = searchKey(', text me at 416-555-0142');
+    const alreadyScrubbed = searchKey(', text me at [redacted]');
+    // Positive control: the key does follow the question.
+    const otherWords = searchKey(', text me back');
+
+    expect(withNumber).toBe(alreadyScrubbed);
+    expect(otherWords).not.toBe(alreadyScrubbed);
+  });
 });
+
