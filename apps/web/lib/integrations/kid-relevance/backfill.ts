@@ -45,7 +45,6 @@ import { CLEARED_EVENT_TEXT, dropOwedTexts } from './untrack';
  */
 
 export interface BackfillInput {
-  apply: boolean;
   now: Date;
   /** Where a dry run stops asking the model; an apply asks none. */
   deadline: Date;
@@ -55,6 +54,9 @@ export interface BackfillInput {
    * exactly what this run did. */
   runId: string;
 }
+
+/** A dry run asks the model, so it carries the client. An apply asks none and takes none. */
+export type BackfillMode = { apply: false; client: AgentClient } | { apply: true };
 
 export interface BackfillCounts {
   apply: boolean;
@@ -119,10 +121,10 @@ interface Candidate {
 export async function runKidRelevanceBackfill(
   database: Database,
   input: BackfillInput,
-  ports: { client: AgentClient },
+  mode: BackfillMode,
 ): Promise<BackfillCounts> {
   const counts: BackfillCounts = {
-    apply: input.apply,
+    apply: mode.apply,
     families: 0,
     judged: 0,
     kid: 0,
@@ -151,12 +153,12 @@ export async function runKidRelevanceBackfill(
       children: await loadKidRelevanceChildren(database, familyId),
       notMineHints: await loadNotMineHints(database, familyId),
     };
-    const judged: readonly (KidJudgement | StoredKidJudgement)[] = input.apply
+    const judged: readonly (KidJudgement | StoredKidJudgement)[] = mode.apply
       ? await readStoredKidVerdicts(database, asked, context)
       : await judgeKidRelevance(
           database,
           { ...asked, deadline: input.deadline },
-          { client: ports.client, ...context },
+          { client: mode.client, ...context },
         );
     const verdictByRef = new Map(judged.map((judgement) => [judgement.ref, judgement]));
 
@@ -212,7 +214,7 @@ export async function runKidRelevanceBackfill(
       counts.remindersCancelled += scheduled.length;
       counts.blocksCleared += adultBlocks.length;
     };
-    if (!input.apply) {
+    if (!mode.apply) {
       tally();
       continue;
     }

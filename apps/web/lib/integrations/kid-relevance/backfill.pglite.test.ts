@@ -199,11 +199,12 @@ async function state() {
   return { events, reminders, blocks, bookings, audit, verdicts };
 }
 
+/** Only a dry run is handed the model client: an apply takes none. */
 function run(apply: boolean) {
   return runKidRelevanceBackfill(
     db.database,
-    { apply, now: NOW, deadline: NO_DEADLINE, familyIds: [familyId], runId },
-    { client },
+    { now: NOW, deadline: NO_DEADLINE, familyIds: [familyId], runId },
+    apply ? { apply: true } : { apply: false, client },
   );
 }
 
@@ -427,8 +428,8 @@ describe('runKidRelevanceBackfill', () => {
     const before = await state();
     const counts = await runKidRelevanceBackfill(
       racing,
-      { apply: true, now: NOW, deadline: NO_DEADLINE, familyIds: [familyId], runId },
-      { client },
+      { now: NOW, deadline: NO_DEADLINE, familyIds: [familyId], runId },
+      { apply: true },
     );
     expect(counts).toMatchObject({
       eventsDropped: 0,

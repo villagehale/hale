@@ -10,11 +10,11 @@
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts --apply    # write
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts --revert=<runId>
 //
-// Needs DATABASE_URL, APP_ENCRYPTION_KEY and ANTHROPIC_API_KEY (a revert needs only the
-// first). A dry run changes no tracking state; it does store the verdicts. An apply asks
-// no model: it acts only on those stored verdicts, and counts an item added or changed
-// since - every item, once a child's age in months has rolled over - as notInDryRun and
-// leaves it alone. Run the dry run first and read the counts.
+// Needs DATABASE_URL. A dry run and an apply also need APP_ENCRYPTION_KEY, and only a dry
+// run needs ANTHROPIC_API_KEY. A dry run changes no tracking state; it does store the
+// verdicts. An apply asks no model: it acts only on those stored verdicts, and counts an
+// item added or changed since - every item, once a child's age in months has rolled
+// over - as notInDryRun and leaves it alone. Run the dry run first and read the counts.
 // Every run prints its run id first; an apply's audit rows carry it, and --revert=<runId>
 // undoes that apply.
 
@@ -53,8 +53,8 @@ if (revertRunId === undefined && !process.env.APP_ENCRYPTION_KEY) {
   console.error('APP_ENCRYPTION_KEY is not set. The verdict cache is keyed on it.');
   process.exit(1);
 }
-if (revertRunId === undefined && !process.env.ANTHROPIC_API_KEY) {
-  console.error('ANTHROPIC_API_KEY is not set. The backfill asks the kid-relevance judge.');
+if (!apply && revertRunId === undefined && !process.env.ANTHROPIC_API_KEY) {
+  console.error('ANTHROPIC_API_KEY is not set. A dry run asks the kid-relevance judge.');
   process.exit(1);
 }
 
@@ -79,8 +79,10 @@ try {
   console.info(`runId: ${runId}`);
   const counts = await runKidRelevanceBackfill(
     database,
-    { apply, now: new Date(), deadline: NO_DEADLINE, runId },
-    { client: budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS) },
+    { now: new Date(), deadline: NO_DEADLINE, runId },
+    apply
+      ? { apply: true }
+      : { apply: false, client: budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS) },
   );
   console.info(JSON.stringify(counts, null, 2));
   if (!apply) {
