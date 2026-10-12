@@ -117,7 +117,7 @@ const ALERT_TOP_CODES = 2;
  * `data.code` through), so the page keeps only an enum-shaped token: no spaces, no
  * URLs, and never a digit run long enough to be a number a parent owns. */
 const ALERT_CODE_MAX_CHARS = 32;
-function alertCode(code: string): string {
+export function alertCode(code: string): string {
   const token = code.replace(/[^A-Za-z0-9_.:-]+/g, '_').slice(0, ALERT_CODE_MAX_CHARS);
   return token.replace(/\d{7,}/g, (digits) => digits.slice(0, 6));
 }

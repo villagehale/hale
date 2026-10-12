@@ -110,7 +110,7 @@ export function computeTtfa(rows: IntakeMessageRow[]): TtfaStat {
   }
 
   return {
-    p50Seconds: medianNearestRank(latencies),
+    p50Seconds: percentileNearestRank(latencies, 0.5),
     derivedFamilies: latencies.length,
     notDerivableFamilies,
   };
@@ -123,14 +123,14 @@ function earliest(rows: Array<{ sentAt: Date }>): Date | null {
   );
 }
 
-/** Nearest-rank p50: the value at ceil(n/2), 1-indexed. No interpolation — these are
- * observed latencies, and an averaged midpoint is a latency nobody experienced. */
-function medianNearestRank(values: number[]): number | null {
+/** Nearest-rank percentile: the value at ceil(p * n), 1-indexed. No interpolation —
+ * these are observed values, and an averaged midpoint is a latency nobody experienced. */
+export function percentileNearestRank(values: number[], p: number): number | null {
   if (values.length === 0) {
     return null;
   }
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.ceil(sorted.length / 2) - 1] ?? null;
+  return sorted[Math.max(Math.ceil(p * sorted.length), 1) - 1] ?? null;
 }
 
 // ── nudge engagement ─────────────────────────────────────────────────────────
