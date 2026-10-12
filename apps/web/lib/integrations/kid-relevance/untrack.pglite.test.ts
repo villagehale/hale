@@ -303,6 +303,12 @@ describe('untrackItem', () => {
     ]);
   });
 
+  it('keeps no invisible format character in a hint', async () => {
+    const event = await mirror('one-off', NEXT_WEEK, 'Harbour Inn check-in');
+    await untrack({ kind: 'family_event', id: event }, 'a\u202E hotel\u200Dstay\u2066');
+    expect((await parentVerdicts()).map((row) => row.hint)).toEqual(['a hotel stay']);
+  });
+
   it('refuses a kind that repeats the title Hale saw, even with no calendar copy', async () => {
     await db.database.insert(schema.calendarEventSnapshots).values({
       integrationId,
@@ -592,6 +598,51 @@ describe('untrackItem', () => {
       .from(schema.emailAlertOffers)
       .where(eq(schema.emailAlertOffers.messageId, 'their-msg'));
     expect(theirOffer?.expiresAt).toEqual(NEXT_WEEK);
+  });
+
+  it("never resolves an alert key that names another family's integration", async () => {
+    const other = await seedFamily(db.database);
+    const theirGmail = await seedIntegration(
+      db.database,
+      other.familyId,
+      other.parentUserId,
+      'gmail',
+    );
+    const [theirMessage] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: other.familyId,
+        parentUserId: other.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'alert',
+        status: 'sent',
+        sentAt: NOW,
+      })
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.emailAlertOffers).values({
+      familyId: other.familyId,
+      parentUserId: other.parentUserId,
+      integrationId: theirGmail,
+      messageId: 'their-msg',
+      kind: 'event',
+      title: 'Theirs',
+      startsAt: NEXT_WEEK,
+      channelMessageId: theirMessage?.id ?? '',
+      expiresAt: NEXT_WEEK,
+    });
+    const ours = await alertMessage(emailAlertDedupeKey(theirGmail, 'their-msg'));
+    const before = await writes();
+
+    expect(await untrack({ kind: 'channel_message', id: ours })).toEqual({
+      outcome: 'not_found',
+    });
+    expect(await writes()).toEqual(before);
+    const [theirOffer] = await db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.messageId, 'their-msg'));
+    expect(theirOffer).toMatchObject({ title: 'Theirs', expiresAt: NEXT_WEEK });
   });
 
   it('a second untrack of the same series is already_untracked and writes nothing more', async () => {

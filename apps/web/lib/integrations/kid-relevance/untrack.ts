@@ -175,6 +175,7 @@ export async function untrackItem(database: Database, input: UntrackInput): Prom
       })
       .where(eq(table.id, verdict.id));
     const { heldAlertsCleared, offersWithdrawn } = await dropOwedTexts(tx, item, input.now);
+    await clearOfferWords(tx, item);
 
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
@@ -269,8 +270,6 @@ export async function dropOwedTexts(
       eq(offers.integrationId, item.integrationId),
       eq(offers.messageId, item.itemKey),
     );
-    // Every offer of the item loses its words, resolved or not; only an open one is withdrawn.
-    await database.update(offers).set({ title: '', location: null }).where(ofItem);
     const withdrawn = await database
       .update(offers)
       .set({ expiresAt: now })
@@ -279,6 +278,24 @@ export async function dropOwedTexts(
     return { heldAlertsCleared: 0, offersWithdrawn: withdrawn.length };
   }
   return { heldAlertsCleared: 0, offersWithdrawn: 0 };
+}
+
+/**
+ * On the parent's own word, every Gmail offer of the item loses its words, resolved or
+ * not. The backfill acts on a model verdict and keeps them, so its revert can put a Gmail
+ * copy's title back.
+ */
+async function clearOfferWords(database: Pick<Database, 'update'>, item: ProviderItem) {
+  if (item.source !== 'gmail' || item.integrationId === null) return;
+  await database
+    .update(schema.emailAlertOffers)
+    .set({ title: '', location: null })
+    .where(
+      and(
+        eq(schema.emailAlertOffers.integrationId, item.integrationId),
+        eq(schema.emailAlertOffers.messageId, item.itemKey),
+      ),
+    );
 }
 
 /** The titles and places Hale held for this item outside the family calendar. */
@@ -326,7 +343,7 @@ async function textsSeen(
 /** The kind as one plain line, unless it is empty, long, or carries the item's own title
  * or place. */
 function safeKind(kind: string | null, texts: readonly string[]): string | null {
-  const trimmed = (kind ?? '').replace(/[\p{Cc}\s]+/gu, ' ').trim();
+  const trimmed = (kind ?? '').replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim();
   if (trimmed.length === 0 || trimmed.length > KID_HINT_MAX_CHARS) return null;
   const folded = trimmed.toLowerCase();
   const leaks = texts.some((text) => {
@@ -351,7 +368,7 @@ async function resolveTarget(
         ),
       );
     if (!message) return 'not_found';
-    return providerItemFromKey(database, message.dedupeKey);
+    return providerItemFromKey(database, input.familyId, message.dedupeKey);
   }
 
   const [event] = await database
@@ -412,11 +429,22 @@ async function resolveTarget(
   return 'not_provider_item';
 }
 
+/** The item an alert's key names, once the key's integration is this family's own. */
 async function providerItemFromKey(
   database: Database,
+  familyId: string,
   dedupeKey: string | null,
-): Promise<ProviderItem | 'not_provider_item'> {
+): Promise<ProviderItem | 'not_found' | 'not_provider_item'> {
   if (!dedupeKey) return 'not_provider_item';
+  const keyed = (SERIES_ALERT_KEY.exec(dedupeKey) ??
+    INSTANCE_ALERT_KEY.exec(dedupeKey) ??
+    EMAIL_ALERT_KEY.exec(dedupeKey))?.[1];
+  if (!keyed) return 'not_provider_item';
+  const [integration] = await database
+    .select({ id: schema.integrations.id })
+    .from(schema.integrations)
+    .where(and(eq(schema.integrations.id, keyed), eq(schema.integrations.familyId, familyId)));
+  if (!integration) return 'not_found';
   const series = SERIES_ALERT_KEY.exec(dedupeKey);
   if (series?.[1] && series[2]) {
     return { source: 'google_calendar', integrationId: series[1], itemKey: series[2] };

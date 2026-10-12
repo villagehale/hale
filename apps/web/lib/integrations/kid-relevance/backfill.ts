@@ -299,9 +299,10 @@ export interface RevertCounts {
  * restored items are deleted so the next judge asks again; a parent's own verdict stays.
  * One audit row per restored event (rule #6).
  *
- * Not restored: titles and places (cleared at apply; a calendar copy is rewritten by the
- * mirror's next pass, a Gmail copy stays without one), and parent calendar blocks (the next
- * sweep rebuilds them). Returns counts only.
+ * A Gmail copy gets its title and place back from the offer it came from, which the apply
+ * leaves as it was. Not restored: a calendar copy's title and place (the mirror's next pass
+ * rewrites them), and parent calendar blocks (the next sweep rebuilds them). Returns
+ * counts only.
  */
 export async function revertKidRelevanceBackfill(
   database: Database,
@@ -373,6 +374,19 @@ export async function revertKidRelevanceBackfill(
       .update(schema.familyEvents)
       .set({ deletedAt: null, kidVerdictId: null })
       .where(inArray(schema.familyEvents.id, restoreIds));
+    await tx
+      .update(schema.familyEvents)
+      .set({
+        title: sql`${schema.emailAlertOffers.title}`,
+        location: sql`${schema.emailAlertOffers.location}`,
+      })
+      .from(schema.emailAlertOffers)
+      .where(
+        and(
+          eq(schema.emailAlertOffers.eventId, schema.familyEvents.id),
+          inArray(schema.familyEvents.id, restoreIds),
+        ),
+      );
     const rescheduled =
       cancelledIds.length === 0
         ? []

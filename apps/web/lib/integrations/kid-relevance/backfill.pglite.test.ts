@@ -408,22 +408,6 @@ describe('runKidRelevanceBackfill', () => {
     expect(drop?.after).toMatchObject({ heldAlertsCleared: 1, offersWithdrawn: 0 });
   });
 
-  it('apply clears the words of the resolved offer an adult event came from', async () => {
-    await seed();
-    await run(true);
-    const [offer] = await db.database
-      .select({ title: schema.emailAlertOffers.title, location: schema.emailAlertOffers.location })
-      .from(schema.emailAlertOffers)
-      // The pglite database is not reset between tests, so scope to this seed's connection.
-      .where(
-        and(
-          eq(schema.emailAlertOffers.messageId, 'msg-dinner'),
-          eq(schema.emailAlertOffers.integrationId, gmail),
-        ),
-      );
-    expect(offer).toEqual({ title: '', location: null });
-  });
-
   it('apply writes nothing for a family that scheduled its erasure after the run read it', async () => {
     await seed();
     duringJudge = async () => {
@@ -523,6 +507,28 @@ describe('runKidRelevanceBackfill', () => {
       now: NOW,
     });
     expect(again).toMatchObject({ found: true, eventsRestored: 0, remindersRescheduled: 0 });
+  });
+
+  it('a revert gives a Gmail copy back the words of the offer it came from', async () => {
+    const ids = await seed();
+    await run(true);
+    await revertKidRelevanceBackfill(db.database, { runId, now: NOW });
+    const [offer] = await db.database
+      .select({ title: schema.emailAlertOffers.title })
+      .from(schema.emailAlertOffers)
+      // The pglite database is not reset between tests, so scope to this seed's connection.
+      .where(
+        and(
+          eq(schema.emailAlertOffers.messageId, 'msg-dinner'),
+          eq(schema.emailAlertOffers.integrationId, gmail),
+        ),
+      );
+    expect(offer).toEqual({ title: 'Team dinner' });
+    const { events } = await state();
+    expect(events.find((row) => row.id === ids.offer)).toMatchObject({
+      deletedAt: null,
+      title: 'Team dinner',
+    });
   });
 
   it('a revert of an unknown run id changes nothing and says so', async () => {
