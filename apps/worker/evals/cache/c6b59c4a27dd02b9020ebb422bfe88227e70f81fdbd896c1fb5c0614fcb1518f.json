@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits the trip rule: it is a hotel booking with no child named, and nothing marks it as a family or work trip, which leads to unsure. It is one plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

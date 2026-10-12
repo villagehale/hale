@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause. It correctly reads the item as generic errands with no child named and no activity, which leaves it open either way and supports unsure. It adds no unsupported fact and does not merely copy the title back.",
-    "score": 5
-  }
-}

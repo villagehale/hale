@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a hotel booking confirmation and names no child, and notMineHints lists 'a hotel stay' as the parent's own, so adult is supported. The reason says exactly this in one plain clause, without inventing facts and without copying the title back.",
-    "score": 5
-  }
-}

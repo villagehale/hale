@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason correctly identifies the item as another child's birthday party that the family's kids would attend, and that supports the kid verdict. The 4th birthday matches Theo's age of about 4 years. It is one short clause, adds no unsupported facts, and gives both the what and the why.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is, a family room booking, and why it leads to kid: it names both children. That matches the trip rule. It is one plain clause with no unsupported facts. The trailing 'so it is about the kids' is slightly redundant but does not hurt.",
-    "score": 5
-  }
-}

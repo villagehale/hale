@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is a single short clause. It names the kind of item: a baby shower is held for an adult. That falls under the adult rule for showers and parties for other adults, so it supports the adult verdict. No invented facts.",
-    "score": 5
-  }
-}

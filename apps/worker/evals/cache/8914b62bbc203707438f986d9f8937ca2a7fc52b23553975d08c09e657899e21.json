@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a routine well-child checkup for Wren, the family's 18-month-old, which falls under the rule for a child's appointment and so supports `kid`. The classifier's facts are all supported, since Wren's age comes from the children list, and it is one plain clause matching the verdict. But it mostly restates the title and never says the rule outright, that a child's checkup is a kid item.",
-    "score": 4
-  }
-}

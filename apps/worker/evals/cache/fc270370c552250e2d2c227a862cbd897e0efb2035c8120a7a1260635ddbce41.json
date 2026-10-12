@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It correctly says the item is a car service appointment, which is a parent's errand, and that this makes it adult. That matches the verdict, an 18-month-old cannot own a car, and nothing in it is invented.",
-    "score": 5
-  }
-}

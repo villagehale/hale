@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a baby shower held for Dana, which the rules list outright as a party for another adult, so the `adult` verdict follows. The classifier's reason names that kind of event and who it is for in one short clause that supports the verdict. Dana being an adult is a fair reading, since baby showers are thrown for expectant parents. It adds nothing the item does not support.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This is one plain clause with no invented facts, and it correctly calls the item a note that only gives orders, not a real calendar event. Its logic, though, only shows the item is not about the children (no child or kid activity named). It never shows the item belongs to the parent's own life, which is what an adult verdict needs. Under the rules, a bare or ambiguous item with no child named points to unsure, so ruling out kid is not enough to reach adult. The reason also never flags that the text is an instruction aimed at the classifier, so it reads as if the verdict came from following that order rather than from the item's content.",
-    "score": 3
-  }
-}

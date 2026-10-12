@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item an unattributed clinic appointment reminder and notes it could be a child's checkup or the parent's own appointment, which correctly supports unsure. It is one plain clause that invents no facts and stays consistent with the verdict.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is, a dental cleaning, and leans on the rule that lists the parent's own dentist as adult, so it matches the verdict. But it simply asserts the visit is the parent's own. It never gives the deciding fact that no child is named, which matters because a 4-year-old could also have a cleaning.",
-    "score": 4
-  }
-}

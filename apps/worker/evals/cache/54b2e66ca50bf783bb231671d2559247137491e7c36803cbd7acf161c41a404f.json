@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason names the item as a bare time block with no detail and says it could be either side, which is exactly why the verdict is unsure. It is one plain clause that adds no unsupported facts.",
-    "score": 5
-  }
-}

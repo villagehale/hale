@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a shoulder physio session and ties it to the parent's own health appointment, which the rules list as adult, so it supports the given verdict. It is one plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

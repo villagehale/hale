@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It names the item correctly as a car service reminder and ties it to the adult verdict: it is the parent's own errand, and an 18-month-old would not own a car. It adds no unsupported facts. Calling a reminder an \"appointment\" is a minor stretch but does not mislead.",
-    "score": 5
-  }
-}

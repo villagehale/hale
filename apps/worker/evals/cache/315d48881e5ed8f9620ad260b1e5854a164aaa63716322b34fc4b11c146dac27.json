@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits the unsure verdict. It says the item is a bare errand block with no child named and no kid activity, so it could belong to either the children or the parent. It invents no facts and is one plain clause. 'Could be for the children' is a slight stretch, since errands are usually a parent's task, but it is acceptable as the open-both-ways reading the rules ask for.",
-    "score": 5
-  }
-}

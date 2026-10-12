@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause that names the kind of thing (a swim activity) and ties it to Mia, who is one of the children, which supports the kid verdict. It invents nothing, since Mia is listed as a child. It is slightly wordy, with \"with Mia, a child, named in the text\", but it is clear and correct.",
-    "score": 5
-  }
-}

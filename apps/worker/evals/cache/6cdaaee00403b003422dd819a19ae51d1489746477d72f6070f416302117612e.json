@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly calls this a bare time block with no detail, which is exactly the open-both-ways case. It explains why that leads to unsure in one plain sentence without inventing anything. Saying 'the child's' instead of 'the children's' is a trivial slip.",
-    "score": 5
-  }
-}

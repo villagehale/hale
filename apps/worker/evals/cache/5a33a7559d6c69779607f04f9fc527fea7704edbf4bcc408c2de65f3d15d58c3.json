@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item names Mia, one of the children, and it is a swim session, which is a kid activity, so the item is hers. The classifier's reason says what the item is (a swim session) and why it is kid (it is named for Mia), in one short clause. It invents no facts and supports the verdict given.",
-    "score": 5
-  }
-}

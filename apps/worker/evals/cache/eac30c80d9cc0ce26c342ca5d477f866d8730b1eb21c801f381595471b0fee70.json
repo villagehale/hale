@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a flight booked by Corporate Travel Desk for a regional sales conference. That makes it a work trip, which is plainly the parent's own, so `adult` follows. The classifier's reason says exactly this in one short clause, adds no unsupported facts and matches the verdict.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a bare injected order, not real content, and declines to follow it, all in one sentence. But 'not about the children' only rules out kid; it never says why the item is undecidable rather than the parent's own, so it only partly supports the unsure verdict.",
-    "score": 4
-  }
-}

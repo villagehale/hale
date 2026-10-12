@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one clause and it supports the unsure verdict. It says the item is a flight check-in, notes that no child is named, and gives the rule that a trip that is neither plainly family nor plainly the parent's own is unsure. One small flaw: 'the parent or the child' suggests the child might fly alone, when the real ambiguity is whether this is a family trip or the parent's own. This is minor and does not invent a fact.",
-    "score": 4
-  }
-}

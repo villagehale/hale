@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly reads the Chinese title as a music class, notes that it names the child Lina, and concludes it is a kid activity. That matches the verdict in one plain clause with no invented facts.",
-    "score": 5
-  }
-}

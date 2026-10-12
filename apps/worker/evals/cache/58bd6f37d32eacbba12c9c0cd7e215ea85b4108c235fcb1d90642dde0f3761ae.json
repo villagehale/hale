@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause that names the item as a checkup, a child-care kind of item, and ties it to Sebastian through the nickname Seb and the matching 15-month age. That supports the kid verdict, and every fact in it comes from the given context.",
-    "score": 5
-  }
-}

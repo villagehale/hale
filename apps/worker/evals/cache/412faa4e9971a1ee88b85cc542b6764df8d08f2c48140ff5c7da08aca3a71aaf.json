@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls daycare pickup a care arrangement for a child, which under the rules makes it `kid`. The rules list daycare and pickup as kid items without needing a named child, so not knowing which of the two children is meant has no bearing on kid versus adult. The reason therefore argues against the `unsure` verdict beside it and justifies that verdict with irrelevant logic.",
-    "score": 2
-  }
-}

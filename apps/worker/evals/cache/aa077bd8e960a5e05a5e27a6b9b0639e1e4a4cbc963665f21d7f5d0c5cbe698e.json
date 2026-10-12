@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short plain clause that names what the item is (a car service appointment) and why it leads to adult (it is the parent's errand, not a child's). It invents no facts and supports the verdict given.",
-    "score": 5
-  }
-}

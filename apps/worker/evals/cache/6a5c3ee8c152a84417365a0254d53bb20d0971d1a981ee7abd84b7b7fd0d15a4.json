@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason correctly reads a men's Bible study as a faith study group for adults, which the rules list as the parent's own. That supports the adult verdict in one short clause with nothing invented.",
-    "score": 5
-  }
-}

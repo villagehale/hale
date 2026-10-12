@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause that names the item as a car service and gives a sound reason for the adult verdict: it is the parent's own errand with no child or child activity involved. One small inaccuracy: the email is a service-due reminder, not a booking. That does not change the verdict.",
-    "score": 4
-  }
-}

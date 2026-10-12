@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause that names the item as a car service reminder and links that to the adult verdict as the parent's own errand. It adds no unsupported facts.",
-    "score": 5
-  }
-}

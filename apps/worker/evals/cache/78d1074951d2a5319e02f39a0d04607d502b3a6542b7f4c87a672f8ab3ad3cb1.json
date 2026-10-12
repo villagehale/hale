@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It correctly says the item is a library storytime, a kid activity under the rules, which leads to the kid verdict, and it adds no unsupported facts. Noting that no child is named is accurate. It could have said the activity suits both an 18-month-old and a 4-year-old, but the 'what' and 'why' are clear.",
-    "score": 5
-  }
-}

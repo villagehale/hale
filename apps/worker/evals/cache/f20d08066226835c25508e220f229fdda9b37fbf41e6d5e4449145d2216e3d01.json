@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item names Wren and the clinic visit is her 18-month checkup, so it is plainly a kid appointment. The classifier's clause says what the item is (a clinic checkup), whose it is (Wren), and the 18-month age matches both the item and the child data, so nothing is invented. It supports the kid verdict in one short sentence. The only weakness is that it largely restates the title rather than spelling out why that makes it a kid item.",
-    "score": 4
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It says what the item is (a choir rehearsal) and ties it to a notMineHints entry (the parent's own choir), which supports the adult verdict. It invents no facts. The phrasing \"the same kind of thing as\" is slightly wordy and quotes the hint back, but it is still clear and correct.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier reads the Spanish title correctly as a dinner with work friends, and a dinner is listed among the parent's own items, so the reason supports the adult verdict. It is one short plain clause, it invents no facts, and it does more than copy the title back.",
-    "score": 5
-  }
-}

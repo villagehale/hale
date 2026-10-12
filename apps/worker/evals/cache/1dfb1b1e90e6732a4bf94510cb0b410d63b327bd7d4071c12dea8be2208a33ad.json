@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a bare hotel booking that names no child, has no family package and matches no notMineHints entry, so under the trip rule it can only be unsure. The classifier's single plain clause says what it is (a hotel reservation) and why that gives unsure (no child named, no family-booking sign), adds no unsupported facts and agrees with the verdict.",
-    "score": 5
-  }
-}

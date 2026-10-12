@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is only the initial 'J.', which matches neither child (Wren, Theo), and nothing in activityTitles or notMineHints settles it. The classifier's one plain clause says what the item is (an initial alone) and why that makes it undecidable. That supports the unsure verdict and adds no unsupported fact.",
-    "score": 5
-  }
-}

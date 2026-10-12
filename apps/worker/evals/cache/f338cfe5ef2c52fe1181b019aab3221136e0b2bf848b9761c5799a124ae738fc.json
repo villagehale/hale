@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a bare 'Busy' block with no detail, and that leads directly to the unsure verdict under the bare-item rule. It is one plain clause and invents nothing. 'Could be anyone's' is slightly loose, but the reason is fine.",
-    "score": 5
-  }
-}

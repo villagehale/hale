@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason fits the verdict: 'Hold' is a bare calendar block that names no child and no activity, so it could be the parent's or a child's, and nothing in the context settles it. It is one short clause, says what the item is and why that means unsure, and adds no unsupported facts.",
-    "score": 5
-  }
-}

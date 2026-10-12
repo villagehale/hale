@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It says what the item is (a choir rehearsal) and ties it to the matching notMineHints entry, which is a supported reason for the adult verdict. It adds no facts beyond the context. The wording is slightly clunky and quotes the hint back, but it is still clear and correct.",
-    "score": 5
-  }
-}

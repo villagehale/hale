@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly reads 'errands after lunch' as a generic task with no child named and no activity, so it could go either way, which supports unsure. It is one plain clause that says what the item is and why. 'Errands' could be stated a little more precisely as a bare chore with no kid marker, but the reasoning matches the verdict and adds no unsupported facts.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A two-person restaurant reservation is the parent's own dinner booking, so the reason correctly supports adult in one plain clause. Calling it a restaurant table is a fair reading of a Tablebook confirmation, not an invented fact.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a daycare pickup, a care arrangement that exists for a child, which supports the kid verdict. Noting that no child is named fits the rule that childName is null here. It is one plain sentence that says what the item is and why it is kid, with no invented facts. The trailing clause about which child is slightly beside the point for the verdict itself, but it is accurate and harmless.",
-    "score": 5
-  }
-}

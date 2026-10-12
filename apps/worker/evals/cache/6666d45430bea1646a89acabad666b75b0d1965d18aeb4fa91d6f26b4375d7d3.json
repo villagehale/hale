@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly calls a daycare pickup a care arrangement for a child, and noting that no child is named fits the rule that childName stays null while the verdict is still kid. It is one plain clause with no invented facts and it supports the given verdict.",
-    "score": 5
-  }
-}

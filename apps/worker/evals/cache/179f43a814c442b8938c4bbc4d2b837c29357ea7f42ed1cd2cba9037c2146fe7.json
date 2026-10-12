@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits the unsure verdict: a generic clinic appointment reminder that names no child could be for either the parent or a child, and nothing in the context settles it. It is one short plain clause that says what the item is and why that leads to unsure, with no invented facts.",
-    "score": 5
-  }
-}

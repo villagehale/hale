@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause. It names the kind of item (a shower held for another adult) and that leads to adult under the rules. Dana is the expectant parent, which follows from the item, so no fact is invented.",
-    "score": 5
-  }
-}

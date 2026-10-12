@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly calls the item a hotel booking with no child named and no family package, which the trip rule treats as unsure; it is one plain clause that fits the verdict and adds no unsupported facts.",
-    "score": 5
-  }
-}

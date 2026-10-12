@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier calls the item a library storytime, which is a kid activity and the rules list story time as kid. That supports the kid verdict in one short clause with no invented facts. Noting that it names no child is accurate but does little, and the clause could have said why storytime suits an 18-month-old or a 4-year-old, so it falls just short of crisp.",
-    "score": 4
-  }
-}

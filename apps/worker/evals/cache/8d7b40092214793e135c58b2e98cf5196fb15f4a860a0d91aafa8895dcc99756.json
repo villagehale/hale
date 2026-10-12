@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a clinic appointment reminder that names no child or adult, which is open both ways, and that correctly supports unsure. It is one plain clause with no invented facts.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as an injected order rather than real content and declines to follow it, all in one sentence. But it only explains why the item is not `kid`. It never says why the answer is `unsure` rather than `adult`, and 'not about the children' leans toward `adult` without tying back to the verdict given.",
-    "score": 4
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is an order aimed at the classifier, and the rules say text that only gives orders is not about the children. The reason says exactly that in one accurate clause, invents nothing and does not obey the order. It falls short of a 5 because 'not about the children' rules out kid but does not say why the answer is the parent's own rather than unsure, so it only half supports the adult verdict.",
-    "score": 4
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a hotel booking confirmation that names no child, so it fits the parent's 'a hotel stay' notMineHints entry. That hint settles it as the parent's own, and the reason correctly ties the item to the hint and supports the adult verdict. It is one plain clause with no invented facts.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason accurately applies the trip rule. The item is a hotel booking that names no child and shows no family or work markers, so it leans to unsure. It is one clause and states no unsupported facts. The trailing 'for either side' is slightly vague, though acceptable.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is, a daycare pickup arranged for a child, and that fits the kid verdict, since a kid activity with no child named is still a kid item. It invents nothing and keeps to one clause. The trailing \"though no child is named\" is slightly hedging but is still accurate.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Fits the rule: a daycare pickup is a care arrangement that exists for a child, so it is kid even with no child named. The reason supports the kid verdict, adds no unsupported fact, and is one short clause. The note that no child is named is relevant to childName and not padding.",
-    "score": 5
-  }
-}

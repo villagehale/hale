@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason identifies the item as a baby shower thrown for another adult, Dana. That matches the rule that a shower for another adult is the parent's own, so it supports the adult verdict. It is one short plain clause, and calling Dana an adult is a fair reading because the person being showered is an expectant parent.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item text means 'company quarterly meeting', a work event for the parent. The classifier's reason says what the item is and why it leads to adult, in one short plain clause that matches the verdict and adds no unsupported facts.",
-    "score": 5
-  }
-}

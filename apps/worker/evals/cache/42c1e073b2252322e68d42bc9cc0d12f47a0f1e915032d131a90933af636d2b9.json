@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason says the item is a pickup request and a care arrangement, and it points to Wren being named, so it fits the kid verdict. Every fact comes from the item. It is one short clause, so it meets the 5 bar.",
-    "score": 5
-  }
-}

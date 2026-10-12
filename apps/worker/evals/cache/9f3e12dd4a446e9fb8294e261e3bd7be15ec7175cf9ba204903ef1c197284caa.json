@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a bare 'Call' with no name, place or activity, and nothing in the context settles who it belongs to, so it fits both a child and the parent and supports 'unsure'. The classifier's reason says exactly this in one plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

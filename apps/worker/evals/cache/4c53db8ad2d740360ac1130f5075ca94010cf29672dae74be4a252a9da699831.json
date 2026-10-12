@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a daycare pickup, which is a childcare run, and that supports kid. A kid activity with no child named is still a kid item, so noting that no child is named fits the rules. It invents no facts and is one clause. The 'though no child is named' tail adds a slight hedge but does not argue against the verdict.",
-    "score": 5
-  }
-}

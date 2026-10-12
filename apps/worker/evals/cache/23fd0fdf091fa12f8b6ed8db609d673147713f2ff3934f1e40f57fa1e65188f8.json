@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits the trip rule. A hotel booking that names no child and gives no sign of a family or work booking is open both ways, and that supports unsure. It is one plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

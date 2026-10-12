@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly reads 'Réunion' as a bare meeting with no child's name or activity word. It ties that ambiguity directly to the unsure verdict in one plain sentence and invents nothing.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It says what the item is: a library hold for a novel the text calls for grown-ups. It also says why that makes it adult: the book is the parent's own, which matches the rule for adult library holds. Every fact comes from the item, and the reason supports the verdict.",
-    "score": 5
-  }
-}

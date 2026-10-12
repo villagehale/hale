@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says plainly what the item is, a flight booked for a sales conference, which makes it a work trip. Under the trip rule a work trip is the parent's own, so the reason supports the adult verdict. It is one short clause and adds no facts the item does not give.",
-    "score": 5
-  }
-}

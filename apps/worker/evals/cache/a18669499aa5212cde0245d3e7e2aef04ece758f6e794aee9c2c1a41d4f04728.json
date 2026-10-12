@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a library storytime and a kid activity, which supports the kid verdict, and the classifier's rule says a kid activity with no child named is still a kid item. It invents nothing and is one short clause. The 'though no child is named' tail notes the gap without reaching for an age fit or naming Wren or Theo, which is fine. It slightly echoes the title but does say what kind of thing the item is and why.",
-    "score": 5
-  }
-}

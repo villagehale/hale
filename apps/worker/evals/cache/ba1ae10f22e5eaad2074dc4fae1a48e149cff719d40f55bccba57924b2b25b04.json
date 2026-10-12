@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is just \"Réunion\" (French for meeting) with no child, activity or context, so unsure is right under the rule for bare or ambiguous meetings. The classifier's reason fits this: one plain clause that names the item as a bare meeting, notes nothing settles it, and supports the unsure verdict. It adds no unsupported facts.",
-    "score": 5
-  }
-}

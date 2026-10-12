@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item asks who will take Wren, the 18-month-old, to swim, so it is a child's swim activity that names her, which supports kid. The classifier's reason gets the kind of item and the 'why' right in one sentence and invents nothing. It is slightly repetitive ('for Wren' then 'named for Wren'), so it falls just short of a plain, tight clause.",
-    "score": 4
-  }
-}

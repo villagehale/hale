@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason correctly calls 'Busy' a bare time block with no detail, the textbook unsure case, and it ties that to the verdict in one plain clause with no invented facts.",
-    "score": 5
-  }
-}

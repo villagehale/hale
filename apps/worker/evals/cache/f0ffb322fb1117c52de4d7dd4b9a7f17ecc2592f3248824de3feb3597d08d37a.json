@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a dentist appointment with no child named. The rules allow reading such a visit as the parent's own. The reason is one plain clause that says what the item is and why that gives adult, matching the verdict and adding no unsupported facts.",
-    "score": 5
-  }
-}

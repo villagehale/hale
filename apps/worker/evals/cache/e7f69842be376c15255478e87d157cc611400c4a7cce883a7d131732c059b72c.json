@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "\"Q4 planning offsite\" is a corporate quarterly planning event, which is plainly the parent's work, so adult follows. The classifier's reason is one short clause that names what the item is (a quarterly planning offsite) and why it gives that verdict (the parent's work). It agrees with the verdict and adds no unsupported facts.",
-    "score": 5
-  }
-}

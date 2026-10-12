@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a checkup for Wren, a named 18-month-old child, which supports `kid`. But it mostly rephrases the title and never states the why, for example that a child's checkup is a kid item.",
-    "score": 4
-  }
-}

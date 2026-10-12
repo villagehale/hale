@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly reads the French title as a swimming class for Lina, a child listed in the context. It ties that to the kid verdict in one plain clause. Her age of 30 months comes from the supplied context, so it is a supported fact, not an invented one. It is a little redundant, but it does not count against the reason.",
-    "score": 5
-  }
-}

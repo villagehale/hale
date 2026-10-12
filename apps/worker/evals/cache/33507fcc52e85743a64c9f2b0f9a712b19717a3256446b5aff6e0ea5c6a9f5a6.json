@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is, a clinic appointment reminder, and notes that it names no patient, so it fits a child's checkup and the parent's own visit equally. That is the open-both-ways case that leads to unsure, and nothing in the context settles it. It is one plain clause with no invented facts.",
-    "score": 5
-  }
-}

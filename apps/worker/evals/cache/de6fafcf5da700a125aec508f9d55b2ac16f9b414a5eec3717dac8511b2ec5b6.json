@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one clause and it fits the unsure verdict. It says what the item is: an errand block that names no child and has no activity word. It also says why that leaves the item open: it could belong to the parent or to the child. It adds no facts the item does not support. It could be a little crisper, but it is clear and accurate.",
-    "score": 5
-  }
-}

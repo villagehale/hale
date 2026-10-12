@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is just the initial \"J.\", which matches neither child's name and gives no activity, so unsure is the right call. The reason makes exactly that point in one plain clause: it says what the item is (a bare initial) and why that leaves it undecidable. It adds no unsupported facts.",
-    "score": 5
-  }
-}

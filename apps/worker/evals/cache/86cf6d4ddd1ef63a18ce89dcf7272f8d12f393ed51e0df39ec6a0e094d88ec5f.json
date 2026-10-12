@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a clinic appointment reminder naming no one, which fits the rule that an appointment with no child named is unsure. It adds no unsupported facts and supports the verdict in one plain clause. The word 'generic' is slightly loose, but it accurately describes the bare item.",
-    "score": 5
-  }
-}

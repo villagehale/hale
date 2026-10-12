@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is accurate and supports the verdict: a music class naming Theo, with his age taken from the context, is his kid activity. It loses a point for strictness: it strings several clauses together, and the age detail is unnecessary when his name already settles it, rather than being one short plain clause.",
-    "score": 4
-  }
-}

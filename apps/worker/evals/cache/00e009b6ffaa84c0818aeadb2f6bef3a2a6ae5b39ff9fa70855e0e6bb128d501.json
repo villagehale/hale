@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a daily standup, a work meeting, and correctly treats it as the parent's own. That supports the adult verdict in one plain clause. Calling it a work meeting is a fair reading of a standard workplace term, not an invented fact, and no child is involved.",
-    "score": 5
-  }
-}

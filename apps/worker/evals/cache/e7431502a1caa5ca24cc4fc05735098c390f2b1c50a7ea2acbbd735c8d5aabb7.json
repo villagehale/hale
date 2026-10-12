@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item text means \"Lina's music class\", so it names the family's 30-month-old and is a lesson. The classifier's reason says exactly that in one plain clause: a music class named for Lina is a kid activity. It supports the kid verdict and adds no unsupported facts.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause. It names the item as a library storytime, which is a kid activity even with no child named, so it supports the kid verdict and adds no unsupported facts. It reads slightly awkwardly but is accurate and complete.",
-    "score": 5
-  }
-}

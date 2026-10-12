@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a physio session for a shoulder, which the rules list as the parent's own health appointment. The classifier's reason says exactly that in one plain clause that supports the adult verdict, and it invents no facts.",
-    "score": 5
-  }
-}

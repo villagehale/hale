@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls daycare pickup a child care arrangement, which is a kid item under the rules. Not knowing which of the two children it is affects only childName, not whether the item is about the kids. So its own logic argues for kid, not the unsure verdict beside it.",
-    "score": 2
-  }
-}

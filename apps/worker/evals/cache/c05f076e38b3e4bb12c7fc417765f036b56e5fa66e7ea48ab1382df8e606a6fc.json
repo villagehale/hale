@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a hotel confirmation that names no child and is neither plainly a family booking nor plainly a work trip, so the rule makes it unsure. The classifier's single clause says what the item is and why that leads to unsure, and it invents nothing.",
-    "score": 5
-  }
-}

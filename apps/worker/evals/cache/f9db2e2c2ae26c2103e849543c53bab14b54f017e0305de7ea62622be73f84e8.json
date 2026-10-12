@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause that says what the item is: library storytime, which the rules list as a kid activity. That supports the kid verdict without inventing any facts. Noting that no child is named is accurate and ties to the rule that a kid activity counts even without a name.",
-    "score": 5
-  }
-}

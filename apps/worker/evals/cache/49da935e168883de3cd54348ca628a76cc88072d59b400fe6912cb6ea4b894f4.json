@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits the adult verdict. It says what the item is, a men's Bible study, and why that makes it adult: the rules list a faith study group for adults as the parent's own, and an 18-month-old cannot attend a men's group. It is a single clause with no invented facts. It does say the same idea twice ('a Bible study for men, a faith study group for adults'), but it is still short and plain.",
-    "score": 5
-  }
-}

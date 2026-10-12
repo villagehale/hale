@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short, plain clause. It names what the item is, a Q4 planning offsite, which is a work event. It ties that to the adult verdict, since offsites are listed as the parent's own. It adds no facts the item does not support.",
-    "score": 5
-  }
-}

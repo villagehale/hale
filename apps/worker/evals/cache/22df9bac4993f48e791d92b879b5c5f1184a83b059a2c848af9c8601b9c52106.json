@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause that rightly calls 'Busy' a bare time block with nothing showing whose it is. That is exactly why the verdict is unsure, it matches the given verdict, and it adds no unsupported facts.",
-    "score": 5
-  }
-}

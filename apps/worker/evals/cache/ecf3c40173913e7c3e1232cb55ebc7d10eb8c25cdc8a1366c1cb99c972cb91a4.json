@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item an appointment reminder that names no patient, so it could belong to a child or to the parent, which supports unsure. It invents no facts and is one plain clause. It runs slightly long but stays clear.",
-    "score": 5
-  }
-}

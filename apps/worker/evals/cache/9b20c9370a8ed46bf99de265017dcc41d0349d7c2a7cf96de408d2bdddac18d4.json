@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause that says what the item is, a 1:1 with a person who has a surname and a work role, and why that makes it the parent's own. That fits the rule that an adult sharing a child's name is still an adult, so it supports the adult verdict. Calling '(design)' a 'work title' is a slight stretch, since it reads more like a team or topic, but it is still supported by the item.",
-    "score": 5
-  }
-}

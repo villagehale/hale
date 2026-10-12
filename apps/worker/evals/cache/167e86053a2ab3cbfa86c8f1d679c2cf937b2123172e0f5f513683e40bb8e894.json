@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item names Wren, the 18-month-old child, and asks who will take her to swim, which is a kid activity with a drop-off arrangement, so the kid verdict follows. The classifier's reason supports that verdict with no invented facts. It loses a point because it mostly restates the title and repeats 'Wren' twice instead of giving a crisp plain clause, and it misses the care/drop-off angle.",
-    "score": 4
-  }
-}

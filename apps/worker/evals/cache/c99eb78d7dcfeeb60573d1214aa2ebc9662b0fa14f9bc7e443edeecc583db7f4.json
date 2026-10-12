@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is a single clause, consistent with the adult verdict, and leans on the right marks: a 1:1 and a surname show this Wren is an adult colleague, not the 18-month-old. 'Work title' is a slight stretch, since '(design)' reads as a team or department rather than a job title, but it is close enough to be supported.",
-    "score": 5
-  }
-}

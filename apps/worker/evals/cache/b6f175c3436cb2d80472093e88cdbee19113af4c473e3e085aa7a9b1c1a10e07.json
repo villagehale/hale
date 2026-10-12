@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason calls the item a general errands note, which is accurate, and says no child is named, so it could belong to either the children or the parent. That matches the unsure verdict and the rule that a bare item is unsure. It is one plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

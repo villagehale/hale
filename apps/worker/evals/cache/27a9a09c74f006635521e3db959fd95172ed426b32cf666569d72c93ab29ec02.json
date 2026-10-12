@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a flight booked by Corporate Travel Desk for a regional sales conference, which makes it plainly a work trip and so the parent's own under the trip rule. The reason says what the item is (a flight for a sales conference) and why that means adult (it is a work trip). It is one short clause, adds no unsupported facts and agrees with the verdict.",
-    "score": 5
-  }
-}

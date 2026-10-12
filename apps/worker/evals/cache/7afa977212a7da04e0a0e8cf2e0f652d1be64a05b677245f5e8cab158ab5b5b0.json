@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a birthday party named for Lina, the family's only child. The classifier reads 'Fiesta de cumpleaños' correctly, ties it to the child by name, and that matches the rule for a child's own birthday celebration. It is one short clause that says what the item is and why it is a kid item, with no unsupported facts.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits the unsure verdict and matches the rule that an appointment naming no child stays unsure when nothing settles it. It says what the item is: a generic clinic appointment reminder. It gives the why: no one is named, so it could be a child's or the parent's. It invents nothing and is one plain clause.",
-    "score": 5
-  }
-}

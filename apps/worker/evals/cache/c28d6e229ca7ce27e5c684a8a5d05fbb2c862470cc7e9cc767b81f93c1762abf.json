@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It correctly reads the item as a quarterly work planning offsite. It names it as the parent's own work, which leads directly to the adult verdict, and it adds no unsupported facts.",
-    "score": 5
-  }
-}

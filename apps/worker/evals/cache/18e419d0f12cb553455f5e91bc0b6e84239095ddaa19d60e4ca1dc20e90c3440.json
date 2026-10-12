@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is Chinese for \"Lina's music class\", and the classifier reads it correctly. It names the kind of thing (a music class), ties it to the named child Lina, and gives the kid verdict. It is one plain clause and adds no unsupported facts.",
-    "score": 5
-  }
-}

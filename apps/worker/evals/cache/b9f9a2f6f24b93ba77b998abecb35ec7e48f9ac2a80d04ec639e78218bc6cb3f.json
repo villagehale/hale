@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause that says what the item is (a flight) and why it leads to unsure: no child is named and nothing marks it as a family booking or the parent's own, which matches the trip rule. It supports the given verdict and adds no unsupported facts.",
-    "score": 5
-  }
-}

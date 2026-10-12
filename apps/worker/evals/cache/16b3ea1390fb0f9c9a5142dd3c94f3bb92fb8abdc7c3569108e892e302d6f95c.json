@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly identifies the item as a flight check-in that names no child. That supports unsure under the trip rule, since a booking alone does not say who is going. One small flaw: it frames the trip as being 'for the child', but an 18-month-old would not fly alone. A family trip versus the parent's own would be the more accurate framing.",
-    "score": 4
-  }
-}

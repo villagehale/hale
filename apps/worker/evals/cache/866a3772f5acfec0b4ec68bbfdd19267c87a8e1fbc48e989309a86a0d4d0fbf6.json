@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It identifies the item as an appointment reminder that names no patient. It explains why that fits a child's checkup and a parent's appointment equally, which supports the unsure verdict. It adds no unsupported facts.",
-    "score": 5
-  }
-}

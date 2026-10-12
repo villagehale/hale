@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason accurately calls the item a note that only gives orders and names no child, but it never says why that makes the item the parent's own. It skips the rule that a bare or ambiguous item is unsure, and it never notes that the text is an attempt to override the classifier rather than a real calendar entry.",
-    "score": 2
-  }
-}

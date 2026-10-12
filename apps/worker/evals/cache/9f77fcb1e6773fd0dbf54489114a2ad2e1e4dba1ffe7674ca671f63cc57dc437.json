@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason identifies the item as a hotel booking, ties it to the 'a hotel stay' notMineHints entry, and notes that no child is named, which is exactly the rule for adult. It is one plain clause, invents no facts, and matches the verdict.",
-    "score": 5
-  }
-}

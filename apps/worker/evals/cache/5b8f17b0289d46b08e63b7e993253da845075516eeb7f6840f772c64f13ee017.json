@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason is one plain clause that calls the item a flight to a regional sales conference and correctly treats that as a work trip, which the trip rule marks as adult. It matches the verdict, every fact comes from the item text, and nothing is invented.",
-    "score": 5
-  }
-}

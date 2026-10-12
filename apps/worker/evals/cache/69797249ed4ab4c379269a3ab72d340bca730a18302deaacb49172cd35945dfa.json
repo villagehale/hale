@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "A mortgage renewal call is household finance, which belongs to the parent, so `adult` is right. The classifier's reason is one short plain clause that names what the item is and why it is the parent's own. It adds no unsupported facts.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one short clause. It names the item as a dental cleaning and calls it the parent's own visit, which matches the adult verdict. The rules allow a dentist visit with no child named to be read as the parent's own. It invents no facts, but it states 'the parent's own' as a bare conclusion instead of tying it to the absence of a named child, so the why is thin.",
-    "score": 4
-  }
-}

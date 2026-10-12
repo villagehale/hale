@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is a single clause. It correctly identifies the item as a shower for another adult, which the rules list explicitly as adult. That supports the given verdict. Calling Dana an adult is a fair reading of a baby shower, not an invented fact. The tail 'the parent's own social event' is mild filler, but it is accurate.",
-    "score": 5
-  }
-}

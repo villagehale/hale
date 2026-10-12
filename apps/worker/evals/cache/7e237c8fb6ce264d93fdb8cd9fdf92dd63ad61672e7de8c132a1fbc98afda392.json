@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause that matches the given verdict: it reads 'Call' as a bare call with no name or activity attached, and says that is why it could belong to a child or the parent. It invents no facts, so it fits the rule that a bare item is unsure.",
-    "score": 5
-  }
-}

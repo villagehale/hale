@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason correctly calls the item a 4th birthday party for another child, which is a kid category under the rules, and supports the kid verdict. 'Would attend' is a mild inference, but the rules explicitly allow it. The reason is one short clause stating what the item is and why it is kid.",
-    "score": 5
-  }
-}

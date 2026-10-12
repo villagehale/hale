@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Fits the unsure verdict. \"Hold\" is a bare calendar block with no child, activity or place, and nothing in the context ties it to the children. The reason says this in one plain clause, though it uses \"word\" rather than \"time block\", which is still accurate.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item is a physio visit for a shoulder with no child named, and the rules allow reading such a visit as the parent's own. The reason states what the item is and why it is adult in one plain clause, adds no unsupported facts and matches the verdict.",
-    "score": 5
-  }
-}

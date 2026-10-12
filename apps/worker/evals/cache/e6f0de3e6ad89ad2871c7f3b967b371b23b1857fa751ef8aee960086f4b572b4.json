@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason gives the item's kind, a clinic checkup, and ties it to Wren, a named child, which supports the kid verdict. Wren's age of 18 months is in the context, so no fact is invented. It is one short clause, but it leans a bit on restating the title and never plainly says this makes it the child's own appointment.",
-    "score": 4
-  }
-}

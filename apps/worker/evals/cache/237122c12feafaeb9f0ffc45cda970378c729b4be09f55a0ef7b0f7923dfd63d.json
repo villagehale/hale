@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason is one plain clause. It names what the item is, a work 1:1, and points to the adult marks: the surname Chen and the Product title. Those marks are what separate this Mia from the 6-year-old child, so they support the adult verdict, and nothing is invented.",
-    "score": 5
-  }
-}

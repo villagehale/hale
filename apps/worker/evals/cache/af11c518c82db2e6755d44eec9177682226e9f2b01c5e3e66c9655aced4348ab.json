@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The classifier's reason fits the kid verdict. It correctly says the item is another child's birthday party, which the rules count as a kid item. Mila turning 4 sits close to Theo's age, about 4 years 2 months. The phrase \"would attend\" mirrors the rule's wording rather than adding a new fact. It is one plain clause stating what the item is and why it is kid.",
-    "score": 5
-  }
-}

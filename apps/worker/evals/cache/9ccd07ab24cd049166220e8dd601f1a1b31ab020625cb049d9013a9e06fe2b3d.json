@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason correctly calls 'Hold' a bare calendar block with no activity, name or detail. It ties that to unsure: the item could be the child's or the parent's. It is one plain clause, supports the verdict given and invents no facts. It could have noted that nothing in the empty activityTitles or notMineHints settles it, but that is minor.",
-    "score": 5
-  }
-}

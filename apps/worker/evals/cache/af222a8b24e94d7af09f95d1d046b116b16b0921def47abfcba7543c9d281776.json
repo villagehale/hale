@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reason says what the item is (a parent-and-tot swim class), uses Wren's age from the context, and ties it to the kid verdict through the name in one plain clause, so it is supported and agrees with the verdict.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The item text means \"company quarterly meeting\". A work meeting is the parent's own, so `adult` is right. The classifier's reason is one plain clause that translates the item correctly, says what kind of thing it is and ties it to work, which leads straight to the verdict. It adds no facts the item does not support.",
-    "score": 5
-  }
-}
