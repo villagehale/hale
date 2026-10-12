@@ -2,6 +2,10 @@
 // One-off kid-relevance backfill (VIL-226 item 5). Judges the connector rows Hale already
 // holds and, with --apply, drops the parent's own ones. Prints counts only.
 //
+// --apply is refused (mirror_not_wired, exit 1) while CALENDAR_MIRROR_HONOURS_KID_VERDICTS
+// is false: the mirror's next sync would put every dropped calendar copy back. The dry run
+// and --revert run as before.
+//
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts            # dry run
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts --apply    # write
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts --revert=<runId>
@@ -15,6 +19,8 @@
 import { randomUUID } from 'node:crypto';
 import { createDb } from '@hale/db';
 import {
+  CALENDAR_MIRROR_HONOURS_KID_VERDICTS,
+  backfillApplyDecision,
   revertKidRelevanceBackfill,
   runKidRelevanceBackfill,
 } from '../lib/integrations/kid-relevance/backfill';
@@ -23,14 +29,24 @@ import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '../lib/pipeline/cl
 /** A script has no route ceiling to stop at; it runs until every item is judged or held. */
 const NO_DEADLINE = new Date(8.64e15);
 
+const apply = process.argv.includes('--apply');
+const revertRunId = process.argv
+  .find((arg) => arg.startsWith('--revert='))
+  ?.slice('--revert='.length);
+const decision = backfillApplyDecision(
+  { apply, revert: revertRunId !== undefined },
+  CALENDAR_MIRROR_HONOURS_KID_VERDICTS,
+);
+if (decision.outcome !== 'allowed') {
+  console.error(`${decision.outcome}: ${decision.reason}. Nothing was read or written.`);
+  process.exit(1);
+}
+
 const url = process.env.DATABASE_URL;
 if (!url) {
   console.error('DATABASE_URL is not set.');
   process.exit(1);
 }
-const revertRunId = process.argv
-  .find((arg) => arg.startsWith('--revert='))
-  ?.slice('--revert='.length);
 if (revertRunId === undefined && !process.env.APP_ENCRYPTION_KEY) {
   console.error('APP_ENCRYPTION_KEY is not set. The verdict cache is keyed on it.');
   process.exit(1);
@@ -40,7 +56,6 @@ if (revertRunId === undefined && !process.env.ANTHROPIC_API_KEY) {
   process.exit(1);
 }
 
-const apply = process.argv.includes('--apply');
 const database = createDb({ connectionString: url });
 
 try {
