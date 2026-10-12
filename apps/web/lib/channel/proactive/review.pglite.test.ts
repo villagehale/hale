@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
+import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
@@ -700,6 +701,90 @@ describe('runProactiveReview', () => {
     ]);
   });
 
+  describe('a candidate whose parent no longer holds a seat in its family', () => {
+    const GONE = 'parent_not_in_family';
+    const CO_PHONE = '+15555550101';
+
+    /** A co-parent with their own open row, and a number the gate and the door would take. */
+    async function coParentWithARow() {
+      const coParentId = await addCoParent();
+      const theirs = await enqueue('nudge:dropin:w41', {
+        parentUserId: coParentId,
+        templateKey: 'proactive_nudge:weekday_dropin',
+        what: 'Story hour for Pip at the east branch',
+        why: 'weekday_dropin',
+      });
+      const resolveSendablePhone: ProactiveReviewDeps['resolveSendablePhone'] = async (_db, id) =>
+        id === coParentId ? CO_PHONE : PHONE;
+      return { coParentId, theirs, resolveSendablePhone };
+    }
+
+    it('is dropped by name before the review, never offered or sent, and a current member’s row still goes', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const mine = await enqueue();
+      const { coParentId, theirs, resolveSendablePhone } = await coParentWithARow();
+      const departure = await departCoParent(db.database, {
+        familyId,
+        actorUserId: coParentId,
+        now: HOUR_BEFORE,
+      });
+      expect(departure.outcome).toBe('departed');
+      const h = harness(sendAll, { resolveSendablePhone });
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ parentNotInFamily: 1, sent: 1, dropped: 0 });
+      expect(h.snapshots[0]?.candidates.map((c) => c.id)).toEqual([mine]);
+      expect(h.transport.sent.map((sent) => sent.to)).toEqual([PHONE]);
+      expect(h.written.flat().map((item) => item.id)).toEqual([mine]);
+      expect(await candidate(theirs)).toMatchObject({
+        status: 'dropped',
+        reason: GONE,
+        decision: null,
+        what: '',
+      });
+      expect(await candidate(mine)).toMatchObject({ status: 'sent' });
+      const skipped = await audits('proactive_cadence_skipped');
+      expect(skipped.map((row) => row.after)).toEqual([
+        { reason: GONE, itemId: theirs, mode: 'live' },
+      ]);
+    });
+
+    it('is refused by name at send time when the seat goes after the decision', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const mine = await enqueue();
+      const { coParentId, theirs, resolveSendablePhone } = await coParentWithARow();
+      const h = harness(sendAll, {
+        resolveSendablePhone,
+        decide: async ({ snapshot }) => {
+          await departCoParent(db.database, {
+            familyId,
+            actorUserId: coParentId,
+            now: THURSDAY_EVENING,
+          });
+          return { decision: sendAll(snapshot), skipped: null };
+        },
+      });
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ parentNotInFamily: 1, sent: 1 });
+      expect(h.transport.sent.map((sent) => sent.to)).toEqual([PHONE]);
+      expect(h.written.flat().map((item) => item.id)).toEqual([mine]);
+      expect(await candidate(theirs)).toMatchObject({
+        status: 'dropped',
+        reason: GONE,
+        decision: 'send_now',
+        what: '',
+      });
+      expect(await candidate(mine)).toMatchObject({ status: 'sent' });
+      const skipped = await audits('proactive_cadence_skipped');
+      expect(skipped.map((row) => row.after)).toEqual([
+        { reason: GONE, itemIds: [theirs], mode: 'live' },
+      ]);
+    });
+  });
+
   it('logs a family that failed by its error name and code, never the message', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     await enqueue();
@@ -800,12 +885,14 @@ describe('runProactiveReview', () => {
   it('names a family with no primary parent instead of guessing its zone', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     await enqueue();
+    // The row's own parent still holds a seat, so the row is reviewed; nobody is primary.
     await db.database
-      .delete(schema.familyMembers)
+      .update(schema.familyMembers)
+      .set({ role: 'co_parent' })
       .where(eq(schema.familyMembers.familyId, familyId));
     const h = harness(sendAll);
     const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
-    expect(summary).toMatchObject({ decided: 0, skipped: 1 });
+    expect(summary).toMatchObject({ decided: 0, skipped: 1, parentNotInFamily: 0 });
     expect(h.snapshots).toEqual([]);
     const [skipped] = await audits('proactive_cadence_skipped');
     expect(skipped?.after).toMatchObject({ reason: 'no_primary_parent', mode: 'shadow' });

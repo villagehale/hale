@@ -23,6 +23,7 @@ import {
 } from '~/lib/care/weekday';
 import {
   type FamilyTextRecipient,
+  TEXTABLE_ROLES,
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -102,6 +103,8 @@ export interface ProactiveReviewSummary {
   unknownKind: number;
   /** Rows already past their `worthlessAfter`, dropped by name before review. */
   expired: number;
+  /** Rows whose parent holds no seat in the row's family any more, dropped by name. */
+  parentNotInFamily: number;
   /** Families with more actionable rows than `FAMILY_ROWS`: their newest wait for a later run. */
   familiesCut: number;
   /** Families with more holds still on their clock than `WAITING_ROWS`: their oldest unread. */
@@ -227,6 +230,7 @@ export async function runProactiveReview(
     holdRefused: 0,
     unknownKind: 0,
     expired: 0,
+    parentNotInFamily: 0,
     familiesCut: 0,
     waitingCut: 0,
     skipped: 0,
@@ -304,9 +308,29 @@ async function loadOpenItems(
     summary.waitingCut += 1;
     console.warn({ familyId, bound: WAITING_ROWS }, 'proactive review: waiting holds cut');
   }
+  const seated = await seatedParents(database, familyId);
   const items: QueuedItem[] = [];
   for (const row of [...actionable.slice(0, FAMILY_ROWS), ...waiting.slice(0, WAITING_ROWS)]) {
     if (row.status !== 'queued' && row.status !== 'held') continue;
+    if (!seated.has(row.parentUserId)) {
+      // A parent who left keeps their rows here (depart.ts removes the seat, not these),
+      // and the gate reads enrolment and consent per user, in any family: without this
+      // they could be texted this household's text from a seat they hold elsewhere.
+      await mark(database, familyId, [row.id], {
+        status: 'dropped',
+        reason: 'parent_not_in_family',
+        decision: null,
+        holdUntil: null,
+        now,
+      });
+      await audit(database, familyId, 'proactive_cadence_skipped', {
+        reason: 'parent_not_in_family',
+        itemId: row.id,
+        mode,
+      });
+      summary.parentNotInFamily += 1;
+      continue;
+    }
     if (!isProactiveSendKind(row.kind)) {
       // The gate has no class for it, so no send of it can be gated: never offered.
       await mark(database, familyId, [row.id], {
@@ -371,6 +395,20 @@ function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CAP, kind);
 }
 
+/** The users who hold a seat Hale texts (`TEXTABLE_ROLES`) in this family right now. */
+async function seatedParents(database: Database, familyId: string): Promise<Set<string>> {
+  const rows = await database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        inArray(schema.familyMembers.role, [...TEXTABLE_ROLES]),
+      ),
+    );
+  return new Set(rows.map((row) => row.userId));
+}
+
 /**
  * A hold never outlives what it holds. Past the earliest `worthlessAfter` of the chosen
  * items the row would sit in the waiting set (hold.ts), where no signal reopens it. With
@@ -417,6 +455,7 @@ async function audit(
 type SettledReason =
   | 'unknown_kind'
   | 'expired'
+  | 'parent_not_in_family'
   | 'already_sent'
   | 'already_asked'
   | 'requested_drop_after_parent_text';
@@ -573,6 +612,38 @@ async function dropAlreadySent(
     summary.dropped += 1;
   }
   return kept;
+}
+
+/**
+ * The seat is read again at send time: a parent can leave between the load and the send,
+ * and the gate would not notice (it reads per user, in any family). Their chosen rows are
+ * dropped by name, not texted.
+ */
+async function dropUnseated(
+  database: Database,
+  familyId: string,
+  items: readonly QueuedItem[],
+  now: Date,
+  summary: ProactiveReviewSummary,
+): Promise<QueuedItem[]> {
+  const seated = await seatedParents(database, familyId);
+  const gone = items.filter((item) => !seated.has(item.parentUserId));
+  if (gone.length === 0) return [...items];
+  const itemIds = gone.map((item) => item.id);
+  await mark(database, familyId, itemIds, {
+    status: 'dropped',
+    reason: 'parent_not_in_family',
+    decision: 'send_now',
+    holdUntil: null,
+    now,
+  });
+  await audit(database, familyId, 'proactive_cadence_skipped', {
+    reason: 'parent_not_in_family',
+    itemIds,
+    mode: 'live',
+  });
+  summary.parentNotInFamily += gone.length;
+  return items.filter((item) => seated.has(item.parentUserId));
 }
 
 /** Every member a copy reaches may be texted, or the first refusal by name. */
@@ -823,7 +894,8 @@ async function sendChosen(
   },
 ): Promise<void> {
   const { familyId, now, summary } = input;
-  const chosen = await dropAlreadySent(database, familyId, input.chosen, now, summary);
+  const seated = await dropUnseated(database, familyId, input.chosen, now, summary);
+  const chosen = await dropAlreadySent(database, familyId, seated, now, summary);
   if (chosen.length === 0) return;
   // Nothing in the queue is time-critical (those send immediately), so a flagged line
   // holds the whole batch.

@@ -31,7 +31,7 @@ import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 
 /** The two seats that get the household's own messages. A caregiver is a scoped lane
  * (role-scope.ts) and is deliberately absent: they never receive the radar. */
-const TEXTABLE_ROLES = ['primary_parent', 'co_parent'] as const;
+export const TEXTABLE_ROLES = ['primary_parent', 'co_parent'] as const;
 
 export type FamilyTextRole = (typeof TEXTABLE_ROLES)[number];
 
