@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It correctly asks for the missing country and states no rate from memory, which is right for missing_detail. But the tone is assistant-like rather than a friend texting (\"Happy to help... I'll give you the best answer I can\"). The tacked-on \"I can't check today's live rates from here\" undercuts the promise to answer and pre-emptively hedges toward a non-answer. It should have just asked which country in a few casual words.",
+    "score": 3
+  }
+}
