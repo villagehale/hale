@@ -399,10 +399,7 @@ async function loadVerdictRows(
   return new Map(rows.map((row) => [identityOf(row), row]));
 }
 
-function judgementFrom(
-  ref: string,
-  row: VerdictRow,
-): Extract<KidJudgement, { verdictId: string }> {
+function judgementFrom(ref: string, row: VerdictRow): Extract<KidJudgement, { verdictId: string }> {
   return {
     ref,
     verdict: row.verdict,
