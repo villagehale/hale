@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CfwUX8ay71J37pHZe54Ve",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnAoKEAgSGAI4AUIIdGhpbmtpbmcSDGp2CNhPI3mIDvRdZhoMViZsZPB71S8ScqyBIjDy2/NepnsbMzwWGVK6XVa1QtrCvCKWYQ930clF2uBlU7FHt1ZK7QNRfSy++2TJ10cquQkiqYJhkfBsCDyvs7UxiAvGSde/mBHGm7CZ/n5+gMwxLqK6w9LEAPQnlzncQVvQemezks6dkraGHK4XJoOoktTKQHASC57Vgop+mh8AlY6SSt9x33B7dw+HIO/pVtRTJbG0t+vAy0vr9sw4x3fk+UH81OITTFMIqtsP56EpVwk21ov8oJO9iiuxthRfVYzu5g4qm/qx5Aw7t+RycGbcW3eN6Eb2DNzLk1f8VDEtQCSWWdWq2X4zNrQqJQCW+Qw55TDzDZAsFAuLoCsN8ycPksoq/EF6M153I2r4dIvvGlz+BZNMmxI6V5KTi/onvorD1Ng3+s9geHGWMRubL0ODquzgsNW6DTCmrgBla4+oi5yEL/0AdjI08HTqBdoXViKOeQmYr3bMEorKTb0enRB8CDWzDmc4zEmaTvxsT1OxNfOB8QEc7ijKj6Z7gADjkBnxL3HLFJ+qpgzd8T0/dLNPAIFDv7TwuewRpwvWSklcZNKeWgrJ458JLHfxgPEuKASAPOaXmrdNNIQgJ6imjoKTIfJTGQqyGtfoOS9m6SMtJ5segEx/kLRA3x/SvExDQFTaLY2f9x7GAsaXN9+6danbh9B7yeLT+UyQ497FVRH8weRVaV+NKNjRK+ersxO7Cm+oMmb4ctVEkCmiPUH19EZAQFZSH23OH5OCAHOwzyAIqWpTEJR1qsiAL/hQI4PLcRGmg1u+mqAIFDXJ/JahD1TGwF2A3QQZW1hQDy/d4Qdx8tfCoPPgaJW47YWtBHTylyiabfTTv7KIeFxorSHnR7KSwZiHjmbuJFOjvo/Z4tWHo0ZjVkM5WqE6bKL7c85Xudhl4+Qw+bmEi7bWzQwI71kgaTcedtNx/zVY0n4V5oN8gKRal1grl7I09/bsCjTxohzDP8Ay5WaweUU7jypVtybNLBduXo+4ffsjbI42PAj377QmlWXWrpy4+A/ea18PNddaqu6eqif9EgBn753xcpxYZgTMdlBIBwFXu3qTrPF2oAHb8bpyz1Mk7S/zfurEKg32gH7u/7bjAzT01rfqLPso2C+CscaEma3Brl7GEuQ/sZSJsr5daOn213xwM4giNQJCSTevPL8yBgS8Y9U/G+NypBOGzzT8ahG6gdSt1igZVguJPHisWqmQBcUmRr6eWWMazax0RER6UQa93rvv4TE5B9Ru5UN+DPpGXAipmC6IzopucTsc1pPKYbiYJ2Y1nq4qcelotcGnVDcQGV15LZ1UQLDXQEOX55WzeSqwCEpxXPX4tQNLnw9bXAndgFcUlL5Vj5KRC8OSNw3fvNAT6gsc9pXCb+jqfUhaByvvaB3ayVR7XHDjuPm/muBpV/rD8xmOwibh4pxIS7G4ud+NQD6I8cF4KzFzK4IYxJsgYp1A4OErZVlyBmw2SscyDHB+s3xtEZJLb+D+SUdhxISOfl3HP0KY1sFiYMa/h+gLf4mEHPadGHoJSiKSb0fWG8AGU74pSZSn0GloeSjhbcjzLrkhmgggsRgLpxo6SvrBlQCbjLC4bg6Ngw1aOLQPWzw0ndqX3wwbyFWwvRhuWAwMN6RESxJFVQchCCUxFcXv+HBKTjSgWSzzTbcfKktgW39bRAg0KQfPCBYcdHDQLOAYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Remy would be in Tiny Gym, since at 19 months Remy is well under 3.5 and it's the one with a parent along. Mini Gym is the solo one, and that's about two years off."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1342,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20621,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 349,
+      "output_tokens_details": {
+        "thinking_tokens": 285
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4103
+}

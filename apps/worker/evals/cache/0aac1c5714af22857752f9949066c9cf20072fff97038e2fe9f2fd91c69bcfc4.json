@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly says piano is not on the schedule, drafts nothing and does not treat the private rows as possible matches. But it claims piano is missing from next week too, which the week Hale could see does not support. It then asks two questions joined by 'or', handing the search back to the parent when 'I do not see piano on this week' was the complete answer.",
+    "score": 3
+  }
+}

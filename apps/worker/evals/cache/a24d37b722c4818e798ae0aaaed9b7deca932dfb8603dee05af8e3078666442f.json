@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The input is a calendar event draft, not a family message, so it does not match the rubric's target of a drafted family message. The draft is clear and contains no placeholder text, but it is terse and lacks the warm, personal tone a family message would carry, so it cannot be judged on tone or appropriateness for a family recipient.",
+    "score": 3
+  }
+}

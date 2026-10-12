@@ -1,0 +1,22 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.93,
+    "rationale": "Known clinic is proposing a slot for Mira's 18-month visit and asks the parent to confirm, which is a logistics request needing a reply.",
+    "payload": {
+      "clinic": "Riverdale Peds",
+      "childName": "Mira",
+      "visitType": "18-month visit",
+      "proposedDate": "Tuesday June 23",
+      "proposedTime": "5:30 PM",
+      "timezone": "America/Toronto",
+      "action_requested": "confirm"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 2173
+}

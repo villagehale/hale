@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Grounded throughout: it quotes the find's full title, venue, date and time from offerable, appends the offerable URL, and pulls Saturday's soccer from the week. It correctly notes the 6-12 range fits Ada (8) but not Milo (5). Small blemishes: 'probably too old for Milo' is hedged and awkwardly phrased, and the message runs a little long.",
+    "score": 4
+  }
+}

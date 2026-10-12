@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "Only check_action_time_window and check_action_idempotency were run, and both passed. Missing results: check_calendar_conflict (10:15 on 2026-06-23 is unverified), check_user_override and check_pii_leak. I also cannot invoke tools myself, so I can't approve without those results. The event is a medical appointment (18-month pediatric visit), and I have no record of explicit per-action parent approval. The action is internal-only and reversible, so the risk is low, but approval criteria are not met.",
+    "remediation": "Run check_calendar_conflict for 2026-06-23 10:15 -04:00, check_user_override and check_pii_leak. If all return ok, ask a parent to confirm the event, then resubmit for review."
+  },
+  "latencyMs": 3814
+}

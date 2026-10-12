@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the email as a shipping notification from a retailer about an order in transit with an expected arrival date, which matches the delivery_update event type. It also notes the signal is one-way and needs no reply, which is accurate.",
+    "score": 5
+  }
+}

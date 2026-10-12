@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the signal as a federal Employment Insurance maternity benefit notice from canada.ca, citing the processed claim and imminent payment as the basis for classifying it as ei_correspondence. It is specific and matches the content, though it could note the sender domain's government origin more explicitly as the classification anchor.",
+    "score": 4
+  }
+}

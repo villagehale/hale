@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale cites the specific signal content (a 90 ml bottle feed at 03:10 for Noa) and ties it to the feeding_pattern_signal type. However, it asserts Noa is 3 months old, which the signal does not contain, and it does not explain why this single feed constitutes a pattern rather than just one event. Still, the core reasoning is grounded in the actual data.",
+    "score": 4
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "value": {
+    "payload": {
+      "action_type": "create_calendar_event",
+      "title": "Mira — pediatric appointment with Dr. Okafor",
+      "start": "2026-06-23T10:15:00-04:00",
+      "location": "Riverdale Peds",
+      "description": "Pediatric appointment for Mira with Dr. Okafor at Riverdale Peds.",
+      "reminder": null,
+      "attendees": [],
+      "source_event_id": "evt-04"
+    },
+    "confidence": 0.8,
+    "rationale": "Creates an internal calendar entry for Mira's pediatric appointment using only the datetime, location, and provider from the event.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 1600
+}

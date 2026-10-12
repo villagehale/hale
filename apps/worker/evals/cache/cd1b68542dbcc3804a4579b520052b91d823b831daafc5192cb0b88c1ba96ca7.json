@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "Every tool that ran came back ok: PII, recipient allowlist, sender allowlist and idempotency all passed. Even so, this is a medical communication: it confirms Mira's 18-month pediatric visit. Policy says no medical message can be approved without explicit approval from the parent for this specific action, whatever the allowlist says. Some required checks are also missing. check_calendar_conflict was not run for Tuesday June 23 at 5:30 PM. check_vaccine_schedule was not run for the 18-month visit. check_action_time_window and check_user_override were not run either. Separately, recipient_visibility is set to 'public', which is unexpected for a reply to the clinic and should be confirmed.",
+    "remediation": "Get explicit approval from the parent for this particular reply before sending. Run the missing checks: check_calendar_conflict for June 23 at 5:30 PM, check_vaccine_schedule for the 18-month visit, check_action_time_window, and check_user_override. Confirm that recipient_visibility should be private or direct rather than public."
+  },
+  "latencyMs": 8841
+}

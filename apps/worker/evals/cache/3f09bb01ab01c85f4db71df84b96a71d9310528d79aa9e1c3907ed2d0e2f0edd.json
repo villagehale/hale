@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Cancel swim\" matches two events, so asking which one and drafting nothing is the right handling. The reply gives both times, which come straight from the week, and asks one question with no greeting or sign-off. It is short, exact and correct.",
+    "score": 5
+  }
+}
