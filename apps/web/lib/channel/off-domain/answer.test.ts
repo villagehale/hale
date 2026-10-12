@@ -1552,24 +1552,27 @@ describe('a reply to a question Hale left open', () => {
     ]);
   });
 
-  /** A crisis never waits on a model, and the lane's own doors answer it. */
+  /**
+   * No match on words stands in front of the sanitizer here (Barton: the AI reads a
+   * crisis, and nothing keys off words or digits). Whether a text is one is the lane's
+   * screen's reading, made before this is ever called (lane.test.ts pins all five of its
+   * safety readings as never arriving here).
+   */
   it.each(['I want to die', 'she is not breathing'])(
-    'hands %j back without calling a model',
+    'reads %j beside the pending ask like any other text: the sanitizer is asked',
     async (text) => {
       lit();
       quietInfo();
-      const exploding = () =>
-        ({
-          messages: {
-            create: () => {
-              throw new Error('a crisis must not reach a model');
-            },
-          },
-        }) as unknown as AgentClient;
+      const seen = seenNothing();
 
-      expect(await createGeneralAnswer(exploding).continueAsk(text, PENDING, family)).toEqual({
-        status: 'unrelated',
-      });
+      expect(
+        await createGeneralAnswer(
+          scripted({ sanitize: reading({ answers_pending: 'no' }) }, seen),
+        ).continueAsk(text, PENDING, family),
+      ).toEqual({ status: 'unrelated' });
+      expect(seen.sanitize.map((request) => request.messages)).toEqual([
+        [{ role: 'user', content: JSON.stringify({ text, pending: PENDING }) }],
+      ]);
     },
   );
 

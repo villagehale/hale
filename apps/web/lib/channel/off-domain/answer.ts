@@ -218,7 +218,8 @@ export interface GeneralAnswerComposer {
    * completed question when the sanitizer judges it completes it; handed back as
    * `unrelated` otherwise, and also when that judgment could not be made at all, because
    * the text may be about the kids' week. The lane calls this only for a text its screen
-   * has read and sent to the coach or to the general answer (lane.ts).
+   * has read and sent to the coach or to the general answer (lane.ts): whether a text is
+   * a crisis is that reading, and no match on words stands in for it here.
    */
   continueAsk(
     text: string,
@@ -615,10 +616,6 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
     },
 
     async continueAsk(text, pending, family) {
-      // The backstop under the lane's screen, which read this text first: a crisis by
-      // name is never continued as a question, whatever the screen made of it.
-      if (namesAnEmergency(text) || namesAMentalCrisis(text)) return notAReply();
-
       const stage = await setUp();
       if ('missing' in stage) return notAReply(stage.missing);
 
