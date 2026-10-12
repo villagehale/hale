@@ -2518,14 +2518,14 @@ describe('runProactiveReview', () => {
   describe('the composed text on a candidate row', () => {
     const WHAT = 'Pip and Juno would love indoor climbing at Riverside Rocks';
 
-    it('keeps it once the row is sent: the record of what Hale sent for this item', async () => {
+    it('keeps none once the row is sent, and the parent’s thread still carries what was said', async () => {
       vi.stubEnv('PROACTIVE_CADENCE', 'live');
       const id = await enqueue('nudge:weather:w41', { what: WHAT });
       const h = harness(sendAll);
 
       await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
-      expect(await candidate(id)).toMatchObject({ status: 'sent', what: WHAT, reason: null });
+      expect(await candidate(id)).toMatchObject({ status: 'sent', what: '' });
       const thread = await db.database
         .select({ content: schema.messages.content })
         .from(schema.messages);

@@ -469,13 +469,12 @@ type SettledReason =
 
 /**
  * Moves this family's candidate rows. The family is in the write, not only the caller.
- * The composed text lives on a row while it is queued or held, where the writer may still
- * need it, and on a row that was sent: there it is the record of what Hale sent for this
- * item, for same-item dedupe and the parent-visible History. A row that settles any
- * other way (dropped, shadowed) keeps none: nothing of it reached the parent. The
- * decider's reason lives on a held row and no longer: the next review shows it its prior
- * holds (hold.ts), and no retention sweep reads this table, so a settled row carries a
- * name the code gave it or nothing.
+ * The composed text lives on a row only while it is queued or held, where the writer may
+ * still need it: a row that settles keeps none, since dedupe reads only its key, and a
+ * text that went is already in the parent's own thread (finalize.ts). The decider's
+ * reason lives there as long and no longer: the next review shows it its prior holds
+ * (hold.ts), and no retention sweep reads this table, so a settled row carries a name
+ * the code gave it or nothing.
  */
 export async function mark(
   database: Database,
@@ -495,7 +494,7 @@ export async function mark(
     .update(schema.proactiveCandidates)
     .set({
       status: set.status,
-      ...(set.status === 'held' || set.status === 'sent' ? {} : { what: '' }),
+      ...(set.status === 'held' ? {} : { what: '' }),
       reason: set.reason,
       decision: set.decision,
       holdUntil: set.holdUntil ? new Date(set.holdUntil) : null,
