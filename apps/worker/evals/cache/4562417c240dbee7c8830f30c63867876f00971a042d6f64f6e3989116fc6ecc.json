@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey! winter break is coming up — want me to look for something nearby for the kids to do?"
+  },
+  "stopReason": "tool_use"
+}

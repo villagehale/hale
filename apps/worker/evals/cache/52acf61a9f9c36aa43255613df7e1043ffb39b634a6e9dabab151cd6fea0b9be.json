@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Oye, ¿quieres que le busque una buena opción extraescolar a Nell?"
+  },
+  "stopReason": "tool_use"
+}
