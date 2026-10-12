@@ -66,11 +66,16 @@ export interface CalendarMirrorCounts {
   /** Nothing was written or deleted for this window; {@link heldReason} names why. */
   held: boolean;
   /** Set exactly when `held` is: the window was empty and not trustworthy, the connection
-   * has no parent user, or the parent_calendar_mirror lane is off. */
+   * has no parent user, the family has no timezone, or the parent_calendar_mirror lane is
+   * off. */
   heldReason?: CalendarMirrorHeldReason;
 }
 
-export type CalendarMirrorHeldReason = 'untrusted_window' | 'no_parent_user' | 'lane_off';
+export type CalendarMirrorHeldReason =
+  | 'untrusted_window'
+  | 'no_parent_user'
+  | 'no_timezone'
+  | 'lane_off';
 
 export function emptyCalendarMirrorCounts(
   heldReason?: CalendarMirrorHeldReason,

@@ -298,6 +298,67 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
     await expect(familyEventRows()).resolves.toEqual([]);
   });
 
+  function allDay(): Record<string, unknown> {
+    return {
+      id: 'ev-fair',
+      status: 'confirmed',
+      summary: 'School fair',
+      start: { date: '2026-10-04' },
+      end: { date: '2026-10-05' },
+    };
+  }
+
+  function setParentTimezone(timezone: string) {
+    return db.database
+      .update(schema.users)
+      .set({ timezone })
+      .where(eq(schema.users.id, family.parentUserId));
+  }
+
+  it("places an all-day occasion on the family's own local midnight", async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    await setParentTimezone('America/Vancouver');
+
+    await mirrorPort()({
+      connection: connection({ provider: 'gcal' }),
+      items: [allDay()],
+      trustWindow: true,
+      now: NOW,
+    });
+
+    const rows = await familyEventRows();
+    // Midnight PDT (UTC-7) on the 4th, not midnight in any other zone.
+    expect(rows.map((row) => row.startsAt.toISOString())).toEqual(['2026-10-04T07:00:00.000Z']);
+  });
+
+  it('holds the window for no_timezone, writes nothing and logs it, when the family has no timezone', async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    await setParentTimezone('');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const counts = await mirrorPort()({
+      connection: connection({ provider: 'gcal' }),
+      items: [allDay(), swim()],
+      trustWindow: true,
+      now: NOW,
+    });
+
+    expect(counts).toEqual({
+      mirrored: 0,
+      updated: 0,
+      removed: 0,
+      alreadyKnown: 0,
+      skipped: 0,
+      held: true,
+      heldReason: 'no_timezone',
+    });
+    await expect(familyEventRows()).resolves.toEqual([]);
+    expect(info).toHaveBeenCalledWith(
+      { integrationId: CONNECTION },
+      'calendar mirror: no timezone for the family, skipped',
+    );
+  });
+
   it('leaves mirrors already written in place when the lane goes off', async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
     const conn = connection({ provider: 'gcal' });

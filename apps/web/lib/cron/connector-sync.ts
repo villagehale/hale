@@ -317,9 +317,10 @@ function travelDetectPorts(
 
 /**
  * The sweep's half of the reminder mirror. The connecting parent's timezone places
- * an all-day occasion on their local midnight. No user means nobody to remind, and
- * the lane switch off means nothing may be mirrored: either absence is logged and the
- * window is held, so mirrors already written stay in place (rule #11).
+ * an all-day occasion on their local midnight. No user means nobody to remind, no
+ * timezone means no local midnight to place anything on, and the lane switch off means
+ * nothing may be mirrored: each absence is logged and the window is held, so mirrors
+ * already written stay in place (rule #11).
  */
 async function mirrorCalendarWindow(
   database: Database,
@@ -345,12 +346,20 @@ async function mirrorCalendarWindow(
     .from(schema.users)
     .where(eq(schema.users.id, userId))
     .limit(1);
+  const timeZone = parent?.timezone;
+  if (!timeZone) {
+    console.info(
+      { integrationId: batch.connection.id },
+      'calendar mirror: no timezone for the family, skipped',
+    );
+    return emptyCalendarMirrorCounts('no_timezone');
+  }
   return reconcileCalendarMirrors(database, {
     familyId: batch.connection.familyId,
     userId,
     integrationId: batch.connection.id,
     items: batch.items,
-    timeZone: parent?.timezone || 'America/Toronto',
+    timeZone,
     now: batch.now,
     trustWindow: batch.trustWindow,
   });
