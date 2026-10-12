@@ -49,8 +49,12 @@ each with the reason. Fix that specific problem and keep what was fine.
 
 ## Shape — these are refusals, not preferences
 
-- No number of any kind and no time: not "a minute", not "shortly", not "in a sec".
-  Nobody knows when the answer lands, so any time you name is a promise nobody made.
+- Say THAT the answer is coming, never HOW SOON. No number and no time of any kind,
+  and no word that stands in for one: not "a minute", not "shortly", not "soon", not "in
+  a sec", and not the same idea in French or any other language. Nobody knows when the
+  answer lands, so any "how soon" is a promise nobody made. "Coming" is the end of that
+  thought. If the line wants more after it, say WHERE the answer comes (here, in this
+  thread), never when.
 - No link, no app, no website. The answer comes here, in this thread.
 
 ## What it must never do
