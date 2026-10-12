@@ -114,7 +114,8 @@ export interface OffDomainPorts {
    * says so by name and the fixed line goes out instead. */
   answer: GeneralAnswerComposer;
   /** Today's date where this family is, as the general answer is told it. The date is
-   * what travels on; the timezone it was read in does not. */
+   * what travels on; the timezone it was read in does not. The composer asks for it,
+   * after the fixed lines that need no date. */
   today(familyId: string): Promise<string>;
   /** Answers a medical-symptom text: a web-grounded, coarse-age-aware reply with its own
    * triage, or the fixed 811/911 line as a last resort. Non-nullable for the same reason
@@ -251,7 +252,7 @@ async function answerOrFallback(
   familyId: string,
   text: string,
 ): Promise<{ reply: string; replySource: ReplySource }> {
-  const composed = await ports.answer.compose(text, await ports.today(familyId));
+  const composed = await ports.answer.compose(text, () => ports.today(familyId));
   if (composed.status === 'composed') return { reply: composed.reply, replySource: 'composed' };
   const language = replyLanguage(text);
   // A question about the world that turned out to be about a hurt child. It leaves by

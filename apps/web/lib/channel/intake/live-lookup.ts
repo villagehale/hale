@@ -24,9 +24,6 @@ const GROUND_MAX_TOKENS = 2048;
 
 export const NO_CURRENT_SOURCE_YET = 'I do not have a current source yet.';
 
-/** After provision: one line back to Hale's job, never more trivia. */
-export const AFTER_PROVISION_RETURN_ASK = 'Anything I can watch for the kids this week?';
-
 /**
  * Warm parent, not a clinician. Reviewed copy — a model does not write a
  * method, a diagnosis, or "I'm a therapist."
@@ -105,16 +102,8 @@ export function liveLookupFallbackReply(pendingAsk: string): string {
   return joinLiveLookupAnswer(NO_CURRENT_SOURCE_YET, pendingAsk);
 }
 
-export function afterProvisionFallbackReply(): string {
-  return joinAfterProvisionAnswer(NO_CURRENT_SOURCE_YET);
-}
-
 export function cheerUpIntakeReply(pendingAsk: string): string {
   return joinLiveLookupAnswer(CHEER_UP_REPLY, pendingAsk);
-}
-
-export function cheerUpAfterProvisionReply(): string {
-  return joinAfterProvisionAnswer(CHEER_UP_REPLY);
 }
 
 function sentences(text: string): string[] {
@@ -161,17 +150,8 @@ export function joinLiveLookupAnswer(answer: string, pendingAsk: string): string
   return sendableJoined(`${answer} ${ask}`, fallback);
 }
 
-export function joinAfterProvisionAnswer(answer: string): string {
-  const fallback = `${NO_CURRENT_SOURCE_YET} ${AFTER_PROVISION_RETURN_ASK}`;
-  return sendableJoined(`${answer} ${AFTER_PROVISION_RETURN_ASK}`, fallback);
-}
-
 export function liveLookupReplyFromNotes(notes: string, pendingAsk: string): string {
   return joinLiveLookupAnswer(extractLiveLookupAnswer(notes) ?? NO_CURRENT_SOURCE_YET, pendingAsk);
-}
-
-export function afterProvisionReplyFromNotes(notes: string): string {
-  return joinAfterProvisionAnswer(extractLiveLookupAnswer(notes) ?? NO_CURRENT_SOURCE_YET);
 }
 
 /**

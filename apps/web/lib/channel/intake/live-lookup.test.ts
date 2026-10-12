@@ -2,12 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
 import {
-  AFTER_PROVISION_RETURN_ASK,
   CHEER_UP_REPLY,
   NO_CURRENT_SOURCE_YET,
-  afterProvisionFallbackReply,
-  afterProvisionReplyFromNotes,
-  cheerUpAfterProvisionReply,
   cheerUpIntakeReply,
   deidentifyLiveQuery,
   extractLiveLookupAnswer,
@@ -114,15 +110,6 @@ describe('live-lookup · no current source when search cannot ground', () => {
     expect(body.length).toBeLessThanOrEqual(300);
   });
 
-  it('after provision still returns to the kids / the week, not trivia', () => {
-    const body = afterProvisionFallbackReply();
-    expect(body.startsWith(NO_CURRENT_SOURCE_YET)).toBe(true);
-    expect(body).toContain(AFTER_PROVISION_RETURN_ASK);
-    expect(body).not.toContain(COLD_START_ASK);
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(body.length).toBeLessThanOrEqual(300);
-  });
-
   it('extracts a restated source sentence and refuses notes that invent nothing', () => {
     const notes =
       'Health Canada says most babies are ready for solids around 6 months. Start with iron-rich foods.';
@@ -144,13 +131,6 @@ describe('live-lookup · no current source when search cannot ground', () => {
     const empty = liveLookupReplyFromNotes('NO CURRENT SOURCE', COLD_START_ASK);
     expect(empty).toBe(liveLookupFallbackReply(COLD_START_ASK));
   });
-
-  it('after provision leftover facts get a return-to-Hale line', () => {
-    const body = afterProvisionReplyFromNotes('Argentina won the 2022 World Cup.');
-    expect(body).toContain('Argentina');
-    expect(body).toContain(AFTER_PROVISION_RETURN_ASK);
-    expect(body).not.toContain(COLD_START_ASK);
-  });
 });
 
 describe('live-lookup · cheer-up is warm and not clinical', () => {
@@ -163,11 +143,6 @@ describe('live-lookup · cheer-up is warm and not clinical', () => {
     expect(intake).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
     expect(intake).not.toContain(COLD_START_ASK);
     expect(smsEncoding(intake)).toBe('gsm7');
-
-    const after = cheerUpAfterProvisionReply();
-    expect(after.startsWith(CHEER_UP_REPLY)).toBe(true);
-    expect(after).toContain(AFTER_PROVISION_RETURN_ASK);
-    expect(after).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
   });
 });
 

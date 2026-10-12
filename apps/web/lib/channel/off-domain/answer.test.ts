@@ -2,11 +2,6 @@ import type { AgentClient } from '@hale/agent';
 import { pickModel } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  AFTER_PROVISION_RETURN_ASK,
-  CHEER_UP_REPLY,
-  NO_CURRENT_SOURCE_YET,
-} from '~/lib/channel/intake/live-lookup';
-import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   createGeneralAnswer,
   generalAnswerSearchEnabled,
@@ -53,12 +48,16 @@ const SANITIZE_HEADING = 'Take the family out, keep the question';
 const ANSWER_HEADING = 'A friend who knows, texting back';
 
 const TODAY = 'monday, oct 12, 2026';
+/** The lane's date read, as the composer is handed it. */
+const today = async () => TODAY;
 const ASK = 'whos the goat in football';
 
 /** What each of the three calls returns. An Error is thrown by that call. */
 interface Script {
   sanitize?: unknown;
   search?: unknown[] | Error;
+  /** How the search turn stopped. A finished turn unless a test says otherwise. */
+  searchStop?: string;
   answer?: unknown;
 }
 
@@ -106,6 +105,7 @@ function scripted(script: Script, seen: Seen = seenNothing()): () => AgentClient
               if (script.search instanceof Error) throw script.search;
               return {
                 content: script.search ?? [],
+                stop_reason: script.searchStop ?? 'end_turn',
                 usage: { input_tokens: 10, output_tokens: 5 },
               };
             },
@@ -126,6 +126,7 @@ const outageClient = scripted({ sanitize: new Error('upstream 529') });
 
 const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 const quietWarn = () => vi.spyOn(console, 'warn').mockImplementation(() => {});
+const quietInfo = () => vi.spyOn(console, 'info').mockImplementation(() => {});
 
 const LEAFS_URL = 'https://www.nhl.com/mapleleafs/news/recap';
 const LEAFS_NOTES = 'The Maple Leafs beat the Senators 4-2 on October 11, per NHL.com.';
@@ -169,6 +170,7 @@ describe('the three payloads', () => {
         today: TODAY,
         search: 'searched',
         notes: LEAFS_NOTES,
+        missing: '',
       }),
     ).toBe(
       `{"question":"did the leafs win last night","language":"en","today":"monday, oct 12, 2026","live":"searched","research_notes":"${LEAFS_NOTES}"}`,
@@ -187,12 +189,31 @@ describe('the three payloads', () => {
           today: TODAY,
           search,
           notes: '',
+          missing: '',
         }),
       ).toBe(
         '{"question":"q","language":"fr","today":"monday, oct 12, 2026","live":"unavailable"}',
       );
     },
   );
+});
+
+describe('the compose payload for a missing detail', () => {
+  /** No search was made, so there are no notes: the compose is told what is missing. */
+  it('names what the question left out, and carries no research', () => {
+    expect(
+      generalAnswerUserMessage({
+        question: 'hows the weather tomorrow',
+        language: 'en',
+        today: TODAY,
+        search: 'missing_detail',
+        notes: '',
+        missing: 'which city',
+      }),
+    ).toBe(
+      '{"question":"hows the weather tomorrow","language":"en","today":"monday, oct 12, 2026","live":"missing_detail","missing":"which city"}',
+    );
+  });
 });
 
 describe('localDate', () => {
@@ -228,7 +249,7 @@ describe('createGeneralAnswer', () => {
       clientReturning({ answer: 'Messi, for me - the closest thing to a complete player.' }),
     );
 
-    expect(await answer.compose(ASK, TODAY)).toEqual({
+    expect(await answer.compose(ASK, today)).toEqual({
       status: 'composed',
       reply: 'Messi, for me - the closest thing to a complete player.',
       search: 'not_needed',
@@ -251,7 +272,7 @@ describe('createGeneralAnswer', () => {
         },
         seen,
       ),
-    ).compose('whats the capital of peru', TODAY);
+    ).compose('whats the capital of peru', today);
 
     expect(seen.sanitize.map((request) => request.messages)).toEqual([
       [{ role: 'user', content: '{"text":"whats the capital of peru"}' }],
@@ -273,7 +294,7 @@ describe('createGeneralAnswer', () => {
 
   it('names a missing client rather than throwing', async () => {
     quiet();
-    expect(await createGeneralAnswer(throwingClient).compose(ASK, TODAY)).toEqual({
+    expect(await createGeneralAnswer(throwingClient).compose(ASK, today)).toEqual({
       status: 'unavailable',
       reason: 'client_unavailable',
     });
@@ -281,7 +302,7 @@ describe('createGeneralAnswer', () => {
 
   it('names a provider outage rather than throwing', async () => {
     quiet();
-    expect(await createGeneralAnswer(outageClient).compose(ASK, TODAY)).toEqual({
+    expect(await createGeneralAnswer(outageClient).compose(ASK, today)).toEqual({
       status: 'unavailable',
       reason: 'model_failed',
     });
@@ -289,7 +310,7 @@ describe('createGeneralAnswer', () => {
 
   it('names a compose that came back unparseable rather than throwing', async () => {
     quiet();
-    expect(await createGeneralAnswer(clientReturning('sure')).compose(ASK, TODAY)).toEqual({
+    expect(await createGeneralAnswer(clientReturning('sure')).compose(ASK, today)).toEqual({
       status: 'unavailable',
       reason: 'model_failed',
     });
@@ -304,7 +325,7 @@ describe('createGeneralAnswer', () => {
   it('flattens curly punctuation and markdown instead of refusing them', async () => {
     const result = await createGeneralAnswer(
       clientReturning({ answer: '**Messi** — he’s the one I’d pick.' }),
-    ).compose(ASK, TODAY);
+    ).compose(ASK, today);
 
     expect(result).toEqual({
       status: 'composed',
@@ -323,7 +344,7 @@ describe('createGeneralAnswer', () => {
     ['a long Chinese answer', '中'.repeat(300)],
   ])('sends %s rather than the fixed line', async (_label, body) => {
     expect(
-      await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, TODAY),
+      await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, today),
     ).toEqual({ status: 'composed', reply: body, search: 'not_needed' });
   });
 
@@ -335,7 +356,7 @@ describe('createGeneralAnswer', () => {
    */
   it("gives the compose the medical compose's token budget", async () => {
     const seen = seenNothing();
-    await createGeneralAnswer(clientReturning({ answer: 'Lima.' }, seen)).compose(ASK, TODAY);
+    await createGeneralAnswer(clientReturning({ answer: 'Lima.' }, seen)).compose(ASK, today);
 
     expect(COMPOSE_MAX_TOKENS).toBe(1024);
     expect(seen.compose[0]?.max_tokens).toBe(COMPOSE_MAX_TOKENS);
@@ -344,7 +365,7 @@ describe('createGeneralAnswer', () => {
   it('refuses an answer that is empty once flattened', async () => {
     const log = quiet();
     expect(
-      await createGeneralAnswer(clientReturning({ answer: '  **  ** ' })).compose(ASK, TODAY),
+      await createGeneralAnswer(clientReturning({ answer: '  **  ** ' })).compose(ASK, today),
     ).toEqual({ status: 'unavailable', reason: 'unsendable' });
     expect(log.mock.calls).toEqual([
       [
@@ -361,7 +382,7 @@ describe('createGeneralAnswer', () => {
     expect(
       await createGeneralAnswer(
         clientReturning({ answer: "A mon avis, c'est un peu drôle mais délicieux." }),
-      ).compose('cest quoi ton avis', TODAY),
+      ).compose('cest quoi ton avis', today),
     ).toMatchObject({
       status: 'composed',
       reply: "A mon avis, c'est un peu drôle mais délicieux.",
@@ -372,7 +393,7 @@ describe('createGeneralAnswer', () => {
     expect(
       await createGeneralAnswer(clientReturning({ answer: '梅西,无可争议。' })).compose(
         '足球界谁最强',
-        TODAY,
+        today,
       ),
     ).toMatchObject({ status: 'composed', reply: '梅西,无可争议。' });
   });
@@ -391,7 +412,7 @@ describe('createGeneralAnswer', () => {
     expect(
       await createGeneralAnswer(clientReturning({ answer: recorded })).compose(
         'is melatonin safe for adults',
-        TODAY,
+        today,
       ),
     ).toEqual({ status: 'composed', reply: recorded, search: 'not_needed' });
   });
@@ -404,16 +425,16 @@ describe('createGeneralAnswer', () => {
     const warn = quietWarn();
     lit();
 
-    await createGeneralAnswer(outageClient).compose(secret, TODAY);
-    await createGeneralAnswer(throwingClient).compose(secret, TODAY);
-    await createGeneralAnswer(clientReturning({ answer: '  ' })).compose(secret, TODAY);
+    await createGeneralAnswer(outageClient).compose(secret, today);
+    await createGeneralAnswer(throwingClient).compose(secret, today);
+    await createGeneralAnswer(clientReturning({ answer: '  ' })).compose(secret, today);
     await createGeneralAnswer(
       scripted({
         sanitize: reading({ question: secret, needs_search: 'yes' }),
         search: new Error(`400 invalid_request_error: ${secret}`),
         answer: { answer: `See https://example.com about ${secret}` },
       }),
-    ).compose(secret, TODAY);
+    ).compose(secret, today);
 
     const logged = JSON.stringify([...log.mock.calls, ...warn.mock.calls]);
     expect(logged).not.toContain('Riverdale');
@@ -439,9 +460,9 @@ describe('createGeneralAnswer', () => {
       }) as unknown as AgentClient;
     const log = quiet();
 
-    await createGeneralAnswer(scripted({ sanitize: echo })).compose(secret, TODAY);
-    await createGeneralAnswer(truncated).compose(secret, TODAY);
-    await createGeneralAnswer(scripted({ answer: echo })).compose(secret, TODAY);
+    await createGeneralAnswer(scripted({ sanitize: echo })).compose(secret, today);
+    await createGeneralAnswer(truncated).compose(secret, today);
+    await createGeneralAnswer(scripted({ answer: echo })).compose(secret, today);
 
     expect(log.mock.calls).toEqual([
       [
@@ -480,7 +501,7 @@ describe('the sanitize phase', () => {
         },
         seen,
       ),
-    ).compose(RAW, TODAY);
+    ).compose(RAW, today);
 
     expect(JSON.stringify(seen.sanitize)).toContain('Priya');
     expect(seen.search).toHaveLength(1);
@@ -513,7 +534,7 @@ describe('the sanitize phase', () => {
         },
         seen,
       ),
-    ).compose('anything', TODAY);
+    ).compose('anything', today);
 
     const downstream = JSON.stringify([seen.search, seen.compose]);
     expect(downstream).not.toContain('L7G');
@@ -528,13 +549,13 @@ describe('the sanitize phase', () => {
     const seen = seenNothing();
     await createGeneralAnswer(
       scripted({ sanitize: reading({ language: 'fr' }), answer: { answer: 'Oui.' } }, seen),
-    ).compose('cest ok', TODAY);
+    ).compose('cest ok', today);
     await createGeneralAnswer(
       scripted(
         { sanitize: reading({ language: 'not a language code' }), answer: { answer: 'Yes.' } },
         seen,
       ),
-    ).compose('is it ok', TODAY);
+    ).compose('is it ok', today);
 
     expect(
       seen.compose.map((request) => JSON.parse(request.messages?.[0]?.content ?? '{}').language),
@@ -551,7 +572,7 @@ describe('the sanitize phase', () => {
     expect(
       await createGeneralAnswer(scripted({ sanitize: new Error('upstream 529') }, seen)).compose(
         RAW,
-        TODAY,
+        today,
       ),
     ).toEqual({ status: 'unavailable', reason: 'model_failed' });
     expect(seen.search).toHaveLength(0);
@@ -565,7 +586,7 @@ describe('the sanitize phase', () => {
     expect(
       await createGeneralAnswer(scripted({ sanitize: reading({ question: '  ' }) }, seen)).compose(
         RAW,
-        TODAY,
+        today,
       ),
     ).toEqual({ status: 'unavailable', reason: 'model_failed' });
     expect(log.mock.calls).toEqual([
@@ -598,7 +619,7 @@ describe('the live search', () => {
           { sanitize: CURRENT, search: searchFound(), answer: { answer: 'Yep, 4-2.' } },
           seen,
         ),
-      ).compose('did the leafs win last night', TODAY),
+      ).compose('did the leafs win last night', today),
     ).toEqual({ status: 'composed', reply: 'Yep, 4-2.', search: 'searched' });
 
     expect(seen.search).toHaveLength(1);
@@ -616,6 +637,103 @@ describe('the live search', () => {
     });
   });
 
+  /** The lit probe needs a line to find: a turn that searched says so, with how many
+   * results it stood on and nothing of the question (rule #1). */
+  it('logs a search that ran by name, with its result count and nothing else', async () => {
+    lit();
+    const info = quietInfo();
+
+    await createGeneralAnswer(
+      scripted({ sanitize: CURRENT, search: searchFound(), answer: { answer: 'Yep, 4-2.' } }),
+    ).compose('did the leafs win last night', today);
+
+    expect(info.mock.calls).toEqual([
+      [{ search: 'searched', results: 1 }, 'off-domain answer: live search ran'],
+    ]);
+  });
+
+  /**
+   * A turn the provider paused, or one cut off at its token ceiling, can carry result
+   * items and only its opening sentence. That is not research: what it wrote is not what
+   * it found. Named for what it is, not counted as searched (rule #11).
+   */
+  it.each(['pause_turn', 'max_tokens', 'refusal'])(
+    'names a search turn that stopped on %s as nothing usable, and hands the compose no notes',
+    async (searchStop) => {
+      lit();
+      const warn = quietWarn();
+      const seen = seenNothing();
+
+      expect(
+        await createGeneralAnswer(
+          scripted(
+            {
+              sanitize: CURRENT,
+              search: searchFound(LEAFS_URL, "I'll look up last night's Leafs game."),
+              searchStop,
+              answer: { answer: "Can't check right now." },
+            },
+            seen,
+          ),
+        ).compose('did the leafs win last night', today),
+      ).toEqual({ status: 'composed', reply: "Can't check right now.", search: 'nothing_usable' });
+
+      expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}')).toEqual({
+        question: 'did the leafs win last night',
+        language: 'en',
+        today: TODAY,
+        live: 'unavailable',
+      });
+      expect(warn.mock.calls).toEqual([
+        [
+          { search: 'nothing_usable', detail: `stopped:${searchStop}` },
+          'off-domain answer: no live search this turn',
+        ],
+      ]);
+    },
+  );
+
+  /**
+   * "How's the weather tomorrow" names no city, and nothing about where the family lives
+   * is loaded. No search can answer it, so none is made (and none is billed): the compose
+   * is told what is missing and asks for it.
+   */
+  it('makes no search call when the question leaves out what the answer depends on, lit or not', async () => {
+    lit();
+    const info = quietInfo();
+    const warn = quietWarn();
+    const seen = seenNothing();
+
+    expect(
+      await createGeneralAnswer(
+        scripted(
+          {
+            sanitize: reading({
+              question: 'hows the weather tomorrow',
+              missing_detail: 'which city, reply to pat@example.com',
+              needs_search: 'missing_detail',
+            }),
+            answer: { answer: 'Which city?' },
+          },
+          seen,
+        ),
+      ).compose('hows the weather tomorrow', today),
+    ).toEqual({ status: 'composed', reply: 'Which city?', search: 'missing_detail' });
+
+    expect(seen.search).toHaveLength(0);
+    expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}')).toEqual({
+      question: 'hows the weather tomorrow',
+      language: 'en',
+      today: TODAY,
+      live: 'missing_detail',
+      missing: 'which city, reply to [redacted]',
+    });
+    expect(info.mock.calls).toEqual([
+      [{ search: 'missing_detail' }, 'off-domain answer: no live search this turn'],
+    ]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('makes no search call while the flag is dark, and names it', async () => {
     const warn = quietWarn();
     const seen = seenNothing();
@@ -626,7 +744,7 @@ describe('the live search', () => {
           { sanitize: CURRENT, answer: { answer: "I can't check scores right now." } },
           seen,
         ),
-      ).compose('did the leafs win last night', TODAY),
+      ).compose('did the leafs win last night', today),
     ).toEqual({
       status: 'composed',
       reply: "I can't check scores right now.",
@@ -648,7 +766,7 @@ describe('the live search', () => {
     expect(
       await createGeneralAnswer(
         scripted({ sanitize: reading({ needs_search: 'no' }), answer: { answer: 'Lima.' } }, seen),
-      ).compose('whats the capital of peru', TODAY),
+      ).compose('whats the capital of peru', today),
     ).toEqual({ status: 'composed', reply: 'Lima.', search: 'not_needed' });
 
     expect(seen.search).toHaveLength(0);
@@ -668,7 +786,7 @@ describe('the live search', () => {
           { sanitize: reading({ needs_search }), search: searchFound(), answer: { answer: 'x' } },
           seen,
         ),
-      ).compose(ASK, TODAY);
+      ).compose(ASK, today);
 
       expect(seen.search).toHaveLength(1);
     },
@@ -689,7 +807,7 @@ describe('the live search', () => {
           },
           seen,
         ),
-      ).compose('did the leafs win last night', TODAY),
+      ).compose('did the leafs win last night', today),
     ).toEqual({
       status: 'composed',
       reply: "I can't check that right now.",
@@ -740,7 +858,7 @@ describe('the live search', () => {
             { sanitize: CURRENT, search: content, answer: { answer: "Can't check right now." } },
             seen,
           ),
-        ).compose('did the leafs win last night', TODAY),
+        ).compose('did the leafs win last night', today),
       ).toEqual({ status: 'composed', reply: "Can't check right now.", search: 'nothing_usable' });
 
       expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}')).toEqual({
@@ -774,7 +892,7 @@ describe('links', () => {
           search: searchFound(TSN, 'TSN carries it in Canada.'),
           answer: { answer: `TSN has it: ${TSN}.` },
         }),
-      ).compose('where can I stream the euros', TODAY),
+      ).compose('where can I stream the euros', today),
     ).toEqual({ status: 'composed', reply: `TSN has it: ${TSN}.`, search: 'searched' });
   });
 
@@ -789,7 +907,7 @@ describe('links', () => {
           search: searchFound(TSN, 'TSN carries it in Canada.'),
           answer: { answer: 'It is on https://www.tsn.ca/live-now today.' },
         }),
-      ).compose('where can I stream the euros', TODAY),
+      ).compose('where can I stream the euros', today),
     ).toEqual({ status: 'unavailable', reason: 'unsendable' });
     expect(log.mock.calls).toEqual([
       [
@@ -807,7 +925,7 @@ describe('links', () => {
       'It is at http://parks.ca today.',
     ]) {
       expect(
-        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, TODAY),
+        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, today),
       ).toEqual({ status: 'unavailable', reason: 'unsendable' });
     }
   });
@@ -820,120 +938,52 @@ describe('links', () => {
  * branch carries no text, so the fixed line in copy.ts is the only thing the lane can
  * put on the wire (see lane.test.ts for the words).
  */
-describe('after provision leftover facts · VIL-327', () => {
-  it('does not leave a current-source leftover fact in trivia', async () => {
-    const notes = 'Argentina won the 2022 FIFA World Cup.';
-    const client = () =>
-      ({
-        messages: {
-          create: async (req: { tools?: Array<{ type?: string }> }) => {
-            if (req.tools?.[0]?.type === 'web_search_20250305') {
-              return {
-                content: [
-                  { type: 'text', text: notes },
-                  {
-                    type: 'web_search_tool_result',
-                    tool_use_id: 'srvtu_3',
-                    content: [
-                      {
-                        type: 'web_search_result',
-                        url: 'https://www.fifa.com',
-                        title: 'World Cup',
-                      },
-                    ],
-                  },
-                ],
-              };
-            }
-            throw new Error('after-provision leftover facts must not invent from memory');
-          },
-        },
-      }) as unknown as AgentClient;
-
-    const outcome = await createGeneralAnswer(client).compose('who won the World Cup?', TODAY);
-    expect(outcome.status).toBe('composed');
-    if (outcome.status !== 'composed') return;
-    expect(outcome.reply).toContain('Argentina');
-    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
-    expect(outcome.reply).not.toMatch(/https?:\/\//);
-  });
-
+describe('the one path', () => {
   /**
-   * WHERE THE EVAL AND PRODUCTION PART. The general-answer eval grades "who is the prime
-   * minister of canada" through sanitize, search and compose. In production the VIL-327
-   * matchers claim that text first: it never reaches the sanitize call, its search is this
-   * older branch's own (not streamed, and not behind GENERAL_ANSWER_SEARCH_ENABLED), and
-   * the reply ends on the fixed line back to the week.
+   * Barton, 2026-10-12 (Option A). Every text this stage is handed goes sanitize, then
+   * search when lit, then compose. An older branch used to claim some of them first by
+   * keyword: it searched on the parent's own words with the flag dark and closed on a
+   * fixed line back to the week. A branch like that has to break this test to come back.
    */
-  it('takes the prime-minister question before the sanitize call, with the flag dark', async () => {
-    const seen = { sanitize: 0, searches: 0 };
-    const client = () =>
-      ({
-        messages: {
-          create: async (req: { system?: unknown; tools?: Array<{ type?: string }> }) => {
-            if (JSON.stringify(req.system ?? '').includes(SANITIZE_HEADING)) seen.sanitize += 1;
-            if (req.tools?.[0]?.type !== 'web_search_20250305') throw new Error('not a search');
-            seen.searches += 1;
-            return {
-              content: [
-                { type: 'text', text: 'The office is held by the person the page names.' },
-                {
-                  type: 'web_search_tool_result',
-                  tool_use_id: 'srvtu_4',
-                  content: [{ type: 'web_search_result', url: 'https://example.org', title: 'x' }],
-                },
-              ],
-            };
+  it.each([
+    'who is the prime minister of canada',
+    'who won the World Cup?',
+    'How do I get him to nap?',
+    'I need a therapist',
+    'cheer me up',
+  ])(
+    'sends %j to the sanitize call, and makes no search call while the flag is dark',
+    async (text) => {
+      quietWarn();
+      const seen = seenNothing();
+
+      const outcome = await createGeneralAnswer(
+        scripted(
+          {
+            sanitize: reading({ question: 'the question, de-identified', needs_search: 'yes' }),
+            answer: { answer: 'What the model wrote.' },
           },
-        },
-      }) as unknown as AgentClient;
+          seen,
+        ),
+      ).compose(text, today);
 
-    const outcome = await createGeneralAnswer(client).compose(
-      'who is the prime minister of canada',
-      TODAY,
-    );
-
-    expect(generalAnswerSearchEnabled()).toBe(false);
-    expect(seen).toEqual({ sanitize: 0, searches: 1 });
-    expect(outcome).toEqual({
-      status: 'composed',
-      reply: `The office is held by the person the page names. ${AFTER_PROVISION_RETURN_ASK}`,
-    });
-  });
-
-  it('says no current source yet, then returns to the kids / the week', async () => {
-    const exploding = () =>
-      ({
-        messages: {
-          create: () => {
-            throw new Error('search down');
-          },
-        },
-      }) as unknown as AgentClient;
-    quiet();
-    const outcome = await createGeneralAnswer(exploding).compose('Who is the US president?', TODAY);
-    expect(outcome.status).toBe('composed');
-    if (outcome.status !== 'composed') return;
-    expect(outcome.reply).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
-  });
-
-  it('answers a cheer-up with warmth and a line back to the week', async () => {
-    const exploding = () =>
-      ({
-        messages: {
-          create: () => {
-            throw new Error('cheer-up is reviewed copy');
-          },
-        },
-      }) as unknown as AgentClient;
-    const outcome = await createGeneralAnswer(exploding).compose('cheer me up', TODAY);
-    expect(outcome.status).toBe('composed');
-    if (outcome.status !== 'composed') return;
-    expect(outcome.reply).toContain(CHEER_UP_REPLY);
-    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
-    expect(outcome.reply).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
-  });
+      expect(generalAnswerSearchEnabled()).toBe(false);
+      expect(seen.sanitize.map((request) => request.messages)).toEqual([
+        [{ role: 'user', content: JSON.stringify({ text }) }],
+      ]);
+      expect(seen.search).toHaveLength(0);
+      // The older branch searched on `create`, which this Fake files under compose.
+      expect(seen.compose).toHaveLength(1);
+      expect([...seen.sanitize, ...seen.compose].flatMap((request) => request.tools ?? [])).toEqual(
+        [],
+      );
+      expect(outcome).toEqual({
+        status: 'composed',
+        reply: 'What the model wrote.',
+        search: 'search_off',
+      });
+    },
+  );
 
   it('answers a crisis with safety and no return ask', async () => {
     const exploding = () =>
@@ -944,7 +994,7 @@ describe('after provision leftover facts · VIL-327', () => {
           },
         },
       }) as unknown as AgentClient;
-    expect(await createGeneralAnswer(exploding).compose('I want to die', TODAY)).toEqual({
+    expect(await createGeneralAnswer(exploding).compose('I want to die', today)).toEqual({
       status: 'composed',
       reply: MENTAL_CRISIS_REPLY,
     });
@@ -963,7 +1013,7 @@ describe('after provision leftover facts · VIL-327', () => {
           },
         },
       }) as unknown as AgentClient;
-    expect(await createGeneralAnswer(exploding).compose('she is not breathing', TODAY)).toEqual({
+    expect(await createGeneralAnswer(exploding).compose('she is not breathing', today)).toEqual({
       status: 'composed',
       reply: EMERGENCY_REPLY,
     });
@@ -983,7 +1033,7 @@ describe('safety refusal', () => {
       quiet();
 
       expect(
-        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, TODAY),
+        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, today),
       ).toEqual({ status: 'safety' });
     },
   );

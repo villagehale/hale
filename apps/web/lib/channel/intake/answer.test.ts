@@ -11,7 +11,7 @@ import {
   refusals,
 } from './answer';
 import { COLD_START_ASK, IDENTITY_ACCOUNTABILITY_LINE, WATCH_OFFER_ASK } from './copy';
-import { AFTER_PROVISION_RETURN_ASK, CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
+import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
 import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 
 /**
@@ -474,7 +474,6 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
     expect(outcome.body).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
     expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain(AFTER_PROVISION_RETURN_ASK);
   });
 
   it('answers a crisis inbound with the reviewed 988 line and no return ask', async () => {
