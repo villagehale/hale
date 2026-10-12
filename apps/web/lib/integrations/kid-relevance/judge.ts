@@ -21,6 +21,7 @@ import {
   kidSkillMessage,
   kidVerdictsContract,
   repeatsAny,
+  sharesAnyWord,
 } from './skill-contract';
 
 /**
@@ -315,14 +316,19 @@ function verdictRowFor(
   };
 }
 
-/** The reason, unless it is empty, long, or repeats the item's title, place or sender. */
+/**
+ * The reason, unless it is empty, long, repeats the item's title, or carries any word of
+ * its place or sender: a surname or a venue's first word alone still says where or who.
+ */
 function storedReason(
   reason: string,
   item: Pick<KidRelevanceItem, 'title' | 'place' | 'sender'>,
 ): string | null {
   const trimmed = reason.trim();
   if (trimmed.length === 0 || trimmed.length > KID_REASON_MAX_CHARS) return null;
-  return repeatsAny(trimmed, [item.title, item.place, item.sender]) ? null : trimmed;
+  return repeatsAny(trimmed, [item.title]) || sharesAnyWord(trimmed, [item.place, item.sender])
+    ? null
+    : trimmed;
 }
 
 async function upsertModelVerdicts(

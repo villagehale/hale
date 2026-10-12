@@ -60,6 +60,18 @@ export function repeatsAny(text: string, own: readonly (string | null)[]): boole
   });
 }
 
+/** True when `text` carries any one word of any of `own`. */
+export function sharesAnyWord(text: string, own: readonly (string | null)[]): boolean {
+  const words = new Set(foldWords(text).split(' '));
+  return own.some(
+    (value) =>
+      value !== null &&
+      foldWords(value)
+        .split(' ')
+        .some((word) => words.has(word)),
+  );
+}
+
 export const KID_VERDICTS = ['kid', 'adult', 'unsure'] as const;
 export type KidVerdictValue = (typeof KID_VERDICTS)[number];
 

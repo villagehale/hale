@@ -300,6 +300,33 @@ describe('judgeKidRelevance', () => {
     ]);
   });
 
+  it('stores no reason that carries any one word of the place or sender', async () => {
+    await db.database.delete(schema.children).where(eq(schema.children.id, children[1]?.id ?? ''));
+    children = children.slice(0, 1);
+    const { client } = scriptedClient(
+      byText({
+        'Well visit': { verdict: 'kid', reason: 'a checkup booked with Patel for a toddler' },
+        Gymnastics: { verdict: 'kid', reason: 'a toddler class at Maple' },
+        Painting: { verdict: 'kid', reason: 'a toddler art class' },
+        'Wren swim': { verdict: 'kid', reason: 'a swim lesson for a toddler' },
+      }),
+    );
+    await judge(client, [
+      item('a', 'Well visit', { sender: 'Dr Patel' }),
+      item('b', 'Gymnastics', { place: 'Maple Grove pool' }),
+      item('c', 'Painting', { place: 'Cedar Hall', sender: 'Front desk' }),
+      item('d', 'Wren swim'),
+    ]);
+    const stored = await storedVerdicts();
+    expect(stored.map((row) => [row.itemKey, row.reason]).sort()).toEqual([
+      ['key-a', null],
+      ['key-b', null],
+      ['key-c', 'a toddler art class'],
+      // A title is checked as a whole run: one of its words in the reason is not a copy.
+      ['key-d', 'a swim lesson for a toddler'],
+    ]);
+  });
+
   it("marks a teenager's item as teen with the child set and stores no reason", async () => {
     const { client } = scriptedClient(
       byText({ 'Juno practice': { verdict: 'kid', childName: 'Juno' } }),
