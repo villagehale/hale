@@ -13,7 +13,7 @@ import {
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { loadOpenSession } from '~/lib/channel/intake/session';
-import { lineStatusPauses } from '~/lib/channel/proactive/line-health';
+import { lineStatusKnown, lineStatusPauses, lineStatusToken } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
@@ -1299,6 +1299,13 @@ async function handleLinqLineHealth(
   line: { phoneNumber: string; status: string },
 ): Promise<Response> {
   const paused = lineStatusPauses(line.status);
+  if (!lineStatusKnown(line.status)) {
+    // Fail closed: a status word Hale cannot read pauses sends until a known one arrives.
+    console.warn(
+      { status: lineStatusToken(line.status) ?? 'invalid', outcome: 'line_status_unknown' },
+      'linq line health: unknown status word, unrequested sends held',
+    );
+  }
   const updatedAt = deps.now?.() ?? new Date();
   await deps.database
     .insert(schema.linqLineHealth)
