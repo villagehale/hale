@@ -94,6 +94,8 @@ export interface ProactiveReviewSummary {
   dropped: number;
   /** Batches whose drop the code refused because the parent asked for an item in them. */
   dropRefused: number;
+  /** Batches where a drop of an asked-for item stood: its own parent's new text was read. */
+  requestedDropped: number;
   /** Batches whose unbounded hold the code refused over an item the parent asked for. */
   holdRefused: number;
   /** Rows whose kind the outbound gate has no class for, dropped by name before review. */
@@ -221,6 +223,7 @@ export async function runProactiveReview(
     held: 0,
     dropped: 0,
     dropRefused: 0,
+    requestedDropped: 0,
     holdRefused: 0,
     unknownKind: 0,
     expired: 0,
@@ -411,7 +414,12 @@ async function audit(
 }
 
 /** The names a settled row can carry. The decider's own words are never one of them. */
-type SettledReason = 'unknown_kind' | 'expired' | 'already_sent' | 'already_asked';
+type SettledReason =
+  | 'unknown_kind'
+  | 'expired'
+  | 'already_sent'
+  | 'already_asked'
+  | 'requested_drop_after_parent_text';
 
 /**
  * Moves this family's candidate rows. The family is in the write, not only the caller.
@@ -680,9 +688,31 @@ async function reviewFamily(
 
   const ids = chosen.map((item) => item.id);
   if (decision.action === 'drop') {
-    // What the parent asked for is never dropped on the model's word (rule #3): the code
-    // refuses that part of the drop by name, and the decider sees it again.
-    const requested = chosen.filter((item) => item.parentRequested).map((item) => item.id);
+    // What the parent asked for is not dropped on the model's word alone (rule #3). One
+    // thing lets the drop stand: this review showed the decider a new text from the
+    // parent who asked, so "they said it is handled" was its to judge from their own
+    // words. That drop is kept under its own name. With no such text the code refuses
+    // that part of the drop by name, and the decider sees it again.
+    const asked = chosen.filter((item) => item.parentRequested);
+    const answered = asked
+      .filter((item) => textAuthors.includes(item.parentUserId))
+      .map((item) => item.id);
+    if (answered.length > 0) {
+      await mark(database, familyId, answered, {
+        status: 'dropped',
+        reason: 'requested_drop_after_parent_text',
+        decision: 'drop',
+        holdUntil: null,
+        now,
+      });
+      await audit(database, familyId, 'proactive_cadence_skipped', {
+        reason: 'requested_drop_after_parent_text',
+        itemIds: answered,
+        mode,
+      });
+      summary.requestedDropped += 1;
+    }
+    const requested = asked.map((item) => item.id).filter((id) => !answered.includes(id));
     if (requested.length > 0) {
       await mark(database, familyId, requested, {
         status: 'held',
@@ -698,7 +728,7 @@ async function reviewFamily(
       });
       summary.dropRefused += 1;
     }
-    const droppable = ids.filter((id) => !requested.includes(id));
+    const droppable = chosen.filter((item) => !item.parentRequested).map((item) => item.id);
     if (droppable.length === 0) return;
     await mark(database, familyId, droppable, {
       status: 'dropped',

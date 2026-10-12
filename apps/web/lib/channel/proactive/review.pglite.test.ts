@@ -426,6 +426,91 @@ describe('runProactiveReview', () => {
     expect(await audits('proactive_cadence_held')).toEqual([]);
   });
 
+  describe('a drop of something the parent asked for', () => {
+    const REQUESTED_DROP = 'requested_drop_after_parent_text';
+    const dropAll = (snapshot: FamilySnapshot): DeciderDecision => ({
+      reason: 'They said it is handled',
+      action: 'drop',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: null,
+      frequencyPreference: null,
+    });
+    const REFUSED = {
+      status: 'held',
+      reason: 'drop_refused_parent_requested',
+      decision: 'drop',
+      what: 'Indoor climbing by the river',
+    };
+
+    it('stands, under its own name, when this review read a new text from the parent who asked', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const asked = await enqueue('nudge:asked:w41', { parentRequested: true });
+      const other = await enqueue('nudge:weather:w41');
+      await parentText('all sorted, we booked it ourselves', HOUR_BEFORE);
+      const h = harness(dropAll);
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(h.snapshots[0]?.recentParentTexts).toEqual(['all sorted, we booked it ourselves']);
+      expect(summary).toMatchObject({ dropped: 1, requestedDropped: 1, dropRefused: 0, held: 0 });
+      expect(await candidate(asked)).toMatchObject({
+        status: 'dropped',
+        reason: REQUESTED_DROP,
+        decision: 'drop',
+        what: '',
+      });
+      expect(await candidate(other)).toMatchObject({
+        status: 'dropped',
+        reason: null,
+        decision: 'drop',
+      });
+      const skipped = await audits('proactive_cadence_skipped');
+      expect(skipped.map((row) => row.after)).toEqual([
+        { reason: REQUESTED_DROP, itemIds: [asked], mode: 'live' },
+      ]);
+      expect(await audits('proactive_cadence_held')).toEqual([]);
+    });
+
+    it('is still refused by name when the only new text is the other parent’s', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const coParentId = await addCoParent();
+      const asked = await enqueue('nudge:asked:w41', { parentRequested: true });
+      await parentText('all sorted, we booked it ourselves', HOUR_BEFORE, coParentId);
+      const h = harness(dropAll);
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(h.snapshots[0]?.recentParentTexts).toEqual([]);
+      expect(summary).toMatchObject({ dropped: 0, requestedDropped: 0, dropRefused: 1 });
+      expect(await candidate(asked)).toMatchObject(REFUSED);
+      expect(await audits('proactive_cadence_skipped')).toEqual([]);
+    });
+
+    it('is still refused by name when the parent’s text was read by an earlier review', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const asked = await enqueue('nudge:asked:w41', { parentRequested: true });
+      await parentText('all sorted, we booked it ourselves', HOUR_BEFORE);
+      const holds = harness((snapshot) => ({ ...dropAll(snapshot), action: 'hold' }));
+      await runProactiveReview(db.database, holds.deps, THURSDAY_EVENING);
+      expect(holds.snapshots[0]?.recentParentTexts).toHaveLength(1);
+      const h = harness(dropAll);
+
+      const summary = await runProactiveReview(
+        db.database,
+        h.deps,
+        new Date(THURSDAY_EVENING.getTime() + 24 * 60 * 60_000),
+      );
+
+      expect(h.snapshots[0]?.recentParentTexts).toEqual([]);
+      expect(summary).toMatchObject({ dropped: 0, requestedDropped: 0, dropRefused: 1 });
+      expect(await candidate(asked)).toMatchObject(REFUSED);
+      const held = await audits('proactive_cadence_held');
+      expect(held.map((row) => row.after)).toEqual([
+        { reason: 'drop_refused_parent_requested', itemIds: [asked], mode: 'live' },
+      ]);
+    });
+  });
+
   it('never holds past the moment an item stops being worth sending, and names the clamp', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const worthless = new Date('2026-10-10T16:00:00.000Z');
