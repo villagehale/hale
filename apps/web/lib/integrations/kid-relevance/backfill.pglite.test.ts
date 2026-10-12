@@ -7,6 +7,7 @@ import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/te
 import { structuredReply } from '~/lib/testing/structured-reply';
 import { revertKidRelevanceBackfill, runKidRelevanceBackfill } from './backfill';
 import { KID_VERDICT_TOOL, type KidSkillInput } from './skill-contract';
+import { untrackItem } from './untrack';
 
 /**
  * The one-off backfill (VIL-226 item 5, founder defaults D9/D10). Existing connector
@@ -20,6 +21,7 @@ import { KID_VERDICT_TOOL, type KidSkillInput } from './skill-contract';
 let db: TestDb;
 const INPUT_KEY = Buffer.alloc(32, 7).toString('base64');
 const NOW = new Date('2026-10-11T15:00:00.000Z');
+const NEXT_DAY = new Date('2026-10-12T15:00:00.000Z');
 const NEXT_WEEK = new Date('2026-10-18T15:00:00.000Z');
 const NO_DEADLINE = new Date('2099-01-01T00:00:00.000Z');
 
@@ -502,6 +504,7 @@ describe('runKidRelevanceBackfill', () => {
       eventsRestored: 3,
       remindersRescheduled: 4,
       verdictsCleared: 3,
+      skippedParentOwned: 0,
       skippedFamiliesPendingErasure: 0,
     });
 
@@ -568,6 +571,56 @@ describe('runKidRelevanceBackfill', () => {
     });
   });
 
+  it('a revert leaves dropped what the parent has since said is theirs, and restores the rest', async () => {
+    const ids = await seed();
+    await dryRunThenApply();
+    expect(
+      await untrackItem(db.database, {
+        familyId,
+        actorUserId: parentUserId,
+        target: { kind: 'family_event', id: ids.adultA },
+        now: NEXT_DAY,
+        kind: null,
+      }),
+    ).toMatchObject({ outcome: 'untracked', removedEvents: 0 });
+
+    const reverted = await revertKidRelevanceBackfill(db.database, { runId, now: NEXT_DAY });
+
+    expect(reverted).toEqual({
+      runId,
+      found: true,
+      eventsRestored: 2,
+      remindersRescheduled: 2,
+      verdictsCleared: 2,
+      skippedParentOwned: 1,
+      skippedFamiliesPendingErasure: 0,
+    });
+    const after = await state();
+    const event = (id: string) => after.events.find((row) => row.id === id);
+    const remindersOf = (id: string) =>
+      after.reminders
+        .filter((row) => row.eventRef === id)
+        .map((row) => `${row.status}/${row.suppressReason}`);
+    expect(event(ids.adultA)).toMatchObject({ deletedAt: NOW, title: '' });
+    expect(remindersOf(ids.adultA)).toEqual([
+      'cancelled/kid_relevance_backfill',
+      'cancelled/kid_relevance_backfill',
+    ]);
+    expect(after.verdicts.filter((row) => row.decidedBy === 'parent').map((row) => row.id)).toEqual(
+      [event(ids.adultA)?.kidVerdictId],
+    );
+    // The copy the parent never spoke about comes back.
+    expect(event(ids.adultB)).toMatchObject({ deletedAt: null, kidVerdictId: null });
+    expect(remindersOf(ids.adultB)).toEqual(['scheduled/null', 'scheduled/null']);
+    const restored = after.audit.filter(
+      (row) => row.actionTaken === 'kid_relevance_event_restored',
+    );
+    expect(restored.map((row) => row.targetId).sort()).toEqual([ids.adultB, ids.offer].sort());
+    expect(
+      restored.map((row) => (row.after as { skippedParentOwned?: number }).skippedParentOwned),
+    ).toEqual([1, 1]);
+  });
+
   it('a revert of an unknown run id changes nothing and says so', async () => {
     await seed();
     await dryRunThenApply();
@@ -583,6 +636,7 @@ describe('runKidRelevanceBackfill', () => {
       eventsRestored: 0,
       remindersRescheduled: 0,
       verdictsCleared: 0,
+      skippedParentOwned: 0,
       skippedFamiliesPendingErasure: 0,
     });
     expect(await state()).toEqual(before);
@@ -602,6 +656,7 @@ describe('runKidRelevanceBackfill', () => {
       eventsRestored: 0,
       remindersRescheduled: 0,
       verdictsCleared: 0,
+      skippedParentOwned: 0,
       skippedFamiliesPendingErasure: 1,
     });
     expect(await state()).toEqual(before);

@@ -329,6 +329,9 @@ export interface RevertCounts {
   eventsRestored: number;
   remindersRescheduled: number;
   verdictsCleared: number;
+  /** Dropped events the parent has since said are theirs (a parent's adult verdict): left
+   * dropped, their reminders left cancelled. */
+  skippedParentOwned: number;
   /** Families with an erasure scheduled: nothing of theirs is restored. */
   skippedFamiliesPendingErasure: number;
 }
@@ -337,11 +340,14 @@ export interface RevertCounts {
  * Undo one apply, found by its run id in the audit rows it wrote.
  *
  * Each family event that run dropped comes back live and unlinked, unless it has been
- * dropped again since (its `deleted_at` no longer matches the run's) or its family has an
- * erasure scheduled (read inside the restore's own transaction). Its reminders that
+ * dropped again since (its `deleted_at` no longer matches the run's), its family has an
+ * erasure scheduled, or the parent has since said it is theirs (its verdict is now a
+ * parent's `adult`; untrack does not re-stamp a copy that is already dropped) - each read
+ * inside the restore's own transaction, the last two counted by name. Its reminders that
  * run cancelled and that are still ahead are scheduled again. The model verdicts for the
  * restored items are deleted so the next judge asks again; a parent's own verdict stays.
- * One audit row per restored event (rule #6).
+ * One audit row per restored event (rule #6), carrying how many of its family's events
+ * were left dropped as the parent's own.
  *
  * A Gmail copy gets its title and place back from the offer it came from, which the apply
  * leaves as it was. Not restored: a calendar copy's title and place (the mirror's next pass
@@ -358,6 +364,7 @@ export async function revertKidRelevanceBackfill(
     eventsRestored: 0,
     remindersRescheduled: 0,
     verdictsCleared: 0,
+    skippedParentOwned: 0,
     skippedFamiliesPendingErasure: 0,
   };
   const audit = schema.auditLog;
@@ -410,7 +417,16 @@ export async function revertKidRelevanceBackfill(
       ...new Set(ofThisRun.map((row) => row.familyId)),
     ]);
     counts.skippedFamiliesPendingErasure = erasing.size;
-    const restore = ofThisRun.filter((row) => !erasing.has(row.familyId));
+    const restorable = ofThisRun.filter((row) => !erasing.has(row.familyId));
+    const parentOwned = await lockParentAdultVerdicts(
+      tx,
+      restorable.flatMap((row) => (row.kidVerdictId === null ? [] : [row.kidVerdictId])),
+    );
+    const isParentOwned = (row: (typeof restorable)[number]) =>
+      row.kidVerdictId !== null && parentOwned.has(row.kidVerdictId);
+    const skipped = restorable.filter(isParentOwned);
+    counts.skippedParentOwned = skipped.length;
+    const restore = restorable.filter((row) => !isParentOwned(row));
     if (restore.length === 0) return;
     const restoreIds = restore.map((row) => row.id);
 
@@ -472,6 +488,7 @@ export async function revertKidRelevanceBackfill(
         after: {
           runId: input.runId,
           remindersRescheduled: rescheduled.filter((r) => r.eventRef === row.id).length,
+          skippedParentOwned: skipped.filter((s) => s.familyId === row.familyId).length,
         },
         occurredAt: input.now,
       })),
@@ -502,6 +519,29 @@ async function lockFamiliesUnderErasure(
     .where(inArray(schema.families.id, [...familyIds]))
     .for('share');
   return new Set(rows.filter((row) => row.erasing).map((row) => row.id));
+}
+
+/**
+ * Which of these verdicts are a parent's own `adult`, read inside the transaction that
+ * restores. FOR SHARE holds the rows until it commits, so a parent's untrack cannot land
+ * between this read and the restore.
+ */
+async function lockParentAdultVerdicts(
+  tx: Pick<Database, 'select'>,
+  verdictIds: readonly string[],
+): Promise<Set<string>> {
+  if (verdictIds.length === 0) return new Set();
+  const table = schema.kidRelevanceVerdicts;
+  const rows = await tx
+    .select({ id: table.id, decidedBy: table.decidedBy, verdict: table.verdict })
+    .from(table)
+    .where(inArray(table.id, [...new Set(verdictIds)]))
+    .for('share');
+  return new Set(
+    rows
+      .filter((row) => row.decidedBy === 'parent' && row.verdict === 'adult')
+      .map((row) => row.id),
+  );
 }
 
 async function loadCandidates(
