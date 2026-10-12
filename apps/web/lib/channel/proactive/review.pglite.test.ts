@@ -1699,6 +1699,81 @@ describe('runProactiveReview', () => {
     expect(h.snapshots).toHaveLength(2);
   });
 
+  describe('a candidate past the moment it stops being worth sending', () => {
+    const HOUR = 60 * 60_000;
+
+    it('is dropped by name before the review, never offered, and a fresh one still is', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const fresh = await enqueue('nudge:weather:w41', {
+        worthlessAfter: new Date(THURSDAY_EVENING.getTime() + 24 * HOUR),
+      });
+      const stale = await enqueue('nudge:weather:w42', {
+        worthlessAfter: new Date(THURSDAY_EVENING.getTime() - HOUR),
+      });
+      const h = harness(sendAll);
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ expired: 1, sent: 1 });
+      expect(h.snapshots[0]?.candidates.map((c) => c.id)).toEqual([fresh]);
+      expect(await candidate(fresh)).toMatchObject({ status: 'sent' });
+      expect(await candidate(stale)).toMatchObject({
+        status: 'dropped',
+        reason: 'expired',
+        decision: null,
+        what: '',
+      });
+      const skipped = await audits('proactive_cadence_skipped');
+      expect(skipped.map((row) => row.after)).toEqual([
+        { reason: 'expired', itemId: stale, mode: 'live' },
+      ]);
+    });
+
+    it('drops by name a code hold that waits on a signal once it has expired', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const id = await enqueue('nudge:weather:w41', {
+        worthlessAfter: new Date(THURSDAY_EVENING.getTime() + 2 * HOUR),
+      });
+      const h = harness(sendAll, {
+        buildGate: () => ({ ...openGate(), watchConsentGranted: async () => false }),
+      });
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+      expect(await candidate(id)).toMatchObject({
+        status: 'held',
+        reason: 'no_watch_consent',
+        holdUntil: null,
+        what: 'Indoor climbing by the river',
+      });
+
+      const summary = await runProactiveReview(
+        db.database,
+        h.deps,
+        new Date(THURSDAY_EVENING.getTime() + 3 * HOUR),
+      );
+
+      expect(summary).toMatchObject({ expired: 1, decided: 0 });
+      expect(h.snapshots).toHaveLength(1);
+      expect(await candidate(id)).toMatchObject({ status: 'dropped', reason: 'expired', what: '' });
+    });
+
+    it('expires an item the parent asked for the same way, by name', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const id = await enqueue('nudge:weather:w41', {
+        parentRequested: true,
+        worthlessAfter: new Date(THURSDAY_EVENING.getTime() - HOUR),
+      });
+      const h = harness(sendAll);
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ expired: 1, decided: 0, sent: 0 });
+      expect(h.snapshots).toEqual([]);
+      expect(h.transport.sent).toEqual([]);
+      expect(await candidate(id)).toMatchObject({ status: 'dropped', reason: 'expired', what: '' });
+    });
+  });
+
   describe('the composed text on a candidate row', () => {
     const WHAT = 'Pip and Juno would love indoor climbing at Riverside Rocks';
 

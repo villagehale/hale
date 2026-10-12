@@ -97,6 +97,8 @@ export interface ProactiveReviewSummary {
   holdRefused: number;
   /** Rows whose kind the outbound gate has no class for, dropped by name before review. */
   unknownKind: number;
+  /** Rows already past their `worthlessAfter`, dropped by name before review. */
+  expired: number;
   /** Families with more actionable rows than `FAMILY_ROWS`: their newest wait for a later run. */
   familiesCut: number;
   /** Families with more holds still on their clock than `WAITING_ROWS`: their oldest unread. */
@@ -214,6 +216,7 @@ export async function runProactiveReview(
     dropRefused: 0,
     holdRefused: 0,
     unknownKind: 0,
+    expired: 0,
     familiesCut: 0,
     waitingCut: 0,
     skipped: 0,
@@ -310,6 +313,24 @@ async function loadOpenItems(
         mode,
       });
       summary.unknownKind += 1;
+      continue;
+    }
+    if (row.worthlessAfter !== null && row.worthlessAfter.getTime() < now.getTime()) {
+      // Past the moment it stops being worth sending: the model never sees it, so no
+      // decision can send it late, and the composed text goes with the row's settling.
+      await mark(database, familyId, [row.id], {
+        status: 'dropped',
+        reason: 'expired',
+        decision: null,
+        holdUntil: null,
+        now,
+      });
+      await audit(database, familyId, 'proactive_cadence_skipped', {
+        reason: 'expired',
+        itemId: row.id,
+        mode,
+      });
+      summary.expired += 1;
       continue;
     }
     items.push({
