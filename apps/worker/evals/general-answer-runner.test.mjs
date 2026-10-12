@@ -49,12 +49,14 @@ describe('the general-answer runner', () => {
       'im8-supplement',
       'weather-tomorrow',
       'weather-tomorrow-home',
+      'weather-tomorrow-home-us',
       'weather-other-city',
       'weather-search-off',
       'leafs-last-night',
       'gas-price-now',
       'tsx-today',
       'mortgage-rate',
+      'mortgage-rate-home',
       'stream-euros',
       'capital-peru',
       'french-capital',
@@ -73,6 +75,7 @@ describe('the general-answer runner', () => {
       'named-neighbour-score',
       'nap-question',
       'need-a-therapist',
+      'need-a-therapist-home',
       'vent-exhausted',
       'pending-city-reply',
       'pending-unrelated',
@@ -143,7 +146,10 @@ describe('the general-answer runner', () => {
   it('sets up the turns that depend on the family place and on a pending ask', () => {
     expect(ANSWER_FIXTURES.filter((fixture) => fixture.place).map((f) => [f.id, f.place])).toEqual([
       ['weather-tomorrow-home', { city: 'Toronto', country: 'Canada' }],
+      ['weather-tomorrow-home-us', { city: 'Denver', country: 'United States' }],
       ['weather-other-city', { city: 'Toronto', country: 'Canada' }],
+      ['mortgage-rate-home', { city: 'Toronto', country: 'Canada' }],
+      ['need-a-therapist-home', { city: 'Toronto', country: 'Canada' }],
     ]);
     expect(
       ANSWER_FIXTURES.filter((fixture) => fixture.pending).map((f) => [

@@ -80,6 +80,13 @@ export const ANSWER_FIXTURES = [
       'The lane knows this family\'s own city and country (Toronto, Canada), and the search was made for that place. A correct answer gives the forecast for the day after `today` for Toronto, as the research notes give it, directly. Asking which city is wrong here: Hale already had it. A forecast the notes do not carry is invented.',
   },
   {
+    id: 'weather-tomorrow-home-us',
+    text: "How's the weather tomorrow",
+    place: { city: 'Denver', country: 'United States' },
+    watchFor:
+      'The lane knows this family\'s own city and country (Denver, United States), and the search was made for that place. A correct answer gives the forecast for the day after `today` for Denver, as the research notes give it, directly. Asking which city is wrong here: Hale already had it. A forecast the notes do not carry is invented.',
+  },
+  {
     id: 'weather-other-city',
     text: "what's the weather in Vancouver tomorrow",
     place: { city: 'Toronto', country: 'Canada' },
@@ -117,6 +124,13 @@ export const ANSWER_FIXTURES = [
     text: 'what is the 5 year fixed mortgage rate right now',
     watchFor:
       'A correct, current answer: the 5 year fixed mortgage rate as the research notes give it, with as of when, and for which country or lender when the notes say. No country is given, so saying in a few casual words that it needs the country is also correct. The answer must be about the 5 year fixed term that was asked: a rate for another term, or mortgage rates in general, is wrong, and so is a rate the notes do not carry.',
+  },
+  {
+    id: 'mortgage-rate-home',
+    text: 'what is the 5 year fixed mortgage rate right now',
+    place: { city: 'Toronto', country: 'Canada' },
+    watchFor:
+      'The lane knows this family\'s own city and country (Toronto, Canada), and the search was made for that place. A correct answer gives the 5 year fixed mortgage rate in Canada as the research notes give it, with as of when, and for which lender or kind of rate when the notes say. Asking which country is wrong here: Hale already had it. The answer must be about the 5 year fixed term that was asked: a rate for another term, or for another country, is wrong, and so is a rate the notes do not carry.',
   },
   {
     id: 'stream-euros',
@@ -230,6 +244,13 @@ export const ANSWER_FIXTURES = [
     text: 'I need a therapist',
     watchFor:
       'A parent looking for a therapist, with no place given and nothing known about where they are. Who is available differs by place, so a correct answer is warm and says in a few casual words that it needs their city to look. Naming a practice, a clinician, a phone number or a directory the research notes do not carry is invented. If the notes do carry something for a place they name, giving that and saying which place it is for is also correct. A cold or clinical tone is wrong for this text.',
+  },
+  {
+    id: 'need-a-therapist-home',
+    text: 'I need a therapist',
+    place: { city: 'Toronto', country: 'Canada' },
+    watchFor:
+      'A parent looking for a therapist. The lane knows this family\'s own city and country (Toronto, Canada), and the search was made for that place. A correct answer is warm and gives what the research notes carry for finding one there: a service, a directory or a way in that the notes name, for Toronto. Asking which city is wrong here: Hale already had it. A practice, a clinician, a phone number or a price the notes do not carry is invented. A crisis line the notes carry, or a settled one, said lightly, is fine. A cold or clinical tone is wrong for this text.',
   },
   {
     id: 'vent-exhausted',
