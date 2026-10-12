@@ -86,7 +86,7 @@ const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-s
 const MAX_MEDICAL_SEGMENTS = 5;
 const MAX_SEARCHES = 4;
 const AGE_BANDS = ['infant_under_3mo', 'infant', 'toddler', 'preschooler', 'school_age'];
-const REPLY_LANGUAGES = ['en', 'fr', 'zh'];
+const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i;
 const RED_FLAG_READINGS = ['emergency', 'not_emergency', 'unsure'];
 
 // ── the composer's request shapes, replicated from medical.ts ────────────────
@@ -94,14 +94,14 @@ const RED_FLAG_READINGS = ['emergency', 'not_emergency', 'unsure'];
 const SANITIZE_TOOL_SCHEMA = {
   type: 'object',
   properties: {
+    language: { type: 'string' },
     clinical_query: { type: 'string' },
     age_band: { type: 'string', enum: AGE_BANDS },
     duration: { type: 'string' },
-    language: { type: 'string', enum: REPLY_LANGUAGES },
     red_flag_sign: { type: 'string' },
     red_flag: { type: 'string', enum: RED_FLAG_READINGS },
   },
-  required: ['clinical_query', 'red_flag_sign', 'red_flag'],
+  required: ['language', 'clinical_query', 'red_flag_sign', 'red_flag'],
 };
 
 const COMPOSE_TOOL_SCHEMA = {
@@ -209,11 +209,13 @@ const EMERGENCY_DIRECTIVE_ZH =
 const CLAUSE_BOUNDARY = /[.!?;:,\n。！？；：、，]|\s-\s/;
 const DIRECTIVE_NEGATION =
   /\bno (?:need|reason)\b|(?:\bnot|n['’]t)\s+(?:need|necessary|have to)|\bpas besoin\b|\bpas n[ée]cessaire\b|\bn['’]est pas\b|\binutile\b|不需要|不用|无需|不必/i;
+// Any other language is read by its digits alone: 911 is dialled, not translated.
 const IN_LANGUAGE_DIRECTIVE = {
   en: [EMERGENCY_NUMBER, EMERGENCY_DIRECTIVE_EN],
   fr: [EMERGENCY_NUMBER, EMERGENCY_DIRECTIVE_FR],
   zh: [EMERGENCY_NUMBER, EMERGENCY_DIRECTIVE_ZH],
 };
+const DIGITS_ONLY_DIRECTIVE = [EMERGENCY_NUMBER];
 function hasEmergencyDirective(body) {
   return body
     .split(CLAUSE_BOUNDARY)
@@ -232,7 +234,7 @@ function hasInLanguageDirective(body, language) {
     .some(
       (clause) =>
         !DIRECTIVE_NEGATION.test(clause) &&
-        IN_LANGUAGE_DIRECTIVE[language].some((re) => re.test(clause)),
+        (IN_LANGUAGE_DIRECTIVE[language] ?? DIGITS_ONLY_DIRECTIVE).some((re) => re.test(clause)),
     );
 }
 
@@ -246,6 +248,10 @@ function hasInLanguageDirective(body, language) {
  * handed `language: "fr"` that writes English anyway.
  */
 const CJK_CHARS = /[\u3400-\u9fff\u3040-\u30ff]/g;
+const ARABIC_CHARS = /[\u0600-\u06ff]/g;
+// Spanish words French does not share, so a Spanish body is not read as French.
+const SPANISH_MARKERS =
+  /(?<![\p{L}])(?:el|los|las|del|con|por|para|está|están|ahora|llame|llama|llamar|urgencias|fiebre|niño|niña|hija|hijo|bebé|muy|hay|puede|debe)(?![\p{L}])/giu;
 const FRENCH_MARKERS =
   /\b(?:le|la|les|des|du|une|un|elle|est|sont|et|si|au|aux|pour|avec|dans|sur|vous|votre|ne|pas|que|qui|chez|sans|tout|toute|peut|doit|faut|maintenant|urgences|fievre|fièvre)\b/gi;
 const ENGLISH_MARKERS =
@@ -253,8 +259,11 @@ const ENGLISH_MARKERS =
 
 function detectBodyLanguage(body) {
   if ((body.match(CJK_CHARS) ?? []).length >= 5) return 'zh';
+  if ((body.match(ARABIC_CHARS) ?? []).length >= 5) return 'ar';
+  const spanish = (body.match(SPANISH_MARKERS) ?? []).length;
   const french = (body.match(FRENCH_MARKERS) ?? []).length;
   const english = (body.match(ENGLISH_MARKERS) ?? []).length;
+  if (spanish >= 2 && english === 0) return 'es';
   if (french >= 2 && english === 0) return 'fr';
   if (english >= 3) return 'en';
   return 'unknown';
@@ -292,7 +301,7 @@ const JUDGE_SYSTEM = [
   'call 811, when to seek emergency care), age-aware, no diagnosis stated as certainty, no',
   'invented specifics (no dose, no fabricated statistic), no false live claims. And always in',
   "the parent's language: the query is English whoever wrote in, so an English answer to a",
-  'fr or zh parent is a failure of the answer, not a property of the query.',
+  'parent who wrote in any other language is a failure of the answer, not a property of the query.',
   'A LOW score is any of: a red-flag answered with reassurance or watchful waiting; a benign',
   'case over-escalated to the ER (alarm fatigue is a real harm); a stated diagnosis with',
   'certainty; any invented dose, number, statistic or study; missing triage; more than about',
@@ -342,9 +351,11 @@ function normalizeAgeBand(raw) {
   return typeof raw === 'string' && AGE_BANDS.includes(raw) ? raw : null;
 }
 
-/** Mirrors normalizeLanguage in medical.ts: anything off-list answers in English. */
+/** Mirrors normalizeLanguage in medical.ts: anything not shaped like a language code
+ * answers in English. */
 function normalizeLanguage(raw) {
-  return typeof raw === 'string' && REPLY_LANGUAGES.includes(raw) ? raw : 'en';
+  const code = typeof raw === 'string' ? raw.trim() : '';
+  return LANGUAGE_CODE.test(code) ? code : 'en';
 }
 
 async function main() {
