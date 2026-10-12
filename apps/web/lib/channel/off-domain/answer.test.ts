@@ -809,6 +809,24 @@ describe('scrubDirectIdentifiers', () => {
       'what is near [redacted]',
     ],
     ['an @handle', 'is @fernhollow_mum a real account', 'is [redacted] a real account'],
+    // The shapes a government or a health number is written in. All invented.
+    [
+      'nine digits in three groups',
+      'is 123-456-789 a real number',
+      'is [redacted] a real number',
+    ],
+    [
+      'nine digits grouped by spaces',
+      'is 123 456 789 a real number',
+      'is [redacted] a real number',
+    ],
+    [
+      'ten digits grouped four, three, three',
+      'does 1234-567-890 look like a health card',
+      'does [redacted] look like a health card',
+    ],
+    ['nine digits in a row', 'what is 123456789 for', 'what is [redacted] for'],
+    ['a longer run of digits', 'who issued 12345678901234', 'who issued [redacted]'],
   ])('takes out %s', (_label, text, scrubbed) => {
     expect(scrubDirectIdentifiers(text)).toBe(scrubbed);
   });
@@ -825,14 +843,23 @@ describe('scrubDirectIdentifiers', () => {
     'did the raptors win 112-104 last night',
     'what happened on 2026-10-11',
     'is the game @ 7 or 8',
+    'is 1,250,000 dollars normal for a house here',
+    'is a 450 000 dollar house cheap',
+    'how many people is 2 930 000',
+    'did they go 101-99-104 over the three games',
+    'what is 12345678 times 2',
+    'what is pi to 12 places, 3.141592653589',
+    'how old is someone born 1987 10 11',
   ])('leaves %j as it was', (text) => {
     expect(scrubDirectIdentifiers(text)).toBe(text);
   });
 
-  it('leaves a price written with its sign as it was', () => {
-    expect(scrubDirectIdentifiers('is $450 too much for a stroller')).toBe(
-      'is $450 too much for a stroller',
-    );
+  it.each([
+    'is $450 too much for a stroller',
+    'was the jackpot really $125 000 000',
+    'was the jackpot really $125000000',
+  ])('leaves a price written with its sign as it was: %j', (text) => {
+    expect(scrubDirectIdentifiers(text)).toBe(text);
   });
 });
 
