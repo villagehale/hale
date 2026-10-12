@@ -1840,12 +1840,91 @@ describe('links', () => {
     ]);
   });
 
+  /**
+   * A link needs no `https://` and no `www.` to be one: a phone makes `name.tld` tappable
+   * as it stands. So a token that ends in a top-level domain (top-level-domains/tlds.json,
+   * the public list) is a link, held to the same rule: its host is one this turn's search
+   * returned, or the reply is not sent.
+   */
+  it.each([
+    ['a bare host with a page under it', 'Confirm your number at free-prizes.com/claim first.'],
+    ['a bare shortener-style host', 'The schedule is at tinylnk.co/a1b2 today.'],
+    ['a bare host and nothing under it', 'It is all on euro-streams.tv tonight.'],
+    ['a bare subdomain the search did not return', 'It is on watch.tsn.ca tonight.'],
+    ['a bare host that only starts with the searched one', 'It is on tsn.ca.example.com now.'],
+    ['a bare host in capitals', 'It is all on EURO-STREAMS.TV tonight.'],
+    ['the host of an address to write to', 'Write to help@free-prizes.com to confirm.'],
+  ])('refuses %s, by name', async (_label, body) => {
+    lit();
+    const log = quiet();
+
+    expect(
+      await createGeneralAnswer(
+        scripted({
+          sanitize: WHERE,
+          search: searchFound(TSN, 'TSN carries it in Canada.'),
+          answer: { answer: body },
+        }),
+      ).compose('where can I stream the euros', family),
+    ).toEqual({ status: 'unavailable', reason: 'unsendable' });
+    expect(log.mock.calls).toEqual([
+      [
+        { reason: 'unsendable', detail: 'link_not_from_search' },
+        'off-domain answer: falling back to the fixed line',
+      ],
+    ]);
+  });
+
+  it.each([
+    ['the searched host written bare', 'TSN has it: tsn.ca'],
+    ['the searched host written bare, with a page', 'TSN has it: tsn.ca/soccer/euro'],
+    ['the searched host written bare, a sentence ending on it', 'It is on tsn.ca.'],
+    ['the searched host written bare in capitals', 'It is on TSN.CA tonight.'],
+    [
+      'a searched page whose last part is a file name',
+      'Here: https://www.tsn.ca/video/final.mov',
+    ],
+  ])('sends %s', async (_label, body) => {
+    lit();
+
+    expect(
+      await createGeneralAnswer(
+        scripted({
+          sanitize: WHERE,
+          search: searchFound(TSN, 'TSN carries it in Canada.'),
+          answer: { answer: body },
+        }),
+      ).compose('where can I stream the euros', family),
+    ).toEqual({ status: 'composed', reply: body, search: 'searched' });
+  });
+
+  /**
+   * The other direction, with no search behind the turn, where any link at all is
+   * refused: ordinary prose has dots in it and is not a link. A name that ends in
+   * something off the list, a time, a figure, initials, and a sentence that starts
+   * straight after a full stop.
+   */
+  it.each([
+    'Node.js is the usual pick for that.',
+    'It starts at 7 a.m. tomorrow, or 7.30 p.m. on Friday.',
+    'About 3.5 hours, give or take.',
+    'U.S. News ranks it first this year.',
+    'They won it in six.It was closer than that sounds.',
+    'It ended 4-2.Leafs in six, I think.',
+    'Honestly? No.Not worth it.',
+  ])('sends %j as written', async (body) => {
+    expect(
+      await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, family),
+    ).toEqual({ status: 'composed', reply: body, search: 'not_needed' });
+  });
+
   it('refuses any URL shape when no search ran', async () => {
     quiet();
     for (const body of [
       'Check https://espn.com for the full debate.',
       'See www.consumerlab.com - they reviewed it.',
       'It is at http://parks.ca today.',
+      'It is all on parks.ca today.',
     ]) {
       expect(
         await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, family),
