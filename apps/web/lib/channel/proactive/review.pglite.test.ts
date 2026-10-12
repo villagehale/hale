@@ -910,7 +910,7 @@ describe('runProactiveReview', () => {
     );
   });
 
-  async function parentText(body: string, at: Date, from = parentUserId): Promise<void> {
+  async function parentText(body: string | null, at: Date, from = parentUserId): Promise<void> {
     await db.database.insert(schema.channelMessages).values({
       familyId,
       parentUserId: from,
@@ -1326,6 +1326,21 @@ describe('runProactiveReview', () => {
       expect(read).not.toContain(`"${older}"`);
     }
     for (const shown of newest) expect(read).toContain(`"${shown}"`);
+  });
+
+  it('shows the decider the newest texts that still have a body, past any redacted ones', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const texts = Array.from({ length: RECENT_PARENT_TEXTS }, (_, i) => `parent text ${i}`);
+    const minute = (n: number) => new Date(THURSDAY_EVENING.getTime() - n * 60_000);
+    for (const [i, text] of texts.entries()) await parentText(text, minute(10 - i));
+    await parentText(null, minute(2));
+    await parentText(null, minute(1));
+    await enqueue('nudge:weather:w41');
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots[0]?.recentParentTexts).toEqual(texts);
   });
 
   it('reads no outbound body and no parent text from before the last look', async () => {

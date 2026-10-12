@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, desc, eq, gt, gte, inArray, isNull, lt, max, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, max, ne, sql } from 'drizzle-orm';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { familyHasTeenager } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
@@ -476,6 +476,7 @@ export async function loadFamilySnapshot(
           and(
             eq(schema.channelMessages.familyId, input.familyId),
             eq(schema.channelMessages.direction, 'in'),
+            isNotNull(schema.channelMessages.body),
             gte(schema.channelMessages.createdAt, since),
             lastReviewAt === null ? undefined : gt(schema.channelMessages.createdAt, lastReviewAt),
           ),
