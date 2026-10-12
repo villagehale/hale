@@ -1,0 +1,20 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "Mark Carney is the prime minister of Canada",
+        "from": "Mark Carney is the current prime minister of Canada."
+      },
+      {
+        "states": "He took office in March 2025 (14 March 2025)",
+        "from": "assumed office on 14 March 2025"
+      },
+      {
+        "states": "He is still in office as of this week",
+        "from": "The official site's home page lists his activity as recent as October 11, 2026."
+      }
+    ],
+    "answer": "Mark Carney. He's been PM since mid-March 2025, and the PM's site shows him still active this week, so he's still in the job."
+  },
+  "latencyMs": 1888
+}

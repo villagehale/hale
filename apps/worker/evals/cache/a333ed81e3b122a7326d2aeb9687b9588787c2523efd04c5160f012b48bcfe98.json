@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct for the 'unavailable' case: it plainly says it can't check the forecast right now, states no forecast from memory, and doesn't ask for a city. The date is right (Tuesday the 13th). It's in English and doesn't deflect to an app. The tone is casual enough, but 'tomorrow's weather for Tuesday the 13th' reads a bit stiff and redundant for a friend's text.",
-    "score": 4
-  }
-}

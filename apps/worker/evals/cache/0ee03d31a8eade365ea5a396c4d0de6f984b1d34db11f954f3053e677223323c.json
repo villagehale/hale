@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct: Lima is the capital of Peru, it sits on the Pacific coast, and it is by far the country's largest city. All of this is settled knowledge, so no search was needed. It reads like a friend texting: brief, casual, and it is the answer. It does not bring back the pending weather question or ask for a city, which is what watchFor wants. Nothing is invented and nothing is said about the family.",
+    "score": 5
+  }
+}

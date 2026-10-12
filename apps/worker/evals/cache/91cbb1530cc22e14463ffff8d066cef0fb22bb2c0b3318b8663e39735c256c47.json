@@ -1,0 +1,40 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "In soccer, Lionel Messi is the most common answer for GOAT, with Ronaldo, Pelé and Maradona as the main alternatives",
+        "from": "Sportda's 2026 ranking names Lionel Messi as the greatest; Live Score Desk says Messi is widely regarded as the greatest and lists Pelé, Maradona, Cristiano Ronaldo and Cruyff as the other main candidates; Overall, the results mostly point to Messi, with Ronaldo, Pelé and Maradona as the main alternatives"
+      },
+      {
+        "states": "Messi has eight Ballon d'Or awards",
+        "from": "Sportda's 2026 ranking cites his eight Ballon d'Or awards"
+      },
+      {
+        "states": "Messi has 672 goals for Barcelona",
+        "from": "Sportda's 2026 ranking cites 672 goals for Barcelona"
+      },
+      {
+        "states": "Messi won the 2022 World Cup",
+        "from": "Sportda's 2026 ranking cites the 2022 World Cup title"
+      },
+      {
+        "states": "Ronaldo is a close rival in fan votes",
+        "from": "vote-the-goat.com shows Cristiano Ronaldo first in its football ranking as of Oct 12, 2026; Its raw vote totals have Messi at 527.7K and Ronaldo at 527.1K"
+      },
+      {
+        "states": "In NFL, Tom Brady is the usual pick for GOAT, with Jerry Rice the main alternative",
+        "from": "CBS Sports' top-100 list, updated for the 2026 season, puts Tom Brady first and Jerry Rice second; Brady is the usual pick for NFL GOAT, with Jerry Rice the main alternative"
+      },
+      {
+        "states": "Brady has seven Super Bowl titles, five Super Bowl MVPs and three NFL MVPs",
+        "from": "Sports Media X cites seven Super Bowl titles, five Super Bowl MVPs and three NFL MVPs"
+      },
+      {
+        "states": "Brady himself named Jerry Rice the greatest",
+        "from": "He named Jerry Rice the greatest football player of all time (\"still the GOAT, without a doubt\"), in an AMC documentary about the 49ers"
+      }
+    ],
+    "answer": "Depends which football you mean! In soccer, most people pick Messi: eight Ballon d'Ors, 672 goals for Barcelona, and the 2022 World Cup. Ronaldo and Pelé are the main alternatives, and fan votes are still close between Messi and Ronaldo. In American football, it's usually Tom Brady, with seven Super Bowl rings and five Super Bowl MVPs. Jerry Rice is the other name people raise, and Brady himself says Rice is the GOAT. So which one are we arguing about?"
+  },
+  "latencyMs": 10220
+}

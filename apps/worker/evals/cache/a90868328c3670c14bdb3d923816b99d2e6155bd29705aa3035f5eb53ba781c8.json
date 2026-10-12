@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correctly asks for the missing location and states no invented practice, clinician, number or directory. It is brief and in the right language. However, the fixture calls for a warm reply, and this bare one-line question gives a parent who just said they need a therapist no warmth at all. It reads flat, closer to a form prompt than a friend texting back.",
-    "score": 3
-  }
-}

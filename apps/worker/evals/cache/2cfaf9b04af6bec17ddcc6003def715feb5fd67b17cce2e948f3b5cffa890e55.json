@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly asks for the city and states no forecast from memory, so it's correct. But the tone is assistant-ish: 'Happy to check!' and 'I'll get tomorrow's forecast for you' read like a service offer rather than a friend texting 'which city?'. That caps it below 4.",
+    "score": 3
+  }
+}
