@@ -309,6 +309,7 @@ describe('judgeKidRelevance', () => {
         Gymnastics: { verdict: 'kid', reason: 'a toddler class at Maple' },
         Painting: { verdict: 'kid', reason: 'a toddler art class' },
         'Wren swim': { verdict: 'kid', reason: 'a swim lesson for a toddler' },
+        Pottery: { verdict: 'kid', reason: 'a toddler art class' },
       }),
     );
     await judge(client, [
@@ -316,6 +317,7 @@ describe('judgeKidRelevance', () => {
       item('b', 'Gymnastics', { place: 'Maple Grove pool' }),
       item('c', 'Painting', { place: 'Cedar Hall', sender: 'Front desk' }),
       item('d', 'Wren swim'),
+      item('e', 'Pottery', { place: '12 A Street' }),
     ]);
     const stored = await storedVerdicts();
     expect(stored.map((row) => [row.itemKey, row.reason]).sort()).toEqual([
@@ -324,6 +326,8 @@ describe('judgeKidRelevance', () => {
       ['key-c', 'a toddler art class'],
       // A title is checked as a whole run: one of its words in the reason is not a copy.
       ['key-d', 'a swim lesson for a toddler'],
+      // One- and two-letter words of a place ("12", "A") name nothing.
+      ['key-e', 'a toddler art class'],
     ]);
   });
 

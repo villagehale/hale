@@ -61,7 +61,10 @@ export function repeatsAny(text: string, own: readonly (string | null)[]): boole
   });
 }
 
-/** True when `text` carries any one word of any of `own`. */
+/** Shorter words of a place or sender ("a", "at", "12") name nothing on their own. */
+const SHORTEST_NAMING_WORD = 3;
+
+/** True when `text` carries any one naming word of any of `own`. */
 export function sharesAnyWord(text: string, own: readonly (string | null)[]): boolean {
   const words = new Set(foldWords(text).split(' '));
   return own.some(
@@ -69,7 +72,7 @@ export function sharesAnyWord(text: string, own: readonly (string | null)[]): bo
       value !== null &&
       foldWords(value)
         .split(' ')
-        .some((word) => words.has(word)),
+        .some((word) => [...word].length >= SHORTEST_NAMING_WORD && words.has(word)),
   );
 }
 
