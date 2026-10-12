@@ -4,21 +4,22 @@
 // three phases: SANITIZE (general-answer-sanitize.md) takes the family out of the
 // question and judges whether a correct answer needs something current, SEARCH
 // (general-answer-search.md) is one streamed `web_search` turn on the de-identified
-// question, and COMPOSE (general-answer.md) writes the reply. The request shapes are
-// REPLICATED here rather than imported, for the reason the lane and medical evals
-// replicate: that module sits behind the web app's `~/` alias, which the tsx loader here
-// cannot resolve. The SKILL bodies and the model routing ARE imported live from
+// question, and COMPOSE (general-answer.md) writes the reply. The REQUESTS are production's
+// own: the three payloads, the two tool schemas, the readings and the identifier scrub
+// are loaded from apps/web/lib/channel/off-domain/answer-request.ts, which imports
+// nothing from behind the web app's `~/` alias so that this loader can read it. What the
+// lane does around them (the client seam, the gates) does sit behind `~/` and is
+// replicated below. The SKILL bodies and the model routing are imported live from
 // packages/agent, so a skill edit or a model.ts re-tiering re-keys the cache and shows up
 // here as a miss rather than as silence.
 //
 // The suite records with the search LIT, which is the lane as it works once
-// GENERAL_ANSWER_SEARCH_ENABLED is on. Two fixtures (`searchOff`) run it dark, which is
-// how it ships until then.
+// GENERAL_ANSWER_SEARCH_ENABLED is on. The `searchOff` fixtures run it dark, which is how
+// it ships until then.
 //
 // What is NOT tested here: the lane routing (run-inbound-lane-eval.mjs); the flag, the
-// named fallbacks, the link and health-line gates and the deterministic PII scrub under
-// the sanitizer (apps/web/lib/channel/off-domain/answer.test.ts). The scrub sits behind
-// `~/` and is not replicated, so the question this eval searches is the sanitizer's own.
+// named fallbacks, the link and health-line gates, and where the family's place and a
+// pending ask are read from (apps/web/lib/channel/off-domain/*.test.ts).
 //
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-general-answer-eval.mjs            # live, then caches
@@ -31,13 +32,17 @@
 // in that recorded turn, and scores one thing a pattern cannot: whether the reply is
 // right. JUDGE_MIN per fixture.
 //
-// One check is not about the reply at all: what the fixture marks `mustNotReachSearch`
-// must be gone from the de-identified question before it goes to the search (rule #1).
-// It lives beside the field, in general-answer-fixtures.mjs (`identityLeaks`).
+// Two checks are not about the reply at all. What the fixture marks
+// `mustNotReachSearch` must be gone from everything handed on to the search and the
+// compose (rule #1); it lives beside the field, in general-answer-fixtures.mjs
+// (`identityLeaks`). And a fixture that hands the sanitizer a pending ask says whether the
+// text completes it (`expectAnswersPending`), which is the sanitizer's own reading.
 //
-// CALIBRATION. Every run also puts one broken stand-in in front of the judge, on a
-// searched fixture: a confident wrong result and a "check the app". A judge that passes
-// it fails the suite. `--broken` prints that draw alone.
+// CALIBRATION. Every run also puts two stand-ins in front of the judge, on a searched
+// fixture. The broken one is a confident wrong result and a "check the app". The near
+// miss is the suite's own correct reply to that fixture with an assistant's sign-off
+// added. A judge that passes either fails the suite. `--broken` prints those two draws
+// alone.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,61 +70,18 @@ const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 const SANITIZE_SKILL_PATH = join(SKILLS, 'general-answer-sanitize.md');
 const SEARCH_SKILL_PATH = join(SKILLS, 'general-answer-search.md');
 const SKILL_PATH = join(SKILLS, 'general-answer.md');
+/** Production's own request shapes (see the header). */
+const ANSWER_REQUEST_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'off-domain',
+  'answer-request.ts',
+);
 
-// ── the lane's request shapes, replicated from answer.ts ────────────────────
-
-const SEARCH_READINGS = ['yes', 'no', 'unsure', 'missing_detail'];
-
-/** Mirrors `sanitizeJsonSchema` in answer.ts. */
-const SANITIZE_TOOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    language: { type: 'string' },
-    question: { type: 'string' },
-    missing_detail: { type: 'string' },
-    current_fact: { type: 'string' },
-    needs_search: { type: 'string', enum: SEARCH_READINGS },
-  },
-  required: ['language', 'question', 'missing_detail', 'current_fact', 'needs_search'],
-};
-
-/** Mirrors `answerJsonSchema` in answer.ts. */
-const ANSWER_TOOL_SCHEMA = {
-  type: 'object',
-  properties: { answer: { type: 'string' } },
-  required: ['answer'],
-};
-
-/** Mirrors `questionSanitizeUserMessage` — the only call the parent's words reach. */
-function questionSanitizeUserMessage(text) {
-  return JSON.stringify({ text });
-}
-
-/** Mirrors `searchUserMessage`. */
-function searchUserMessage({ question, today }) {
-  return JSON.stringify({ question, today });
-}
-
-/** Mirrors `liveAsTold`. What the compose and the judge are both told about the search:
- * the three ways a needed search did not happen are one value. */
-function liveOf(search) {
-  if (search === 'searched' || search === 'not_needed' || search === 'missing_detail') {
-    return search;
-  }
-  return 'unavailable';
-}
-
-/** Mirrors `generalAnswerUserMessage`. */
-function generalAnswerUserMessage({ question, language, today, search, notes, missing }) {
-  return JSON.stringify({
-    question,
-    language,
-    today,
-    live: liveOf(search),
-    ...(search === 'searched' ? { research_notes: notes } : {}),
-    ...(search === 'missing_detail' ? { missing } : {}),
-  });
-}
+// ── what the lane does around its requests, replicated from answer.ts ───────
 
 const MAX_SEARCHES = 2;
 const SANITIZE_MAX_TOKENS = 512;
@@ -132,11 +94,6 @@ const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/i;
 function normalizeLanguage(raw) {
   const code = typeof raw === 'string' ? raw.trim() : '';
   return LANGUAGE_CODE.test(code) ? code : 'en';
-}
-
-/** Mirrors `needsSearch`: only an explicit `no` skips the search. */
-function needsSearch(raw) {
-  return raw !== 'no';
 }
 
 /** Mirrors `readSearch`: an errored search block carries an object, not a list. */
@@ -283,6 +240,11 @@ const CALIBRATION_FIXTURE = 'leafs-last-night';
 const BROKEN_ANSWER =
   'The Leafs won 9-0 last night, no question about it. Check the app or https://example.com for the details, ok?';
 
+// The near miss: put after the suite's own reply to the calibration fixture, so the facts
+// are the right ones and the only thing wrong is that it reads like an assistant signing
+// off rather than a friend texting. A judge that passes it has no floor under tone.
+const NEAR_MISS_TAIL = 'Want me to check anything else for you? You can also check the app.';
+
 /** Nearest-rank percentile over whole-millisecond latencies. */
 function percentile(values, q) {
   if (values.length === 0) return null;
@@ -302,6 +264,7 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const request = await tsImport(ANSWER_REQUEST_SRC, import.meta.url);
   const sanitizeSkill = await agent.loadSkill(SANITIZE_SKILL_PATH);
   const searchSkill = await agent.loadSkill(SEARCH_SKILL_PATH);
   const skill = await agent.loadSkill(SKILL_PATH);
@@ -320,7 +283,7 @@ async function main() {
           vary: (fixture, { reference }) => {
             fixture.text += `\n[message ${reference}]`;
           },
-          visibleInput: (fixture) => questionSanitizeUserMessage(fixture.text),
+          visibleInput: (fixture) => request.questionSanitizeUserMessage(fixture.text),
         });
 
   console.log(
@@ -328,112 +291,105 @@ async function main() {
   );
   console.log(`corpus: ${fixtures.length} questions | today: ${EVAL_TODAY}\n`);
 
-  /** Phases 0 and 1 for one fixture: what the compose, and the judge, are handed. */
-  async function research(fixture) {
+  /**
+   * Phases 0 and 1 for one fixture, as answer.ts runs them: what the compose, and the
+   * judge, are handed. `fixture.place` is what the lane's place read would return for
+   * this family, `fixture.pending` the question Hale's last reply left open, and
+   * `fixture.research` a search result supplied by the fixture in place of a live one.
+   */
+  async function research(fixture, pending = fixture.pending ?? null) {
     const sanitize = await cachedToolCall({
       tag: `general-answer-sanitize:${fixture.id}`,
       model: sanitizeLane.model,
       lane: sanitizeLane,
       system: sanitizeSkill.instructions,
-      userMessage: questionSanitizeUserMessage(fixture.text),
+      userMessage: request.questionSanitizeUserMessage(fixture.text, pending),
       toolName: 'sanitize',
-      toolSchema: SANITIZE_TOOL_SCHEMA,
+      toolSchema: request.sanitizeJsonSchema,
       toolDescription: 'Return the de-identified question.',
       maxTokens: SANITIZE_MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
     });
-    const question = String(sanitize.value.question ?? '').trim();
+    // A text the sanitizer does not read as the reply to the pending ask is handed back
+    // to the lane, which routes it from the top: here, sanitized again on its own.
+    const answersPending =
+      pending === null ? null : request.answersPending(sanitize.value.answers_pending);
+    if (answersPending === false) {
+      const alone = await research(fixture, null);
+      return { ...alone, answersPending, latencyMs: alone.latencyMs + sanitize.latencyMs };
+    }
+
+    // The deterministic scrub under the sanitizer, before anything is handed on.
+    const question = request.scrubDirectIdentifiers(String(sanitize.value.question ?? '').trim());
+    const missing = request.scrubDirectIdentifiers(
+      String(sanitize.value.missing_detail ?? '').trim(),
+    );
     const language = normalizeLanguage(sanitize.value.language);
-    const missing = String(sanitize.value.missing_detail ?? '').trim();
+    const lit = !fixture.searchOff;
+    const searching = request.needsSearch(sanitize.value.needs_search);
+    const place =
+      lit && searching && request.turnsOnTheirPlace(sanitize.value.their_place)
+        ? (fixture.place ?? null)
+        : null;
 
     let search = 'not_needed';
     let notes = '';
+    let searchMessage = '';
     let searchLatencyMs = 0;
-    if (sanitize.value.needs_search === 'missing_detail') {
+    if (!searching) {
+      search = 'not_needed';
+    } else if (lit && sanitize.value.needs_search === 'missing_detail' && place === null) {
       search = 'missing_detail';
-    } else if (needsSearch(sanitize.value.needs_search)) {
-      if (fixture.searchOff) {
-        search = 'search_off';
+    } else if (!lit) {
+      search = 'search_off';
+    } else {
+      searchMessage = request.searchUserMessage({ question, today: EVAL_TODAY, place });
+      const found =
+        fixture.research !== undefined
+          ? { ...fixture.research, stopReason: 'end_turn', latencyMs: 0 }
+          : await cachedSearch({
+              tag: `general-answer-search:${fixture.id}`,
+              model: searchModel,
+              system: searchSkill.instructions,
+              userMessage: searchMessage,
+              cachedOnly,
+              getClient,
+              cost,
+            });
+      searchLatencyMs = found.latencyMs;
+      // Mirrors `liveSearch`: a turn that did not finish is not research either.
+      if (found.stopReason !== 'end_turn' || found.urls.length === 0 || found.notes === '') {
+        search = 'nothing_usable';
       } else {
-        const found = await cachedSearch({
-          tag: `general-answer-search:${fixture.id}`,
-          model: searchModel,
-          system: searchSkill.instructions,
-          userMessage: searchUserMessage({ question, today: EVAL_TODAY }),
-          cachedOnly,
-          getClient,
-          cost,
-        });
-        searchLatencyMs = found.latencyMs;
-        // Mirrors `liveSearch`: a turn that did not finish is not research either.
-        if (found.stopReason !== 'end_turn' || found.urls.length === 0 || found.notes === '') {
-          search = 'nothing_usable';
-        } else {
-          search = 'searched';
-          notes = found.notes;
-        }
+        search = 'searched';
+        notes = found.notes;
       }
     }
     return {
       question,
       language,
       reading: String(sanitize.value.needs_search),
+      theirPlace: String(sanitize.value.their_place),
+      answersPending,
+      placeSent: searchMessage !== '' && place !== null,
       search,
       notes,
       missing,
+      searchMessage,
       latencyMs: sanitize.latencyMs + searchLatencyMs,
     };
   }
 
-  /** What the judge reads: the parent's question, the reply, and the research. */
-  function judgeInput(fixture, found, answer) {
-    return {
-      question: fixture.text,
-      today: EVAL_TODAY,
-      answer,
-      live: liveOf(found.search),
-      research_notes: found.search === 'searched' ? found.notes : 'none',
-      watchFor: fixture.watchFor,
-    };
-  }
-
-  // ── calibration: the judge on the broken stand-in ──────────────────────────
-  const calibrationFixture = ANSWER_FIXTURES.find((fixture) => fixture.id === CALIBRATION_FIXTURE);
-  const calibrationFound = await research(calibrationFixture);
-  const calibration = await judge(
-    `calibration:${calibrationFixture.id}`,
-    judgeInput(calibrationFixture, calibrationFound, flatten(BROKEN_ANSWER)),
-  );
-  const calibrated = calibration.score < JUDGE_MIN;
-
-  if (broken) {
-    console.log('--- answers ---');
-    console.log(
-      `FAIL  ${calibrationFixture.id.padEnd(22)} [${calibrationFound.search}, judge ${calibration.score}] "${BROKEN_ANSWER}"`,
-    );
-    if (calibrated) console.log(`      · judge:${calibration.score} (${calibration.reason})`);
-    console.log('\n--- gate ---');
-    console.log(
-      `broken-mode calibration (the judge must fail the stand-in): ${calibrated ? 'PASS (exit 0)' : `FAIL (exit 1) - the judge scored it ${calibration.score}`}`,
-    );
-    process.exit(calibrated ? 0 : 1);
-  }
-
-  const results = [];
-  for (const fixture of fixtures) {
-    const found = await research(fixture);
-    // Rule #1, and not a check on the reply: what the fixture marks must be gone from
-    // what leaves the sanitize stage, BEFORE any of it goes to the search.
-    const failures = identityLeaks(fixture, `${found.question} ${found.missing}`);
-
+  /** Phase 2 for one fixture: the reply, flattened as production flattens it. */
+  async function compose(fixture, found) {
     const composed = await cachedToolCall({
       tag: `general-answer:${fixture.id}`,
       model,
       lane: subjectLane,
       system: skill.instructions,
-      userMessage: generalAnswerUserMessage({
+      userMessage: request.generalAnswerUserMessage({
         question: found.question,
         language: found.language,
         today: EVAL_TODAY,
@@ -442,14 +398,81 @@ async function main() {
         missing: found.missing,
       }),
       toolName: 'answer',
-      toolSchema: ANSWER_TOOL_SCHEMA,
+      toolSchema: request.answerJsonSchema,
       toolDescription: 'Return the one brief answer to this question.',
       maxTokens: MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
     });
-    const flattened = flatten(composed.value.answer);
+    return { flattened: flatten(composed.value.answer), latencyMs: composed.latencyMs };
+  }
+
+  /** What the judge reads: the parent's question, the reply, and the research. */
+  function judgeInput(fixture, found, answer) {
+    return {
+      question: fixture.text,
+      today: EVAL_TODAY,
+      answer,
+      live: request.liveAsTold(found.search),
+      research_notes: found.search === 'searched' ? found.notes : 'none',
+      watchFor: fixture.watchFor,
+    };
+  }
+
+  // ── calibration: the judge on the two stand-ins ────────────────────────────
+  const calibrationFixture = ANSWER_FIXTURES.find((fixture) => fixture.id === CALIBRATION_FIXTURE);
+  const calibrationFound = await research(calibrationFixture);
+  const calibration = await judge(
+    `calibration:${calibrationFixture.id}`,
+    judgeInput(calibrationFixture, calibrationFound, flatten(BROKEN_ANSWER)),
+  );
+  const nearMissAnswer = `${(await compose(calibrationFixture, calibrationFound)).flattened} ${NEAR_MISS_TAIL}`;
+  const nearMiss = await judge(
+    `calibration-near-miss:${calibrationFixture.id}`,
+    judgeInput(calibrationFixture, calibrationFound, nearMissAnswer),
+  );
+  const calibrated = calibration.score < JUDGE_MIN && nearMiss.score < JUDGE_MIN;
+
+  if (broken) {
+    console.log('--- answers ---');
+    for (const [id, answer, verdict] of [
+      [calibrationFixture.id, BROKEN_ANSWER, calibration],
+      [`${calibrationFixture.id}:near-miss`, nearMissAnswer, nearMiss],
+    ]) {
+      console.log(
+        `${verdict.score < JUDGE_MIN ? 'FAIL' : 'PASS'}  ${id.padEnd(28)} [${calibrationFound.search}, judge ${verdict.score}] "${answer}"`,
+      );
+      console.log(`      · judge:${verdict.score} (${verdict.reason})`);
+    }
+    console.log('\n--- gate ---');
+    console.log(
+      `broken-mode calibration (the judge must fail both stand-ins): ${calibrated ? 'PASS (exit 0)' : `FAIL (exit 1) - the judge scored the broken one ${calibration.score} and the near miss ${nearMiss.score}`}`,
+    );
+    process.exit(calibrated ? 0 : 1);
+  }
+
+  const results = [];
+  for (const fixture of fixtures) {
+    const found = await research(fixture);
+    // Rule #1, and not a check on the reply: what the fixture marks must be gone from
+    // everything handed on, BEFORE any of it goes to the search or the compose.
+    const failures = identityLeaks(
+      fixture,
+      `${found.question} ${found.missing} ${found.searchMessage}`,
+    );
+    // The sanitizer's own reading of a text beside a pending ask, not a check on the reply.
+    if (
+      fixture.expectAnswersPending !== undefined &&
+      found.answersPending !== fixture.expectAnswersPending
+    ) {
+      failures.push(
+        `pending_misread:read as ${found.answersPending ? 'the reply to the pending ask' : 'unrelated'}`,
+      );
+    }
+
+    const composed = await compose(fixture, found);
+    const flattened = composed.flattened;
 
     const verdict = await judge(fixture.id, judgeInput(fixture, found, flattened));
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
@@ -469,7 +492,7 @@ async function main() {
   console.log('--- de-identified questions ---');
   for (const r of results) {
     console.log(
-      `${r.fixture.id.padEnd(22)} needs_search=${r.found.reading.padEnd(14)} ${r.found.language}  "${r.found.question}"${r.found.search === 'missing_detail' ? `  missing: "${r.found.missing}"` : ''}`,
+      `${r.fixture.id.padEnd(22)} needs_search=${r.found.reading.padEnd(14)} their_place=${r.found.theirPlace.padEnd(10)} ${r.found.language}  "${r.found.question}"${r.found.search === 'missing_detail' ? `  missing: "${r.found.missing}"` : ''}${r.found.placeSent ? '  [searched with the family place]' : ''}${r.found.answersPending === null ? '' : `  [pending ask: ${r.found.answersPending ? 'completed' : 'unrelated'}]`}`,
     );
   }
 
@@ -483,6 +506,7 @@ async function main() {
   }
 
   const leaks = results.filter((r) => r.failures.some((f) => f.startsWith('identity_leak:')));
+  const misreads = results.filter((r) => r.failures.some((f) => f.startsWith('pending_misread:')));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
   const count = (search) => results.filter((r) => r.found.search === search).length;
   const latency = (rows) => {
@@ -493,11 +517,19 @@ async function main() {
   console.log('\n--- corpus metrics ---');
   console.log(`judge below ${JUDGE_MIN}:               ${judgeFails.length}  (0 required)`);
   console.log(
-    `identity reached the search:  ${leaks.length}  (0 required - a marked name left in the de-identified question)`,
+    `identity reached the search:  ${leaks.length}  (0 required - a marked name left in what was handed on)`,
+  );
+  console.log(
+    `pending ask misread:          ${misreads.length}  (0 required - a reply read as a new question, or the reverse)`,
   );
   console.log(
     `judge on the broken stand-in: ${calibration.score}  (below ${JUDGE_MIN} required - a judge that passes it grades nothing)`,
   );
+  console.log(
+    `judge on the near miss:       ${nearMiss.score}  (below ${JUDGE_MIN} required - a judge that passes it has no floor under tone)`,
+  );
+  if (nearMiss.score >= JUDGE_MIN)
+    console.log(`      · judge:${nearMiss.score} (${nearMiss.reason})`);
   console.log(
     `live search:                  ${count('searched')} searched, ${count('not_needed')} not needed, ${count('missing_detail')} missing a detail, ${count('search_off')} dark, ${count('nothing_usable')} nothing usable`,
   );
