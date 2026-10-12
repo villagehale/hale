@@ -170,10 +170,7 @@ jobs:
       - name: Reviewer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reviewer
 
-      - name: Week-summary eval (cached-only)
-        run: pnpm --filter @hale/worker eval:week-summary
-
-      - name: Agent suites eval (week-summary/discovery, cached-only)
+      - name: Agent suites eval (discovery, cached-only)
         run: pnpm --filter @hale/worker eval:agents
 
       - name: Village search intent eval (cached-only)

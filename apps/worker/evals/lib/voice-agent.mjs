@@ -1,6 +1,6 @@
 // One cached `runAgent` round-trip for a NO-TOOLS voice skill.
 //
-// The voice stages (reminder, week-summary, welcome) do not use the forced-tool-JSON
+// The voice stages (reminder, welcome) do not use the forced-tool-JSON
 // shape the structured agents use — they run the real `runAgent` loop with an empty tool
 // list and parse a JSON object out of the answer text, because that is what
 // apps/web/lib/loop/voice/compose.ts does. Driving that from an eval needs three things
