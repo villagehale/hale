@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason fits in one short clause: it names the item as a restaurant booking, and restaurant bookings are explicitly the parent's own, which supports the adult verdict. Calling it 'for the parent' is a fair reading of a table for two booked through Tablebook, not an invented fact.",
+    "score": 5
+  }
+}

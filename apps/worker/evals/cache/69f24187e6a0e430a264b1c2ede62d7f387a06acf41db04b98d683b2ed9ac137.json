@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as an injected order rather than real content, and it is one sentence. However, it only argues against `kid`. Its phrase \"not about the children\" leans toward `adult` without explaining why the parent's side is equally unsettled, so it does not fully support `unsure`.",
+    "score": 4
+  }
+}

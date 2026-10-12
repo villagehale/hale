@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It correctly calls the item a bare errands block that names no child, which is exactly what leaves it open both ways and supports unsure. It adds no unsupported facts.",
+    "score": 5
+  }
+}

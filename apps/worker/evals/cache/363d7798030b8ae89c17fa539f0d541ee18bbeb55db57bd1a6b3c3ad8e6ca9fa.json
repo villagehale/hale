@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is accurate, a single sentence, and supports the given verdict: the item is a lodging booking that names both children, and the trip rule makes that a kid item. Its phrasing is a little redundant ('family room booking... so it is a family trip') but still plain.",
+    "score": 5
+  }
+}

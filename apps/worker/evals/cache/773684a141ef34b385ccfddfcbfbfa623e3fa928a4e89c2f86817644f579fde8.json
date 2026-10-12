@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly reads 'Réunion' as a bare meeting with no child's name and no activity word. A meeting fits a work slot or a daycare/parent meeting for a 30-month-old equally well. That leads straight to the unsure verdict in one plain clause with no invented facts.",
+    "score": 5
+  }
+}

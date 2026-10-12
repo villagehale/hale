@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one clause that gets it right: the item is a lodge booking that names both children, and the trip rule makes that a family trip, so `kid` follows. The ending \"for the children\" overstates slightly, since the room is also for 2 adults, though the trip rule supports it.",
+    "score": 5
+  }
+}

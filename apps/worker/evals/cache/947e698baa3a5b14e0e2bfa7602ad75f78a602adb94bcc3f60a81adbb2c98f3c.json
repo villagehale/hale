@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is accurate and well grounded. It says the item is a hotel booking that names neither child and is not plainly a family package or a work trip. Under the trip rule, a booking alone does not say who is going, so the item is unsure, and the reason supports that verdict. It is one sentence and invents nothing.",
+    "score": 5
+  }
+}

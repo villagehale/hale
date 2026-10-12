@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a short plain clause that says what the item is: a work 1:1. It also says why the item is the parent's own: the surname marks Mia Chen as an adult rather than the 72-month-old child Mia. That matches the adult verdict and adds no unsupported facts.",
+    "score": 5
+  }
+}

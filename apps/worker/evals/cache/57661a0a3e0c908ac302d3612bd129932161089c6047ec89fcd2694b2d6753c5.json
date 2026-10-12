@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is Chinese for \"company quarterly meeting\", and the classifier translated it correctly. Work meetings are the parent's own under the rules, so the reason states what the item is and why that gives adult, in one short plain clause that matches the verdict. It invents nothing.",
+    "score": 5
+  }
+}

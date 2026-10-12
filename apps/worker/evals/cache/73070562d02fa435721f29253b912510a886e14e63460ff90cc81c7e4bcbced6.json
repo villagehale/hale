@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that says what the item is (a music class) and why it is kid (it names Theo). 50 months is about four years, so the age is supported, and the reason agrees with the kid verdict.",
+    "score": 5
+  }
+}

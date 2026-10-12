@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason supports kid: Parent and Tot Swim is a toddler class that matches a known activity, and the reason says why. It is one sentence. But it calls the item a registration, when the text is only a 'spots left' notice from the centre, so it slightly misstates what the item is.",
+    "score": 4
+  }
+}

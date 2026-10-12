@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason correctly identifies the item as a shower for another adult, which the rules list as adult, and that matches the given verdict. Calling Dana an adult is a fair reading, since baby showers are held for expectant parents. The reason is one plain clause with no unsupported facts.",
+    "score": 5
+  }
+}

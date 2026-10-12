@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short plain clause. It correctly identifies a daily standup as the parent's own work meeting, which the rules list as adult. It supports the given verdict and invents nothing.",
+    "score": 5
+  }
+}

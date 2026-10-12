@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It names what the item is, a car service reminder, and says why that makes it adult: it is the parent's own errand with nothing for the children. It invents no facts and matches the verdict. Calling it a 'booking' is slightly loose, since the email is a service-due reminder.",
+    "score": 5
+  }
+}

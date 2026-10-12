@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names what the item is, a library hold for an adult novel. It ties that to the adult verdict as the parent's own book, which matches the rule on adult library holds. It is one short clause and invents no facts, so it fully supports the verdict given.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It says what the item is: a registration for a swim class made for preschoolers. That rightly makes it a kid item even though no child is named. It invents no facts, and it supports the kid verdict.",
+    "score": 5
+  }
+}

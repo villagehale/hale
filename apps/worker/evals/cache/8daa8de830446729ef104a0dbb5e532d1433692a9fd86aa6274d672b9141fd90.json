@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a dentist appointment and ties it to the adult verdict in one clause, matching the rule that lists the parent's own dentist as adult. Its 'why' is thin, though: the absence of a child's name does not by itself rule out a dentist visit for a 30-month-old.",
+    "score": 4
+  }
+}

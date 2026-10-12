@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It names the item as a date night at a restaurant, which the rules list as the parent's own. That leads straight to the adult verdict, and it adds no unsupported facts.",
+    "score": 5
+  }
+}

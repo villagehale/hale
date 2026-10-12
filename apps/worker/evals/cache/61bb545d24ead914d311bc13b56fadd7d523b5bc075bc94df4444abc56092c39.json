@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a work standup, which the rules list as the parent's own, so it supports the adult verdict. It is one short plain clause that says what the item is and why, with no invented facts.",
+    "score": 5
+  }
+}

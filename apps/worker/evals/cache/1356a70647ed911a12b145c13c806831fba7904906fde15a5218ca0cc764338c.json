@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a physio session for a shoulder, which the rules list as the parent's own appointment, and neither an 18-month-old nor a 4-year-old fits it. The classifier's reason says this in one short plain clause, names what the item is, explains why that makes it adult, and adds no unsupported facts.",
+    "score": 5
+  }
+}

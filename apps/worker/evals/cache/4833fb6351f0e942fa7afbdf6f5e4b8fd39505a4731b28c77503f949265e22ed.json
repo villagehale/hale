@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls 'Hold' a bare time block with no activity, child name or hint, so it could fit either side. That matches the unsure verdict. It is one clear clause, though slightly wordy.",
+    "score": 5
+  }
+}

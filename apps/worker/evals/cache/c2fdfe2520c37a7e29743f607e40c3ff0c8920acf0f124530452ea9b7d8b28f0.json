@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause. It names what the item is, a library hold for an adult novel, which the text supports ('a novel for grown-ups'). It ties that to the adult verdict, matching the rule that an adult library hold is the parent's own. It adds no unsupported facts.",
+    "score": 5
+  }
+}

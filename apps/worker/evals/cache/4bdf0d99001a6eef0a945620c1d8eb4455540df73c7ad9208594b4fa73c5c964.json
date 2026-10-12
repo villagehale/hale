@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short, plain clause that matches the item. It names the kind of thing (a checkup) and ties it to Wren, one of the children. A child's checkup is a listed kid category, so it supports the given verdict, and it adds no unsupported facts.",
+    "score": 5
+  }
+}

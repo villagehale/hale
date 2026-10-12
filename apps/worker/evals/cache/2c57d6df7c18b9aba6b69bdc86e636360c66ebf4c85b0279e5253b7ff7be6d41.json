@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the unsure verdict and invents nothing. The item is a generic clinic appointment reminder that names no patient, so it could be Wren's checkup or the parent's own visit. The reason says what the item is and why it stays open, in one plain clause.",
+    "score": 5
+  }
+}

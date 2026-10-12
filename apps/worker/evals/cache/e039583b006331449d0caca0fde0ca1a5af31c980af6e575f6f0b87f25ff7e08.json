@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the adult verdict. It names the item as a work standup, which the rules list as the parent's own, and it is one short clause that adds no unsupported facts.",
+    "score": 5
+  }
+}

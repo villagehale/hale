@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls 'Hold' a bare time block with no activity, name or detail, and that is exactly what makes the item open both ways and supports unsure. It is one plain clause and invents nothing. It states only that the item could be either, without naming that nothing in children, activityTitles or notMineHints settles it, but that is still adequate.",
+    "score": 5
+  }
+}

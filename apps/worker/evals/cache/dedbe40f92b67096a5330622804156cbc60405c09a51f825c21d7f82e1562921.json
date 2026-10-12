@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a flight check-in, notes that it names no child and no family booking, and concludes it could be either the family's trip or the parent's own. That fits the trip rule and supports the unsure verdict in one plain clause with no invented facts.",
+    "score": 5
+  }
+}

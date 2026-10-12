@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a daycare pickup, a childcare arrangement, which the rules make a kid item even when no child is named, and that matches the given verdict. It is one plain clause, invents nothing, and does not just copy the title back.",
+    "score": 5
+  }
+}

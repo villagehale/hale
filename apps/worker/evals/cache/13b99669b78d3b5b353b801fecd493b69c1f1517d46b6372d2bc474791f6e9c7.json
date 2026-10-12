@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly reads 'Réunion' as a bare meeting with no child, activity or hint to settle it. That fits a work meeting and a daycare meeting for a 30-month-old equally, so the reason in one plain sentence supports unsure.",
+    "score": 5
+  }
+}

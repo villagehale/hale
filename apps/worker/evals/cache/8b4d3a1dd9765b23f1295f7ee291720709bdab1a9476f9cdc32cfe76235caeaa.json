@@ -1,0 +1,153 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a daily standup is the parent's own work meeting",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i1",
+        "reason": "a parent-and-tot swim that names Wren, an 18-month-old, so a kid activity",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i2",
+        "reason": "a 1:1 with a colleague named Castillo, a work meeting for the parent",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i3",
+        "reason": "a dental cleaning is the parent's own dentist visit",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i4",
+        "reason": "an 18-month checkup that names Wren, a checkup for one of the children",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i5",
+        "reason": "physio for a shoulder is the parent's own health appointment",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i6",
+        "reason": "a library storytime is a kid activity, though it names no child and could be read as an adult's program",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i7",
+        "reason": "a Q4 planning offsite is the parent's own work event",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i8",
+        "reason": "a music class that names Theo, a child of about four",
+        "verdict": "kid",
+        "childName": "Theo"
+      },
+      {
+        "ref": "i9",
+        "reason": "a date night at a restaurant is the parent's own social plan",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i10",
+        "reason": "a daycare pickup is care for a child, and the text does not say which child",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i11",
+        "reason": "a 4th birthday party for another child that the family's kids would attend",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i12",
+        "reason": "a bare 'Hold' with no detail, so it could be about a child or the parent",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i13",
+        "reason": "an initial alone gives no clue whether it is a child's or an adult's item",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i14",
+        "reason": "a spin class at a cycle studio is the parent's own fitness",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i15",
+        "reason": "a mortgage renewal call is the parent's own money matter",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i16",
+        "reason": "a baby shower for another adult is the parent's own social event",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i17",
+        "reason": "a bare 'Busy' block with no detail, so it could be the child's or the parent's",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i18",
+        "reason": "a hotel reservation that names no child and no family package, so it could be a family trip or the parent's own",
+        "verdict": "unsure",
+        "childName": null
+      },
+      {
+        "ref": "i19",
+        "reason": "a table for two is a restaurant booking for the parent",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i20",
+        "reason": "a registration for Preschool Swim Level 1, a class made for preschoolers, so a kid activity",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i21",
+        "reason": "a men's Bible study is a faith study group for adults",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i22",
+        "reason": "baby rhyme time spaces are a program made for babies, so a kid activity",
+        "verdict": "kid",
+        "childName": null
+      },
+      {
+        "ref": "i23",
+        "reason": "a flight check-in names no child and no family package, so it could be the family's trip or the parent's own",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 5060,
+  "inputTokens": 939,
+  "outputTokens": 1203
+}

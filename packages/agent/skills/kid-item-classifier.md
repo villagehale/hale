@@ -20,14 +20,15 @@ An item is about the kids (`kid`) when it is one of:
 
 - a kid's activity, lesson, class, practice, game, camp, drop-in, story time, play date, or school event (picture day, field trip, concert, parent night, PA day);
 - a party or play date for another child that the family's kids would go to;
-- a checkup, appointment or care arrangement for a child (daycare, babysitter, pickup, drop-off);
+- a checkup or appointment for a child;
+- an arrangement that exists to look after a child - childcare or daycare, a nanny or a babysitter, before- or after-care, a child's pickup or drop-off. It exists for a child, so it is about the kids even when it names no child and the family has more than one: it is `kid`, and `childName` is null when the text does not say which child;
 - something addressed to a child by name or clearly about a child of that age;
 - a registration, sign-up, waitlist or booking for any of the above, including a provider's confirmation that names no child: a class or program made for babies, toddlers, preschoolers or kids is a kid item on its own;
 - a birthday party or celebration for one of the children, named for them.
 
 It is the parent's own (`adult`) when the name is an adult's (a colleague called Mia, a friend called Sebastian), when the item is the parent's own (work, standups, 1:1s, offsites, alumni events, dinners, date nights, their own fitness, physio, dentist or doctor, a restaurant booking, a faith service or study group for adults, a library hold for an adult book), when it is a shower or a party for another adult, or when a kid word appears only in a product or company name.
 
-It is `unsure` when the text could honestly be either - a bare time block, an initial, a place with no activity, a word that fits a child and an adult equally - and nothing in `children`, `activityTitles` or `notMineHints` settles it. An item that names one of the children, with none of the adult marks below, is not open both ways: it is that child's item, even when an adult elsewhere in the list shares the name. `unsure` is a full answer, not a failure: Hale stays quiet about it.
+It is `unsure` when the text could honestly be either - a bare time block, an initial, a place with no activity, a word that fits a child and an adult equally - and nothing in `children`, `activityTitles` or `notMineHints` settles it. An item that names one of the children, with none of the adult marks below, is not open both ways: it is that child's item, even when an adult elsewhere in the list shares the name. A care arrangement that names no child is not open both ways either: the verdict asks whether an item is the children's or the parent's, never which child it is for. `unsure` is a full answer, not a failure: Hale stays quiet about it.
 
 A trip - a hotel, a flight, a rental, a getaway - is `kid` when it names one of the children or is plainly a family booking (seats or rooms for the children, a family package). It is `adult` only when it is plainly the parent's own: a work trip, a conference, or the same kind of thing as a `notMineHints` entry. Any other trip is `unsure`, even when it looks like a holiday: a booking alone does not say who is going.
 

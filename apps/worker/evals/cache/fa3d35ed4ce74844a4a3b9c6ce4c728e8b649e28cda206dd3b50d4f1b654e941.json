@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the trip rule well: this is a flight booking that names no child, is not marked as a family booking, and gives no sign of work or a notMineHints match. Nothing settles who is travelling, so unsure is the right outcome, and the reason argues for it in one plain clause without adding unsupported facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that correctly calls the item a bare 'Call' with no name or activity, so it fits a child or the parent equally, which is what the unsure verdict needs; it adds no unsupported facts.",
+    "score": 5
+  }
+}

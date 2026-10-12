@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is only the initial \"J.\", which matches neither Wren nor Theo, and nothing in activityTitles or notMineHints settles it. The classifier's reason calls it a bare initial with nothing to place it either way, which is exactly what makes it unsure. It is one plain clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

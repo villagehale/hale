@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a household chat message arranging who takes Wren, the 18-month-old, to swim on Saturday. That is a named child's activity and a drop-off, which supports kid. The classifier's reason says so in one short clause with no invented facts, though it names Wren twice.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the adult verdict in one short plain clause. It says what the item is, a mortgage renewal call, and why it is adult: it is the parent's own financial matter. It adds no facts the item does not support.",
+    "score": 5
+  }
+}

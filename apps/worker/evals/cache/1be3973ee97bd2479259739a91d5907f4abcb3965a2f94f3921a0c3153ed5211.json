@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause. It names what the item is, a work standup, and why that makes it adult: standups are the parent's own work. That matches the rules and invents no facts.",
+    "score": 5
+  }
+}

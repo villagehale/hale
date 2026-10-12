@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the adult verdict. It names what the item is (a daily work standup) and why it is adult (a standup is the parent's own work). That matches the rules, which list standups as adult. It is one short plain clause and adds no unsupported facts.",
+    "score": 5
+  }
+}

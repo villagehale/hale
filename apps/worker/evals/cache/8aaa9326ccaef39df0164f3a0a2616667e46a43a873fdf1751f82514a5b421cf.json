@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that names the item as a 1:1 work meeting with a colleague surnamed Castillo, which is why the shared name Wren is an adult and the item is the parent's own. It matches the adult verdict and adds no unsupported facts, since the item text itself shows the surname, the 1:1 and the design role.",
+    "score": 5
+  }
+}

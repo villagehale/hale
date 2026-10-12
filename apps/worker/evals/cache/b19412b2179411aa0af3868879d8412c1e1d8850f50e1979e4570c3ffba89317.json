@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one plain clause that names the item as a dentist visit and ties the missing child name to the adult verdict, so it supports the verdict given. It is weakened by treating 'no child named' as proof it is the parent's own, without saying why a dentist visit for 30-month-old Lina is ruled out.",
+    "score": 4
+  }
+}

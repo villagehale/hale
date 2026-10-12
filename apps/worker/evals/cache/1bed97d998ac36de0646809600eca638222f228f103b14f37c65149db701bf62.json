@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Physio for a shoulder is listed in the rules as the parent's own appointment, so the item supports adult. The classifier's reason is one plain clause that says what the item is and why it leads to that verdict, and it adds no unsupported facts.",
+    "score": 5
+  }
+}

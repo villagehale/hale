@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is, a flight booking, and why it is unsure: no child is named and it is not plainly the parent's own. That matches the trip rule and adds no invented facts. It is one short plain clause, so it earns full marks.",
+    "score": 5
+  }
+}

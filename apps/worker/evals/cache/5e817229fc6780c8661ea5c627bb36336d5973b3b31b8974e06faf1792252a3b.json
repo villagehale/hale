@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a flight check-in, notes that no child or family booking is named, and says this leaves it open between the family and the parent. That matches the trip rule for unsure and invents nothing, in one plain clause.",
+    "score": 5
+  }
+}

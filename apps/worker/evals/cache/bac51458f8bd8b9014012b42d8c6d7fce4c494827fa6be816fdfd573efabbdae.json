@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel booking confirmation, which matches the notMineHints entry 'a hotel stay', and no child is named, so the rules make it adult. The classifier says exactly this in one plain clause, and it supports the verdict without inventing anything.",
+    "score": 5
+  }
+}

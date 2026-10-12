@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason correctly calls the item a bare time block with no activity, name or other detail. That is exactly why it cannot be told whether it is the kids' or the parent's, so it supports the unsure verdict. It is one plain clause and invents no facts.",
+    "score": 5
+  }
+}
