@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import { isStage } from '~/lib/testing/structured-reply';
 import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from './copy';
 import {
   createMedicalComposer,
@@ -38,9 +39,9 @@ function systemText(system: Seen['system']): string {
 }
 
 const sanitizeResult = (input: unknown) => ({
-  content: [{ type: 'tool_use', name: 'sanitize', input }],
+  content: [{ type: 'text', text: JSON.stringify(input) }],
   usage: { input_tokens: 5, output_tokens: 5 },
-  stop_reason: 'tool_use',
+  stop_reason: 'end_turn',
 });
 
 const groundResult = (nResults: number) => ({
@@ -66,12 +67,16 @@ const groundResult = (nResults: number) => ({
 });
 
 const composeResult = (input: unknown) => ({
-  content: [{ type: 'tool_use', name: 'medical_answer', input }],
+  content: [{ type: 'text', text: JSON.stringify(input) }],
   usage: { input_tokens: 5, output_tokens: 5 },
-  stop_reason: 'tool_use',
+  stop_reason: 'end_turn',
 });
 
-const OK_SANITIZE = { clinical_query: 'fever 39C 3 days toddler', age_band: 'toddler', duration: '3 days' };
+const OK_SANITIZE = {
+  clinical_query: 'fever 39C 3 days toddler',
+  age_band: 'toddler',
+  duration: '3 days',
+};
 const OK_COMPOSE = {
   answer:
     'A fever this high for a few days at this age is most often a viral illness, and fluids, rest and comfort usually carry them through it.',
@@ -90,13 +95,12 @@ function makeClient(
       messages: {
         // biome-ignore lint/suspicious/noExplicitAny: a fake driving the request mechanics
         async create(req: any) {
-          const isSanitize = req.tools?.[0]?.name === 'sanitize';
-          const isCompose = req.tools?.[0]?.name === 'medical_answer';
-          const isGround =
-            Array.isArray(req.tools) && req.tools[0]?.type === 'web_search_20250305';
+          const isSanitize = isStage(req, 'sanitize', 'clinical_query');
+          const isCompose = isStage(req, 'medical_answer', 'triage');
+          const isGround = Array.isArray(req.tools) && req.tools[0]?.type === 'web_search_20250305';
           seen.push({
             system: req.system,
-            toolChoice: req.tools?.[0]?.name,
+            toolChoice: isSanitize ? 'sanitize' : isCompose ? 'medical_answer' : undefined,
             tools: req.tools,
             userMessage: req.messages?.[0]?.content,
           });
@@ -272,6 +276,12 @@ describe('detectRedFlag', () => {
     expect(detectRedFlag('unresponsive and hard to wake', null)).toBe(true);
     expect(detectRedFlag('fever with non-blanching purple spot rash on legs', null)).toBe(true);
     expect(detectRedFlag('purple spots that do not fade when pressed', null)).toBe(true);
+    // The sanitizer's paraphrase on Sonnet 5.5 (2026-10-11 re-record): the same sign,
+    // said with "blanch" instead of "fade".
+    expect(
+      detectRedFlag('fever with purple spots rash on legs that do not blanch when pressed', null),
+    ).toBe(true);
+    expect(detectRedFlag("spots that don't blanch", null)).toBe(true);
     expect(detectRedFlag('face and lips are swelling, anaphylaxis', null)).toBe(true);
     expect(detectRedFlag('sunken eyes and no wet diaper in 12 hours', null)).toBe(true);
     // stiff neck is a red flag only alongside fever (meningitis), not on its own
@@ -282,11 +292,21 @@ describe('detectRedFlag', () => {
   });
 
   it('does NOT fire on the benign path', () => {
-    expect(detectRedFlag('runny nose, mild cough, no fever, active and eating well', 'preschooler')).toBe(false);
-    expect(detectRedFlag('drooling, chewing on objects, fussiness, teething', 'toddler')).toBe(false);
-    expect(detectRedFlag('tugging at ear, crying overnight, possible ear infection', 'toddler')).toBe(false);
-    expect(detectRedFlag('sore throat and fever, sibling with recent strep', 'preschooler')).toBe(false);
-    expect(detectRedFlag('watery diarrhea and vomiting, still drinking, wet diapers present', 'toddler')).toBe(false);
+    expect(
+      detectRedFlag('runny nose, mild cough, no fever, active and eating well', 'preschooler'),
+    ).toBe(false);
+    expect(detectRedFlag('drooling, chewing on objects, fussiness, teething', 'toddler')).toBe(
+      false,
+    );
+    expect(
+      detectRedFlag('tugging at ear, crying overnight, possible ear infection', 'toddler'),
+    ).toBe(false);
+    expect(detectRedFlag('sore throat and fever, sibling with recent strep', 'preschooler')).toBe(
+      false,
+    );
+    expect(
+      detectRedFlag('watery diarrhea and vomiting, still drinking, wet diapers present', 'toddler'),
+    ).toBe(false);
     // fever alone in an OLDER child is not a red flag, and a stiff neck alone is not either
     expect(detectRedFlag('fever 39C 3 days', 'toddler')).toBe(false);
     expect(detectRedFlag('stiff neck after sleeping awkwardly', 'school_age')).toBe(false);
@@ -334,7 +354,9 @@ describe('hasEmergencyDirective', () => {
   });
 
   it('rejects a body that only names the non-urgent nurse line', () => {
-    expect(hasEmergencyDirective('Probably viral, watch and wait, call 811 if worried.')).toBe(false);
+    expect(hasEmergencyDirective('Probably viral, watch and wait, call 811 if worried.')).toBe(
+      false,
+    );
     expect(hasEmergencyDirective('Call 811 any time to talk it through with a nurse.')).toBe(false);
     expect(hasEmergencyDirective('Keep an eye on her and use your judgement.')).toBe(false);
   });
@@ -417,7 +439,7 @@ describe('hasEmergencyDirective', () => {
   it('accepts a directive that follows a negated clause', () => {
     expect(hasEmergencyDirective('No need to panic, but take her to the ER now.')).toBe(true);
     expect(
-      hasEmergencyDirective("Pas besoin de paniquer, mais emmenez-la aux urgences maintenant."),
+      hasEmergencyDirective('Pas besoin de paniquer, mais emmenez-la aux urgences maintenant.'),
     ).toBe(true);
     expect(hasEmergencyDirective('不需要慌张，但要马上去急诊。')).toBe(true);
     // "don't"/"do not" on their own are not negations of NEED — they are how a real
@@ -604,7 +626,10 @@ describe('de-identification before search', () => {
     await createMedicalComposer(
       makeClient(
         {
-          sanitize: sanitizeResult({ clinical_query: 'fever 39C 3 days toddler', age_band: 'toddler' }),
+          sanitize: sanitizeResult({
+            clinical_query: 'fever 39C 3 days toddler',
+            age_band: 'toddler',
+          }),
           ground: groundResult(2),
           compose: composeResult(OK_COMPOSE),
         },
@@ -619,7 +644,9 @@ describe('de-identification before search', () => {
     expect(systemText(seen[0]?.system)).toContain('Strip the identity');
 
     // The search sees the de-identified query alone, on the BLIND medical skill.
-    const ground = seen.find((s) => Array.isArray(s.tools) && s.tools[0]?.type === 'web_search_20250305');
+    const ground = seen.find(
+      (s) => Array.isArray(s.tools) && s.tools[0]?.type === 'web_search_20250305',
+    );
     expect(ground?.userMessage).toContain('fever'); // positive control: the query reached search
     expect(ground?.userMessage).not.toContain('Emma');
     expect(ground?.userMessage).not.toContain('2 years');
@@ -1022,7 +1049,10 @@ describe('the body must be sendable', () => {
       // ô makes the body UCS-2 (~67 chars/segment); repeated past the ceiling it throws
       // unsendable/over_segment_cap — the surviving fail-closed path now that the
       // encoding gate is gone and an in-budget French answer legitimately ships.
-      answer: 'Une fièvre chez un bébé de moins de trois mois demande un avis à l’hôpital tout de suite. '.repeat(8),
+      answer:
+        'Une fièvre chez un bébé de moins de trois mois demande un avis à l’hôpital tout de suite. '.repeat(
+          8,
+        ),
       triage: "Composez le 911 ou allez à l'hôpital; le 811 répond aux questions.",
     };
     const out = await createMedicalComposer(
@@ -1050,7 +1080,7 @@ describe('the body must be sendable', () => {
    */
   it('positive control: a French answer that stays inside GSM-7 still ships', async () => {
     const sendable = {
-      answer: "Une fièvre chez un bébé de moins de trois mois demande un avis tout de suite.",
+      answer: 'Une fièvre chez un bébé de moins de trois mois demande un avis tout de suite.',
       triage: "Composez le 911 ou allez à l'urgence; le 811 répond aux questions.",
     };
     const out = await createMedicalComposer(

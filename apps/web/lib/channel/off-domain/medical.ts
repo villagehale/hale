@@ -328,7 +328,7 @@ const RED_FLAG_TERMS: RegExp[] = [
   /blue lips|dusky lips|lips (?:look|turning|are|went|are turning) (?:a bit )?(?:blue|dusky|grey|gray)|blue (?:around|round) the (?:lips|mouth)|turning blue|going blue/i,
   /\bseizure\b|\bseizing\b|\bconvulsion\b|\bconvulsing\b/i,
   /\bunresponsive\b|won'?t wake|will not wake|can'?t wake|cannot wake|hard to wake|difficult to wake|not waking|won'?t respond|not responding|\blimp\b|\bfloppy\b|\blethargic\b|\blethargy\b|\bunconscious\b|passed out/i,
-  /non-?blanching|\bpetechiae?\b|petechial|\bpurpura\b|does ?n[o']?t fade|do not fade|don'?t fade|will not fade|won'?t fade/i,
+  /non-?blanching|\bpetechiae?\b|petechial|\bpurpura\b|(?:does ?n[o']?t|do not|don'?t|will not|won'?t) (?:fade|blanch)/i,
   /anaphyla|face (?:is )?swelling|swelling of (?:the |her |his )?face|swollen face|lips (?:are )?swelling|swollen lips|tongue (?:is )?swelling|swollen tongue|throat (?:is )?(?:swelling|closing|tightening)/i,
   /sunken eyes|sunken fontanelle|no wet (?:diaper|nappy)|not urinating|no urine|no tears when (?:crying|she cries|he cries)|severe(?:ly)? dehydrat/i,
 ];
