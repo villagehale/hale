@@ -121,10 +121,14 @@ export type AgeBand = (typeof AGE_BANDS)[number];
  * gate does not need one either — it is a judgment of the composed answer in that language
  * ({@link judgeEscalation}). A value that is not shaped like a language code normalizes to
  * `en` rather than throwing.
+ *
+ * A code is a language and at most ONE more subtag. The value is model output read off the
+ * parent's own words and it is written into the compose and escalation requests, so an
+ * open-ended run of subtags is room for a sentence; with one, there is none.
  */
 export type ReplyLanguage = string;
 
-const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i;
+const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/i;
 
 /**
  * The sanitizer's reading of whether the parent described a pediatric emergency — judged

@@ -268,4 +268,41 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
     expect(JSON.stringify(log.mock.calls)).not.toContain(secret);
     log.mockRestore();
   });
+
+  /**
+   * The read is the one call here whose request holds the parent's text, and a provider
+   * error can quote the request back in its MESSAGE. So a failed read is logged by the
+   * error's name, and by why a structured answer was unusable, and by nothing else.
+   */
+  it('logs a failed read by the error name, never the provider message', async () => {
+    const secret = 'is Mia contagious with hand foot and mouth';
+    const echoing = (): AgentClient =>
+      ({
+        messages: {
+          async create() {
+            throw new Error(`400 invalid_request_error: {"text":"${secret}"}`);
+          },
+        },
+      }) as unknown as AgentClient;
+    const truncated = (): AgentClient =>
+      ({
+        messages: {
+          async create() {
+            return { content: [], stop_reason: 'max_tokens', usage: {} };
+          },
+        },
+      }) as unknown as AgentClient;
+    const log = quiet();
+
+    await createInboundLaneScreen(echoing).read(secret);
+    await createInboundLaneScreen(truncated).read(secret);
+
+    expect(log.mock.calls).toEqual([
+      [{ err: 'Error' }, 'off-domain screen: read failed'],
+      [{ fallback: 'model_failed' }, 'off-domain screen: fell through to the coach'],
+      [{ err: 'StructuredOutputError', outcome: 'truncated' }, 'off-domain screen: read failed'],
+      [{ fallback: 'model_failed' }, 'off-domain screen: fell through to the coach'],
+    ]);
+    log.mockRestore();
+  });
 });
