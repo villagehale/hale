@@ -399,6 +399,34 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
     log.mockRestore();
   });
 
+  // A provider error can carry the request back; the log names the phase, never the text.
+  it.each([
+    ['ground_failed', { ground: new Error('echo: her daughter is wheezing') }],
+    [
+      'compose_failed',
+      { ground: groundResult(2), compose: new Error('echo: her daughter is wheezing') },
+    ],
+    [
+      'escalation_unjudged',
+      {
+        ground: groundResult(2),
+        compose: composeResult(OK_COMPOSE),
+        escalation: new Error('echo: her daughter is wheezing'),
+      },
+    ],
+  ] as const)('logs %s by name, without the provider message', async (reason, script) => {
+    const log = quiet();
+    await createMedicalComposer(
+      makeClient({ sanitize: sanitizeResult(RED_FLAG_SANITIZE), ...script }),
+    ).answer('raw message');
+
+    expect(log.mock.calls.map((c) => c[0])).toEqual([
+      { reason, attempt: 1, detail: undefined },
+      { reason, attempt: 2, detail: undefined },
+    ]);
+    log.mockRestore();
+  });
+
   it('falls closed, under its own name, when the judgment cannot be had', async () => {
     const log = quiet();
     const out = await createMedicalComposer(
