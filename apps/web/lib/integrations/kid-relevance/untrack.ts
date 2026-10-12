@@ -318,9 +318,14 @@ async function clearOfferWords(database: Pick<Database, 'update'>, item: Provide
     );
 }
 
-/** The item's parent calendar blocks that were kid-related: no longer, and untitled. */
+/**
+ * The item's parent calendar blocks that were kid-related: no longer, and untitled. A
+ * block carries its own series id, so when Hale holds no snapshot of the untracked
+ * instance - the item key is then that one event's id - the instance's block still names
+ * the series, and every block of it is cleared.
+ */
 async function clearKidBlocks(
-  database: Pick<Database, 'update'>,
+  database: Pick<Database, 'select' | 'update'>,
   familyId: string,
   item: ProviderItem,
   now: Date,
@@ -334,7 +339,23 @@ async function clearKidBlocks(
       and(
         eq(blocks.familyId, familyId),
         eq(blocks.integrationId, item.integrationId),
-        or(eq(blocks.eventId, item.itemKey), eq(blocks.recurringEventId, item.itemKey)),
+        or(
+          eq(blocks.eventId, item.itemKey),
+          eq(blocks.recurringEventId, item.itemKey),
+          inArray(
+            blocks.recurringEventId,
+            database
+              .select({ seriesId: blocks.recurringEventId })
+              .from(blocks)
+              .where(
+                and(
+                  eq(blocks.integrationId, item.integrationId),
+                  eq(blocks.eventId, item.itemKey),
+                  isNotNull(blocks.recurringEventId),
+                ),
+              ),
+          ),
+        ),
         eq(blocks.kidRelated, true),
       ),
     )

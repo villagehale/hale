@@ -81,6 +81,29 @@ async function mirror(googleEventId: string, startsAt: Date, title = 'Choir rehe
   return row.id;
 }
 
+function block(eventId: string, recurringEventId: string | null, title: string) {
+  return {
+    integrationId,
+    eventId,
+    recurringEventId,
+    familyId,
+    userId: parentUserId,
+    startAt: NEXT_WEEK,
+    kidRelated: true,
+    title,
+    status: 'confirmed',
+    updatedStamp: 'u1',
+  };
+}
+
+async function blocks() {
+  const rows = await db.database
+    .select()
+    .from(schema.parentCalendarBlocks)
+    .where(eq(schema.parentCalendarBlocks.familyId, familyId));
+  return rows.map((row) => `${row.eventId}/${row.kidRelated}/${row.title}`).sort();
+}
+
 async function alertMessage(dedupeKey: string | null) {
   const [row] = await db.database
     .insert(schema.channelMessages)
@@ -229,18 +252,6 @@ describe('untrackItem', () => {
     await snapshot('choir_1018', 'choir-series');
     const series = await mirror('choir_1018', NEXT_WEEK);
     const oneOff = await mirror('recital', WEEK_AFTER, 'Choir recital');
-    const block = (eventId: string, recurringEventId: string | null, title: string) => ({
-      integrationId,
-      eventId,
-      recurringEventId,
-      familyId,
-      userId: parentUserId,
-      startAt: NEXT_WEEK,
-      kidRelated: true,
-      title,
-      status: 'confirmed',
-      updatedStamp: 'u1',
-    });
     await db.database
       .insert(schema.parentCalendarBlocks)
       .values([
@@ -249,16 +260,6 @@ describe('untrackItem', () => {
         block('recital', null, 'Choir recital'),
         block('swim_1018', 'swim-series', 'Wren swim'),
       ]);
-    const blocks = async () =>
-      (
-        await db.database
-          .select()
-          .from(schema.parentCalendarBlocks)
-          .where(eq(schema.parentCalendarBlocks.familyId, familyId))
-      )
-        .map((row) => `${row.eventId}/${row.kidRelated}/${row.title}`)
-        .sort();
-
     await untrack({ kind: 'family_event', id: series });
 
     expect(await blocks()).toEqual([
@@ -283,6 +284,30 @@ describe('untrackItem', () => {
     expect(
       audit.map((row) => (row.after as { blocksCleared?: number }).blocksCleared).sort(),
     ).toEqual([1, 2]);
+  });
+
+  it('clears every block of the series when Hale holds no snapshot of the untracked instance', async () => {
+    const instance = await mirror('choir_1018', NEXT_WEEK);
+    await db.database
+      .insert(schema.parentCalendarBlocks)
+      .values([
+        block('choir_1018', 'choir-series', 'Choir rehearsal'),
+        block('choir_1025', 'choir-series', 'Choir rehearsal'),
+        block('swim_1018', 'swim-series', 'Wren swim'),
+      ]);
+
+    await untrack({ kind: 'family_event', id: instance });
+
+    expect(await blocks()).toEqual([
+      'choir_1018/false/null',
+      'choir_1025/false/null',
+      'swim_1018/true/Wren swim',
+    ]);
+    const [audit] = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, familyId));
+    expect(audit?.after).toMatchObject({ blocksCleared: 2 });
   });
 
   it('keeps the kind on the parent verdict as the hint the judge reads, and never the title', async () => {
