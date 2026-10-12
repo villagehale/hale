@@ -12,9 +12,10 @@ import { boundedLine } from './tools';
  *
  * Children are ages, never names. A candidate is its kind and the sweep's names-free
  * label (`why`), never the composed text: that is the writer's input, not the decider's.
- * A household with a teenager has every calendar label read as "busy" and none of its
- * parents' texts (rule #1's double-miss fallback: a text names no child, so it cannot be
- * shown not to be about the teen). Other parent texts reach the decider only once, when
+ * A household with a teenager has every calendar label read as "busy", every offer title,
+ * decline and watch label as `WITHHELD_LABEL`, and none of its parents' texts (rule #1's
+ * double-miss fallback: a text names no child, so it cannot be shown not to be about the
+ * teen). Other parent texts reach the decider only once, when
  * they arrived after its last look at this family. Calendar titles, Gmail offer titles
  * and watch labels are each one bounded line, like the parent texts.
  */
@@ -111,6 +112,8 @@ const WATCH_ROWS = 20;
  * `calendarOmitted` says how many entries it left out.
  */
 export const CALENDAR_ROWS = 60;
+/** What a teenager's household shows for an offer title, a decline or a watch label. */
+export const WITHHELD_LABEL = 'withheld';
 
 function clock(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -316,6 +319,7 @@ export async function loadFamilyContext(
     if (redactLabels || sensitive) return 'busy';
     return boundedLine(title ?? '') || 'busy';
   };
+  const line = (text: string): string => (redactLabels ? WITHHELD_LABEL : boundedLine(text));
   const rows: TimedRow[] = [
     ...events.map((row) => ({
       label: label(row.title, row.sensitive),
@@ -365,11 +369,11 @@ export async function loadFamilyContext(
     ),
     deadlines: offers
       .filter((offer) => offer.resolution === null && offer.expiresAt.getTime() > now.getTime())
-      .map((offer) => ({ what: boundedLine(offer.title), at: offer.startsAt.toISOString() })),
-    watches: watches.map((watch) => ({ what: boundedLine(watch.label) })),
+      .map((offer) => ({ what: line(offer.title), at: offer.startsAt.toISOString() })),
+    watches: watches.map((watch) => ({ what: line(watch.label) })),
     declines: offers
       .filter((offer) => offer.resolution === 'declined')
-      .map((offer) => boundedLine(offer.title)),
+      .map((offer) => line(offer.title)),
     teenInHousehold: redactLabels,
   };
 }
