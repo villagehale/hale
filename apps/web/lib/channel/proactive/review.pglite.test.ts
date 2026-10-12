@@ -1302,7 +1302,7 @@ describe('runProactiveReview', () => {
     expect(decision?.after).toMatchObject({ mode: 'shadow', parentTextsWithheld: 'mixed_batch' });
   });
 
-  it('in shadow, leaves a parent text unread, so the first live review still reads it', async () => {
+  it('in shadow, hands the decider a parent text once', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     await parentText('text me less', HOUR_BEFORE);
     await enqueue('nudge:weather:w41');
@@ -1310,21 +1310,56 @@ describe('runProactiveReview', () => {
 
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
     expect(h.snapshots[0]?.recentParentTexts).toEqual(['text me less']);
-    expect(await decisionFields('cadencePreference')).toEqual(['not_written_shadow']);
-    expect(await decisionFields('parentTextsRead')).toEqual([]);
+    const [first] = await audits('proactive_cadence_decision');
+    expect(first?.after).toMatchObject({
+      mode: 'shadow',
+      cadencePreference: 'not_written_shadow',
+      parentTextsRead: { parentUserId, through: stamp(HOUR_BEFORE) },
+    });
+
+    await enqueue('nudge:weather:w42');
+    await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+    expect(h.snapshots).toHaveLength(2);
+    expect(h.snapshots[1]?.recentParentTexts).toEqual([]);
+  });
+
+  it('reads a text first seen in shadow once more when live arms, and keeps the pace then', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    await parentText('text me less', HOUR_BEFORE);
+    await enqueue('nudge:weather:w41');
+    const h = harness(hearsWhatItReads);
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(h.snapshots[0]?.recentParentTexts).toEqual(['text me less']);
 
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     await enqueue('nudge:weather:w42');
     await runProactiveReview(db.database, h.deps, HOUR_AFTER);
 
     expect(h.snapshots[1]?.recentParentTexts).toEqual(['text me less']);
-    const kept = (await decisionFields('cadencePreference')).filter(
-      (pace) => typeof pace === 'object',
-    );
-    expect(kept).toEqual([{ schemaVersion: 1, parentUserId, direction: 'less' }]);
-    expect(await decisionFields('parentTextsRead')).toEqual([
-      { parentUserId, through: stamp(HOUR_BEFORE) },
+    expect(await decisionFields('cadencePreference')).toEqual([
+      'not_written_shadow',
+      { schemaVersion: 1, parentUserId, direction: 'less' },
     ]);
+
+    await enqueue('nudge:weather:w43');
+    await runProactiveReview(db.database, h.deps, TWO_HOURS_AFTER);
+    expect(h.snapshots).toHaveLength(3);
+    expect(h.snapshots[2]?.recentParentTexts).toEqual([]);
+  });
+
+  it('in shadow, never re-reads a text a live review already read', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await parentText('text me less', HOUR_BEFORE);
+    await enqueue('nudge:weather:w41');
+    const h = harness(hearsWhatItReads);
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(h.snapshots[0]?.recentParentTexts).toEqual(['text me less']);
+
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    await enqueue('nudge:weather:w42');
+    await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+    expect(h.snapshots).toHaveLength(2);
+    expect(h.snapshots[1]?.recentParentTexts).toEqual([]);
   });
 
   it('never hands the decider a parent text from a household with a teenager', async () => {

@@ -17,10 +17,12 @@ import { boundedLine } from './tools';
  * double-miss fallback: a text names no child, so it cannot be shown not to be about the
  * teen). The decider's own earlier words are withheld there the same way: a prior hold's
  * reason reads as `WITHHELD_LABEL`, since it was written with parent texts in view. A kept
- * pace is its direction alone in every household (preference.ts). Other parent texts reach the decider only from the one parent who owns every candidate (none for a
- * batch two parents own, rule #5), each until one live review of that parent's batch has
- * read it (`ParentTextsRead`), and only those rows' bodies are read. Calendar titles, Gmail
- * offer titles and watch labels are each one bounded line, like the parent texts.
+ * pace is its direction alone in every household (preference.ts). Other parent texts
+ * reach the decider only from the one parent who owns every candidate (none for a batch
+ * two parents own, rule #5), each until one review of that parent's batch has read it,
+ * once per mode (`ParentTextsRead`), and only those rows' bodies are read. Calendar
+ * titles, Gmail offer titles and watch labels are each one bounded line, like the parent
+ * texts.
  */
 
 export interface FreeWindow {
@@ -412,10 +414,13 @@ async function latestCadence(
 }
 
 /**
- * Whose new texts a review read, up to the newest one. A live decision keeps it on its
- * audit row, beside the pace it heard in them, and that parent's next review reads only
- * what came after. Another parent's review, a batch two parents own and a shadow review
- * write none, so none of them can move a text out of its author's reach unread.
+ * Whose new texts a review read, up to the newest one. The decision keeps it on its audit
+ * row, beside its mode, and that parent's next review reads only what came after: a text
+ * reaches the decider once per mode. A shadow review reads past the newest mark of either
+ * mode. A live review reads past the newest live mark only, since shadow keeps no pace:
+ * a request first read in shadow is read once more when live arms, and kept then. Another
+ * parent's review and a batch two parents own write none, so neither can move a text out
+ * of its author's reach unread.
  */
 export interface ParentTextsRead {
   parentUserId: string;
@@ -430,11 +435,12 @@ export interface ParentTextsRead {
 
 const TEXT_STAMP = sql<string>`to_char(${schema.channelMessages.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
-/** The newest of this one parent's texts a live review has already read. */
+/** The newest of this one parent's texts a review in this mode need not read again. */
 async function textsReadThrough(
   database: Database,
   familyId: string,
   parentUserId: string,
+  mode: 'shadow' | 'live',
 ): Promise<string | null> {
   const [row] = await database
     .select({ after: schema.auditLog.after })
@@ -444,6 +450,7 @@ async function textsReadThrough(
         eq(schema.auditLog.familyId, familyId),
         eq(schema.auditLog.actionTaken, CADENCE_DECISION_ACTION),
         sql`${schema.auditLog.after} -> 'parentTextsRead' ->> 'parentUserId' = ${parentUserId}`,
+        mode === 'live' ? sql`${schema.auditLog.after} ->> 'mode' = ${mode}` : undefined,
       ),
     )
     .orderBy(desc(schema.auditLog.occurredAt))
@@ -472,6 +479,8 @@ export async function loadFamilySnapshot(
     /** Every parent who owns one of `candidates`. */
     candidateParents: readonly string[];
     priorDecisions: PriorDecision[];
+    /** The mode this review runs in: a text is read once per mode (`ParentTextsRead`). */
+    mode: 'shadow' | 'live';
     now: Date;
   },
 ): Promise<LoadedSnapshot> {
@@ -506,7 +515,7 @@ export async function loadFamilySnapshot(
   const { context } = input;
   const reader = context.teenInHousehold ? null : owner;
   const readThrough =
-    reader === null ? null : await textsReadThrough(database, input.familyId, reader);
+    reader === null ? null : await textsReadThrough(database, input.familyId, reader, input.mode);
   const newTexts =
     reader === null
       ? []
