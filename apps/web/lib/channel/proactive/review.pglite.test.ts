@@ -264,7 +264,7 @@ describe('runProactiveReview', () => {
     });
     const [sent] = await audits('proactive_nudge_sent');
     expect(sent).toMatchObject({ targetTable: 'channel_messages', targetId: ledger[0]?.id });
-    expect(sent?.after).toMatchObject({ kind: 'weather_swap', itemIds: [id] });
+    expect(sent?.after).toMatchObject({ kind: 'weather_swap', itemIds: [id], mode: 'live' });
   });
 
   it('writes each parent their own text when their items differ and there is no group', async () => {

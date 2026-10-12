@@ -829,6 +829,7 @@ async function sendChosen(
           ...(labels.length === 1 ? { kind: labels[0] } : {}),
           kinds: labels,
           itemIds: coveredIds,
+          mode: 'live',
         },
       },
     });

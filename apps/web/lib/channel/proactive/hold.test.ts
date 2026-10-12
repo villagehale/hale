@@ -134,4 +134,23 @@ describe('planHourlyReview', () => {
     expect(plan.skipModel).toBe(false);
     expect(plan.candidates.map((candidate) => candidate.id)).toEqual(['asked']);
   });
+
+  it('does not let a re-held asked-for item keep yesterday’s other hold on today’s date', () => {
+    const plan = planHourlyReview({
+      items: [
+        item({ id: 'asked', status: 'held', holdUntil: null, parentRequested: true }),
+        item({
+          id: 'open',
+          status: 'held',
+          holdUntil: null,
+          decidedAt: '2026-10-07T22:00:00.000Z',
+        }),
+      ],
+      now: NOW,
+      timeZone: TZ,
+      externalSignal: false,
+    });
+    expect(plan.skipModel).toBe(false);
+    expect(plan.candidates.map((candidate) => candidate.id)).toEqual(['asked', 'open']);
+  });
 });
