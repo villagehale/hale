@@ -450,7 +450,7 @@ describe('runKidRelevanceBackfill', () => {
     );
   });
 
-  it('a revert puts back what an apply dropped, except the cleared titles', async () => {
+  it("a revert puts back what an apply dropped, except a calendar copy's cleared title", async () => {
     const ids = await seed();
     const before = await state();
     await run(true);

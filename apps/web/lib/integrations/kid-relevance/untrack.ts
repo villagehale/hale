@@ -229,7 +229,9 @@ function eventsOf(item: ProviderItem) {
 
 /**
  * What Hale still owes the parent about this item, dropped when the item is judged the
- * parent's own - here and in the backfill's apply, so both leave nothing that names it.
+ * parent's own - here and in the backfill's apply, so neither still owes a text about it.
+ * An offer's own words are cleared only on the parent's untrack (`clearOfferWords`); the
+ * backfill keeps them so its revert can restore a Gmail copy.
  * A held calendar alert is dropped the way
  * the alert path drops an expired hold - the snapshot stays, so the next change is read
  * against the start Hale last saw, and only the held words go. An open Gmail offer is
