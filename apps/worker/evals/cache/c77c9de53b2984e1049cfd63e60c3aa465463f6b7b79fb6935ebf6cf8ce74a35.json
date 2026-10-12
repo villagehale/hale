@@ -1,0 +1,9 @@
+{
+  "value": {
+    "language": "en",
+    "question": "hows the TSX doing today",
+    "current_fact": "how the TSX is performing today",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1298
+}

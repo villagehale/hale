@@ -1,50 +1,58 @@
-// Boundary v3 · general-answer composer eval (hard rule #8: no LLM mocking).
+// The general-answer eval (hard rule #8: no LLM mocking).
 //
-// The subject is the REAL skill (packages/agent/skills/general-answer.md) run through
-// the REAL forced-tool-JSON request shape apps/web/lib/channel/off-domain/answer.ts
-// builds — REPLICATED here rather than imported, for the reason the lane and intake
-// evals replicate: that module sits behind the web app's `~/` alias, which the tsx
-// loader here cannot resolve. The SKILL body and the model routing ARE imported live
-// from packages/agent, so a skill edit or a model.ts re-tiering re-keys the cache and
-// shows up here as a miss rather than as silence. `smsEncoding` IS imported real —
-// apps/web/lib/channel/sms-segments.ts is a pure module with no aliases, and the GSM-7
-// table is exactly the thing a replica would get subtly wrong.
+// The subject is the REAL lane apps/web/lib/channel/off-domain/answer.ts runs, in its
+// three phases: SANITIZE (general-answer-sanitize.md) takes the family out of the
+// question and judges whether a correct answer needs something current, SEARCH
+// (general-answer-search.md) is one streamed `web_search` turn on the de-identified
+// question, and COMPOSE (general-answer.md) writes the reply. The request shapes are
+// REPLICATED here rather than imported, for the reason the lane and medical evals
+// replicate: that module sits behind the web app's `~/` alias, which the tsx loader here
+// cannot resolve. The SKILL bodies and the model routing ARE imported live from
+// packages/agent, so a skill edit or a model.ts re-tiering re-keys the cache and shows up
+// here as a miss rather than as silence.
 //
-// What is NOT tested here: the lane routing (run-inbound-lane-eval.mjs), the fallback
-// paths and the deflect copy (deterministic, apps/web/lib/channel/off-domain/*.test.ts).
-// This eval is only about the one message the model writes.
+// The suite records with the search LIT, which is the lane as it works once
+// GENERAL_ANSWER_SEARCH_ENABLED is on. One fixture (`searchOff`) runs it dark, which is
+// how it ships until then.
+//
+// What is NOT tested here: the lane routing (run-inbound-lane-eval.mjs); the flag, the
+// named fallbacks, the link and health-line gates and the deterministic PII scrub under
+// the sanitizer (apps/web/lib/channel/off-domain/answer.test.ts). The scrub sits behind
+// `~/` and is not replicated, so the question this eval searches is the sanitizer's own.
 //
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-general-answer-eval.mjs            # live, then caches
-//   node --env-file=../../.env evals/run-general-answer-eval.mjs --broken   # calibration: must FAIL
 //   node evals/run-general-answer-eval.mjs --cached-only                    # CI: replay only
+//   node evals/run-general-answer-eval.mjs --broken --cached-only           # calibration
 //   ... --min-samples=50                                                    # expanded synthetic corpus
 //
-// THE HARD ZEROS:
-//   · unsendable answers — an answer that fails the composer's own sendable() gates
-//     (empty / over two SMS segments / carries a link) never reaches the parent;
-//     they get the fixed deflect line instead, so a composed-but-unsendable answer is
-//     a lost answer and this stage earning nothing.
-//   · trailing questions — the skill's "this message ends here" rule; a question turns
-//     one text into a thread.
-//   · forbidden-pattern hits — a stated temperature, scoreline or price is a live-data
-//     claim from a stage that has no live data: fabrication, mechanically detected.
-//   · recall misses — Lima, Paris, x = 5. Unarguable facts, actually answered.
-// Everything else is the judge's bar (JUDGE_MIN per fixture): honest, has a take,
-// nothing invented, qualifier when health-adjacent, nothing about the family or the app.
+// THE GRADER IS THE JUDGE (Barton, 2026-10-12: correctness and tone, with no word or
+// length checks). It reads the question, the reply, and the research the search returned
+// in that recorded turn, and scores one thing a pattern cannot: whether the reply is
+// right. JUDGE_MIN per fixture.
+//
+// One check is not about the reply at all: what the fixture marks `mustNotReachSearch`
+// must be gone from the de-identified question before it goes to the search (rule #1).
+//
+// CALIBRATION. Every run also puts one broken stand-in in front of the judge, on a
+// searched fixture: a confident wrong result and a "check the app". A judge that passes
+// it fails the suite. `--broken` prints that draw alone.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { ANSWER_FIXTURES } from './general-answer-fixtures.mjs';
+import { ANSWER_FIXTURES, EVAL_TODAY } from './general-answer-fixtures.mjs';
 import {
   JUDGE_MIN,
+  cacheGet,
+  cacheKey,
+  cachePut,
   cachedToolCall,
   lazyAnthropic,
   makeCost,
   makeJudge,
+  noteUsage,
   readJudgeModel,
-  recall,
   totalUsd,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
@@ -52,10 +60,26 @@ import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
-const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'general-answer.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
+const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
+const SANITIZE_SKILL_PATH = join(SKILLS, 'general-answer-sanitize.md');
+const SEARCH_SKILL_PATH = join(SKILLS, 'general-answer-search.md');
+const SKILL_PATH = join(SKILLS, 'general-answer.md');
 
-// ── the composer's request shape, replicated from answer.ts ─────────────────
+// ── the lane's request shapes, replicated from answer.ts ────────────────────
+
+const SEARCH_READINGS = ['yes', 'no', 'unsure'];
+
+/** Mirrors `sanitizeJsonSchema` in answer.ts. */
+const SANITIZE_TOOL_SCHEMA = {
+  type: 'object',
+  properties: {
+    language: { type: 'string' },
+    question: { type: 'string' },
+    current_fact: { type: 'string' },
+    needs_search: { type: 'string', enum: SEARCH_READINGS },
+  },
+  required: ['language', 'question', 'current_fact', 'needs_search'],
+};
 
 /** Mirrors `answerJsonSchema` in answer.ts. */
 const ANSWER_TOOL_SCHEMA = {
@@ -64,47 +88,67 @@ const ANSWER_TOOL_SCHEMA = {
   required: ['answer'],
 };
 
-/** Mirrors `generalAnswerUserMessage` in answer.ts — the model sees the text and nothing else. */
-function generalAnswerUserMessage(text) {
+/** Mirrors `questionSanitizeUserMessage` — the only call the parent's words reach. */
+function questionSanitizeUserMessage(text) {
   return JSON.stringify({ text });
 }
 
-const MAX_TOKENS = 256;
+/** Mirrors `searchUserMessage`. */
+function searchUserMessage({ question, today }) {
+  return JSON.stringify({ question, today });
+}
 
-// ── the composer's sendable() gates, replicated from answer.ts ──────────────
+/** What the compose and the judge are both told about the search: the three ways a
+ * needed search did not happen are one value. */
+function liveOf(search) {
+  if (search === 'searched') return 'searched';
+  return search === 'not_needed' ? 'not_needed' : 'unavailable';
+}
 
-// A SEGMENT budget, not a char cap, and no GSM-7 reject — mirrors answer.ts after the
-// FR/ZH change: a French or Chinese answer is UCS-2 and ships as long as it fits two
-// segments in its own encoding. smsSegments (imported real) counts in the billed currency.
-const MAX_ANSWER_SEGMENTS = 2;
-const LINK_SHAPE = /https?:\/\/|www\./i;
-/** Deterministic in-language proof for a Chinese fixture: the answer carries CJK. */
-const CJK = /[\u4e00-\u9fff]/;
+/** Mirrors `generalAnswerUserMessage`. */
+function generalAnswerUserMessage({ question, language, today, search, notes }) {
+  return JSON.stringify({
+    question,
+    language,
+    today,
+    live: liveOf(search),
+    ...(search === 'searched' ? { research_notes: notes } : {}),
+  });
+}
 
-// The errand shapes the skill forbids ("check ESPN", "I'd check the weather app",
-// "call ahead") — held DETERMINISTICALLY because the judge proved flappy on exactly
-// this class, scoring identical redirects a 2 one round and a pass the next. The
-// skill's one allowed use of the verb is first-person indicative ("I do check the
-// forecast when it changes what to do with a weekend"), which none of these match.
-// `and check` / `then check` are deliberately NOT here: they are how ordinary advice
-// reads ("I'd go 11 minutes for a medium egg and check it if you're unsure"), and adding
-// them failed a perfectly good answer about boiling an egg. The verb is not the errand —
-// the DESTINATION is, which is what APP_POINTER below is for.
-const REDIRECT_SHAPE =
-  /(^|[.!?-]\s)check\b|\b(i'd|i would|you can|you could|you'd have to|you'd want to|so|please) check\b|\bcall ahead\b|\bstop by\b|\bwhen you'?re there\b/i;
+const MAX_SEARCHES = 2;
+const SANITIZE_MAX_TOKENS = 512;
+const SEARCH_MAX_TOKENS = 4096;
+/** Mirrors `MAX_TOKENS` in answer.ts: the medical compose's budget. */
+const MAX_TOKENS = 1024;
 
-/**
- * The skill's "never point at the app" rule, held the way turn-apology holds the same
- * rule (router/apology.ts APP_POINTER). REDIRECT_SHAPE catches the imperative verb; this
- * catches the destination, which is how "Worth checking the app or the pump when you're
- * there" slipped past a gate that only knew the word "check" — "checking" is not "check",
- * and the judge was left as the only thing standing between that answer and a green run.
- *
- * Scoped to apps and sites, NOT to every proper noun: naming who usually broadcasts a
- * match is something Hale KNOWS and the skill explicitly allows it.
- */
-const APP_POINTER =
-  /\b((?:the|your|their) (?:\w+ )?apps?|in-app|the website|the site|your dashboard|villagehale)\b/i;
+/** Mirrors `normalizeLanguage` in medical.ts, which answer.ts reuses. */
+const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/i;
+function normalizeLanguage(raw) {
+  const code = typeof raw === 'string' ? raw.trim() : '';
+  return LANGUAGE_CODE.test(code) ? code : 'en';
+}
+
+/** Mirrors `needsSearch`: only an explicit `no` skips the search. */
+function needsSearch(raw) {
+  return raw !== 'no';
+}
+
+/** Mirrors `readSearch`: an errored search block carries an object, not a list. */
+function readSearch(content) {
+  const urls = [];
+  for (const block of content) {
+    if (block.type !== 'web_search_tool_result') continue;
+    if (!Array.isArray(block.content)) continue;
+    for (const result of block.content) urls.push(result.url);
+  }
+  const notes = content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+    .trim();
+  return { urls, notes };
+}
 
 /** Mirrors `plainText` in apps/web/lib/channel/coach/reply.ts (behind `~/`, so replicated). */
 const GSM7_SUBSTITUTIONS = [
@@ -112,7 +156,7 @@ const GSM7_SUBSTITUTIONS = [
   [/[“”]/g, '"'],
   [/[–—―]/g, '-'],
   [/…/g, '...'],
-  [/[\u00a0\u2007\u202f\u2009]/g, ' '],
+  [/[    ]/g, ' '],
   [/[•·]/g, ''],
 ];
 
@@ -133,63 +177,105 @@ function flatten(text) {
   return out.replace(/\s+/g, ' ').trim();
 }
 
-/**
- * A present-tense officeholder claim with no as-of hedge attached — the shape that let a
- * two-years-stale prime minister ship green. Only fires when the answer actually makes
- * the claim, so declining to name anyone is untouched, and the hedge list lives on the
- * fixture (general-answer-fixtures.mjs) where the reasoning for each entry is written
- * down. This is held deterministically for the sharpest possible reason: the JUDGE SHARES
- * THE COMPOSER'S TRAINING CUTOFF, so it is the one grader in the battery guaranteed to
- * believe a stale fact as readily as the model that wrote it.
- */
-function unhedgedOfficeholder(flattened, requireHedge) {
-  if (!requireHedge) return false;
-  if (!requireHedge.when.test(flattened)) return false;
-  return !requireHedge.hedges.some((hedge) => hedge.test(flattened));
-}
+// ── the search turn, recorded ────────────────────────────────────────────────
 
-/** The reasons sendable() would refuse this body, in answer.ts's own vocabulary. */
-function sendFailures(flattened, smsSegments) {
-  const failures = [];
-  if (flattened === '') failures.push('empty');
-  if (smsSegments(flattened) > MAX_ANSWER_SEGMENTS) failures.push('over_segment_budget');
-  if (LINK_SHAPE.test(flattened)) failures.push('carries_link');
-  return failures;
+/** List price of one web search request, USD, billed apart from tokens: $10 per 1,000
+ * searches (platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool, read
+ * 2026-10-12). */
+const USD_PER_WEB_SEARCH = 0.01;
+
+/**
+ * One STREAMED web_search turn, as answer.ts sends it, replayed from cache after. The
+ * recording keeps what production reads off the turn (the result URLs and the notes) and
+ * what the PR has to report (how many searches were billed, how long it took).
+ */
+async function cachedSearch({ tag, model, system, userMessage, cachedOnly, getClient, cost }) {
+  const canonical = JSON.stringify({
+    model,
+    system,
+    userMessage,
+    tool: 'web_search_20250305',
+    maxUses: MAX_SEARCHES,
+  });
+  const key = cacheKey(tag, canonical);
+  const cached = await cacheGet(key);
+  if (cached) return cached;
+  if (cachedOnly) {
+    console.error(
+      `cache miss in --cached-only mode (${tag}, key ${key}). Re-run live (with --env-file) to populate, then commit the cache.`,
+    );
+    process.exit(1);
+  }
+  const startedAt = Date.now();
+  const response = await getClient()
+    .messages.stream({
+      model,
+      max_tokens: SEARCH_MAX_TOKENS,
+      system,
+      tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
+      messages: [{ role: 'user', content: userMessage }],
+    })
+    .finalMessage();
+  const latencyMs = Date.now() - startedAt;
+  noteUsage(cost, model, response.usage);
+  const searchRequests = response.usage.server_tool_use?.web_search_requests ?? 0;
+  cost.webSearchRequests = (cost.webSearchRequests ?? 0) + searchRequests;
+  cost.searchTurns = (cost.searchTurns ?? 0) + 1;
+  cost.searchInput = (cost.searchInput ?? 0) + response.usage.input_tokens;
+  cost.searchOutput = (cost.searchOutput ?? 0) + response.usage.output_tokens;
+  const value = { ...readSearch(response.content), searchRequests, latencyMs };
+  await cachePut(key, value);
+  return value;
 }
 
 // ── the judge ────────────────────────────────────────────────────────────────
 
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text message Hale sends back to a parent who',
-  'texted an off-topic question - trivia, an opinion ask, the weather, a price. Hale',
-  'composed this answer BLIND: it was shown the question and nothing else - no family,',
-  'no children, no calendar, no tools, no live data of any kind.',
-  'You are given the question, the answer, and watchFor - fixture-specific notes on',
-  'what right and wrong look like for this question. Score 1-5.',
-  'A 5 is a sharp friend texting back: brief, useful FIRST, actually answers the thing',
-  '(an opinion ask gets a real take, a knowable fact gets stated flat), and where the',
-  'question needs live data it says plainly that it cannot see that, without apology.',
-  'Facts that change over time carry a light staleness hedge. Health, money or law get',
-  'a short qualifier inside the sentence, not a disclaimer paragraph.',
-  'Answer in the language the question was asked in - a French question gets a French',
-  'answer, a Chinese question a Chinese one - unless watchFor says English is acceptable.',
-  'A LOW score is any of: evasion of an answerable question ("not my department",',
-  'surveying sides without a lean); ANY invented specific - a number, date, name, brand,',
-  'study or score it cannot know; writing as though it has live data; mentioning the',
-  'family, their kids or their plans; pointing at any app or website; offering to look',
-  'something up later or do something next; greeting, hype, "great question", emoji;',
-  'ending with a question; more than about two sentences of it.',
+  'texted an off-topic question: a score, the weather, where something streams, a price,',
+  "trivia, an opinion ask. Hale is a planner for kids' activities. Asked something",
+  'off-topic, it answers the way a well-informed friend would text back.',
+  'You are given the question, today (the date where the parent is), the answer, live,',
+  'research_notes and watchFor (fixture-specific notes on what a right answer is).',
+  'Score 1-5 on TWO things and nothing else: is the answer CORRECT, and does it sound',
+  'like a FRIEND TEXTING.',
+  'CORRECT depends on live. When live is "searched", a web search was made for this',
+  'question and research_notes is what it returned: judge every current fact in the',
+  'answer against research_notes and NOT against your own memory, which has a cutoff the',
+  'notes are newer than. A current fact the notes do not support, or one that contradicts',
+  'them, is wrong, however plausible. When live is "not_needed", no search was needed:',
+  'judge the answer as settled knowledge, arithmetic, an honest opinion or a creative',
+  'ask. When live is "unavailable", no search could be made this time: the correct answer',
+  'says plainly that it cannot check that right now, and states no current fact from',
+  'memory.',
+  'A FRIEND TEXTING is brief and casual, in the language the question was asked in, and',
+  'it IS the answer: an opinion ask gets a real pick, a fact gets stated. A reply that',
+  'deflects, tells the parent to look it up or go and check somewhere, or points at an',
+  'app in place of answering, is not an answer. On a health question, pointing to a',
+  'pharmacist or a doctor is a safety judgment and not a deflect. Saying which detail is',
+  'needed (which city) when the question left it out is an answer, not a deflect.',
+  'A LOW score is any of: a wrong or unsupported fact; an invented specific; a deflect',
+  'or a look-it-up; an answer in a different language from the question; anything stated',
+  "about the parent's family, their kids or their plans.",
+  'Do not score length, in sentences or characters. Do not mark emoji up or down.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
-// Deterministic broken stand-in: hype, a fabricated forecast, an emoji, a link, an app
-// pointer and a trailing question — trips carries_link + redirect_errand + points_at_an_app
-// + the trailing-question zero + the judge, so `--broken`
-// proves every layer bites. (The emoji no longer trips a GSM-7 gate — there isn't one now;
-// the link and the redirect are what guarantee it fails.)
+/** The searched fixture the broken stand-in is graded on. */
+const CALIBRATION_FIXTURE = 'leafs-last-night';
+
+// The calibration stand-in: a result stated with total confidence that no search
+// returned, then the app, a link and a question handed back. Graded by the real judge
+// against the research that fixture's search did return.
 const BROKEN_ANSWER =
-  'Great question! It should be 24 degrees and sunny tomorrow 😊 - perfect for the park. ' +
-  'Check https://weather.gc.ca or the app for details. Want me to set a reminder?';
+  'The Leafs won 9-0 last night, no question about it. Check the app or https://example.com for the details, ok?';
+
+/** Nearest-rank percentile over whole-millisecond latencies. */
+function percentile(values, q) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.ceil(q * sorted.length) - 1];
+}
 
 async function main() {
   const broken = process.argv.includes('--broken');
@@ -203,12 +289,15 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
+  const sanitizeSkill = await agent.loadSkill(SANITIZE_SKILL_PATH);
+  const searchSkill = await agent.loadSkill(SEARCH_SKILL_PATH);
   const skill = await agent.loadSkill(SKILL_PATH);
+  const sanitizeLane = agent.pickLane(sanitizeSkill.meta.task);
+  const searchModel = agent.pickModel(searchSkill.meta.task);
   const model = agent.pickModel(skill.meta.task);
   const subjectLane = agent.pickLane(skill.meta.task);
-  // The rubric-holding tier, not Haiku: on the 5.5 re-record the Haiku 5.5 judge marked
-  // the weather fixture down for the one sentence its own watchFor names as allowed.
+  // The rubric-holding tier: this judge has to hold a fact in the answer to the research
+  // notes, which is the judgment the whole suite rests on.
   const judgeModel = await readJudgeModel('sonnet');
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'general-answer', cachedOnly, getClient, cost);
   const fixtures =
@@ -218,127 +307,213 @@ async function main() {
           vary: (fixture, { reference }) => {
             fixture.text += `\n[message ${reference}]`;
           },
-          visibleInput: (fixture) => generalAnswerUserMessage(fixture.text),
+          visibleInput: (fixture) => questionSanitizeUserMessage(fixture.text),
         });
 
   console.log(
-    `general-answer eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
+    `general-answer eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | sanitize=${sanitizeLane.model} search=${searchModel} compose=${model} judge=${judgeModel}`,
   );
-  console.log(`corpus: ${fixtures.length} questions\n`);
+  console.log(`corpus: ${fixtures.length} questions | today: ${EVAL_TODAY}\n`);
+
+  /** Phases 0 and 1 for one fixture: what the compose, and the judge, are handed. */
+  async function research(fixture) {
+    const sanitize = await cachedToolCall({
+      tag: `general-answer-sanitize:${fixture.id}`,
+      model: sanitizeLane.model,
+      lane: sanitizeLane,
+      system: sanitizeSkill.instructions,
+      userMessage: questionSanitizeUserMessage(fixture.text),
+      toolName: 'sanitize',
+      toolSchema: SANITIZE_TOOL_SCHEMA,
+      toolDescription: 'Return the de-identified question.',
+      maxTokens: SANITIZE_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    const question = String(sanitize.value.question ?? '').trim();
+    const language = normalizeLanguage(sanitize.value.language);
+
+    let search = 'not_needed';
+    let notes = '';
+    let searchLatencyMs = 0;
+    if (needsSearch(sanitize.value.needs_search)) {
+      if (fixture.searchOff) {
+        search = 'search_off';
+      } else {
+        const found = await cachedSearch({
+          tag: `general-answer-search:${fixture.id}`,
+          model: searchModel,
+          system: searchSkill.instructions,
+          userMessage: searchUserMessage({ question, today: EVAL_TODAY }),
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        searchLatencyMs = found.latencyMs;
+        if (found.urls.length === 0 || found.notes === '') {
+          search = 'nothing_usable';
+        } else {
+          search = 'searched';
+          notes = found.notes;
+        }
+      }
+    }
+    return {
+      question,
+      language,
+      reading: String(sanitize.value.needs_search),
+      search,
+      notes,
+      latencyMs: sanitize.latencyMs + searchLatencyMs,
+    };
+  }
+
+  /** What the judge reads: the parent's question, the reply, and the research. */
+  function judgeInput(fixture, found, answer) {
+    return {
+      question: fixture.text,
+      today: EVAL_TODAY,
+      answer,
+      live: liveOf(found.search),
+      research_notes: found.search === 'searched' ? found.notes : 'none',
+      watchFor: fixture.watchFor,
+    };
+  }
+
+  // ── calibration: the judge on the broken stand-in ──────────────────────────
+  const calibrationFixture = ANSWER_FIXTURES.find((fixture) => fixture.id === CALIBRATION_FIXTURE);
+  const calibrationFound = await research(calibrationFixture);
+  const calibration = await judge(
+    `calibration:${calibrationFixture.id}`,
+    judgeInput(calibrationFixture, calibrationFound, flatten(BROKEN_ANSWER)),
+  );
+  const calibrated = calibration.score < JUDGE_MIN;
+
+  if (broken) {
+    console.log('--- answers ---');
+    console.log(
+      `FAIL  ${calibrationFixture.id.padEnd(22)} [${calibrationFound.search}, judge ${calibration.score}] "${BROKEN_ANSWER}"`,
+    );
+    if (calibrated) console.log(`      · judge:${calibration.score} (${calibration.reason})`);
+    console.log('\n--- gate ---');
+    console.log(
+      `broken-mode calibration (the judge must fail the stand-in): ${calibrated ? 'PASS (exit 0)' : `FAIL (exit 1) - the judge scored it ${calibration.score}`}`,
+    );
+    process.exit(calibrated ? 0 : 1);
+  }
 
   const results = [];
   for (const fixture of fixtures) {
-    const raw = broken
-      ? BROKEN_ANSWER
-      : (
-          await cachedToolCall({
-            tag: `general-answer:${fixture.id}`,
-            model,
-            lane: subjectLane,
-            system: skill.instructions,
-            userMessage: generalAnswerUserMessage(fixture.text),
-            toolName: 'answer',
-            toolSchema: ANSWER_TOOL_SCHEMA,
-            toolDescription: 'Return the one brief answer to this question.',
-            maxTokens: MAX_TOKENS,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        ).value.answer;
-
-    const flattened = flatten(raw);
-    const failures = sendFailures(flattened, smsSegments);
-    // A Chinese fixture must answer IN Chinese — the deterministic half of "reply in the
-    // language they wrote in". (French leans on the judge; there is no accent a French
-    // sentence is guaranteed to contain.)
-    if (fixture.mustContainCjk && !CJK.test(flattened)) failures.push('not_in_chinese');
-    if (/\?\s*$/.test(flattened)) failures.push('trailing_question');
-    // On a health question a pointer to a pharmacist or a doctor is a safety judgment, not
-    // an errand, so the judge grades it (the fixture's watchFor allows it). Every other
-    // fixture is held to the gate.
-    if (!fixture.healthQuestion && REDIRECT_SHAPE.test(flattened)) {
-      failures.push('redirect_errand');
-    }
-    if (APP_POINTER.test(flattened)) failures.push('points_at_an_app');
-    for (const pattern of fixture.forbiddenPatterns ?? []) {
-      if (pattern.test(flattened)) failures.push(`forbidden:${pattern.source}`);
-    }
-    if (recall(flattened, fixture.mustRecall) < 1) failures.push('recall_miss');
-    if (unhedgedOfficeholder(flattened, fixture.requireHedge)) {
-      failures.push('unhedged_officeholder');
+    const found = await research(fixture);
+    const failures = [];
+    // Rule #1, and not a check on the reply: what the fixture marks must be gone from
+    // the question BEFORE it goes to the search.
+    for (const leak of fixture.mustNotReachSearch ?? []) {
+      if (found.question.toLowerCase().includes(leak.toLowerCase())) {
+        failures.push(`identity_leak:${leak}`);
+      }
     }
 
-    const verdict = broken
-      ? { score: 1, reason: 'calibration stand-in' }
-      : await judge(fixture.id, {
-          question: fixture.text,
-          answer: flattened,
-          watchFor: fixture.watchFor ?? 'none',
-        });
+    const composed = await cachedToolCall({
+      tag: `general-answer:${fixture.id}`,
+      model,
+      lane: subjectLane,
+      system: skill.instructions,
+      userMessage: generalAnswerUserMessage({
+        question: found.question,
+        language: found.language,
+        today: EVAL_TODAY,
+        search: found.search,
+        notes: found.notes,
+      }),
+      toolName: 'answer',
+      toolSchema: ANSWER_TOOL_SCHEMA,
+      toolDescription: 'Return the one brief answer to this question.',
+      maxTokens: MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    const flattened = flatten(composed.value.answer);
+
+    const verdict = await judge(fixture.id, judgeInput(fixture, found, flattened));
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
 
-    results.push({ fixture, flattened, failures });
+    results.push({
+      fixture,
+      found,
+      flattened,
+      score: verdict.score,
+      failures,
+      latencyMs: found.latencyMs + composed.latencyMs,
+    });
   }
 
   // ── report ─────────────────────────────────────────────────────────────────
-  console.log('--- answers ---');
+  // What left the sanitize stage for the search and the compose, beside its reading.
+  console.log('--- de-identified questions ---');
+  for (const r of results) {
+    console.log(
+      `${r.fixture.id.padEnd(22)} needs_search=${r.found.reading.padEnd(6)} ${r.found.language}  "${r.found.question}"`,
+    );
+  }
+
+  console.log('\n--- answers ---');
   for (const r of results) {
     const tag = r.failures.length === 0 ? 'PASS' : 'FAIL';
-    console.log(`${tag}  ${r.fixture.id.padEnd(22)} "${r.flattened.slice(0, 90)}"`);
+    console.log(
+      `${tag}  ${r.fixture.id.padEnd(22)} [${r.found.search}, judge ${r.score}, ${r.latencyMs} ms] "${r.flattened}"`,
+    );
     for (const f of r.failures) console.log(`      · ${f}`);
   }
 
-  const unsendable = results.filter((r) =>
-    r.failures.some((f) => ['empty', 'over_segment_budget', 'carries_link'].includes(f)),
-  );
-  const trailingQuestions = results.filter((r) => r.failures.includes('trailing_question'));
-  const redirects = results.filter((r) => r.failures.includes('redirect_errand'));
-  const appPointers = results.filter((r) => r.failures.includes('points_at_an_app'));
-  const fabrications = results.filter((r) => r.failures.some((f) => f.startsWith('forbidden:')));
-  const recallMisses = results.filter((r) => r.failures.includes('recall_miss'));
-  const staleOffice = results.filter((r) => r.failures.includes('unhedged_officeholder'));
-  const wrongLanguage = results.filter((r) => r.failures.includes('not_in_chinese'));
+  const leaks = results.filter((r) => r.failures.some((f) => f.startsWith('identity_leak:')));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
+  const count = (search) => results.filter((r) => r.found.search === search).length;
+  const latency = (rows) => {
+    const values = rows.map((r) => r.latencyMs);
+    return `p50 ${percentile(values, 0.5)} ms / p95 ${percentile(values, 0.95)} ms over ${rows.length}`;
+  };
 
   console.log('\n--- corpus metrics ---');
+  console.log(`judge below ${JUDGE_MIN}:               ${judgeFails.length}  (0 required)`);
   console.log(
-    `UNSENDABLE ANSWERS:      ${unsendable.length}  (0 required - the parent got the deflect line instead)`,
-  );
-  console.log(`trailing questions:      ${trailingQuestions.length}  (0 required)`);
-  console.log(
-    `redirect errands:        ${redirects.length}  (0 required - "check ESPN" is the work handed back)`,
+    `identity reached the search:  ${leaks.length}  (0 required - a marked name left in the de-identified question)`,
   );
   console.log(
-    `app pointers:            ${appPointers.length}  (0 required - the destination half of the same errand)`,
-  );
-  console.log(`live-data fabrications:  ${fabrications.length}  (0 required)`);
-  console.log(`recall misses:           ${recallMisses.length}  (0 required)`);
-  console.log(
-    `answered wrong language: ${wrongLanguage.length}  (0 required - a ZH question answered not-in-Chinese)`,
+    `judge on the broken stand-in: ${calibration.score}  (below ${JUDGE_MIN} required - a judge that passes it grades nothing)`,
   );
   console.log(
-    `unhedged officeholders:  ${staleOffice.length}  (0 required - the judge shares the cutoff, so this one is mechanical)`,
+    `live search:                  ${count('searched')} searched, ${count('not_needed')} not needed, ${count('search_off')} dark, ${count('nothing_usable')} nothing usable`,
   );
-  console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
+  console.log(
+    `latency, searched answer:     ${latency(results.filter((r) => r.found.search === 'searched'))}  (sanitize + search + compose)`,
+  );
+  console.log(
+    `latency, unsearched answer:   ${latency(results.filter((r) => r.found.search !== 'searched'))}  (sanitize + compose)`,
+  );
 
+  const webSearchRequests = cost.webSearchRequests ?? 0;
   console.log('\n--- cost telemetry ---');
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );
+  console.log(
+    `web search requests this run: ${webSearchRequests} | fee, billed apart from tokens: $${(webSearchRequests * USD_PER_WEB_SEARCH).toFixed(2)} USD`,
+  );
+  for (const [name, bucket] of Object.entries(cost.byModel)) {
+    console.log(`tokens this run, ${name}: ${bucket.input} in / ${bucket.output} out`);
+  }
+  console.log(
+    `of which search turns: ${cost.searchTurns ?? 0} calls, ${cost.searchInput ?? 0} in / ${cost.searchOutput ?? 0} out`,
+  );
 
-  const allPass = results.every((r) => r.failures.length === 0);
+  const allPass = calibrated && results.every((r) => r.failures.length === 0);
 
   console.log('\n--- gate ---');
-  if (!broken) {
-    console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
-    process.exit(allPass ? 0 : 1);
-  }
-  const calibrated = !allPass;
-  console.log(
-    `broken-mode calibration (must fail at least one gate): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
-  );
-  process.exit(calibrated ? 0 : 1);
+  console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
+  process.exit(allPass ? 0 : 1);
 }
 
 main().catch((err) => {
