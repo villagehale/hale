@@ -1,0 +1,12 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "Lima is the capital of Peru",
+        "from": "settled"
+      }
+    ],
+    "answer": "Lima. It's on the coast, right on the Pacific."
+  },
+  "latencyMs": 1476
+}

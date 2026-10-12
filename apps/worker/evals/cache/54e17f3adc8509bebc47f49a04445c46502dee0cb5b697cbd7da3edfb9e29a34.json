@@ -1,0 +1,12 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "did the leafs win last night",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "current_fact": "result of the Leafs' game last night",
+    "needs_search": "yes"
+  },
+  "latencyMs": 2763
+}

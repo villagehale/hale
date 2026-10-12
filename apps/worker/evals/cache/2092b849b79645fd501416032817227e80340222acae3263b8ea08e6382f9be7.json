@@ -1,0 +1,16 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "hard-boiled egg takes about 10 to 12 minutes once the water is boiling",
+        "from": "settled"
+      },
+      {
+        "states": "cool the egg in cold water afterward",
+        "from": "settled"
+      }
+    ],
+    "answer": "Drop them into boiling water and give them 10 to 12 minutes for hard-boiled. Then straight into cold water so they peel easier."
+  },
+  "latencyMs": 2507
+}

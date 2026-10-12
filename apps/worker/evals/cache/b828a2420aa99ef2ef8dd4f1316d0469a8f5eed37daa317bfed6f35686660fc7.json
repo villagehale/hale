@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct: no country was given, and the reply asks for it without stating any broadcaster from memory. But the wording reads like an assistant offering a service ('Happy to check...', 'so I need that to look it up') rather than a friend texting back something like 'which country you in?'. That caps it below 4.",
-    "score": 3
-  }
-}

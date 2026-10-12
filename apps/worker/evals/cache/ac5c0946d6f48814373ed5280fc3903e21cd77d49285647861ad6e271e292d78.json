@@ -1,0 +1,12 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "Paris is the capital of France",
+        "from": "settled"
+      }
+    ],
+    "answer": "C'est Paris 🇫🇷"
+  },
+  "latencyMs": 1483
+}

@@ -1,0 +1,24 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "The Blue Jays' season is over, with a 79-83 record",
+        "from": "MLB.com's standings show them at 79 wins and 83 losses (.488). Covers.com lists them 5th in the AL East at 79-83."
+      },
+      {
+        "states": "The Blue Jays finished 5th in the AL East",
+        "from": "Covers.com lists them 5th in the AL East at 79-83."
+      },
+      {
+        "states": "The Blue Jays are out of the playoffs",
+        "from": "They are out of the postseason. MLB.com shows them 19.0 games back in the division and 5.0 games out of the wild card. Both standings pages mark their elimination number as \"E\", meaning eliminated."
+      },
+      {
+        "states": "No Blue Jays game last night that I can find",
+        "from": "None of the results shows a Blue Jays game on Oct 11. The standings pages give the Blue Jays no next game."
+      }
+    ],
+    "answer": "Couldn't find a Jays game from last night. Their season's over: 79-83, 5th in the AL East, and out of the playoffs."
+  },
+  "latencyMs": 4499
+}

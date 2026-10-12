@@ -1,0 +1,20 @@
+{
+  "value": {
+    "grounding": [
+      {
+        "states": "Vancouver, BC: high of about 15°C, mix of sun and cloud, showers Tuesday night with a low of 11",
+        "from": "Environment Canada, forecast issued 5:00 AM PDT Monday 12 Oct 2026: Tuesday is a mix of sun and cloud, with a high of 15. Tuesday night brings showers, with a low of 11."
+      },
+      {
+        "states": "Vancouver, WA: mostly sunny, high near 64°F, dry, cloudy overnight",
+        "from": "National Weather Service point forecast, last updated 9:41 am PDT Oct 11, 2026: Tuesday is mostly sunny with a high near 64°F, and Tuesday night is mostly cloudy with a low around 48°F."
+      },
+      {
+        "states": "Vancouver is ambiguous, there are two; the answer covers both",
+        "from": "The question says only \"Vancouver\" and gives no place. There are two Vancouvers (British Columbia, Canada and Washington, USA), so I looked up both."
+      }
+    ],
+    "answer": "Assuming you mean Vancouver, BC: tomorrow's a mix of sun and cloud, high around 15°C, then showers creep in by the evening, low of 11. If you meant Vancouver, Washington: mostly sunny and dry, high near 64°F. Which one were you after?"
+  },
+  "latencyMs": 7670
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the notes: Messi as the consensus pick with Ronaldo, Pelé and Maradona as alternatives, eight Ballon d'Ors, the 2022 World Cup, and Brady first for the NFL with Rice second. It flags the soccer-or-NFL ambiguity and makes a real pick for soccer (Messi), which meets the watchFor. For the NFL it only reports what people usually say rather than leaning itself, so that half reads more like a survey. 'Given the eight Ballon d'Ors' is also a bit stiff for a text, though overall it reads like a friend.",
+    "score": 4
+  }
+}

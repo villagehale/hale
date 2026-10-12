@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent already said Oakville, yet the reply asks \"Which city or area are you in?\" It ignores what they gave. If anything was missing, it was which Oakville (province or state), and that is what should have been asked. \"Happy to find the closest one\" reads like an assistant offering a service, not a friend texting back. It does avoid stating facts from memory and says nothing about the family's street.",
-    "score": 2
-  }
-}
