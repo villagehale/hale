@@ -496,7 +496,9 @@ async function main() {
       ? [CURRENT_TIER[roleArg], 'gateway']
       : gatewayModel
         ? [...MODEL_KEYS, 'gateway']
-        : MODEL_KEYS;
+        : // The production lanes only. A tier-comparison arm is spend someone asks for by
+          // name (--models=haiku,sonnet,opus), never a default re-run.
+          [...new Set(roles.map((role) => CURRENT_TIER[role]))];
   const judgeModel = models.haiku; // the judge tier the other evals use
   const getClient = lazyAnthropic();
   const cost = makeCost();
