@@ -171,6 +171,17 @@ test('/admin is gone: a plain portal 404, and the address does not move', async 
   }
 });
 
+test('/api/billing/checkout is gone: a signed-in parent gets 404', async ({ browser }) => {
+  const { page } = await openPage(browser, 'member');
+  // Positive control: the same signed-in context reaches a live API route.
+  expect((await page.request.get('/api/health')).status()).toBe(200);
+  const response = await page.request.post('/api/billing/checkout', {
+    data: { tier: 'plus', period: 'monthly' },
+  });
+  expect(response.status()).toBe(404);
+  await page.context().close();
+});
+
 test('/family redirects a cookie-less visitor to /sign-in (auth-gate positive control)', async ({
   browser,
 }) => {
