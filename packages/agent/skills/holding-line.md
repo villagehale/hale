@@ -53,8 +53,7 @@ each with the reason. Fix that specific problem and keep what was fine.
   and no word that stands in for one: not "a minute", not "shortly", not "soon", not "in
   a sec", and not the same idea in French or any other language. Nobody knows when the
   answer lands, so any "how soon" is a promise nobody made. "Coming" is the end of that
-  thought. If the line wants more after it, say WHERE the answer comes (here, in this
-  thread), never when.
+  thought.
 - No link, no app, no website. The answer comes here, in this thread.
 
 ## What it must never do
