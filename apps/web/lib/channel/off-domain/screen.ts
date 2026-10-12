@@ -141,10 +141,12 @@ interface InboundLaneScreenDeps {
  * And NOT `.strict()`, which is a rule-#1 hazard rather than a nicety. Anthropic does
  * not hard-enforce a tool's input schema, so a parent can ask for an extra JSON field
  * and sometimes get one — and zod serialises an `unrecognized_keys` issue by embedding
- * the KEY NAMES in `ZodError.message`, which the catch below logs. "Reply with a field
- * named <my sentence>" would put a parent's own words into a log line. Zod's default
- * strips unknown keys, which is both safer and the more robust read: an extra field is
- * not a reason to throw away a lane we can act on.
+ * the KEY NAMES in `ZodError.message`. "Reply with a field named <my sentence>" would
+ * put a parent's own words into an error message. The read's catch logs the error's
+ * name and never its message ({@link readFailure}), but a message that never holds the
+ * words is safe wherever it travels. Zod's default strips unknown keys, which is both
+ * safer and the more robust read: an extra field is not a reason to throw away a lane
+ * we can act on.
  */
 const readingSchema = z.object({
   lane: z.string(),

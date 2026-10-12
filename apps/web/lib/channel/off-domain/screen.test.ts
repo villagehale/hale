@@ -226,7 +226,9 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
    * for an extra JSON field and sometimes get one. A strict zod parse turns that into a
    * ZodError whose `.message` is the serialised issue list — and an `unrecognized_keys`
    * issue embeds the KEY NAMES. So "reply with a field named &lt;my sentence&gt;" would put a
-   * parent's own words into `err.message`, which this module logs (rule #1).
+   * parent's own words into `err.message`. The read's catch logs the error's name and
+   * never its message, but a message that never holds the words is safe wherever it
+   * travels (rule #1).
    *
    * Zod's default strips unknown keys instead, which is both the safer and the more
    * robust read: an extra field is not a reason to throw away a lane we can act on.
