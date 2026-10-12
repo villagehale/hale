@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It names Mark Carney with an as-of hedge in the same sentence, which is exactly what watchFor requires. It is one sentence, has no greeting or emoji, and does not end with a question. Two things keep it from a 5. The hedge is doubled ('as of what I know' plus 'could have changed since my training'), which is heavier than a light staleness note. 'I would check a current source' also edges toward pointing elsewhere, though it names no specific app or site.",
+    "score": 4
+  }
+}
