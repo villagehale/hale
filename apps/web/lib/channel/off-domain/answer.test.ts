@@ -2,6 +2,8 @@ import type { AgentClient } from '@hale/agent';
 import { pickModel } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  type FamilyFacts,
+  type FamilyPlace,
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   createGeneralAnswer,
   generalAnswerSearchEnabled,
@@ -49,8 +51,30 @@ const SANITIZE_HEADING = 'Take the family out, keep the question';
 const ANSWER_HEADING = 'A friend who knows, texting back';
 
 const TODAY = 'monday, oct 12, 2026';
-/** The lane's date read, as the composer is handed it. */
-const today = async () => TODAY;
+/**
+ * The lane's reads about the family, as the composer is handed them. Most turns have no
+ * business knowing where the family is, so the default read of it throws: a test that did
+ * not ask for a place fails if one is read.
+ */
+const family: FamilyFacts = {
+  today: async () => TODAY,
+  place: async () => {
+    throw new Error('this turn must not read where the family is');
+  },
+};
+/** A family whose place the lane can read, counting how often it is asked. */
+function familyAt(place: FamilyPlace): FamilyFacts & { placeReads: number } {
+  const facts = {
+    placeReads: 0,
+    today: async () => TODAY,
+    place: async () => {
+      facts.placeReads += 1;
+      return place;
+    },
+  };
+  return facts;
+}
+const TORONTO: FamilyPlace = { status: 'known', city: 'Toronto', country: 'Canada' };
 const ASK = 'whos the goat in football';
 
 /** What each of the three calls returns. An Error is thrown by that call. */
@@ -163,6 +187,18 @@ describe('the three payloads', () => {
     );
   });
 
+  it('hands the search the city and the country, and nothing finer, on a turn that depends on where the family is', () => {
+    expect(
+      searchUserMessage({
+        question: 'hows the weather tomorrow',
+        today: TODAY,
+        place: { city: 'Toronto', country: 'Canada' },
+      }),
+    ).toBe(
+      '{"question":"hows the weather tomorrow","today":"monday, oct 12, 2026","place":{"city":"Toronto","country":"Canada"}}',
+    );
+  });
+
   it('hands the compose the question, the language, the date and what the search found', () => {
     expect(
       generalAnswerUserMessage({
@@ -250,7 +286,7 @@ describe('createGeneralAnswer', () => {
       clientReturning({ answer: 'Messi, for me - the closest thing to a complete player.' }),
     );
 
-    expect(await answer.compose(ASK, today)).toEqual({
+    expect(await answer.compose(ASK, family)).toEqual({
       status: 'composed',
       reply: 'Messi, for me - the closest thing to a complete player.',
       search: 'not_needed',
@@ -273,7 +309,7 @@ describe('createGeneralAnswer', () => {
         },
         seen,
       ),
-    ).compose('whats the capital of peru', today);
+    ).compose('whats the capital of peru', family);
 
     expect(seen.sanitize.map((request) => request.messages)).toEqual([
       [{ role: 'user', content: '{"text":"whats the capital of peru"}' }],
@@ -295,7 +331,7 @@ describe('createGeneralAnswer', () => {
 
   it('names a missing client rather than throwing', async () => {
     quiet();
-    expect(await createGeneralAnswer(throwingClient).compose(ASK, today)).toEqual({
+    expect(await createGeneralAnswer(throwingClient).compose(ASK, family)).toEqual({
       status: 'unavailable',
       reason: 'client_unavailable',
     });
@@ -303,7 +339,7 @@ describe('createGeneralAnswer', () => {
 
   it('names a provider outage rather than throwing', async () => {
     quiet();
-    expect(await createGeneralAnswer(outageClient).compose(ASK, today)).toEqual({
+    expect(await createGeneralAnswer(outageClient).compose(ASK, family)).toEqual({
       status: 'unavailable',
       reason: 'model_failed',
     });
@@ -311,7 +347,7 @@ describe('createGeneralAnswer', () => {
 
   it('names a compose that came back unparseable rather than throwing', async () => {
     quiet();
-    expect(await createGeneralAnswer(clientReturning('sure')).compose(ASK, today)).toEqual({
+    expect(await createGeneralAnswer(clientReturning('sure')).compose(ASK, family)).toEqual({
       status: 'unavailable',
       reason: 'model_failed',
     });
@@ -326,7 +362,7 @@ describe('createGeneralAnswer', () => {
   it('flattens curly punctuation and markdown instead of refusing them', async () => {
     const result = await createGeneralAnswer(
       clientReturning({ answer: '**Messi** — he’s the one I’d pick.' }),
-    ).compose(ASK, today);
+    ).compose(ASK, family);
 
     expect(result).toEqual({
       status: 'composed',
@@ -345,7 +381,7 @@ describe('createGeneralAnswer', () => {
     ['a long Chinese answer', '中'.repeat(300)],
   ])('sends %s rather than the fixed line', async (_label, body) => {
     expect(
-      await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, today),
+      await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, family),
     ).toEqual({ status: 'composed', reply: body, search: 'not_needed' });
   });
 
@@ -357,7 +393,7 @@ describe('createGeneralAnswer', () => {
    */
   it("gives the compose the medical compose's token budget", async () => {
     const seen = seenNothing();
-    await createGeneralAnswer(clientReturning({ answer: 'Lima.' }, seen)).compose(ASK, today);
+    await createGeneralAnswer(clientReturning({ answer: 'Lima.' }, seen)).compose(ASK, family);
 
     expect(COMPOSE_MAX_TOKENS).toBe(1024);
     expect(seen.compose[0]?.max_tokens).toBe(COMPOSE_MAX_TOKENS);
@@ -366,7 +402,7 @@ describe('createGeneralAnswer', () => {
   it('refuses an answer that is empty once flattened', async () => {
     const log = quiet();
     expect(
-      await createGeneralAnswer(clientReturning({ answer: '  **  ** ' })).compose(ASK, today),
+      await createGeneralAnswer(clientReturning({ answer: '  **  ** ' })).compose(ASK, family),
     ).toEqual({ status: 'unavailable', reason: 'unsendable' });
     expect(log.mock.calls).toEqual([
       [
@@ -383,7 +419,7 @@ describe('createGeneralAnswer', () => {
     expect(
       await createGeneralAnswer(
         clientReturning({ answer: "A mon avis, c'est un peu drôle mais délicieux." }),
-      ).compose('cest quoi ton avis', today),
+      ).compose('cest quoi ton avis', family),
     ).toMatchObject({
       status: 'composed',
       reply: "A mon avis, c'est un peu drôle mais délicieux.",
@@ -394,7 +430,7 @@ describe('createGeneralAnswer', () => {
     expect(
       await createGeneralAnswer(clientReturning({ answer: '梅西,无可争议。' })).compose(
         '足球界谁最强',
-        today,
+        family,
       ),
     ).toMatchObject({ status: 'composed', reply: '梅西,无可争议。' });
   });
@@ -413,7 +449,7 @@ describe('createGeneralAnswer', () => {
     expect(
       await createGeneralAnswer(clientReturning({ answer: recorded })).compose(
         'is melatonin safe for adults',
-        today,
+        family,
       ),
     ).toEqual({ status: 'composed', reply: recorded, search: 'not_needed' });
   });
@@ -426,16 +462,16 @@ describe('createGeneralAnswer', () => {
     const warn = quietWarn();
     lit();
 
-    await createGeneralAnswer(outageClient).compose(secret, today);
-    await createGeneralAnswer(throwingClient).compose(secret, today);
-    await createGeneralAnswer(clientReturning({ answer: '  ' })).compose(secret, today);
+    await createGeneralAnswer(outageClient).compose(secret, family);
+    await createGeneralAnswer(throwingClient).compose(secret, family);
+    await createGeneralAnswer(clientReturning({ answer: '  ' })).compose(secret, family);
     await createGeneralAnswer(
       scripted({
         sanitize: reading({ question: secret, needs_search: 'yes' }),
         search: new Error(`400 invalid_request_error: ${secret}`),
         answer: { answer: `See https://example.com about ${secret}` },
       }),
-    ).compose(secret, today);
+    ).compose(secret, family);
 
     const logged = JSON.stringify([...log.mock.calls, ...warn.mock.calls]);
     expect(logged).not.toContain('Riverdale');
@@ -461,9 +497,9 @@ describe('createGeneralAnswer', () => {
       }) as unknown as AgentClient;
     const log = quiet();
 
-    await createGeneralAnswer(scripted({ sanitize: echo })).compose(secret, today);
-    await createGeneralAnswer(truncated).compose(secret, today);
-    await createGeneralAnswer(scripted({ answer: echo })).compose(secret, today);
+    await createGeneralAnswer(scripted({ sanitize: echo })).compose(secret, family);
+    await createGeneralAnswer(truncated).compose(secret, family);
+    await createGeneralAnswer(scripted({ answer: echo })).compose(secret, family);
 
     expect(log.mock.calls).toEqual([
       [
@@ -502,7 +538,7 @@ describe('the sanitize phase', () => {
         },
         seen,
       ),
-    ).compose(RAW, today);
+    ).compose(RAW, family);
 
     expect(JSON.stringify(seen.sanitize)).toContain('Priya');
     expect(seen.search).toHaveLength(1);
@@ -535,7 +571,7 @@ describe('the sanitize phase', () => {
         },
         seen,
       ),
-    ).compose('anything', today);
+    ).compose('anything', family);
 
     const downstream = JSON.stringify([seen.search, seen.compose]);
     expect(downstream).not.toContain('L7G');
@@ -568,7 +604,7 @@ describe('the sanitize phase', () => {
         },
         seen,
       ),
-    ).compose('anything', today);
+    ).compose('anything', family);
 
     expect(JSON.parse(seen.search[0]?.messages?.[0]?.content ?? '{}').question).toBe(question);
     expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}').question).toBe(question);
@@ -578,13 +614,13 @@ describe('the sanitize phase', () => {
     const seen = seenNothing();
     await createGeneralAnswer(
       scripted({ sanitize: reading({ language: 'fr' }), answer: { answer: 'Oui.' } }, seen),
-    ).compose('cest ok', today);
+    ).compose('cest ok', family);
     await createGeneralAnswer(
       scripted(
         { sanitize: reading({ language: 'not a language code' }), answer: { answer: 'Yes.' } },
         seen,
       ),
-    ).compose('is it ok', today);
+    ).compose('is it ok', family);
 
     expect(
       seen.compose.map((request) => JSON.parse(request.messages?.[0]?.content ?? '{}').language),
@@ -601,7 +637,7 @@ describe('the sanitize phase', () => {
     expect(
       await createGeneralAnswer(scripted({ sanitize: new Error('upstream 529') }, seen)).compose(
         RAW,
-        today,
+        family,
       ),
     ).toEqual({ status: 'unavailable', reason: 'model_failed' });
     expect(seen.search).toHaveLength(0);
@@ -615,7 +651,7 @@ describe('the sanitize phase', () => {
     expect(
       await createGeneralAnswer(scripted({ sanitize: reading({ question: '  ' }) }, seen)).compose(
         RAW,
-        today,
+        family,
       ),
     ).toEqual({ status: 'unavailable', reason: 'model_failed' });
     expect(log.mock.calls).toEqual([
@@ -710,7 +746,7 @@ describe('the live search', () => {
           { sanitize: CURRENT, search: searchFound(), answer: { answer: 'Yep, 4-2.' } },
           seen,
         ),
-      ).compose('did the leafs win last night', today),
+      ).compose('did the leafs win last night', family),
     ).toEqual({ status: 'composed', reply: 'Yep, 4-2.', search: 'searched' });
 
     expect(seen.search).toHaveLength(1);
@@ -736,7 +772,7 @@ describe('the live search', () => {
 
     await createGeneralAnswer(
       scripted({ sanitize: CURRENT, search: searchFound(), answer: { answer: 'Yep, 4-2.' } }),
-    ).compose('did the leafs win last night', today);
+    ).compose('did the leafs win last night', family);
 
     expect(info.mock.calls).toEqual([
       [{ search: 'searched', results: 1 }, 'off-domain answer: live search ran'],
@@ -766,7 +802,7 @@ describe('the live search', () => {
             },
             seen,
           ),
-        ).compose('did the leafs win last night', today),
+        ).compose('did the leafs win last night', family),
       ).toEqual({ status: 'composed', reply: "Can't check right now.", search: 'nothing_usable' });
 
       expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}')).toEqual({
@@ -808,7 +844,7 @@ describe('the live search', () => {
           },
           seen,
         ),
-      ).compose('hows the weather tomorrow', today),
+      ).compose('hows the weather tomorrow', family),
     ).toEqual({ status: 'composed', reply: 'Which city?', search: 'missing_detail' });
 
     expect(seen.search).toHaveLength(0);
@@ -849,7 +885,7 @@ describe('the live search', () => {
           },
           seen,
         ),
-      ).compose('hows the weather tomorrow', today),
+      ).compose('hows the weather tomorrow', family),
     ).toEqual({
       status: 'composed',
       reply: "Can't check the forecast right now.",
@@ -879,7 +915,7 @@ describe('the live search', () => {
           { sanitize: CURRENT, answer: { answer: "I can't check scores right now." } },
           seen,
         ),
-      ).compose('did the leafs win last night', today),
+      ).compose('did the leafs win last night', family),
     ).toEqual({
       status: 'composed',
       reply: "I can't check scores right now.",
@@ -901,7 +937,7 @@ describe('the live search', () => {
     expect(
       await createGeneralAnswer(
         scripted({ sanitize: reading({ needs_search: 'no' }), answer: { answer: 'Lima.' } }, seen),
-      ).compose('whats the capital of peru', today),
+      ).compose('whats the capital of peru', family),
     ).toEqual({ status: 'composed', reply: 'Lima.', search: 'not_needed' });
 
     expect(seen.search).toHaveLength(0);
@@ -921,7 +957,7 @@ describe('the live search', () => {
           { sanitize: reading({ needs_search }), search: searchFound(), answer: { answer: 'x' } },
           seen,
         ),
-      ).compose(ASK, today);
+      ).compose(ASK, family);
 
       expect(seen.search).toHaveLength(1);
     },
@@ -942,7 +978,7 @@ describe('the live search', () => {
           },
           seen,
         ),
-      ).compose('did the leafs win last night', today),
+      ).compose('did the leafs win last night', family),
     ).toEqual({
       status: 'composed',
       reply: "I can't check that right now.",
@@ -993,7 +1029,7 @@ describe('the live search', () => {
             { sanitize: CURRENT, search: content, answer: { answer: "Can't check right now." } },
             seen,
           ),
-        ).compose('did the leafs win last night', today),
+        ).compose('did the leafs win last night', family),
       ).toEqual({ status: 'composed', reply: "Can't check right now.", search: 'nothing_usable' });
 
       expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}')).toEqual({
@@ -1007,6 +1043,240 @@ describe('the live search', () => {
       ]);
     },
   );
+});
+
+/**
+ * Barton, 2026-10-12: the off-topic search may carry the family's own city and country, so
+ * "how's the weather tomorrow" just answers. Code is the only source of where a family is
+ * (the lane's `place` read). Whether a question turns on it is the sanitizer's reading,
+ * and only an explicit `needed` on a lit turn that searches reads it at all.
+ */
+describe("the family's city and country", () => {
+  const WEATHER = (overrides: Record<string, unknown> = {}) =>
+    reading({
+      question: 'hows the weather tomorrow',
+      missing_detail: 'which city',
+      their_place: 'needed',
+      needs_search: 'missing_detail',
+      ...overrides,
+    });
+  const searchMessage = (seen: Seen) => JSON.parse(seen.search[0]?.messages?.[0]?.content ?? '{}');
+  const composeMessage = (seen: Seen) =>
+    JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}');
+
+  it('searches the question for the city and country the lane read, once, and asks for nothing', async () => {
+    lit();
+    quietInfo();
+    const seen = seenNothing();
+    const facts = familyAt(TORONTO);
+
+    expect(
+      await createGeneralAnswer(
+        scripted(
+          { sanitize: WEATHER(), search: searchFound(), answer: { answer: 'Sunny, high of 14.' } },
+          seen,
+        ),
+      ).compose('hows the weather tomorrow', facts),
+    ).toEqual({ status: 'composed', reply: 'Sunny, high of 14.', search: 'searched' });
+
+    expect(facts.placeReads).toBe(1);
+    expect(seen.search).toHaveLength(1);
+    expect(searchMessage(seen)).toEqual({
+      question: 'hows the weather tomorrow',
+      today: TODAY,
+      place: { city: 'Toronto', country: 'Canada' },
+    });
+    // The place did its work in the search. The sanitizer never saw it, and the compose
+    // is handed the notes, not the family's place and not a thing to ask for.
+    expect(JSON.stringify(seen.sanitize)).not.toContain('Toronto');
+    expect(composeMessage(seen)).toEqual({
+      question: 'hows the weather tomorrow',
+      language: 'en',
+      today: TODAY,
+      live: 'searched',
+      research_notes: LEAFS_NOTES,
+    });
+  });
+
+  it('carries the place on a question read as current that also turns on where they are', async () => {
+    lit();
+    quietInfo();
+    const seen = seenNothing();
+
+    await createGeneralAnswer(
+      scripted(
+        {
+          sanitize: WEATHER({ needs_search: 'yes', missing_detail: 'none' }),
+          search: searchFound(),
+          answer: { answer: 'Sunny.' },
+        },
+        seen,
+      ),
+    ).compose('hows the weather tomorrow', familyAt(TORONTO));
+
+    expect(searchMessage(seen).place).toEqual({ city: 'Toronto', country: 'Canada' });
+  });
+
+  /** A question that names its own place is searched for that place. The home city would
+   * be a wrong answer and a needless disclosure, so it is not read at all. */
+  it('does not read or send the home city for a question that names another city', async () => {
+    lit();
+    quietInfo();
+    const seen = seenNothing();
+
+    await createGeneralAnswer(
+      scripted(
+        {
+          sanitize: reading({
+            question: 'hows the weather in vancouver tomorrow',
+            their_place: 'not_needed',
+            needs_search: 'yes',
+          }),
+          search: searchFound(),
+          answer: { answer: 'Rain in Vancouver.' },
+        },
+        seen,
+      ),
+    ).compose('hows the weather in vancouver tomorrow', family);
+
+    expect(searchMessage(seen)).toEqual({
+      question: 'hows the weather in vancouver tomorrow',
+      today: TODAY,
+    });
+  });
+
+  /** Only an explicit `needed` sends it: anything the sanitizer was not sure of does not. */
+  it.each(['not_needed', 'maybe', '', null, undefined])(
+    'does not read the place when the reading is %j',
+    async (their_place) => {
+      lit();
+      quietInfo();
+      const seen = seenNothing();
+
+      await createGeneralAnswer(
+        scripted(
+          {
+            sanitize: reading({ their_place, needs_search: 'yes' }),
+            search: searchFound(),
+            answer: { answer: 'x' },
+          },
+          seen,
+        ),
+      ).compose(ASK, family);
+
+      expect(searchMessage(seen)).toEqual({ question: ASK, today: TODAY });
+    },
+  );
+
+  it('does not read the place for a question that needs no search', async () => {
+    lit();
+    const seen = seenNothing();
+
+    await createGeneralAnswer(
+      scripted(
+        {
+          sanitize: reading({ their_place: 'needed', needs_search: 'no' }),
+          answer: { answer: 'x' },
+        },
+        seen,
+      ),
+    ).compose(ASK, family);
+
+    expect(seen.search).toHaveLength(0);
+  });
+
+  it('does not read the place while the flag is dark', async () => {
+    quietWarn();
+    const seen = seenNothing();
+
+    expect(
+      await createGeneralAnswer(
+        scripted({ sanitize: WEATHER(), answer: { answer: "Can't check right now." } }, seen),
+      ).compose('hows the weather tomorrow', family),
+    ).toEqual({ status: 'composed', reply: "Can't check right now.", search: 'search_off' });
+    expect(seen.search).toHaveLength(0);
+  });
+
+  /**
+   * A place the lane cannot name is a named outcome (rule #11), with which kind, and the
+   * turn then goes exactly as it did before there was a place to read: Hale asks.
+   */
+  it.each(['no_country', 'no_postal', 'unmapped', 'ambiguous'] as const)(
+    'asks for the city when the place is unknown (%s), and names why',
+    async (reason) => {
+      lit();
+      const info = quietInfo();
+      const seen = seenNothing();
+
+      expect(
+        await createGeneralAnswer(
+          scripted({ sanitize: WEATHER(), answer: { answer: 'Which city?' } }, seen),
+        ).compose('hows the weather tomorrow', familyAt({ status: 'unknown', reason })),
+      ).toMatchObject({ status: 'composed', reply: 'Which city?', search: 'missing_detail' });
+
+      expect(seen.search).toHaveLength(0);
+      expect(composeMessage(seen)).toEqual({
+        question: 'hows the weather tomorrow',
+        language: 'en',
+        today: TODAY,
+        live: 'missing_detail',
+        missing: 'which city',
+      });
+      expect(info.mock.calls).toEqual([
+        [{ place: 'unknown', reason }, 'off-domain answer: no place for this family'],
+        [{ search: 'missing_detail' }, 'off-domain answer: no live search this turn'],
+      ]);
+    },
+  );
+
+  it('searches without a place when the place is unknown and the question is still searchable', async () => {
+    lit();
+    quietInfo();
+    const seen = seenNothing();
+
+    await createGeneralAnswer(
+      scripted(
+        {
+          sanitize: WEATHER({ needs_search: 'yes', missing_detail: 'none' }),
+          search: searchFound(),
+          answer: { answer: 'x' },
+        },
+        seen,
+      ),
+    ).compose('hows the weather tomorrow', familyAt({ status: 'unknown', reason: 'unmapped' }));
+
+    expect(searchMessage(seen)).toEqual({ question: 'hows the weather tomorrow', today: TODAY });
+  });
+
+  /** Rule #1. A log line says a search ran and how many results it stood on. Where the
+   * family is appears in none of them, on the path that worked or the ones that did not. */
+  it('logs neither the city nor the country, on any path', async () => {
+    lit();
+    const logged: unknown[][] = [];
+    for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args);
+      });
+    }
+    const turn = (script: Script) =>
+      createGeneralAnswer(scripted({ sanitize: WEATHER(), ...script })).compose(
+        'hows the weather tomorrow',
+        familyAt(TORONTO),
+      );
+
+    await turn({ search: searchFound(), answer: { answer: 'Sunny in Toronto, Canada.' } });
+    await turn({ search: new Error('reset: Toronto, Canada'), answer: { answer: 'x' } });
+    await turn({ search: [], answer: { answer: 'x' } });
+    await turn({ search: searchFound(), answer: new Error('400: Toronto, Canada') });
+    await turn({ search: searchFound(), answer: { answer: 'https://toronto.example/canada' } });
+
+    // Positive control: these turns did log.
+    expect(logged.length).toBeGreaterThanOrEqual(5);
+    const text = JSON.stringify(logged);
+    expect(text).not.toContain('Toronto');
+    expect(text).not.toContain('Canada');
+    expect(text.toLowerCase()).not.toContain('toronto');
+  });
 });
 
 /**
@@ -1027,7 +1297,7 @@ describe('links', () => {
           search: searchFound(TSN, 'TSN carries it in Canada.'),
           answer: { answer: `TSN has it: ${TSN}.` },
         }),
-      ).compose('where can I stream the euros', today),
+      ).compose('where can I stream the euros', family),
     ).toEqual({ status: 'composed', reply: `TSN has it: ${TSN}.`, search: 'searched' });
   });
 
@@ -1049,7 +1319,7 @@ describe('links', () => {
         search: searchFound(TSN, 'TSN carries it in Canada.'),
         answer: { answer: `TSN has it: ${link}` },
       }),
-    ).compose('where can I stream the euros', today);
+    ).compose('where can I stream the euros', family);
 
     expect(outcome).toEqual({
       status: 'composed',
@@ -1074,7 +1344,7 @@ describe('links', () => {
           search: searchFound(TSN, 'TSN carries it in Canada.'),
           answer: { answer: `It is on ${link} today.` },
         }),
-      ).compose('where can I stream the euros', today),
+      ).compose('where can I stream the euros', family),
     ).toEqual({ status: 'unavailable', reason: 'unsendable' });
     expect(log.mock.calls).toEqual([
       [
@@ -1092,7 +1362,7 @@ describe('links', () => {
       'It is at http://parks.ca today.',
     ]) {
       expect(
-        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, today),
+        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, family),
       ).toEqual({ status: 'unavailable', reason: 'unsendable' });
     }
   });
@@ -1132,7 +1402,7 @@ describe('the one path', () => {
           },
           seen,
         ),
-      ).compose(text, today);
+      ).compose(text, family);
 
       expect(generalAnswerSearchEnabled()).toBe(false);
       expect(seen.sanitize.map((request) => request.messages)).toEqual([
@@ -1161,7 +1431,7 @@ describe('the one path', () => {
           },
         },
       }) as unknown as AgentClient;
-    expect(await createGeneralAnswer(exploding).compose('I want to die', today)).toEqual({
+    expect(await createGeneralAnswer(exploding).compose('I want to die', family)).toEqual({
       status: 'composed',
       reply: MENTAL_CRISIS_REPLY,
     });
@@ -1180,7 +1450,7 @@ describe('the one path', () => {
           },
         },
       }) as unknown as AgentClient;
-    expect(await createGeneralAnswer(exploding).compose('she is not breathing', today)).toEqual({
+    expect(await createGeneralAnswer(exploding).compose('she is not breathing', family)).toEqual({
       status: 'composed',
       reply: EMERGENCY_REPLY,
     });
@@ -1200,7 +1470,7 @@ describe('safety refusal', () => {
       quiet();
 
       expect(
-        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, today),
+        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, family),
       ).toEqual({ status: 'safety' });
     },
   );

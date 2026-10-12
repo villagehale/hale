@@ -6,6 +6,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { formatLongDate } from '~/lib/format/datetime';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import {
+  type HomePlace,
   type LiveSearch,
   answerJsonSchema,
   generalAnswerUserMessage,
@@ -14,6 +15,7 @@ import {
   sanitizeJsonSchema,
   scrubDirectIdentifiers,
   searchUserMessage,
+  turnsOnTheirPlace,
 } from './answer-request';
 import {
   EMERGENCY_REPLY,
@@ -30,7 +32,7 @@ export {
   scrubDirectIdentifiers,
   searchUserMessage,
 };
-export type { LiveSearch };
+export type { HomePlace, LiveSearch };
 
 /**
  * Boundary v3 — the general answer.
@@ -67,11 +69,22 @@ export type { LiveSearch };
  *      date and the research when there is any, in the parent's language. Told a detail
  *      is missing, it asks for it.
  *
- * NOTHING ABOUT THE FAMILY IS LOADED. No children, no calendar, no transcript. That is
+ * NOTHING ABOUT THE CHILDREN IS LOADED. No children, no calendar, no transcript. That is
  * rule #1 at its cheapest: an off-topic answer needs nothing about the kids, so nothing
- * about the kids is at risk. The one thing it is handed from outside the message is
- * today's date where the family is, worked out by the lane and asked for only once
- * there is a de-identified question to read against it.
+ * about the kids is at risk. Two things are handed in from outside the message, both
+ * worked out by the lane and asked for only once there is a de-identified question to
+ * read them against: today's date where the family is, and the family's own city and
+ * country.
+ *
+ * THE CITY AND THE COUNTRY, AND NOTHING FINER (founder, 2026-10-12). "How's the weather
+ * tomorrow" has one answer for this family, so the search may be told where they are:
+ * a city name and a country name, never the postal code they were worked out from, the
+ * province, a neighbourhood or anything else on the family's row. Code is the only
+ * source of it ({@link FamilyFacts.place}); no model is asked to guess. Whether a
+ * question turns on it at all is the sanitizer's reading, and the place is read only for
+ * a lit turn that reading says needs it. A question that names its own place, or does not
+ * depend on place, carries none. Only the search is sent it; neither the sanitizer nor
+ * the compose is.
  *
  * EVERY WAY THE SEARCH DOES NOT HAPPEN IS NAMED ({@link LiveSearch}, rule #11), and none
  * of them costs the parent a reply or buys them an invented one: the compose is told that
@@ -145,10 +158,32 @@ export type GeneralAnswerOutcome =
   | { status: 'safety' }
   | { status: 'unavailable'; reason: GeneralAnswerFallback };
 
+/**
+ * Why a family's place cannot be named. Each is its own story: no country on the row
+ * (never guessed, not even from a postal code), no postal code to work a city out from,
+ * a postal area outside the towns the map covers, or one that spans two towns (never
+ * resolved to the likelier one).
+ */
+export type PlaceUnknown = 'no_country' | 'no_postal' | 'unmapped' | 'ambiguous';
+
+export type FamilyPlace =
+  | ({ status: 'known' } & HomePlace)
+  | { status: 'unknown'; reason: PlaceUnknown };
+
+/**
+ * The lane's reads about the family, made lazily. Each is called at most once a turn, and
+ * not at all for a text a fixed line answers.
+ */
+export interface FamilyFacts {
+  /** Today's date where the family is (see {@link localDate}). */
+  today(): Promise<string>;
+  /** The family's own city and country, read only for a lit search the sanitizer judged
+   * to depend on where they are. */
+  place(): Promise<FamilyPlace>;
+}
+
 export interface GeneralAnswerComposer {
-  /** `today` reads today's date where the family is (see {@link localDate}). It is
-   * called at most once, and not at all for a text a fixed line answers. */
-  compose(text: string, today: () => Promise<string>): Promise<GeneralAnswerOutcome>;
+  compose(text: string, family: FamilyFacts): Promise<GeneralAnswerOutcome>;
 }
 
 /** Parsed loosely, for the reason screen.ts states at length: a strict schema turns a
@@ -210,6 +245,20 @@ function askedInstead(): 'missing_detail' {
   return 'missing_detail';
 }
 
+/**
+ * The family's city and country for this turn's search, or null with the reason named
+ * (rule #11). The place itself is never logged (rule #1).
+ */
+async function homePlace(family: FamilyFacts): Promise<HomePlace | null> {
+  const place = await family.place();
+  if (place.status === 'known') return { city: place.city, country: place.country };
+  console.info(
+    { place: 'unknown', reason: place.reason },
+    'off-domain answer: no place for this family',
+  );
+  return null;
+}
+
 interface SearchFindings {
   /** The URL of every result item the search returned. */
   urls: readonly string[];
@@ -256,6 +305,7 @@ async function liveSearch(
   skill: Awaited<ReturnType<typeof loadCronSkill>>,
   question: string,
   today: string,
+  place: HomePlace | null,
 ): Promise<{ search: LiveSearch; findings: SearchFindings }> {
   if (!generalAnswerSearchEnabled()) {
     return { search: wentWithout('search_off'), findings: NO_FINDINGS };
@@ -268,7 +318,7 @@ async function liveSearch(
         max_tokens: SEARCH_MAX_TOKENS,
         system: skill.instructions,
         tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
-        messages: [{ role: 'user', content: searchUserMessage({ question, today }) }],
+        messages: [{ role: 'user', content: searchUserMessage({ question, today, place }) }],
       })
       .finalMessage();
   } catch (err) {
@@ -367,7 +417,7 @@ function sendable(
  */
 export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerComposer {
   return {
-    async compose(text, readToday) {
+    async compose(text, family) {
       // VIL-328: physical emergency is Call 911 now., never the 811 Telehealth
       // line. Mental crisis is the reviewed 988 line, no return ask.
       if (namesAnEmergency(text)) {
@@ -420,15 +470,23 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
       // Deterministic backstop UNDER the sanitizer, before the question goes anywhere.
       const question = scrubDirectIdentifiers(sanitized.question.trim());
       const language = normalizeLanguage(sanitized.language);
-      const today = await readToday();
+      const today = await family.today();
 
-      // Phase 1 — SEARCH (only when judged needed, and only when lit). A missing detail
-      // is asked for only while lit: dark, there is nothing the answer could be used for.
-      const { search, findings } = !needsSearch(sanitized.needs_search)
+      // Phase 1 — SEARCH (only when judged needed, and only when lit). Where the family
+      // is, is read only for a lit search the sanitizer judged to depend on it. A detail
+      // still missing after that is asked for, and only while lit: dark, there is nothing
+      // the answer could be used for.
+      const lit = generalAnswerSearchEnabled();
+      const searching = needsSearch(sanitized.needs_search);
+      const place =
+        lit && searching && turnsOnTheirPlace(sanitized.their_place)
+          ? await homePlace(family)
+          : null;
+      const { search, findings } = !searching
         ? { search: 'not_needed' as const, findings: NO_FINDINGS }
-        : sanitized.needs_search === 'missing_detail' && generalAnswerSearchEnabled()
+        : lit && sanitized.needs_search === 'missing_detail' && place === null
           ? { search: askedInstead(), findings: NO_FINDINGS }
-          : await liveSearch(resolved, searchSkill, question, today);
+          : await liveSearch(resolved, searchSkill, question, today, place);
 
       // Phase 2 — COMPOSE (blind: the question and the research, never the raw message).
       try {

@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { replyLanguage } from '~/lib/channel/language';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import {
+  type FamilyPlace,
   type GeneralAnswerComposer,
   type GeneralAnswerFallback,
   createGeneralAnswer,
@@ -19,6 +20,7 @@ import {
   referralReply,
 } from './copy';
 import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
+import { readFamilyPlace } from './place';
 import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScreen } from './screen';
 
 /**
@@ -117,6 +119,11 @@ export interface OffDomainPorts {
    * what travels on; the timezone it was read in does not. The composer asks for it,
    * after the fixed lines that need no date. */
   today(familyId: string): Promise<string>;
+  /** This family's own city and country, or the named reason they cannot be given. Read
+   * lazily like the date, and only by a lit general answer whose question turns on where
+   * the family is. Non-nullable (rule #11): a place that is not known is an answer this
+   * read gives by name, not a reader that is missing. */
+  place(familyId: string): Promise<FamilyPlace>;
   /** Answers a medical-symptom text: a web-grounded, coarse-age-aware reply with its own
    * triage, or the fixed 811/911 line as a last resort. Non-nullable for the same reason
    * (rule #11) — its own failure modes are named inside it, never a missing dependency. */
@@ -252,7 +259,10 @@ async function answerOrFallback(
   familyId: string,
   text: string,
 ): Promise<{ reply: string; replySource: ReplySource }> {
-  const composed = await ports.answer.compose(text, () => ports.today(familyId));
+  const composed = await ports.answer.compose(text, {
+    today: () => ports.today(familyId),
+    place: () => ports.place(familyId),
+  });
   if (composed.status === 'composed') return { reply: composed.reply, replySource: 'composed' };
   const language = replyLanguage(text);
   // A question about the world that turned out to be about a hurt child. It leaves by
@@ -336,6 +346,7 @@ export function productionOffDomainLane(
     screen: createInboundLaneScreen(client),
     answer: createGeneralAnswer(client),
     today: async (familyId) => localDate(new Date(), await readFamilyTimezone(database, familyId)),
+    place: (familyId) => readFamilyPlace(database, familyId),
     medical: createMedicalComposer(client),
     recordUnmetIntent: recordUnmetIntent(database),
   });
