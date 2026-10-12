@@ -11,10 +11,11 @@
 // apps/worker/dist/ is STALE (it still references the removed Mastra layer:
 // ../mastra/model.js and a date-suffixed model id), so importing the compiled
 // path would test dead code. We therefore REPLICATE the exact request shape:
-// same prompt file (apps/worker/prompts/classifier.md), same tool-forced JSON
-// output schema and tool_choice that src/agents/structured.ts uses. The model id
-// comes from the classify skill's own pickModel('classify') (@hale/agent source,
-// via tsx), so the gate tests the model production classifies with, and the
+// same prompt file (apps/worker/prompts/classifier.md) and the same output schema,
+// sent through the structured-output seam production uses
+// (packages/agent/src/structured.ts) on the classify lane. The lane comes from
+// pickLane('classify') (@hale/agent source, via tsx), so the gate tests the model
+// and knobs production classifies with, and the
 // autonomy threshold is read from src/orchestrator/index.ts — this harness has
 // no second source of truth for any of those values.
 //
