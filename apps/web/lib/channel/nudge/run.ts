@@ -483,12 +483,9 @@ function nudgeDay(nudge: Nudge, now: Date, timeZone: string): string | null {
   }
 }
 
-/**
- * A registration nudge is timed to a municipal clock and a health checkpoint is reviewed
- * static copy, so neither ever waits for the decider.
- */
+/** A registration nudge is timed to a municipal clock, so it never waits for the decider. */
 export function nudgeLane(kind: Nudge['kind']): CadenceLane {
-  return kind === 'registration' || kind === 'health_checkpoint' ? 'immediate' : 'candidate';
+  return kind === 'registration' ? 'immediate' : 'candidate';
 }
 
 /** The compiler's own proof that a union was handled. Throws only if a caller reached

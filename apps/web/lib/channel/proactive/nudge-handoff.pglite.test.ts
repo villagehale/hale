@@ -16,6 +16,7 @@ import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
+import { matchHealthCheckpoints } from '~/lib/health/match';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type ProactiveReviewDeps, runProactiveReview } from './review';
 
@@ -399,17 +400,15 @@ describe('when a queued nudge stops being worth a text', () => {
 });
 
 /**
- * The two nudge kinds that never wait for the decider: a registration window runs on the
- * town's clock, and a health checkpoint is reviewed static copy. Live sends them at once.
- * The checkpoint runs end to end here (an Ontario area so the matcher has a region). A
- * registration nudge needs a covered municipality and its postal codes, which fixtures
- * do not carry, so its lane is pinned on the mapping the sweep uses.
+ * The one nudge kind that never waits for the decider: a registration window runs on the
+ * town's clock. A registration nudge needs a covered municipality and its postal codes,
+ * which fixtures do not carry, so its lane is pinned on the mapping the sweep uses.
  */
-describe('the nudge kinds that never queue', () => {
-  it('maps registration and health checkpoints to the immediate lane, and nothing else', () => {
+describe('the nudge kind that never queues', () => {
+  it('maps registration to the immediate lane, and nothing else', () => {
     expect(nudgeLane('registration')).toBe('immediate');
-    expect(nudgeLane('health_checkpoint')).toBe('immediate');
     for (const kind of [
+      'health_checkpoint',
       'weather_swap',
       'weekday_dropin',
       'weekday_care',
@@ -418,8 +417,16 @@ describe('the nudge kinds that never queue', () => {
       expect(nudgeLane(kind)).toBe('candidate');
     }
   });
+});
 
+/**
+ * Hale sends no health checkpoint, vaccine or checkup reminder (Barton, 2026-10-12). The
+ * family here is inside the six-month window in an Ontario area, which the matcher still
+ * finds (the positive control), and the sweep decides the week without it in every mode.
+ */
+describe('no health checkpoint from the sweep', () => {
   const AREA = 'K0A';
+  const HEALTH_TEMPLATE = 'proactive_nudge:health_checkpoint';
 
   function areaDeps(transport: FakeTransport): NudgeRunDeps {
     return {
@@ -436,25 +443,76 @@ describe('the nudge kinds that never queue', () => {
     };
   }
 
-  it('when live, sends a health checkpoint at once and queues nothing', async () => {
-    vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    await db.database
+  async function insideSixMonthWindow(): Promise<string[]> {
+    const [infant] = await db.database
       .insert(schema.children)
-      .values({ familyId, name: 'Wren', dateOfBirth: '2026-02-10' });
-    const transport = new FakeTransport();
-    const result = await runNudgeCron(db.database, areaDeps(transport), MONDAY);
-    expect(result).toMatchObject({ sent: 1, queued: 0 });
-    expect(transport.sent).toHaveLength(1);
-    const health = await db.database
+      .values({ familyId, name: 'Wren', dateOfBirth: '2026-02-10' })
+      .returning({ id: schema.children.id });
+    return matchHealthCheckpoints({
+      children: [
+        {
+          id: infant?.id as string,
+          name: 'Wren',
+          ageMonths: 6,
+          dobPrecision: 'exact',
+          isTeen: false,
+        },
+      ],
+      areaCoarse: AREA,
+      suppressedRefs: new Set(),
+      now: MONDAY,
+    }).map((found) => found.checkpoint.id);
+  }
+
+  async function healthRows() {
+    return db.database
       .select()
       .from(schema.channelMessages)
       .where(
         and(
           eq(schema.channelMessages.familyId, familyId),
-          eq(schema.channelMessages.templateKey, 'proactive_nudge:health_checkpoint'),
+          eq(schema.channelMessages.templateKey, HEALTH_TEMPLATE),
         ),
       );
-    expect(health).toHaveLength(1);
+  }
+
+  it('with the flag unset, sends the find and no health checkpoint', async () => {
+    expect(await insideSixMonthWindow()).toEqual(['immunization_6_months']);
+    const transport = new FakeTransport();
+
+    const result = await runNudgeCron(db.database, areaDeps(transport), MONDAY);
+
+    expect(result).toMatchObject({ sent: 1, queued: 0, failed: 0 });
+    expect(await healthRows()).toEqual([]);
+    expectFindSent(await sendTrail(), transport.bodies()[0]);
     expect(await candidates()).toEqual([]);
+  });
+
+  it('when live, queues the find and sends no health checkpoint', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    expect(await insideSixMonthWindow()).toEqual(['immunization_6_months']);
+    const transport = new FakeTransport();
+
+    const result = await runNudgeCron(db.database, areaDeps(transport), MONDAY);
+
+    expect(result).toMatchObject({ sent: 0, queued: 1, failed: 0 });
+    expect(transport.sent).toEqual([]);
+    expect(await healthRows()).toEqual([]);
+    expect((await candidates()).map((row) => row.why)).toEqual(['weekday_dropin']);
+  });
+
+  it('says nothing to a family whose only news is the checkpoint', async () => {
+    expect(await insideSixMonthWindow()).toEqual(['immunization_6_months']);
+    await db.database
+      .delete(schema.villageCandidates)
+      .where(eq(schema.villageCandidates.familyId, familyId));
+    vi.stubEnv(WEEKDAY_CARE_ENABLED_ENV, 'false');
+    const transport = new FakeTransport();
+
+    const result = await runNudgeCron(db.database, areaDeps(transport), MONDAY);
+
+    expect(result).toMatchObject({ quiet: 1, sent: 0, queued: 0, failed: 0 });
+    expect(transport.sent).toEqual([]);
+    expect(await healthRows()).toEqual([]);
   });
 });

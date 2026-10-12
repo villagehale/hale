@@ -2,7 +2,7 @@ import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { WeekdayCareFact } from '~/lib/care/weekday';
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
-import type { HealthChild } from '~/lib/health/match';
+import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
@@ -422,81 +422,45 @@ describe('decideNudge — silence', () => {
 });
 
 /**
- * VIL-243 · M8 — where the health checkpoint sits in the ranking, and why.
- *
- * A registration date is a HARD deadline measured in minutes; a health-admin window is
- * measured in months; a weekend suggestion expires but costs nothing to skip. So the
- * order is deadline, obligation, offer — and the middle one is new.
+ * Hale sends no health checkpoint, vaccine or checkup reminder (Barton, 2026-10-12): it is
+ * not a homepage promise. The matcher still finds the window in every case below (the
+ * positive control), so each absence is the ladder's choice and not an empty table.
  */
-describe('decideNudge — health checkpoints', () => {
+describe('decideNudge — no health checkpoint', () => {
   const health = { healthChildren: [healthChild()], areaCoarse: 'M4C' };
+  const inWindow = (children: readonly HealthChild[], areaCoarse: string) =>
+    matchHealthCheckpoints({ children, areaCoarse, suppressedRefs: new Set(), now: FRIDAY }).map(
+      (found) => found.checkpoint.id,
+    );
 
-  it('yields to a registration window a family can still act on', () => {
-    const nudge = decide({ ...health, windows: [match()] });
-    expect(nudge?.kind).toBe('registration');
+  it('says nothing for a family whose only news is a checkpoint window they are inside', () => {
+    expect(inWindow(health.healthChildren, health.areaCoarse)).toContain(
+      'immunization_4_to_6_years',
+    );
+    expect(decideAll(health)).toEqual({ nudge: null, skips: {} });
   });
 
-  it('outranks a weekend swap, which is an offer rather than an obligation', () => {
-    const nudge = decide({
-      ...health,
-      candidates: [candidate()],
-      weather: [outlook(SATURDAY, WET), outlook(SUNDAY, WET)],
-    });
-    expect(nudge?.kind).toBe('health_checkpoint');
+  it('says nothing about the 18-month window either', () => {
+    const toddler = [healthChild({ ageMonths: 18 })];
+    expect(inWindow(toddler, 'L7G')).toContain('immunization_18_months');
+    expect(decide({ healthChildren: toddler, areaCoarse: 'L7G' })).toBeNull();
   });
 
-  it('still raises the 18-month window here — the POST-consent surface (ads-week audit positive control)', () => {
-    // The pre-consent first find no longer carries checkpoints (lib/channel/intake/radar.ts),
-    // and this sweep — gated on watch consent in run.ts — is where the same reviewed row
-    // now reaches the family. If this ever goes quiet too, the checkpoint is nowhere.
-    const nudge = decide({
-      healthChildren: [healthChild({ ageMonths: 18 })],
-      areaCoarse: 'L7G',
-    });
-    expect(nudge?.kind).toBe('health_checkpoint');
-    if (nudge?.kind !== 'health_checkpoint') throw new Error('expected a health nudge');
-    expect(nudge.checkpointRef.id).toBe('immunization_18_months');
+  it('says nothing to a household whose only child is 13 or older', () => {
+    const teen = [healthChild({ id: 'teen-1', name: null, ageMonths: 180, isTeen: true })];
+    expect(inWindow(teen, 'M4C')).toContain('immunization_14_to_16_years');
+    expect(decide({ healthChildren: teen, areaCoarse: 'M4C' })).toBeNull();
   });
 
-  it('carries the checkpoint by reference and never names a 13+ child', () => {
-    const nudge = decide({
-      healthChildren: [healthChild({ id: 'teen-1', name: null, ageMonths: 180, isTeen: true })],
-      areaCoarse: 'M4C',
-    });
-    expect(nudge).toMatchObject({
-      kind: 'health_checkpoint',
-      kidNames: [],
-      teenOnly: true,
-      teenCount: 1,
-    });
-  });
-
-  it('moves on to the next checkpoint once one is marked done, then goes quiet', () => {
-    const done = new Set<string>();
-    const seen: string[] = [];
-
-    // Every checkpoint this child is inside, one "done" at a time. The point is that a
-    // done suppresses exactly ONE checkpoint — not the family, and not the feature.
-    for (let round = 0; round < 5; round += 1) {
-      const nudge = decide({
-        healthChildren: [healthChild()],
-        areaCoarse: 'L4C',
-        suppressedCheckpointRefs: done,
-      });
-      if (nudge === null) break;
-      if (nudge.kind !== 'health_checkpoint') throw new Error('expected a health nudge');
-      seen.push(nudge.checkpointRef.id);
-      done.add(nudge.ref);
-    }
-
-    expect(seen).toEqual(['immunization_4_to_6_years', 'dental_school_screening']);
+  it('leaves the registration window and the weekend swap to decide the week', () => {
+    expect(decide({ ...health, windows: [match()] })?.kind).toBe('registration');
     expect(
       decide({
-        healthChildren: [healthChild()],
-        areaCoarse: 'L4C',
-        suppressedCheckpointRefs: done,
-      }),
-    ).toBeNull();
+        ...health,
+        candidates: [candidate()],
+        weather: [outlook(SATURDAY, WET), outlook(SUNDAY, WET)],
+      })?.kind,
+    ).toBe('weather_swap');
   });
 });
 

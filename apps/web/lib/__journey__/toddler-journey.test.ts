@@ -31,7 +31,6 @@ import {
   type NudgeRunResult,
   runNudgeCron,
 } from '~/lib/channel/nudge/run';
-import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { roleAllows } from '~/lib/channel/role-scope';
 import type { ApprovalSpine, PendingAction } from '~/lib/channel/router/approval';
@@ -48,7 +47,6 @@ import {
 } from '~/lib/civic/project';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
-import { findBannedPhrases } from '~/lib/health/framing';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { checkpointToldKeyPrefix } from '~/lib/health/told';
@@ -96,8 +94,9 @@ import { fakeWeather } from '~/lib/weather/open-meteo';
  * marked `SEAM:` and names the module that owns the real query.
  *
  * NO MODEL DECIDES ANYTHING HERE. The radar runs on `client: null`, which is the real
- * production fallback (a deterministic render, see radar-voice.ts); the health nudge is
- * a static template by design; and the reviewer's SDK transport is scripted the way
+ * production fallback (a deterministic render, see radar-voice.ts); the 48h sweep has
+ * nothing to say to this family and composes nothing (Hale sends no health checkpoint
+ * reminder); and the reviewer's SDK transport is scripted the way
  * inline-action.test.ts scripts it — loop mechanics, not an LLM-quality mock, and the
  * reviewer's real coverage gate still runs against the real tool results (rule #8).
  */
@@ -1032,11 +1031,13 @@ describe("3 · watch consent is recorded in the parent's own words", () => {
   });
 });
 
-// ── stage 4 · the 48h nudge actually leaves the building ─────────────────────
+// ── stage 4 · the 48h sweep looks, and has nothing to say ────────────────────
 
-describe('4 · the 48h nudge reaches a transport', () => {
+describe('4 · the 48h sweep passes the gate and stays quiet', () => {
   it('fires for this family and passes all four outbound-gate checks in order', () => {
-    expect(journey.nudge).toMatchObject({ enabled: true, evaluated: 1, sent: 1, quiet: 0 });
+    // The 18-month checkpoint is all this family's week holds at 48h (stage 5 shows the
+    // matcher still finds it), and Hale sends no health checkpoint reminder: quiet.
+    expect(journey.nudge).toMatchObject({ enabled: true, evaluated: 1, sent: 0, quiet: 1 });
     expect(journey.nudge.held).toEqual({
       not_enrolled: 0,
       no_watch_consent: 0,
@@ -1052,40 +1053,30 @@ describe('4 · the 48h nudge reaches a transport', () => {
     ]);
   });
 
-  it('ACTUALLY sends — a composed payload that never reached the transport is the defect (WS2 P0)', () => {
-    // `sent: 1` alone would still pass with a transport that swallowed the message;
-    // this is the recorder on the other side of the seam.
-    expect(journey.nudgeSends).toHaveLength(1);
-    expect(journey.nudgeSends[0]?.to).toBe(PARENT_PHONE);
-    expect(journey.nudgeSends[0]?.body.length).toBeGreaterThan(0);
-    expect(journey.nudgeSends[0]?.body).not.toContain(NUDGE_OPT_OUT);
-    expect(journey.nudgeSends[0]?.body).not.toContain('STOP to opt out.');
-    // And the ledger row that consumes the family's weekly budget was written only
-    // because the message left — its provider id is the one the transport returned.
+  it('sends nothing, spends none of the weekly budget, and records that it looked', () => {
+    expect(journey.nudgeSends).toEqual([]);
     const ledger = journey.fake
       .rows(schema.channelMessages)
       .filter((row) => row.category === 'nudge');
-    expect(ledger).toHaveLength(1);
-    expect(String(ledger[0]?.providerMessageId)).toMatch(/^fake-out-\d+$/);
+    expect(ledger).toEqual([]);
+    const skipped = journey.fake
+      .rows(schema.auditLog)
+      .filter((row) => row.actionTaken === 'proactive_nudge_skipped');
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.after).toMatchObject({ reason: 'nothing_worth_saying' });
   });
 
-  it('lands in the thread, so the parent can just reply to it', () => {
-    // The ledger row above stores `body: null` by design (rule #1), which means it is
-    // not something the coach can read back. `messages` is, and until 2026-08-22 no
-    // nudge ever reached it: 11 of 71 post-account SMS outbounds in prod were invisible
-    // to the very thread their reply would arrive in, so "yes" landed on whatever else
-    // happened to be standing. The opt-out line is not on the wire, and this row must
-    // not carry it either.
+  it('threads every proactive sentence that did go, so the parent can just reply to it', () => {
+    // A ledger row stores `body: null` by design (rule #1), which means it is not
+    // something the coach can read back. `messages` is, and until 2026-08-22 no
+    // proactive send ever reached it, so "yes" landed on whatever else happened to be
+    // standing. Three proactive sends happen in this journey and all three are sentences
+    // the coach can see: the registration ladder's heads-up, its readiness checklist
+    // (VIL-338 — Markham has a portal Hale can read) and its battle plan. It is the one
+    // Hale runs as a conversation, and two of its rungs ask a question the parent
+    // answers into this very thread.
     const threaded = journey.fake.rows(schema.messages).filter((row) => row.role === 'assistant');
-    // Four proactive sends happen in this journey and all four are now sentences the
-    // coach can see: the 48h nudge, then the registration ladder's heads-up, its
-    // readiness checklist (VIL-338 — Markham has a portal Hale can read) and its battle
-    // plan. The ladder matters most — it is the one Hale runs as a conversation, and two
-    // of its rungs ask a question the parent answers into this very thread.
-    expect(threaded).toHaveLength(4);
-    const body = String(threaded[0]?.content);
-    expect(journey.nudgeSends[0]?.body).toContain(body);
-    expect(body).not.toContain(NUDGE_OPT_OUT);
+    expect(threaded).toHaveLength(3);
     // Nothing invented: every threaded sentence is one that actually went on the wire.
     const wire = journey.transport.bodies();
     expect(threaded.every((row) => wire.some((sent) => sent.includes(String(row.content))))).toBe(
@@ -1107,7 +1098,7 @@ describe('4c · a withdrawn watch consent holds the next sweep', () => {
 
 // ── stage 5 · health ─────────────────────────────────────────────────────────
 
-describe('5 · the 18-month checkpoints are offered to Mia', () => {
+describe('5 · the 18-month checkpoints fit Mia, and no text carries them', () => {
   it('matches both Ontario 18-month rows off the STORED date (the case the DOB bug made impossible)', () => {
     const children = storedChildren(journey.fake, NUDGE_AT);
     const matches = matchHealthCheckpoints({
@@ -1130,18 +1121,20 @@ describe('5 · the 18-month checkpoints are offered to Mia', () => {
     expect(matches[0]?.kidNames).toContain('Mia');
   });
 
-  it('is the errand the nudge actually carried, and its framing is neither clinical nor alarmist', () => {
-    const body = journey.nudgeSends[0]?.body as string;
-    expect(body).toContain('Mia');
-    expect(body).toContain('18 months');
-    // The lint runs over the ASSEMBLED message: no judgement, no diagnosis, no
-    // deadline language, no teen wording for a toddler.
-    expect(findBannedPhrases(body)).toEqual([]);
-    const audit = journey.fake
+  it('is carried by no text and no trail row in the whole journey', () => {
+    const ledger = journey.fake.rows(schema.channelMessages);
+    expect(
+      ledger.filter((row) => String(row.templateKey ?? '').includes('health_checkpoint')),
+    ).toEqual([]);
+    expect(
+      ledger.filter((row) =>
+        String(row.dedupeKey ?? '').startsWith(checkpointToldKeyPrefix(journey.familyId)),
+      ),
+    ).toEqual([]);
+    const kinds = journey.fake
       .rows(schema.auditLog)
-      .find((row) => row.actionTaken === 'proactive_nudge_sent');
-    expect((audit?.after as Record<string, unknown>)?.kind).toBe('health_checkpoint');
-    expect((audit?.after as Record<string, unknown>)?.checkpointId).toBe('immunization_18_months');
+      .map((row) => (row.after as Record<string, unknown> | null)?.kind);
+    expect(kinds).not.toContain('health_checkpoint');
   });
 });
 
@@ -1279,7 +1272,7 @@ describe('7 · the parent approves in their own words and the receipt is theirs'
     const trail = journey.fake.rows(schema.auditLog);
     const actions = trail.map((row) => row.actionTaken);
     expect(actions).toContain('proactive_watch_granted');
-    expect(actions).toContain('proactive_nudge_sent');
+    expect(actions).toContain('proactive_nudge_skipped');
     expect(actions).toContain('registration_shortlist_drafted');
     expect(actions).toContain('registration_sequence_leg_sent');
     expect(trail.every((row) => row.familyId === journey.familyId)).toBe(true);

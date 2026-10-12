@@ -20,6 +20,7 @@ import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { checkpointById, checkpointRef } from '~/lib/health/checkpoints';
+import { matchHealthCheckpoints } from '~/lib/health/match';
 import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { checkpointToldKey, checkpointToldKeyPrefix } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -41,8 +42,11 @@ import { fakeWeather } from '~/lib/weather/open-meteo';
  *
  * 2026-08-28 (ads-week audit): the radar's third rung was REMOVED from the pre-consent
  * first find — a vaccine flag before consent was observed live — so the contract this
- * file pins flipped. The radar now says nothing about health; the consent-gated nudge
- * is the one surface that tells the checkpoint, and it tells it exactly once.
+ * file pins flipped. The radar now says nothing about health.
+ *
+ * 2026-10-12 (Barton): Hale sends no health checkpoint, vaccine or checkup reminder, so
+ * the 48h nudge says nothing about it either. No surface tells the checkpoint; the
+ * matcher still finds it for this family, which is the positive control below.
  *
  * SEAM discipline is the toddler journey's (lib/__journey__/toddler-journey.test.ts):
  * the fake database does not evaluate WHERE clauses, so each loader below restates the
@@ -144,8 +148,8 @@ async function runIntakeRadar(): Promise<Intake> {
 // ── surface 2 · the 48h nudge ────────────────────────────────────────────────
 
 /** The gate is not what this file tests — the toddler journey drives its four real
- * ports against real rows. Here it says yes, so a suppressed checkpoint is the only
- * thing that can keep the sweep quiet. */
+ * ports against real rows. Here it says yes, so the sweep's own decision is the only
+ * thing that can keep it quiet. */
 const openGate = (): OutboundGatePorts => ({
   channelEnrolled: async () => true,
   watchConsentGranted: async () => true,
@@ -273,13 +277,13 @@ interface Told {
 }
 
 let told: Told;
-/** The inverse: nobody told this family anything, so the nudge must. */
+/** A family the radar never spoke to: the sweep is the only surface that looks at it. */
 let untold: { fake: FakeDb; sweep: NudgeRunResult; bodies: string[] };
 
 /**
  * A family the radar never spoke to — the web-onboarding path, which provisions the
- * same rows and never composes a radar. The guard against a suppression that silences
- * the checkpoint for everyone.
+ * same rows and never composes a radar. Nothing suppresses the checkpoint for this
+ * family, so its silence is the sweep's own.
  */
 async function seedWithoutRadar(): Promise<{ fake: FakeDb; familyId: string }> {
   const fake = makeFakeDb();
@@ -354,35 +358,48 @@ describe('the radar never tells a checkpoint (pre-consent — ads-week audit, 20
   });
 });
 
-describe('the 48h nudge is now the surface that tells it (post-consent)', () => {
-  it('sends the reviewed row once consent-gated delivery runs', () => {
-    expect(told.sweep).toMatchObject({ enabled: true, evaluated: 1, sent: 1, quiet: 0 });
-    expect(told.sweepBodies).toHaveLength(1);
-    expect(told.sweepBodies[0]).toContain(taskOf(CHECKPOINT_ID));
-    const audit = told.intake.fake
-      .rows(schema.auditLog)
-      .find((row) => row.actionTaken === 'proactive_nudge_sent');
-    expect((audit?.after as Record<string, unknown>)?.checkpointId).toBe(CHECKPOINT_ID);
+describe('the 48h nudge does not tell it either', () => {
+  it('is a window this family is inside, which the matcher still finds', () => {
+    const matches = matchHealthCheckpoints({
+      children: [
+        {
+          id: told.intake.childId,
+          name: MIA.name,
+          ageMonths: MIA.ageMonths,
+          dobPrecision: 'derived',
+          isTeen: false,
+        },
+      ],
+      areaCoarse: AREA,
+      suppressedRefs: new Set<string>(),
+      now: NUDGE_AT,
+    });
+    expect(matches.map((match) => match.checkpoint.id)).toEqual([CHECKPOINT_ID]);
   });
 
-  it('the family hears the sentence exactly once, and never from the radar', () => {
-    const carried = [told.intake.radarBody, ...told.sweepBodies].filter((body) =>
-      body.includes(taskOf(CHECKPOINT_ID)),
-    );
-    expect(carried).toHaveLength(1);
-    expect(carried[0]).toBe(told.sweepBodies[0]);
+  it('looks at the family at 48h and sends nothing', () => {
+    expect(told.sweep).toMatchObject({ enabled: true, evaluated: 1, sent: 0, quiet: 1 });
+    expect(told.sweepBodies).toEqual([]);
+    const skipped = told.intake.fake
+      .rows(schema.auditLog)
+      .filter((row) => row.actionTaken === 'proactive_nudge_skipped');
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.after).toMatchObject({ reason: 'nothing_worth_saying' });
+  });
+
+  it('the family hears the sentence from no surface', () => {
+    const carried = told.intake.transport
+      .bodies()
+      .filter((body) => body.includes(taskOf(CHECKPOINT_ID)));
+    expect(carried).toEqual([]);
   });
 });
 
-describe('a family no surface has told still hears it', () => {
-  it('sends the checkpoint the radar never carried', () => {
-    expect(untold.sweep).toMatchObject({ enabled: true, evaluated: 1, sent: 1, quiet: 0 });
-    expect(untold.bodies).toHaveLength(1);
-    expect(untold.bodies[0]).toContain(taskOf(CHECKPOINT_ID));
-    const audit = untold.fake
-      .rows(schema.auditLog)
-      .find((row) => row.actionTaken === 'proactive_nudge_sent');
-    expect((audit?.after as Record<string, unknown>)?.checkpointId).toBe(CHECKPOINT_ID);
+describe('a family no surface has told hears nothing from the sweep', () => {
+  it('sends no checkpoint and writes no told-marker', () => {
+    expect(untold.sweep).toMatchObject({ enabled: true, evaluated: 1, sent: 0, quiet: 1 });
+    expect(untold.bodies).toEqual([]);
+    expect(untold.fake.rows(schema.channelMessages)).toEqual([]);
   });
 
   it('is the same six-month-old the radar family had, read off the stored date', () => {
