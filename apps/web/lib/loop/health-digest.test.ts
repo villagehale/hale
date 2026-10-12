@@ -64,6 +64,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
         },
       ],
       stopCount: 1,
+      weekPlansComposed: 45,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
       commitmentDebt: NO_DEBT,
@@ -78,6 +79,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
 
     expect(body).toContain('2026-07-13');
     expect(body).toContain('2026-07-20');
+    expect(body).toContain('Weekly plans composed: 45');
     expect(body).toContain('STOPs (loop unsubscribes): 1');
     expect(body).toContain('email · out · weekly_plan · sent: 42');
     expect(body).toContain('push · out · weekly_plan · sent: 30');
@@ -90,6 +92,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       windowEnd: new Date('2026-07-20T00:00:00Z'),
       messageCounts: [],
       stopCount: 0,
+      weekPlansComposed: 0,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
       commitmentDebt: NO_DEBT,
@@ -110,6 +113,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       windowEnd: new Date('2026-07-20T00:00:00Z'),
       messageCounts: [],
       stopCount: 0,
+      weekPlansComposed: 0,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
       commitmentDebt: NO_DEBT,
@@ -129,6 +133,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       windowEnd: new Date('2026-08-03T00:00:00Z'),
       messageCounts: [],
       stopCount: 0,
+      weekPlansComposed: 0,
       providerIncidents: [
         { kind: 'billing', at: new Date('2026-08-01T00:00:00Z') },
         { kind: 'run_spike', at: new Date('2026-07-29T00:00:00Z') },
@@ -158,6 +163,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       windowEnd: new Date('2026-07-20T00:00:00Z'),
       messageCounts: [],
       stopCount: 0,
+      weekPlansComposed: 0,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
       commitmentDebt: NO_DEBT,
@@ -186,6 +192,7 @@ describe('formatLoopHealthDigest — top unmet intents', () => {
     windowEnd: new Date('2026-08-10T00:00:00Z'),
     messageCounts: [],
     stopCount: 0,
+    weekPlansComposed: 0,
     providerIncidents: [],
     scoreboard: EMPTY_SCOREBOARD,
     commitmentDebt: NO_DEBT,
@@ -310,6 +317,7 @@ describe('runLoopHealthDigestCron', () => {
       { channel: 'email', direction: 'out', category: 'weekly_plan', status: 'sent', count: 5 },
     ],
     stopCount: 0,
+    weekPlansComposed: 5,
     providerIncidents: [],
     scoreboard: EMPTY_SCOREBOARD,
     commitmentDebt: NO_DEBT,
@@ -384,6 +392,7 @@ describe('formatLoopHealthDigest — overdue commitments', () => {
     windowEnd: new Date('2026-08-11T00:00:00Z'),
     messageCounts: [],
     stopCount: 0,
+    weekPlansComposed: 0,
     providerIncidents: [],
     scoreboard: EMPTY_SCOREBOARD,
     engagement: NO_ENGAGEMENT,
@@ -471,6 +480,7 @@ describe('formatLoopHealthDigest — the scorecard', () => {
       { channel: 'sms', direction: 'in', category: 'reply', status: 'delivered', count: 40 },
     ],
     stopCount: 0,
+    weekPlansComposed: 18,
     providerIncidents: [],
     scoreboard: {
       intake: { sessionsStarted: 12, provisioned: 8, watchConsented: 5, sourceCoded: 7 },
@@ -503,7 +513,7 @@ describe('formatLoopHealthDigest — the scorecard', () => {
     const lastScore = lines.findLastIndex((line) => line.includes('/10 · '));
 
     expect(lastScore).toBeGreaterThan(-1);
-    expect(lastScore).toBeLessThan(lines.indexOf('STOPs (loop unsubscribes): 0'));
+    expect(lastScore).toBeLessThan(lines.indexOf('Weekly plans composed: 18'));
   });
 
   it('carries all eight rows, in the order the loop runs', () => {
