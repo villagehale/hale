@@ -69,7 +69,7 @@ try {
     console.info(JSON.stringify(counts, null, 2));
     console.info(
       counts.found
-        ? 'Reverted. Titles and places are not restored: a calendar copy gets them back on the mirror’s next pass, a Gmail copy stays without one. Parent calendar blocks are not restored; the next sweep rebuilds them.'
+        ? 'Reverted. A Gmail copy has its title and place back from its offer; a calendar copy gets them back on the mirror’s next pass. Parent calendar blocks are not restored; the next sweep rebuilds them.'
         : 'No apply carries that run id; nothing changed.',
     );
     process.exit(0);
