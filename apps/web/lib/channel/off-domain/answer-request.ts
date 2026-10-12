@@ -47,6 +47,17 @@ export interface HomePlace {
   country: string;
 }
 
+/**
+ * The compose call's ceiling, thinking and reply together, and the one bound on what goes
+ * out: forceToolJson throws on a max_tokens cutoff, and a reply cut off there is swapped
+ * for the fixed line. It was the medical compose's 1,024, and about one compose in five
+ * of this lane's spent that thinking and had to be asked again with thinking off
+ * (structured.ts), so the lane has its own, with room for the thinking to finish. There
+ * is no segment or character cap on the reply: a correct answer that ran long is still
+ * the answer.
+ */
+export const ANSWER_MAX_TOKENS = 4096;
+
 /** What the sanitizer may answer. `no` makes no search; everything else, on the list or
  * off it, is a question that needed one. */
 const SEARCH_READINGS = ['yes', 'no', 'unsure', 'missing_detail'] as const;
@@ -78,16 +89,27 @@ export const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
 };
 
 /**
- * `grounding` comes first because the model writes its fields in this order: every
- * specific the answer is about to state, beside the words in the research it comes from
- * (general-answer.md), and only then the answer. Both are required OF THE MODEL. The lane
- * reads `answer` and nothing else (answer.ts), so the list is never sent, kept or logged,
- * and a reply that arrives without it is still the reply. The eval keeps the whole object
- * with its recording.
+ * How a reply ends, said on the `answer` field itself, where the model reads it as it
+ * writes that field (Sloane, 2026-10-12). general-answer.md says the same thing once, in
+ * "How it reads".
+ */
+export const ANSWER_ENDS_ON_THE_ANSWER =
+  'The text message, and nothing but it. Its last words are the answer itself, or with missing_detail the question. Nothing is offered after it, and nothing after it points them somewhere else.';
+
+/**
+ * The model writes its fields in this order. First its READING of the text:
+ * `hurt_ill_or_danger`, `yes` when the question turns out to describe someone hurt, ill
+ * or in danger, which hands the turn to the safety door and sends nothing it wrote
+ * (answer.ts). Then `grounding`: every specific the answer is about to state, beside the
+ * words in the research it comes from (general-answer.md). Only then the answer. All
+ * three are required OF THE MODEL. The lane reads the reading and `answer` and nothing
+ * else, so the list is never sent, kept or logged, and a reply that arrives without it is
+ * still the reply. The eval keeps the whole object with its recording.
  */
 export const answerJsonSchema = {
   type: 'object',
   properties: {
+    hurt_ill_or_danger: { type: 'string', enum: ['yes', 'no'] },
     grounding: {
       type: 'array',
       items: {
@@ -96,9 +118,9 @@ export const answerJsonSchema = {
         required: ['states', 'from'],
       },
     },
-    answer: { type: 'string' },
+    answer: { type: 'string', description: ANSWER_ENDS_ON_THE_ANSWER },
   },
-  required: ['grounding', 'answer'],
+  required: ['hurt_ill_or_danger', 'grounding', 'answer'],
 } as const;
 
 /**
@@ -190,6 +212,15 @@ export function turnsOnTheirPlace(raw: unknown): boolean {
 /** FAIL TOWARD A NEW QUESTION: a text is read as the reply to a pending ask only on an
  * explicit `yes`. */
 export function answersPending(raw: unknown): boolean {
+  return raw === 'yes';
+}
+
+/**
+ * The compose's reading that the text describes someone hurt, ill or in danger. Only an
+ * explicit `yes` is that reading: the schema the request carries allows two values, so
+ * anything else is a reply that arrived without one, and it is still the reply.
+ */
+export function describesHurtIllOrDanger(raw: unknown): boolean {
   return raw === 'yes';
 }
 
