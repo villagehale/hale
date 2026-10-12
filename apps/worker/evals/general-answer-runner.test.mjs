@@ -1,7 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { ANSWER_FIXTURES, EVAL_TODAY, identityLeaks } from './general-answer-fixtures.mjs';
+import {
+  ANSWER_FIXTURES,
+  EVAL_TODAY,
+  identityLeaks,
+  searchOmissions,
+} from './general-answer-fixtures.mjs';
 
 /**
  * What grades a reply in this suite, taken off the runner's own report.
@@ -108,6 +113,7 @@ describe('the general-answer runner', () => {
       'expectAnswersPending',
       'research',
       'mustNotReachSearch',
+      'mustReachSearch',
     ]);
     const extra = ANSWER_FIXTURES.flatMap((fixture) =>
       Object.keys(fixture)
@@ -174,6 +180,29 @@ describe('the general-answer runner', () => {
     ]);
     expect(identityLeaks(marked, 'did the jays win last night')).toEqual([]);
     expect(identityLeaks({}, 'did Priya say the jays won last night')).toEqual([]);
+  });
+
+  /**
+   * Sloane's finding 3, the other direction. The town a parent names is the place their
+   * question is about, so it has to be in the request the search was sent. A turn that
+   * made no search sent it nowhere.
+   */
+  it('fails a marked town the search was not sent, and only then', () => {
+    const marked = { mustReachSearch: ['oakville'] };
+    const sent = (question) => JSON.stringify({ question, today: EVAL_TODAY });
+
+    expect(searchOmissions(marked, sent('where is the closest costco'))).toEqual([
+      'not_sent_to_search:oakville',
+    ]);
+    expect(searchOmissions(marked, '')).toEqual(['not_sent_to_search:oakville']);
+    expect(searchOmissions(marked, sent('where is the closest Costco in Oakville'))).toEqual([]);
+    expect(searchOmissions({}, '')).toEqual([]);
+    expect(
+      ANSWER_FIXTURES.filter((fixture) => fixture.mustReachSearch).map((fixture) => [
+        fixture.id,
+        fixture.mustReachSearch,
+      ]),
+    ).toEqual([['street-address-costco', ['oakville']]]);
   });
 
   /** The search is live when recorded and replayed after, so the day it was recorded on

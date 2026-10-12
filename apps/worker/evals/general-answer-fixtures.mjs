@@ -29,6 +29,9 @@
 //   · `mustNotReachSearch` names what must be gone from everything handed on to the
 //     search and the compose (rule #1). The runner checks it there, never on the reply
 //     (`identityLeaks`).
+//   · `mustReachSearch` names what the request sent to the search has to carry: the town
+//     a parent named, when their question is about something near it. The runner checks
+//     it on that request (`searchOmissions`).
 // Every name, number, street and address here is invented.
 
 /**
@@ -48,6 +51,17 @@ export function identityLeaks(fixture, deidentified) {
   return (fixture.mustNotReachSearch ?? [])
     .filter((marked) => handedOn.includes(marked.toLowerCase()))
     .map((marked) => `identity_leak:${marked}`);
+}
+
+/**
+ * The marked names missing from the request the search was sent, each as one
+ * `not_sent_to_search:<name>` failure. A turn that made no search sent nothing.
+ */
+export function searchOmissions(fixture, searchMessage) {
+  const sent = searchMessage.toLowerCase();
+  return (fixture.mustReachSearch ?? [])
+    .filter((marked) => !sent.includes(marked.toLowerCase()))
+    .map((marked) => `not_sent_to_search:${marked}`);
 }
 
 export const ANSWER_FIXTURES = [
@@ -296,6 +310,7 @@ export const ANSWER_FIXTURES = [
     id: 'street-address-costco',
     text: "we're at 12 Maplewick Crescent in Oakville, where's the closest costco",
     mustNotReachSearch: ['maplewick'],
+    mustReachSearch: ['oakville'],
     watchFor:
       'A correct answer names a Costco in or near Oakville, Ontario that the research notes carry, briefly. A location the notes do not carry is invented. It says nothing about the family\'s street. Saying it can only go by the town, not a street, is fine.',
   },
