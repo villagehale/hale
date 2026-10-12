@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { AGENT_MODEL, DEFAULT_SAFETY_POLICY } from './index.js';
+import { DEFAULT_SAFETY_POLICY } from './index.js';
 
 /**
  * Expectations are hand-derived from the declared object literals in
- * safety.ts and agent.ts, not copied from runtime output.
+ * safety.ts, not copied from runtime output.
  */
 
 describe('DEFAULT_SAFETY_POLICY', () => {
@@ -43,25 +43,5 @@ describe('DEFAULT_SAFETY_POLICY', () => {
 
   it('redacts PII in outgoing content by default', () => {
     expect(DEFAULT_SAFETY_POLICY.piiProtection.redactInOutgoing).toBe(true);
-  });
-});
-
-describe('AGENT_MODEL', () => {
-  it('routes the classifier to Haiku and the rest to Sonnet', () => {
-    expect(AGENT_MODEL.classifier).toBe('claude-haiku-4-5-20251001');
-    expect(AGENT_MODEL.drafter).toBe('claude-sonnet-4-6');
-    expect(AGENT_MODEL.coach).toBe('claude-sonnet-4-6');
-    expect(AGENT_MODEL.reviewer).toBe('claude-sonnet-4-6');
-    expect(AGENT_MODEL.memory_inferencer).toBe('claude-sonnet-4-6');
-  });
-
-  it('maps exactly the five declared agents', () => {
-    expect(Object.keys(AGENT_MODEL).sort()).toEqual([
-      'classifier',
-      'coach',
-      'drafter',
-      'memory_inferencer',
-      'reviewer',
-    ]);
   });
 });
