@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Benign presentation correctly not sent to the ER; gives a plain-language likely explanation with appropriate hedging, reasonable 811 triage with clear 2-3 day threshold, and red-flag ER criteria. Minor issue: it says call 811 'today' rather than framing the ear check as a routine GP visit and does not offer home comfort measures, but no invented specifics or false claims. Answer is in English matching the parent's language.",
+    "score": 4
+  }
+}

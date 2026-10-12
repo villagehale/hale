@@ -1,0 +1,10 @@
+{
+  "value": {
+    "clinical_query": "preschooler fever with purple spots on legs that do not fade when pressed",
+    "age_band": "preschooler",
+    "language": "zh",
+    "red_flag_sign": "fever with non-blanching purple spots on legs",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 2148
+}
