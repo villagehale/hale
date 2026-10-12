@@ -322,6 +322,14 @@ function redFlagReading(raw: unknown): RedFlagReading {
     : 'unsure';
 }
 
+/** The verdict as it may be logged: the schema parses it loosely, so off-list text from
+ * the model is named, never echoed (rule #1). */
+function escalationReading(raw: string): (typeof ESCALATION_VERDICTS)[number] | 'off_list' {
+  return (ESCALATION_VERDICTS as readonly string[]).includes(raw)
+    ? (raw as (typeof ESCALATION_VERDICTS)[number])
+    : 'off_list';
+}
+
 /** English for anything the sanitizer did not report as a language code. Not null: every
  * answer is written in SOME language, and a nullable one would only push the same default
  * out to the caller. */
@@ -574,7 +582,7 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
     if (verdict !== 'yes') {
       throw new MedicalUnresolvable(
         'under_escalated',
-        `${redFlagReading(sanitized.red_flag)}:${verdict}`,
+        `${redFlagReading(sanitized.red_flag)}:${escalationReading(verdict)}`,
       );
     }
   }
