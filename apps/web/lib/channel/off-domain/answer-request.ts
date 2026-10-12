@@ -190,6 +190,10 @@ export function answersPending(raw: unknown): boolean {
  * an age with no name beside it and a price are parts of an ordinary question, and none
  * of them is touched.
  *
+ * A long or grouped run of digits is taken out whatever it is, because a social insurance
+ * or a health card number has no other mark on it. That costs a count in the hundreds of
+ * millions written out plain or in spaced groups its figure.
+ *
  * A name is free-form and stays the sanitizer's job. So does a street written in lower
  * case with its suffix spelled out and more than one word in its name, which no pattern
  * can tell from "a 10 hour road trip".
@@ -199,6 +203,12 @@ const DIRECT_IDENTIFIERS: RegExp[] = [
   /(?<![\p{L}\p{N}_.%+-])@[a-z_][a-z0-9_.]*[a-z0-9_]/giu, // @handle
   /\+\d[\d\s().-]{6,}\d/g, // phone number, international form
   /(?<!\d)(?:1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)/g, // phone number, North American
+  // The shapes a government or a health number is written in: ten digits grouped four,
+  // three, three; nine grouped in threes; and nine or more in a row. A figure led by a
+  // currency sign is a price, and digits after a decimal point are a fraction.
+  /(?<![\d$])\d{4}[-\s]\d{3}[-\s]\d{3}(?!\d)/g, // grouped number, four-three-three
+  /(?<![\d$])\d{3}[-\s]\d{3}[-\s]\d{3}(?!\d)/g, // grouped number, three-three-three
+  /(?<![\d$.])\d{9,}(?!\d)/g, // nine or more digits in a row
   /\b[a-z]\d[a-z][ -]?\d[a-z]\d\b/gi, // Canadian postal code
   /\b\d{5}-\d{4}\b/g, // US ZIP+4
   // A bare five digits is a ZIP only where an address puts one: after a state code, or
