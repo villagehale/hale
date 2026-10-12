@@ -30,7 +30,8 @@ import {
  *
  * A schema the grammar cannot express (an object open to any key) goes out as a plain
  * tool: forced where the model accepts it (Haiku 5.5), otherwise `auto` with one call
- * and ONE identical re-ask when the reply came back in prose. Truncation, refusal, a
+ * and ONE identical re-ask when the reply came back in prose — the same one re-ask a JSON
+ * output gets when it comes back with no text. Truncation, refusal, a
  * missing answer and unparseable JSON are each a named {@link StructuredOutputError};
  * Zod stays the gate for every bound the grammar does not carry.
  *
@@ -243,13 +244,13 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   let response = await send(request);
   let usage = response.usage;
 
-  // An `auto` tool may be answered in prose. One identical re-ask, logged so a lane that
-  // needs it often shows up; a second miss is the named no_answer below.
+  // No answer came back: an `auto` tool answered in prose, or a JSON output with no text.
+  // One identical re-ask, logged so a lane that needs it often shows up; a second miss is
+  // the named no_answer below. A forced tool is not re-asked: the model chose not to call it.
   if (
-    request.tool_choice?.type === 'auto' &&
     response.stop_reason !== 'max_tokens' &&
     (response.stop_reason as string) !== 'refusal' &&
-    !findToolUse(response, args.toolName)
+    cameBackEmpty(request, response, args.toolName)
   ) {
     console.warn(
       JSON.stringify({
@@ -293,6 +294,17 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
     value: args.schema.parse(readStructuredAnswer(request, response, args.toolName)),
     usage,
   };
+}
+
+function cameBackEmpty(
+  request: StructuredRequest,
+  response: Anthropic.Message,
+  toolName: string,
+): boolean {
+  if (request.tools) {
+    return request.tool_choice?.type === 'auto' && !findToolUse(response, toolName);
+  }
+  return !response.content.some((block) => block.type === 'text' && block.text.trim() !== '');
 }
 
 /** Cut off at the ceiling after spending part of it thinking. */

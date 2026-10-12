@@ -310,9 +310,19 @@ describe('forceToolJson — every failure is reported as itself', () => {
     await expect(call(client)).rejects.toMatchObject({ outcome: 'unparseable', stage: TOOL });
   });
 
-  it('names a reply with no answer block at all', async () => {
-    const { client } = fakeClient(message([], 'end_turn'));
+  it('re-asks once when a JSON output came back with no answer, and sums the usage', async () => {
+    const { client, create } = fakeClient(message([], 'end_turn'), ANSWER);
+    const result = await call(client);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1]?.[0]).toEqual(create.mock.calls[0]?.[0]);
+    expect(result.value).toEqual({ found: true, confidence: 0.9 });
+    expect(result.usage.input_tokens).toBe(20);
+  });
+
+  it('names a reply with no answer block at all once the re-ask is empty too', async () => {
+    const { client, create } = fakeClient(message([], 'end_turn'), message([], 'end_turn'));
     await expect(call(client)).rejects.toMatchObject({ outcome: 'no_answer' });
+    expect(create).toHaveBeenCalledTimes(2);
   });
 
   it('parses an open-schema answer from its tool call (positive control)', async () => {
