@@ -20,10 +20,11 @@ export const KID_VERDICT_TOOL_DESCRIPTION =
 export const KID_JUDGE_MAX_TOKENS = 4096;
 
 /**
- * The output one item may cost, thinking included. The recorded eval peaked at 147 tokens
- * per item on the screen lane (2026-10-12, the 5-item injection batch); this is that with
- * headroom for a batch that thinks harder. The eval fails when a recorded batch spends
- * more per item than this, so the two numbers move together.
+ * The output one item may cost, thinking included. The recorded eval peaks at 128 tokens
+ * per item on the screen lane (2026-10-12, the 8-item onboarding batch); an earlier
+ * recording that day peaked at 147, and this is that with headroom for a batch that
+ * thinks harder. The eval fails when a recorded batch spends more per item than this, so
+ * the two numbers move together.
  */
 export const KID_JUDGE_PEAK_TOKENS_PER_ITEM = 170;
 
@@ -33,8 +34,8 @@ export const KID_JUDGE_ITEMS_PER_CALL = Math.floor(
 );
 
 /**
- * The longest reason stored for a kid verdict. The recorded eval's longest kid reason was
- * 109 characters (2026-10-12; its longest reason, 131, was an adult one, which is never
+ * The longest reason stored for a kid verdict. The recorded eval's longest kid reason is
+ * 85 characters (2026-10-12; its longest reason, 126, is an `unsure` one, which is never
  * stored); a longer one is dropped at storage, never at the wire, so a verbose answer
  * still counts as a verdict.
  */
