@@ -1,7 +1,7 @@
 ---
 name: coach-plan
 whenToUse: A parent was offered the complete plan for a raising-kids topic and replied YES. This is the plan itself — a named method, sequenced, two or three text messages they can start tonight.
-task: high-stakes-judgment
+task: plan
 tools: []
 ---
 
