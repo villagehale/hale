@@ -8,6 +8,7 @@ import {
   generalAnswerUserMessage,
   localDate,
   questionSanitizeUserMessage,
+  scrubDirectIdentifiers,
   searchUserMessage,
 } from './answer';
 import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from './copy';
@@ -514,7 +515,7 @@ describe('the sanitize phase', () => {
   });
 
   /**
-   * The medical lane's deterministic backstop (scrubResidualPii), under the sanitizer.
+   * The lane's own deterministic backstop (scrubDirectIdentifiers), under the sanitizer.
    * It is the floor for the identifier classes a pattern can hold - an email, a phone
    * number, a postal code - and it runs before the question goes anywhere. A NAME is
    * free-form and stays the sanitizer's job.
@@ -543,6 +544,34 @@ describe('the sanitize phase', () => {
     expect(seen.search[0]?.messages?.[0]?.content).toBe(
       `{"question":"will it rain near [redacted], text me at [redacted] or [redacted]","today":"${TODAY}"}`,
     );
+  });
+
+  /**
+   * Sloane's finding 5. The scrub this lane used to borrow was written for a clinical
+   * query, where an age or a duration is the child's. Here it took the term out of a
+   * mortgage question. What is not a direct identifier reaches the search as written.
+   */
+  it.each([
+    'what is the 5 year fixed mortgage rate right now',
+    'who won the world series 20 years ago',
+    'is 450 dollars too much for a stroller',
+    'how much should a 3 year old sleep',
+  ])('hands the search and the compose %j as the sanitizer wrote it', async (question) => {
+    lit();
+    const seen = seenNothing();
+    await createGeneralAnswer(
+      scripted(
+        {
+          sanitize: reading({ question, needs_search: 'yes' }),
+          search: searchFound(),
+          answer: { answer: 'An answer.' },
+        },
+        seen,
+      ),
+    ).compose('anything', today);
+
+    expect(JSON.parse(seen.search[0]?.messages?.[0]?.content ?? '{}').question).toBe(question);
+    expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}').question).toBe(question);
   });
 
   it('answers in the language the sanitizer read, and in English when it read none', async () => {
@@ -596,6 +625,68 @@ describe('the sanitize phase', () => {
       ],
     ]);
     expect(seen.compose).toHaveLength(0);
+  });
+});
+
+/**
+ * The floor under the sanitizer: direct identifiers only, the things that reach one person
+ * or one door. Every value here is invented.
+ */
+describe('scrubDirectIdentifiers', () => {
+  it.each([
+    ['a phone number', 'text me at 416-555-0142 about it', 'text me at [redacted] about it'],
+    ['a phone number typed as one run', 'call 4165550142 after six', 'call [redacted] after six'],
+    ['a phone number with a country code', 'its +1 (416) 555-0142', 'its [redacted]'],
+    ['an email address', 'send it to pat@example.com please', 'send it to [redacted] please'],
+    ['a Canadian postal code', 'will it rain near A1A 1A1', 'will it rain near [redacted]'],
+    ['a postal code typed tight', 'will it rain near a1a1a1', 'will it rain near [redacted]'],
+    [
+      'a US ZIP after a state code',
+      'forecast for Fernhollow, IL 00501',
+      'forecast for Fernhollow, IL [redacted]',
+    ],
+    ['a US ZIP+4', 'does 00501-1234 get snow', 'does [redacted] get snow'],
+    [
+      'a US ZIP after the word',
+      'gas prices for zip code 00501',
+      'gas prices for zip code [redacted]',
+    ],
+    ['a street address', 'is 12 Fernhollow Cres a quiet street', 'is [redacted] a quiet street'],
+    [
+      'a street address typed in lower case',
+      'how far is 12 fernhollow st from the lake',
+      'how far is [redacted] from the lake',
+    ],
+    [
+      'a street address with its suffix spelled out',
+      'what is near 12 Fernhollow Road',
+      'what is near [redacted]',
+    ],
+    ['an @handle', 'is @fernhollow_mum a real account', 'is [redacted] a real account'],
+  ])('takes out %s', (_label, text, scrubbed) => {
+    expect(scrubDirectIdentifiers(text)).toBe(scrubbed);
+  });
+
+  /** Positive controls for the other direction: a duration, a year count, an age with no
+   * name beside it, a price and a score are parts of an ordinary question. */
+  it.each([
+    'what is the 5 year fixed mortgage rate right now',
+    'who won the world series 20 years ago',
+    'is 12000 dollars a fair price for a used minivan',
+    'how much should a 3 year old sleep',
+    'what should I pack for a 10 hour road trip',
+    'is a 5 minute drive worth it for cheaper gas',
+    'did the raptors win 112-104 last night',
+    'what happened on 2026-10-11',
+    'is the game @ 7 or 8',
+  ])('leaves %j as it was', (text) => {
+    expect(scrubDirectIdentifiers(text)).toBe(text);
+  });
+
+  it('leaves a price written with its sign as it was', () => {
+    expect(scrubDirectIdentifiers('is $450 too much for a stroller')).toBe(
+      'is $450 too much for a stroller',
+    );
   });
 });
 
@@ -698,7 +789,7 @@ describe('the live search', () => {
    * is loaded. No search can answer it, so none is made (and none is billed): the compose
    * is told what is missing and asks for it.
    */
-  it('makes no search call when the question leaves out what the answer depends on, lit or not', async () => {
+  it('makes no search call when the question leaves out what the answer depends on, and asks for it', async () => {
     lit();
     const info = quietInfo();
     const warn = quietWarn();
@@ -732,6 +823,50 @@ describe('the live search', () => {
       [{ search: 'missing_detail' }, 'off-domain answer: no live search this turn'],
     ]);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Sloane's finding 1, dark. Asking which city is a promise to look the forecast up once
+   * it is given, and with the search dark nothing can be looked up. So a question missing
+   * a detail is, while dark, one more question that needed a search and went without: the
+   * compose is told nothing could be checked and is not handed anything to ask for.
+   */
+  it('tells the compose nothing could be checked, and hands it nothing to ask for, when a detail is missing and the flag is dark', async () => {
+    const info = quietInfo();
+    const warn = quietWarn();
+    const seen = seenNothing();
+
+    expect(
+      await createGeneralAnswer(
+        scripted(
+          {
+            sanitize: reading({
+              question: 'hows the weather tomorrow',
+              missing_detail: 'which city',
+              needs_search: 'missing_detail',
+            }),
+            answer: { answer: "Can't check the forecast right now." },
+          },
+          seen,
+        ),
+      ).compose('hows the weather tomorrow', today),
+    ).toEqual({
+      status: 'composed',
+      reply: "Can't check the forecast right now.",
+      search: 'search_off',
+    });
+
+    expect(seen.search).toHaveLength(0);
+    expect(JSON.parse(seen.compose[0]?.messages?.[0]?.content ?? '{}')).toEqual({
+      question: 'hows the weather tomorrow',
+      language: 'en',
+      today: TODAY,
+      live: 'unavailable',
+    });
+    expect(warn.mock.calls).toEqual([
+      [{ search: 'search_off', detail: undefined }, 'off-domain answer: no live search this turn'],
+    ]);
+    expect(info).not.toHaveBeenCalled();
   });
 
   it('makes no search call while the flag is dark, and names it', async () => {
@@ -896,7 +1031,39 @@ describe('links', () => {
     ).toEqual({ status: 'composed', reply: `TSN has it: ${TSN}.`, search: 'searched' });
   });
 
-  it('refuses a link the search did not return, by name', async () => {
+  /**
+   * Sloane's finding 6. The gate used to compare whole URLs, so the front page of the very
+   * site the search returned was refused and the parent got the fixed line. What makes a
+   * link real is whose site it is: the host, without a leading `www.`.
+   */
+  it.each([
+    ['a deeper page on a searched host', 'https://www.tsn.ca/soccer/euro/schedule'],
+    ['the front page of a searched host', 'https://www.tsn.ca'],
+    ['a searched host without its www', 'http://tsn.ca/live'],
+    ['a searched host with a sentence ending on it', 'www.tsn.ca.'],
+  ])('sends %s', async (_label, link) => {
+    lit();
+    const outcome = await createGeneralAnswer(
+      scripted({
+        sanitize: WHERE,
+        search: searchFound(TSN, 'TSN carries it in Canada.'),
+        answer: { answer: `TSN has it: ${link}` },
+      }),
+    ).compose('where can I stream the euros', today);
+
+    expect(outcome).toEqual({
+      status: 'composed',
+      reply: `TSN has it: ${link}`,
+      search: 'searched',
+    });
+  });
+
+  it.each([
+    ['another host', 'https://www.tsn-live.example/euro'],
+    ['a host that only starts with the searched one', 'https://tsn.ca.example.com/euro'],
+    ['a searched host used as a login name', 'https://tsn.ca@example.com/euro'],
+    ['a subdomain the search did not return', 'https://watch.tsn.ca/euro'],
+  ])('refuses %s, by name', async (_label, link) => {
     lit();
     const log = quiet();
 
@@ -905,7 +1072,7 @@ describe('links', () => {
         scripted({
           sanitize: WHERE,
           search: searchFound(TSN, 'TSN carries it in Canada.'),
-          answer: { answer: 'It is on https://www.tsn.ca/live-now today.' },
+          answer: { answer: `It is on ${link} today.` },
         }),
       ).compose('where can I stream the euros', today),
     ).toEqual({ status: 'unavailable', reason: 'unsendable' });

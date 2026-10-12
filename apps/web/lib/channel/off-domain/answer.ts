@@ -6,18 +6,31 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { formatLongDate } from '~/lib/format/datetime';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import {
+  type LiveSearch,
+  answerJsonSchema,
+  generalAnswerUserMessage,
+  needsSearch,
+  questionSanitizeUserMessage,
+  sanitizeJsonSchema,
+  scrubDirectIdentifiers,
+  searchUserMessage,
+} from './answer-request';
+import {
   EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
   namesAMentalCrisis,
   namesAnEmergency,
   reachesForTheHealthLine,
 } from './copy';
-import {
-  COMPOSE_MAX_TOKENS,
-  type ReplyLanguage,
-  normalizeLanguage,
-  scrubResidualPii,
-} from './medical';
+import { COMPOSE_MAX_TOKENS, normalizeLanguage } from './medical';
+
+export {
+  generalAnswerUserMessage,
+  questionSanitizeUserMessage,
+  scrubDirectIdentifiers,
+  searchUserMessage,
+};
+export type { LiveSearch };
 
 /**
  * Boundary v3 — the general answer.
@@ -39,14 +52,16 @@ import {
  *      question with the family taken out of it, the language they wrote in, and its
  *      judgment of whether a correct answer needs something current, or cannot be given
  *      at all without a detail the question leaves out (which city, for a forecast). The
- *      deterministic {@link scrubResidualPii} backstop then runs under it, before the
- *      question goes anywhere.
+ *      deterministic {@link scrubDirectIdentifiers} backstop then runs under it, before
+ *      the question goes anywhere.
  *
  *   1. SEARCH. Only when the sanitizer judged the answer needs current facts AND
  *      {@link generalAnswerSearchEnabled} is lit: one STREAMED `web_search` server-tool
  *      turn on the de-identified question and today's date. The result items actually
  *      returned are counted, and zero is not a search. A question missing what its
- *      answer depends on is not searched: no search could answer it.
+ *      answer depends on is not searched: no search could answer it. While the flag is
+ *      dark it is not asked about either, because asking for the city is a promise to
+ *      look the forecast up once it is given.
  *
  *   2. COMPOSE. The skill writes the one reply from the de-identified question, today's
  *      date and the research when there is any, in the parent's language. Told a detail
@@ -117,22 +132,6 @@ export type GeneralAnswerFallback =
   | 'model_failed'
   | 'unsendable';
 
-/**
- * What happened to the live search this turn. `searched` is the only one that put
- * research in front of the compose. `missing_detail` is a question no search could
- * answer as asked, so none was made and the compose asks for what is missing. The three
- * after it are the ways a question that needed a search went without one — the flag is
- * dark, the call failed, the call returned nothing to stand on — each logged by name and
- * each answered by the compose saying plainly that it cannot check right now.
- */
-export type LiveSearch =
-  | 'not_needed'
-  | 'searched'
-  | 'missing_detail'
-  | 'search_off'
-  | 'search_failed'
-  | 'nothing_usable';
-
 export type GeneralAnswerOutcome =
   /** `search` is set whenever a model wrote the reply. The fixed lines above the model
    * have no search to name. */
@@ -152,44 +151,21 @@ export interface GeneralAnswerComposer {
   compose(text: string, today: () => Promise<string>): Promise<GeneralAnswerOutcome>;
 }
 
-/** What the sanitizer may answer. `no` and `missing_detail` make no search; everything
- * else, on the list or off it, does. */
-const SEARCH_READINGS = ['yes', 'no', 'unsure', 'missing_detail'] as const;
-
 /** Parsed loosely, for the reason screen.ts states at length: a strict schema turns a
  * parent's injected field name into a logged ZodError message (rule #1), and zod's
  * default strips unknown keys instead. The reading and the language are normalized in
  * code for the same reason. */
 const sanitizeSchema = z.object({
   language: z.string().nullish(),
+  answers_pending: z.string().nullish(),
   question: z.string(),
   missing_detail: z.string().nullish(),
+  their_place: z.string().nullish(),
   current_fact: z.string().nullish(),
   needs_search: z.string().nullish(),
 });
 
-const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
-  type: 'object',
-  // The language first: it is read off the parent's words before they are rewritten. What
-  // is missing and what is current before the verdict: a reading that names what it is
-  // judging on first.
-  properties: {
-    language: { type: 'string' },
-    question: { type: 'string' },
-    missing_detail: { type: 'string' },
-    current_fact: { type: 'string' },
-    needs_search: { type: 'string', enum: [...SEARCH_READINGS] },
-  },
-  required: ['language', 'question', 'missing_detail', 'current_fact', 'needs_search'],
-};
-
 const answerSchema = z.object({ answer: z.string() });
-
-const answerJsonSchema = {
-  type: 'object',
-  properties: { answer: { type: 'string' } },
-  required: ['answer'],
-} as const;
 
 /**
  * Today's date as the search and the compose are told it: the weekday and the full date
@@ -198,63 +174,6 @@ const answerJsonSchema = {
 export function localDate(now: Date, timeZone: string): string {
   const { weekday, month, day, year } = formatLongDate(now, timeZone);
   return `${weekday}, ${month} ${day}, ${year}`;
-}
-
-/** The sanitize turn's payload — the ONLY call the raw message reaches. */
-export function questionSanitizeUserMessage(text: string): string {
-  return JSON.stringify({ text });
-}
-
-/** What the search is given: the de-identified question and the date. Shared with the
- * eval, which REPLICATES this request shape. */
-export function searchUserMessage(input: { question: string; today: string }): string {
-  return JSON.stringify({ question: input.question, today: input.today });
-}
-
-/**
- * What the compose is told about the search. The three ways a needed search did not
- * happen are ONE value here. To the writer they are the same fact — nothing could be
- * checked — and which one it was belongs to the log and the outcome, not to the reply.
- */
-function liveAsTold(
-  search: LiveSearch,
-): 'searched' | 'not_needed' | 'missing_detail' | 'unavailable' {
-  if (search === 'searched' || search === 'not_needed' || search === 'missing_detail') {
-    return search;
-  }
-  return 'unavailable';
-}
-
-/**
- * The compose payload. Shared with the eval, which REPLICATES this request shape.
- * `notes` travels only with a search that found something, `missing` only with a
- * question that left out what its answer depends on.
- */
-export function generalAnswerUserMessage(input: {
-  question: string;
-  language: ReplyLanguage;
-  today: string;
-  search: LiveSearch;
-  notes: string;
-  missing: string;
-}): string {
-  return JSON.stringify({
-    question: input.question,
-    language: input.language,
-    today: input.today,
-    live: liveAsTold(input.search),
-    ...(input.search === 'searched' ? { research_notes: input.notes } : {}),
-    ...(input.search === 'missing_detail' ? { missing: input.missing } : {}),
-  });
-}
-
-/**
- * FAIL TOWARD LOOKING IT UP: of the readings that reach here, only an explicit `no`
- * skips the search. `unsure`, a missing reading and anything off the list all search,
- * because the failure worth avoiding is a stale fact stated flat.
- */
-function needsSearch(raw: unknown): boolean {
-  return raw !== 'no';
 }
 
 /** What the two setup catches log. Neither call is passed the question, so the message
@@ -380,26 +299,28 @@ async function liveSearch(
 
 const LINK = /(?:https?:\/\/|www\.)\S+/gi;
 
-/** A URL as it is compared: the scheme, a leading `www.`, and whatever punctuation the
- * sentence put after it are not part of which page it is. */
-function linkKey(url: string): string {
+/** Whose site a URL is, as it is compared: the host, without the scheme, a leading
+ * `www.`, the page under it, or whatever punctuation the sentence put after it. Anything
+ * odd in front of the host (a login name, a port) stays in and so matches nothing. */
+function linkHost(url: string): string {
   return url
     .toLowerCase()
     .replace(/^https?:\/\//, '')
     .replace(/^www\./, '')
-    .replace(/[.,;:!?)\]'"]+$/, '')
-    .replace(/\/$/, '');
+    .replace(/[/?#].*$/, '')
+    .replace(/[.,;:!?)\]'"]+$/, '');
 }
 
 /**
- * A URL in a reply is real only when this turn's search returned it. Before this stage
- * could search, any URL was one the model invented and all of them were refused; now one
- * can be the thing the parent asked for, so what is refused is a URL the search did not
- * return.
+ * A URL in a reply is real only when it is on a site this turn's search returned. Before
+ * this stage could search, any URL was one the model invented and all of them were
+ * refused; now one can be the thing the parent asked for, so what is refused is a host the
+ * search did not return. The page is not compared: the front page of a site the search
+ * found a deeper page on is still that site.
  */
 function carriesUnsearchedLink(body: string, searched: readonly string[]): boolean {
-  const known = new Set(searched.map(linkKey));
-  return (body.match(LINK) ?? []).some((link) => !known.has(linkKey(link)));
+  const known = new Set(searched.map(linkHost));
+  return (body.match(LINK) ?? []).some((link) => !known.has(linkHost(link)));
 }
 
 /**
@@ -497,17 +418,17 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
         return unavailable('model_failed', 'sanitize_failed:empty_question');
       }
       // Deterministic backstop UNDER the sanitizer, before the question goes anywhere.
-      const question = scrubResidualPii(sanitized.question.trim());
+      const question = scrubDirectIdentifiers(sanitized.question.trim());
       const language = normalizeLanguage(sanitized.language);
       const today = await readToday();
 
-      // Phase 1 — SEARCH (only when judged needed, and only when lit).
-      const { search, findings } =
-        sanitized.needs_search === 'missing_detail'
+      // Phase 1 — SEARCH (only when judged needed, and only when lit). A missing detail
+      // is asked for only while lit: dark, there is nothing the answer could be used for.
+      const { search, findings } = !needsSearch(sanitized.needs_search)
+        ? { search: 'not_needed' as const, findings: NO_FINDINGS }
+        : sanitized.needs_search === 'missing_detail' && generalAnswerSearchEnabled()
           ? { search: askedInstead(), findings: NO_FINDINGS }
-          : needsSearch(sanitized.needs_search)
-            ? await liveSearch(resolved, searchSkill, question, today)
-            : { search: 'not_needed' as const, findings: NO_FINDINGS };
+          : await liveSearch(resolved, searchSkill, question, today);
 
       // Phase 2 — COMPOSE (blind: the question and the research, never the raw message).
       try {
@@ -522,7 +443,7 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
             search,
             notes: findings.notes,
             // The model may leave it out; it is scrubbed like the question it came with.
-            missing: scrubResidualPii((sanitized.missing_detail ?? '').trim()),
+            missing: scrubDirectIdentifiers((sanitized.missing_detail ?? '').trim()),
           }),
           toolName: 'answer',
           toolDescription: 'Return the one brief answer to this question.',
