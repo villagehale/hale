@@ -46,9 +46,8 @@ for what you are offering, so nothing in the text says you have.
 
 The text carries one ask, and that ask is the offer. What you noticed shapes how you say
 the offer; it is not a question of its own, so the parent has one thing to answer. Put
-the offer to them straight, the way a friend does who takes it as given that it is
-welcome: not hedged, with no condition on it, and not about what you are able or willing
-to do.
+the offer to them straight: not hedged, with no condition on it, and not about what you
+are able or willing to do.
 
 Natural for `language` - the way parents who speak it actually text each other, in the
 casual register friends use in a chat app, never a translation. The words are yours.

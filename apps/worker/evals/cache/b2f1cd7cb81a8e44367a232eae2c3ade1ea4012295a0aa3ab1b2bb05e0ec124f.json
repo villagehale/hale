@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "First, asks: The text contains one ask—the offer itself, posed as a question: \"want me to look at weekdays too?\" This is the weekend_fallback offer, put straight to the parent.\n\nSecond, the offer phrase: \"want me to look at weekdays too?\" This is not a hedged offer of service. It does not hold the help out on condition that it would be useful or wanted (like \"I could look,\" \"would it help if,\" or \"let me know if you'd like\"). The offer is direct and friendly, as a peer. The preamble—\"just realized everything I've been sending you has been weekend stuff\"—grounds the offer in the family's situation, not in Hale's capabilities.\n\nThe text is in English, spelled properly, natural for how people text. It reads like a friend who noticed something about this family's week (that Hale has been sending only weekend options) and is curious to help with weekdays. The tone is chill and casual. It names no child, which is correct for weekend_fallback. It offers the right thing—to look at weekdays—and claims nothing has been found yet.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Oye, estaba pensando en Nell y en las tardes después del cole… ¿quieres que le busque una buena opción para después de clases?"
+  },
+  "stopReason": "tool_use"
+}

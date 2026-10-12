@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This text hits the verified_break offer squarely and reads like a friend texting a parent. Let me check two things first.\n\nAsks: The text contains one ask — the offer itself, put as a question: \"want me to look for something nearby you could do with the kids during the week?\" That's one ask.\n\nOffer phrasing: \"want me to look for something nearby you could do with the kids during the week?\" — this is a straight offer, not hedged. It's not conditional on usefulness or framed as what Hale is able to do; it's put directly to the parent as a simple, open question.\n\nThe text correctly identifies the break (winter break, matching the label) and offers to find weekday options for it, which is exactly the verified_break prompt. The tone is casual and observational — \"winter break is coming up\" — like a friend who noticed the calendar and is curious. It names no child, which is correct for this prompt. It mentions no activity, place, time, price or link. It reads like natural texting: a dash, a conversational flow, the kind of thing a parent-friend would text. Spelled correctly, no missing accents, natural for English texting. A parent would read this as a friend noticing their week and offering to help find something for it."
+  }
+}
