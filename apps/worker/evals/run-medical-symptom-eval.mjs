@@ -263,14 +263,14 @@ function detectBodyLanguage(body) {
 const FEVER_TERMS = /\bfever\b|\bfebrile\b|\btemperature\b|\btemp\b|\b\d{2,3}(?:\.\d)?\s?°?[cf]\b/i;
 const FEVER_NEGATED = /\bno fever\b|\bwithout fever\b|\bafebrile\b|\bno temperature\b/i;
 const YOUNG_INFANT_TEXT = /under (?:3|three) months|younger than (?:3|three) months|\bnewborn\b/i;
-const STIFF_NECK = /\bstiff neck\b|\bneck (?:is )?stiff\b|neck stiffness/i;
+const STIFF_NECK = /\bstiff neck\b|\bneck (?:is )?stiff\b|\bneck\b[^.,;]{0,20}\bstiffness\b/i;
 const RED_FLAG_TERMS = [
   /trouble breathing|difficulty breathing|labou?red breathing|struggling to breathe|working (?:really |very )?hard to breathe|can'?t breathe|cannot breathe|not breathing|gasping for (?:air|breath)|\bgrunting\b/i,
   /ribs? (?:are )?pulling in|pulling in (?:with|under|between)[^.]{0,20}(?:breath|rib)|\bretractions?\b|chest (?:is )?(?:sucking|caving) in/i,
   /blue lips|dusky lips|lips (?:look|turning|are|went|are turning) (?:a bit )?(?:blue|dusky|grey|gray)|blue (?:around|round) the (?:lips|mouth)|turning blue|going blue/i,
   /\bseizure\b|\bseizing\b|\bconvulsion\b|\bconvulsing\b/i,
   /\bunresponsive\b|won'?t wake|will not wake|can'?t wake|cannot wake|hard to wake|difficult to wake|not waking|won'?t respond|not responding|\blimp\b|\bfloppy\b|\blethargic\b|\blethargy\b|\bunconscious\b|passed out/i,
-  /non-?blanching|\bpetechiae?\b|petechial|\bpurpura\b|does ?n[o']?t fade|do not fade|don'?t fade|will not fade|won'?t fade/i,
+  /non-?blanching|\bpetechiae?\b|petechial|\bpurpura\b|(?:does ?n[o']?t|do not|don'?t|will not|won'?t) (?:fade|blanch)/i,
   /anaphyla|face (?:is )?swelling|swelling of (?:the |her |his )?face|swollen face|lips (?:are )?swelling|swollen lips|tongue (?:is )?swelling|swollen tongue|throat (?:is )?(?:swelling|closing|tightening)/i,
   /sunken eyes|sunken fontanelle|no wet (?:diaper|nappy)|not urinating|no urine|no tears when (?:crying|she cries|he cries)|severe(?:ly)? dehydrat/i,
 ];

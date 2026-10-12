@@ -286,6 +286,10 @@ describe('detectRedFlag', () => {
     expect(detectRedFlag('sunken eyes and no wet diaper in 12 hours', null)).toBe(true);
     // stiff neck is a red flag only alongside fever (meningitis), not on its own
     expect(detectRedFlag('high fever, headache, stiff neck', null)).toBe(true);
+    // The sanitizer's paraphrase on Sonnet 5.5: the same sign with "stiffness" after "neck".
+    expect(
+      detectRedFlag('high fever, severe headache, neck pain and stiffness, light hurts', null),
+    ).toBe(true);
     // ANY fever under 3 months, from the band or an explicit "under 3 months"
     expect(detectRedFlag('fever', 'infant_under_3mo')).toBe(true);
     expect(detectRedFlag('fever 38.2C in infant under 3 months', null)).toBe(true);

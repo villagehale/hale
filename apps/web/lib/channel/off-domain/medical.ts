@@ -312,7 +312,7 @@ const YOUNG_INFANT_TEXT = /under (?:3|three) months|younger than (?:3|three) mon
 
 /** Neck stiffness — a meningitis red flag only ALONGSIDE fever, never on its own (a stiff
  * neck from sleeping awkwardly is benign). */
-const STIFF_NECK = /\bstiff neck\b|\bneck (?:is )?stiff\b|neck stiffness/i;
+const STIFF_NECK = /\bstiff neck\b|\bneck (?:is )?stiff\b|\bneck\b[^.,;]{0,20}\bstiffness\b/i;
 
 /**
  * The unambiguous pediatric emergencies — each a red flag on its own, at any age.
