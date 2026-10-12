@@ -979,8 +979,8 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale dropped something that left your calendar',
     family: 'note',
   },
-  // VIL-226. Pending Sloane's review. Each row carries a verdict, a source and counts;
-  // never a title. The parent said a connector item is theirs, so Hale stopped tracking it.
+  // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent
+  // said a connector item is theirs, so Hale stopped tracking it.
   kid_relevance_untracked: {
     sentence: 'Hale stopped tracking something you said is yours',
     family: 'done',
