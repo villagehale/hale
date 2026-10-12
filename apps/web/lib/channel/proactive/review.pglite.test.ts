@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -954,6 +954,8 @@ describe('runProactiveReview', () => {
   }
 
   const HOUR_BEFORE = new Date(THURSDAY_EVENING.getTime() - 60 * 60_000);
+  /** A text's stamp as the read mark carries it: UTC, to the microsecond. */
+  const stamp = (at: Date): string => at.toISOString().replace('Z', '000Z');
 
   const lessPlease = (snapshot: FamilySnapshot): DeciderDecision => ({
     reason: 'They asked to hear less',
@@ -1205,7 +1207,7 @@ describe('runProactiveReview', () => {
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
     expect(h.snapshots[0]?.recentParentTexts).toEqual(['weekends are best for us']);
     expect(await decisionFields('parentTextsRead')).toEqual([
-      { parentUserId, through: THURSDAY_EVENING.toISOString() },
+      { parentUserId, through: stamp(HOUR_BEFORE) },
     ]);
 
     await enqueue('nudge:weather:w42');
@@ -1220,6 +1222,33 @@ describe('runProactiveReview', () => {
     expect(await decisionFields('parentTextsRead')).toHaveLength(2);
   });
 
+  it('when live, marks a read at the newest text it read, so one stored late under an earlier stamp is still read', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await parentText('saturdays work', new Date(HOUR_BEFORE.getTime() - 60 * 60_000));
+    await parentText('weekends are best for us', HOUR_BEFORE);
+    // The database stamps to the microsecond: a mark cut to the millisecond reads this again.
+    await db.database.execute(
+      sql`update channel_messages set created_at = created_at + interval '456 microseconds'`,
+    );
+    await enqueue('nudge:weather:w41');
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(h.snapshots[0]?.recentParentTexts).toEqual([
+      'saturdays work',
+      'weekends are best for us',
+    ]);
+    expect(await decisionFields('parentTextsRead')).toEqual([
+      { parentUserId, through: '2026-10-08T21:00:00.000456Z' },
+    ]);
+
+    // Stamped a minute inside the first review's clock, stored after it ran.
+    await parentText('mornings too', new Date(THURSDAY_EVENING.getTime() - 60_000));
+    await enqueue('nudge:weather:w42');
+    await runProactiveReview(db.database, h.deps, HOUR_AFTER);
+    expect(h.snapshots[1]?.recentParentTexts).toEqual(['mornings too']);
+  });
+
   it('reads a parent’s pace request at their own next review, after the other parent’s batch was reviewed in between', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const coParentId = await addCoParent();
@@ -1231,7 +1260,7 @@ describe('runProactiveReview', () => {
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
     expect(h.snapshots[0]?.recentParentTexts).toEqual(['we love the weekend ideas']);
     expect(await decisionFields('parentTextsRead')).toEqual([
-      { parentUserId: coParentId, through: THURSDAY_EVENING.toISOString() },
+      { parentUserId: coParentId, through: stamp(HOUR_BEFORE) },
     ]);
 
     await enqueue('nudge:weather:w41');
@@ -1243,7 +1272,7 @@ describe('runProactiveReview', () => {
     ]);
     expect(await decisionFields('parentTextsRead')).toContainEqual({
       parentUserId,
-      through: HOUR_AFTER.toISOString(),
+      through: stamp(HOUR_BEFORE),
     });
   });
 
@@ -1310,7 +1339,7 @@ describe('runProactiveReview', () => {
       { schemaVersion: 1, parentUserId, direction: 'less', note: 'text me less' },
     ]);
     expect(await decisionFields('parentTextsRead')).toEqual([
-      { parentUserId, through: HOUR_AFTER.toISOString() },
+      { parentUserId, through: stamp(HOUR_BEFORE) },
     ]);
   });
 

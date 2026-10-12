@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, sql } from 'drizzle-orm';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { familyHasTeenager } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
@@ -413,22 +413,30 @@ async function latestCadence(
 }
 
 /**
- * Whose new texts a review read, up to its own clock. A live decision keeps it on its audit
- * row, beside the pace it heard in them, and that parent's next review reads only what
- * came after. Another parent's review, a batch two parents own and a shadow review write
- * none, so none of them can move a text out of its author's reach unread.
+ * Whose new texts a review read, up to the newest one. A live decision keeps it on its
+ * audit row, beside the pace it heard in them, and that parent's next review reads only
+ * what came after. Another parent's review, a batch two parents own and a shadow review
+ * write none, so none of them can move a text out of its author's reach unread.
  */
 export interface ParentTextsRead {
   parentUserId: string;
+  /**
+   * The newest text read, as the database stamped it (`TEXT_STAMP`). Not this review's
+   * clock: a text stored after the read under an earlier stamp would fall behind that
+   * and never be read. Not a JS `Date` either: that drops the microseconds, and the
+   * mark would sit below its own text and read it again every hour.
+   */
   through: string;
 }
 
-/** Up to when a live review has already read this one parent's texts. */
+const TEXT_STAMP = sql<string>`to_char(${schema.channelMessages.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+/** The newest of this one parent's texts a live review has already read. */
 async function textsReadThrough(
   database: Database,
   familyId: string,
   parentUserId: string,
-): Promise<Date | null> {
+): Promise<string | null> {
   const [row] = await database
     .select({ after: schema.auditLog.after })
     .from(schema.auditLog)
@@ -442,7 +450,7 @@ async function textsReadThrough(
     .orderBy(desc(schema.auditLog.occurredAt))
     .limit(1);
   if (!row) return null;
-  return new Date((row.after as { parentTextsRead: ParentTextsRead }).parentTextsRead.through);
+  return (row.after as { parentTextsRead: ParentTextsRead }).parentTextsRead.through;
 }
 
 export interface LoadedSnapshot {
@@ -507,6 +515,7 @@ export async function loadFamilySnapshot(
           .select({
             parentUserId: schema.channelMessages.parentUserId,
             body: schema.channelMessages.body,
+            stamp: TEXT_STAMP,
           })
           .from(schema.channelMessages)
           .where(
@@ -516,16 +525,19 @@ export async function loadFamilySnapshot(
               eq(schema.channelMessages.direction, 'in'),
               isNotNull(schema.channelMessages.body),
               gte(schema.channelMessages.createdAt, since),
-              // `through` is this review's clock, so a text that lands mid-run is the next one's.
+              // A text stamped after this review's clock is the next review's.
               lte(schema.channelMessages.createdAt, input.now),
-              readThrough === null ? undefined : gt(schema.channelMessages.createdAt, readThrough),
+              readThrough === null
+                ? undefined
+                : sql`${schema.channelMessages.createdAt} > ${readThrough}::timestamptz`,
             ),
           )
           .orderBy(desc(schema.channelMessages.createdAt))
           .limit(RECENT_PARENT_TEXTS);
+  const [newest] = newTexts;
   const textsRead =
-    reader !== null && newTexts.length > 0
-      ? { parentUserId: reader, through: input.now.toISOString() }
+    reader !== null && newest !== undefined
+      ? { parentUserId: reader, through: newest.stamp }
       : null;
   const withheld = (text: string): string => (context.teenInHousehold ? WITHHELD_LABEL : text);
   const shown = newTexts
