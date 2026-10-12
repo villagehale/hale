@@ -69,6 +69,7 @@ import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
+import { createHoldingLine } from './holding-line';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
 import {
@@ -701,6 +702,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // The words a broken turn gets, on the same lazy client the screen and the general
     // answer use — one key, one failure story, resolved only by the turn that needs one.
     apology: createTurnApology(screenClient),
+    // The one line a slow answer gets first, on the same lazy client.
+    holdingLine: createHoldingLine(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
     coach: productionChannelCoach(database),

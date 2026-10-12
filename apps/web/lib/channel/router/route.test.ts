@@ -23,6 +23,7 @@ import {
 } from '~/lib/village/intros/copy';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
+import type { HoldingLineComposer } from './holding-line';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
 import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
 import type {
@@ -150,6 +151,18 @@ function fakeCoach(
     },
   };
   return coach;
+}
+
+/** A holding-line composer that always has a line, counting how often it was asked. */
+function fakeHoldingLine(line = "I'm on it."): HoldingLineComposer & { calls: number } {
+  const holding = {
+    calls: 0,
+    async compose() {
+      holding.calls += 1;
+      return { status: 'composed' as const, line };
+    },
+  };
+  return holding;
 }
 
 /** A coach that cannot run at all — the outage the canned choice sentence exists for. */
@@ -421,6 +434,8 @@ function harness(
     dispatchDeepResearch?: ChannelRouterDeps['dispatchDeepResearch'];
     turnDeadlineMs?: number;
     callTimeoutMs?: number;
+    holdingLine?: HoldingLineComposer;
+    holdingLineAfterMs?: number;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -487,6 +502,8 @@ function harness(
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
       apology: options.apology ?? fakeApology(),
+      holdingLine: options.holdingLine ?? fakeHoldingLine(),
+      holdingLineAfterMs: options.holdingLineAfterMs,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
       turnDeadlineMs: options.turnDeadlineMs,
@@ -4068,3 +4085,100 @@ describe('turn deadline (VIL-400)', () => {
     expect(h.turns.unanswered).toEqual([expect.objectContaining({ reason: 'gate_timeout' })]);
   });
 });
+
+// ── a slow answer: the typing bubble stays up and one holding line goes first ──
+
+describe('a slow answer gets one holding line first', () => {
+  const IMESSAGE_ROUTE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: null,
+  };
+
+  function slowCoach(ms: number, reply: string): ChannelCoachRuntime {
+    const inner = fakeCoach(reply);
+    return {
+      async respond(turn, rejected) {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        return inner.respond(turn, rejected);
+      },
+    };
+  }
+
+  const typingStarts = (logs: unknown[]) =>
+    logs.filter((entry) => (entry as [{ phase?: string }])[0]?.phase === 'start').length;
+
+  it('a slow turn: the bubble is re-armed after ONE holding line, and the answer follows it', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_ROUTE },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
+    expect(holding.calls).toBe(1);
+    expect(typingStarts(h.logs)).toBeGreaterThanOrEqual(2);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([
+      expect.objectContaining({ templateKey: 'holding_line', body: null }),
+      expect.objectContaining({ templateKey: null }),
+    ]);
+  });
+
+  it('a slow deterministic reply (the plan a "yes" composes) is covered the same way', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const slowPlan: DeterministicHandler = {
+      name: 'plan',
+      handle: async (_db, turn) => {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        await turn.send('the plan, part one');
+        return { claimed: true, outcome: 'plan_sent', reply: null };
+      },
+    };
+    const h = harness({
+      handlers: [slowPlan],
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_ROUTE },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(["I'm on it.", 'the plan, part one']);
+    expect(holding.calls).toBe(1);
+    expect(typingStarts(h.logs)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('a fast turn: no holding line is composed or sent', async () => {
+    const holding = fakeHoldingLine();
+    const h = harness({ holdingLine: holding, holdingLineAfterMs: 200 });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['coach says hi']);
+    expect(holding.calls).toBe(0);
+  });
+
+  it('a re-driven turn already had its chance: no second holding line', async () => {
+    const holding = fakeHoldingLine();
+    const turns = fakeTurnLedger();
+    turns.deferred.push(job().channel_message_id);
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+      turns,
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(holding.calls).toBe(0);
+  });
+});
+

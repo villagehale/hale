@@ -49,7 +49,11 @@ import {
 } from '~/lib/channel/linq/group';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
-import { LINQ_TYPING_REFRESH_MS, signalImessageTyping } from '~/lib/channel/linq/presence';
+import {
+  LINQ_TYPING_REFRESH_MS,
+  LINQ_TYPING_SHOW_DELAY_MS,
+  signalImessageTyping,
+} from '~/lib/channel/linq/presence';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
@@ -75,6 +79,13 @@ import { interestPassportEnabled } from '~/lib/passport/flag';
 import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyFallback, TurnApology } from './apology';
+import {
+  HOLDING_LINE_AFTER_MS,
+  HOLDING_LINE_TEMPLATE_KEY,
+  type HoldingLine,
+  type HoldingLineComposer,
+  armHoldingLine,
+} from './holding-line';
 import {
   type ChannelCoachRuntime,
   type ChannelTurn,
@@ -371,6 +382,10 @@ export interface ChannelRouterDeps {
    * for the same reason the off-domain composer is: a composer that cannot run says so
    * by name, and this router has no preset sentence to fall back on. */
   apology: TurnApology;
+  /** The one line a parent gets while a slow answer is still being composed
+   * (holding-line.ts). Non-nullable (rule #11): a composer that cannot write one says so
+   * by name, and there is no preset line underneath it. */
+  holdingLine: HoldingLineComposer;
   /**
    * Write down a full-plan offer the coach just made, against the message that carried
    * it. Non-nullable (rule #11): an offer sentence a parent can read with no ledger row
@@ -538,6 +553,8 @@ export interface ChannelRouterDeps {
   turnDeadlineMs?: number;
   /** Test seam for GATE 2c / 2c-bis. Production uses {@link CALL_TIMEOUT_MS}. */
   callTimeoutMs?: number;
+  /** How long a turn waits before its holding line. Tests shorten it. */
+  holdingLineAfterMs?: number;
   /**
    * After the reply is on its way, ask the model whether this turn opened,
    * moved, or closed a workstream (VIL-419). Optional so a router assembled
@@ -666,8 +683,13 @@ export async function routeChannelMessage(
   const signal = AbortSignal.timeout(deadlineMs);
   const trailed: Promise<unknown>[] = [];
   const turnDeps = detachWorkstream(deps, trailed);
+  const wait: TurnWait = { end: async () => undefined };
   try {
-    const result = await runTurnThen(signal, () => routeChannelMessageInner(turnDeps, job), []);
+    const result = await runTurnThen(
+      signal,
+      () => routeChannelMessageInner(turnDeps, job, wait),
+      [],
+    );
     // The extract keeps running after the job returns. Holding the reference
     // is what keeps the rejection handler attached for the life of the call.
     void trailed;
@@ -703,12 +725,22 @@ export async function routeChannelMessage(
       familyId: job.family_id,
     });
     throw new TurnDeferred('turn_timeout', err);
+  } finally {
+    // Every exit, the deadline's included: no bubble left up and no holding line sent
+    // after the turn is over.
+    await wait.end();
   }
+}
+
+/** What covers a parent's wait for one turn, ended however the turn ends. */
+interface TurnWait {
+  end: () => Promise<void>;
 }
 
 async function routeChannelMessageInner(
   deps: ChannelRouterDeps,
   job: ChannelMessageReceivedJob,
+  wait: TurnWait,
 ): Promise<RouterResult> {
   const now = deps.now();
 
@@ -844,22 +876,84 @@ async function routeChannelMessageInner(
     return openQuestions;
   };
 
-  // The typing refresh lives for the think section only. A deterministic handler
-  // sends before it starts, so those replies do not pay for a stop call.
-  // Cleared before a send so a tick cannot put the bubble back up between
-  // "stop" and the message, and cleared in the finally so a turn that sends
-  // nothing does not leave it up.
+  // THE WAIT, covered for as long as the parent waits. The bubble goes up once the turn
+  // outlives LINQ_TYPING_SHOW_DELAY_MS, so a deterministic reply that leaves in a breath
+  // never flashes it, while a slow one (the plan a "yes" composes) shows it; the think
+  // section raises it at once. Cleared before every send so a tick cannot put it back up
+  // between "stop" and the message, and when the turn ends however it ends (`wait.end`).
   let typingLive = false;
   let typingTimer: ReturnType<typeof setInterval> | null = null;
+  let typingDelay: ReturnType<typeof setTimeout> | null = null;
+  let typingStarting: Promise<void> | null = null;
+  let holding: HoldingLine | null = null;
+  const startTyping = async () => {
+    if (typingDelay) {
+      clearTimeout(typingDelay);
+      typingDelay = null;
+    }
+    if (route.channel !== 'imessage' || typingLive) return;
+    typingLive = true;
+    typingStarting = signalImessageTyping(route, 'start', deps.log);
+    typingTimer = setInterval(() => {
+      if (!typingLive) return;
+      void signalImessageTyping(route, 'start', deps.log);
+    }, LINQ_TYPING_REFRESH_MS);
+    await typingStarting;
+  };
   const stopTyping = async () => {
+    // A holding line already on its way lands BEFORE whatever is sent next, never after.
+    if (holding) await holding.settle();
+    if (typingDelay) {
+      clearTimeout(typingDelay);
+      typingDelay = null;
+    }
     if (typingTimer) {
       clearInterval(typingTimer);
       typingTimer = null;
     }
     if (!typingLive) return;
     typingLive = false;
+    if (typingStarting) await typingStarting;
     await signalImessageTyping(route, 'stop', deps.log);
   };
+  wait.end = stopTyping;
+  if (route.channel === 'imessage') {
+    typingDelay = setTimeout(() => {
+      void startTyping();
+    }, LINQ_TYPING_SHOW_DELAY_MS);
+    if (typeof typingDelay.unref === 'function') typingDelay.unref();
+  }
+  // Past the wait a text normally takes, ONE composed line goes out first, the bubble back
+  // up behind it. Once per text: a re-driven turn already had its chance. Not on email,
+  // where a reply is not watched for as it is written.
+  if (!redriven && route.channel !== 'email') {
+    holding = armHoldingLine({
+      afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
+      language: replyLanguage(context.body),
+      composer: deps.holdingLine,
+      log: deps.log,
+      send: async (line) => {
+        if (typingLive) {
+          if (typingStarting) await typingStarting;
+          await signalImessageTyping(route, 'stop', deps.log);
+          typingLive = false;
+        }
+        await sendReply(deps, {
+          route,
+          body: line,
+          job,
+          conversationId: null,
+          templateKey: HOLDING_LINE_TEMPLATE_KEY,
+        });
+        if (typingTimer) {
+          clearInterval(typingTimer);
+          typingTimer = null;
+        }
+        // The send cleared the bubble; the answer is still being written.
+        await startTyping();
+      },
+    });
+  }
 
   const turn: HandlerContext = {
     familyId: job.family_id,
@@ -867,8 +961,7 @@ async function routeChannelMessageInner(
     conversationId,
     body: context.body,
     // A handler that answers for itself sends on the SAME route this turn resolved, and
-    // has no way to reach any other one. stopTyping is a no-op until the think
-    // section has started the bubble.
+    // has no way to reach any other one. stopTyping clears whatever the wait put up.
     send: async (body: string) => {
       await stopTyping();
       return deps.transport.send({ route, body: await withPassport(body) });
@@ -1138,17 +1231,9 @@ async function routeChannelMessageInner(
     }
   }
 
-  // Typing starts here, not at the top of the turn: the deterministic handlers
-  // above answer in a breath, and a bubble on those would be a stall. Search,
-  // the off-domain screen, and the coach are the waits a person would show.
-  if (route.channel === 'imessage') {
-    typingLive = true;
-    await signalImessageTyping(route, 'start', deps.log);
-    typingTimer = setInterval(() => {
-      if (!typingLive) return;
-      void signalImessageTyping(route, 'start', deps.log);
-    }, LINQ_TYPING_REFRESH_MS);
-  }
+  // Search, the off-domain screen, and the coach are the waits a person would show: the
+  // bubble goes up now rather than after the show delay.
+  await startTyping();
   try {
     // A yes to the finder ask, after the flood check so the limiter is counted once.
     // A grounded pick claims the turn. No pick, or a pick that cannot be sent, is a
