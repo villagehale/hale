@@ -49,7 +49,7 @@
   },
   "coach-plan.md": {
     "file": "coach-plan.md",
-    "sha256": "51c69fa3664adb0ea2d497f226813437cf155be00399c059688e729266c70190"
+    "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
   },
   "curate-shortlist.md": {
     "file": "curate-shortlist.md",
@@ -85,7 +85,7 @@
   },
   "general-answer.md": {
     "file": "general-answer.md",
-    "sha256": "0547511cfda447b856d0ce8155b228efe4c8276baec475898640572b9b5b541d"
+    "sha256": "524ce3a252965b7de9edbbd3d699eb63b67cf7f796b4ad40d23d37f69004bab7"
   },
   "gmail-draft-coach.md": {
     "file": "gmail-draft-coach.md",
@@ -105,11 +105,11 @@
   },
   "holding-line.md": {
     "file": "holding-line.md",
-    "sha256": "c319077f4a0a90be449a63c95bc003bd6bb4ab72ad14dee4cb796a8a8273fe8d"
+    "sha256": "b5a1ca98e3e95b77b85aebf350d0ab5b50efb31db16d6ace1a1201cbd47ded68"
   },
   "identity-ask.md": {
     "file": "identity-ask.md",
-    "sha256": "3580c4049c71787dbe18b30d71c388395a8fe525ceb4c3286859b7007284cc46"
+    "sha256": "f2189a587b149ee815f2ab9572c29d1b72585e6c62de2d100a6b66893f1ca936"
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
@@ -121,7 +121,7 @@
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
-    "sha256": "ca8e4100260bfc6e65282e18f15d6a0529b63fd7d9bcc81c78ada5965db752fc"
+    "sha256": "7b8d71a12c8fd6751da0dbd1f5ce0e15fcb50901dcc80f5491aaa728482b78c1"
   },
   "intake-extraction.md": {
     "file": "intake-extraction.md",
@@ -153,11 +153,11 @@
   },
   "medical-sanitize.md": {
     "file": "medical-sanitize.md",
-    "sha256": "2177ad4d5fb93c119ebbd67ccaa844562424677599478fc9422b01f51a9ee3ec"
+    "sha256": "904544023dc6fe1324ee4ca84ea59de9bde1429ae9611e85045a214fbd136c17"
   },
   "medical-symptom.md": {
     "file": "medical-symptom.md",
-    "sha256": "0978e05be270746ad83f4e26b0752e1817c5feaa4f056b41f6c8f9d2b207de82"
+    "sha256": "ef7b7494d7943f38554945a450181da54f19431360d77a6e928ad6df0be4c9a4"
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
