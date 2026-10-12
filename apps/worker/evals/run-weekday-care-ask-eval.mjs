@@ -17,11 +17,19 @@ import { WEEKDAY_CARE_ASK_FIXTURES } from './weekday-care-ask-fixtures.mjs';
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'weekday-care-ask.md');
 const TOOLS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'nudge', 'weekday-ask-tools.ts');
+const LANGUAGE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'language.ts');
 
 /** Filler the skill forbids by name, and a reply word the founder rules forbid. */
 const FORBIDDEN = ['just checking in', 'hope this helps', 'reply yes', 'reply no', 'text yes'];
 
-function grade(fixture, written) {
+/** Whether the text is in the fixture's language: Han script for Chinese, the runtime's
+ * own French reader (lib/channel/language.ts) for English and French. */
+function writtenIn(language, text, replyLanguage) {
+  if (language === 'zh') return /\p{Script=Han}/u.test(text);
+  return replyLanguage(text) === language;
+}
+
+function grade(fixture, written, replyLanguage) {
   if ('skipped' in written) return [`refused by the runtime check: ${written.skipped}`];
   const failures = [];
   const body = written.message.toLowerCase();
@@ -31,7 +39,12 @@ function grade(fixture, written) {
   for (const phrase of FORBIDDEN) {
     if (body.includes(phrase)) failures.push(`forbidden "${phrase}"`);
   }
-  if (!written.message.trimEnd().endsWith('?')) failures.push('the offer does not end the text');
+  if (!/[?\uFF1F]$/.test(written.message.trimEnd())) {
+    failures.push('the offer does not end the text');
+  }
+  if (!writtenIn(fixture.language, written.message, replyLanguage)) {
+    failures.push(`not written in ${fixture.language}`);
+  }
   return failures;
 }
 
@@ -39,6 +52,7 @@ async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const tools = await tsImport(TOOLS_SRC, import.meta.url);
+  const { replyLanguage } = await tsImport(LANGUAGE_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const lane = agent.pickLane(skill.meta.task);
   const getClient = lazyAnthropic();
@@ -55,7 +69,7 @@ async function main() {
       lane,
       tag: evalRunTag(`weekday-care-ask:${fixture.id}`),
       system: skill.instructions,
-      userMessage: tools.weekdayAskContext(fixture.ask),
+      userMessage: tools.weekdayAskContext(fixture.ask, fixture.language),
       toolName: tools.WEEKDAY_ASK_TOOL,
       toolDescription: 'The one text Hale sends.',
       toolSchema: tools.WEEKDAY_ASK_TOOL_SCHEMA,
@@ -69,7 +83,7 @@ async function main() {
       continue;
     }
     const written = tools.readWeekdayAsk(call.value, fixture.ask);
-    const failures = grade(fixture, written);
+    const failures = grade(fixture, written, replyLanguage);
     if (failures.length > 0) failed += 1;
     console.info(`${failures.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id}`);
     if ('message' in written) console.info(`        > ${written.message}`);

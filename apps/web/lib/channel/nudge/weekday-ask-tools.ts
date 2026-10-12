@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { findInventedFacts } from '../../loop/voice/facts-lint';
-import { isPrintableGsm7Basic, smsSegments } from '../sms-segments';
+import { smsSegments } from '../sms-segments';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
 import type { WeekdayFinderAsk } from './weekday-care-ask';
 
@@ -11,7 +11,9 @@ import type { WeekdayFinderAsk } from './weekday-care-ask';
  *
  * The ask is a yes-or-no offer. The model writes it; this file decides whether what it
  * wrote is the offer that was chosen: one question, the subject the prompt names, no
- * link or time nobody gave it, and the nudge segment budget.
+ * link or time nobody gave it, and the nudge segment budget. It goes out over iMessage,
+ * so any script passes; a character that would change the SMS encoding is paid for in
+ * the budget rather than refused.
  */
 
 export const WEEKDAY_ASK_TOOL = 'weekday_ask';
@@ -33,7 +35,6 @@ const askSchema = z
 export type WeekdayAskSkip =
   | 'unparsed'
   | 'not_one_question'
-  | 'not_gsm7'
   | 'missing_subject'
   | 'invented'
   | 'too_long';
@@ -47,23 +48,28 @@ function subjectOf(ask: WeekdayFinderAsk): string | null {
   return null;
 }
 
-/** The model sees the prompt and its subject. The child id never leaves the server. */
-export function weekdayAskContext(ask: WeekdayFinderAsk): string {
+/** A question mark in Latin or CJK punctuation: a Chinese text asks with the full-width one. */
+const QUESTION_MARK = /[?\uFF1F]/g;
+
+/**
+ * The model sees the prompt, the family's language and the prompt's subject. The child
+ * id never leaves the server.
+ */
+export function weekdayAskContext(ask: WeekdayFinderAsk, language: string): string {
   if (ask.prompt === 'after_school_named') {
-    return JSON.stringify({ prompt: ask.prompt, name: ask.name });
+    return JSON.stringify({ prompt: ask.prompt, language, name: ask.name });
   }
   if (ask.prompt === 'verified_break') {
-    return JSON.stringify({ prompt: ask.prompt, label: ask.label });
+    return JSON.stringify({ prompt: ask.prompt, language, label: ask.label });
   }
-  return JSON.stringify({ prompt: ask.prompt });
+  return JSON.stringify({ prompt: ask.prompt, language });
 }
 
 export function readWeekdayAsk(value: unknown, ask: WeekdayFinderAsk): WeekdayAskResult {
   const parsed = askSchema.safeParse(value);
   if (!parsed.success) return { skipped: 'unparsed' };
   const message = parsed.data.message.trim();
-  if ((message.match(/\?/g) ?? []).length !== 1) return { skipped: 'not_one_question' };
-  if (!isPrintableGsm7Basic(message)) return { skipped: 'not_gsm7' };
+  if ((message.match(QUESTION_MARK) ?? []).length !== 1) return { skipped: 'not_one_question' };
   const subject = subjectOf(ask);
   if (subject !== null && !message.toLowerCase().includes(subject.toLowerCase())) {
     return { skipped: 'missing_subject' };

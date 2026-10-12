@@ -18,6 +18,7 @@ import {
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
 import { readCandidates } from '~/lib/channel/intake/radar';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { replyLanguage } from '~/lib/channel/language';
 import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { channelRouterDeps } from '~/lib/channel/router/wiring';
@@ -275,8 +276,12 @@ describe('the weekday-care arc', () => {
 
     // ── the ask ───────────────────────────────────────────────────────────────
     const askTransport = new FakeTransport();
-    const asked = await runNudgeCron(db.database, nudgeDeps(askTransport, askWriter()), FRIDAY);
+    const writer = recordedModel(ASK_RECORDINGS, pipelineClient);
+    const asked = await runNudgeCron(db.database, nudgeDeps(askTransport, writer.client()), FRIDAY);
 
+    expect(writer.requests).toContain(
+      JSON.stringify({ prompt: 'weekend_fallback', language: 'en' }),
+    );
     expect(asked.sent).toBe(1);
     const askBody = askTransport.sent[0]?.body ?? '';
     expect(askBody.toLowerCase()).toContain('weekday');
@@ -344,6 +349,27 @@ describe('the weekday-care arc', () => {
     expect(findBody).toContain('Armour Heights');
     expect(findBody).not.toContain('Ava');
     expect(await outbound('proactive_nudge:weekday_dropin')).toHaveLength(1);
+  });
+
+  it('asks a French family in French', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, familyId));
+    await seedWeekendFind();
+    const transport = new FakeTransport();
+    const writer = recordedModel(ASK_RECORDINGS, pipelineClient);
+
+    const asked = await runNudgeCron(db.database, nudgeDeps(transport, writer.client()), FRIDAY);
+
+    expect(writer.requests).toContain(
+      JSON.stringify({ prompt: 'weekend_fallback', language: 'fr' }),
+    );
+    expect(asked.sent).toBe(1);
+    const askBody = transport.sent[0]?.body ?? '';
+    expect(replyLanguage(askBody)).toBe('fr');
+    expect(askBody).not.toContain('Mia');
+    expect(askBody).not.toContain('Ava');
   });
 
   it('never asks the same household twice', async () => {

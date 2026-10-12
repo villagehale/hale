@@ -2,6 +2,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { renderHealthNudge } from '~/lib/health/copy';
@@ -294,15 +295,17 @@ async function composeEmptySaturday(
 export const WEEKDAY_ASK_SKILL = 'weekday-care-ask';
 
 /**
- * The weekday-care offer, written by the model and checked against the offer that was
- * chosen (weekday-ask-tools.ts). No canned sentence: a missing client, a failed call or
- * a text that fails the check is silence, named `unvoiced` by the caller.
+ * The weekday-care offer, written by the model in the family's language and checked
+ * against the offer that was chosen (weekday-ask-tools.ts). No canned sentence: a missing
+ * client, a failed call or a text that fails the check is silence, named `unvoiced` by
+ * the caller.
  */
 async function composeWeekdayCareAsk(
   nudge: WeekdayCareAsk,
-  deps: { familyId: string; client: AgentClient | null },
+  deps: { familyId: string; database: Database; client: AgentClient | null },
 ): Promise<string | null> {
   if (!deps.client) return null;
+  const language = await familySpeechLanguage(deps.database, deps.familyId);
   const skill = await loadCronSkill(WEEKDAY_ASK_SKILL);
   let value: unknown;
   try {
@@ -310,7 +313,7 @@ async function composeWeekdayCareAsk(
       client: deps.client,
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
-      userMessage: weekdayAskContext(nudge.ask),
+      userMessage: weekdayAskContext(nudge.ask, language),
       toolName: WEEKDAY_ASK_TOOL,
       toolDescription: 'The one text Hale sends.',
       inputJsonSchema: WEEKDAY_ASK_TOOL_SCHEMA,

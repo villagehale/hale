@@ -36,25 +36,25 @@
       "diagnostics": null
     }
   },
-  "9cb8f6a7ac4a87c229c84364ee52c00ad2cedf13b2482c53b33e9b59d94e7b0c": {
-    "key": "9cb8f6a7ac4a87c229c84364ee52c00ad2cedf13b2482c53b33e9b59d94e7b0c",
-    "recordedAt": "2026-10-12T00:31:40.422Z",
+  "046fc64e541ace6e13d137d75fd84fe61fa5c94ebaf5720194d192454c4ea690": {
+    "key": "046fc64e541ace6e13d137d75fd84fe61fa5c94ebaf5720194d192454c4ea690",
+    "recordedAt": "2026-10-12T03:00:35.249Z",
     "request": {
       "model": "claude-sonnet-4-6",
-      "userMessage": "{\"prompt\":\"weekend_fallback\"}"
+      "userMessage": "{\"prompt\":\"weekend_fallback\",\"language\":\"en\"}"
     },
     "response": {
       "model": "claude-sonnet-4-6",
-      "id": "msg_011CfwQCCPRHgqQjDBv7THBD",
+      "id": "msg_011CfwbYpaNAUsX4dd6XatFi",
       "type": "message",
       "role": "assistant",
       "content": [
         {
           "type": "tool_use",
-          "id": "toolu_01Pc5RMfffMUV9vZP8ZaSZ4m",
+          "id": "toolu_01PbALe6teLynMNFzsyHNMxB",
           "name": "weekday_ask",
           "input": {
-            "message": "My last ideas were all weekend-based - want me to look into weekday options too?"
+            "message": "The options I sent were all on weekends - want me to look at weekdays too?"
           },
           "caller": {
             "type": "direct"
@@ -66,7 +66,7 @@
       "stop_sequence": null,
       "stop_details": null,
       "usage": {
-        "input_tokens": 1073,
+        "input_tokens": 1153,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
         "cache_creation": {
@@ -74,6 +74,50 @@
           "ephemeral_1h_input_tokens": 0
         },
         "output_tokens": 51,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
+  },
+  "52c1882bbc7b7f7f18857c4f32f95ebad8a170a4e3c2f3a4b044cef16f0ee02d": {
+    "key": "52c1882bbc7b7f7f18857c4f32f95ebad8a170a4e3c2f3a4b044cef16f0ee02d",
+    "recordedAt": "2026-10-12T03:00:36.962Z",
+    "request": {
+      "model": "claude-sonnet-4-6",
+      "userMessage": "{\"prompt\":\"weekend_fallback\",\"language\":\"fr\"}"
+    },
+    "response": {
+      "model": "claude-sonnet-4-6",
+      "id": "msg_011CfwbYvr9TmtTrNgs2fAbL",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_017vMw6M5ePews6LHqECJ9yd",
+          "name": "weekday_ask",
+          "input": {
+            "message": "Mes dernières suggestions étaient pour le week-end. Je peux aussi regarder ce qui existe en semaine si vous voulez ?"
+          },
+          "caller": {
+            "type": "direct"
+          }
+        }
+      ],
+      "container": null,
+      "stop_reason": "tool_use",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1153,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 62,
         "service_tier": "standard",
         "inference_geo": "global"
       },

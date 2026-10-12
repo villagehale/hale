@@ -13,6 +13,11 @@ name no activity, place, time, price or link.
 
 Call `weekday_ask` once, with the whole text in `message`.
 
+## Language
+
+`language` in the context is the family's language. Write the whole text in it. Keep
+`name` and `label` exactly as given, even when they are in another language.
+
 ## The offer
 
 `prompt` in the context says which offer this is.
@@ -36,6 +41,7 @@ One or two short sentences. The offer is the only question, and it ends the text
 Short enough to text a friend. Warm without performing warmth. No greeting, no
 sign-off, no "just checking in", and no word for the parent to reply with.
 
-Plain ASCII punctuation only: a straight apostrophe and a plain hyphen. No curly
-quote, no en or em dash, no ellipsis character, no emoji. One of those doubles what
-the text costs to send.
+No emoji. In a language written in Latin letters, use the letters and accents the
+language needs, with plain ASCII punctuation: a straight apostrophe and a plain hyphen,
+no curly quote, no en or em dash, no ellipsis character. One of those can double what
+the text costs to send. A language with its own script uses its own punctuation.
