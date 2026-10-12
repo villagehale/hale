@@ -933,7 +933,7 @@ describe('the off-domain lane', () => {
 
   /** A question Hale left open was put to one parent, and is open as of this turn: the
    * lane is told whose text this is and what time the turn began. */
-  it('tells the lane whose text it is and when the turn began', async () => {
+  it('tells the lane whose text it is, when the turn began and which thread it arrived in', async () => {
     const asked: unknown[] = [];
     const lane: OffDomainLane = {
       async consider(input) {
@@ -952,8 +952,56 @@ describe('the off-domain lane', () => {
         channelMessageId: job().channel_message_id,
         text: 'Toronto',
         now: NOW,
+        thread: { channel: 'sms', providerChatId: null, inGroup: false },
       },
     ]);
+  });
+
+  /**
+   * Sloane's finding 2. The lane ties a question it left open, and a family's home city,
+   * to the thread a text arrived in, so it has to be told the chat and the door's own
+   * group bit. The bit is the job's, not `context.inGroup`, which stays false while group
+   * onboarding v2 is dark however many people are in the chat.
+   */
+  it.each([
+    ["a parent's own iMessage chat", { in_group: false }, false],
+    ['a group chat, with group onboarding v2 dark', { in_group: true }, true],
+  ] as const)('tells the lane the chat and the group bit of %s', async (_label, said, inGroup) => {
+    const threads: unknown[] = [];
+    const lane: OffDomainLane = {
+      async consider(input) {
+        threads.push(input.thread);
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({
+      context: {
+        reply: { channel: 'imessage', to: PHONE, chatId: 'chat-7', replyToMessageId: null },
+        inGroup: false,
+      },
+      offDomain: lane,
+    });
+
+    await routeChannelMessage(h.deps, job(said));
+
+    expect(threads).toEqual([{ channel: 'imessage', providerChatId: 'chat-7', inGroup }]);
+  });
+
+  it('tells the lane the thread is unknown for a job that does not say, never that it is 1:1', async () => {
+    const threads: Array<{ inGroup: boolean | undefined }> = [];
+    const lane: OffDomainLane = {
+      async consider(input) {
+        threads.push(input.thread);
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({ offDomain: lane });
+    const { in_group: _unsaid, ...unsaid } = job();
+
+    await routeChannelMessage(h.deps, unsaid);
+
+    expect(threads).toEqual([{ channel: 'sms', providerChatId: null, inGroup: undefined }]);
+    expect(threads[0]?.inGroup).toBeUndefined();
   });
 
   /** A coach turn's reply is not a deflection — no provenance stamp belongs on it. */

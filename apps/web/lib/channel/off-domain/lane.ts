@@ -122,6 +122,32 @@ export type OffDomainVerdict =
       pendingAsk: PendingAsk | null;
     };
 
+/**
+ * The thread an inbound text arrived in: its own ledger row's channel and chat, and what
+ * the door said about who else is in it.
+ */
+export interface InboundThread {
+  channel: schema.ChannelMessageRow['channel'];
+  /** The provider's id for the chat, on a channel that has chats. */
+  providerChatId: string | null;
+  /**
+   * The door's own group bit. `undefined` is a job that does not say: one queued before
+   * the door carried the bit, one the reconciler re-drove from the row, an email. Unknown
+   * is not a 1:1 thread, and nothing that belongs to one parent is read for it.
+   */
+  inGroup: boolean | undefined;
+}
+
+/**
+ * What the ledger holds for a pending ask. A question left open in ANOTHER thread is its
+ * own answer, not `none` (rule #11): the parent has one, and this is not where it was
+ * asked.
+ */
+export type PendingAskRead =
+  | { status: 'open'; ask: PendingAsk }
+  | { status: 'none' }
+  | { status: 'other_thread' };
+
 export interface OffDomainPorts {
   screen: InboundLaneScreen;
   /** Writes the one brief answer to a question about the world. Non-nullable (rule
@@ -138,16 +164,19 @@ export interface OffDomainPorts {
    * read gives by name, not a reader that is missing. */
   place(familyId: string): Promise<FamilyPlace>;
   /**
-   * The question Hale's last word to this parent left open, or null. Read once a turn,
-   * ahead of the screen, and only while the general answer's search is lit. `asOf` is the
-   * turn's own clock: nothing this turn sends while it works (the holding line) may close
-   * the ask the turn is about to read.
+   * The question Hale's last word to this parent left open, when that word was said in
+   * the thread this text arrived in. Read at most once a turn, after the screen, and only
+   * while the general answer's search is lit. `asOf` is the turn's own clock: nothing this
+   * turn sends while it works (the holding line) may close the ask the turn is about to
+   * read.
    */
   pendingAsk(input: {
     familyId: string;
     parentUserId: string;
+    channel: InboundThread['channel'];
+    providerChatId: string | null;
     asOf: Date;
-  }): Promise<PendingAsk | null>;
+  }): Promise<PendingAskRead>;
   /** Answers a medical-symptom text: a web-grounded, coarse-age-aware reply with its own
    * triage, or the fixed 811/911 line as a last resort. Non-nullable for the same reason
    * (rule #11) — its own failure modes are named inside it, never a missing dependency. */
@@ -171,6 +200,9 @@ export interface OffDomainLane {
     text: string;
     /** The turn's clock. */
     now: Date;
+    /** Where the text arrived. A question Hale left open was asked in one thread, and a
+     * family's home city is said only in the parent's own. */
+    thread: InboundThread;
   }): Promise<OffDomainVerdict>;
 }
 
@@ -200,31 +232,40 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
 
       const family: FamilyFacts = {
         today: () => ports.today(input.familyId),
-        place: () => ports.place(input.familyId),
+        place: () => homePlaceIn(input.thread, () => ports.place(input.familyId)),
       };
 
-      // A REPLY TO A QUESTION HALE LEFT OPEN is read before the screen, not after it.
-      // "Toronto" on its own is not a question about the world, and a screen that never
-      // saw the ask would hand it to the coach. The composer judges whether the text
-      // completes the question; one that does not comes back and is routed below as any
-      // other text is. The demand signal is not written twice: the question was counted
-      // on the text that first asked it.
-      const pending = await standingAsk(ports, input);
-      if (pending !== null) {
-        const continued = await ports.answer.continueAsk(input.text, pending, family);
-        if (continued.status !== 'unrelated') {
-          return {
-            status: 'deflected',
-            lane: 'off_domain_general',
-            category: 'other',
-            ...replyFor(continued, input.text),
-            medicalSource: null,
-            signal: 'not_applicable',
-          };
+      // THE SCREEN READS EVERY TEXT FIRST, a reply to a question Hale left open included.
+      // The sanitizer that judges whether a text answers "which city?" is not a safety
+      // screen: a reply that gives the city AND describes a symptom would be read as the
+      // answer and composed as a general question, past the medical lane and both doors.
+      const reading = await ports.screen.read(input.text);
+      const inDomain = reading.lane === 'in_domain' || reading.category === null;
+
+      // A REPLY TO A QUESTION HALE LEFT OPEN is considered only for a text the screen
+      // would send to the coach or to the general answer. "Toronto" on its own is not a
+      // question about the world, so the screen files it with the family's week, and the
+      // open question is what makes it the general answer's turn. The composer judges
+      // whether the text completes it; one that does not is routed below exactly as it
+      // would be with nothing open. The demand signal is not written twice: the question
+      // was counted on the text that first asked it.
+      if (inDomain || reading.lane === 'off_domain_general') {
+        const pending = await standingAsk(ports, input, reading.fallback);
+        if (pending !== null) {
+          const continued = await ports.answer.continueAsk(input.text, pending, family);
+          if (continued.status !== 'unrelated') {
+            return {
+              status: 'deflected',
+              lane: 'off_domain_general',
+              category: 'other',
+              ...replyFor(continued, input.text),
+              medicalSource: null,
+              signal: 'not_applicable',
+            };
+          }
         }
       }
 
-      const reading = await ports.screen.read(input.text);
       if (reading.lane === 'in_domain' || reading.category === null) {
         return { status: 'in_domain', fallback: reading.fallback };
       }
@@ -314,25 +355,62 @@ function fixedLine(reply: string): LaneReply {
   return { reply, replySource: 'fixed', pendingAsk: null };
 }
 
+const NO_PENDING_ASK = 'off-domain lane: no pending ask for this parent';
+
 /**
- * The question Hale's last word to this parent left open, or null with the reason named
- * (rule #11). Nothing is read while the general answer's search is dark: a dark lane
- * leaves no question open, so there is nothing to find.
+ * The question Hale's last word to this parent left open in THIS thread, or null with
+ * the reason named (rule #11). Nothing is read while the general answer's search is dark:
+ * a dark lane leaves no question open, so there is nothing to find.
+ *
+ * Nothing is read either for a text the screen could not read (none of its doors saw it,
+ * so it goes to the coach as a failed screen's always has), or for a thread the job does
+ * not describe: the answer to a question asked in a parent's own chat must not go out to
+ * a chat that may have other people in it.
  */
 async function standingAsk(
   ports: OffDomainPorts,
-  input: { familyId: string; parentUserId: string; now: Date },
+  input: { familyId: string; parentUserId: string; now: Date; thread: InboundThread },
+  screenFallback: LaneScreenFallback | null,
 ): Promise<PendingAsk | null> {
   if (!generalAnswerSearchEnabled()) return null;
+  if (screenFallback !== null) {
+    console.info({ pendingAsk: 'not_read', reason: 'screen_unavailable' }, NO_PENDING_ASK);
+    return null;
+  }
+  if (input.thread.inGroup === undefined) {
+    console.info({ pendingAsk: 'not_read', reason: 'thread_unknown' }, NO_PENDING_ASK);
+    return null;
+  }
   const pending = await ports.pendingAsk({
     familyId: input.familyId,
     parentUserId: input.parentUserId,
+    channel: input.thread.channel,
+    providerChatId: input.thread.providerChatId,
     asOf: input.now,
   });
-  if (pending === null) {
-    console.info({ pendingAsk: 'none' }, 'off-domain lane: no pending ask for this parent');
+  if (pending.status !== 'open') {
+    console.info({ pendingAsk: pending.status }, NO_PENDING_ASK);
+    return null;
   }
-  return pending;
+  return pending.ask;
+}
+
+/**
+ * The family's home city, for a thread it may be said in.
+ *
+ * A reply in a group goes to everyone in it, and a reply carries no household content
+ * there (linq/group-audience.ts): answering "the weather tomorrow" for a city would tell
+ * the thread where one family lives. So the place is read only in a thread the door said
+ * is the parent's own. In a group, or when the job does not say, the port is not read at
+ * all and the composer gets the reason by name, which is the turn it had before a place
+ * existed: it asks which city.
+ */
+function homePlaceIn(thread: InboundThread, read: () => Promise<FamilyPlace>): Promise<FamilyPlace> {
+  if (thread.inGroup === false) return read();
+  return Promise.resolve({
+    status: 'unknown',
+    reason: thread.inGroup ? 'group_thread' : 'thread_unknown',
+  });
 }
 
 /**
@@ -378,17 +456,27 @@ function replyFor(composed: GeneralAnswerOutcome, text: string): LaneReply {
  *
  * PER PARENT, like those asks: it was put to one phone. A send that failed reached no
  * phone and is not a last word (SENT_STATUSES).
+ *
+ * AND PER THREAD. The last word is still Hale's last word to this parent ANYWHERE, so
+ * the one-shot rule above holds across chats. But a question is open only to a text in
+ * the thread it was asked in: the same channel and the same chat. A parent's next text
+ * in a family or multi-family group must not complete a question from their own chat,
+ * because the answer would go to the group.
  */
 export function readPendingAsk(database: Database) {
   return async (input: {
     familyId: string;
     parentUserId: string;
+    channel: InboundThread['channel'];
+    providerChatId: string | null;
     asOf: Date;
-  }): Promise<PendingAsk | null> => {
+  }): Promise<PendingAskRead> => {
     const [last] = await database
       .select({
         question: schema.channelMessages.pendingQuestion,
         missing: schema.channelMessages.pendingMissing,
+        channel: schema.channelMessages.channel,
+        providerChatId: schema.channelMessages.providerChatId,
       })
       .from(schema.channelMessages)
       .where(
@@ -402,8 +490,11 @@ export function readPendingAsk(database: Database) {
       )
       .orderBy(desc(schema.channelMessages.createdAt))
       .limit(1);
-    if (!last || last.question === null) return null;
-    return { question: last.question, missing: last.missing ?? '' };
+    if (!last || last.question === null) return { status: 'none' };
+    if (last.channel !== input.channel || last.providerChatId !== input.providerChatId) {
+      return { status: 'other_thread' };
+    }
+    return { status: 'open', ask: { question: last.question, missing: last.missing ?? '' } };
   };
 }
 
