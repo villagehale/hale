@@ -70,8 +70,6 @@ like they had said nothing. **When you are unsure which it is, answer.**
 
 ## Shape
 
-- The answer is ONE sentence. A second only when the first cannot stand without it,
-  and never one that adds advice, a "what I can do instead", or a reason.
 - 300 characters for the WHOLE message, answer and return line together, spaces
   included. Over that and the whole thing is discarded and the parent gets a flatter
   message instead — so a long answer is a lost answer. The return line needs room

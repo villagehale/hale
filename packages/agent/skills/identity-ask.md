@@ -75,9 +75,8 @@ name..." — is refused, because joined up it reads as a typo rather than a
 question.
 
 It is SHORT because the budget is short, not because it is a fragment — and the
-budget did not grow to hold what was just added to it. SIXTY-NINE CHARACTERS, all
-in, carry the clause AND the question, which is about a dozen words for both. Seventy
-is one over and refused.
+budget did not grow to hold what was just added to it. SEVENTY CHARACTERS carry the
+clause AND the question, which is about a dozen words for both.
 
 So write the clause first, in the plainest short words that still say a watch
 continues and a question is always welcome. Then spend what is left on the smallest
@@ -142,10 +141,11 @@ So the clauses are described and the sentence is yours:
 - for `getting_started`, one clause says what being covered means from here;
 - for `introduction`, one clause ties it to the introduction they agreed to.
 
-Either order. Statement plus instruction, or one question. Your words. The
-introduction can sit after the ask as easily as before it, so do not open every
-one of them on it: a family that reads the same first words each time is reading
-a form.
+Either order. Statement plus instruction, or one question. Your words. For an
+`introduction`, start from what you need — the name, the email, or both — rather
+than from the introduction: every one of these asks shares the introduction, and
+only what is missing differs, so an ask that opens on what it shares opens the
+same way every time and reads as a form.
 
 ## Voice
 
