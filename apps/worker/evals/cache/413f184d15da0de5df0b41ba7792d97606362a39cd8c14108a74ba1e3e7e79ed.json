@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly identifies the right offer (after_school_named) in the correct language (Chinese). It names the correct child \"Nell\" and offers to find an after-school activity. However, the phrasing \"你觉得怎么样？\" (what do you think?) and the overall structure (\"我可以帮你给 Nell 找一个放学后的活动\") reads more like a formal, service-oriented assistant making an offer rather than a friend casually texting. A friend texting would be more natural and less query-like - this has the cadence of someone presenting a service option for feedback rather than a peer saying \"hey, I could look for something for Nell after school.\" The tone is slightly stiff and survey-like despite being in the correct language with proper grammar.",
+    "score": 3
+  }
+}

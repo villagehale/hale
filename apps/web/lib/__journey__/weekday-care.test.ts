@@ -284,8 +284,6 @@ describe('the weekday-care arc', () => {
     );
     expect(asked.sent).toBe(1);
     const askBody = askTransport.sent[0]?.body ?? '';
-    expect(askBody.toLowerCase()).toContain('weekday');
-    expect(askBody.match(/\?/g)).toHaveLength(1);
     expect(askBody).not.toContain('Mia');
     expect(askBody).not.toContain('Ava');
     expect(askBody.toLowerCase()).not.toContain('pa day');

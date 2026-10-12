@@ -1,6 +1,0 @@
-{
-  "value": {
-    "message": "The options I found before were all on weekends - want me to look at weekdays too?"
-  },
-  "stopReason": "tool_use"
-}
