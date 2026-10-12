@@ -27,7 +27,7 @@ export const WEEKDAY_ASK_TOOL_SCHEMA = {
     message: {
       type: 'string',
       description:
-        "The one text Hale sends: what a friend who noticed something about this family's week would text, with the one offer in it.",
+        "The one text Hale sends: what a friend who noticed something about this family's week would text. Its one ask is the offer.",
     },
   },
   required: ['message'],

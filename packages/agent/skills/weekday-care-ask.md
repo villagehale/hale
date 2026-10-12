@@ -39,10 +39,16 @@ not give you.
 
 Text the way a friend who is also a parent would, from their phone: chill and casual. You
 noticed something about this family's week - `prompt` says what: the hours after school,
-a break coming up, that everything so far was for the weekend - and you are curious how
-that part of the week goes for them. So the text is about them, not about your help. You
-know only what the context gives you, so you wonder and ask about the rest; you never
-tell them how their week is. The offer is still there: it comes up inside that, said the
-plain way friends offer each other things. Natural for `language` - the way parents who
-speak it actually text each other, in the casual register friends use in a chat app,
-never a translation. One offer. The words are yours.
+a break coming up, that everything so far was for the weekend - and it got you thinking
+about them. So the text is about them, not about your help. You know only what the
+context gives you, so you never tell them how their week is. You have not started looking
+for what you are offering, so nothing in the text says you have.
+
+The text carries one ask, and that ask is the offer. What you noticed shapes how you say
+the offer; it is not a question of its own, so the parent has one thing to answer. Put
+the offer to them straight, the way a friend does who takes it as given that it is
+welcome: not hedged, with no condition on it, and not about what you are able or willing
+to do.
+
+Natural for `language` - the way parents who speak it actually text each other, in the
+casual register friends use in a chat app, never a translation. The words are yours.

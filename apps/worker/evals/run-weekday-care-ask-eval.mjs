@@ -8,8 +8,8 @@
 // The model picks the words, so nothing here counts question marks, demands a word or
 // bans a phrase. Deterministic gates are kept only for what is never the model's call:
 // a word for the parent to reply with, and the language where a reader exists for it.
-// Whether the text is the chosen offer, about the right child or break, and reads like a
-// friend texting is the judge's grade.
+// Whether the text is the chosen offer, about the right child or break, carries one ask,
+// claims nothing Hale has not done and reads like a friend texting is the judge's grade.
 //
 //   ANTHROPIC_API_KEY=... node evals/run-weekday-care-ask-eval.mjs   # live, populates the cache
 //   node evals/run-weekday-care-ask-eval.mjs --cached-only           # CI: replay, zero API calls
@@ -72,11 +72,21 @@ const JUDGE_SYSTEM = [
   'A 1 or 2 is any of: a text not in `language`, or with its accents stripped; the wrong',
   "offer, or the offer's child or break missing or wrong; a child named that `context`",
   "does not give, or a child's age, grade or stage; an activity, place, time, price or",
-  'link (nothing has been found); a word the parent is told to reply with; more than one',
-  'offer. A 3 is the right offer that reads like an assistant offering a service rather',
-  'than a friend texting: formal, stiff, survey-like or salesy, or a text about its own',
-  'help - what it could do, how willing it is, whether that would be useful - rather than',
-  'about the family. However casual its words, a hedged offer of service is a 3.',
+  'link (nothing has been found); a claim that Hale has already looked for, or found, what',
+  'this text offers to look for (it has not: only the weekend options were sent); a word',
+  'the parent is told to reply with; more than one offer; more than one ask (a question',
+  'about their week plus the offer counts as two). A 3 is the right offer that reads like',
+  'an assistant offering a service rather than a friend texting: formal, stiff,',
+  'survey-like or salesy, or a text about its own help - what it could do, how willing it',
+  'is, whether that would be useful - rather than about the family. However casual its',
+  'words, a hedged offer of service is a 3.',
+  'Check two things in your argument before you weigh the tone. First, list everything',
+  'the text asks the parent and say how many asks that is; the offer itself, put to the',
+  'parent, is one ask. Second, quote the part of the text that makes the offer and judge',
+  'that part on its own against the 3 line: is it a hedged offer of service - help held',
+  'out on the condition that it would be useful or wanted, or said as what Hale is able',
+  'or willing to do - rather than the offer put straight? If it is, the text is a 3 at',
+  'most, however friendly the rest of it reads.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 

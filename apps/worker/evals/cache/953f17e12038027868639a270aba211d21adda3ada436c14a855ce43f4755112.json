@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "En pensant à Nell, je me disais que je pourrais chercher une bonne option pour ses après-midis — je t'envoie ça dès que j'ai trouvé quelque chose de bien."
+  },
+  "stopReason": "tool_use"
+}
