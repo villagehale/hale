@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "It says plainly that it cannot see live weather data, with no apology and no invented forecast. But it points the parent to a forecast app and names a specific service, the Weather Network. Pointing at any app or website is explicitly a low-score trait. It also misses the one allowed useful extra, that Hale checks the forecast when it affects weekend plans.",
-    "score": 2
-  }
-}
