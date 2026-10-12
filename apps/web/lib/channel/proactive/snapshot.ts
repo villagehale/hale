@@ -16,7 +16,7 @@ import { boundedLine } from './tools';
  * parents' texts (rule #1's double-miss fallback: a text names no child, so it cannot be
  * shown not to be about the teen). Other parent texts reach the decider only once, when
  * they arrived after its last look at this family. Calendar titles, Gmail offer titles
- * and watch labels are passed as stored.
+ * and watch labels are each one bounded line, like the parent texts.
  */
 
 export interface FreeWindow {
@@ -81,6 +81,8 @@ export interface FamilySnapshot {
   localNow: string;
   household: HouseholdContext;
   calendar: CalendarEntry[];
+  /** Entries past `CALENDAR_ROWS` left out of `calendar`. Absent when none were. */
+  calendarOmitted?: number;
   freeWindows: FreeWindow[];
   deadlines: { what: string; at: string }[];
   watches: { what: string }[];
@@ -103,6 +105,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const RECENT_PARENT_TEXTS = 5;
 const DEADLINE_ROWS = 40;
 const WATCH_ROWS = 20;
+/**
+ * The calendar entries the decider reads, nearest first: about four a day across the
+ * window. Free windows are still cut from every busy row; only the list is capped, and
+ * `calendarOmitted` says how many entries it left out.
+ */
+export const CALENDAR_ROWS = 60;
 
 function clock(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -224,6 +232,7 @@ export interface LoadedFamilyContext {
   timeZone: string;
   household: HouseholdContext;
   calendar: CalendarEntry[];
+  calendarOmitted: number;
   freeWindows: FreeWindow[];
   deadlines: { what: string; at: string }[];
   watches: { what: string }[];
@@ -305,7 +314,7 @@ export async function loadFamilyContext(
     );
   const label = (title: string | null, sensitive: boolean): string => {
     if (redactLabels || sensitive) return 'busy';
-    return title?.trim() || 'busy';
+    return boundedLine(title ?? '') || 'busy';
   };
   const rows: TimedRow[] = [
     ...events.map((row) => ({
@@ -325,7 +334,8 @@ export async function loadFamilyContext(
       status: row.status,
     })),
   ];
-  const busy = rows.filter(isBusy);
+  const busy = rows.filter(isBusy).sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+  const listed = busy.slice(0, CALENDAR_ROWS);
   const offers = await database
     .select({
       title: schema.emailAlertOffers.title,
@@ -347,16 +357,19 @@ export async function loadFamilyContext(
       areaCoarse: zone.areaCoarse,
       childAgesYears: children.map((child) => ageYears(child.dateOfBirth, now)),
     },
-    calendar: busy.map((row) => entryOf(row, timeZone)),
+    calendar: listed.map((row) => entryOf(row, timeZone)),
+    calendarOmitted: busy.length - listed.length,
     freeWindows: freeWindowsForDays(
       upcomingDayKeys(now, timeZone, SNAPSHOT_DAYS),
       busy.map((row) => blockOf(row, timeZone)),
     ),
     deadlines: offers
       .filter((offer) => offer.resolution === null && offer.expiresAt.getTime() > now.getTime())
-      .map((offer) => ({ what: offer.title, at: offer.startsAt.toISOString() })),
-    watches: watches.map((watch) => ({ what: watch.label })),
-    declines: offers.filter((offer) => offer.resolution === 'declined').map((offer) => offer.title),
+      .map((offer) => ({ what: boundedLine(offer.title), at: offer.startsAt.toISOString() })),
+    watches: watches.map((watch) => ({ what: boundedLine(watch.label) })),
+    declines: offers
+      .filter((offer) => offer.resolution === 'declined')
+      .map((offer) => boundedLine(offer.title)),
     teenInHousehold: redactLabels,
   };
 }
@@ -460,6 +473,7 @@ export async function loadFamilySnapshot(
     localNow: formatSnapshotLocalNow(input.now, context.timeZone),
     household: context.household,
     calendar: context.calendar,
+    ...(context.calendarOmitted > 0 ? { calendarOmitted: context.calendarOmitted } : {}),
     freeWindows: context.freeWindows,
     deadlines: context.deadlines,
     watches: context.watches,
