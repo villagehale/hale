@@ -1221,7 +1221,9 @@ describe('the screen reads a reply to an open question first', () => {
     expect(p.pendingAskedFor).toEqual([]);
   });
 
-  it('answers a reply that is a mental-health crisis with the fixed crisis line', async () => {
+  /** Which door the turn went through, not the words behind it: the lines in copy.ts are
+   * VIL-413's to replace, and this is about the order of the reads. */
+  it('sends a reply that is a mental-health crisis through the crisis door', async () => {
     lit();
     const text = 'Toronto. honestly I do not see the point of any of it anymore';
     expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
@@ -1236,7 +1238,6 @@ describe('the screen reads a reply to an open question first', () => {
       status: 'deflected',
       lane: 'safety_critical',
       category: 'mental-health',
-      reply: MENTAL_CRISIS_REPLY,
       replySource: 'fixed',
       pendingAsk: null,
     });
