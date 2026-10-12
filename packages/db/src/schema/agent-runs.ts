@@ -29,6 +29,10 @@ export const agentRuns = pgTable(
     costUsd: numeric('cost_usd', { precision: 12, scale: 6 }),
     latencyMs: integer('latency_ms'),
     promptCacheHit: boolean('prompt_cache_hit'),
+    /** Tokens read from the prompt cache. NULL when the writer does not measure it. */
+    cacheReadTokens: integer('cache_read_tokens'),
+    /** Tokens written to the prompt cache. NULL when the writer does not measure it. */
+    cacheWriteTokens: integer('cache_write_tokens'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     status: agentRunStatusEnum('status').notNull().default('in_progress'),

@@ -27,6 +27,10 @@ export interface RecordAgentRunInput {
   latencyMs?: number;
   /** True when any turn of the run read from the prompt cache (MEM-9 telemetry). */
   promptCacheHit?: boolean;
+  /** Prompt-cache token counts. Undefined is stored as NULL: this writer does not
+   * measure the cache. */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   /** 'completed' for a successful run, 'failed' when the agent threw (rule #8). */
   status: 'completed' | 'failed';
   langfuseTraceId?: string | null;
@@ -52,6 +56,8 @@ export async function recordAgentRun(
       costUsd: input.costUsd.toFixed(6),
       latencyMs: input.latencyMs,
       promptCacheHit: input.promptCacheHit,
+      cacheReadTokens: input.cacheReadTokens,
+      cacheWriteTokens: input.cacheWriteTokens,
       langfuseTraceId: input.langfuseTraceId,
       completedAt: new Date(),
       status: input.status,
