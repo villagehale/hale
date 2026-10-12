@@ -11,8 +11,10 @@
 //   pnpm --filter @hale/web exec tsx scripts/kid-relevance-backfill.ts --revert=<runId>
 //
 // Needs DATABASE_URL, APP_ENCRYPTION_KEY and ANTHROPIC_API_KEY (a revert needs only the
-// first). A dry run changes no tracking state; it does store the verdicts, so the apply
-// acts on exactly what the dry run counted. Run the dry run first and read the counts.
+// first). A dry run changes no tracking state; it does store the verdicts. An apply asks
+// no model: it acts only on those stored verdicts, and counts an item added or changed
+// since - every item, once a child's age in months has rolled over - as notInDryRun and
+// leaves it alone. Run the dry run first and read the counts.
 // Every run prints its run id first; an apply's audit rows carry it, and --revert=<runId>
 // undoes that apply.
 

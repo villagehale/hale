@@ -61,6 +61,11 @@ export type KidJudgement =
     }
   | { ref: string; verdict: 'held'; why: 'judge_failed' | 'judge_deferred' | 'no_parent_timezone' };
 
+/** What is already stored for an item, read without asking the model. */
+export type StoredKidJudgement =
+  | Extract<KidJudgement, { verdictId: string }>
+  | { ref: string; verdict: 'held'; why: 'not_stored' };
+
 /** Judgements by itemKey. */
 export type KidVerdicts = ReadonlyMap<string, KidJudgement>;
 
@@ -99,17 +104,20 @@ function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
 
-export async function judgeKidRelevance(
+/**
+ * Each distinct item's stored verdict - a parent's word, or a model verdict for this same
+ * input - and the items that have none. Asks no model.
+ */
+async function splitStored(
   database: Database,
-  input: KidJudgeInput,
-  ports: KidJudgePorts,
-): Promise<KidJudgement[]> {
+  input: Pick<KidJudgeInput, 'familyId' | 'items' | 'now'>,
+  ports: Pick<KidJudgePorts, 'children' | 'notMineHints'>,
+) {
   const representatives = new Map<string, KidRelevanceItem>();
   for (const item of input.items) {
     const identity = identityOf(item);
     if (!representatives.has(identity)) representatives.set(identity, item);
   }
-  if (representatives.size === 0) return [];
 
   const skill = await loadKidItemClassifierSkill();
   const lane = pickLane(skill.meta.task);
@@ -127,18 +135,50 @@ export async function judgeKidRelevance(
       }),
     );
 
-  const resolved = new Map<string, KidJudgement>();
+  const stored = new Map<string, Extract<KidJudgement, { verdictId: string }>>();
   const known = await loadVerdictRows(database, input.familyId, [...representatives.values()]);
   const pending: Pending[] = [];
   for (const [identity, item] of representatives) {
     const inputHash = hashOf(item);
     const row = known.get(identity);
     if (row && (row.decidedBy === 'parent' || row.inputHash === inputHash)) {
-      resolved.set(identity, judgementFrom(item.ref, row));
+      stored.set(identity, judgementFrom(item.ref, row));
     } else {
       pending.push({ identity, item, inputHash });
     }
   }
+  return { skill, lane, skillHash, stored, pending };
+}
+
+/**
+ * The verdicts already stored for these items, and `not_stored` for an item that has none
+ * for its input as it is now. It holds no client, so it cannot ask the model.
+ */
+export async function readStoredKidVerdicts(
+  database: Database,
+  input: Pick<KidJudgeInput, 'familyId' | 'items' | 'now'>,
+  ports: Pick<KidJudgePorts, 'children' | 'notMineHints'>,
+): Promise<StoredKidJudgement[]> {
+  if (input.items.length === 0) return [];
+  const { stored } = await splitStored(database, input, ports);
+  return input.items.map((item) => {
+    const judgement = stored.get(identityOf(item));
+    return judgement
+      ? { ...judgement, ref: item.ref }
+      : { ref: item.ref, verdict: 'held', why: 'not_stored' };
+  });
+}
+
+export async function judgeKidRelevance(
+  database: Database,
+  input: KidJudgeInput,
+  ports: KidJudgePorts,
+): Promise<KidJudgement[]> {
+  if (input.items.length === 0) return [];
+
+  const { skill, lane, skillHash, stored, pending } = await splitStored(database, input, ports);
+  const model = lane.model;
+  const resolved = new Map<string, KidJudgement>(stored);
 
   const pastDeadline = () => Date.now() >= input.deadline.getTime();
   const defer = (entries: readonly Pending[]) => {
@@ -359,7 +399,10 @@ async function loadVerdictRows(
   return new Map(rows.map((row) => [identityOf(row), row]));
 }
 
-function judgementFrom(ref: string, row: VerdictRow): KidJudgement {
+function judgementFrom(
+  ref: string,
+  row: VerdictRow,
+): Extract<KidJudgement, { verdictId: string }> {
   return {
     ref,
     verdict: row.verdict,

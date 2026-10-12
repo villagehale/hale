@@ -5,9 +5,11 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { SuppressReason } from '~/lib/loop/reminders/schedule';
 import {
   type KidJudgement,
+  type StoredKidJudgement,
   judgeKidRelevance,
   loadKidRelevanceChildren,
   loadNotMineHints,
+  readStoredKidVerdicts,
   seriesKeyForEvent,
 } from './judge';
 import type { KidRelevanceItem } from './skill-contract';
@@ -29,18 +31,23 @@ import { CLEARED_EVENT_TEXT, dropOwedTexts } from './untrack';
  * again on its own terms.
  *
  * A dry run changes no tracking state and writes no audit row. It does store the verdicts
- * themselves (the judge's cache), so the apply that follows judges nothing again and acts
- * on exactly the verdicts the dry run counted. It returns counts only (rule #1).
+ * themselves (the judge's cache). An apply asks no model: it acts only on a verdict already
+ * stored for the item's input as it is now, and counts every other item as `notInDryRun`,
+ * untouched, so it never drops on a verdict no dry run counted. Both return counts only
+ * (rule #1).
  *
  * Skipped, and counted (rule #11): a copy whose connection is gone or no longer active, and
  * every family with an erasure scheduled - their titles are not sent to the model again.
  * The erasure check is read again inside each family's write, so a family that schedules
- * one while the run is judging gets nothing written.
+ * one while a run is in flight gets no tracking state written. The verdict rows are not
+ * under that lock: a dry run upserts them as it judges, before any write, so that family
+ * can still gain verdict rows. They go with the family (the `family_id` cascade).
  */
 
 export interface BackfillInput {
   apply: boolean;
   now: Date;
+  /** Where a dry run stops asking the model; an apply asks none. */
   deadline: Date;
   /** Restrict to these families; every family with connector rows when omitted. */
   familyIds?: readonly string[];
@@ -61,6 +68,10 @@ export interface BackfillCounts {
   remindersCancelled: number;
   blocksCleared: number;
   adultBookings: number;
+  /** Apply only: items with no stored verdict for their input as it is now - added or
+   * changed since the dry run. Not sent to the model, not touched; the next dry run
+   * judges them. */
+  notInDryRun: number;
   /** Copies whose connection is gone or not active: not judged, not touched. */
   skippedDisconnected: number;
   /** Families with an erasure scheduled: nothing of theirs is sent to the model again, or,
@@ -122,6 +133,7 @@ export async function runKidRelevanceBackfill(
     remindersCancelled: 0,
     blocksCleared: 0,
     adultBookings: 0,
+    notInDryRun: 0,
     skippedDisconnected: 0,
     skippedFamiliesPendingErasure: 0,
   };
@@ -134,15 +146,18 @@ export async function runKidRelevanceBackfill(
   counts.skippedFamiliesPendingErasure = skippedFamiliesPendingErasure;
   for (const [familyId, candidates] of byFamily) {
     counts.families += 1;
-    const judged = await judgeKidRelevance(
-      database,
-      { familyId, items: candidates.map((c) => c.item), now: input.now, deadline: input.deadline },
-      {
-        client: ports.client,
-        children: await loadKidRelevanceChildren(database, familyId),
-        notMineHints: await loadNotMineHints(database, familyId),
-      },
-    );
+    const asked = { familyId, items: candidates.map((c) => c.item), now: input.now };
+    const context = {
+      children: await loadKidRelevanceChildren(database, familyId),
+      notMineHints: await loadNotMineHints(database, familyId),
+    };
+    const judged: readonly (KidJudgement | StoredKidJudgement)[] = input.apply
+      ? await readStoredKidVerdicts(database, asked, context)
+      : await judgeKidRelevance(
+          database,
+          { ...asked, deadline: input.deadline },
+          { client: ports.client, ...context },
+        );
     const verdictByRef = new Map(judged.map((judgement) => [judgement.ref, judgement]));
 
     const adultEvents: { id: string; item: KidRelevanceItem }[] = [];
@@ -152,6 +167,10 @@ export async function runKidRelevanceBackfill(
     for (const candidate of candidates) {
       const judgement = verdictByRef.get(candidate.item.ref);
       if (!judgement) throw new Error('kid-relevance backfill: an item came back unjudged');
+      if (judgement.verdict === 'held' && judgement.why === 'not_stored') {
+        counts.notInDryRun += 1;
+        continue;
+      }
       counts.judged += 1;
       if (judgement.verdict === 'held') {
         counts.held += 1;

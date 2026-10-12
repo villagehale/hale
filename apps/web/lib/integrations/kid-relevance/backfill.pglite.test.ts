@@ -12,9 +12,9 @@ import { KID_VERDICT_TOOL, type KidSkillInput } from './skill-contract';
  * The one-off backfill (VIL-226 item 5, founder defaults D9/D10). Existing connector
  * copies are judged; adult ones leave the family calendar with their reminders cancelled
  * under a named reason and an audit row; an adult parent block loses its kid flag and
- * title; adult bookings are only counted. A dry run changes no tracking state. The model
- * is a scripted fake at the client port - the skill's quality is the eval. Every title
- * here is invented.
+ * title; adult bookings are only counted. A dry run changes no tracking state, and an
+ * apply asks no model: it acts on what a dry run stored. The model is a scripted fake at
+ * the client port - the skill's quality is the eval. Every title here is invented.
  */
 
 let db: TestDb;
@@ -30,8 +30,6 @@ let gmail: string;
 let modelCalls: number;
 let seenTexts: string[];
 let runId: string;
-/** Runs inside the model call: after the run read its candidates, before it writes. */
-let duringJudge: (() => Promise<void>) | undefined;
 
 const ADULT = ['Standup', 'Dentist', 'Team dinner', 'Harbour Inn', 'Pottery for grown-ups'];
 const UNSURE = ['Mystery meetup'];
@@ -46,7 +44,6 @@ const client = {
   messages: {
     create: async (request: { messages: { content: string }[] }) => {
       modelCalls += 1;
-      await duringJudge?.();
       const input = JSON.parse(request.messages[0]?.content ?? '{}') as KidSkillInput;
       seenTexts.push(...input.items.map((item) => item.text));
       return structuredReply(
@@ -80,7 +77,6 @@ beforeEach(async () => {
   modelCalls = 0;
   seenTexts = [];
   runId = randomUUID();
-  duringJudge = undefined;
   const family = await seedFamily(db.database);
   familyId = family.familyId;
   parentUserId = family.parentUserId;
@@ -209,6 +205,12 @@ function run(apply: boolean) {
   );
 }
 
+/** The operator's order: a dry run judges and stores, then the apply acts on what it stored. */
+async function dryRunThenApply() {
+  await run(false);
+  return run(true);
+}
+
 describe('runKidRelevanceBackfill', () => {
   it('a dry run counts what it would do, stores only the verdicts it judged, and changes nothing else', async () => {
     await seed();
@@ -228,6 +230,7 @@ describe('runKidRelevanceBackfill', () => {
       remindersCancelled: 4,
       blocksCleared: 1,
       adultBookings: 1,
+      notInDryRun: 0,
       skippedDisconnected: 0,
       skippedFamiliesPendingErasure: 0,
     });
@@ -272,14 +275,10 @@ describe('runKidRelevanceBackfill', () => {
       .update(schema.families)
       .set({ scheduledDeletionAt: NEXT_WEEK })
       .where(eq(schema.families.id, familyId));
-    const counts = await run(true);
-    expect(counts).toMatchObject({
-      families: 0,
-      judged: 0,
-      eventsDropped: 0,
-      skippedFamiliesPendingErasure: 1,
-    });
+    const skipped = { families: 0, judged: 0, eventsDropped: 0, skippedFamiliesPendingErasure: 1 };
+    expect(await run(false)).toMatchObject(skipped);
     expect(modelCalls).toBe(0);
+    expect(await run(true)).toMatchObject(skipped);
   });
 
   it('a run scoped to one family hands the model nothing from another', async () => {
@@ -307,7 +306,7 @@ describe('runKidRelevanceBackfill', () => {
   it('apply drops adult copies, cancels their reminders with the reason and audits each', async () => {
     const ids = await seed();
 
-    const counts = await run(true);
+    const counts = await dryRunThenApply();
     expect(counts).toMatchObject({ apply: true, eventsDropped: 3, remindersCancelled: 4 });
 
     const after = await state();
@@ -394,7 +393,7 @@ describe('runKidRelevanceBackfill', () => {
       })),
     );
 
-    await run(true);
+    await dryRunThenApply();
 
     const snapshots = await db.database
       .select()
@@ -410,28 +409,66 @@ describe('runKidRelevanceBackfill', () => {
 
   it('apply writes nothing for a family that scheduled its erasure after the run read it', async () => {
     await seed();
-    duringJudge = async () => {
-      await db.database
-        .update(schema.families)
-        .set({ scheduledDeletionAt: NEXT_WEEK })
-        .where(eq(schema.families.id, familyId));
-    };
+    await run(false);
+    // The erasure lands as the apply opens its write: after it read its candidates.
+    const racing: typeof db.database = Object.create(db.database, {
+      transaction: {
+        value: async (...args: Parameters<typeof db.database.transaction>) => {
+          await db.database
+            .update(schema.families)
+            .set({ scheduledDeletionAt: NEXT_WEEK })
+            .where(eq(schema.families.id, familyId));
+          return db.database.transaction(...args);
+        },
+      },
+    });
     const before = await state();
-    const counts = await run(true);
+    const counts = await runKidRelevanceBackfill(
+      racing,
+      { apply: true, now: NOW, deadline: NO_DEADLINE, familyIds: [familyId], runId },
+      { client },
+    );
     expect(counts).toMatchObject({
       eventsDropped: 0,
       remindersCancelled: 0,
       blocksCleared: 0,
       skippedFamiliesPendingErasure: 1,
     });
-    const { verdicts: _verdicts, ...after } = await state();
-    const { verdicts: _before, ...unchanged } = before;
-    expect(after).toEqual(unchanged);
+    expect(await state()).toEqual(before);
+  });
+
+  it('apply acts only on what the dry run stored: a copy added since is counted by name, never judged, never touched', async () => {
+    await seed();
+    await run(false);
+    const calls = modelCalls;
+    const added = await mirror('ev-followup', 'Dentist follow-up');
+
+    const counts = await run(true);
+
+    expect(modelCalls).toBe(calls);
+    expect(seenTexts.some((text) => text.includes('follow-up'))).toBe(false);
+    expect(counts).toMatchObject({
+      judged: 6,
+      adult: 5,
+      notInDryRun: 1,
+      eventsDropped: 3,
+      remindersCancelled: 4,
+    });
+    const after = await state();
+    expect(after.events.find((row) => row.id === added)).toMatchObject({
+      deletedAt: null,
+      title: 'Dentist follow-up',
+      kidVerdictId: null,
+    });
+    expect(
+      after.reminders.filter((row) => row.eventRef === added).map((row) => row.status),
+    ).toEqual(['scheduled', 'scheduled']);
+    expect(after.verdicts).toHaveLength(6);
   });
 
   it('apply leaves an unsure copy alone: live, unlinked, its reminders still scheduled', async () => {
     const unsure = await mirror('ev-mystery', 'Mystery meetup');
-    const counts = await run(true);
+    const counts = await dryRunThenApply();
     expect(counts).toMatchObject({ unsure: 1, eventsDropped: 0, remindersCancelled: 0 });
     const after = await state();
     const event = after.events.find((row) => row.id === unsure);
@@ -442,7 +479,7 @@ describe('runKidRelevanceBackfill', () => {
 
   it('stamps every audit row an apply writes with its run id', async () => {
     await seed();
-    await run(true);
+    await dryRunThenApply();
     const { audit } = await state();
     expect(audit.length).toBeGreaterThan(0);
     expect(audit.map((row) => (row.after as { runId?: string }).runId)).toEqual(
@@ -453,7 +490,7 @@ describe('runKidRelevanceBackfill', () => {
   it("a revert puts back what an apply dropped, except a calendar copy's cleared title", async () => {
     const ids = await seed();
     const before = await state();
-    await run(true);
+    await dryRunThenApply();
 
     const reverted = await revertKidRelevanceBackfill(db.database, {
       runId,
@@ -511,7 +548,7 @@ describe('runKidRelevanceBackfill', () => {
 
   it('a revert gives a Gmail copy back the words of the offer it came from', async () => {
     const ids = await seed();
-    await run(true);
+    await dryRunThenApply();
     await revertKidRelevanceBackfill(db.database, { runId, now: NOW });
     const [offer] = await db.database
       .select({ title: schema.emailAlertOffers.title })
@@ -533,7 +570,7 @@ describe('runKidRelevanceBackfill', () => {
 
   it('a revert of an unknown run id changes nothing and says so', async () => {
     await seed();
-    await run(true);
+    await dryRunThenApply();
     const before = await state();
     expect(
       await revertKidRelevanceBackfill(db.database, {
@@ -553,7 +590,7 @@ describe('runKidRelevanceBackfill', () => {
 
   it('a revert brings nothing back for a family whose erasure is scheduled, and counts it', async () => {
     await seed();
-    await run(true);
+    await dryRunThenApply();
     await db.database
       .update(schema.families)
       .set({ scheduledDeletionAt: NEXT_WEEK })
@@ -572,7 +609,7 @@ describe('runKidRelevanceBackfill', () => {
 
   it('a second apply reuses the verdicts and changes nothing more', async () => {
     await seed();
-    await run(true);
+    await dryRunThenApply();
     const calls = modelCalls;
     const before = await state();
 
