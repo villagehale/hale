@@ -6,10 +6,10 @@
  * tells a parent what to do about their child's head injury. So for those two the
  * lane's only decision is WHICH goes out, and the words are a reviewable diff.
  *
- * BOUNDARY V3 (founder-locked 2026-08-11) narrowed what belongs here. Hale is never a
- * SEARCH BOX — it does not run errands against the internet on demand. It is not,
- * however, a closed door: asked something a friend would just answer, it answers, once,
- * briefly, and stops (see answer.ts). The charm deflect that used to live here and go
+ * BOUNDARY V3 (founder-locked 2026-08-11) narrowed what belongs here. Hale is not a
+ * closed door: asked something a friend would just answer, it answers, once, briefly,
+ * and stops, looking it up first where the answer turns on something current (founder,
+ * 2026-10-12; see answer.ts). The charm deflect that used to live here and go
  * out for weather, trivia, recipes and homework is retired; what survives is the line
  * for the one case where the answer could not be WRITTEN, and it now says that rather
  * than claiming a boundary Hale does not have.

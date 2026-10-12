@@ -39,6 +39,7 @@ import type { LaneReading, LaneScreenFallback } from './screen';
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const MESSAGE = '33333333-3333-4333-8333-333333333333';
 const ANSWER = "Messi, for me - the closest thing to a complete player I've watched.";
+const TODAY = 'monday, oct 12, 2026';
 const MEDICAL_ANSWER =
   'A fever like this is often viral at this age; fluids and rest usually help. Call 811 any time, or go to the ER / call 911 if she has trouble breathing.';
 
@@ -54,6 +55,8 @@ interface Recorded {
 
 interface Harness extends OffDomainPorts {
   composeCalls: number;
+  composeSeen: Array<{ text: string; today: string }>;
+  todayAskedFor: string[];
   medicalCalls: number;
   medicalSeen: string[];
   recorded: Recorded[];
@@ -74,15 +77,22 @@ function ports(
     overrides.medical ?? ({ reply: MEDICAL_ANSWER, replySource: 'web_grounded' } as const);
   const harness: Harness = {
     composeCalls: 0,
+    composeSeen: [],
+    todayAskedFor: [],
     medicalCalls: 0,
     medicalSeen: [],
     recorded: [],
     screen: { read: async () => read },
     answer: {
-      compose: async () => {
+      compose: async (text, today) => {
         harness.composeCalls += 1;
+        harness.composeSeen.push({ text, today });
         return answer;
       },
+    },
+    today: async (familyId) => {
+      harness.todayAskedFor.push(familyId);
+      return TODAY;
     },
     medical: {
       answer: async (text) => {
@@ -289,6 +299,29 @@ describe('what each lane says', () => {
       replySource: 'composed',
     });
     expect(p.composeCalls).toBe(1);
+  });
+
+  /**
+   * "Did the leafs win last night" has no answer without a day to read it against. The
+   * lane works out what day it is where THIS family is and hands the composer the date,
+   * beside the parent's words and nothing else about them.
+   */
+  it("hands the composer the parent's words and today's date for this family", async () => {
+    const p = ports();
+
+    await consider(p, 'did the leafs win last night');
+
+    expect(p.todayAskedFor).toEqual([FAMILY]);
+    expect(p.composeSeen).toEqual([{ text: 'did the leafs win last night', today: TODAY }]);
+  });
+
+  /** A door that is a fixed sentence has no use for the date, so nothing is read for it. */
+  it('reads no date for a turn the general answer does not take', async () => {
+    const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
+
+    await consider(p);
+
+    expect(p.todayAskedFor).toEqual([]);
   });
 
   /**

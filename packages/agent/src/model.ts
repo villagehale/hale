@@ -46,8 +46,8 @@ export type ModelId =
  *    it — the stage exists to cost a fraction of the coach turn it replaces, so anything
  *    dearer than Haiku defeats its whole reason for being. Its error case falls through
  *    to the coach, so a wrong screen costs a deflection, never an answer.
- *    `answer` writes the one brief reply to a question about the WORLD — two sentences,
- *    no family context, no tools — behind that same screen and on that same hot path,
+ *    `answer` writes the one brief reply to a question about the WORLD — no family
+ *    context, no tools of its own — behind that same screen and on that same hot path,
  *    so it is held to the same cost and latency shape. Its error case falls back to a
  *    fixed line, so the tier can cost a dull answer and never a fact about a child.
  *    `speak` is one turn of a live PHONE CALL: the parent is holding the line, so time

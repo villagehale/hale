@@ -83,9 +83,17 @@
     "file": "followup-voice.md",
     "sha256": "2b934d020eac24f34924c5d2bfe3c658e095b3f75afa2aa5d119ca0372cdad7b"
   },
+  "general-answer-sanitize.md": {
+    "file": "general-answer-sanitize.md",
+    "sha256": "47d0d8b14161caa4136fd044d17d0ae7ff69771a6fb94f087621713b0b55f5d5"
+  },
+  "general-answer-search.md": {
+    "file": "general-answer-search.md",
+    "sha256": "cdf95d5256aadfb22ce579c8d1663f46584a51fa197c4e9263aecf360a0d7bf9"
+  },
   "general-answer.md": {
     "file": "general-answer.md",
-    "sha256": "24d10e0cdbf6a83c17ca23713d25971b6678650ff6d0cb86f0a5420b0af7b9ae"
+    "sha256": "2234d3a254568a2236806d9a2d26d32fb48b2caeb527ec2bcb6b056f1a162734"
   },
   "gmail-draft-coach.md": {
     "file": "gmail-draft-coach.md",

@@ -2,10 +2,12 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { replyLanguage } from '~/lib/channel/language';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import {
   type GeneralAnswerComposer,
   type GeneralAnswerFallback,
   createGeneralAnswer,
+  localDate,
 } from './answer';
 import {
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
@@ -111,6 +113,9 @@ export interface OffDomainPorts {
    * #11): "no composer wired" is not a state this lane has — a composer that cannot run
    * says so by name and the fixed line goes out instead. */
   answer: GeneralAnswerComposer;
+  /** Today's date where this family is, as the general answer is told it. The date is
+   * what travels on; the timezone it was read in does not. */
+  today(familyId: string): Promise<string>;
   /** Answers a medical-symptom text: a web-grounded, coarse-age-aware reply with its own
    * triage, or the fixed 811/911 line as a last resort. Non-nullable for the same reason
    * (rule #11) — its own failure modes are named inside it, never a missing dependency. */
@@ -207,7 +212,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
             : { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
           : lane === 'provider_access'
             ? { reply: referralReply(input.text, language), replySource: 'fixed' as const }
-            : await answerOrFallback(ports, input.text);
+            : await answerOrFallback(ports, input.familyId, input.text);
 
       const signal = await ports.recordUnmetIntent({
         channelMessageId: input.channelMessageId,
@@ -243,9 +248,10 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
  */
 async function answerOrFallback(
   ports: OffDomainPorts,
+  familyId: string,
   text: string,
 ): Promise<{ reply: string; replySource: ReplySource }> {
-  const composed = await ports.answer.compose(text);
+  const composed = await ports.answer.compose(text, await ports.today(familyId));
   if (composed.status === 'composed') return { reply: composed.reply, replySource: 'composed' };
   const language = replyLanguage(text);
   // A question about the world that turned out to be about a hurt child. It leaves by
@@ -328,6 +334,7 @@ export function productionOffDomainLane(
   return offDomainLane({
     screen: createInboundLaneScreen(client),
     answer: createGeneralAnswer(client),
+    today: async (familyId) => localDate(new Date(), await readFamilyTimezone(database, familyId)),
     medical: createMedicalComposer(client),
     recordUnmetIntent: recordUnmetIntent(database),
   });

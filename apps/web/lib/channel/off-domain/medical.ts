@@ -100,7 +100,7 @@ const SANITIZE_MAX_TOKENS = 512;
 const GROUND_MAX_TOKENS = 4096;
 /** Generous on purpose: forceToolJson throws on a max_tokens cutoff, and a triage cut
  * mid-sentence is exactly what must never ship. */
-const COMPOSE_MAX_TOKENS = 1024;
+export const COMPOSE_MAX_TOKENS = 1024;
 /** Thinking and the reason share this on an adaptive lane (max_tokens caps both). */
 const ESCALATION_MAX_TOKENS = 1024;
 
@@ -331,7 +331,7 @@ function escalationReading(raw: string): (typeof ESCALATION_VERDICTS)[number] | 
 /** English for anything the sanitizer did not report as a language code. Not null: every
  * answer is written in SOME language, and a nullable one would only push the same default
  * out to the caller. */
-function normalizeLanguage(raw: unknown): ReplyLanguage {
+export function normalizeLanguage(raw: unknown): ReplyLanguage {
   const code = typeof raw === 'string' ? raw.trim() : '';
   return LANGUAGE_CODE.test(code) ? code : 'en';
 }
