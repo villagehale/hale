@@ -93,8 +93,8 @@ export type { HomePlace, LiveSearch, PendingAsk };
  * parent who answers "Toronto" to "which city?" starts a new turn with no question
  * attached. A lit turn that could not answer (a detail was missing, or the search came
  * back with nothing) therefore hands out the question it was working on, de-identified
- * and scrubbed, with what it was missing ({@link PendingAsk}; the router keeps it on the
- * reply's own ledger row). The parent's next text in that thread, once the lane's screen
+ * and scrubbed, with what it was missing ({@link PendingAsk}; the router keeps it beside
+ * the reply's own ledger row). The parent's next text in that thread, once the lane's screen
  * has read it, is read beside it by the sanitizer, which alone judges whether the text
  * completes it ({@link GeneralAnswerComposer.continueAsk}). There is no keyword and no
  * time window. What is kept is never the parent's own words, and nothing is kept or read

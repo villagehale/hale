@@ -24,6 +24,7 @@ function ago(days: number): Date {
 
 const ZEROS: MessageRetentionSummary = {
   channelMessagesRedacted: 0,
+  pendingAsksDeleted: 0,
   messagesDeleted: 0,
   chatAttachmentsDeleted: 0,
   intakeSessionsRedacted: 0,
@@ -447,13 +448,14 @@ describe('sweepMessageRetention', () => {
   });
 
   /**
-   * A general answer that asked "which city?" keeps the question it was working on, on
-   * its own OUTBOUND row (migration 0167). It is de-identified, and it is still a
-   * question a parent asked, so the same clock clears it. `body` was never there to clear.
+   * A general answer that asked "which city?" keeps the question it was working on beside
+   * its own OUTBOUND row, in a table of its own (migration 0167). It is de-identified, and
+   * it is still a question a parent asked, so the same clock deletes it. The reply's row
+   * stays: `body` was never there to clear.
    */
-  it('clears the question a reply left open after 365 days, and keeps one at 364 days', async () => {
+  it('deletes the question a reply left open after 365 days, and keeps one at 364 days', async () => {
     const { familyId, parentUserId } = await seedFamily();
-    const openQuestion = async (createdAt: Date) => {
+    const openQuestion = async (askedAt: Date, missing?: string) => {
       const [row] = await db.database
         .insert(schema.channelMessages)
         .values({
@@ -464,53 +466,73 @@ describe('sweepMessageRetention', () => {
           category: 'reply',
           status: 'delivered',
           body: null,
-          pendingQuestion: 'hows the weather tomorrow',
-          pendingMissing: 'which city',
-          createdAt,
+          createdAt: askedAt,
         })
         .returning({ id: schema.channelMessages.id });
-      return row?.id as string;
+      const channelMessageId = row?.id as string;
+      await db.database.insert(schema.channelPendingAsks).values({
+        channelMessageId,
+        familyId,
+        question: 'hows the weather tomorrow',
+        ...(missing === undefined ? {} : { missing }),
+        createdAt: askedAt,
+      });
+      return channelMessageId;
     };
-    const oldId = await openQuestion(ago(366));
-    const youngId = await openQuestion(ago(364));
+    // One with both fields, and one that was missing nothing: each is a question kept.
+    await openQuestion(ago(366), 'which city');
+    await openQuestion(ago(366));
+    const youngId = await openQuestion(ago(364), 'which city');
     const kept = () =>
       db.database
         .select({
-          id: schema.channelMessages.id,
-          question: schema.channelMessages.pendingQuestion,
-          missing: schema.channelMessages.pendingMissing,
+          id: schema.channelPendingAsks.channelMessageId,
+          question: schema.channelPendingAsks.question,
+          missing: schema.channelPendingAsks.missing,
         })
-        .from(schema.channelMessages)
-        .where(eq(schema.channelMessages.familyId, familyId));
+        .from(schema.channelPendingAsks);
 
     const summary = await sweepMessageRetention(db.database, NOW, {
       removeObject: async () => {},
     });
 
-    expect(summary).toEqual({ ...ZEROS, channelMessagesRedacted: 1 });
-    expect((await kept()).sort((a, b) => (a.id === oldId ? -1 : b.id === oldId ? 1 : 0))).toEqual([
-      { id: oldId, question: null, missing: null },
+    expect(summary).toEqual({ ...ZEROS, pendingAsksDeleted: 2 });
+    expect(await kept()).toEqual([
       { id: youngId, question: 'hows the weather tomorrow', missing: 'which city' },
     ]);
+    // The three replies are still on the ledger: only their questions went.
+    expect(
+      await db.database
+        .select({ id: schema.channelMessages.id })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.familyId, familyId)),
+    ).toHaveLength(3);
     // A second run finds nothing left to do.
     expect(await sweepMessageRetention(db.database, NOW, { removeObject: async () => {} })).toEqual(
       ZEROS,
     );
   });
 
-  /** Erasure is the family cascade (runDeletionSweep deletes the family row), and the
-   * question rides on a row that cascade already takes. */
+  /** Erasure is the family cascade (runDeletionSweep deletes the family row). The
+   * question's row hangs off the family and off the reply, and both go. */
   it('does not leave a pending question behind when the family is erased', async () => {
     const { familyId, parentUserId } = await seedFamily();
-    await db.database.insert(schema.channelMessages).values({
+    const [reply] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        status: 'delivered',
+      })
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.channelPendingAsks).values({
+      channelMessageId: reply?.id as string,
       familyId,
-      parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'reply',
-      status: 'delivered',
-      pendingQuestion: 'hows the weather tomorrow',
-      pendingMissing: 'which city',
+      question: 'hows the weather tomorrow',
+      missing: 'which city',
     });
     await db.database
       .update(schema.families)
@@ -518,8 +540,8 @@ describe('sweepMessageRetention', () => {
       .where(eq(schema.families.id, familyId));
     const pending = () =>
       db.database
-        .select({ question: schema.channelMessages.pendingQuestion })
-        .from(schema.channelMessages);
+        .select({ question: schema.channelPendingAsks.question })
+        .from(schema.channelPendingAsks);
     // Positive control: it is there to be erased.
     expect(await pending()).toEqual([{ question: 'hows the weather tomorrow' }]);
 
@@ -611,5 +633,53 @@ describe('sweepMessageRetention', () => {
       .select({ body: schema.channelMessages.body })
       .from(schema.channelMessages);
     expect(afterSecond.filter((row) => row.body !== null)).toHaveLength(1);
+  });
+});
+
+/**
+ * The pending-ask table arrives with migration 0167, which need not be applied before
+ * this code runs. The hourly sweep on a database without it still does every other table.
+ */
+describe('sweepMessageRetention on a database without migration 0167', () => {
+  let before0167: TestDb;
+
+  beforeAll(async () => {
+    before0167 = await createTestDb('0163_drop_retired_auth_tables.sql');
+  });
+
+  afterAll(async () => {
+    await before0167.close();
+  });
+
+  it('names the missing table and still clears an old message body', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const [family] = await before0167.database
+      .insert(schema.families)
+      .values({ displayName: 'Household', provinceOrState: 'ON' })
+      .returning({ id: schema.families.id });
+    const [parent] = await before0167.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'google_retention_before_0167' })
+      .returning({ id: schema.users.id });
+    await before0167.database.insert(schema.channelMessages).values({
+      familyId: family?.id as string,
+      parentUserId: parent?.id as string,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: 'an old text',
+      createdAt: ago(366),
+    });
+
+    const summary = await sweepMessageRetention(before0167.database, NOW, {
+      removeObject: async () => {},
+    });
+
+    expect(summary).toEqual({ ...ZEROS, channelMessagesRedacted: 1 });
+    expect(warn.mock.calls).toEqual([
+      [{ outcome: 'not_migrated' }, 'message retention: pending-ask table missing'],
+    ]);
+    warn.mockRestore();
   });
 });

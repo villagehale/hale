@@ -1733,6 +1733,39 @@ describe('a reply to a question Hale left open', () => {
     expect(outcome).not.toHaveProperty('pendingAsk');
   });
 
+  /**
+   * What is kept is what the search and the compose were handed: the question with the
+   * deterministic scrub run under the sanitizer, not the sanitizer's own text. Both ways a
+   * question is left open, since each builds what it keeps.
+   */
+  it.each([
+    ['a detail was missing', { needs_search: 'missing_detail', missing_detail: 'which city' }, {}],
+    ['the search failed', { needs_search: 'yes' }, { search: new Error('upstream 529') }],
+  ] as const)(
+    'keeps the question scrubbed of a postal code and a phone number when %s',
+    async (_label, read, script) => {
+      lit();
+      quietInfo();
+      quietWarn();
+
+      const outcome = await createGeneralAnswer(
+        scripted({
+          sanitize: reading({
+            question: 'will it rain near A1A 1A1 tomorrow, text 416-555-0142',
+            ...read,
+          }),
+          answer: { answer: 'Which city?' },
+          ...script,
+        }),
+      ).compose('anything', family);
+
+      expect(outcome).toMatchObject({
+        status: 'composed',
+        pendingAsk: { question: 'will it rain near [redacted] tomorrow, text [redacted]' },
+      });
+    },
+  );
+
   /** Rule #1. The pending question is a question a parent asked, de-identified or not. */
   it('logs nothing of the pending question or the reply to it', async () => {
     lit();

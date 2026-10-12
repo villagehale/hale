@@ -57,7 +57,11 @@ import {
 } from '~/lib/channel/linq/presence';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
-import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
+import {
+  type OffDomainLane,
+  type ReplySource,
+  settlePendingAsks,
+} from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
@@ -2358,10 +2362,11 @@ async function sendReply(
      * papercut digest split real answers from ANSWER_UNAVAILABLE sends; it is a closed
      * vocabulary and never a word of what was said (rule #1). */
     replySource?: ReplySource | null;
-    /** The question a general answer left open (migration 0167), or null on every other
-     * reply. De-identified by the lane before it gets here: never the parent's words and
-     * never what Hale said, so `body` stays null as ever (rule #1). The parent's next
-     * text is read beside it (off-domain/lane.ts readPendingAsk). */
+    /** The question a general answer left open, or null on every other reply. It is kept
+     * in a table of its own beside this reply's row (migration 0167). De-identified by
+     * the lane before it gets here: never the parent's words and never what Hale said,
+     * so `body` stays null as ever (rule #1). The parent's next text is read beside it
+     * (off-domain/lane.ts readPendingAsk). */
     pendingAsk?: PendingAsk | null;
     /** The lane's own name for this receipt, or null for a reply nothing reads back
      * (see {@link HandlerVerdict.templateKey}). */
@@ -2451,8 +2456,6 @@ async function sendReply(
       body: null,
       medicalReplySource: args.medicalSource ?? null,
       replySource: args.replySource ?? null,
-      pendingQuestion: args.pendingAsk?.question ?? null,
-      pendingMissing: args.pendingAsk?.missing ?? null,
       relatedConversationId: args.conversationId,
       sentAt: deps.now(),
     })
@@ -2472,6 +2475,24 @@ async function sendReply(
 
   if (args.conversationId) {
     await appendMessage(args.conversationId, 'assistant', args.body, deps.database);
+  }
+
+  // What this reply does to the questions Hale has left open for this parent: the earlier
+  // ones are closed, and the one it left open itself, if any, is kept beside its row
+  // (off-domain/lane.ts). Flag dark, it returns before any read or write. A failure here
+  // must not unsend the reply the parent already has.
+  try {
+    await settlePendingAsks(deps.database, {
+      familyId: args.job.family_id,
+      parentUserId: args.job.parent_user_id,
+      channelMessageId,
+      ask: args.pendingAsk ?? null,
+    });
+  } catch (err) {
+    deps.log.warn(
+      { code: err instanceof Error ? err.name : 'unknown' },
+      'pending ask: the reply landed; the question it left open was not kept',
+    );
   }
 
   // ENG-1. After the utility reply, maybe the later year-retention ask.

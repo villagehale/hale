@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const waitUntil = vi.hoisted(() => vi.fn());
 vi.mock('@vercel/functions', () => ({ waitUntil }));
@@ -18,6 +19,7 @@ import {
   type OffDomainLane,
   type OffDomainVerdict,
   offDomainLane,
+  productionOffDomainLane,
 } from '~/lib/channel/off-domain/lane';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
@@ -25,6 +27,7 @@ import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   DISCOVERABILITY_ALREADY_ON,
   DISCOVERABILITY_OFF,
@@ -531,6 +534,7 @@ const conversationRows = (fake: FakeDb) => fake.rows(schema.conversations);
 const messageRows = (fake: FakeDb) => fake.rows(schema.messages);
 const auditRows = (fake: FakeDb) => fake.rows(schema.auditLog);
 const ledgerRows = (fake: FakeDb) => fake.rows(schema.channelMessages);
+const pendingAskRows = (fake: FakeDb) => fake.rows(schema.channelPendingAsks);
 
 // ── the channel a parent wrote in on ─────────────────────────────────────────
 
@@ -805,6 +809,11 @@ describe('VIL-333 identity challenge', () => {
 });
 
 describe('the off-domain lane', () => {
+  // A test here that lights the search must not leave it lit for the next one.
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   // Boundary v3: the general lane ANSWERS. What the router owes it is unchanged — one
   // send, threaded, ledgered, audited, and no coach woken.
   const ANSWERED: OffDomainVerdict = {
@@ -898,12 +907,13 @@ describe('the off-domain lane', () => {
   );
 
   /**
-   * A reply that left a question open ("which city?") keeps that question on its own
-   * ledger row (migration 0167), where the parent's next text can be read beside it. What
-   * is kept is the lane's de-identified question and what it was missing. `body` stays
-   * null: not the parent's words, and not what Hale said.
+   * A reply that left a question open ("which city?") keeps that question beside its own
+   * ledger row, in a table of its own (migration 0167), where the parent's next text can
+   * be read beside it. What is kept is the lane's de-identified question and what it was
+   * missing. `body` stays null: not the parent's words, and not what Hale said.
    */
-  it('keeps the question a reply left open on the reply row it sends, body still null', async () => {
+  it('keeps the question a reply left open beside the reply row it sends, body still null', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
     const h = harness({
       context: { body: "how's the weather tomorrow" },
       offDomain: fakeLane({
@@ -917,11 +927,37 @@ describe('the off-domain lane', () => {
 
     const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({
-      pendingQuestion: 'hows the weather tomorrow',
-      pendingMissing: 'which city',
-      body: null,
+    expect(sent[0]).toMatchObject({ body: null });
+    expect(sent[0]?.id).toEqual(expect.any(String));
+    expect(pendingAskRows(h.fake)).toMatchObject([
+      {
+        channelMessageId: sent[0]?.id,
+        familyId: FAMILY,
+        question: 'hows the weather tomorrow',
+        missing: 'which city',
+      },
+    ]);
+    expect(pendingAskRows(h.fake)).toHaveLength(1);
+    // The reply's own row names no column for it: that table is written by every text.
+    expect(Object.keys(sent[0] ?? {}).filter((column) => /pending/i.test(column))).toEqual([]);
+  });
+
+  /** Only a lit general answer leaves a question open, and the table is its alone. With
+   * the search dark nothing is written there, whatever a lane hands back. */
+  it('keeps no question while the search is dark, whatever the lane hands back', async () => {
+    const h = harness({
+      context: { body: "how's the weather tomorrow" },
+      offDomain: fakeLane({
+        ...ANSWERED,
+        reply: 'Which city are you in?',
+        pendingAsk: { question: 'hows the weather tomorrow', missing: 'which city' },
+      }),
     });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Which city are you in?']);
+    expect(pendingAskRows(h.fake)).toEqual([]);
   });
 
   /**
@@ -992,18 +1028,24 @@ describe('the off-domain lane', () => {
     // turn logged.
     expect(h.transport.bodies()).toEqual(['Which city are you in?']);
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({
-      replySource: 'composed',
-      pendingQuestion: 'hows the weather tomorrow',
-      pendingMissing: 'which city',
-    });
+    expect(sent[0]).toMatchObject({ replySource: 'composed' });
+    expect(pendingAskRows(h.fake)).toMatchObject([
+      { question: 'hows the weather tomorrow', missing: 'which city' },
+    ]);
     expect(consoleLines.length).toBeGreaterThan(0);
     expect(
-      JSON.stringify([h.transport.sent, ledgerRows(h.fake), h.logs, consoleLines]),
+      JSON.stringify([
+        h.transport.sent,
+        ledgerRows(h.fake),
+        pendingAskRows(h.fake),
+        h.logs,
+        consoleLines,
+      ]),
     ).not.toContain('GROUNDED');
   });
 
   it('keeps no question on a reply that left none open, or on a coach answer', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
     const answered = harness({
       context: { body: "how's the weather" },
       offDomain: fakeLane(ANSWERED),
@@ -1015,7 +1057,7 @@ describe('the off-domain lane', () => {
     for (const h of [answered, coached]) {
       const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
       expect(sent).toHaveLength(1);
-      expect(sent[0]).toMatchObject({ pendingQuestion: null, pendingMissing: null });
+      expect(pendingAskRows(h.fake)).toEqual([]);
     }
   });
 
@@ -4585,5 +4627,261 @@ describe('a slow answer gets one holding line first', () => {
 
     expect(holding.calls).toBe(0);
     expect(h.logs).toContainEqual([{ outcome: 'answered_first' }, expect.any(String)]);
+  });
+});
+
+/**
+ * The reply's ledger row through the REAL send path, against the real DDL. The fake
+ * database above records whatever it is handed, so it cannot fail on a column or a table
+ * the database does not have. Everything else is the harness's: the context, the
+ * transport, the coach. Every row is invented.
+ */
+describe('the reply row, written to a real database', () => {
+  /** The harness, with its database swapped for a real one and its job pointed at a
+   * family that exists there. */
+  async function onRealDatabase(db: TestDb, options: Parameters<typeof harness>[0] = {}) {
+    const h = harness(options);
+    h.deps.database = db.database;
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    const turn = (overrides: Partial<ChannelMessageReceivedJob> = {}) =>
+      job({ family_id: familyId, parent_user_id: parentUserId, ...overrides });
+    return { h, familyId, parentUserId, turn };
+  }
+
+  /**
+   * Sloane's ruling on the pending question: it moves to a side table "so that 0167 no
+   * longer has to run before merge to keep every text from failing". A database migrated
+   * only as far as main is today takes a reply's row.
+   */
+  describe('on a database without migration 0167', () => {
+    let db: TestDb;
+
+    beforeAll(async () => {
+      db = await createTestDb('0163_drop_retired_auth_tables.sql');
+    });
+
+    afterAll(async () => {
+      await db.close();
+    });
+
+    it('sends the reply and writes its row', async () => {
+      const { h, familyId, turn } = await onRealDatabase(db, {
+        coach: fakeCoach('Saturday is dry.'),
+      });
+
+      const result = await routeChannelMessage(h.deps, turn());
+
+      expect(result.status).toBe('agent_replied');
+      expect(h.transport.bodies()).toEqual(['Saturday is dry.']);
+      const sent = await db.database
+        .select({ direction: schema.channelMessages.direction })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.familyId, familyId));
+      expect(sent).toEqual([{ direction: 'out' }]);
+    });
+  });
+
+  /**
+   * A question Hale left open, through the real send path and the real read path, with
+   * no row seeded by hand: what the router writes is what the lane's reader finds. The
+   * lane is production's own wiring on a scripted client.
+   */
+  describe('a question left open, and the reply to it', () => {
+    let db: TestDb;
+
+    beforeAll(async () => {
+      db = await createTestDb();
+    });
+
+    afterAll(async () => {
+      await db.close();
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    });
+
+    const OWN_CHAT: ReplyRoute = {
+      channel: 'imessage',
+      to: PHONE,
+      chatId: 'chat-own',
+      replyToMessageId: null,
+    };
+    const OTHER_CHAT: ReplyRoute = { ...OWN_CHAT, chatId: 'chat-other' };
+    const ASKED = { question: 'hows the weather tomorrow', missing: 'which city' };
+    const COMBINED = 'hows the weather tomorrow in Maplewood';
+
+    /** The lane's one client: the screen files the text as off-topic, the sanitizer reads
+     * a text beside a pending ask as its answer, and the search finds something. */
+    function scripted() {
+      const seen = { sanitize: [] as unknown[], search: [] as unknown[] };
+      const structured = (payload: unknown) => ({
+        content: [{ type: 'text', text: JSON.stringify(payload) }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+      });
+      const client = () =>
+        ({
+          messages: {
+            async create(request: {
+              system: Array<{ text: string }>;
+              messages: Array<{ content: string }>;
+            }) {
+              const system = request.system.map((block) => block.text).join('');
+              const payload = JSON.parse(request.messages[0]?.content ?? '{}');
+              if (system.includes('Which lane does this text belong in')) {
+                return structured({ lane: 'off_domain_general', category: 'weather', reason: 'x' });
+              }
+              if (system.includes('Take the family out, keep the question')) {
+                seen.sanitize.push(payload);
+                return structured(
+                  'pending' in payload
+                    ? {
+                        language: 'en',
+                        answers_pending: 'yes',
+                        question: COMBINED,
+                        missing_detail: 'none',
+                        their_place: 'not_needed',
+                        current_fact: 'the forecast',
+                        needs_search: 'yes',
+                      }
+                    : {
+                        language: 'en',
+                        answers_pending: 'nothing_pending',
+                        question: ASKED.question,
+                        missing_detail: ASKED.missing,
+                        their_place: 'needed',
+                        current_fact: 'the forecast',
+                        needs_search: 'missing_detail',
+                      },
+                );
+              }
+              return structured({
+                answer:
+                  payload.live === 'missing_detail' ? 'Which city are you in?' : 'Sunny, high of 14.',
+              });
+            },
+            stream(request: { messages: Array<{ content: string }> }) {
+              seen.search.push(JSON.parse(request.messages[0]?.content ?? '{}'));
+              return {
+                async finalMessage() {
+                  return {
+                    content: [
+                      {
+                        type: 'web_search_tool_result',
+                        tool_use_id: 'srvtoolu_1',
+                        content: [{ type: 'web_search_result', url: 'https://weather.example/f' }],
+                      },
+                      { type: 'text', text: 'Sunny tomorrow, high of 14, per the forecast.' },
+                    ],
+                    stop_reason: 'end_turn',
+                    usage: { input_tokens: 10, output_tokens: 5 },
+                  };
+                },
+              };
+            },
+          },
+        }) as unknown as AgentClient;
+      return { client, seen };
+    }
+
+    /** One text from this parent, in one chat, through the router and the production lane. */
+    async function text(
+      parent: { familyId: string; parentUserId: string },
+      body: string,
+      route: ReplyRoute,
+    ) {
+      const turn = scripted();
+      const h = harness({
+        context: { body, reply: route },
+        offDomain: productionOffDomainLane(db.database, turn.client),
+      });
+      h.deps.database = db.database;
+      // The reply rows are stamped by the database's clock, so the turn reads on it too.
+      h.deps.now = () => new Date();
+      const [inbound] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          ...parent,
+          channel: 'imessage',
+          providerChatId: route.channel === 'imessage' ? route.chatId : null,
+          direction: 'in',
+          category: 'reply',
+          status: 'delivered',
+          body,
+        })
+        .returning({ id: schema.channelMessages.id });
+      await routeChannelMessage(
+        h.deps,
+        job({
+          family_id: parent.familyId,
+          parent_user_id: parent.parentUserId,
+          channel_message_id: inbound?.id as string,
+        }),
+      );
+      return { said: h.transport.bodies(), seen: turn.seen };
+    }
+
+    const keptAsks = (familyId: string) =>
+      db.database
+        .select({
+          question: schema.channelPendingAsks.question,
+          missing: schema.channelPendingAsks.missing,
+          chat: schema.channelMessages.providerChatId,
+          direction: schema.channelMessages.direction,
+        })
+        .from(schema.channelPendingAsks)
+        .innerJoin(
+          schema.channelMessages,
+          eq(schema.channelMessages.id, schema.channelPendingAsks.channelMessageId),
+        )
+        .where(eq(schema.channelPendingAsks.familyId, familyId));
+
+    const lit = () => {
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+      for (const level of ['info', 'warn', 'error'] as const) {
+        vi.spyOn(console, level).mockImplementation(() => {});
+      }
+    };
+
+    it('keeps the question beside the reply that asked, reads it for the next text in that chat, and deletes it once answered', async () => {
+      lit();
+      const parent = await seedFamily(db.database);
+
+      const asked = await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+
+      expect(asked.said).toEqual(['Which city are you in?']);
+      expect(await keptAsks(parent.familyId)).toEqual([
+        { ...ASKED, chat: 'chat-own', direction: 'out' },
+      ]);
+
+      const answered = await text(parent, 'Maplewood', OWN_CHAT);
+
+      // The real reader found what the real send wrote, in the chat it was asked in.
+      expect(answered.seen.sanitize).toEqual([{ text: 'Maplewood', pending: ASKED }]);
+      expect(answered.seen.search).toMatchObject([{ question: COMBINED }]);
+      expect(answered.said).toEqual(['Sunny, high of 14.']);
+      // Answered, so it is gone: the question lived only while it was open.
+      expect(await keptAsks(parent.familyId)).toEqual([]);
+    });
+
+    it('does not read it for a text in another chat, and Hale answering there closes it', async () => {
+      lit();
+      const parent = await seedFamily(db.database);
+      await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+      // Positive control: the question is open.
+      expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+      const elsewhere = await text(parent, 'Maplewood', OTHER_CHAT);
+
+      expect(elsewhere.seen.sanitize).toEqual([{ text: 'Maplewood' }]);
+      expect(JSON.stringify(elsewhere.seen)).not.toContain(COMBINED);
+      // That text was answered as a question of its own, which is Hale's newer word to
+      // this parent. The first question can never be read again, so it is not kept; the
+      // one this reply left open is.
+      expect(await keptAsks(parent.familyId)).toEqual([
+        { ...ASKED, chat: 'chat-other', direction: 'out' },
+      ]);
+    });
   });
 });
