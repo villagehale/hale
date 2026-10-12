@@ -2187,21 +2187,21 @@ describe('runProactiveReview', () => {
   describe('the composed text on a candidate row', () => {
     const WHAT = 'Pip and Juno would love indoor climbing at Riverside Rocks';
 
-    it('keeps none once the row is sent, and the parent’s thread still carries what was said', async () => {
+    it('keeps it once the row is sent: the record of what Hale sent for this item', async () => {
       vi.stubEnv('PROACTIVE_CADENCE', 'live');
       const id = await enqueue('nudge:weather:w41', { what: WHAT });
       const h = harness(sendAll);
 
       await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
-      expect(await candidate(id)).toMatchObject({ status: 'sent', what: '' });
+      expect(await candidate(id)).toMatchObject({ status: 'sent', what: WHAT, reason: null });
       const thread = await db.database
         .select({ content: schema.messages.content })
         .from(schema.messages);
       expect(thread.map((row) => row.content)).toEqual([MESSAGE]);
     });
 
-    it('keeps none once the row is shadowed or dropped', async () => {
+    it('keeps none once the row is shadowed, dropped or expired', async () => {
       vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
       const shadowed = await enqueue('nudge:weather:w41', { what: WHAT });
       await runProactiveReview(db.database, harness(sendAll).deps, THURSDAY_EVENING);
@@ -2209,6 +2209,10 @@ describe('runProactiveReview', () => {
 
       vi.stubEnv('PROACTIVE_CADENCE', 'live');
       const dropped = await enqueue('nudge:weather:w42', { what: WHAT });
+      const expired = await enqueue('nudge:weather:w43', {
+        what: WHAT,
+        worthlessAfter: THURSDAY_EVENING,
+      });
       const h = harness((snapshot) => ({ ...sendAll(snapshot), action: 'drop' }));
       await runProactiveReview(
         db.database,
@@ -2216,6 +2220,11 @@ describe('runProactiveReview', () => {
         new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
       );
       expect(await candidate(dropped)).toMatchObject({ status: 'dropped', what: '' });
+      expect(await candidate(expired)).toMatchObject({
+        status: 'dropped',
+        reason: 'expired',
+        what: '',
+      });
     });
 
     it('keeps it while the row is queued or held, for the writer that may still need it', async () => {
