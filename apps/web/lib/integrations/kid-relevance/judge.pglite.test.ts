@@ -355,6 +355,30 @@ describe('judgeKidRelevance', () => {
     ]);
   });
 
+  it('a number or a mixed token of three or more characters of a place names it; a two-digit one does not', async () => {
+    await db.database.delete(schema.children).where(eq(schema.children.id, children[1]?.id ?? ''));
+    children = children.slice(0, 1);
+    const { client } = scriptedClient(
+      byText({
+        Clay: { verdict: 'kid', reason: 'a toddler class at 1234' },
+        Drums: { verdict: 'kid', reason: 'a toddler class in B12' },
+        Tumbling: { verdict: 'kid', reason: 'a class for 12 months and up' },
+      }),
+    );
+    await judge(client, [
+      item('a', 'Clay', { place: '1234 Main St' }),
+      item('b', 'Drums', { place: 'Room B12' }),
+      item('c', 'Tumbling', { place: 'Unit 12' }),
+    ]);
+    const stored = await storedVerdicts();
+    expect(stored.map((row) => [row.itemKey, row.reason]).sort()).toEqual([
+      ['key-a', null],
+      ['key-b', null],
+      // "12" is two characters: an age in the reason is not the unit number.
+      ['key-c', 'a class for 12 months and up'],
+    ]);
+  });
+
   it("marks a teenager's item as teen with the child set and stores no reason", async () => {
     const { client } = scriptedClient(
       byText({ 'Juno practice': { verdict: 'kid', childName: 'Juno' } }),

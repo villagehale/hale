@@ -66,18 +66,23 @@ export function repeatsAny(text: string, own: readonly (string | null)[]): boole
   });
 }
 
-/** Below this, a lowercase Latin word of a place or sender ("at", "a") names nothing. */
+/**
+ * Below this, a lowercase Latin word or a number of a place or sender ("at", "12") names
+ * nothing.
+ */
 const SHORTEST_NAMING_WORD = 3;
 
 /**
  * Whether one word of a place or sender, as written, can name someone or somewhere: three
- * or more letters, a capitalized Latin word of two ("Li", "Wu"), or any word with a letter
- * outside the Latin script (a Chinese surname is one character). Digits never name.
+ * or more letters or digits (a street number, "B12"), a capitalized Latin word of two
+ * letters ("Li", "Wu"), or any word with a letter outside the Latin script (a Chinese
+ * surname is one character).
  */
 function namesSomething(word: string): boolean {
-  const letters = [...word].filter((char) => /\p{L}/u.test(char));
+  const chars = [...word];
+  const letters = chars.filter((char) => /\p{L}/u.test(char));
   return (
-    letters.length >= SHORTEST_NAMING_WORD ||
+    chars.filter((char) => /[\p{L}\p{N}]/u.test(char)).length >= SHORTEST_NAMING_WORD ||
     (letters.length >= 2 && /^\p{Lu}/u.test(word)) ||
     letters.some((char) => !/\p{Script=Latin}/u.test(char))
   );
