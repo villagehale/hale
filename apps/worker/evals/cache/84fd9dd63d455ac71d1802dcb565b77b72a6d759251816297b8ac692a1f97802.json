@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text correctly identifies the prompt as \"after_school_named\" - it offers to find an after-school option (\"放学后的好去处\") for the child named in context, Nell. The text is in the correct language (Chinese/zh) with proper characters and natural punctuation. The tone reads like a friend texting - conversational (\"最近在想\"), casual (\"如果你觉得有需要的话\"), and easy to ignore with the emoji. No activity, place, time, price or link is mentioned. No specific words are given for reply. It's a single, natural offer that a parent would receive as a friend texting about childcare. The phrasing \"要不要帮你给 Nell 留意一个放学后的好去处\" is natural and friendly in Chinese, and \"如果你觉得有需要的话我可以找找看\" (if you feel there's a need I can look around) has that relaxed, helpful friend tone rather than salesy or formal.",
-    "score": 5
-  }
-}

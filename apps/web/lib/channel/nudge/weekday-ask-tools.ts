@@ -8,10 +8,11 @@ import type { WeekdayFinderAsk } from './weekday-care-ask';
  * VIL-360 · the weekday-care ask's tool contract and the check on what comes back.
  * Relative imports only, so apps/worker/evals grades the model against this exact file.
  *
- * The ask is a yes-or-no offer. The model chooses every word, the length and the script;
- * this file refuses only a text that is not the tool's shape, that carries a link or a
- * time nobody gave it, or that runs past one text (`TEXT_CHARS`, the writer's infra
- * bound: WEEKDAY_ASK_MAX_TOKENS bounds tokens, and the Linq door takes far more).
+ * The ask is one offer, texted the way a friend who noticed something about the family's
+ * week would. The model chooses every word, the length and the script; this file refuses
+ * only a text that is not the tool's shape, that carries a link or a time nobody gave it,
+ * or that runs past one text (`TEXT_CHARS`, the writer's infra bound:
+ * WEEKDAY_ASK_MAX_TOKENS bounds tokens, and the Linq door takes far more).
  * Whether the text is the offer that was chosen, in the family's language and tone, is
  * graded by the eval's judge, not counted here.
  */
@@ -23,7 +24,11 @@ export const WEEKDAY_ASK_TOOL_SCHEMA = {
   type: 'object' as const,
   additionalProperties: false,
   properties: {
-    message: { type: 'string', description: 'The one text Hale sends: a single yes-or-no offer.' },
+    message: {
+      type: 'string',
+      description:
+        "The one text Hale sends: what a friend who noticed something about this family's week would text, with the one offer in it.",
+    },
   },
   required: ['message'],
 } satisfies Anthropic.Tool.InputSchema;

@@ -1,6 +1,0 @@
-{
-  "value": {
-    "message": "Hey, those last ones were all weekend — I can take a look at weekdays too if that's helpful!"
-  },
-  "stopReason": "tool_use"
-}

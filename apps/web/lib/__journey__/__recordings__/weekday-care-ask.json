@@ -36,25 +36,25 @@
       "diagnostics": null
     }
   },
-  "6aec8a1449ef08a2db8dbd5a03530b60ad3b0483876b737a8283d2ee457af55d": {
-    "key": "6aec8a1449ef08a2db8dbd5a03530b60ad3b0483876b737a8283d2ee457af55d",
-    "recordedAt": "2026-10-12T05:23:27.872Z",
+  "8a752205e298492396f36d82c7dcca21bd3e8838086a95d0540f5f337dec7d54": {
+    "key": "8a752205e298492396f36d82c7dcca21bd3e8838086a95d0540f5f337dec7d54",
+    "recordedAt": "2026-10-12T15:56:33.337Z",
     "request": {
       "model": "claude-sonnet-4-6",
       "userMessage": "{\"prompt\":\"weekend_fallback\",\"language\":\"en\"}"
     },
     "response": {
       "model": "claude-sonnet-4-6",
-      "id": "msg_011CfwnSi3KaujsFqfZUosAY",
+      "id": "msg_011CfxcijzByefWUpvkF4ah7",
       "type": "message",
       "role": "assistant",
       "content": [
         {
           "type": "tool_use",
-          "id": "toolu_011HtWUf1xs8JKAJPhqg1wfW",
+          "id": "toolu_01A1aTPeU8neWNpkdXhd3ja6",
           "name": "weekday_ask",
           "input": {
-            "message": "Hey, those last ones were all weekend — happy to take a look at weekdays too if that's ever useful!"
+            "message": "Hey! I've been throwing weekend stuff your way \u2014 just realized I never thought about your weekdays. How do those usually look? If there's room in there, I'm happy to look at weekday options too."
           },
           "caller": {
             "type": "direct"
@@ -66,39 +66,39 @@
       "stop_sequence": null,
       "stop_details": null,
       "usage": {
-        "input_tokens": 1163,
+        "input_tokens": 1217,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
           "ephemeral_1h_input_tokens": 0
         },
-        "output_tokens": 55,
+        "output_tokens": 76,
         "service_tier": "standard",
         "inference_geo": "global"
       },
       "diagnostics": null
     }
   },
-  "25e4e6f877a0be0c524ee1d66e174641e6b2c31b3f656f23e6e27ae3d21e097f": {
-    "key": "25e4e6f877a0be0c524ee1d66e174641e6b2c31b3f656f23e6e27ae3d21e097f",
-    "recordedAt": "2026-10-12T05:23:30.237Z",
+  "4acc9fef6058c5796f907ba490c3ac75ca612a0bdf4d2033e6bd643bf8165d12": {
+    "key": "4acc9fef6058c5796f907ba490c3ac75ca612a0bdf4d2033e6bd643bf8165d12",
+    "recordedAt": "2026-10-12T15:56:36.184Z",
     "request": {
       "model": "claude-sonnet-4-6",
       "userMessage": "{\"prompt\":\"weekend_fallback\",\"language\":\"fr\"}"
     },
     "response": {
       "model": "claude-sonnet-4-6",
-      "id": "msg_011CfwnSrGgB42BFam5oQ4yi",
+      "id": "msg_011Cfxcivo5DezMoGgUhCsqw",
       "type": "message",
       "role": "assistant",
       "content": [
         {
           "type": "tool_use",
-          "id": "toolu_019wevAjgt4C3vbjtoCy2Y5w",
+          "id": "toolu_01SBb8yjeedf4DNG2CvR8e2X",
           "name": "weekday_ask",
           "input": {
-            "message": "Au fait, si jamais ça t'intéresse, je peux aussi jeter un œil du côté des jours de semaine — des fois il y a de bonnes choses à ce moment-là aussi."
+            "message": "H\u00e9, je me demandais \u2014 tout ce qu'on a regard\u00e9 jusqu'ici c'\u00e9tait plut\u00f4t pour le week-end, mais la semaine \u00e7a se passe comment pour vous ? Si \u00e7a peut aider, je peux aussi jeter un \u0153il \u00e0 ce qu'il y a en semaine \ud83d\ude0a"
           },
           "caller": {
             "type": "direct"
@@ -110,14 +110,14 @@
       "stop_sequence": null,
       "stop_details": null,
       "usage": {
-        "input_tokens": 1163,
+        "input_tokens": 1217,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
           "ephemeral_1h_input_tokens": 0
         },
-        "output_tokens": 81,
+        "output_tokens": 108,
         "service_tier": "standard",
         "inference_geo": "global"
       },

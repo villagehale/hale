@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey! Curious how the after-school stretch usually goes for you guys — is it pretty sorted or still kind of a work in progress? Either way, happy to look around and see if there's one good option nearby worth trying out."
+  },
+  "stopReason": "tool_use"
+}

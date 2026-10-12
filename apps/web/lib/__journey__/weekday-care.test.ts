@@ -53,10 +53,8 @@ import { recordedModel } from '~/lib/testing/recorded-model';
  */
 
 const TZ = 'America/Toronto';
-/** NO FSA on purpose. Ontario's health checkpoints are region-gated and outrank both
- * weekday legs, so a family with an area would spend every tick of this journey on a
- * vaccine-record reminder. The checkpoint ladder has its own journey test; this one is
- * about the two rungs below it. */
+/** NO FSA on purpose. With no area the registration and weather legs read nothing, so
+ * every tick of this journey is decided by the two weekday rungs it is about. */
 const AREA = null;
 /** 10:00 Toronto on Friday 2026-08-07 — inside the nudge's local send hour. */
 const FRIDAY = new Date('2026-08-07T14:00:00.000Z');
