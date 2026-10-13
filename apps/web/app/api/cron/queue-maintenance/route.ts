@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sweepUnconfirmedClaims } from '~/lib/channel/claim-sweep';
 import { enqueueChannelMessageReceived } from '~/lib/channel/inbound-deps';
+import { listLinqChatsPage } from '~/lib/channel/linq/transport';
 import { reconcileUnhandedInbound } from '~/lib/channel/reconcile/unhanded';
 import { cronRoute } from '~/lib/cron/auth';
 import { runQueueMaintenanceCron } from '~/lib/cron/queue-maintenance';
@@ -10,6 +11,12 @@ import {
   claimDeliveryIncident,
   loadDeliveryStats,
 } from '~/lib/monitoring/delivery-health';
+import {
+  checkLinqCapacity,
+  countDbChatIds,
+  countLinqChats,
+  rateLimitLatchStore,
+} from '~/lib/monitoring/linq-capacity';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 
 // Node runtime: instantiates pg-boss (prepared statements, raw pg) — not edge.
@@ -20,7 +27,7 @@ export const maxDuration = 120;
  * GET /api/cron/queue-maintenance — the queue's own upkeep, on a Vercel Cron
  * schedule (yul1). Cron-secret gated like every cron route.
  *
- * Four jobs, all of the same kind: things a single request cannot finish for itself.
+ * Five jobs, all of the same kind: things a single request cannot finish for itself.
  *   1. pg-boss maintenance — expire stuck `active` jobs, archive completed (recipe #2).
  *   2. The inbound hand-off reconciler — re-drive texts that were recorded but whose
  *      enqueue failed. A provider retry cannot do it (the claim index makes the retry a
@@ -30,6 +37,9 @@ export const maxDuration = 120;
  *   4. Delivery health — Linq receipts already wrote the ledger; this pages Slack #ops
  *      when the trailing window's failure rate, or a registration-class code, is an
  *      incident (delivery-health.ts).
+ *   5. Linq chat-ID capacity — counts the line's chat IDs and pages Slack #ops once per
+ *      upward crossing of 70% and 90%. Monitoring only; it gates no send
+ *      (linq-capacity.ts).
  *
  * Sequential, and maintenance goes first: if it throws, the run fails here and the
  * reconciler waits for the next tick ten minutes later. That is the right order —
@@ -55,7 +65,17 @@ export const GET = cronRoute('queue-maintenance', async () => {
       },
       new Date(),
     );
-    return NextResponse.json({ ok: true, inbound, claims, health }, { status: 200 });
+    const capacity = await checkLinqCapacity(
+      database,
+      {
+        countApi: () => countLinqChats({ listPage: listLinqChatsPage }),
+        countDb: countDbChatIds,
+        latches: rateLimitLatchStore(database),
+        sendAlert: (body) => postOpsSlack(body, fetch),
+      },
+      new Date(),
+    );
+    return NextResponse.json({ ok: true, inbound, claims, health, capacity }, { status: 200 });
   } catch (err) {
     // Surface the failure instead of 500-ing silently: log to the platform, then
     // re-throw so the run stays a real error, not a masked success (rule #8).

@@ -87,7 +87,7 @@ All of these are Vercel Cron routes under `apps/web/app/api/cron`, listed in `ap
 | --- | --- | --- |
 | `/api/cron/drain` | every minute | Drains the queue. Onboarding replies are sent inside the webhook. Replies after onboarding are queued, then drained here. |
 | `/api/cron/inbound-canary` | every 10 minutes | Posts a Linq-signed inbound at the real webhook and checks the previous tick's `channel_messages` row (`provider_message_id` prefix `hale-canary-`). |
-| `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null. |
+| `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null, and pages #ops when the Linq line crosses 70% or 90% of its chat IDs ([linq-chat-capacity.md](linq-chat-capacity.md)). |
 | `/api/cron/intake-sitting-reminder` | hourly | One nudge for a parent who stopped on the place or ages question. |
 
 A cron that returns stamps `cron_heartbeats`. A throw does not. `/api/health/crons` reads that table.
@@ -128,6 +128,8 @@ Migrations are additive. A bad migration is fixed forward. Do not drop columns f
 ## On call
 
 Slack handles only. Page in **#ops**.
+
+A Linq chat-ID capacity page has its own runbook: [linq-chat-capacity.md](linq-chat-capacity.md).
 
 | Who | Handle | Owns |
 | --- | --- | --- |
