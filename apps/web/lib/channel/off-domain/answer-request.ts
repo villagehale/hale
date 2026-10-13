@@ -293,14 +293,37 @@ const DIRECT_IDENTIFIERS: RegExp[] = [
 const REDACTED = '[redacted]';
 
 const ANY_DASH = /[\p{Dash_Punctuation}\u2212]/gu;
+const ANY_DIGIT = /\p{Decimal_Number}/gu;
+const NOT_SEEN = /\p{Format}/gu;
+
+/**
+ * A decimal digit of any script as the ordinary one. Unicode lays each script's digits out
+ * as ten code points in a row, zero first, so a digit's value is how far it stands from
+ * the start of its row.
+ */
+function ordinaryDigit(digit: string): string {
+  let below = 0;
+  let point = (digit.codePointAt(0) as number) - 1;
+  while (point >= 0 && String.fromCodePoint(point).match(ANY_DIGIT) !== null) {
+    below += 1;
+    point -= 1;
+  }
+  return String(below % 10);
+}
 
 /**
  * One character as every pattern reads it: its compatibility form (Unicode NFKC, so a
  * full-width digit is the digit and a no-break space is a space), with any dash or minus
- * sign as a hyphen.
+ * sign as a hyphen and a digit of any script as the ordinary one. A character that is
+ * never seen (a zero-width space or joiner, a soft hyphen) has no shape at all, so one
+ * typed inside a number does not split it.
  */
 function oneShape(char: string): string {
-  return char.normalize('NFKC').replace(ANY_DASH, '-');
+  return char
+    .normalize('NFKC')
+    .replace(NOT_SEEN, '')
+    .replace(ANY_DASH, '-')
+    .replace(ANY_DIGIT, ordinaryDigit);
 }
 
 /** What one pattern takes out of `text`. The pattern is matched against the one shape,
