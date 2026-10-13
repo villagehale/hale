@@ -16,10 +16,14 @@ import {
   searchUserMessage,
 } from './answer';
 import {
+  ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION,
+  ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT,
   ANSWER_ENDS_ON_THE_ANSWER,
   ANSWER_KEEPS_THE_NOTES_DAY,
   ANSWER_MAX_TOKENS,
+  ANSWER_MEDICATION_CAVEAT,
   ANSWER_RECENT_RESULT_FROM_THE_NOTES,
+  ANSWER_RESPECTS_PAGE_AGE,
   ANSWER_WITH_NOTHING_CHECKED,
   SAFETY_KINDS,
   answerJsonSchema,
@@ -413,7 +417,7 @@ describe('createGeneralAnswer', () => {
               states: {
                 type: 'string',
                 description:
-                  'the specific as the notes qualify it, with the class, group or date they attach to it. The day or night the notes attach to a forecast figure is part of the specific, and the answer uses that day or night label, not a nearer one.',
+                  'the specific as the notes qualify it, with the class, group or date they attach to it. The day or night the notes attach to a forecast figure is part of the specific, and the answer uses that day or night label, not a nearer one. A page the notes mark as old is part of the specific: a forecast from it is not a current reading.',
               },
               from: {
                 type: 'string',
@@ -427,7 +431,7 @@ describe('createGeneralAnswer', () => {
         },
         answer: {
           type: 'string',
-          description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES}`,
+          description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES} ${ANSWER_RESPECTS_PAGE_AGE} ${ANSWER_MEDICATION_CAVEAT} ${ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT} ${ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION}`,
         },
       },
       required: ['hurt_ill_or_danger', 'grounding', 'answer'],
@@ -468,8 +472,20 @@ describe('createGeneralAnswer', () => {
     expect(ANSWER_RECENT_RESULT_FROM_THE_NOTES).toBe(
       'A recent result, whether they played and how it went, is stated only as the research notes give it. When the notes say they did not play, that is the answer, and a score or a winner the notes do not carry is not added from memory.',
     );
+    expect(ANSWER_RESPECTS_PAGE_AGE).toBe(
+      "A page the notes mark as old is not a current reading. A forecast from it is not stated as today's or this morning's; the answer keeps the age the notes give, or leaves that figure out.",
+    );
+    expect(ANSWER_MEDICATION_CAVEAT).toBe(
+      'When the notes flag a medication interaction, the reply includes a check with a doctor or a pharmacist.',
+    );
+    expect(ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT).toBe(
+      'A review or publication status the notes do not settle is not asserted. A dose the notes mention is not advice to take it, and no amount is recommended.',
+    );
+    expect(ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION).toBe(
+      'A delay, traffic, or a border the notes do not mention is not added.',
+    );
     expect(answerJsonSchema.properties.answer.description).toBe(
-      `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES}`,
+      `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES} ${ANSWER_RESPECTS_PAGE_AGE} ${ANSWER_MEDICATION_CAVEAT} ${ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT} ${ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION}`,
     );
   });
 

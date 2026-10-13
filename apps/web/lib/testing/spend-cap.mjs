@@ -203,8 +203,26 @@ export function standIn(schema) {
 }
 
 function standInMessage(request) {
+  const schema = request.output_config?.format?.schema;
+  if (schema) {
+    return {
+      id: 'estimate',
+      type: 'message',
+      role: 'assistant',
+      model: request.model,
+      content: [{ type: 'text', text: JSON.stringify(standIn(schema)) }],
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+  }
   const forced = request.tool_choice?.type === 'tool' ? request.tool_choice.name : null;
-  const tool = forced && (request.tools ?? []).find((t) => t.name === forced);
+  const sole =
+    forced ??
+    (request.tool_choice?.type === 'auto' && request.tools?.length === 1
+      ? request.tools[0].name
+      : null);
+  const tool = sole && (request.tools ?? []).find((t) => t.name === sole);
   return {
     id: 'estimate',
     type: 'message',
@@ -219,14 +237,25 @@ function standInMessage(request) {
   };
 }
 
+/**
+ * count_tokens rejects a forced tool_choice (`type: "tool"` or `"any"`) with a 400.
+ * The count only needs the tools and the messages, so those two are relaxed to
+ * `auto` here. The request the real call sends is left as it arrived.
+ */
+function toolChoiceForCount(toolChoice) {
+  if (toolChoice?.type === 'tool' || toolChoice?.type === 'any') return { type: 'auto' };
+  return toolChoice;
+}
+
 async function countInputTokens(client, request) {
   const { model, messages, system, tools, tool_choice, thinking } = request;
+  const countedChoice = toolChoiceForCount(tool_choice);
   const res = await client.messages.countTokens({
     model,
     messages,
     ...(system !== undefined ? { system } : {}),
     ...(tools !== undefined ? { tools } : {}),
-    ...(tool_choice !== undefined ? { tool_choice } : {}),
+    ...(tool_choice !== undefined ? { tool_choice: countedChoice } : {}),
     ...(thinking !== undefined ? { thinking } : {}),
   });
   return res.input_tokens;

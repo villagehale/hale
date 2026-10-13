@@ -128,6 +128,39 @@ export const ANSWER_KEEPS_THE_NOTES_DAY =
   'A forecast figure keeps the day or night the notes give it for, and is not stated as a nearer day or night.';
 
 /**
+ * A page the notes mark as old is not a current reading, said on the `answer`
+ * field itself. A forecast from a stale page went out as this morning's after
+ * the notes had already named the page's age. general-answer.md says the same
+ * under `searched`.
+ */
+export const ANSWER_RESPECTS_PAGE_AGE =
+  "A page the notes mark as old is not a current reading. A forecast from it is not stated as today's or this morning's; the answer keeps the age the notes give, or leaves that figure out.";
+
+/**
+ * A medication interaction the notes flag gets a check with a doctor or a
+ * pharmacist, said on the `answer` field itself. general-answer.md says the
+ * same under health.
+ */
+export const ANSWER_MEDICATION_CAVEAT =
+  'When the notes flag a medication interaction, the reply includes a check with a doctor or a pharmacist.';
+
+/**
+ * What the notes do not settle is not asserted, said on the `answer` field
+ * itself. A review status the notes left open was written as settled, and a
+ * dose they mentioned was handed out as a regimen. general-answer.md says the
+ * same under health.
+ */
+export const ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT =
+  'A review or publication status the notes do not settle is not asserted. A dose the notes mention is not advice to take it, and no amount is recommended.';
+
+/**
+ * A trip condition the notes do not mention stays out, said on the `answer`
+ * field itself. general-answer.md says the same under `searched`.
+ */
+export const ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION =
+  'A delay, traffic, or a border the notes do not mention is not added.';
+
+/**
  * What belongs in each field of a `grounding` entry, said on the field itself, where the
  * model reads it as it writes the entry (Sloane, 2026-10-13; the words are hers). A
  * figure the notes gave for one kind of mortgage went out as the figure for another, and
@@ -137,7 +170,7 @@ export const ANSWER_KEEPS_THE_NOTES_DAY =
  * `grounding`.
  */
 const GROUNDING_STATES =
-  'the specific as the notes qualify it, with the class, group or date they attach to it. The day or night the notes attach to a forecast figure is part of the specific, and the answer uses that day or night label, not a nearer one.';
+  'the specific as the notes qualify it, with the class, group or date they attach to it. The day or night the notes attach to a forecast figure is part of the specific, and the answer uses that day or night label, not a nearer one. A page the notes mark as old is part of the specific: a forecast from it is not a current reading.';
 const GROUNDING_FROM =
   'the words in research_notes it comes from, or `settled` only for what can no longer change. A running count, a record or who holds a title today is never `settled`.';
 
@@ -184,7 +217,7 @@ export const answerJsonSchema = {
     },
     answer: {
       type: 'string',
-      description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES}`,
+      description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES} ${ANSWER_RESPECTS_PAGE_AGE} ${ANSWER_MEDICATION_CAVEAT} ${ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT} ${ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION}`,
     },
   },
   required: ['hurt_ill_or_danger', 'grounding', 'answer'],

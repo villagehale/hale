@@ -53,6 +53,7 @@ import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { textOfFetchSource } from '../../web/lib/channel/activity/pdf-text.mjs';
 import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
 import {
@@ -308,7 +309,7 @@ function readEvidence(content, now = Date.now()) {
       pagesRead += 1;
       const at = Date.parse(result.retrieved_at ?? '');
       if (!Number.isFinite(at) || now - at > FETCH_FRESHNESS_MS) pagesStale += 1;
-      const text = readableText(result.content?.source?.data ?? '');
+      const text = readableText(textOfFetchSource(result.content?.source));
       if (text !== '') {
         // Kept APART as well as joined: "does this page publish a schedule" is a question
         // about one page and cannot be asked of a joined blob (evidence.ts).
