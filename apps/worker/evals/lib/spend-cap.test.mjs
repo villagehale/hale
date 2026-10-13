@@ -8,6 +8,7 @@ import {
   capSdkClient,
   cappedCall,
   installSpendCap,
+  isSpendCapStop,
   readCapUsd,
   readLedger,
   worstCaseUsd,
@@ -80,6 +81,15 @@ describe('the ceiling', () => {
     expect(process.env.HALE_MAX_USD).toBe('0.4');
     expect(process.env.HALE_SPEND_LEDGER).toBe('/tmp/hale-eval-spend.json');
     vi.stubEnv('HALE_SPEND_LEDGER', join(dir, 'ledger.json'));
+  });
+});
+
+describe('a cap stop', () => {
+  it('is the error a runner prints past, instead of crashing', () => {
+    expect(isSpendCapStop(new Error('spend-cap: refusing general-answer'))).toBe(true);
+    expect(isSpendCapStop(new Error('spend-cap: round halted (auth); refusing x'))).toBe(true);
+    expect(isSpendCapStop(new Error('cache miss'))).toBe(false);
+    expect(isSpendCapStop('spend-cap: refusing')).toBe(false);
   });
 });
 

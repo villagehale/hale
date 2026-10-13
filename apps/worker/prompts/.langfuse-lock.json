@@ -22,7 +22,7 @@
   "memory-inferencer": {
     "name": "memory-inferencer",
     "version": 1,
-    "sha256": "10b88806f8c6db1d82025052d116b7b2104df3ae3d5d09abf9016522d68d7f02"
+    "sha256": "94d65375bc5ce1be4b4331d137479b7ecc2442840a0bd7a36fc1a94d3eb1edde"
   },
   "packs/child": {
     "name": "packs/child",

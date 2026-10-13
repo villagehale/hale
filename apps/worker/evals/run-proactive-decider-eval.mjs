@@ -9,10 +9,21 @@
 //   ANTHROPIC_API_KEY=... node evals/run-proactive-decider-eval.mjs   # live, populates the cache
 //   node evals/run-proactive-decider-eval.mjs --cached-only           # CI: replay, zero API calls
 
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { REPO_ROOT, evalRunTag, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
-import { cachedLaneToolCall } from './lib/lane-tool-call.mjs';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
+import {
+  REPO_ROOT,
+  cacheGet,
+  evalRunTag,
+  lazyAnthropic,
+  makeCost,
+  priceRates,
+  totalUsd,
+} from './lib/harness.mjs';
+import { cachedLaneToolCall, laneToolCacheKey } from './lib/lane-tool-call.mjs';
 import { PROACTIVE_DECIDER_FIXTURES } from './proactive-decider-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -75,15 +86,81 @@ function grade(fixture, decision) {
   return failures;
 }
 
+/** Cache misses only. The draft lane thinks between tools, so no thinking tokens are added. */
+export async function uncachedDeciderCalls() {
+  const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const tools = await tsImport(TOOLS_SRC, import.meta.url);
+  const { formatSnapshotLocalNow } = await tsImport(DATETIME_SRC, import.meta.url);
+  const skill = await agent.loadSkill(SKILL_PATH);
+  const lane = agent.pickLane(skill.meta.task);
+  const measured = [];
+  const pending = [];
+  const shortIds = [];
+  for (const fixture of PROACTIVE_DECIDER_FIXTURES) {
+    const { timeZone, now, ...rest } = fixture.snapshot;
+    const userMessage = JSON.stringify({
+      timeZone,
+      now,
+      localNow: formatSnapshotLocalNow(new Date(now), timeZone),
+      ...rest,
+    });
+    const key = laneToolCacheKey({
+      agent,
+      lane,
+      tag: evalRunTag(`proactive-decider:${fixture.id}`),
+      system: skill.instructions,
+      userMessage,
+      toolName: tools.DECIDER_TOOL,
+      toolSchema: tools.DECIDER_TOOL_SCHEMA,
+      maxTokens: tools.DECIDER_MAX_TOKENS,
+    });
+    const cached = await cacheGet(key);
+    if (cached) {
+      measured.push(JSON.stringify(cached.value).length);
+      continue;
+    }
+    shortIds.push(fixture.id);
+    pending.push({
+      model: lane.model,
+      promptCache: false,
+      prefixId: 'proactive-decider',
+      prefix: `${skill.instructions}\n${JSON.stringify(tools.DECIDER_TOOL_SCHEMA)}`,
+      user: userMessage,
+      thinkingTokens: 0,
+      group: 'proactive-decider',
+      maxTokens: tools.DECIDER_MAX_TOKENS,
+      fixtureId: fixture.id,
+    });
+  }
+  const outputChars = measured.length
+    ? [...measured].sort((a, b) => a - b)[Math.ceil(measured.length / 2) - 1]
+    : 400;
+  return {
+    calls: pending.map((call) => ({ ...call, outputChars })),
+    shortIds,
+    outputChars,
+    model: lane.model,
+  };
+}
+
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.info(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const tools = await tsImport(TOOLS_SRC, import.meta.url);
   const { formatSnapshotLocalNow } = await tsImport(DATETIME_SRC, import.meta.url);
   assertThursdayEvening(formatSnapshotLocalNow);
   const skill = await agent.loadSkill(SKILL_PATH);
   const lane = agent.pickLane(skill.meta.task);
-  const getClient = lazyAnthropic();
+  const rawClient = lazyAnthropic();
+  const getClient = () =>
+    capSdkClient(rawClient(), { rates: priceRates, tag: 'proactive-decider' });
   const cost = makeCost();
 
   console.info(
@@ -134,7 +211,19 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+function runningAsScript() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (runningAsScript()) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
