@@ -322,12 +322,7 @@ describe('what goes out', () => {
 describe('what stops it', () => {
   it('records the gate holds and writes nothing, so silence is not counted against the family', async () => {
     process.env[F14_ENABLED_ENV] = 'true';
-    for (const hold of [
-      'not_enrolled',
-      'no_watch_consent',
-      'frequency_cap',
-      'quiet_hours',
-    ] as const) {
+    for (const hold of ['not_enrolled', 'no_watch_consent', 'quiet_hours'] as const) {
       const { deps, sent, asks, cadences } = harness({ hold });
       const result = await runEveningCheckInSweep(database, deps, EVENING);
       expect(result.held[hold], hold).toBe(1);
@@ -553,13 +548,13 @@ describe('the activity anchor', () => {
   });
 
   it('never reads the calendar for a household it is not going to ask', async () => {
-    // The read joins the names read on the same side of the gate: a family already asked,
-    // or over budget, must not cost a read of what their children did today.
+    // The read joins the names read on the same side of the gate: a family the gate
+    // is not going to text must not cost a read of what their children did today.
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
     process.env[F14_ENABLED_ENV] = 'true';
     let reads = 0;
     const { deps } = harness({
-      hold: 'frequency_cap',
+      hold: 'not_enrolled',
       today: async () => {
         reads += 1;
         return { anchor: 'swim' };

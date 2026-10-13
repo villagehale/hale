@@ -235,6 +235,10 @@
     "file": "weekday-care-ask.md",
     "sha256": "23bb36d6742a1cd4de4ce837b11358ed1eeb5b53c4d394961700fc7e0ac1a8cb"
   },
+  "weekday-care-reply.md": {
+    "file": "weekday-care-reply.md",
+    "sha256": "b1c4da6f609e0b567d957ffff6b9ec692c4325d400d2d6d6828fab334f73b110"
+  },
   "workstream-followup.md": {
     "file": "workstream-followup.md",
     "sha256": "96ee07a5fe9a4a28029ef04a79880f2bf59af03a9eb4c25dab10dbcbbf2f9b8a"

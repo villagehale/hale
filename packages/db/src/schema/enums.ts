@@ -426,7 +426,7 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // first about a seat that has ended. Filing them together would make a PIPEDA
   // right-to-access read describe a departure as part of an invitation. Unmetered by
   // choice rather than by omission — the bound is the departure event itself, one per
-  // (family, departed parent), held by the dedupe key (PROACTIVE_CAP says so).
+  // (family, departed parent), held by the dedupe key.
   'co_parent_departed',
   // VIL-352 · a document a parent FORWARDED to their Hale address, and the answer to it
   // (migration 0120). Its own category and not 'reply': the inbound row files a third

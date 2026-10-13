@@ -29,9 +29,9 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { readDueBookings } from '~/lib/integrations/booking';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
@@ -574,8 +574,8 @@ function tally(result: FollowupSweepResult, outcome: SendOutcome): boolean {
  * that has stepped back, on the strength of a connection the other side no longer wants
  * Hale in the middle of.
  *
- * IT RUNS BEFORE THE ACTIVITY STAGE, and that ordering is the whole of "intro wins".
- * The day's single slot in PROACTIVE_CAP goes to whoever asks first.
+ * IT RUNS BEFORE THE ACTIVITY STAGE. The order is "intro first". There is no shared
+ * daily slot. Same-item dedupe is what stops a second copy of either ask.
  */
 async function runIntroFollowups(
   database: Database,

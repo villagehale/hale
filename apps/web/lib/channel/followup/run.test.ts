@@ -116,9 +116,8 @@ interface Harness {
  *
  * That is what makes the two rails testable as MECHANISMS rather than as stubs. A second
  * tick is a second `runFollowupSweep` against the same harness, so "does not re-send" is
- * proved by the same key the production ledger would hold; and the one-per-family-per-day
- * rail is proved by the real `PROACTIVE_CAP` arithmetic counting a send this sweep just
- * made, not by a fake that was told to say no.
+ * proved by the same key the production ledger would hold. A count of those sends is
+ * not a hold.
  */
 function harness(
   overrides: {
@@ -533,22 +532,21 @@ describe('the activity follow-up', () => {
 
 describe('the rails every follow-up rides', () => {
   /**
-   * One follow-up per family per day, and the intro one wins. Nothing in this file
-   * implements that precedence: the intro stage simply runs first, its send consumes the
-   * family's single daily slot in `PROACTIVE_CAP`, and the activity ask is held by the
-   * gate on the way out.
+   * Intro runs first. There is no shared daily slot, so the activity ask goes the
+   * same day. Same-item dedupe is what stops a second copy of either.
    */
-  it('gives the day to the intro ask and holds the activity ask behind the cap', async () => {
+  it('sends the intro ask and the activity ask the same day', async () => {
     const h = harness({ intros: [PAIR], activities: { [FAM_A]: [activity()] } });
 
     const result = await runFollowupSweep(DB, h.deps, NOW);
 
     expect(result.introAsked).toBe(2);
-    expect(result.activityAsked).toBe(0);
-    expect(result.held.frequency_cap).toBe(1);
+    expect(result.activityAsked).toBe(1);
+    expect(result.held.frequency_cap).toBe(0);
     expect(h.transport.bodies()).toEqual([
       withOptOut(INTRO_ASK, 'short'),
       withOptOut(INTRO_ASK, 'short'),
+      withOptOut('How did Swim class go? One line is plenty.', 'short'),
     ]);
   });
 

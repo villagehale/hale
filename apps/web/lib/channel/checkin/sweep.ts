@@ -23,9 +23,9 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { nightlyOccasion } from '~/lib/channel/variant';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { dayKeyIn } from '~/lib/plan/spine';
@@ -380,9 +380,8 @@ async function runForFamily(
     deps.buildGate(database),
   );
   if (!verdict.allowed) {
-    // Held, not failed, and nothing is written: quiet hours end, and a household over its
-    // budget tonight is under it tomorrow. The ladder must not count a silence for an
-    // evening Hale never spoke.
+    // Held, not failed, and nothing is written: quiet hours end. The ladder must not
+    // count a silence for an evening Hale never spoke. A count is not a hold.
     result.held[verdict.reason] += 1;
     return;
   }

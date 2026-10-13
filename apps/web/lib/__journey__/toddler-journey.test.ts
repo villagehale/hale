@@ -1034,7 +1034,7 @@ describe("3 · watch consent is recorded in the parent's own words", () => {
 // ── stage 4 · the 48h sweep looks, and has nothing to say ────────────────────
 
 describe('4 · the 48h sweep passes the gate and stays quiet', () => {
-  it('fires for this family and passes all four outbound-gate checks in order', () => {
+  it('fires for this family and passes the outbound-gate checks in order', () => {
     // The 18-month checkpoint is all this family's week holds at 48h (stage 5 shows the
     // matcher still finds it), and Hale sends no health checkpoint reminder: quiet.
     expect(journey.nudge).toMatchObject({ enabled: true, evaluated: 1, sent: 0, quiet: 1 });
@@ -1045,12 +1045,7 @@ describe('4 · the 48h sweep passes the gate and stays quiet', () => {
       quiet_hours: 0,
     });
     // Every check ran, against the rows intake wrote — not a stub that said yes.
-    expect(journey.gateCalls.slice(0, 4)).toEqual([
-      'enrolled',
-      'watch_consent',
-      'frequency_cap',
-      'quiet_hours',
-    ]);
+    expect(journey.gateCalls.slice(0, 3)).toEqual(['enrolled', 'watch_consent', 'quiet_hours']);
   });
 
   it('sends nothing, spends none of the weekly budget, and records that it looked', () => {

@@ -42,6 +42,7 @@ import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
+import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { loadOpenCommitment } from '~/lib/commitments/ledger';
@@ -691,6 +692,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       },
     }),
     replyResolver: createReplyResolver(screenClient),
+    weekdayCareReader: createWeekdayCareReader(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
     // spent by the next inbound. No model and no client: picking one of a handful of
     // options Hale itself printed is a string comparison.

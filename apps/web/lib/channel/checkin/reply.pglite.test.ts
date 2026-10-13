@@ -852,6 +852,7 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
         commitmentId: '77777777-7777-4777-8777-777777777777',
       }),
       replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
+      weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       recordStatedState: async () => ({ status: 'nothing_stated' }),

@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
+import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
@@ -1598,10 +1598,7 @@ describe('the text itself', () => {
 });
 
 describe('the gate registration', () => {
-  it('counts calendar alerts on their OWN budget, three a day', () => {
-    // Kills PROACTIVE_CATEGORY.calendar_alert = 'email_alert', which would let a busy
-    // calendar spend the inbox's budget.
+  it('files calendar alerts on their own ledger category', () => {
     expect(PROACTIVE_CATEGORY.calendar_alert).toBe('calendar_alert');
-    expect(PROACTIVE_CAP.calendar_alert).toEqual({ max: 3, windowHours: 24 });
   });
 });

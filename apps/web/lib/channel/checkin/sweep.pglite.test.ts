@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { PRIVATE_EVENT_WHAT } from '~/lib/channel/coach/tools';
 import { F14_ENABLED_ENV } from '~/lib/channel/f14';
 import {
   FOLLOWUP_ASKS_ENABLED_ENV,
@@ -11,7 +12,6 @@ import {
 } from '~/lib/channel/followup/run';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { PRIVATE_EVENT_WHAT } from '~/lib/channel/coach/tools';
 import { CHECK_IN_ASK_TEMPLATE_KEY } from './copy';
 import { eveningCheckInQuestion } from './reply';
 import {
@@ -227,8 +227,8 @@ describe('who the sweep actually selects, and what it may call their children', 
     expect(first.asked).toBe(1);
     await alignLedgerToSendClock();
 
-    // The same slot, exactly 24h on — the worst case the cap's window has to clear, since
-    // two consecutive evenings can be no further apart than this.
+    // The same slot, exactly 24h on. The dedupe key is the local date, so tonight's
+    // row does not hold tomorrow's question.
     const nextEvening = new Date(TORONTO_EVENING.getTime() + 24 * 3_600_000);
     const second = await runEveningCheckInSweep(
       db.database,
@@ -266,7 +266,7 @@ describe('who the sweep actually selects, and what it may call their children', 
     expect(order).toEqual([neverAsked.familyId, askedLastNight.familyId]);
   });
 
-  it('is stopped three separate ways from asking twice in one evening', async () => {
+  it('is stopped two ways from asking twice in one evening', async () => {
     const { familyId } = await seedFamily({ primaryTz: 'America/Toronto' });
     const sent: Array<{ to: string; body: string }> = [];
     await runEveningCheckInSweep(db.database, prodDeps(sent), TORONTO_EVENING);
@@ -283,19 +283,16 @@ describe('who the sweep actually selects, and what it may call their children', 
     );
     expect(again.skipped.asked_today).toBe(1);
 
-    // 2. with that row gone — a prefs write that never landed — the real frequency cap.
+    // 2. with that row gone, the dedupe key. A count of tonight's send is not a hold.
     await db.database
       .delete(schema.familyCheckInPrefs)
       .where(eq(schema.familyCheckInPrefs.familyId, familyId));
-    const capped = await runEveningCheckInSweep(
+    const deduped = await runEveningCheckInSweep(
       db.database,
       prodDeps(sent, { realCap: true }),
       tenMinutesOn,
     );
-    expect(capped.held.frequency_cap).toBe(1);
-
-    // 3. and with the cap blinded too, the dedupe key on the ledger row itself.
-    const deduped = await runEveningCheckInSweep(db.database, prodDeps(sent), tenMinutesOn);
+    expect(deduped.held.frequency_cap).toBe(0);
     expect(deduped.duplicate).toBe(1);
 
     expect(sent).toHaveLength(1);

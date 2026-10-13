@@ -1,7 +1,7 @@
 import type { Database } from '@hale/db';
-import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
+import { withOptOut } from '~/lib/channel/opt-out';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { type PlanCheckInDeps, runPlanCheckInSweep } from './check-in';
 import type { NoteComposeOutcome } from './note';
@@ -251,21 +251,19 @@ describe('a due check-in', () => {
 });
 
 describe('when it must not send', () => {
-  it.each<ProactiveHoldReason>([
-    'not_enrolled',
-    'no_watch_consent',
-    'frequency_cap',
-    'quiet_hours',
-  ])('holds on %s and leaves the promise open for the next tick', async (reason) => {
-    process.env[F14_ENABLED_ENV] = 'true';
-    const h = harness({ hold: reason });
+  it.each<ProactiveHoldReason>(['not_enrolled', 'no_watch_consent', 'quiet_hours'])(
+    'holds on %s and leaves the promise open for the next tick',
+    async (reason) => {
+      process.env[F14_ENABLED_ENV] = 'true';
+      const h = harness({ hold: reason });
 
-    const result = await h.run();
+      const result = await h.run();
 
-    expect(h.sent).toEqual([]);
-    expect(h.fulfilled).toEqual([]);
-    expect(result.held[reason]).toBe(1);
-  });
+      expect(h.sent).toEqual([]);
+      expect(h.fulfilled).toEqual([]);
+      expect(result.held[reason]).toBe(1);
+    },
+  );
 
   it('sends once across two ticks in the same hour', async () => {
     process.env[F14_ENABLED_ENV] = 'true';

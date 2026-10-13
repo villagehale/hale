@@ -1222,8 +1222,8 @@ async function defaultCompose(
 
 /**
  * Hourly rider on the nudge cron. Dark until WORKSTREAMS_ENABLED is exactly
- * `true`. Quiet hours and the follow-up cap are the outbound gate's, read
- * before any model call.
+ * `true`. Quiet hours are the outbound gate's, read before any model call.
+ * A count is not a hold. Same-item dedupe is.
  */
 export async function runWorkstreamFollowupSweep(
   database: Database,

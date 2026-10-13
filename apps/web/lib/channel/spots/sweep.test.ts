@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SendRefusalReason } from '~/lib/channel/reconcile/gate';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import type { SendRefusalReason } from '~/lib/channel/reconcile/gate';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { recordSpotWatchPromise } from './promise';
 import {
@@ -335,7 +335,11 @@ describe('runWatchedSpotsSweep — the delivery-truth invariant', () => {
     // by the message that kept it.
     await setReceipt('delivered');
     const messageId = (await readWatch(spotId)).notifiedMessageId;
-    const tick3 = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, 2 * TEN_MINUTES));
+    const tick3 = await runWatchedSpotsSweep(
+      db.database,
+      test.deps,
+      later(MIDDAY, 2 * TEN_MINUTES),
+    );
     expect(tick3.released.notified).toBe(1);
     row = await readWatch(spotId);
     expect(row.releasedReason).toBe('notified');
@@ -369,13 +373,14 @@ describe('runWatchedSpotsSweep — the delivery-truth invariant', () => {
       .select({ key: schema.channelMessages.dedupeKey })
       .from(schema.channelMessages)
       .orderBy(asc(schema.channelMessages.createdAt));
-    expect(keys.map((k) => k.key)).toEqual([
-      spotOpenKey(spotId, 1, 1),
-      spotOpenKey(spotId, 1, 2),
-    ]);
+    expect(keys.map((k) => k.key)).toEqual([spotOpenKey(spotId, 1, 1), spotOpenKey(spotId, 1, 2)]);
 
     await setReceipt('failed');
-    const ended = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, 2 * TEN_MINUTES));
+    const ended = await runWatchedSpotsSweep(
+      db.database,
+      test.deps,
+      later(MIDDAY, 2 * TEN_MINUTES),
+    );
     expect(ended.released.delivery_failed).toBe(1);
     expect(test.sent).toHaveLength(2);
     const row = await readWatch(spotId);
@@ -1430,7 +1435,7 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
     expect(JSON.stringify(logged)).not.toContain(family.parentUserId);
   });
 
-  it('holds under the frequency cap without touching the observation', async () => {
+  it('sends an opening even when a count says the family already heard four', async () => {
     const family = await seedFamily(db.database);
     const test = harness();
     test.pages.set(SOURCE_URL, OPEN_PAGE);
@@ -1439,9 +1444,15 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
 
     const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
 
-    expect(summary.held.frequency_cap).toBe(1);
-    expect(summary.sent).toBe(0);
-    expect((await readWatch(spotId)).pendingKind).toBe('seat_opened');
+    expect(summary.held.frequency_cap).toBe(0);
+    expect(summary.sent).toBe(1);
+    // The observation stays until the receipt confirms. What a count used to hold is
+    // the text having left: the notified row is the pointer, and pending_kind clears
+    // only when that row reads sent or delivered.
+    const row = await readWatch(spotId);
+    expect(row.pendingKind).toBe('seat_opened');
+    expect(row.notifiedMessageId).not.toBeNull();
+    expect(row.sendAttempts).toBe(1);
   });
 
   it('threads the composed sentence, and the wire does not add an opt-out line', async () => {

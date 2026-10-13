@@ -37,7 +37,7 @@ import {
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
-  PROACTIVE_CAP,
+  PROACTIVE_CATEGORY,
   PROACTIVE_QUIET_HOURS,
   type ProactiveHoldReason,
   type ProactiveSendKind,
@@ -399,7 +399,7 @@ async function loadOpenItems(
 }
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
-  return Object.hasOwn(PROACTIVE_CAP, kind);
+  return Object.hasOwn(PROACTIVE_CATEGORY, kind);
 }
 
 /** The users who hold a seat Hale texts (`TEXTABLE_ROLES`) in this family right now. */

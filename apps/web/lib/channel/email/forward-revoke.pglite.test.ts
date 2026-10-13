@@ -165,6 +165,7 @@ function deps(
       commitmentId: '77777777-7777-4777-8777-777777777777',
     }),
     replyResolver,
+    weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
     disambiguation: createDisambiguationStore(),
     reconcileView: loadReconcileView,
     recordStatedState: async () => ({ status: 'nothing_stated' }),

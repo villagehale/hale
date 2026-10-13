@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  PROACTIVE_ROUTING,
-  capDefersToDecider,
-  proactiveCadence,
-  requestedCadence,
-  unroutedKinds,
-} from './flag';
+import { PROACTIVE_ROUTING, proactiveCadence, requestedCadence, unroutedKinds } from './flag';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -44,15 +38,5 @@ describe('proactive cadence flag', () => {
     expect(PROACTIVE_ROUTING.registration_sequence).toBe('immediate');
     expect(PROACTIVE_ROUTING.spot_open_instant).toBe('immediate');
     expect(PROACTIVE_ROUTING.nudge).toBe('decider');
-  });
-});
-
-describe('which caps give way to the decider', () => {
-  it('only the routed classes, and only when live', () => {
-    expect(capDefersToDecider('nudge', 'live')).toBe(true);
-    expect(capDefersToDecider('email_alert', 'live')).toBe(false);
-    expect(capDefersToDecider('registration_sequence', 'live')).toBe(false);
-    expect(capDefersToDecider('nudge', 'shadow')).toBe(false);
-    expect(capDefersToDecider('nudge', 'off')).toBe(false);
   });
 });

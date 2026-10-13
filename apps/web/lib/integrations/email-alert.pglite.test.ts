@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
+import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
@@ -1408,11 +1408,8 @@ describe('the offer at the end', () => {
 });
 
 describe('the gate registration', () => {
-  it('counts email alerts on their OWN budget, three a day', () => {
-    // Kills PROACTIVE_CATEGORY.email_alert = 'nudge', which would let one school notice
-    // spend a household's weekly nudge budget.
+  it('files email alerts on their own ledger category', () => {
     expect(PROACTIVE_CATEGORY.email_alert).toBe('email_alert');
-    expect(PROACTIVE_CAP.email_alert).toEqual({ max: 3, windowHours: 24 });
   });
 });
 

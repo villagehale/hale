@@ -583,12 +583,13 @@ describe('runNudgeCron — the outbound gate', () => {
     expect(h.transport.sent).toHaveLength(0);
   });
 
-  it('sends nothing to a family already nudged this week', async () => {
+  it('sends even when a count says the family was already nudged this week', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ windows: [win()], recentSends: 1 });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    expect(result.held.frequency_cap).toBe(1);
-    expect(h.transport.sent).toHaveLength(0);
+    expect(result.held.frequency_cap).toBe(0);
+    expect(result.sent).toBe(1);
+    expect(h.transport.sent).toHaveLength(1);
   });
 
   it('never composes for a gated family — no model spend behind a closed gate', async () => {
@@ -947,13 +948,10 @@ describe('the nudge reaches both parents, on their own numbers', () => {
   });
 
   /**
-   * THE MUTATION THIS SUITE EXISTS FOR, and the reason `familyCapCountsLedger` is on:
-   * the cap is counted per FAMILY, so a sweep that sent to the first parent before
-   * gating the second would hold the co-parent under a budget the same message had just
-   * spent — and the household's second number would never hear anything, silently, with
-   * `frequency_cap` in the trail looking like a healthy week.
+   * Same-item dedupe, keyed per recipient, is what stops the second tick. A count
+   * of the first tick's sends does not hold either parent.
    */
-  it('spends the household’s weekly budget once, and holds BOTH parents next tick', async () => {
+  it('dedupes both parents on the next tick, and a count holds neither', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({
       windows: [win()],
@@ -967,7 +965,8 @@ describe('the nudge reaches both parents, on their own numbers', () => {
 
     const second = await runNudgeCron(db(), h.deps, new Date('2026-07-31T14:30:00.000Z'));
     expect(second.sent).toBe(0);
-    expect(second.held.frequency_cap).toBe(2);
+    expect(second.deduped).toBe(2);
+    expect(second.held.frequency_cap).toBe(0);
     expect(h.transport.sent).toHaveLength(2);
   });
 

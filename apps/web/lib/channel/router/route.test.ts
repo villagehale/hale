@@ -415,6 +415,7 @@ function harness(
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
     armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
+    weekdayCareReader?: ChannelRouterDeps['weekdayCareReader'];
     weekdayCareAnswerTarget?: ChannelRouterDeps['weekdayCareAnswerTarget'];
     recordWeekdayCare?: ChannelRouterDeps['recordWeekdayCare'];
     searchWeekdays?: ChannelRouterDeps['searchWeekdays'];
@@ -461,6 +462,9 @@ function harness(
       recordStatedState:
         options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
       // VIL-360. No ask standing by default, for the reason above it.
+      weekdayCareReader: options.weekdayCareReader ?? {
+        read: async () => ({ status: 'nothing_stated' as const }),
+      },
       weekdayCareAnswerTarget:
         options.weekdayCareAnswerTarget ?? (async () => ({ status: 'no_open_ask' as const })),
       recordWeekdayCare:
@@ -3689,6 +3693,7 @@ describe('the weekday-care answer', () => {
       target?: ChannelRouterDeps['weekdayCareAnswerTarget'];
       questions?: OpenQuestionReader;
       searchWeekdays?: ChannelRouterDeps['searchWeekdays'];
+      reading?: Awaited<ReturnType<ChannelRouterDeps['weekdayCareReader']['read']>>;
     } = {},
   ) {
     const written: Array<{ childId: string; care: string; provider: string | null }> = [];
@@ -3697,6 +3702,9 @@ describe('the weekday-care answer', () => {
       context: { body: options.body ?? "she's home with me" },
       coach,
       questions: options.questions ?? questionsFrom(askStanding),
+      weekdayCareReader: {
+        read: async () => options.reading ?? { status: 'nothing_stated' as const },
+      },
       weekdayCareAnswerTarget:
         options.target ?? (async () => ({ status: 'open' as const, childId: CHILD })),
       searchWeekdays: options.searchWeekdays,
@@ -3713,7 +3721,9 @@ describe('the weekday-care answer', () => {
   }
 
   it('writes the fact, does not claim the turn, and lets the coach answer', async () => {
-    const { h, written, coach } = careHarness();
+    const { h, written, coach } = careHarness({
+      reading: { status: 'read', care: 'home', provider: null },
+    });
 
     const result = await routeChannelMessage(h.deps, job());
 
@@ -3726,8 +3736,11 @@ describe('the weekday-care answer', () => {
     expect(result.status).toBe('agent_replied');
   });
 
-  it('records the provider when the parent named one', async () => {
-    const { h, written } = careHarness({ body: 'she goes to Little Sprouts' });
+  it('records the provider when the reader named one', async () => {
+    const { h, written } = careHarness({
+      body: 'she goes to Little Sprouts',
+      reading: { status: 'read', care: 'daycare', provider: 'Little Sprouts' },
+    });
 
     await routeChannelMessage(h.deps, job());
 
