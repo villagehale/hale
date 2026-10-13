@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The Tiny Gym and Rock n' Roll slots are real and correctly cited to programs.php. The 'Term 1/Fall registration' slot is not a program, though its date (Wed July 22, 2026, 8:00am) is on the homepage. The first-person watch line is correct because watch is true. However, the message drops the July 22 registration date the slots carried. It also claims 'Days, times and prices only show once you log in.' Under page_has_schedule the schedule PDF publishes days and times, so this is an unearned negative claim; it should be first person ('I could not pin down the day'). The message also runs to three sentences.",
+    "score": 2
+  }
+}

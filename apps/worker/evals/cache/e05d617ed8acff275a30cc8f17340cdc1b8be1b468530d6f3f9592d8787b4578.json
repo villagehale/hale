@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Makes a real pick (the Odyssey) and gives reasons. Every specific is backed by the research notes: U.S. News #1 at 9.3, Car Talk's staff pick, Edmunds' driving preference, the Sienna's 36 mpg combined and the Carnival's 145.1 cu ft. It also notes that the rankings split, which the notes support. The tone is casual and friend-like, not an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

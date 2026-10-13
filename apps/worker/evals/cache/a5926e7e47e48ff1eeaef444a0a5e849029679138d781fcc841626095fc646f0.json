@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is unavailable. The reply says plainly that it can't check and gives no result from memory, so it is correct. The tone is casual, brief and friend-like, with no app-pointing or look-it-up deflect. It could be a touch more natural, but it fits.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

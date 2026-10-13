@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It delivers a short, vivid poem about Mondays with no preamble and no assistant-style framing, which is exactly what the creative ask wanted. There are no factual claims to check. The closing 'waiting, gone' is a little muddled, but it reads as a friend texting back a quick poem.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

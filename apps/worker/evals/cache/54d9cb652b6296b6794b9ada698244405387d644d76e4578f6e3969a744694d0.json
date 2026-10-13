@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by the research notes: U.S. News ranks the Odyssey #1 at 9.3, it is Car Talk's staff pick, Edmunds says it's the minivan it most likes driving, and Edmunds ranks the Sienna #1 for its standard hybrid at 36 mpg. No grounding item is wrongly marked settled. It makes a clear pick, gives a reason, and offers a sensible alternative. It flags the US-market assumption and reads like a casual text back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

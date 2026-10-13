@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (high 29, humidex 35, early showers and thunder risk clearing by morning, SW 40 gusting 60 late morning, Tuesday-night low 15 with a 40% shower chance) matches the Environment Canada notes for Windsor, Ontario, for the right date. It answers directly and casually, without asking which city, though it reads a bit like a forecast readout.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

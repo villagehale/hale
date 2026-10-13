@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slots are scored. The single slot is grounded in the search snippet: Parent & Tot lessons at Gellert for 4 months to 3 years, which fits a toddler. It leaves when, price and registration null rather than inventing them, and its ageFit says the page could not be opened. It does not claim the schedule is not posted. It is cited to the venue's own Town of Halton Hills URL, which is acceptable attribution for a snippet. No pages_read field is shown claiming a fetched page.",
+    "score": 5
+  }
+}

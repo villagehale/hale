@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Saturday times, Sept 12-Nov 28, ages 3-5, price null because no fee is printed, and the registration date carried, all cited to the town page. No third slot is invented. The message names both levels and attributes the facts to their site. It carries the not-yet-open registration date (Aug 11, 7am, residents). With page_has_schedule, the price gap is correctly worded in first person rather than as 'not posted'. The watch is true, so the first-person continuation is legitimate. Plain ASCII, no link, no question, two sentences, within two segments.",
+    "score": 5
+  }
+}

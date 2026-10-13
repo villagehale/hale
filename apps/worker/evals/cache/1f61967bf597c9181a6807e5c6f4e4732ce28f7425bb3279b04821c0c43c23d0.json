@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Takes a clear side (yes, it's fine) with a light reason, which is what the question asked for. No current facts are stated, and 'ham plus pineapple is a classic' is common knowledge. The tone reads casual and friendly, not like an assistant. The closing line nods to the other side but doesn't fence-sit, since the pick is clear. It could be a bit punchier, but it's a solid friend-text answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

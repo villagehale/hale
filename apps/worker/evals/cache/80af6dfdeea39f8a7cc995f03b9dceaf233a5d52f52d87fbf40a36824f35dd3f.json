@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "about 540 km",
+        "from": "Driving from Toronto to Montreal is about 540 km"
+      },
+      {
+        "states": "roughly 5 hours 30 minutes without stops",
+        "from": "takes roughly 5 hours 30 minutes without stops"
+      },
+      {
+        "states": "mostly on Highway 401",
+        "from": "mostly on Highway 401"
+      }
+    ],
+    "answer": "About 540 km, roughly 5 and a half hours without stops. Most of it is on Highway 401."
+  },
+  "latencyMs": 2838
+}

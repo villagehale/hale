@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Essentials can replace a multivitamin, probiotics and certain workout supplements",
+        "from": "It says Essentials can replace your multivitamin, probiotics and certain workout supplements"
+      },
+      {
+        "states": "several ingredients are underdosed",
+        "from": "several underdosed ingredients"
+      },
+      {
+        "states": "key ingredient amounts are hidden behind proprietary blends",
+        "from": "key ingredient amounts hidden behind proprietary blends"
+      },
+      {
+        "states": "very high cost",
+        "from": "very high cost as cons"
+      },
+      {
+        "states": "third-party tested and NSF Certified for Sport",
+        "from": "Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "worth it only if it replaces several supplements you already buy",
+        "from": "Several reviewers say it's worth it only if it replaces several supplements you already buy."
+      },
+      {
+        "states": "evidence for its health claims is limited",
+        "from": "Independent critics say the evidence for its health claims is limited."
+      }
+    ],
+    "answer": "Mostly overrated, for most people. I'm going by Daily Ultimate Essentials, since that's the one the reviews mostly cover. The convenience and third-party testing are real, and it's only worth the price if it replaces several supplements you already take. But critics say several ingredients are underdosed, key amounts are hidden behind proprietary blends, it's very expensive, and the evidence for its health claims is limited."
+  },
+  "latencyMs": 6836
+}

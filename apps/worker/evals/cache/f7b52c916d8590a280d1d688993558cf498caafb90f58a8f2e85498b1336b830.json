@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Short-term melatonin use appears safe for most adults",
+        "from": "short-term melatonin use appears safe for most people"
+      },
+      {
+        "states": "Typically safe and well tolerated at low doses, for the shortest time needed",
+        "from": "typically safe and well tolerated at low doses, taken appropriately for the shortest time"
+      },
+      {
+        "states": "A preliminary American Heart Association study presented in November 2025 linked a year or more of melatonin use in people with chronic insomnia to higher rates of heart failure",
+        "from": "linked melatonin use of a year or more in people with chronic insomnia to higher rates of heart failure diagnosis"
+      },
+      {
+        "states": "Heart failure in 4.6% of long-term users versus 2.7% of non-users over five years",
+        "from": "4.6% of long-term melatonin users versus 2.7% of non-users over five years"
+      },
+      {
+        "states": "The study cannot prove cause and effect",
+        "from": "the study cannot prove cause and effect"
+      },
+      {
+        "states": "Findings are preliminary because the abstract is not peer-reviewed",
+        "from": "the findings are preliminary because abstracts at its meetings are not peer-reviewed"
+      },
+      {
+        "states": "Some experts think the results may reflect poor sleep rather than melatonin",
+        "from": "some experts think the results may reflect the effects of poor sleep rather than melatonin"
+      },
+      {
+        "states": "One doctor quoted says adults should take only 0.3 to 1 mg",
+        "from": "adults should take only 0.3 to 1 mg"
+      },
+      {
+        "states": "A common adult dose cited is about 3 to 5 mg",
+        "from": "the most common adult dose is about 3 to 5 mg"
+      }
+    ],
+    "answer": "For short-term use, yes, it's generally considered safe for most adults at low doses. The long-term picture is less clear. A preliminary study presented to the American Heart Association in November 2025 linked a year or more of use in people with chronic insomnia to more heart failure: 4.6% of long-term users vs 2.7% of non-users over five years. It hasn't been peer-reviewed, it can't prove cause, and some experts think poor sleep may be the real factor. Doses vary a lot too, from 0.3 to 1 mg in one doctor's advice to 3 to 5 mg in a common guide. If you're thinking of using it regularly, especially if you're older or take other meds, it's worth running it past a doctor or pharmacist first."
+  },
+  "latencyMs": 8737
+}

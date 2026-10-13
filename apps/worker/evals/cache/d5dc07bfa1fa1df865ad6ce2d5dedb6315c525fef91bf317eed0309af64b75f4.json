@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is backed by the research notes: the 4.34% lowest insured rate (Ratehub and WOWA), the 4.44% lowest uninsured rate (WOWA), the 5.14% Big 6 average (Nesto) and the rise this month. Splitting by down payment is a sensible way to handle the insured/uninsured gap. It reads like a friend texting back. It loses a point because it never says these are Canadian rates or gives an as-of date, beyond a loose 'this month', which watchFor asks for. The other WOWA snippet's 4.64% uninsured figure also goes unmentioned, though that is minor.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

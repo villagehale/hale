@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by the notes: insured 4.34% (Ratehub, Oct 12), uninsured 4.44% (WOWA, Oct 9), Big 6 average 5.14% (Nesto), and rates rising. Each comes with its source and date. It is casual and states the answer. The closing line, \"I can't check the exact number right now,\" contradicts the fact that a search was made and needlessly undercuts the answer. That is a wobble in tone and coherence, not a wrong fact.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

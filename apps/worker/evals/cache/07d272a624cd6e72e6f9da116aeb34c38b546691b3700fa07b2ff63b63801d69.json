@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by research_notes: the 4.34% lowest insured rate (Oct 9-12), the 4.44% lowest uninsured rate (Oct 9), the Big 6 average of 5.14%, the BMO and CIBC hikes, and the climbing trend. It covers the 5-year fixed term in Canada, with dates and the insured/uninsured split. It answers directly with no deflect. The tone is casual enough, but the stacked parenthetical dates read a bit more like a report than a quick text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

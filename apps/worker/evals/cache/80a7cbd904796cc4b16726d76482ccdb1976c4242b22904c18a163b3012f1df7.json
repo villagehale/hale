@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC: Tuesday October 13 a mix of sun and cloud, high 15°C",
+        "from": "Environment Canada's forecast was issued 5:00 AM PDT on Monday, October 12, 2026. It gives Tuesday as a mix of sun and cloud, with a high of 15°C"
+      },
+      {
+        "states": "Vancouver, BC: Tuesday night showers, low 11°C",
+        "from": "Tuesday night: showers, low 11."
+      },
+      {
+        "states": "Vancouver, WA: Tuesday October 13 mostly sunny, high near 64°F",
+        "from": "The National Weather Service forecast for Vancouver WA says Tuesday: mostly sunny, with a high near 64."
+      },
+      {
+        "states": "Vancouver, WA: frost advisory early Tuesday morning, 12:00 AM to 8:00 AM October 13",
+        "from": "A Frost Advisory runs from 12:00 AM to 8:00 AM on October 13."
+      }
+    ],
+    "answer": "Tomorrow, Tuesday, in Vancouver BC: a mix of sun and cloud, high of 15°C, then showers Tuesday night, low 11°C. In Vancouver WA it's mostly sunny, high near 64°F, but with a frost advisory for the early morning, 12 to 8 AM."
+  },
+  "latencyMs": 6367
+}

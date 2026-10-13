@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact in the answer is backed by the research notes: no game last night, the season ended Sept 27 with a 5-1 home win over the Reds, and Toronto finished 79-83 and missed the playoffs. It gives a direct answer, with a fair note on which team it assumed, and reads casual and brief. 'Assuming you mean' is a touch formal for a text, but fine.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Short-term melatonin use appears safe for most people",
+        "from": "The NIH says short-term melatonin use appears safe for most people"
+      },
+      {
+        "states": "Short-term means one to two months",
+        "from": "UC Davis defines short-term as one to two months"
+      },
+      {
+        "states": "Low doses are typically safe and well tolerated when taken for the shortest time (UC Davis, Feb 2025)",
+        "from": "UC Davis Health (Feb 2025) says melatonin is typically safe and well tolerated at low doses, taken appropriately for the shortest time."
+      },
+      {
+        "states": "Heart failure in 4.6% of long-term users vs 2.7% of non-users over five years, in 130,828 adults with chronic insomnia",
+        "from": "It reviewed records of 130,828 adults and found heart failure in 4.6% of long-term melatonin users versus 2.7% of non-users over five years."
+      },
+      {
+        "states": "Heart failure link is preliminary, from a conference abstract presented November 2025, not peer-reviewed, and cannot prove cause and effect",
+        "from": "The AHA says the study cannot prove cause and effect. | The AHA also says the findings are preliminary because abstracts at its meetings are not peer-reviewed."
+      },
+      {
+        "states": "Some experts think poor sleep, not melatonin, may explain the link",
+        "from": "Scientific American reports that some experts think the results may reflect the effects of poor sleep rather than melatonin."
+      },
+      {
+        "states": "Doses over 3 mg of controlled-release products can cause next-day drowsiness",
+        "from": "A review in PMC notes that doses over 3 mg of controlled-release products can potentially cause next-day drowsiness."
+      },
+      {
+        "states": "Older adults and people with previous low-impact fractures should use melatonin with caution because of fracture risk",
+        "from": "The PMC review says the possible fracture risk is a reason to use melatonin with caution in older adults and in people with previous low-impact fractures."
+      },
+      {
+        "states": "Long-term use for ongoing sleep problems should be discussed with a doctor",
+        "from": "GoodRx also says long-term sleep problems often point to an underlying condition, and that taking melatonin long term without medical input could let that condition worsen."
+      }
+    ],
+    "answer": "For a short stretch, it's generally considered safe for most adults, and low doses are usually well tolerated. Short-term here means about one to two months. The thing to know is a study presented in November 2025 that linked a year or more of use, in people with chronic insomnia, to more heart failure: 4.6% of long-term users vs 2.7% of non-users over five years. It's only a conference abstract so far, it hasn't been peer-reviewed, it can't prove melatonin caused it, and some experts think poor sleep may be behind it. Higher doses can leave you groggy the next day, and older adults should be extra careful because of fracture risk. If you're thinking about taking it long term, or your sleep has been a problem for a while, talk to a doctor first."
+  },
+  "latencyMs": 8817
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "fact_updates": [],
+    "episode_summaries": [],
+    "pattern_detections": [],
+    "retire_facts": []
+  },
+  "latencyMs": 2362
+}

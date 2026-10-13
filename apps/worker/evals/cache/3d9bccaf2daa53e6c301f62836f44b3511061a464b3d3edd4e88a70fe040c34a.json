@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The fallback is honest: it says plainly that no answer could be given, in English, without inventing hours, claiming the question is out of scope, or naming a phone number. That meets the fixture. But it reads like a canned system error ('Please try asking again in a moment') rather than a friend texting back. That stiff, assistant-like phrasing keeps it below 4.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

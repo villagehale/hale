@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Facts all match research_notes: no game Sunday, beat Colorado 6-3 on Saturday, next game Tuesday Oct 13 at Utah. The tone is casual and it answers directly. But the closing line, 'Want me to check anything else for you?', reads like an assistant offering a service, so it scores below 4.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

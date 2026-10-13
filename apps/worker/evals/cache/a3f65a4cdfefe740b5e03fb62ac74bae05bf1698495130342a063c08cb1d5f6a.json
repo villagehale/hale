@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are accurate. The day, times and session dates are exactly as printed, ages 3-5 are correct, and price is correctly null because the page prints no fee. The registration window is carried and cited to the page, and there is no invented third level. The message leads with Preschool A by name, attributes with 'their site says' and carries the not-yet-open Aug 11 7am registration date. It uses first person for the price gap, which fits page_has_schedule and makes no unearned 'not posted' claim. Because watch is true, the 'I'll keep watching and text you' commitment is correct. It has no question, no link and plain ASCII. The one deduction is length: the two sentences are long and dense rather than short, with a trailing tacked-on attribution and a slightly vague 'when I can'.",
+    "score": 4
+  }
+}

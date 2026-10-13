@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The detail is missing, so asking which country is correct, and no fact is invented. It's mostly casual. 'I'll look up the 5 year fixed rate there' leans slightly assistant-like, but it reads fine as a friend asking back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

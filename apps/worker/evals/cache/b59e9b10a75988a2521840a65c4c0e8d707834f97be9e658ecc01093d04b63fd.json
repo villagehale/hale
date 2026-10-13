@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail and the answer correctly asks which country, stating no broadcaster or current fact from memory. That rights vary by country is common knowledge. Tone is close to a friend's text, though the 'tell me and I'll tell you' framing leans slightly toward an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

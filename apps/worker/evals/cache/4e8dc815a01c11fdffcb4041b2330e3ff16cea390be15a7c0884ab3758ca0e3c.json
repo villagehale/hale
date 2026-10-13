@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct, settled kitchen knowledge: the cold-water start, 10 to 12 minutes and then an ice bath is a standard method. It gives a real number and reads like a friend texting back, not an assistant. It is direct, brief and has no deflect.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

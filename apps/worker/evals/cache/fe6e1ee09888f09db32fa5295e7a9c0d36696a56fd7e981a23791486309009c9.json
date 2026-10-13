@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Names Mark Carney with a 14 March 2025 start date. Both facts are supported by the research notes, and grounding marks nothing as settled. It's in English, direct, and has no service-offer tone. 'Still in the job as of this week' is supported by Britannica's Oct 6 and Oct 8 items. Slightly wordy and a bit formal for a friend's text, but it answers well.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

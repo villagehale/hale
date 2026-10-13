@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: the market is closed today for Thanksgiving, Friday closed at 35,664.62, up 519.24 (1.477% rounds to 1.48%), and trading resumes tomorrow at 9:30 a.m. ET. It is brief and casual, and it answers the question directly with no deflecting. It reads slightly formal but is still friend-like.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

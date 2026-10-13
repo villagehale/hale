@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday Oct 13 in Toronto: showers end near noon, then mainly cloudy with a 60% chance of showers",
+        "from": "Showers are expected to end near noon. After that it should be mainly cloudy, with a 60% chance of showers."
+      },
+      {
+        "states": "Tuesday Oct 13 in Toronto: risk of thunderstorms in the morning and afternoon",
+        "from": "There is a risk of a thunderstorm in the morning and afternoon."
+      },
+      {
+        "states": "Tuesday Oct 13 in Toronto: local rainfall 10 to 20 mm",
+        "from": "Local rainfall amounts are 10 to 20 mm."
+      },
+      {
+        "states": "Tuesday Oct 13 in Toronto: wind southwest 20 km/h, gusting to 40 near noon",
+        "from": "Wind becomes southwest 20 km/h, gusting to 40, near noon."
+      },
+      {
+        "states": "Tuesday Oct 13 in Toronto: high 24°C, humidex 28",
+        "from": "The high is 24°C and the humidex is 28."
+      }
+    ],
+    "answer": "Tomorrow in Toronto looks wet and warm. The showers should ease off around noon, then it's mainly cloudy with a 60% chance of showers, and there's a risk of thunderstorms through the morning and afternoon. High of 24°C, humidex 28, with southwest wind 20 km/h gusting to 40 near noon. Rain could total 10 to 20 mm. That's from Environment Canada's 11am forecast."
+  },
+  "latencyMs": 4814
+}

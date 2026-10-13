@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Oakville, Ontario has no open Costco yet",
+        "from": "Oakville, Ontario has no open Costco yet."
+      },
+      {
+        "states": "the first Oakville Costco is due fall 2027, on Wyecroft Rd near Burloak Dr",
+        "from": "The first Oakville warehouse is under development. An \"Opening Soon\" sign has gone up at the Wyecroft Road site near Burloak Drive. Demolition is done and the target opening is fall 2027."
+      },
+      {
+        "states": "the Burlington Costco is at 1225 Brant St",
+        "from": "Burlington: 1225 Brant St, Burlington, ON L7P 1X7"
+      },
+      {
+        "states": "the Mississauga Costco is at 3180 Laird Rd",
+        "from": "Mississauga: 3180 Laird Rd."
+      }
+    ],
+    "answer": "Oakville doesn't have an open Costco yet. The first one is due fall 2027 on Wyecroft Rd near Burloak Dr. For now the closest open ones are in Burlington at 1225 Brant St and in Mississauga at 3180 Laird Rd. I don't have driving times from your part of Oakville, so I can't say which is quicker for you."
+  },
+  "latencyMs": 7117
+}

@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Soccer GOAT pick: Lionel Messi",
+        "from": "Most recent coverage leans toward Lionel Messi as the GOAT"
+      },
+      {
+        "states": "Messi has eight Ballon d'Or, Ronaldo five",
+        "from": "Messi has eight Ballons d'Or, compared to Ronaldo's five"
+      },
+      {
+        "states": "Messi has edged ahead in the GOAT debate after Qatar and the 2026 World Cup",
+        "from": "Messi's performances in Qatar and at the 2026 World Cup have strengthened the view that he has edged ahead in the GOAT debate"
+      },
+      {
+        "states": "NFL GOAT pick: Tom Brady, 7 Super Bowl wins",
+        "from": "Tom Brady is still widely treated as the NFL GOAT. He has 7 Super Bowl wins"
+      },
+      {
+        "states": "Patrick Mahomes is the main challenger, fans divided",
+        "from": "Patrick Mahomes is the main challenger. Fans remain divided."
+      }
+    ],
+    "answer": "Depends which football you mean. For soccer I'd say Messi. Most coverage has him as the greatest, his 2026 World Cup run pushed him further ahead in the debate, and he has 8 Ballon d'Or to Ronaldo's 5. For NFL it's still Brady with 7 Super Bowl wins, though Mahomes is the one closing in and fans are split."
+  },
+  "latencyMs": 6261
+}

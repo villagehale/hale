@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday, October 13, 2026 daytime high of 65°F",
+        "from": "The NWS forecast high is 65°F"
+      },
+      {
+        "states": "Tuesday daytime: partly sunny skies",
+        "from": "The Denver Gazette (NWS Boulder forecast) says partly sunny skies Tuesday"
+      },
+      {
+        "states": "Tuesday afternoon rain chance of 30% after 3 p.m.",
+        "from": "NWS gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "Tuesday evening: a possible shower, with chances increasing into the evening",
+        "from": "rain and showers possibly moving in Tuesday evening; The chances increase into the evening"
+      },
+      {
+        "states": "Tuesday night lows in the low 40s, possibly the 30s",
+        "from": "Lows are expected in the low 40s and 30s Tuesday night (NWS via Denver Gazette)"
+      },
+      {
+        "states": "Tuesday winds north-northeast at 6 to 10 mph",
+        "from": "North-northeast winds of 6 to 10 mph"
+      }
+    ],
+    "answer": "Tomorrow's cooler, about 65°F with partly sunny skies. Clouds build later, with a 30% chance of rain after 3pm and a possible shower in the evening. Tomorrow night drops to the low 40s, maybe the 30s. Breezy from the north-northeast at 6 to 10 mph."
+  },
+  "latencyMs": 4461
+}

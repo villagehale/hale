@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With live unavailable, the right move is to say plainly it can't check, and the answer does that without stating any result, so the facts are fine. The tone is a bit stiff and apologetic ('Sorry I can't confirm it this time', 'I don't want to guess and give you a wrong score'), less like a quick casual text, but it doesn't read as a service offer and doesn't deflect to an app.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct: Lima is the capital of Peru. Saying it sits on the Pacific coast and is the country's biggest city is common knowledge, not an invented specific. The reply is brief, casual and just answers, like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

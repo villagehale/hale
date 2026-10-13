@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "short-term melatonin use appears safe for most people",
+        "from": "The NIH says short-term melatonin use appears safe for most people"
+      },
+      {
+        "states": "melatonin is typically safe and well tolerated at low doses, taken for the shortest time",
+        "from": "UC Davis Health (Feb 2025) says melatonin is typically safe and well tolerated at low doses, taken appropriately for the shortest time."
+      },
+      {
+        "states": "short-term means one to two months",
+        "from": "UC Davis defines short-term as one to two months."
+      },
+      {
+        "states": "adult doses are disputed: 0.3 to 1 mg per one doctor, 3 to 5 mg as the most common adult dose per GoodRx",
+        "from": "Yale New Haven Health quotes a doctor saying adults should take only 0.3 to 1 mg, and not long-term. GoodRx says the most common adult dose is about 3 to 5 mg, taken 1 to 2 hours before bed."
+      },
+      {
+        "states": "a preliminary AHA abstract linked a year or more of use in chronic insomnia to higher heart failure rates: 4.6% of long-term users vs 2.7% of non-users over five years",
+        "from": "An American Heart Association abstract was presented in November 2025. It reviewed records of 130,828 adults and found heart failure in 4.6% of long-term melatonin users versus 2.7% of non-users over five years."
+      },
+      {
+        "states": "the AHA study cannot prove cause and effect and is not yet peer-reviewed",
+        "from": "The AHA says the study cannot prove cause and effect. The AHA also says the findings are preliminary because abstracts at its meetings are not peer-reviewed."
+      },
+      {
+        "states": "some experts think poor sleep may explain the results rather than melatonin",
+        "from": "Scientific American reports that some experts think the results may reflect the effects of poor sleep rather than melatonin."
+      },
+      {
+        "states": "long-term sleep problems often point to an underlying condition that a doctor should look at",
+        "from": "GoodRx also says long-term sleep problems often point to an underlying condition, and that taking melatonin long term without medical input could let that condition worsen."
+      }
+    ],
+    "answer": "For most adults, short-term use looks fine. It's typically safe at low doses, taken for the shortest time you need, and UC Davis counts one to two months as short-term. The dose advice really does conflict, though, with some sources saying 0.3 to 1 mg and others 3 to 5 mg, so start at the low end. Taking it nightly for months is the part to be careful about. A preliminary AHA study from November 2025 linked a year or more of use in chronic insomnia to more heart failure (4.6% vs 2.7% over five years), but it isn't peer-reviewed yet, can't prove cause, and poor sleep may be the real driver. If you're thinking about using it long term, a doctor should look at why the sleep trouble keeps going."
+  },
+  "latencyMs": 8889
+}

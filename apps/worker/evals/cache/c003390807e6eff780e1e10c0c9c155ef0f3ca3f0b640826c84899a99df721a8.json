@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct settled kitchen knowledge: 10-12 minutes, then cold water, with the size note being reasonable. It's brief, casual, and directly answers like a friend texting back. No safety concern beyond normal cooking.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

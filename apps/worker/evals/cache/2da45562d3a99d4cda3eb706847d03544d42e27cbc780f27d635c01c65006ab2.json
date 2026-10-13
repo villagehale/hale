@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No Toronto Raptors game on Monday, Oct 12",
+        "from": "No Raptors game tonight, Monday Oct 12."
+      },
+      {
+        "states": "Next game is Tuesday, Oct 13, preseason vs the New York Knicks",
+        "from": "The next game is a preseason game against the New York Knicks on Tuesday, Oct 13."
+      },
+      {
+        "states": "Tip-off 7:00 PM ET",
+        "from": "tip-off at 7:00 PM ET"
+      },
+      {
+        "states": "At Scotiabank Arena in Toronto",
+        "from": "It is at Scotiabank Arena in Toronto"
+      },
+      {
+        "states": "Team assumed to be the Toronto Raptors (NBA)",
+        "from": "I assumed the NBA's Toronto Raptors, since the question doesn't say which team"
+      }
+    ],
+    "answer": "Not tonight. They're off Monday. Next game is Tuesday, Oct 13, a preseason game vs the Knicks at Scotiabank Arena in Toronto, tip-off 7:00 PM ET. (Assuming you mean the Toronto Raptors.)"
+  },
+  "latencyMs": 5048
+}

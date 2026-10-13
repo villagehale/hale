@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Windsor, Ontario, Tuesday October 13, 2026",
+        "from": "forecast for Windsor, Ontario, Canada, for Tuesday, October 13, 2026"
+      },
+      {
+        "states": "high of 29 (Tuesday daytime)",
+        "from": "Environment Canada, issued 4:09 PM EDT Monday Oct 12: High 29"
+      },
+      {
+        "states": "humidex 35 (Tuesday daytime)",
+        "from": "Environment Canada: humidex 35"
+      },
+      {
+        "states": "30 percent chance of showers early in the morning Tuesday, with a risk of a thunderstorm; clearing in the morning",
+        "from": "Environment Canada: Mainly cloudy with a 30 percent chance of showers early in the morning and a risk of a thunderstorm. Clearing in the morning."
+      },
+      {
+        "states": "wind southwest 20 km/h gusting to 50, increasing to 40 gusting to 60 late in the morning",
+        "from": "Environment Canada: Wind is southwest 20 km/h gusting to 50, increasing to 40 gusting to 60 late in the morning."
+      },
+      {
+        "states": "Tuesday night low 15, 40 percent chance of showers before morning with a risk of a thunderstorm",
+        "from": "Environment Canada: Tuesday night: increasing cloudiness early in the evening, 40 percent chance of showers before morning with a risk of a thunderstorm, low 15."
+      }
+    ],
+    "answer": "Windsor tomorrow is a hot one, high 29, feeling like 35 with the humidity. Early morning there's a 30% chance of showers and a risk of a thunderstorm, then it clears in the morning. It gets windy late morning with gusts up to 60 km/h. Tuesday night drops to a low of 15 with a 40% chance of showers before morning."
+  },
+  "latencyMs": 5917
+}

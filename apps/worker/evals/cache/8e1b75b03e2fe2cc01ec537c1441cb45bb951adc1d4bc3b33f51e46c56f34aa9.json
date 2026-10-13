@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail, and the answer correctly asks which country without stating any rate. It's accurate, but slightly explanatory: the second sentence reads a bit formal rather than a quick casual text. Still brief and friendly enough.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

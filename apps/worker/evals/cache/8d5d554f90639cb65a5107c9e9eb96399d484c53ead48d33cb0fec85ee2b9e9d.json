@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is unavailable. The answer plainly says it can't check tomorrow's weather right now. It states no forecast from memory and doesn't ask which city, so it is correct per watchFor. It reads as a brief, casual friend text, not an assistant offering a service. It isn't a deflect to an app or a look-it-up either. It is a little flat, but it fully meets the bar.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

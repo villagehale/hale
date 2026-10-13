@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Monday in Toronto is mainly cloudy with no rain in the daytime forecast",
+        "from": "Environment Canada (7-day forecast issued 11:00 AM EDT Monday Oct 12): Monday is mainly cloudy with a high of 23°C. The daytime forecast mentions no rain."
+      },
+      {
+        "states": "Monday high of 23°C",
+        "from": "Environment Canada (7-day forecast issued 11:00 AM EDT Monday Oct 12): Monday is mainly cloudy with a high of 23°C."
+      },
+      {
+        "states": "Monday evening has a 20% chance of precipitation at 6pm and 7pm",
+        "from": "The Weather Network hourly page: Monday evening shows a 20% chance of precipitation at 6pm and 7pm"
+      },
+      {
+        "states": "Showers likely starting overnight, before morning Tuesday, with a risk of thunderstorm",
+        "from": "Tonight is mainly cloudy, with a few showers beginning before morning and a risk of a thunderstorm."
+      }
+    ],
+    "answer": "Mostly no for today. It's mainly cloudy with a high of 23°C and no rain in the daytime forecast, with only a small chance (about 20%) of a shower in the early evening. The rain looks like it arrives overnight into Tuesday, possibly with a thunderstorm."
+  },
+  "latencyMs": 3194
+}
