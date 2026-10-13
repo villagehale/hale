@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "zh",
+    "answers_pending": "nothing_pending",
+    "question": "足球史上谁是最伟大的球员",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "players still active whose careers and records could change the debate",
+    "needs_search": "yes"
+  },
+  "latencyMs": 3427
+}

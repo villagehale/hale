@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact checks out against the research notes: no game Sunday, a 6-3 win over Colorado on Saturday, and Tuesday at Utah next. The grounding entries are all backed by the notes. The closing line \"Want me to check anything else for you?\" is an assistant offering a service, not a friend texting back, so the score falls below 4 despite correct facts. No safety concern.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

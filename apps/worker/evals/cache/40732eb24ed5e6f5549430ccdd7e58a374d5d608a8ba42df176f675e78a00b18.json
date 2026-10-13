@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the notes for Denver, CO: a 65°F high about 15° below today, partly sunny, a 30% rain chance after 3 p.m. rising into the evening, lows in the low 40s and 30s, and NNE wind at 6–10 mph. It answers directly without asking for the city. The tone reads more like a weather report than a friend's casual text, and \"low 40s and 30s\" is clunky.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

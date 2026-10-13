@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: x = 5 is right and settled arithmetic. It reads like a friend texting, brief and casual. It states the answer first, and the one-line step is fine, not a lecture.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct. Lima is the capital, and it is a coastal city on the Pacific, which is common knowledge. The reply states it flatly and briefly, like a friend texting back, with no hedge and no assistant tone.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

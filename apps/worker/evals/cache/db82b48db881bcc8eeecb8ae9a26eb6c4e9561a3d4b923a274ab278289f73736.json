@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "911 is the emergency number in the US",
+        "from": "settled"
+      }
+    ],
+    "answer": "Yes, it's 911 in the US too, same as where you are. Just dial it and ask for police, fire or an ambulance."
+  },
+  "latencyMs": 3290
+}
