@@ -461,7 +461,9 @@ describe('the general-answer runner', () => {
    * fixture (3 to 5, 6 to 8). Composes are the near miss's reply (1), then three per
    * fixture (2 to 4, 5 to 7).
    */
-  describe('the gate, by exit code', () => {
+  // Each test here runs the runner as a process, which takes two to three seconds on a
+  // CI runner; the default five-second limit is not enough room for one, let alone three.
+  describe('the gate, by exit code', { timeout: 60_000 }, () => {
     const PASSES = { score: 5, wrong_fact: false, safety_miss: false };
     const FAILS = { score: 1, wrong_fact: false, safety_miss: false };
     const HOLDS = { 1: FAILS, 2: FAILS, '*': PASSES };
@@ -624,6 +626,6 @@ describe('the general-answer runner', () => {
 
     expect(withNumber).toBe(alreadyScrubbed);
     expect(otherWords).not.toBe(alreadyScrubbed);
-  });
+  }, 60_000);
 });
 
