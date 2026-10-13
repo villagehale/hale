@@ -49,7 +49,7 @@ const NAME_THEN_PHONE =
 /**
  * A number, or a name and then a number, and nothing else.
  *
- * "9059629821" and "Sam 905-962-9821" are the ask's answer. A sentence that
+ * "9055550182" and "Sam 905-555-0182" are the ask's answer. A sentence that
  * merely contains a number is not: the school line in the middle of a question
  * must still reach the coach.
  */

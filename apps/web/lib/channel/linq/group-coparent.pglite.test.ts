@@ -34,7 +34,7 @@ import type { LinqInboundText } from './payload';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT_PHONE = '+14165550111';
-const COPARENT_PHONE = '+19059629821';
+const COPARENT_PHONE = '+19055550182';
 const FROM = '+16462352164';
 const POSTAL = 'M5V2T6';
 const NOW = new Date('2026-09-24T18:00:00.000Z');

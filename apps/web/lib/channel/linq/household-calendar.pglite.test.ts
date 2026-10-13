@@ -29,7 +29,7 @@ import { recordLogisticsVote, whoTakesPrompt } from './logistics-poll';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT_PHONE = '+14165550111';
-const COPARENT_PHONE = '+19059629821';
+const COPARENT_PHONE = '+19055550182';
 const GROUP = 'chat-household-group';
 const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/messages`;
 const QUIET = new Date('2026-09-25T03:00:00.000Z');
