@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada forecast in the notes: showers ending near noon, 60% chance, thunderstorm risk, 10–20 mm, SW wind 20 gusting 40, high 24°C, low 12°C. It correctly treats \"Toronto\" as the answer to the city question and gives tomorrow's forecast directly. The tone reads more like a recited weather bulletin than a casual friend's text, with dense detail and a source timestamp, so it falls a bit short of a 5.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

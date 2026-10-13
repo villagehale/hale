@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The draft is a structured calendar payload (title, start time, location, provider) rather than a message, so tone is essentially neutral. It is clear, factual, and appropriate for a calendar entry, with no robotic self-reference or inappropriate emotional performance, though it has no first-person parent voice because none is expected here.",
+    "score": 4
+  }
+}

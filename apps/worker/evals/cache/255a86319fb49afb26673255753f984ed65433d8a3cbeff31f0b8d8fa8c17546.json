@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: Lima is the capital of Peru and it sits on the Pacific coast, both settled knowledge. The reply is brief, casual and in English, and it is the answer. It makes no mention of the earlier weather question, as watchFor wants.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

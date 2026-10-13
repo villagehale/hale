@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply takes a clear side (yes, pineapple on pizza is fine) and backs it with a casual reason, which is what an opinion ask needs. There is no current fact to check and nothing invented. It loses a point for tone: it reads a little flat for a playful '😂' text. The closing 'if you hate it, that's fine too' softens the pick slightly, but does not undo it.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

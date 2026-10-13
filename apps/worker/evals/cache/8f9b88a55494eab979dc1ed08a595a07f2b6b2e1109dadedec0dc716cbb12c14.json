@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC, Tuesday 13 Oct: mix of sun and cloud, high 15°C",
+        "from": "Tuesday, 13 Oct: a mix of sun and cloud, high 15"
+      },
+      {
+        "states": "Vancouver, BC, Tuesday night: showers, low 11°C",
+        "from": "Tuesday night: showers, low 11"
+      },
+      {
+        "states": "Vancouver, WA, Tuesday 13 Oct: mostly sunny, high near 64°F",
+        "from": "Tuesday: mostly sunny, with a high near 64"
+      },
+      {
+        "states": "Vancouver, WA, early Tuesday morning: frost advisory, 12:00 AM to 8:00 AM",
+        "from": "A Frost Advisory runs from 12:00 AM to 8:00 AM on October 13"
+      }
+    ],
+    "answer": "Tomorrow in Vancouver, BC: a mix of sun and cloud, high 15°C, then showers Tuesday night, low 11°C. If you meant Vancouver, WA, it's mostly sunny, high around 64°F, but there's a frost advisory early Tuesday morning, so bundle up for the cold start."
+  },
+  "latencyMs": 6443
+}

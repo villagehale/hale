@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://en.wikipedia.org/wiki/Prime_Minister_of_Canada",
+    "https://en.wikipedia.org/wiki/List_of_prime_ministers_of_Canada",
+    "https://www.pm.gc.ca/en/about",
+    "https://www.pm.gc.ca/en/cabinet",
+    "https://en.wikipedia.org/wiki/Mark_Carney",
+    "https://www.britannica.com/biography/Mark-Carney",
+    "https://www.facebook.com/CanadianPM/",
+    "https://www.youtube.com/@CanadianPM",
+    "https://globalnews.ca/news/2317806/stephen-harper-canadas-22nd-prime-minister-steps-down",
+    "https://graphsearch.epfl.ch/en/concept/451733"
+  ],
+  "notes": "Mark Carney is the current prime minister of Canada, as of today, Oct 12, 2026.\n\n- Wikipedia's list of Canadian prime ministers calls him the 24th and current prime minister. He took office on 14 March 2025.\n- The Prime Minister's official site, pm.gc.ca, says he was elected Leader of the Liberal Party of Canada and sworn in as Prime Minister in March 2025.\n- Britannica's Carney page lists news items dated Oct. 6 and Oct. 8, 2026. They still call him Canada's leader, so he is still in office as of this week.\n- Britannica says he became prime minister after the government of Justin Trudeau collapsed.\n\nThe official pm.gc.ca page was about a year old when the search ran. The recent confirmation comes from Britannica's news items and from Wikipedia, whose Carney page showed as updated today.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 4614
+}

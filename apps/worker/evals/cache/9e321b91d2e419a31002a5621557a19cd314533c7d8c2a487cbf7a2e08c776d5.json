@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by the notes: the lowest insured 5-year fixed is 4.34% (Ratehub Oct 12, WOWA), the lowest uninsured is 4.44% (WOWA), and the Big 6 average is 5.14% (Nesto). It rightly flags the insured/uninsured split, which the question didn't specify. Minor nit: the 4.44% is dated Oct 9, not Oct 12. The reply is brief, direct and casual enough for a text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

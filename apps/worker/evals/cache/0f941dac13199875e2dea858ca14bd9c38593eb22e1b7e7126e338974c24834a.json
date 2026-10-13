@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto Blue Jays did not play on Sunday, Oct 11 (last night)",
+        "from": "I found no Blue Jays result for Oct 11 because there was no game."
+      },
+      {
+        "states": "Blue Jays regular season ended Sunday, Sept 27, 2026, with a 5-1 home win over the Cincinnati Reds",
+        "from": "ESPN's game page says the Blue Jays' regular season ended on Sunday, Sept 27, 2026, with a 5-1 home win over the Cincinnati Reds."
+      },
+      {
+        "states": "Blue Jays finished 79-83 and are not in the postseason",
+        "from": "settled"
+      }
+    ],
+    "answer": "The Blue Jays didn't play last night. Their season wrapped Sept 27 with a 5-1 home win over the Reds, and they finished 79-83 and missed the playoffs."
+  },
+  "latencyMs": 4463
+}

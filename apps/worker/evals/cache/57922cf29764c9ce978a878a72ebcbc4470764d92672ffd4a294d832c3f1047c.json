@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes for Denver, Colorado on Tuesday Oct 13. The high is 65°F, about 15 degrees below Monday's 80. The rest also checks out: partly sunny, 30% rain after 3 p.m. rising into the evening, lows in the 30s and low 40s, wind 6–10 mph gusting to 17. It answers directly in English and doesn't ask for the city. The wording is a bit like a weather bulletin ('Expect…', 'Lows Tuesday night drop…'), so it's not quite a casual friend text, but it's still a direct answer with no assistant-style offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

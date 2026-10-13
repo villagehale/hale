@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday Oct 13 in Windsor: high of 29",
+        "from": "High 29, humidex 35"
+      },
+      {
+        "states": "Tuesday Oct 13 in Windsor: humidex of 35",
+        "from": "High 29, humidex 35"
+      },
+      {
+        "states": "Tuesday morning: mainly cloudy with a 30 percent chance of showers and a risk of thunderstorm early",
+        "from": "Mainly cloudy with a 30 percent chance of showers early in the morning and a risk of a thunderstorm. Clearing in the morning."
+      },
+      {
+        "states": "Tuesday: clearing in the morning",
+        "from": "Clearing in the morning."
+      },
+      {
+        "states": "Tuesday late morning: wind gusting to 60 km/h",
+        "from": "increasing to 40 gusting to 60 late in the morning"
+      }
+    ],
+    "answer": "Hot one tomorrow in Windsor: high of 29, feels like 35 with the humidex. Cloudy early with a small chance of showers and maybe a thunderstorm first thing, clearing by mid-morning. It gets windy late morning, gusting to around 60 km/h. Going by the afternoon forecast."
+  },
+  "latencyMs": 5411
+}

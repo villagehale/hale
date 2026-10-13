@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Asks for the country in a few casual words, states no fact from memory, and stays in the question's language. A touch explanatory but still reads like a friend texting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

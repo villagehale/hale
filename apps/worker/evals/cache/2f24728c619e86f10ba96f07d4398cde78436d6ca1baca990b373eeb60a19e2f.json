@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "hard-boiled large egg: about 10 minutes from when the water reaches a boil",
+        "from": "settled"
+      },
+      {
+        "states": "then move to ice water for a few minutes",
+        "from": "settled"
+      }
+    ],
+    "answer": "Put the eggs in boiling water and cook for about 10 minutes for a firm yolk (a bit less for medium, a bit more for large). Then move them straight into cold water for a few minutes so they peel easier."
+  },
+  "latencyMs": 3319
+}

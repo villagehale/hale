@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday, Oct 13 high 65°F (NWS forecast for Denver)",
+        "from": "The NWS forecast high is 65°F."
+      },
+      {
+        "states": "Tuesday partly sunny skies, with rain and showers possibly moving in Tuesday evening",
+        "from": "says partly sunny skies Tuesday, with rain and showers possibly moving in Tuesday evening"
+      },
+      {
+        "states": "Tuesday 30% chance of rain after 3 p.m.",
+        "from": "NWS gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "Tuesday night lows in the low 40s and 30s",
+        "from": "Lows are expected in the low 40s and 30s Tuesday night"
+      },
+      {
+        "states": "Tuesday winds north-northeast 6 to 10 mph",
+        "from": "North-northeast winds of 6 to 10 mph"
+      }
+    ],
+    "answer": "Tomorrow in Denver looks cooler. Partly sunny with a high around 65°F, and clouds build later. There's a 30% chance of rain after 3 p.m., with showers possibly moving in Tuesday evening. Lows Tuesday night drop into the 30s and low 40s, and winds are north-northeast at 6 to 10 mph."
+  },
+  "latencyMs": 5524
+}

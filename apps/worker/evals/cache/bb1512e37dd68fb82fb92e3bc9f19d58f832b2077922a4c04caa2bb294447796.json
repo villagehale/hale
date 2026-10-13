@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "Who's the GOAT in football",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "players' current careers and records could still change the debate",
+    "needs_search": "yes"
+  },
+  "latencyMs": 4439
+}

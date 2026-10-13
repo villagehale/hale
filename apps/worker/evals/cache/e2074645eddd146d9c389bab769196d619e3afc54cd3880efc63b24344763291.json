@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: no game Sunday, Saturday's 6-3 win over Colorado, and next game Tuesday Oct 13 at Utah. It reads like a casual friend's text and directly answers the question.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

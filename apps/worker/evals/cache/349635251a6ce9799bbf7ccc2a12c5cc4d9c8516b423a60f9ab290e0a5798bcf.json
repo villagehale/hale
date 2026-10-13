@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "short-term melatonin use appears safe for most adults",
+        "from": "The NIH says short-term melatonin use appears safe for most people"
+      },
+      {
+        "states": "long-term safety information is lacking",
+        "from": "information on long-term safety is lacking"
+      },
+      {
+        "states": "most common adult dose is about 3 to 5 mg, taken 1 to 2 hours before bed (GoodRx)",
+        "from": "GoodRx says the most common adult dose is about 3 to 5 mg, taken 1 to 2 hours before bed"
+      },
+      {
+        "states": "a doctor quoted by Yale New Haven Health says adults should take only 0.3 to 1 mg",
+        "from": "Yale New Haven Health quotes a doctor saying adults should take only 0.3 to 1 mg, and not long-term"
+      },
+      {
+        "states": "doses over 3 mg of controlled-release products can potentially cause next-day drowsiness",
+        "from": "doses over 3 mg of controlled-release products can potentially cause next-day drowsiness"
+      },
+      {
+        "states": "a preliminary AHA abstract linked a year or more of use in people with chronic insomnia to higher rates of heart failure; it cannot prove cause and effect and is not peer-reviewed",
+        "from": "An American Heart Association abstract was presented in November 2025. It linked melatonin use of a year or more in people with chronic insomnia to higher rates of heart failure diagnosis"
+      }
+    ],
+    "answer": "For most adults, short-term use looks fine. The NIH says it appears safe for most people, though long-term safety info is thin. The doses are where sources disagree: GoodRx says the usual adult dose is 3 to 5 mg before bed, while a Yale New Haven doctor says 0.3 to 1 mg, and over 3 mg of the slow-release kind can leave you drowsy the next day. The newer worry is long-term use. A preliminary AHA study from November 2025 linked a year or more of use in people with chronic insomnia to more heart failure, but it can't prove cause and effect, and some experts think poor sleep may be the real driver. If you're thinking of using it regularly, it's worth a quick check with a doctor or pharmacist first."
+  },
+  "latencyMs": 7650
+}
