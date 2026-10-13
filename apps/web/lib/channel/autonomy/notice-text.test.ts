@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readAutonomyNotice } from './notice-text';
+import { actedNoticeDetail, autonomyNoticeContext, readAutonomyNotice } from './notice-text';
 
 const context = {
   occasion: 'armed' as const,
@@ -31,5 +31,43 @@ describe('readAutonomyNotice', () => {
   it('keeps a long message', () => {
     const message = 'a'.repeat(2000);
     expect(readAutonomyNotice({ message }, context)).toEqual({ message });
+  });
+});
+
+describe('autonomyNoticeContext', () => {
+  it('puts the standing facts on an email kind', () => {
+    const parsed = JSON.parse(autonomyNoticeContext(context));
+    expect(parsed.standing).toEqual({
+      never: ['book', 'register', 'pay'],
+      repliesToEmail: true,
+      stop: 'one_message',
+    });
+  });
+
+  it('leaves the email-reply fact off a calendar kind', () => {
+    const parsed = JSON.parse(autonomyNoticeContext({ ...context, actionType: 'calendar_add' }));
+    expect(parsed.standing.repliesToEmail).toBe(false);
+  });
+});
+
+describe('actedNoticeDetail', () => {
+  it('joins stored payload fields and the decision reason', () => {
+    expect(
+      actedNoticeDetail({
+        payload: {
+          to: ' school@example.com ',
+          subject: 'pickup',
+          title: '',
+          summary: 'Tuesday',
+          ignored: 'no',
+        },
+        reason: ' the kind was on ',
+      }),
+    ).toBe('school@example.com\npickup\nTuesday\nthe kind was on');
+  });
+
+  it('returns null when the execution stored nothing reusable', () => {
+    expect(actedNoticeDetail({ payload: {}, reason: '  ' })).toBeNull();
+    expect(actedNoticeDetail({ payload: null, reason: null })).toBeNull();
   });
 });

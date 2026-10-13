@@ -41,6 +41,26 @@ export const AUTONOMY_NOTICE_FIXTURES = [
       actionType: 'send_email',
       localeHint: null,
       recentInbound: ['email them for me'],
+      detail: 'school@example.com\npickup\nthe kind was on',
+    },
+  },
+  {
+    id: 'armed-email-zh',
+    context: {
+      occasion: 'armed',
+      actionType: 'send_email',
+      localeHint: null,
+      recentInbound: ['帮我给学校发个邮件'],
+      detail: null,
+    },
+  },
+  {
+    id: 'armed-email-ar',
+    context: {
+      occasion: 'armed',
+      actionType: 'reply_to_email',
+      localeHint: null,
+      recentInbound: ['رد على بريد المدرسة'],
       detail: null,
     },
   },

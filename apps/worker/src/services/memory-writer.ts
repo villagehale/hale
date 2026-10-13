@@ -1039,9 +1039,9 @@ export function autonomyArmedDedupeKey(consentRecordId: string): string {
   return `autonomy_armed:${consentRecordId}`;
 }
 
-/** One text per autonomous execution. */
-export function autonomyActedDedupeKey(actionId: string): string {
-  return `autonomy_acted:${actionId}`;
+/** One text per autonomous execution, for each parent who is owed it. */
+export function autonomyActedDedupeKey(actionId: string, parentUserId: string): string {
+  return `autonomy_acted:${actionId}:${parentUserId}`;
 }
 
 /** Statuses that mean the turn-on text has left, matching the channel ledger's sent set. */
@@ -1637,3 +1637,4 @@ export async function recordDiscovery(
     };
   }, database);
 }
+

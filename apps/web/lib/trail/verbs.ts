@@ -355,6 +355,7 @@ export const AUDIT_VERBS = [
   'action.gated.autonomy_notice_pending',
   'autonomy_armed_notice_sent',
   'autonomy_acted_notice_sent',
+  'autonomy_acted_notice_aged_out',
   // A parent turned Hale's autonomy off for one kind of action.
   'autonomous_action_class.revoked',
   // A parent's own approval that completed their streak turned it on for them.
@@ -1304,6 +1305,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   autonomy_acted_notice_sent: {
     sentence: 'texted you about something Hale did on its own',
     family: 'done',
+  },
+  autonomy_acted_notice_aged_out: {
+    sentence: 'left an on-its-own text unsent after 7 days',
+    family: 'note',
   },
   'autonomous_action_class.revoked': {
     sentence: 'you stopped Hale doing this on its own',

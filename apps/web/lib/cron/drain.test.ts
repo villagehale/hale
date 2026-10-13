@@ -396,6 +396,8 @@ describe('drainHotQueues', () => {
     expect(deps.handlers.runOrchestrator).toHaveBeenCalledWith(
       expect.objectContaining({ family_id: FAMILY, source: 'village' }),
     );
+    expect(deps.handlers.autonomyNotices).toHaveBeenCalledTimes(1);
+    expect(deps.handlers.autonomyNotices).toHaveBeenCalledWith(FAMILY);
     expect(completed(EVENTS)).toEqual(['e1']);
     expect(failed(EVENTS)).toEqual([]);
     expect(summary).toEqual({ processed: 1, failed: 0, dropped: 0 });
@@ -433,6 +435,7 @@ describe('drainHotQueues', () => {
 
     expect(failed(EVENTS)).toEqual(['e1']);
     expect(completed(EVENTS)).toEqual([]);
+    expect(deps.handlers.autonomyNotices).not.toHaveBeenCalled();
     expect(summary).toEqual({ processed: 0, failed: 1, dropped: 0 });
   });
 

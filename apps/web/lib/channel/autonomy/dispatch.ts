@@ -21,10 +21,12 @@ import {
  * The obligation is the audit row (the grant, or the autonomous execution), not the
  * suppression: a quiet-hours hold and a crash before the send are both still owed.
  * A turn-on text is owed for as long as the grant is live and undelivered. An
- * on-its-own notice older than the redrive window is counted and not sent.
- * One parent hears at most one of these per pass, and a turn-on text goes first.
- * The morning pass only sends inside the re-drive hour; the drain pass tries now
- * and the gate holds quiet hours. Nothing sends while the execute lane is off.
+ * on-its-own notice older than the redrive window is marked and not sent, once.
+ * One parent hears at most one turn-on text per pass, and a turn-on text goes
+ * first. Every on-its-own notice owed in the pass is sent, to every live parent.
+ * The morning pass only sends inside the re-drive hour. The drain pass tries
+ * now, including right after an execution, and the gate holds quiet hours.
+ * Nothing sends while the execute lane is off.
  */
 
 interface OpenArmed {
@@ -45,6 +47,12 @@ interface OpenActed {
 
 type OpenNotice = OpenArmed | OpenActed;
 
+interface AgedActed {
+  familyId: string;
+  actionId: string;
+  parentUserId: string;
+}
+
 export interface AutonomyNoticeDispatchResult {
   open: number;
   due: number;
@@ -59,7 +67,7 @@ export interface AutonomyNoticeDispatchResult {
   noSendTarget: number;
   /** Open notices left unsent because the execute lane is not exactly `true`. */
   laneOff: number;
-  /** On-its-own notices older than the redrive window, still unsent, and counted. */
+  /** On-its-own notices marked this pass as older than the redrive window. */
   agedOut: number;
 }
 
@@ -102,11 +110,32 @@ async function claimedKeys(database: Database, keys: string[]): Promise<Set<stri
   return new Set(rows.flatMap((row) => (row.dedupeKey ? [row.dedupeKey] : [])));
 }
 
+async function agedOutMarks(database: Database, actionIds: string[]): Promise<Set<string>> {
+  if (actionIds.length === 0) return new Set();
+  const rows = await database
+    .select({ targetId: schema.auditLog.targetId, after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, 'autonomy_acted_notice_aged_out'),
+        inArray(schema.auditLog.targetId, actionIds),
+      ),
+    );
+  const keys = new Set<string>();
+  for (const row of rows) {
+    if (!row.targetId) continue;
+    const after = row.after as { parentUserId?: unknown } | null;
+    if (typeof after?.parentUserId !== 'string') continue;
+    keys.add(`${row.targetId}:${after.parentUserId}`);
+  }
+  return keys;
+}
+
 export async function selectOpenAutonomyNotices(
   database: Database,
   now: Date,
   familyId?: string,
-): Promise<{ notices: OpenNotice[]; agedOut: number }> {
+): Promise<{ notices: OpenNotice[]; aged: AgedActed[] }> {
   const armed = await selectLiveArmed(database, familyId);
   const since = new Date(now.getTime() - REDRIVE_MAX_AGE_MS);
   const executions = await database
@@ -132,32 +161,40 @@ export async function selectOpenAutonomyNotices(
     if (!row.actionId) continue;
     const actionType = await actionTypeOf(database, row.actionId);
     if (!actionType) continue;
-    const parentUserId = await recipientForActed(database, row.familyId, actionType);
-    if (!parentUserId) continue;
-    actedRows.push({
-      kind: 'acted',
-      familyId: row.familyId,
-      parentUserId,
-      actionId: row.actionId,
-      actionType,
-      occurredAt: row.occurredAt,
-    });
+    const parentUserIds = await recipientsForActed(database, row.familyId, actionType);
+    for (const parentUserId of parentUserIds) {
+      actedRows.push({
+        kind: 'acted',
+        familyId: row.familyId,
+        parentUserId,
+        actionId: row.actionId,
+        actionType,
+        occurredAt: row.occurredAt,
+      });
+    }
   }
 
   const keys = [
     ...armed.map((row) => autonomyArmedDedupeKey(row.consentRecordId)),
-    ...actedRows.map((row) => autonomyActedDedupeKey(row.actionId)),
+    ...actedRows.map((row) => autonomyActedDedupeKey(row.actionId, row.parentUserId)),
   ];
   const claimed = await claimedKeys(database, keys);
+  const marked = await agedOutMarks(database, [...new Set(actedRows.map((row) => row.actionId))]);
   const openArmed = armed.filter(
     (row) => !claimed.has(autonomyArmedDedupeKey(row.consentRecordId)),
   );
   const openActed: OpenActed[] = [];
-  let agedOut = 0;
+  const aged: AgedActed[] = [];
   for (const row of actedRows) {
-    if (claimed.has(autonomyActedDedupeKey(row.actionId))) continue;
+    const key = autonomyActedDedupeKey(row.actionId, row.parentUserId);
+    if (claimed.has(key)) continue;
+    if (marked.has(`${row.actionId}:${row.parentUserId}`)) continue;
     if (row.occurredAt.getTime() < since.getTime()) {
-      agedOut += 1;
+      aged.push({
+        familyId: row.familyId,
+        actionId: row.actionId,
+        parentUserId: row.parentUserId,
+      });
       continue;
     }
     openActed.push({
@@ -168,7 +205,7 @@ export async function selectOpenAutonomyNotices(
       actionType: row.actionType,
     });
   }
-  return { notices: [...openArmed, ...openActed], agedOut };
+  return { notices: [...openArmed, ...openActed], aged };
 }
 
 /**
@@ -247,11 +284,11 @@ async function actionTypeOf(database: Database, actionId: string): Promise<strin
   return rows[0]?.actionType ?? null;
 }
 
-async function recipientForActed(
+async function recipientsForActed(
   database: Database,
   familyId: string,
   actionType: string,
-): Promise<string | null> {
+): Promise<string[]> {
   const rows = await database
     .select({
       userId: schema.consentRecords.userId,
@@ -280,7 +317,20 @@ async function recipientForActed(
     if (row.revokedAt === null) live.push(row.userId);
   }
   live.sort();
-  return live[0] ?? null;
+  return live;
+}
+
+async function markAgedOut(database: Database, aged: AgedActed[]): Promise<void> {
+  for (const row of aged) {
+    await database.insert(schema.auditLog).values({
+      familyId: row.familyId,
+      actor: 'system',
+      actionTaken: 'autonomy_acted_notice_aged_out',
+      targetTable: 'actions',
+      targetId: row.actionId,
+      after: { parentUserId: row.parentUserId },
+    });
+  }
 }
 
 export async function dispatchAutonomyNotices(
@@ -292,10 +342,11 @@ export async function dispatchAutonomyNotices(
   const selected = await selectOpenAutonomyNotices(database, input.now, input.familyId);
   const open = selected.notices;
   result.open = open.length;
-  result.agedOut = selected.agedOut;
-  if (selected.agedOut > 0) {
+  result.agedOut = selected.aged.length;
+  await markAgedOut(database, selected.aged);
+  if (selected.aged.length > 0) {
     console.info(
-      { agedOut: selected.agedOut, familyId: input.familyId ?? null },
+      { agedOut: selected.aged.length, familyId: input.familyId ?? null },
       'autonomy notice: on-its-own texts older than 7 days were left unsent',
     );
   }
@@ -311,15 +362,17 @@ export async function dispatchAutonomyNotices(
   }
 
   const due: OpenNotice[] = [];
-  const heard = new Set<string>();
+  const heardArmed = new Set<string>();
   for (const notice of open) {
     if (input.slot === 'morning') {
       const zone = await redriveParentTimeZone(database, notice.parentUserId);
       if (!isRedriveSlot(input.now, zone)) continue;
     }
-    const parentKey = `${notice.familyId}:${notice.parentUserId}`;
-    if (heard.has(parentKey)) continue;
-    heard.add(parentKey);
+    if (notice.kind === 'armed') {
+      const parentKey = `${notice.familyId}:${notice.parentUserId}`;
+      if (heardArmed.has(parentKey)) continue;
+      heardArmed.add(parentKey);
+    }
     due.push(notice);
   }
   result.due = due.length;

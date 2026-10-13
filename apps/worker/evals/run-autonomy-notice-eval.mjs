@@ -9,6 +9,7 @@
 //
 //   ANTHROPIC_API_KEY=... node evals/run-autonomy-notice-eval.mjs
 //   node evals/run-autonomy-notice-eval.mjs --cached-only
+//   node evals/run-autonomy-notice-eval.mjs --estimate   (no client, no API key, no spend)
 
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,6 +17,7 @@ import { register } from 'tsx/esm/api';
 import { AUTONOMY_NOTICE_FIXTURES } from './autonomy-notice-fixtures.mjs';
 import {
   JUDGE_MIN,
+  PRICE,
   REPO_ROOT,
   evalRunTag,
   lazyAnthropic,
@@ -40,23 +42,99 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text message Hale, a family planner that lives in',
   "the parent's messages, sends. You are given `context` — the occasion (`armed`, `rearmed`,",
-  'or `acted`), the `actionType` token, `recentInbound` (the parent’s own texts), and',
-  '`localeHint` — and the `text`. Score 1-5.',
+  'or `acted`), the `actionType` token, `recentInbound` (the parent’s own texts),',
+  '`localeHint`, `standing`, and sometimes `detail` — and the `text`. Score 1-5.',
   'Write your argument first, quoting the text, and only then the score.',
   'A 5 is one text in the language of `recentInbound` when those texts show one, otherwise',
   'the `localeHint`, and not a language the context never gave. It is in the first person and matches the occasion:',
   'armed or rearmed says this kind will be handled without asking from now on; acted says',
-  'it was just done without asking. It says the parent can tell Hale to stop anytime. It',
-  'asks for at most one thing. It reads like a friend who is also a parent texting: chill,',
-  'casual, specific. It does not invent a recipient, a time, a price, a place, or a link.',
-  'Do not grade word choice, length or punctuation for their own sake; the writer picks',
-  'the words.',
+  'it was just done without asking. It asks for at most one thing. It reads like a friend',
+  'who is also a parent texting: chill, casual, specific. It does not invent a recipient,',
+  'a time, a price, a place, or a link beyond `detail`.',
+  'Grade `standing` as facts, not as phrases. The writer chooses the words. A missing fact',
+  'keeps the score at 3 or below:',
+  '`standing.never` lists book, register, and pay — the text conveys that the sender does',
+  'not book, does not register, and does not pay.',
+  'When `standing.repliesToEmail` is true, the text conveys that the sender will reply to',
+  "email on the parent's behalf. When it is false, do not require that fact.",
+  '`standing.stop` is `one_message` — the text conveys that one message from the parent',
+  'turns this off.',
+  'Do not grade word choice, length or punctuation for their own sake.',
   'A 1 or 2 is any of: the wrong occasion; a third-person "Hale" as the subject; more than',
   'one ask; a word the parent is told to reply with; a numbered list or a template; an',
   'invented fact.',
-  'A 3 matches the occasion but reads like a notification or an assistant offering a service.',
+  'A 3 matches the occasion and the voice but is missing a standing fact, or reads like a',
+  'notification or an assistant offering a service.',
   'Reply with ONLY the score tool.',
 ].join(' ');
+
+// A re-record prices the tokens a short text and a short argument actually use.
+// The writer cap (400) and the judge cap (4096) are ceilings, not the bill.
+const ESTIMATE_WRITER_OUTPUT_TOKENS = 120;
+const ESTIMATE_JUDGE_OUTPUT_TOKENS = 280;
+
+function estimateTokens(value) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  let latin = 0;
+  let other = 0;
+  for (const ch of text) {
+    if (ch.codePointAt(0) <= 0x024f) latin += 1;
+    else other += 1;
+  }
+  return Math.ceil(latin / 4) + other;
+}
+
+function priced(model, input, output) {
+  const price = PRICE[model];
+  if (!price) throw new Error(`no list price for ${model}`);
+  return (input / 1e6) * price.input + (output / 1e6) * price.output;
+}
+
+function estimateRecording({ lane, skill, text, judgeModel }) {
+  const writerTool = JSON.stringify({
+    name: text.AUTONOMY_NOTICE_TOOL,
+    description: 'The one text Hale sends.',
+    input_schema: text.AUTONOMY_NOTICE_TOOL_SCHEMA,
+  });
+  const judgeTool = JSON.stringify({
+    name: 'score',
+    description: 'Return the score.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string' },
+        score: { type: 'integer', minimum: 1, maximum: 5 },
+      },
+      required: ['reason', 'score'],
+    },
+  });
+  let usd = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for (const fixture of AUTONOMY_NOTICE_FIXTURES) {
+    const contextJson = text.autonomyNoticeContext(fixture.context);
+    const writerInput =
+      estimateTokens(skill.instructions) + estimateTokens(contextJson) + estimateTokens(writerTool);
+    const judgeUser = JSON.stringify({ context: JSON.parse(contextJson), text: '' });
+    const judgeInput =
+      estimateTokens(JUDGE_SYSTEM) +
+      estimateTokens(judgeUser) +
+      estimateTokens(judgeTool) +
+      ESTIMATE_WRITER_OUTPUT_TOKENS;
+    inputTokens += writerInput + judgeInput;
+    outputTokens += ESTIMATE_WRITER_OUTPUT_TOKENS + ESTIMATE_JUDGE_OUTPUT_TOKENS;
+    usd += priced(lane.model, writerInput, ESTIMATE_WRITER_OUTPUT_TOKENS);
+    usd += priced(judgeModel, judgeInput, ESTIMATE_JUDGE_OUTPUT_TOKENS);
+  }
+  const calls = AUTONOMY_NOTICE_FIXTURES.length * 2;
+  return [
+    `autonomy-notice | estimate | model=${lane.model} judge=${judgeModel} | fixtures=${AUTONOMY_NOTICE_FIXTURES.length}`,
+    `calls=${calls} (every fixture is a miss: writer and judge both) | input tokens≈${inputTokens} | output tokens≈${outputTokens}`,
+    'tokenizer: Latin and whitespace ≈ 4 chars/token; every other character ≈ 1 token.',
+    `output assumption: writer ${ESTIMATE_WRITER_OUTPUT_TOKENS} tokens, judge ${ESTIMATE_JUDGE_OUTPUT_TOKENS} tokens. Caps of 400 and 4096 are not billed.`,
+    `live API calls: 0 | estimated cost: $${usd.toFixed(4)} USD`,
+  ].join('\n');
+}
 
 function grade(written, verdict) {
   if ('skipped' in written) return [`writer skipped: ${written.skipped}`];
@@ -67,11 +145,21 @@ function grade(written, verdict) {
 }
 
 async function main() {
+  const estimateOnly = process.argv.includes('--estimate');
   const cachedOnly = process.argv.includes('--cached-only');
+  if (estimateOnly && cachedOnly) {
+    console.error('autonomy-notice: pass only one of --estimate and --cached-only');
+    process.exit(1);
+  }
   const agent = await importTs(AGENT_SRC);
   const text = await importTs(TEXT_SRC);
   const skill = await agent.loadSkill(SKILL_PATH);
   const lane = agent.pickLane(skill.meta.task);
+  if (estimateOnly) {
+    const judgeModel = await readJudgeModel();
+    console.info(estimateRecording({ lane, skill, text, judgeModel }));
+    return;
+  }
   const getClient = lazyAnthropic();
   const cost = makeCost();
   const judgeModel = await readJudgeModel();
@@ -101,10 +189,14 @@ async function main() {
       misses.push(`${fixture.id}  ${call.key}`);
       continue;
     }
+    const writerContext = text.autonomyNoticeContext(fixture.context);
     const written = text.readAutonomyNotice(call.value, fixture.context);
     const verdict =
       'message' in written
-        ? await judge(fixture.id, { context: fixture.context, text: written.message })
+        ? await judge(fixture.id, {
+            context: JSON.parse(writerContext),
+            text: written.message,
+          })
         : null;
     const failures = grade(written, verdict);
     if (failures.length > 0) failed += 1;

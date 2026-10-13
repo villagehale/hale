@@ -28,6 +28,7 @@ const NIGHT = new Date('2026-09-17T03:12:00.000Z');
 
 let db: TestDb;
 let households = 0;
+let actedNotices = 0;
 
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
@@ -335,7 +336,7 @@ describe('telling a parent a kind turned on', () => {
         eventId: event?.id as string,
         familyId: parent.familyId,
         actionType: 'send_email',
-        payload: {},
+        payload: { to: 'school@example.com', subject: 'pickup' },
       })
       .returning({ id: schema.actions.id });
     const actionId = action?.id as string;
@@ -359,9 +360,14 @@ describe('telling a parent a kind turned on', () => {
 
     expect(outcome).toBe('sent');
     expect(seen.map((row) => row.occasion)).toEqual(['acted']);
+    expect(seen[0]?.detail).toBe('school@example.com\npickup\nthe kind was on');
+    expect(seen[0]?.standing).toEqual({
+      never: ['book', 'register', 'pay'],
+      repliesToEmail: true,
+      stop: 'one_message',
+    });
 
-    // The grant's turn-on text is still owed. One parent hears one notice per pass,
-    // and a claimed execution is not selected again.
+    // The grant's turn-on text is still owed. A claimed execution is not selected again.
     const dispatched = await dispatchAutonomyNotices(
       db.database,
       { now: MORNING, familyId: parent.familyId, slot: 'now' },
@@ -466,6 +472,8 @@ describe('telling a parent a kind turned on', () => {
     expect(seen[0]?.localeHint).toBe('fr');
     expect(seen[0]?.recentInbound).toEqual(['premier message', '第二个']);
     expect(seen[0]).not.toHaveProperty('language');
+    expect(seen[0]?.standing.repliesToEmail).toBe(true);
+    expect(seen[0]?.standing.stop).toBe('one_message');
   });
 
   it('still owes a turn-on text that is older than seven days', async () => {
@@ -536,6 +544,19 @@ describe('telling a parent a kind turned on', () => {
     expect(dispatched.agedOut).toBe(1);
     expect(seen.map((row) => row.occasion)).toEqual(['armed']);
     expect(dispatched.sent).toBe(1);
+
+    const again = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(again.agedOut).toBe(0);
+    expect(again.sent).toBe(0);
+    const marks = await db.database
+      .select({ targetId: schema.auditLog.targetId })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'autonomy_acted_notice_aged_out'));
+    expect(marks).toHaveLength(1);
   });
 
   it('a switch-off cancels owed texts', async () => {
@@ -602,4 +623,101 @@ describe('telling a parent a kind turned on', () => {
       { parentUserId: parent.parentUserId, dedupeKey: `autonomy_armed:${fresh}` },
     ]);
   });
+
+  it('sends the on-its-own notice to every live parent', async () => {
+    const parent = await seedParent();
+    const other = await seedCoParent(parent.familyId, 'Sam');
+    await grant(parent.familyId, parent.parentUserId, 'send_email');
+    await grant(parent.familyId, other.parentUserId, 'send_email');
+    const actionId = await recordActed(parent.familyId, 'send_email', {
+      payload: { to: 'school@example.com', subject: 'pickup' },
+    });
+    const { sendPorts, seen } = ports(async () => ({ message: `model acted ${households}` }));
+
+    const dispatched = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    const acted = seen.filter((row) => row.occasion === 'acted');
+    expect(acted).toHaveLength(2);
+    expect(acted.every((row) => row.detail === 'school@example.com\npickup\nthe kind was on')).toBe(
+      true,
+    );
+    const rows = await channelRows(parent.familyId);
+    const actedKeys = rows
+      .flatMap((row) => (row.dedupeKey?.startsWith('autonomy_acted:') ? [row.dedupeKey] : []))
+      .sort();
+    expect(actedKeys).toEqual(
+      [
+        `autonomy_acted:${actionId}:${parent.parentUserId}`,
+        `autonomy_acted:${actionId}:${other.parentUserId}`,
+      ].sort(),
+    );
+    expect(dispatched.sent).toBe(4);
+  });
+
+  it('sends every on-its-own notice in one pass', async () => {
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'send_email');
+    const first = await recordActed(parent.familyId, 'send_email');
+    const second = await recordActed(parent.familyId, 'send_email');
+    const { sendPorts } = ports(async () => ({ message: `model acted ${households}` }));
+
+    const dispatched = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(dispatched.sent).toBe(3);
+    const rows = await channelRows(parent.familyId);
+    const actedKeys = rows
+      .flatMap((row) => (row.dedupeKey?.startsWith('autonomy_acted:') ? [row.dedupeKey] : []))
+      .sort();
+    expect(actedKeys).toEqual(
+      [
+        `autonomy_acted:${first}:${parent.parentUserId}`,
+        `autonomy_acted:${second}:${parent.parentUserId}`,
+      ].sort(),
+    );
+  });
 });
+
+async function recordActed(
+  familyId: string,
+  actionType: string,
+  opts?: { payload?: Record<string, unknown> },
+) {
+  actedNotices += 1;
+  const [event] = await db.database
+    .insert(schema.events)
+    .values({
+      familyId,
+      source: 'test',
+      eventType: 'signal.test',
+      dedupHash: `acted-extra-${actedNotices}`,
+      status: 'actioned',
+    })
+    .returning({ id: schema.events.id });
+  const [action] = await db.database
+    .insert(schema.actions)
+    .values({
+      eventId: event?.id as string,
+      familyId,
+      actionType,
+      payload: opts?.payload ?? { to: 'school@example.com', subject: 'pickup' },
+    })
+    .returning({ id: schema.actions.id });
+  const actionId = action?.id as string;
+  await db.database.insert(schema.auditLog).values({
+    familyId,
+    actor: 'system',
+    actionTaken: 'action.executed',
+    targetTable: 'actions',
+    targetId: actionId,
+    after: { decision: { source: 'autonomous', reason: 'the kind was on' } },
+  });
+  return actionId;
+}

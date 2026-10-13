@@ -17,7 +17,13 @@ import {
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import type { AutonomyNoticeContext, AutonomyNoticeSkip, AutonomyNoticeText } from './notice-text';
+import {
+  type AutonomyNoticeContext,
+  type AutonomyNoticeSkip,
+  type AutonomyNoticeText,
+  actedNoticeDetail,
+  autonomyNoticeInput,
+} from './notice-text';
 
 /**
  * The text a parent gets when a kind turns on, turns back on, or Hale just did it
@@ -160,10 +166,7 @@ async function sendAutonomyNotice(
 ): Promise<AutonomyNoticeOutcome> {
   const { familyId, parentUserId, now } = input;
   if (!autonomousLaneOn()) {
-    console.info(
-      { familyId, kind: input.kind },
-      'autonomy notice: lane is off, text stays owed',
-    );
+    console.info({ familyId, kind: input.kind }, 'autonomy notice: lane is off, text stays owed');
     return 'lane_off';
   }
   if (!f14EnabledFor(familyId)) {
@@ -280,6 +283,30 @@ async function sendAutonomyNotice(
   return 'sent';
 }
 
+/** Payload fields plus the decision reason. Null when the execution stored neither. */
+async function executionDetail(database: Database, actionId: string): Promise<string | null> {
+  const [action] = await database
+    .select({ payload: schema.actions.payload })
+    .from(schema.actions)
+    .where(eq(schema.actions.id, actionId))
+    .limit(1);
+  const [executed] = await database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, 'action.executed'),
+        eq(schema.auditLog.targetTable, 'actions'),
+        eq(schema.auditLog.targetId, actionId),
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(1);
+  const after = executed?.after as { decision?: { reason?: unknown } } | null;
+  const reason = typeof after?.decision?.reason === 'string' ? after.decision.reason : null;
+  return actedNoticeDetail({ payload: action?.payload ?? null, reason });
+}
+
 export async function tellParentKindArmed(
   database: Database,
   input: {
@@ -302,7 +329,12 @@ export async function tellParentKindArmed(
       kind: 'autonomy_armed',
       dedupeKey: autonomyArmedDedupeKey(input.consentRecordId),
       templateKey: AUTONOMY_ARMED_TEMPLATE_KEY,
-      context: { occasion, actionType: input.actionType, ...voice, detail: null },
+      context: autonomyNoticeInput({
+        occasion,
+        actionType: input.actionType,
+        ...voice,
+        detail: null,
+      }),
       auditVerb: 'autonomy_armed_notice_sent',
       now: input.now,
     },
@@ -322,6 +354,7 @@ export async function tellParentHaleActed(
   ports: AutonomyNoticePorts,
 ): Promise<AutonomyNoticeOutcome> {
   const voice = await parentVoice(database, input.parentUserId);
+  const detail = await executionDetail(database, input.actionId);
   return sendAutonomyNotice(
     database,
     {
@@ -329,9 +362,14 @@ export async function tellParentHaleActed(
       parentUserId: input.parentUserId,
       actionType: input.actionType,
       kind: 'autonomy_acted',
-      dedupeKey: autonomyActedDedupeKey(input.actionId),
+      dedupeKey: autonomyActedDedupeKey(input.actionId, input.parentUserId),
       templateKey: AUTONOMY_ACTED_TEMPLATE_KEY,
-      context: { occasion: 'acted', actionType: input.actionType, ...voice, detail: null },
+      context: autonomyNoticeInput({
+        occasion: 'acted',
+        actionType: input.actionType,
+        ...voice,
+        detail,
+      }),
       auditVerb: 'autonomy_acted_notice_sent',
       now: input.now,
     },

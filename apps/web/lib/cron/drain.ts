@@ -240,6 +240,17 @@ async function processIngestedJob(
     return 'dropped';
   }
   await deps.handlers.runOrchestrator(parsed.data);
+  try {
+    await deps.handlers.autonomyNotices(parsed.data.family_id);
+  } catch (err) {
+    deps.log.error(
+      {
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+        familyId: parsed.data.family_id,
+      },
+      'drain: autonomy notice dispatch failed; the morning sweep still owes the text',
+    );
+  }
   return 'processed';
 }
 
