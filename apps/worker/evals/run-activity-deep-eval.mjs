@@ -26,6 +26,10 @@
 //     did not list the field, so the deep pass learned it and the parent never heard it.
 //   · the follow-up gates, mirrored from followup-note.ts - links, segment cap, claiming
 //     verification, and burying the top pick past the first segment.
+//   · miscredited date - a month-and-day credited to a page whose text does not contain
+//     it, or to a page (the home page, the registration page) that was not fetched.
+//   · unread schedule - pageEvidence is page_has_schedule and a fetched page links a
+//     schedule document that was neither opened nor reported unread.
 //
 // SHAPE. It replicates the runtime's request shapes (deep.ts, followup-note.ts) rather than
 // importing them - those modules sit behind the web app's `~/` alias, which the tsx loader
@@ -45,10 +49,16 @@
 //   node --env-file=../../launch.env evals/run-activity-deep-eval.mjs \
 //     --anthropic-model=claude-sonnet-5-5 --only=<id,id>
 
+import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
+import {
+  miscreditedDateFailures,
+  notesForTheJudge,
+  unreadScheduleFailures,
+} from './lib/activity-deep-facts.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -82,12 +92,12 @@ const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-s
 // activity/share-page.ts).
 const MAX_DEEP_SEARCHES = 4;
 const MAX_DEEP_FETCHES = 4;
-const RESEARCH_MAX_TOKENS = 8192;
+export const RESEARCH_MAX_TOKENS = 8192;
 // 16384, matching the runtime (activity/deep.ts). It was 4096 here long after production
 // raised it, so this eval was scoring a request production does not make — and on a real
 // municipal page's worth of notes that budget TRUNCATES, which the harness then cached as
 // an empty extraction.
-const EXTRACT_MAX_TOKENS = 16384;
+export const EXTRACT_MAX_TOKENS = 16384;
 const SLOTS_IN_TEXT = 2;
 const MAX_FOLLOWUP_SEGMENTS = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
@@ -95,7 +105,7 @@ const FIRST_SEGMENT_CHARS = 153;
 
 // ── the runtime's request shapes, replicated ─────────────────────────────────
 
-const DEEP_TOOL_SCHEMA = {
+export const DEEP_TOOL_SCHEMA = {
   type: 'object',
   properties: {
     pages_read: { type: 'array', items: { type: 'string' } },
@@ -142,18 +152,18 @@ const STRICT_DEEP_TOOL_SCHEMA = {
   required: ['pages_read', 'slots'],
 };
 
-const FOLLOWUP_TOOL_SCHEMA = {
+export const FOLLOWUP_TOOL_SCHEMA = {
   type: 'object',
   properties: { message: { type: 'string' } },
   required: ['message'],
 };
 
-const RESEARCH_TOOLS = [
+export const RESEARCH_TOOLS = [
   { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_DEEP_SEARCHES },
   { name: 'web_fetch', type: 'web_fetch_20260209', max_uses: MAX_DEEP_FETCHES },
 ];
 
-function deepUserMessage(q) {
+export function deepUserMessage(q) {
   return JSON.stringify({
     mode: 'deep_research',
     subject: q.subject,
@@ -163,7 +173,7 @@ function deepUserMessage(q) {
   });
 }
 
-function deepExtractMessage(q, notes) {
+export function deepExtractMessage(q, notes) {
   return JSON.stringify({ ...JSON.parse(deepUserMessage(q)), research_notes: notes });
 }
 
@@ -224,7 +234,7 @@ function readExtract(raw) {
  * pages: a model that never sees a page fact cannot blame a page for a programme that does
  * not exist ("I could not get into any pages today for toddler underwater basket weaving",
  * 2026-08-24). */
-function followUpUserMessage(subject, slots, pageEvidence, watch) {
+export function followUpUserMessage(subject, slots, pageEvidence, watch) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
@@ -655,7 +665,7 @@ function untraceablePages(pagesRead, notes) {
   return pagesRead.filter((url) => !notes.includes(String(url).trim()));
 }
 
-const JUDGE_SYSTEM = [
+export const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE deep research pass Hale ran to keep a promise it',
   'made a parent about what their young child could do locally. Hale searched, opened the',
   "operator's own pages, extracted structured slots, and wrote one SMS from them. It never",
@@ -1007,6 +1017,7 @@ async function main() {
         if (row.includes(forbidden)) failures.push(`borrowed_figure:${slot.name}:${forbidden}`);
       }
     }
+    failures.push(...miscreditedDateFailures(kept, evidence));
 
     // Both directions, and this is the calibration: a real page answered with nothing is
     // the shrug this arc exists to end, and a page with nothing on it answered with
@@ -1038,6 +1049,7 @@ async function main() {
     // provider's cache is not a page read today, and a page that was read and DOES publish
     // a schedule buys no licence to report an absence either.
     const pageEvidence = readPageVerdict(evidence);
+    failures.push(...unreadScheduleFailures(kept, evidence, pageEvidence));
     const watch = watchWarranted(inText);
     let body = '';
     let violations = [];
@@ -1090,7 +1102,7 @@ async function main() {
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,
-        notes: evidence.notes.slice(0, 6000),
+        notes: notesForTheJudge(evidence),
         slots: kept,
         message: composesText ? body : null,
         watchFor: fixture.watchFor,
@@ -1133,6 +1145,12 @@ async function main() {
   console.log(`ungrounded:                ${count('not_grounded')}`);
   console.log(
     `fabricated figures:        ${count('fabricated_figure')}  (a price or a date on no page)`,
+  );
+  console.log(
+    `miscredited dates:         ${count('miscredited_date')}  (a date credited to a page that was not read)`,
+  );
+  console.log(
+    `unread schedule:           ${count('unread_schedule')}  (a linked schedule document neither opened nor reported unread)`,
   );
   console.log(
     `borrowed figures:          ${count('borrowed_figure')}  (a real number off the wrong page)`,
@@ -1200,7 +1218,19 @@ async function main() {
   process.exit(calibrated ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error('activity-deep eval harness error:', err);
-  process.exit(2);
-});
+function runningAsScript() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (runningAsScript()) {
+  main().catch((err) => {
+    console.error('activity-deep eval harness error:', err);
+    process.exit(2);
+  });
+}

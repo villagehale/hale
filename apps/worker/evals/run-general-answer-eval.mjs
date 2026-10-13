@@ -937,19 +937,40 @@ async function printRecordingEstimate() {
     const weekdayLeft = await weekday.uncachedWeekdayCalls(judgeOut);
     process.stdout.write(JSON.stringify({ deciderLeft, writerLeft, weekdayLeft }));
   `;
+  // Activity-deep loads the eval runner. In the same process as the three suite
+  // lookups that load spins, so it gets a process of its own.
+  const deepScript = `
+    const deep = await import(${JSON.stringify(new URL('./lib/activity-deep-estimate.mjs', import.meta.url).href)});
+    const deepLeft = await deep.uncachedActivityDeepCalls();
+    process.stdout.write(JSON.stringify(deepLeft));
+  `;
   const { spawnSync } = await import('node:child_process');
-  const suiteRun = spawnSync(process.execPath, ['--input-type=module', '-e', suiteScript], {
-    cwd: HERE,
-    encoding: 'utf8',
-    env: { ...process.env, ANTHROPIC_API_KEY: '' },
-  });
+  const spawnEstimate = (script) =>
+    spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: HERE,
+      encoding: 'utf8',
+      env: { ...process.env, ANTHROPIC_API_KEY: '' },
+    });
+  const suiteRun = spawnEstimate(suiteScript);
   if (suiteRun.status !== 0) {
     throw new Error(
       `suite miss estimate failed: ${suiteRun.stderr || suiteRun.stdout || suiteRun.status}`,
     );
   }
+  const deepRun = spawnEstimate(deepScript);
+  if (deepRun.status !== 0) {
+    throw new Error(
+      `activity-deep miss estimate failed: ${deepRun.stderr || deepRun.stdout || deepRun.status}`,
+    );
+  }
   const { deciderLeft, writerLeft, weekdayLeft } = JSON.parse(suiteRun.stdout);
-  const suiteCalls = [...deciderLeft.calls, ...writerLeft.calls, ...weekdayLeft.calls];
+  const deepLeft = JSON.parse(deepRun.stdout);
+  const suiteCalls = [
+    ...deciderLeft.calls,
+    ...writerLeft.calls,
+    ...weekdayLeft.calls,
+    ...deepLeft.calls,
+  ];
   const suitePriced = priceCalls(suiteCalls);
   const usdOf = (group) =>
     suitePriced.perCall
@@ -964,9 +985,17 @@ async function printRecordingEstimate() {
   const hold = (call) =>
     estimateWorstCaseUsd(call, { tokens, rates: ratesFor, searchMaxUses: MAX_SEARCHES });
   const worstUsd = leftCalls.reduce((sum, call) => sum + hold(call), 0);
-  const searchLeft = leftCalls.filter((call) => call.prefixId === 'search');
+  const searchLeft = leftCalls.filter((call) => call.search === true || call.prefixId === 'search');
   const searchWorst = searchLeft.reduce((sum, call) => sum + hold(call), 0);
-  const expectedLeft = leftoverCombinedUsd + suitePriced.usd;
+  const largestHold = leftCalls.reduce(
+    (best, call) => {
+      const usd = hold(call);
+      return usd > best.usd ? { usd, call } : best;
+    },
+    { usd: 0, call: null },
+  );
+  const deepFee = (deepLeft.searchRequests ?? 0) * USD_PER_WEB_SEARCH;
+  const expectedLeft = leftoverCombinedUsd + suitePriced.usd + deepFee;
   const goatFee =
     (leftover.searchTurnsByFixture['zh-goat-football'] ?? 0) * requestsPerTurn * USD_PER_WEB_SEARCH;
   const goatUsd =
@@ -977,7 +1006,9 @@ async function printRecordingEstimate() {
 
   console.log('\n--- left to record ---');
   console.log(`expected cost: $${expectedLeft.toFixed(4)} USD`);
-  console.log(`worst-case cap: $${worstUsd.toFixed(4)} USD`);
+  console.log(
+    `largest single hold: $${largestHold.usd.toFixed(4)} USD (${largestHold.call?.prefixId ?? 'none'}${largestHold.call?.fixtureId ? ` ${largestHold.call.fixtureId}` : ''})`,
+  );
   console.log(`calls: ${leftCalls.length}`);
   console.log(
     `search holds: ${searchLeft.length} at $${searchWorst.toFixed(4)} USD (250k input tokens, the output budget, and max_uses × $0.01 each)`,
@@ -1002,7 +1033,13 @@ async function printRecordingEstimate() {
     `weekday-care-ask misses: $${usdOf('weekday-care-ask').toFixed(4)} USD | ${weekdayLeft.calls.length} calls | ${names(weekdayLeft.shortIds)}`,
   );
   console.log(
-    'worst-case cap is the sum of the pre-call holds, so a sequential run still fits if every call bills its ceiling. Expected cost is what a recording like the last one would bill.',
+    `activity-deep, re-keyed by the citation skill: $${(usdOf('activity-deep') + deepFee).toFixed(4)} USD | ${deepLeft.calls.length} calls | search fee $${deepFee.toFixed(4)} | ${names(deepLeft.shortIds)}`,
+  );
+  console.log(
+    'run order: all search turns first (activity-deep research, then the general-answer searches), then extracts, composes, follow-ups, judges, and the other suites. The largest hold is the one in flight at the start.',
+  );
+  console.log(
+    `sum of pre-call holds: $${worstUsd.toFixed(4)} USD. A sequential run books real usage and releases each hold; expected cost is what a recording like the last one would bill.`,
   );
   await exitWhenPrinted(0);
 }

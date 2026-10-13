@@ -11,7 +11,8 @@ export function estimateWorstCaseUsd(call, { tokens, rates, searchMaxUses = 2 })
   if (!Number.isFinite(call.maxTokens)) {
     throw new Error(`estimate: ${call.prefixId ?? 'call'} has no maxTokens for a worst-case cap`);
   }
-  const search = call.prefixId === 'search';
+  const search = call.search === true || call.prefixId === 'search';
+  const uses = call.searchMaxUses ?? searchMaxUses;
   const request = {
     model: call.model,
     max_tokens: call.maxTokens,
@@ -20,7 +21,7 @@ export function estimateWorstCaseUsd(call, { tokens, rates, searchMaxUses = 2 })
       : call.prefix,
     messages: [{ role: 'user', content: call.user ?? '' }],
     ...(search
-      ? { tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: searchMaxUses }] }
+      ? { tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: uses }] }
       : {}),
   };
   const inputTokens = search
