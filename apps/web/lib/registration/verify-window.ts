@@ -73,8 +73,7 @@ export interface ExtractedWindow {
   timeZoneEvidence?: string | null;
 }
 
-/** The stored row under review. A read-only projection of registration_windows —
- * deliberately not the row type, so nothing here can be handed back to an update. */
+/** Last-known source observation used for comparisons, never a parent-facing fact. */
 export interface StoredWindow {
   id: string;
   municipality: Municipality;

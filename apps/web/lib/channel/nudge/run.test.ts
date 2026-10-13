@@ -1,6 +1,6 @@
 import { inspect } from 'node:util';
 import { schema } from '@hale/db';
-import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
+import type { Municipality, ProgramDomain, RegistrationSourceState } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
@@ -73,7 +73,7 @@ function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
   };
 }
 
-function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
+function win(overrides: Partial<RegistrationSourceState> = {}): RegistrationSourceState {
   return {
     id: 'w-1',
     municipality: 'richmond_hill' as Municipality,
@@ -89,7 +89,7 @@ function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
     createdAt: FRIDAY_10AM,
     updatedAt: FRIDAY_10AM,
     ...overrides,
-  } as RegistrationWindow;
+  } as RegistrationSourceState;
 }
 
 /** 6 months old on FRIDAY_10AM — squarely inside M8's 6-month checkpoint. */
@@ -124,7 +124,7 @@ function harness(
   options: {
     families?: NudgeFamily[];
     candidates?: RadarCandidate[];
-    windows?: RegistrationWindow[];
+    windows?: RegistrationSourceState[];
     weather?: DailyOutlook[];
     enrolled?: boolean;
     consented?: boolean;

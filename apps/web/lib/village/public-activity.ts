@@ -6,7 +6,7 @@ import { type PublicActivity, type PublicCandidateRow, toPublicActivity } from '
  * The PUBLIC, unauthenticated single-activity share card (rule #1): one endorsed
  * recommendation as a shareable page (`/a/:token`). Same privacy contract as the
  * week plan and picks:
- *   - resolves a per-candidate `village_candidates.shareToken` to its row;
+ *   - resolves a per-candidate `family_activity_history.shareToken` to its row;
  *   - NEVER joins `children`;
  *   - FAILS CLOSED on a child-attributed candidate. A single row can't be
  *     "filtered out" like a list, so a candidate with a non-null childId returns
@@ -25,21 +25,22 @@ export async function loadSharedActivity(
 ): Promise<PublicActivityCard | null> {
   const rows = await database
     .select({
-      childId: schema.villageCandidates.childId,
-      title: schema.villageCandidates.title,
-      kind: schema.villageCandidates.kind,
-      summary: schema.villageCandidates.summary,
-      sourceUrl: schema.villageCandidates.sourceUrl,
-      coverageNote: schema.villageCandidates.coverageNote,
+      childId: schema.familyActivityHistory.childId,
+      title: schema.familyActivityHistory.title,
+      kind: schema.familyActivityHistory.kind,
+      summary: schema.familyActivityHistory.summary,
+      sourceUrl: schema.familyActivityHistory.sourceUrl,
+      coverageNote: schema.familyActivityHistory.coverageNote,
+      offeredAt: schema.familyActivityHistory.offeredAt,
       areaCoarse: schema.families.areaCoarse,
       endorsementCount: sql<number>`(
         select count(*)::int from ${schema.villageEndorsements}
-        where ${schema.villageEndorsements.candidateId} = ${schema.villageCandidates.id}
+        where ${schema.villageEndorsements.candidateId} = ${schema.familyActivityHistory.id}
       )`,
     })
-    .from(schema.villageCandidates)
-    .innerJoin(schema.families, eq(schema.families.id, schema.villageCandidates.familyId))
-    .where(eq(schema.villageCandidates.shareToken, token))
+    .from(schema.familyActivityHistory)
+    .innerJoin(schema.families, eq(schema.families.id, schema.familyActivityHistory.familyId))
+    .where(eq(schema.familyActivityHistory.shareToken, token))
     .limit(1);
 
   const row = rows[0];
@@ -51,6 +52,11 @@ export async function loadSharedActivity(
     return null;
   }
 
-  const activity = toPublicActivity(row as PublicCandidateRow);
+  const activity = toPublicActivity({
+    ...row,
+    summary: row.offeredAt
+      ? `Snapshot from ${row.offeredAt.toISOString().slice(0, 10)}; confirm current details at the source.\n${row.summary}`
+      : 'Shared from an earlier find. Check their page for current dates and availability.',
+  } as PublicCandidateRow);
   return { areaCoarse: row.areaCoarse, activity };
 }

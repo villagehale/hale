@@ -739,7 +739,7 @@ function bindAck(input: CourseBindAckInput, decorated: boolean): string {
     const price = priceClause(facts.Prices);
     if (price !== null) parts.push(`${price}.`);
     // The human barcode Markham's phone-registration line asks for, days early and with
-    // room to write it down. No phone number is printed: registration_windows holds none.
+    // room to write it down. No phone number is printed: watch source metadata holds none.
     const barcode = printable(facts.CourseId, backed);
     if (barcode !== null) parts.push(`Course ${barcode}.`);
   }

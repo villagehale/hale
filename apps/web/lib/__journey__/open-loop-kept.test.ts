@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import {
   type FakeDb,
   FakeExtractor,
@@ -10,7 +11,7 @@ import {
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
-import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
+import { createRadarComposer, readCandidates } from '~/lib/channel/intake/radar';
 import { FIRST_FIND_DUE_HOURS } from '~/lib/channel/intake/radar-voice';
 import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -110,9 +111,6 @@ async function runIntakeRadar(): Promise<Intake> {
     }),
     // Nothing to seed and nowhere to place it: this family's whole point is that
     // geography has nothing for them yet.
-    seedCivic: async () => 0,
-    resolveCenter: async () => null,
-    discoveryTrigger: () => {},
     answerComposer: fakeSilentAnswerComposer,
     friendVoice: scriptedFriendVoice,
     openQuestions: fakeNoOpenQuestions,
@@ -149,23 +147,24 @@ const openGate = (): OutboundGatePorts => ({
   parentTimeZone: async () => TZ,
 });
 
-/** Discovery, landing late — the background half of seedFirstRadar, which is the whole
- * reason the beat is true rather than hopeful. One indoor free session, in the store. */
-async function discoveryFinallyLands(fake: FakeDb, familyId: string): Promise<void> {
-  await fake.db.insert(schema.villageCandidates).values({
-    familyId,
-    title: 'Library story time',
-    venueName: 'Halton Hills Library',
-    ageRange: null,
-    priceLevel: 'free',
-    indoorOutdoor: 'indoor',
-    eventDate: null,
-    seasons: null,
-    childId: null,
-    confidence: 0.8,
-    runType: 'standing',
-    supersededAt: null,
-  } as never);
+/** The mocked external source changes; there is no background catalog to populate. */
+let currentPicks: ActivityPick[] = [];
+const liveFinder: ActivityFinder = { find: async () => ({ found: true, picks: currentPicks }) };
+function liveFindFinallyAvailable(): void {
+  currentPicks = [
+    {
+      name: 'Library story time',
+      ageFit: 'ages 0-5',
+      when: 'Saturday 10 AM',
+      price: 'free',
+      sourceName: 'Halton Hills Library',
+      source: 'web',
+      sourceUrl: 'https://example.org/library',
+      eventDate: '2026-08-08',
+      indoorOutdoor: 'indoor',
+      access: 'drop_in',
+    },
+  ];
 }
 
 function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): NudgeRunDeps {
@@ -202,8 +201,9 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
         dateOfBirth: row.dateOfBirth as string,
         dobPrecision: row.dobPrecision === 'derived' ? ('derived' as const) : ('exact' as const),
       })),
-    loadCandidates: (database, id) => readCandidates(database, id),
-    loadWindows: (database, area) => readWindows(database, area),
+    loadCandidates: (database, id, now) =>
+      readCandidates(database, id, { now, finder: liveFinder }),
+    loadWindows: async () => [],
     loadSuppressedCheckpoints: async () => new Set<string>(),
     loadClaimedWindowIds: async () => new Set<string>(),
     loadWeekdayCareContext: async () => ({
@@ -275,7 +275,7 @@ beforeAll(async () => {
   const overdue = await aggregateCommitmentDebt(intake.fake.db, OVERDUE_AT);
   const open = await loadOpenCommitments(intake.fake.db, intake.familyId, OVERDUE_AT);
 
-  await discoveryFinallyLands(intake.fake, intake.familyId);
+  liveFindFinallyAvailable();
   const before = intake.transport.sent.length;
   const sweep = await runNudgeCron(
     intake.fake.db,

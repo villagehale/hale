@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
 import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { registrationSourceFixture } from '~/lib/testing/registration-source';
 import { loadClaimedWindowIds } from './claims';
 import { claimRegistrationWatch, recordRegistrationRead } from './watch-storage';
 
@@ -49,6 +50,8 @@ beforeAll(async () => {
   );
   legacyId = legacy.rows[0]?.id ?? '';
   await db.applyMigration(MIGRATION);
+  await db.applyMigration('0162_drop_registration_catalog.sql');
+  await db.applyMigration('0163_activity_history_only.sql');
 });
 
 afterAll(async () => {
@@ -93,8 +96,7 @@ async function sequence(id: string) {
 }
 
 describe('registration watch storage migration', () => {
-  it('preserves a pre-migration row and survives a second apply', async () => {
-    await db.applyMigration(MIGRATION);
+  it('preserves watch identity, opt-in and outcome while dropping the global catalog', async () => {
     const row = await sequence(legacyId);
     expect(row).toMatchObject({
       windowId: legacyWindowId,
@@ -103,7 +105,16 @@ describe('registration watch storage migration', () => {
       actionId: legacyActionId,
     });
     expect(row.lastReading).toBeNull();
-    expect(row.nextCheckAt).toBeNull();
+    expect(row.nextCheckAt).toBeInstanceOf(Date);
+    expect(row.courseUrl).toBe('https://example.test/legacy');
+    expect(row.sourceContext).toMatchObject({
+      id: legacyWindowId,
+      municipality: 'markham',
+      sourceUrl: 'https://example.test/legacy',
+    });
+    expect(
+      (await db.client.query("SELECT to_regclass('registration_windows') AS retired")).rows[0],
+    ).toEqual({ retired: null });
     expect(row.dateReviewActionId).toBeNull();
   });
 
@@ -148,23 +159,21 @@ describe('registration watch storage migration', () => {
 
   it('reuses a legacy bound sequence without changing its original opt-in', async () => {
     const sourceUrl = 'https://classes.example.test/legacy-bound';
-    const [window] = await db.database
-      .insert(schema.registrationWindows)
-      .values({
-        municipality: 'markham',
-        programDomain: 'swim',
-        cycleLabel: 'Legacy bound cycle',
-        openAt: NOW,
-        sourceUrl,
-        verifiedAt: NOW,
-      })
-      .returning({ id: schema.registrationWindows.id });
+    const window = registrationSourceFixture({
+      municipality: 'markham',
+      programDomain: 'swim',
+      cycleLabel: 'Legacy bound cycle',
+      openAt: NOW,
+      sourceUrl,
+      verifiedAt: NOW,
+    });
     const [existing] = await db.database
       .insert(schema.registrationSequences)
       .values({
         familyId,
         parentUserId,
-        windowId: window?.id,
+        windowId: window.id,
+        sourceContext: window,
         courseUrl: sourceUrl,
         courseOpensAt: NOW,
         actionId: legacyActionId,

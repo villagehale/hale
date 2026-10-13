@@ -1,16 +1,16 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { type SQL, and, desc, eq, isNull, or } from 'drizzle-orm';
-import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
-import { type SavedAreaLabel, readActiveArea } from './areas';
 import { listFamilyAcceptedCandidateIds } from './accept';
+import { type SavedAreaLabel, readActiveArea } from './areas';
+import { defaultDiscoverDeps, discoverForFamily } from './discover';
 import { countEndorsementsForCandidates, listFamilyEndorsedCandidateIds } from './endorse';
+import { type VillageCandidateView, toVillageCandidateView } from './mappers';
 import { listFamilySavedCandidateIds } from './save';
 import { readSavedVillageCandidates } from './saved-list';
-import { type VillageCandidateView, toVillageCandidateView } from './mappers';
-import { type Season, orderByDate, visibleCandidates, visibleSearchCandidates } from './visibility';
+import type { Season } from './visibility';
 
 /**
  * Mirrors dashboard/queries.ts: the village page runs both in a credential-less
@@ -43,6 +43,7 @@ const EMPTY_VILLAGE: VillageData = { candidates: [] };
  * "find fall activities" search reads back without touching the standing feed.
  */
 export interface VillageReadOptions {
+  subject?: string;
   searchSeason?: Season;
 }
 
@@ -60,23 +61,6 @@ export interface VillageReadOptions {
  * type only so the weekly civic sweep and the LLM discovery run supersede their
  * own rows and never each other's.
  */
-export function villageActiveFilter(familyId: string, opts?: VillageReadOptions): SQL | undefined {
-  const runScope = opts?.searchSeason
-    ? and(
-        eq(schema.villageCandidates.runType, 'search'),
-        eq(schema.villageCandidates.searchSeason, opts.searchSeason),
-      )
-    : or(
-        eq(schema.villageCandidates.runType, 'standing'),
-        eq(schema.villageCandidates.runType, 'civic'),
-        isNull(schema.villageCandidates.runType),
-      );
-  return and(
-    eq(schema.villageCandidates.familyId, familyId),
-    isNull(schema.villageCandidates.supersededAt),
-    runScope,
-  );
-}
 
 /**
  * Reads ONE resolved family's discovered candidates, teen-safe. Split out of
@@ -103,26 +87,19 @@ export async function readVillage(
     children.filter((c) => deriveStage(c.dateOfBirth) === 'teenager').map((c) => c.id),
   );
 
-  const currentRunRows = await database
-    .select()
-    .from(schema.villageCandidates)
-    .where(villageActiveFilter(familyId, opts))
-    .orderBy(
-      desc(schema.villageCandidates.confidence),
-      desc(schema.villageCandidates.discoveredAt),
-    );
-
-  // Drop past dated events, an expired (stale) run, and — on the STANDING feed only
-  // — out-of-season seasonal picks, all at the one visibility primitive; then float
-  // dated picks to the top soonest-first so a time-boxed event reads before the
-  // standing options. A SEARCH read skips the calendar-season gate: its rows were
-  // already season-targeted by the parent's chosen season, so a fall search viewed
-  // in summer must still show (visibleSearchCandidates). The confidence order the DB
-  // applied is preserved within each group (stable sort). The day-boundary/season
-  // decisions use the family's own zone, not the server's.
-  const timeZone = await readFamilyTimezone(database, familyId);
-  const visible = opts?.searchSeason ? visibleSearchCandidates : visibleCandidates;
-  const candidateRows = orderByDate(visible(currentRunRows, new Date(), timeZone));
+  const result = await discoverForFamily(familyId, database, defaultDiscoverDeps(), opts);
+  const candidateRows =
+    result.status === 'discovered' && result.offeredIds.length > 0
+      ? await database
+          .select()
+          .from(schema.familyActivityHistory)
+          .where(
+            and(
+              eq(schema.familyActivityHistory.familyId, familyId),
+              inArray(schema.familyActivityHistory.id, result.offeredIds),
+            ),
+          )
+      : [];
 
   const candidateIds = candidateRows.map((row) => row.id);
   const [endorsementCounts, familyEndorsed, familyAccepted, familySaved] = await Promise.all([
@@ -150,7 +127,10 @@ export async function readVillage(
  * boundaries only. A genuine query failure once a DB exists must surface (rule #8).
  */
 export function loadVillage(opts?: VillageReadOptions): Promise<VillageData> {
-  return readForFamily((database, familyId) => readVillage(database, familyId, opts), EMPTY_VILLAGE);
+  return readForFamily(
+    (database, familyId) => readVillage(database, familyId, opts),
+    EMPTY_VILLAGE,
+  );
 }
 
 /**
@@ -188,15 +168,19 @@ export async function readVillageCandidateById(
 ): Promise<VillageCandidateView | null> {
   const rows = await database
     .select()
-    .from(schema.villageCandidates)
-    .where(and(eq(schema.villageCandidates.id, id), eq(schema.villageCandidates.familyId, familyId)))
+    .from(schema.familyActivityHistory)
+    .where(
+      and(
+        eq(schema.familyActivityHistory.id, id),
+        eq(schema.familyActivityHistory.familyId, familyId),
+      ),
+    )
     .limit(1);
   const row = rows[0];
   if (!row) return null;
 
   const teenAttributed =
-    row.childId !== null &&
-    (await isTeenChild(database, familyId, row.childId));
+    row.childId !== null && (await isTeenChild(database, familyId, row.childId));
 
   const [endorsementCounts, familyEndorsed, familyAccepted, familySaved] = await Promise.all([
     countEndorsementsForCandidates(database, [id]),
@@ -205,12 +189,17 @@ export async function readVillageCandidateById(
     listFamilySavedCandidateIds(database, familyId),
   ]);
 
-  return toVillageCandidateView(row, teenAttributed, {
-    endorsementCount: endorsementCounts.get(id) ?? 0,
-    endorsedByFamily: familyEndorsed.has(id),
-    accepted: familyAccepted.has(id),
-    saved: familySaved.has(id),
-  });
+  return toVillageCandidateView(
+    row,
+    teenAttributed,
+    {
+      endorsementCount: endorsementCounts.get(id) ?? 0,
+      endorsedByFamily: familyEndorsed.has(id),
+      accepted: familyAccepted.has(id),
+      saved: familySaved.has(id),
+    },
+    true,
+  );
 }
 
 /** Whether a candidate's child is a 13+ teen (rule #1), derived live from DOB. */

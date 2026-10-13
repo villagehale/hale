@@ -15,7 +15,7 @@ import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
+import { type FetchPage, createFetchBody } from '~/lib/registration/fetch';
 import { STATE_TOLD, type SpotReading, readSpot, transitionKind } from './availability';
 import { renderSpotOpen } from './copy';
 import { resettleSpotWatchPromise } from './promise';

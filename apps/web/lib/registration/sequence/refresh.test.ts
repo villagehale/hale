@@ -27,6 +27,23 @@ const state = {
 };
 
 describe('registration refresh decisions', () => {
+  it('does not invent a later-date approval when a legacy midnight becomes a date-only observation', () => {
+    const result = decideRegistrationRefresh(
+      { ...state, anchor: new Date('2026-10-20T04:00:00Z') },
+      reading('2026-10-20', null),
+      false,
+      now,
+    );
+    expect(result).toMatchObject({
+      anchor: new Date('2026-10-20T16:00:00Z'),
+      paused: false,
+      pending: null,
+      publishedTime: false,
+    });
+    expect(decideRegistrationRefresh(state, reading('2026-10-22', null), false, now)).toMatchObject(
+      { paused: true, pending: { kind: 'later' } },
+    );
+  });
   it('checks distant dates daily, near/unknown/failed dates hourly', () => {
     expect(decideRegistrationRefresh(state, reading('2026-10-20'), false, now).nextCheckAt).toEqual(
       new Date('2026-10-11T12:00:00Z'),

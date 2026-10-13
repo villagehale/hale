@@ -15,7 +15,7 @@ import { actions } from './actions.js';
 import { children } from './children.js';
 import { registrationOutcomeEnum } from './enums.js';
 import { families } from './families.js';
-import { registrationWindows } from './registration-windows.js';
+import type { RegistrationSourceState } from './registration-state.js';
 import { users } from './users.js';
 
 /** Public course URLs need not fit the PerfectMind-only SMS link bound. */
@@ -57,7 +57,9 @@ export const registrationSequences = pgTable(
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
     /** Legacy window association; a URL-owned watch does not require one. */
-    windowId: uuid('window_id').references(() => registrationWindows.id, { onDelete: 'cascade' }),
+    /** Imported identity retained only for delivered-message dedupe, not a catalog FK. */
+    windowId: uuid('window_id'),
+    sourceContext: jsonb('source_context').$type<RegistrationSourceState>(),
     childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
     /** The parent the legs are addressed to — one household, one thread (rule: ONE
      * message per family, never one per kid or per parent). */

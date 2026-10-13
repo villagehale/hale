@@ -20,6 +20,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import { f14EnabledFor } from '~/lib/channel/f14';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
@@ -40,18 +41,16 @@ import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
-import { createFetchBody } from '~/lib/registration/verify-sweep';
+import { createFetchBody } from '~/lib/registration/fetch';
+import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
 import {
   createRegistrationReader,
   registrationDate,
   registrationWhen,
 } from '~/lib/registration/read';
-import { loadLiveSequences, registrationTargetFor } from '~/lib/registration/sequence/run';
 import { refreshRegistrationWatch } from '~/lib/registration/sequence/refresh';
-import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
-import { f14EnabledFor } from '~/lib/channel/f14';
+import { loadLiveSequences, registrationTargetFor } from '~/lib/registration/sequence/run';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -68,11 +67,7 @@ import {
   augmentCoachSkillForGoogleDrafts,
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
-import {
-  type RegistrationWindowContext,
-  loadRegistrationWindows,
-  productionRegistrationContextPorts,
-} from './registration-context';
+import type { RegistrationWindowContext } from './registration-context';
 import { type ReplyChild, ReplyNeedsShorter, redactTeenNames, replyCharacterRoom, toSmsReply } from './reply';
 import { shortenOverBudgetReply } from './shorten';
 import {
@@ -271,9 +266,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ports.loadChildren(turn.familyId),
       ]);
       const registrationQuestion =
-        /\b(register|registration|signup|sign.?up|swim|camp|course|rec|fall|winter|spring|summer)\b|报名|课程|提醒/i.test(
-          turn.body,
-        ) ||
+        /\b(register|registration|signup|sign.?up)\b|报名/i.test(turn.body) ||
+        (/\b(fall|winter|spring|summer)\b/i.test(turn.body) &&
+          /\b(find|what|activities|classes|programs)\b/i.test(turn.body)) ||
         (/\b(when|date|time|open)\b|什么时候|几点|日期|时间/i.test(turn.body) &&
           transcript
             .slice(-4)
@@ -588,12 +583,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     loadRegistrationWindows: async (familyId, now) => {
       const reader = createRegistrationReader();
-      const windows = await loadRegistrationWindows(
-        productionRegistrationContextPorts(database, reader),
-        familyId,
-        DEFAULT_TIMEZONE,
-        now,
-      );
+      const windows: RegistrationWindowContext[] = [];
       const watches = (await loadLiveSequences(database, undefined, familyId)).slice(0, 8);
       for (let watch of watches) {
         const reading = await reader(registrationTargetFor(watch), now);

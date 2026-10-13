@@ -1,4 +1,4 @@
-import type { ProgramDomain, RegistrationWindow } from '@hale/db';
+import type { ProgramDomain, RegistrationSourceState } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import { decideRadar } from '~/lib/channel/intake/radar-decide';
 import { radarFactSlots } from '~/lib/channel/intake/radar-voice';
@@ -16,11 +16,11 @@ const NOW = new Date('2026-11-20T15:00:00.000Z');
 const SOURCE = 'https://www.toronto.ca/news/winter-2027-fixture';
 
 function row(
-  district: RegistrationWindow['district'],
+  district: RegistrationSourceState['district'],
   residentOpenAt: string,
   openAt: string,
   domain: ProgramDomain = 'rec_program',
-): RegistrationWindow {
+): RegistrationSourceState {
   return {
     id: `${district ?? 'city'}-${domain}`,
     municipality: 'toronto',
@@ -43,7 +43,7 @@ function row(
 }
 
 /** The two published mornings, plus the city-wide row a pre-split seed would leave behind. */
-const WINTER: RegistrationWindow[] = [
+const WINTER: RegistrationSourceState[] = [
   row('etobicoke_york', '2026-12-08T07:00:00-05:00', '2026-12-18T07:00:00-05:00'),
   row('toronto_east_york', '2026-12-08T07:00:00-05:00', '2026-12-18T07:00:00-05:00'),
   row('north_york', '2026-12-09T07:00:00-05:00', '2026-12-19T07:00:00-05:00'),

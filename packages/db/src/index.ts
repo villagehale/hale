@@ -24,9 +24,9 @@ export {
 export type {
   Municipality,
   ProgramDomain,
-  RegistrationWindow,
-  NewRegistrationWindow,
-} from './schema/registration-windows.js';
+  RegistrationSourceState,
+} from './schema/registration-state.js';
+export { registrationSourceState } from './schema/registration-state.js';
 export { REGISTRATION_COURSE_URL_MAX_CHARS } from './schema/registration-sequences.js';
 export type {
   GtaRegion,

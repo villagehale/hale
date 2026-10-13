@@ -2,10 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { productionChannelCoachPorts } from '~/lib/channel/coach/runtime';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { HandlerContext } from '~/lib/channel/router/route';
-import { createTestDb, seedFamily, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { registrationSourceFixture } from '~/lib/testing/registration-source';
 import type { LiveRegistrationReading } from '../live-reading';
+import * as registrationReaderModule from '../read';
+import { verifyRegistrationDateApproval } from './date-approval';
 import { registrationLinkHandler } from './link-handler';
 import {
   claimDueRegistrationChecks,
@@ -14,12 +19,8 @@ import {
   releaseRegistrationSend,
 } from './refresh';
 import { defaultSequenceRunDeps, loadLiveSequences, runRegistrationSequenceCron } from './run';
-import { claimRegistrationWatch } from './watch-storage';
-import { verifyRegistrationDateApproval } from './date-approval';
-import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { openLegWindows } from './schedule';
-import { productionChannelCoachPorts } from '~/lib/channel/coach/runtime';
-import * as registrationReaderModule from '../read';
+import { claimRegistrationWatch } from './watch-storage';
 
 let db: TestDb;
 const NOW = new Date('2026-10-13T14:00:00Z');
@@ -105,7 +106,6 @@ function harness(reading: LiveRegistrationReading, target: Awaited<ReturnType<ty
   const transport = new FakeTransport();
   let reads = 0;
   deps.transport = transport;
-  deps.selectFamilies = async () => [];
   deps.loadLiveSequences = async () => loadLiveSequences(db.database, target.sequenceId);
   deps.loadRecipients = async () => [
     { parentUserId: target.parentUserId, role: 'primary_parent', timeZone: 'America/Toronto' },
@@ -135,8 +135,9 @@ describe('live registration storage → cron → outbound', () => {
   it('a scheduled check catches 20th → 18th before the old reminder is due, then sends the new ladder', async () => {
     const at = new Date('2026-10-12T14:00:00Z');
     const target = await watch('before-old-due', true, at);
-    expect(openLegWindows(new Date('2026-10-20T13:00:00Z'), 'America/Toronto').heads_up.from > at)
-      .toBe(true);
+    expect(
+      openLegWindows(new Date('2026-10-20T13:00:00Z'), 'America/Toronto').heads_up.from > at,
+    ).toBe(true);
     const live = { ...page(target.url, '2026-10-18'), checkedAt: at };
     const h = harness(live, target);
     h.deps.live!.claimDue = async () => [target.sequenceId];
@@ -147,7 +148,11 @@ describe('live registration storage → cron → outbound', () => {
     expect((await row(target.sequenceId)).courseOpensAt).toEqual(new Date('2026-10-18T13:00:00Z'));
     const headsUp = await runRegistrationSequenceCron(db.database, h.deps, at);
     expect(headsUp.sent).toBe(1);
-    const evening = await runRegistrationSequenceCron(db.database, h.deps, new Date('2026-10-17T23:00:00Z'));
+    const evening = await runRegistrationSequenceCron(
+      db.database,
+      h.deps,
+      new Date('2026-10-17T23:00:00Z'),
+    );
     expect(evening.sent).toBe(1);
     expect(h.transport.sent).toHaveLength(3);
     for (const body of h.transport.bodies()) {
@@ -162,8 +167,12 @@ describe('live registration storage → cron → outbound', () => {
     async (reason) => {
       const target = await watch(`held-${reason}`);
       const reading: LiveRegistrationReading = {
-        sourceUrl: target.url, checkedAt: NOW, timeZone: 'America/New_York',
-        reader: 'ai', status: 'unverified', reason,
+        sourceUrl: target.url,
+        checkedAt: NOW,
+        timeZone: 'America/New_York',
+        reader: 'ai',
+        status: 'unverified',
+        reason,
       };
       const h = harness(reading, target);
       h.deps.live!.claimDue = async () => [target.sequenceId];
@@ -186,20 +195,22 @@ describe('live registration storage → cron → outbound', () => {
       vi.stubEnv('F14_ENABLED', 'true');
       const target = await watch(`coach-${windowBound}`);
       if (windowBound) {
-        const [window] = await db.database
-          .insert(schema.registrationWindows)
-          .values({
-            municipality: 'halton_hills',
-            programDomain: 'swim',
-            cycleLabel: randomUUID(),
-            openAt: new Date('2026-10-20T13:00:00Z'),
-            sourceUrl: target.url,
-            verifiedAt: NOW,
-          })
-          .returning({ id: schema.registrationWindows.id });
+        const window = registrationSourceFixture({
+          municipality: 'halton_hills',
+          programDomain: 'swim',
+          cycleLabel: randomUUID(),
+          openAt: new Date('2026-10-20T13:00:00Z'),
+          sourceUrl: target.url,
+          verifiedAt: NOW,
+        });
         await db.database
           .update(schema.registrationSequences)
-          .set({ windowId: window!.id, courseUrl: null, courseOpensAt: null })
+          .set({
+            windowId: window!.id,
+            sourceContext: window,
+            courseUrl: null,
+            courseOpensAt: null,
+          })
           .where(eq(schema.registrationSequences.id, target.sequenceId));
       }
       // Replace the I/O reader only. Model answer quality is covered by the real Coach eval.
@@ -414,22 +425,20 @@ describe('live registration storage → cron → outbound', () => {
   });
   it('an unavailable opening date does not stop a reported waitlist offer deadline', async () => {
     const target = await watch('waitlist-independent');
-    const [window] = await db.database
-      .insert(schema.registrationWindows)
-      .values({
-        municipality: 'halton_hills',
-        programDomain: 'swim',
-        cycleLabel: randomUUID(),
-        openAt: NOW,
-        sourceUrl: target.url,
-        verifiedAt: NOW,
-        waitlistResponseHours: 48,
-      })
-      .returning({ id: schema.registrationWindows.id });
+    const window = registrationSourceFixture({
+      municipality: 'halton_hills',
+      programDomain: 'swim',
+      cycleLabel: randomUUID(),
+      openAt: NOW,
+      sourceUrl: target.url,
+      verifiedAt: NOW,
+      waitlistResponseHours: 48,
+    });
     await db.database
       .update(schema.registrationSequences)
       .set({
         windowId: window!.id,
+        sourceContext: window,
         outcome: 'waitlisted',
         waitlistStartedAt: new Date(NOW.getTime() - 25 * 3_600_000),
         pausedAt: NOW,
@@ -540,7 +549,7 @@ describe('live registration storage → cron → outbound', () => {
     await runRegistrationSequenceCron(db.database, h.deps, NOW);
     expect(h.transport.sent).toHaveLength(0);
   });
-  it('date-only sends an evening plan without claiming noon, and never sends a go reminder', async () => {
+  it('date-only sends an evening plan without claiming noon, and never sends a go or premature check-in', async () => {
     const target = await watch('date-only');
     const live = page(target.url, '2026-10-20', null);
     await db.database
@@ -552,7 +561,11 @@ describe('live registration storage → cron → outbound', () => {
     expect(h.transport.bodies()[0]).toContain('opening time not published');
     expect(h.transport.bodies()[0]).not.toContain('12:00');
     await runRegistrationSequenceCron(db.database, h.deps, new Date('2026-10-20T15:45:00Z'));
+    await runRegistrationSequenceCron(db.database, h.deps, new Date('2026-10-20T20:15:00Z'));
     expect(h.transport.sent).toHaveLength(1);
+    await runRegistrationSequenceCron(db.database, h.deps, new Date('2026-10-21T14:00:00Z'));
+    expect(h.transport.sent).toHaveLength(2);
+    expect(h.transport.bodies()[1]).toContain('How did registration go?');
   });
   it('bounded cron selection respects the family allowlist', async () => {
     const target = await watch('allowlisted');

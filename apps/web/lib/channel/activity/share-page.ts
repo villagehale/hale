@@ -15,7 +15,7 @@ import type { DeepSlot } from './deep';
  *
  * IT REUSES THE SHARE SURFACE THAT ALREADY EXISTS, and this was a deliberate choice over
  * writing a new one. `/a/:token` (app/a/[token]/page.tsx) is the public, unauthenticated
- * per-activity card: it resolves a `village_candidates.share_token`, FAILS CLOSED on a
+ * per-activity card: it resolves a `family_activity_history.share_token`, FAILS CLOSED on a
  * child-attributed row, projects through the closed `toPublicActivity` allow-list, has an
  * OG image, and carries the not-found state. Every one of those is a privacy property
  * that took review to get right (rule #1), and a second page system would be a second
@@ -132,7 +132,7 @@ export async function mintActivitySharePage(
     familyId: input.familyId,
     actor: 'system',
     actionTaken: 'activity_followup_shared',
-    targetTable: 'village_candidates',
+    targetTable: 'family_activity_history',
     targetId: candidateId,
     // A COUNT, never the finds — an audit row is read by ops and by a right-to-access
     // export, and neither needs the venue names (rule #1).
@@ -160,7 +160,7 @@ export function defaultActivitySharePorts(): ActivitySharePorts {
   return {
     writeCandidate: async (database, row) => {
       const [written] = await database
-        .insert(schema.villageCandidates)
+        .insert(schema.familyActivityHistory)
         .values({
           familyId: row.familyId,
           // NULL, always. A child-attributed candidate can never be made public, and the
@@ -176,11 +176,12 @@ export function defaultActivitySharePorts(): ActivitySharePorts {
           // this pipeline claims — and still not "verified by us".
           confidence: 0.9,
           shareToken: row.shareToken,
+          offeredAt: new Date(),
           // A parent-triggered lane, so it is a `search` run: supersession is scoped by
           // run type, and a deep find must never soft-retire the standing radar feed.
           runType: 'search',
         })
-        .returning({ id: schema.villageCandidates.id });
+        .returning({ id: schema.familyActivityHistory.id });
       if (!written) throw new Error('activity share page: candidate insert returned no row');
       return written.id;
     },

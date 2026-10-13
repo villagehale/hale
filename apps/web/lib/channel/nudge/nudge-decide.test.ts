@@ -1,4 +1,4 @@
-import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
+import type { Municipality, ProgramDomain, RegistrationSourceState } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { WeekdayCareFact } from '~/lib/care/weekday';
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
@@ -69,7 +69,7 @@ function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
   };
 }
 
-function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
+function win(overrides: Partial<RegistrationSourceState> = {}): RegistrationSourceState {
   return {
     id: 'w-1',
     municipality: 'markham' as Municipality,
@@ -85,7 +85,7 @@ function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
     createdAt: FRIDAY,
     updatedAt: FRIDAY,
     ...overrides,
-  } as RegistrationWindow;
+  } as RegistrationSourceState;
 }
 
 function match(overrides: Partial<RegistrationMatch> = {}): RegistrationMatch {

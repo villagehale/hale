@@ -1,18 +1,18 @@
-import type { RegistrationWindow } from '@hale/db';
-import { SPOT_PORTAL_HOSTS, sanitizeSpotUrl, portalForMunicipality } from '~/lib/channel/spots/url';
-import { zonedLocalInstant } from '~/lib/plan/spine';
+import type { RegistrationSourceState } from '@hale/db';
+import { SPOT_PORTAL_HOSTS, portalForMunicipality, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { pipelineClient } from '~/lib/pipeline/client';
+import { zonedLocalInstant } from '~/lib/plan/spine';
+import { dayKeyIn } from '~/lib/plan/spine';
+import { type FetchPage, MAX_PAGE_TEXT_CHARS, stripHtml } from './fetch';
 import {
   type LiveRegistrationDate,
   type LiveRegistrationReading,
   normalizeExtractedRegistration,
   readCourseRegistration,
 } from './live-reading';
+import { resolveMunicipalities } from './match-registration-windows';
 import { createRegistrationPageFetch, registrationPageUrl } from './page';
 import { type CycleIdentity, type ExtractedWindow, extractPublishedWindow } from './verify-window';
-import { MAX_PAGE_TEXT_CHARS, type FetchPage, stripHtml } from './verify-sweep';
-import { resolveMunicipalities } from './match-registration-windows';
-import { dayKeyIn } from '~/lib/plan/spine';
 
 export interface RegistrationTarget extends CycleIdentity {
   sourceUrl: string;
@@ -89,7 +89,9 @@ export function createRegistrationReader(
         // A portal town's unlabelled city-wide date cannot establish its public tier.
         if (
           reading.status === 'verified' &&
-          target.residentTiers &&
+          (target.residentTiers ||
+            /^(?:www\.)?(?:markham|oakville)\.ca$/.test(new URL(target.sourceUrl).hostname) ||
+            new URL(target.sourceUrl).hostname in SPOT_PORTAL_HOSTS) &&
           !extracted.residentOpen &&
           !/\b(?:non[- ]?resident|public|general)\s+registration\b/i.test(extracted.evidence ?? '')
         ) {
@@ -130,7 +132,7 @@ function validateReadingClock(reading: LiveRegistrationReading): LiveRegistratio
 
 export function windowReadTarget(
   window: Pick<
-    RegistrationWindow,
+    RegistrationSourceState,
     'municipality' | 'programDomain' | 'cycleLabel' | 'sourceUrl' | 'district'
   >,
 ): RegistrationTarget {
@@ -201,11 +203,11 @@ export function registrationHasOpened(
     : registrationAnchor(reading, date) <= now;
 }
 
-export type LiveRegistrationWindow = RegistrationWindow & { reading: LiveRegistrationReading };
+export type LiveRegistrationWindow = RegistrationSourceState & { reading: LiveRegistrationReading };
 
 /** Only source metadata goes into the reader. No stored date is a fallback. */
 export async function readRegistrationWindows(
-  windows: readonly RegistrationWindow[],
+  windows: readonly RegistrationSourceState[],
   reader: RegistrationReader,
   now: Date,
   postal: string | null = null,

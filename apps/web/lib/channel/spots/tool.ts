@@ -4,7 +4,7 @@ import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { isGsm7 } from '~/lib/channel/sms-segments';
-import type { FetchPage } from '~/lib/registration/verify-sweep';
+import type { FetchPage } from '~/lib/registration/fetch';
 import { type SpotReading, readSpot } from './availability';
 import { watchedSpotsEnabled } from './flag';
 import type { SpotWatchIntent } from './store';
@@ -198,9 +198,7 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       });
       if (!gated.ok) {
         throw new Error(
-          gated.refusal === 'names_a_person'
-            ? LABEL_REFUSAL.names_a_person
-            : LABEL_REFUSAL.empty,
+          gated.refusal === 'names_a_person' ? LABEL_REFUSAL.names_a_person : LABEL_REFUSAL.empty,
         );
       }
       // `scrubResidualPii` REWRITES ages ("3 years" → "[redacted]") and gateFreeText

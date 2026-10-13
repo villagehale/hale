@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { isStage } from '~/lib/testing/structured-reply';
+import * as sourcePage from '~/lib/registration/page';
 import type { ActivityQuery } from './deidentify';
 import {
   MAX_SEARCHES,
@@ -9,6 +10,12 @@ import {
   groundUserMessage,
   toPicks,
 } from './lane';
+
+vi.mock('~/lib/registration/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
+  createRegistrationPageFetch: () => async () =>
+    'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks.',
+}));
 
 /**
  * THE LANE'S MECHANICS AND ITS INVARIANTS — not its judgement.
@@ -71,6 +78,7 @@ const WHOLE_PICK = {
   when: 'Saturdays 9:15am, fall session from Sept 13',
   price: '$142 for 12 weeks',
   source_name: 'Halton Hills Gymnastics Centre',
+  source_url: 'https://venue.example/0',
 };
 
 interface Seen {
@@ -180,6 +188,32 @@ describe('the grounding request the eval corpus replays', () => {
 });
 
 describe('an ungrounded find never ships', () => {
+  it('does not compose from date-bearing snippets when every fresh source read fails', async () => {
+    const fetch = vi.spyOn(sourcePage, 'createRegistrationPageFetch').mockReturnValue(async () => {
+      throw Error('source unavailable');
+    });
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient(
+        { ground: groundResult(1), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    );
+    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'not_grounded' });
+    expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
+    fetch.mockRestore();
+  });
+  it('drops a composed URL that was not among the pages just read', async () => {
+    const finder = createActivityFinder(
+      makeClient({
+        ground: groundResult(1),
+        compose: composeResult({
+          picks: [{ ...WHOLE_PICK, source_url: 'https://another.org/schedule' }],
+        }),
+      }),
+    );
+    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
+  });
   it('fails NAMED when the search returned no results, and never composes', async () => {
     const restore = quiet();
     const seen: Seen[] = [];
@@ -204,7 +238,7 @@ describe('an ungrounded find never ships', () => {
    * the lane composed from "" — and a composer handed no research either invents a venue
    * or shrugs, and shrugging is what a parent got. Search RESULTS are not RESEARCH.
    */
-  it('fails NAMED when the search ran but wrote no research to stand on', async () => {
+  it('fresh page text supports extraction even when search returned no prose', async () => {
     const restore = quiet();
     const seen: Seen[] = [];
     const finder = createActivityFinder(
@@ -214,8 +248,8 @@ describe('an ungrounded find never ships', () => {
       ),
     );
 
-    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'not_grounded' });
-    expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
+    expect(await finder.find(QUERY)).toMatchObject({ found: true });
+    expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(true);
     restore.mockRestore();
   });
 

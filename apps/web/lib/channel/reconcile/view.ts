@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, asc, eq, gte, gt, isNull, isNotNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { loadOpenCommitments } from '~/lib/commitments/ledger';
@@ -131,14 +131,12 @@ async function loadMintableWindow(
     .select({
       anchor: schema.registrationSequences.courseOpensAt,
       courseUrl: schema.registrationSequences.courseUrl,
-      municipality: schema.registrationWindows.municipality,
+      municipality: sql<
+        string | null
+      >`${schema.registrationSequences.sourceContext}->>'municipality'`,
     })
     .from(schema.registrationSequences)
     .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
-    .leftJoin(
-      schema.registrationWindows,
-      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
-    )
     .where(
       and(
         eq(schema.registrationSequences.familyId, familyId),

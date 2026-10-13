@@ -1,10 +1,6 @@
-import { type Database, schema } from '@hale/db';
 import type { CandidateAccess, Municipality } from '@hale/db';
-import { ageInMonths } from '@hale/types';
-import { and, eq, gte, isNull, or } from 'drizzle-orm';
 import { asciiCopy } from '~/lib/channel/intake/radar-decide';
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import type { LatLng } from '~/lib/village/geocode';
 import { MIN_SURFACE_CONFIDENCE } from './parse-hours';
 
@@ -503,10 +499,7 @@ function distanceFor(session: CivicSessionForFamily, center: LatLng | null): num
   return haversineKm(center, { lat: session.lat, lng: session.lng });
 }
 
-function fitsAnyChild(
-  session: CivicSessionForFamily,
-  childAgesMonths: readonly number[],
-): boolean {
+function fitsAnyChild(session: CivicSessionForFamily, childAgesMonths: readonly number[]): boolean {
   // No stated band means the source said "everyone" — it covers any household.
   if (session.ageMinMonths === null && session.ageMaxMonths === null) return true;
   // A family with no children on file still sees all-ages programming above, but
@@ -543,7 +536,8 @@ function occurrenceFor(
 
 function summaryFor(session: CivicSessionForFamily, timeLabel: string): string {
   const access = session.registrationRequired ? 'Registration required' : 'Free drop-in';
-  const where = session.venueCity === null ? session.venueName : `${session.venueName}, ${session.venueCity}`;
+  const where =
+    session.venueCity === null ? session.venueName : `${session.venueName}, ${session.venueCity}`;
   return `${access} at ${where} - ${timeLabel}.`;
 }
 
@@ -577,132 +571,3 @@ function ageRangeLabel(session: CivicSessionForFamily): string | null {
  * silently lose the proximity rule and start offering cross-town storytimes
  * again, so "we could not place this family" has to be said out loud (null).
  */
-export async function projectCivicCandidates(
-  database: Database,
-  familyId: string,
-  areaCoarse: string | null,
-  center: LatLng | null,
-  now: Date = new Date(),
-  timeZone: string = DEFAULT_TIMEZONE,
-): Promise<number> {
-  // No area means nothing to place a family near — and a neighbouring city's
-  // storytime is worse than silence (M1's rule).
-  if (areaCoarse === null) return 0;
-  const municipalities = new Set(resolveMunicipalities(areaCoarse));
-  if (municipalities.size === 0) return 0;
-
-  const children = await database
-    .select({ dateOfBirth: schema.children.dateOfBirth })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  const childAges = children
-    .map((child) => (child.dateOfBirth === null ? null : ageInMonths(child.dateOfBirth, now)))
-    .filter((age): age is number => age !== null);
-
-  const rows = await database
-    .select({
-      id: schema.civicSessions.id,
-      title: schema.civicSessions.title,
-      summary: schema.civicSessions.summary,
-      recurrence: schema.civicSessions.recurrence,
-      startsAt: schema.civicSessions.startsAt,
-      dayOfWeek: schema.civicSessions.dayOfWeek,
-      startMinute: schema.civicSessions.startMinute,
-      endMinute: schema.civicSessions.endMinute,
-      ageMinMonths: schema.civicSessions.ageMinMonths,
-      ageMaxMonths: schema.civicSessions.ageMaxMonths,
-      registrationRequired: schema.civicSessions.registrationRequired,
-      isCancelled: schema.civicSessions.isCancelled,
-      confidence: schema.civicSessions.confidence,
-      sourceUrl: schema.civicSessions.sourceUrl,
-      venueId: schema.civicVenues.id,
-      venueName: schema.civicVenues.name,
-      venueAddress: schema.civicVenues.address,
-      venueCity: schema.civicVenues.city,
-      venueUrl: schema.civicVenues.url,
-      venueKind: schema.civicVenues.kind,
-      lat: schema.civicVenues.lat,
-      lng: schema.civicVenues.lng,
-    })
-    .from(schema.civicSessions)
-    .innerJoin(schema.civicVenues, eq(schema.civicSessions.venueId, schema.civicVenues.id))
-    .where(
-      and(
-        isNull(schema.civicSessions.supersededAt),
-        eq(schema.civicSessions.isCancelled, false),
-        gte(schema.civicSessions.confidence, MIN_SURFACE_CONFIDENCE),
-        // A dated session in the past is dead weight; weekly rows have no instant.
-        or(
-          isNull(schema.civicSessions.startsAt),
-          gte(schema.civicSessions.startsAt, new Date(now.getTime() - 24 * 60 * 60 * 1000)),
-        ),
-      ),
-    );
-
-  const local = rows.filter((row) => {
-    const municipality = municipalityForCity(row.venueCity);
-    return municipality !== null && municipalities.has(municipality);
-  });
-
-  const picks = selectCivicSessions(local, childAges, center, now, timeZone);
-
-  await database.transaction(async (tx) => {
-    await tx
-      .update(schema.villageCandidates)
-      .set({ supersededAt: now })
-      .where(
-        and(
-          eq(schema.villageCandidates.familyId, familyId),
-          isNull(schema.villageCandidates.supersededAt),
-          eq(schema.villageCandidates.runType, CIVIC_RUN_TYPE),
-        ),
-      );
-
-    if (picks.length > 0) {
-      await tx.insert(schema.villageCandidates).values(
-        picks.map((pick) => ({
-          familyId,
-          childId: null,
-          title: pick.title,
-          kind: pick.kind,
-          cadence: null,
-          summary: pick.summary,
-          sourceUrl: pick.sourceUrl,
-          source: CIVIC_SOURCE,
-          confidence: pick.confidence,
-          coverageNote: null,
-          eventDate: pick.eventDate,
-          seasons: null,
-          lat: pick.lat,
-          lng: pick.lng,
-          venueName: pick.venueName,
-          venueAddress: pick.venueAddress,
-          civicVenueId: pick.civicVenueId,
-          // Free by policy at every source in this layer — and the radar's
-          // free-first ordering reads exactly this field.
-          priceLevel: 'free',
-          ageRange: pick.ageRange,
-          indoorOutdoor: 'indoor',
-          access: pick.access,
-          whenLabel: pick.whenLabel,
-          runType: CIVIC_RUN_TYPE,
-          searchSeason: null,
-          discoveredAt: now,
-        })),
-      );
-    }
-
-    await tx.insert(schema.auditLog).values({
-      familyId,
-      actor: 'system',
-      actionTaken: 'civic.candidates.projected',
-      targetTable: 'village_candidates',
-      // `placed` records whether the proximity rule actually ran: a geocoding
-      // outage degrades to municipality-only silently by design, and this is the
-      // only place that degradation is visible afterwards.
-      after: { areaCoarse, count: picks.length, source: CIVIC_SOURCE, placed: center !== null },
-    });
-  });
-
-  return picks.length;
-}

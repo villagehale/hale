@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { recMorningReturnLine } from '~/lib/channel/rec-morning/copy';
+import type { RegistrationReader } from '~/lib/registration/read';
 import { adultLearnDoor } from './adult-learn';
 import {
   type IntakeAnswerInput,
@@ -29,14 +29,36 @@ const INPUT: IntakeAnswerInput = {
 
 const RETURN = 'Still want me watching the registration dates?';
 
-/** The composer reads the clock itself, and a city's rec line is derived against it,
- * so the rec-morning specs below pin the clock rather than the sentence. */
-const REC_MORNING_NOW = new Date('2026-09-17T14:00:00.000Z');
-
-function atRecMorningNow(): void {
-  vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(REC_MORNING_NOW);
+function officialClient(url: string) {
+  return {
+    messages: {
+      create: async () => ({
+        content: [
+          {
+            type: 'web_search_tool_result',
+            tool_use_id: 'search',
+            content: [{ type: 'web_search_result', url, title: 'Official registration page' }],
+          },
+        ],
+      }),
+    },
+  } as never;
 }
+const published: RegistrationReader = async (target, checkedAt) => ({
+  status: 'verified',
+  sourceUrl: target.sourceUrl,
+  checkedAt,
+  reader: 'ai',
+  timeZone: 'America/New_York',
+  dates: [
+    {
+      kind: 'general_open',
+      date: '2026-10-20',
+      time: '09:00',
+      evidence: ['Registration opens October 20, 2026 at 9 a.m.'],
+    },
+  ],
+});
 
 function problems(answer: string, returnLine = RETURN, input = INPUT) {
   return refusals(answer, returnLine, input);
@@ -148,7 +170,7 @@ describe('intake answer · the emergency tripwire', () => {
     vi.useRealTimers();
   });
 
-  it('uses the live rec reader result and retains the outstanding intake ask', async () => {
+  it('reads a non-GTA source and keeps its timezone and link', async () => {
     const exploding = {
       messages: {
         create: () => {
@@ -156,69 +178,75 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding, async (input) => `The current Toronto page says 2026-10-20. ${recMorningReturnLine(input.pendingAsk)}`);
-    atRecMorningNow();
-    const outcome = await composer.compose({
+    const url = 'https://example.org/new-york/swim';
+    const outcome = await createIntakeAnswerComposer(officialClient(url), published).compose({
       ...INPUT,
-      parentWords: 'When does Toronto swim registration open?',
+      parentWords: 'When does New York swim registration open?',
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe('The current Toronto page says 2026-10-20. Still want me watching?');
-    expect(outcome.body).not.toContain('Sep 25');
-    expect(outcome.body.toLowerCase()).not.toContain('activeto');
-    expect(outcome.body.toLowerCase()).not.toContain('unofficial');
-    expect(outcome.body.toLowerCase()).not.toContain('efun');
-    expect(outcome.body).not.toMatch(/I'm an AI/i);
-    expect(outcome.body).not.toMatch(/https?:\/\//i);
-    expect(outcome.body).not.toContain(WATCH_OFFER_ASK);
+    expect(outcome.body).toContain('2026-10-20 at 09:00 America/New_York');
+    expect(outcome.body).toContain(url);
+    expect(outcome.body).toContain('Still want me watching?');
   });
 
-  it('reports an unverified Markham read rather than the old seed date', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not have been called');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding, async (input) => `I couldn't verify the Markham registration date. ${recMorningReturnLine(input.pendingAsk)}`);
-    atRecMorningNow();
-    const outcome = await composer.compose({
-      ...INPUT,
-      parentWords: 'Markham fall rec dates?',
-    });
+  it('does not serve a date-bearing search snippet when the page read is unverified', async () => {
+    const url = 'https://example.org/registration';
+    const outcome = await createIntakeAnswerComposer(
+      officialClient(url),
+      async (target, checkedAt) => ({
+        status: 'unverified',
+        sourceUrl: target.sourceUrl,
+        checkedAt,
+        timeZone: null,
+        reader: 'ai',
+        reason: 'not_published',
+      }),
+    ).compose({ ...INPUT, parentWords: 'When does swim registration open?' });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe("I couldn't verify the Markham registration date. Still want me watching?");
-    expect(outcome.body).toContain('Markham');
-    expect(outcome.body).not.toContain('7:00');
-    expect(outcome.body).not.toMatch(/Sept?\s*15/i);
-    expect(outcome.body.toLowerCase()).not.toContain('activeto');
-    expect(outcome.body).not.toMatch(/I'm an AI/i);
+    expect(outcome.body).toContain("couldn't verify");
+    expect(outcome.body).toContain(url);
+    expect(outcome.body).not.toMatch(/2026|9:00|not posted/i);
   });
 
-  it('uses a collected L3R postal to switch a generic rec ask to Markham', async () => {
+  it('a supplied course URL is read directly, without a new search', async () => {
+    const url = 'https://example.org/registration';
     const exploding = {
       messages: {
         create: () => {
-          throw new Error('the model must not have been called');
+          throw Error('No discovery for a known URL');
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding, async (input) => {
-      expect(input.postal).toBe('L3R');
-      return `The current Markham page says 2026-10-20. ${recMorningReturnLine(input.pendingAsk)}`;
-    });
-    atRecMorningNow();
-    const outcome = await composer.compose({
+    const outcome = await createIntakeAnswerComposer(exploding, published).compose({
       ...INPUT,
-      parentWords: 'when is fall rec?',
-      postalCode: 'L3R',
+      parentWords: `When does swim registration open? ${url}`,
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe('The current Markham page says 2026-10-20. Still want me watching?');
+    expect(outcome.body).toContain(url);
+    expect(outcome.body).toContain('2026-10-20');
+  });
+  it('asks for location or source instead of choosing a city for near-me dates', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw Error('must not search a guessed city');
+        },
+      },
+    } as never;
+    const reader = vi.fn();
+    const outcome = await createIntakeAnswerComposer(exploding, reader).compose({
+      ...INPUT,
+      postalCode: null,
+      parentWords: 'When does swim registration open near me?',
+    });
+    expect(outcome).toEqual({
+      status: 'answered',
+      body: 'Which city or course link should I check?',
+    });
+    expect(reader).not.toHaveBeenCalled();
   });
 
   it("answers adult-learn / I wanna learn swimming with the kids-only door, never I don't do that", async () => {
@@ -272,8 +300,14 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    // #868: no fixed line; the machine has the model write it.
-    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toBe('Which city or course link should I check?');
+    expect(outcome.body).not.toBe(COLD_START_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain("I don't do that");
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+    expect(outcome.body).not.toMatch(/I'm an AI/i);
   });
 
   it('answers from official notes when search grounds a date, still no invented clock', async () => {
@@ -303,7 +337,7 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(client);
+    const composer = createIntakeAnswerComposer(client, published);
     const outcome = await composer.compose({
       parentWords: 'Hamilton swim registration dates?',
       pendingAsk: COLD_START_ASK,
@@ -311,11 +345,11 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain('September 8');
-    expect(outcome.body).toContain('7:00');
+    expect(outcome.body).toContain('2026-10-20');
+    expect(outcome.body).toContain('09:00');
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
-    expect(outcome.body).not.toMatch(/https?:\/\//);
+    expect(outcome.body).toContain('https://www.hamilton.ca/recreation');
   });
 
   it('answers a raising-kids question without a model inventing a method', async () => {

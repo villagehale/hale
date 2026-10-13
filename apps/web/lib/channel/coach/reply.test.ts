@@ -72,6 +72,15 @@ describe('redactTeenNames', () => {
 });
 
 describe('toSmsReply', () => {
+  it('keeps uncertainty and a long held-source URL whole even when extra segments are needed', () => {
+    const sourceUrl = `https://king.ca/registration/${'a'.repeat(280)}`;
+    const reply = toSmsReply("I couldn't verify the current date. Please check the source.", {
+      children: [],
+      now: NOW,
+      sourceUrl,
+    });
+    expect(reply).toBe(`I couldn't verify the current date. Please check the source. ${sourceUrl}`);
+  });
   it('preserves a live registration source link when an unverified answer is trimmed', () => {
     const sourceUrl = 'https://www.king.ca/recreation';
     const reply = toSmsReply(

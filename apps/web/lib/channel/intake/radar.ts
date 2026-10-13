@@ -1,14 +1,14 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activity/lane';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { activityClient } from '~/lib/pipeline/client';
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
+import { findFamilyActivities } from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type ActivityMapGroup, collectActivityMap, renderActivityMapBody } from './activity-map';
 import type { ExtractedChild } from './extract';
@@ -296,81 +296,31 @@ async function readHealthRoster(
   return { teenChildIds, healthChildren };
 }
 
-/**
- * This family's ACTIVE standing candidates. Mirrors the village feed's own predicate
- * (villageActiveFilter in lib/village/queries.ts): family-scoped, not superseded, and
- * the standing run rather than a parent's one-off season search — inlined rather than
- * imported because that module pulls the authenticated session resolver in with it, and
- * the radar runs on an inbound SMS with no session at all.
- */
+/** Fresh findings for this operation. No reads of saved or imported activity history. */
 export async function readCandidates(
   database: Database,
   familyId: string,
+  options: { window?: string; now?: Date; finder?: ActivityFinder } = {},
 ): Promise<RadarCandidate[]> {
-  const rows = await database
-    .select({
-      id: schema.villageCandidates.id,
-      title: schema.villageCandidates.title,
-      venueName: schema.villageCandidates.venueName,
-      ageRange: schema.villageCandidates.ageRange,
-      priceLevel: schema.villageCandidates.priceLevel,
-      indoorOutdoor: schema.villageCandidates.indoorOutdoor,
-      eventDate: schema.villageCandidates.eventDate,
-      seasons: schema.villageCandidates.seasons,
-      childId: schema.villageCandidates.childId,
-      confidence: schema.villageCandidates.confidence,
-      // WHICH DISCOVERY LAYER WROTE THE ROW. Selected because a claim about a
-      // WEEKDAY session's day rests on it and on nothing else: the civic sweep
-      // dates its rows from a feed it verified, while an LLM-discovered row's
-      // date and url are model output (village/discover.ts). `summary` is
-      // deliberately NOT selected alongside it - nothing renders one today, and
-      // an unread column on this hot path is a field the next reader assumes is
-      // checked.
-      source: schema.villageCandidates.source,
-      // WHERE THE ROW'S OWN PAGE IS, and what a parent does when they get there. Both
-      // are rendered only off a `civic_registry` row (radar-decide accessFor): that
-      // source's url is the venue's own and its access mode is what the feed published,
-      // while an LLM row's url "is often guessed" (village/discover.ts). Selected
-      // beside `source` because the decision cannot apply that rule without all three.
-      sourceUrl: schema.villageCandidates.sourceUrl,
-      access: schema.villageCandidates.access,
-      whenLabel: schema.villageCandidates.whenLabel,
-      // VIL-366 · the subject a household verdict is about. Title matching is
-      // forbidden; without these columns the next find cannot see a review.
-      placeId: schema.villageCandidates.placeId,
-      civicVenueId: schema.villageCandidates.civicVenueId,
-    })
-    .from(schema.villageCandidates)
-    .where(
-      and(
-        eq(schema.villageCandidates.familyId, familyId),
-        isNull(schema.villageCandidates.supersededAt),
-        or(
-          eq(schema.villageCandidates.runType, 'standing'),
-          // VIL-252 · M16 — free civic sessions (library storytimes, EarlyON
-          // drop-ins) are exactly what the free-first ordering below exists to
-          // float, and they are dated, so `placements` can only put them on their
-          // own day. Omitting them here would leave the radar claiming "still
-          // learning your area" for a family with a verified free session on
-          // Saturday morning.
-          eq(schema.villageCandidates.runType, 'civic'),
-          isNull(schema.villageCandidates.runType),
-        ),
-      ),
-    );
-  return rows;
-}
-
-/** The registration windows this family's FSA can act on. An FSA outside the covered
- * set resolves to no municipality — and then to no query and no claim (M1's rule: a
- * neighbouring town's dates are worse than silence). */
-export async function readWindows(database: Database, areaCoarse: string) {
-  const municipalities = resolveMunicipalities(areaCoarse);
-  if (municipalities.length === 0) return [];
-  return database
-    .select()
-    .from(schema.registrationWindows)
-    .where(inArray(schema.registrationWindows.municipality, municipalities));
+  const found = await findFamilyActivities(database, familyId, options);
+  return found.picks
+    .filter((pick) => !!pick.eventDate && !!pick.sourceUrl)
+    .map((pick) => ({
+      id: pick.sourceUrl!,
+      title: pick.name,
+      venueName: pick.sourceName,
+      ageRange: pick.ageFit,
+      priceLevel: pick.price && /^(free|\\$0\\b|no cost)/i.test(pick.price) ? 'free' : null,
+      indoorOutdoor: pick.indoorOutdoor ?? null,
+      eventDate: pick.eventDate!,
+      seasons: null,
+      childId: null,
+      confidence: 1,
+      source: 'web',
+      sourceUrl: pick.sourceUrl!,
+      access: pick.access ?? null,
+      whenLabel: pick.when,
+    }));
 }
 
 export function createRadarComposer(deps: RadarDeps): RadarComposer {
@@ -378,15 +328,16 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
   return {
     async compose(input) {
       const now = deps.now?.() ?? new Date();
-      const children = toRadarChildren(input.children);
+      const children = toRadarChildren(input.children).filter(
+        (child) => child.ageMonths === null || child.ageMonths < 156,
+      );
       const area = input.areaCoarse;
 
       // Registration windows stay readable (`readWindows`) for later nudges. They are
       // not loaded for this message: a district date is not a substitute for an age-fit
       // find, and a row that is in memory is a row that can leak into the text.
-      const [roster, candidates, weather] = await Promise.all([
+      const [roster, weather] = await Promise.all([
         readHealthRoster(deps.database, input.familyId, now),
-        readCandidates(deps.database, input.familyId),
         // Weather is an input, never a blocker: the port swallows its own failures, and
         // an area we cannot place has no forecast to ask for.
         area
@@ -398,7 +349,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       // not: nothing here is marked told, and the post-consent nudge raises it later.
       const civic = decideYearFinds({
         children,
-        candidates,
+        candidates: [],
         windows: [],
         pastCycle: null,
         stillOpenCycle: null,

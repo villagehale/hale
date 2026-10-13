@@ -69,12 +69,12 @@ import { rememberWorkstreamTurn, workstreamExtractClient } from '~/lib/memory/wo
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
+import { registrationLinkHandler } from '~/lib/registration/sequence/link-handler';
 import {
   defaultPrepareReplyDeps,
   readinessQuestion,
 } from '~/lib/registration/sequence/prepare-reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
-import { registrationLinkHandler } from '~/lib/registration/sequence/link-handler';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
@@ -101,7 +101,6 @@ import {
   nameCaptureHandler,
   parentCallNameHandler,
   planReplyHandler,
-  recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
   weekdayCareHandler,
@@ -463,7 +462,6 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     familyMemoryKindsHandler(),
     registrationLinkHandler(),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
-    recMorningHandler(),
     parentCallNameHandler(parentCallNameVoice(defaultCallNameComposer())),
     nameCaptureHandler(defaultNameCaptureDeps()),
     // BEHIND EVERY SHAPE MATCHER, because it is the only handler that claims a whole

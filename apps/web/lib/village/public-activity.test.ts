@@ -83,4 +83,12 @@ describe('loadSharedActivity — single public card (rule #1)', () => {
     const card = await loadSharedActivity(TOKEN, db);
     expect(card?.activity.sourceUrl).toBeNull();
   });
+
+  it('keeps an old share link but never presents its old registration clock as current', async () => {
+    const { db } = fakeDb([familyWide({ summary: 'Opens October 20 at 9 AM' })]);
+    const card = await loadSharedActivity(TOKEN, db);
+    expect(card?.activity.sourceUrl).toBe('https://example.org/swim');
+    expect(card?.activity.summary).toContain('Check their page');
+    expect(card?.activity.summary).not.toContain('October 20');
+  });
 });

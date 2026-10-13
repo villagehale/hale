@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RegistrationWindow } from '@hale/db';
+import type { RegistrationSourceState } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import {
+  type RegistrationTarget,
   createRegistrationReader,
   readRegistrationWindows,
   registrationHasOpened,
-  type RegistrationTarget,
 } from './read';
 import type { CycleIdentity, ExtractedWindow } from './verify-window';
 
@@ -145,7 +145,7 @@ describe('live registration reader', () => {
       openAt: new Date('2026-01-01'),
       residentOpenAt: new Date('2026-01-01'),
       previewAt: null,
-    } as RegistrationWindow;
+    } as RegistrationSourceState;
     const reader = createRegistrationReader({
       fetchBody: async () => text,
       extract: async () => ({
@@ -182,5 +182,25 @@ describe('live registration reader', () => {
       status: 'unverified',
       reason: 'eligibility_unverified',
     });
+  });
+  it('keeps known-host eligibility checks when intake supplies only a generic URL target', async () => {
+    const reader = createRegistrationReader({
+      fetchBody: async () => text,
+      extract: async () => extraction,
+    });
+    for (const host of ['www.markham.ca', 'oakville.ca', 'cityofmarkham.perfectmind.com']) {
+      expect(
+        await reader(
+          { ...target, municipality: host, sourceUrl: `https://${host}/registration` },
+          now,
+        ),
+      ).toMatchObject({ status: 'unverified', reason: 'eligibility_unverified' });
+    }
+    expect(
+      await reader(
+        { ...target, sourceUrl: 'https://markham.ca.attacker.example/registration' },
+        now,
+      ),
+    ).toMatchObject({ status: 'verified' });
   });
 });

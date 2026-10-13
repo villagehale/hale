@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events';
 import type { RequestOptions } from 'node:https';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MAX_PAGE_BYTES } from './fetch';
 import { createRegistrationPageFetch } from './page';
-import { MAX_PAGE_BYTES } from './verify-sweep';
 
 const network = vi.hoisted(() => ({ request: vi.fn(), lookup: vi.fn() }));
 vi.mock('node:https', () => ({ request: network.request }));

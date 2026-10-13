@@ -15,22 +15,11 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { toRegistrationWindowRow } from '~/lib/registration/registration-windows';
-import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
-/**
- * A TORONTO PARENT TEXTS WHILE THE CITY'S FALL REGISTRATION IS OPEN.
- *
- * The first reply names the Saturday drop-in this family can actually go to. The
- * registration morning is in the database and is not the text. The action-line flag
- * does not put that date back.
- *
- * WHAT THIS FILE PINS, over real Postgres: the civic projection writing `access` and
- * `when_label`, and the first reply carrying the Saturday session rather than the
- * open-now registration sentence.
- */
+/** A Toronto parent gets a fresh Finder pick, never a stored registration morning.
+ * Drives real intake and persistence over Postgres with a scripted fresh Finder. */
 
 const TZ = 'America/Toronto';
 const APP_KEY = Buffer.alloc(32, 7).toString('base64');
@@ -45,13 +34,7 @@ const INTAKE_AT = new Date('2026-09-18T14:00:00.000Z');
 
 /** The real seed row's own page, read out of the dataset rather than pasted, so the
  * assertion is about what a family is actually sent. */
-const TORONTO_FALL_2026 = REGISTRATION_WINDOWS.find(
-  (seed) =>
-    seed.municipality === 'toronto' &&
-    seed.programDomain === 'rec_program' &&
-    seed.cycleLabel === 'Fall 2026',
-);
-if (!TORONTO_FALL_2026) throw new Error('fixture drift: the Toronto Fall 2026 seed row is gone');
+const CITY_PAGE = 'https://example.org/registration';
 
 describe('the first reply says what to do about the find', () => {
   let db: TestDb;
@@ -61,66 +44,6 @@ describe('the first reply says what to do about the find', () => {
     db = await createTestDb();
     database = db.database;
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
-
-    await database
-      .insert(schema.registrationWindows)
-      .values(toRegistrationWindowRow(TORONTO_FALL_2026) as never);
-
-    // A real EarlyON centre with a Saturday drop-in, which is what makes the pick a
-    // civic row carrying an access mode and a time of its own.
-    const [venue] = await database
-      .insert(schema.civicVenues)
-      .values({
-        system: 'earlyon_toronto',
-        externalId: 'loc-1',
-        kind: 'earlyon_centre',
-        name: 'Queen West EarlyON',
-        address: '100 Queen St W',
-        city: 'Toronto',
-        lat: 43.65,
-        lng: -79.39,
-        sourceUrl: 'https://open.toronto.ca/dataset/earlyon-child-and-family-centres/',
-      })
-      .returning({ id: schema.civicVenues.id });
-
-    await database.insert(schema.civicSessions).values({
-      venueId: (venue as { id: string }).id,
-      externalId: 'loc-1-sat-0930',
-      title: 'Saturday family drop-in',
-      recurrence: 'weekly',
-      dayOfWeek: 6,
-      startMinute: 9 * 60 + 30,
-      endMinute: 11 * 60,
-      ageMinMonths: 0,
-      ageMaxMonths: 71,
-      isFree: true,
-      // The fact the projection used to throw away entirely.
-      registrationRequired: false,
-      extraction: 'structured',
-      confidence: 1,
-      sourceUrl: 'https://www.toronto.ca/community-people/children-parenting/earlyon/',
-    });
-
-    // The OTHER access mode, on a weekday so it cannot win the weekend pick. Its only
-    // job is to make the projection's write of `access` measurable: with one seeded
-    // session the insert could hard-code the mode it happens to want and every gate
-    // here would stay green.
-    await database.insert(schema.civicSessions).values({
-      venueId: (venue as { id: string }).id,
-      externalId: 'loc-1-wed-1000',
-      title: 'Wednesday baby time',
-      recurrence: 'weekly',
-      dayOfWeek: 3,
-      startMinute: 10 * 60,
-      endMinute: 11 * 60,
-      ageMinMonths: 0,
-      ageMaxMonths: 71,
-      isFree: true,
-      registrationRequired: true,
-      extraction: 'structured',
-      confidence: 1,
-      sourceUrl: 'https://www.toronto.ca/community-people/children-parenting/earlyon/',
-    });
   });
 
   afterEach(async () => {
@@ -128,7 +51,7 @@ describe('the first reply says what to do about the find', () => {
     await db.close();
   });
 
-  /** The REAL machine, the REAL civic projection, the REAL radar — a fake wire, a fake
+  /** The REAL machine and radar with a scripted fresh Finder response — a fake wire, a fake
    * extractor (rule #8: what it pulls out of real words is an eval's job) and no model. */
   function deps(transport: FakeTransport): IntakeDeps {
     return {
@@ -151,14 +74,29 @@ describe('the first reply says what to do about the find', () => {
         client: null,
         now: () => INTAKE_AT,
         timeZone: TZ,
+        yearFinder: {
+          find: async () => ({
+            found: true,
+            picks: [
+              {
+                name: 'Saturday family drop-in',
+                ageFit: '0 to 5 years',
+                when: 'Saturday 9:30 a.m.-11:00 a.m.',
+                price: 'free',
+                sourceName: 'Queen West EarlyON',
+                source: 'web',
+                sourceUrl: 'https://www.toronto.ca/community-people/children-parenting/earlyon/',
+                eventDate: '2026-09-19',
+                access: 'drop_in',
+                indoorOutdoor: 'indoor',
+              },
+            ],
+          }),
+        },
       }),
       answerComposer: fakeSilentAnswerComposer,
       friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),
-      // `seedCivic` is DELIBERATELY not injected: the real projectCivicCandidates runs,
-      // so this journey pins the write of `access`/`when_label` and not a stand-in.
-      resolveCenter: async () => null,
-      discoveryTrigger: () => {},
       limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
       now: INTAKE_AT,
     };
@@ -190,29 +128,13 @@ describe('the first reply says what to do about the find', () => {
     vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, 'true');
     const { familyId } = await arrive();
 
-    // The projection really wrote the two columns — otherwise the pick below would be
-    // 'unknown' and this whole journey would pass by saying nothing.
-    const persisted = await database
-      .select({
-        title: schema.villageCandidates.title,
-        access: schema.villageCandidates.access,
-        whenLabel: schema.villageCandidates.whenLabel,
-        source: schema.villageCandidates.source,
-      })
-      .from(schema.villageCandidates)
-      .where(eq(schema.villageCandidates.familyId, familyId));
-    // BOTH modes, out of the same insert: a hard-coded `access` on the write passes a
-    // one-session seed whichever value it hard-codes, so the two are asserted together.
-    expect(persisted.find((row) => row.title === 'Saturday family drop-in')).toMatchObject({
-      access: 'drop_in',
-      whenLabel: '9:30 a.m.-11:00 a.m.',
-      source: 'civic_registry',
-    });
-    expect(persisted.find((row) => row.title === 'Wednesday baby time')).toMatchObject({
-      access: 'register_at_venue',
-      whenLabel: '10:00 a.m.-11:00 a.m.',
-      source: 'civic_registry',
-    });
+    // Fresh picks are not written as a shared discovery catalog.
+    expect(
+      await database
+        .select()
+        .from(schema.familyActivityHistory)
+        .where(eq(schema.familyActivityHistory.familyId, familyId)),
+    ).toEqual([]);
 
     // The reply itself is model-written (friend voice); what the find hands it is
     // the persisted candidates above. No fixed radar body is asserted.

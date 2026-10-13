@@ -14,7 +14,7 @@ import {
  * VIL-252 · M16 — the free civic programming layer: the EarlyON drop-ins and
  * library storytimes happening near a family this week that nobody told them about.
  *
- * Family-AGNOSTIC public reference data, like registration_windows and
+ * Family-AGNOSTIC public reference data, like
  * curated_resources: there is no family_id and nothing here is PII (rule #1). A
  * library branch's street address and coordinates are the BRANCH's, published by
  * the library itself — the same class of public venue location village_candidates

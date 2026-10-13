@@ -212,14 +212,12 @@ export async function loadKidContext(
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
   const candidates = await database
-    .select({ familyId: schema.villageCandidates.familyId, title: schema.villageCandidates.title })
-    .from(schema.villageCandidates)
-    .where(
-      and(
-        eq(schema.villageCandidates.familyId, familyId),
-        isNull(schema.villageCandidates.supersededAt),
-      ),
-    );
+    .select({
+      familyId: schema.familyActivityHistory.familyId,
+      title: schema.familyActivityHistory.title,
+    })
+    .from(schema.familyActivityHistory)
+    .where(eq(schema.familyActivityHistory.familyId, familyId));
   const own = <T extends { familyId: string }>(rows: T[]) =>
     rows.filter((row) => row.familyId === familyId);
   return {

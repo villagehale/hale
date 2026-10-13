@@ -1,15 +1,12 @@
-import { type Database, schema } from '@hale/db';
-import { isNotNull } from 'drizzle-orm';
+import type { Database } from '@hale/db';
 import { createBiblioCommonsAdapter } from '~/lib/civic/bibliocommons';
 import { createEarlyOnTorontoAdapter } from '~/lib/civic/earlyon-toronto';
 import { LIBRARY_SYSTEM_LIST } from '~/lib/civic/library-systems';
 import { type ParsedHours, parseCivicHours } from '~/lib/civic/parse-hours';
-import { projectCivicCandidates } from '~/lib/civic/project';
 import { type CivicSystemSummary, runCivicSweep } from '~/lib/civic/sweep';
 import { type CivicAdapter, type FetchJson, createFetchJson } from '~/lib/civic/types';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
-import { MAX_FAMILIES_PER_RUN } from './families';
 
 /**
  * VIL-252 · M16 — the weekly civic refresh.
@@ -67,44 +64,5 @@ export async function runCivicSweepCron(
 ): Promise<CivicSweepRunResult> {
   const systems = await runCivicSweep(database, civicAdapters(deps), deps.fetchJson, now);
 
-  // Only families with a coarse area can be placed near anything (rule #1: an
-  // area is the ONLY location fact Hale holds, and without one there is no honest
-  // way to say a branch is nearby).
-  const families = await database
-    .select({ id: schema.families.id, areaCoarse: schema.families.areaCoarse })
-    .from(schema.families)
-    .where(isNotNull(schema.families.areaCoarse))
-    .limit(MAX_FAMILIES_PER_RUN.civicSweep);
-
-  let familiesProjected = 0;
-  let candidatesWritten = 0;
-  const errors: Array<{ familyId: string; error: string }> = [];
-  // One geocode per distinct AREA, not per family: a sweep covers thousands of
-  // households sharing a few hundred FSAs, and an FSA's centroid does not move.
-  const centers = new Map<string, LatLng | null>();
-
-  for (const family of families) {
-    try {
-      const areaCoarse = family.areaCoarse;
-      if (areaCoarse !== null && !centers.has(areaCoarse)) {
-        centers.set(areaCoarse, await deps.resolveCenter(areaCoarse));
-      }
-      candidatesWritten += await projectCivicCandidates(
-        database,
-        family.id,
-        areaCoarse,
-        areaCoarse === null ? null : (centers.get(areaCoarse) ?? null),
-        now,
-      );
-      familiesProjected += 1;
-    } catch (err) {
-      console.error({ err, familyId: family.id }, 'civic sweep: projection failed');
-      errors.push({
-        familyId: family.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  return { systems, familiesProjected, candidatesWritten, errors };
+  return { systems, familiesProjected: 0, candidatesWritten: 0, errors: [] };
 }

@@ -94,7 +94,7 @@ async function seed(
     .returning({ id: schema.children.id });
   const childId = child?.id as string;
   const [candidate] = await db.database
-    .insert(schema.villageCandidates)
+    .insert(schema.familyActivityHistory)
     .values({
       familyId,
       title: 'Parent and tot swim',
@@ -104,7 +104,7 @@ async function seed(
       confidence: 0.9,
       placeId: options.placeId === undefined ? PLACE : options.placeId,
     })
-    .returning({ id: schema.villageCandidates.id });
+    .returning({ id: schema.familyActivityHistory.id });
   const candidateId = candidate?.id as string;
   if (options.cadence) {
     await db.database.insert(schema.familyCheckInPrefs).values({
@@ -207,7 +207,7 @@ describe('runMidActivityAskSweep', () => {
     await db.exec('truncate table families, users cascade');
     const first = await seed();
     const [secondCandidate] = await db.database
-      .insert(schema.villageCandidates)
+      .insert(schema.familyActivityHistory)
       .values({
         familyId: first.familyId,
         title: 'Saturday library',
@@ -217,7 +217,7 @@ describe('runMidActivityAskSweep', () => {
         confidence: 0.8,
         placeId: 'places/library',
       })
-      .returning({ id: schema.villageCandidates.id });
+      .returning({ id: schema.familyActivityHistory.id });
     await db.database.insert(schema.authorizedSignupOffers).values({
       familyId: first.familyId,
       childId: first.childId,

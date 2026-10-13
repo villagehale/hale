@@ -1,13 +1,19 @@
 import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
-import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { liveRecMorningIntakeReply } from '~/lib/channel/rec-morning/live';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
+import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
+import { registrationPageUrl } from '~/lib/registration/page';
+import {
+  type RegistrationReader,
+  createRegistrationReader,
+  registrationDate,
+} from '~/lib/registration/read';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
 import {
@@ -19,9 +25,10 @@ import {
 import {
   deidentifyOfficialQuery,
   isOfficialPageAsk,
-  notesGroundADate,
-  officialPageReplyFromNotes,
+  officialPageFallbackReply,
+  officialPageReply,
 } from './official-page';
+import { townLabel } from './radar-voice';
 
 /**
  * THE ESCAPE FROM THE SCRIPT — what Hale says when a parent mid-signup asks a question
@@ -319,46 +326,70 @@ const MAX_OFFICIAL_SEARCHES = 2;
 const OFFICIAL_GROUND_MAX_TOKENS = 2048;
 
 type OfficialGround =
-  | { status: 'grounded'; notes: string }
-  | { status: 'ungrounded'; reason: string };
+  | { status: 'grounded'; reading: LiveRegistrationReading }
+  | { status: 'ungrounded'; reason: string; sourceUrl?: string };
 
-/**
- * GROUND a rec/camp clock against official pages. Zero searches, empty notes,
- * or notes with no date are the same parent-facing sentence — not posted yet —
- * and each reason is named in the log (rule #11). The search is Anthropic's US
- * tool, so the query is de-identified first.
- */
 async function groundOfficialPages(
   client: AgentClient,
   input: IntakeAnswerInput,
+  reader: RegistrationReader,
 ): Promise<OfficialGround> {
-  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
-  try {
-    skill = await loadCronSkill('intake-official-ground');
-  } catch (err) {
-    return { status: 'ungrounded', reason: `skill_unavailable:${message(err)}` };
-  }
-
   const query = deidentifyOfficialQuery(input.parentWords, input.children);
-  try {
-    const research = await client.messages.create({
-      model: pickModel(skill.meta.task),
-      max_tokens: OFFICIAL_GROUND_MAX_TOKENS,
-      system: skill.instructions,
-      tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_OFFICIAL_SEARCHES }],
-      messages: [{ role: 'user', content: query }],
-    });
-    const evidence = readEvidence(new Date(), research.content);
-    if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };
-    if (evidence.notes === '') return { status: 'ungrounded', reason: 'empty_research' };
-    if (!notesGroundADate(evidence.notes)) return { status: 'ungrounded', reason: 'no_date' };
-    return { status: 'grounded', notes: evidence.notes };
-  } catch (err) {
-    return { status: 'ungrounded', reason: `ground_failed:${message(err)}` };
+  const urls: string[] = input.parentWords.match(/https:\/\/[^\s<>]+/g) ?? [];
+  if (!urls.length) {
+    try {
+      const skill = await loadCronSkill('intake-official-ground');
+      const cities = input.postalCode ? resolveMunicipalities(input.postalCode) : [];
+      const location = cities.length === 1 ? townLabel(cities[0]!) : null;
+      if (!location && /\b(near me|my area|around here)\b/i.test(query)) {
+        return { status: 'ungrounded', reason: 'location_required' };
+      }
+      const research = await client.messages.create({
+        model: pickModel(skill.meta.task),
+        max_tokens: OFFICIAL_GROUND_MAX_TOKENS,
+        system: skill.instructions,
+        tools: [
+          { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_OFFICIAL_SEARCHES },
+        ],
+        messages: [{ role: 'user', content: location ? `${query} in ${location}` : query }],
+      });
+      for (const block of research.content) {
+        if (block.type !== 'web_search_tool_result' || !Array.isArray(block.content)) continue;
+        for (const result of block.content) {
+          if (result.type === 'web_search_result') urls.push(result.url);
+        }
+      }
+    } catch (err) {
+      return { status: 'ungrounded', reason: `ground_failed:${message(err)}` };
+    }
   }
+  let sourceUrl: string | undefined;
+  for (const url of [...new Set(urls)].slice(0, 3)) {
+    try {
+      const safeUrl = registrationPageUrl(url.replace(/[.,;]+$/, ''));
+      sourceUrl ??= safeUrl;
+      const reading = await reader(
+        {
+          municipality: new URL(safeUrl).hostname,
+          programDomain: 'registration',
+          cycleLabel: query.replace(/https:\/\/\S+/g, '').trim(),
+          sourceUrl: safeUrl,
+          timeZone: null,
+        },
+        new Date(),
+      );
+      if (registrationDate(reading, false)) return { status: 'grounded', reading };
+    } catch {
+      // A refused source is not evidence of an unpublished date.
+    }
+  }
+  return { status: 'ungrounded', reason: 'date_unverified', sourceUrl };
 }
 
-export function createIntakeAnswerComposer(client: AgentClient, readRecMorning: typeof liveRecMorningIntakeReply = liveRecMorningIntakeReply): IntakeAnswerComposer {
+export function createIntakeAnswerComposer(
+  client: AgentClient,
+  reader: RegistrationReader = createRegistrationReader(),
+): IntakeAnswerComposer {
   return {
     async compose(input) {
       // FIRST, and with no model in the loop. See the module note: intake has never had
@@ -381,29 +412,28 @@ export function createIntakeAnswerComposer(client: AgentClient, readRecMorning: 
       });
       if (adultLearn !== null) return { status: 'answered', body: adultLearn };
 
-      // Rec-morning clock and portal are reviewed copy, not a composition. A first-time
-      // texter asking which morning / which login must not wait on a model that still
-      // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
-      const recMorning = await readRecMorning({
-        parentWords: input.parentWords,
-        pendingAsk: input.pendingAsk,
-        postal: input.postalCode,
-      });
-      if (recMorning !== null) return { status: 'answered', body: recMorning };
-
       // VIL-326: a rec/camp/registration clock that missed the city pins. Search
       // official pages; if a date is not on them, say so. Never invent a clock,
       // and never return unavailable — that was the greet/ask-alone leak.
       if (isOfficialPageAsk(input.parentWords)) {
-        const ground = await groundOfficialPages(client, input);
+        const ground = await groundOfficialPages(client, input, reader);
         if (ground.status === 'ungrounded') {
-          console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
-          return { status: 'unavailable', reason: 'ungrounded' };
+          console.error(
+            { reason: ground.reason },
+            'intake answer: official page date could not be verified',
+          );
+          return {
+            status: 'answered',
+            body:
+              ground.reason === 'location_required'
+                ? 'Which city or course link should I check?'
+                : officialPageFallbackReply(input.pendingAsk, ground.sourceUrl),
+          };
         }
-        const body = officialPageReplyFromNotes(ground.notes, input.pendingAsk);
-        return body === null
-          ? { status: 'unavailable', reason: 'ungrounded' }
-          : { status: 'answered', body };
+        return {
+          status: 'answered',
+          body: officialPageReply(ground.reading, input.pendingAsk),
+        };
       }
 
       // VIL-327 caregiver cheer-up: reviewed warmth, not a clinician, then

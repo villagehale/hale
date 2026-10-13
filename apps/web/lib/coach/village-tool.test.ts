@@ -1,450 +1,120 @@
-import { type GuardDeps, invokeTool } from '@hale/agent';
+import { invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { searchVillageTool } from './tools';
 
-/**
- * search_village must recall only the CURRENT, in-season, unexpired discovery run:
- * a superseded/replaced pick, a past one-time event, and an out-of-season seasonal
- * activity must never surface to Ask Hale (they'd otherwise send a parent to a
- * class that already happened or a camp that isn't running).
- *
- * On top of that it must only OFFER what it can name in full. A candidate reaches
- * the model as an offer only when its venue and its date are both real fields on
- * the row; anything short of that is a COUNT, never a described maybe. That is
- * the structural half of "a chief of staff never hands a parent a half-find" —
- * the model cannot hedge about a candidate it was never shown.
- */
+let db: TestDb;
+beforeAll(async () => {
+  db = await createTestDb();
+});
+afterAll(async () => {
+  await db.close();
+});
+afterEach(async () => {
+  await db.exec('truncate table families, users cascade');
+});
 
-const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
-const NOW = new Date('2026-07-04T12:00:00Z'); // fresh summer weekday
+const pick: ActivityPick = {
+  name: 'Current swim',
+  ageFit: 'ages 2-5',
+  when: 'Saturday 10 AM',
+  price: null,
+  sourceName: 'Current pool',
+  source: 'web',
+  sourceUrl: 'https://example.org/current',
+};
 
-function fakeDb(
-  candidates: Array<Record<string, unknown>>,
-  children: Array<Record<string, unknown>> = [],
-  families: Array<Record<string, unknown>> = [],
-  reviews: Array<Record<string, unknown>> = [],
-) {
-  const build = (rows: unknown[]) => {
-    const whereResult = Object.assign(Promise.resolve(rows), {
-      limit: async () => rows,
-      orderBy: () => ({ limit: async () => rows }),
-    });
-    const chain = { where: () => whereResult, innerJoin: () => chain };
-    return chain;
-  };
-  const db = {
-    select: () => ({
-      from: (table: unknown) => {
-        if (table === schema.children) return build(children);
-        if (table === schema.villageCandidates) return build(candidates);
-        if (table === schema.families) return build(families);
-        if (table === schema.activityReviews) return build(reviews);
-        return build([]);
-      },
-    }),
-  };
-  return db as unknown as import('@hale/db').Database;
+async function household(teen = false, city: string | null = 'New York') {
+  const { familyId } = await seedFamily(db.database);
+  await db.database.update(schema.families).set({ city }).where(eq(schema.families.id, familyId));
+  await seedChild(db.database, familyId, 'Private child name', teen ? 180 : 36);
+  return familyId;
 }
-
-function villageTool(database: import('@hale/db').Database) {
-  return searchVillageTool(database);
-}
-
-const guardDeps: GuardDeps = { writeAudit: async () => {} };
-
-/** A fully offerable row by default — venue AND date present, both in the future. A
- * test that wants the unverified shape drops one of them explicitly. */
-function candidate(overrides: Record<string, unknown>): Record<string, unknown> {
-  return {
-    childId: null,
-    kind: 'class',
-    summary: 'a warm local option',
-    cadence: 'one-time',
-    seasons: null,
-    eventDate: '2026-07-11',
-    venueName: 'Wychwood Barns',
-    placeId: null,
-    civicVenueId: null,
-    supersededAt: null,
-    discoveredAt: NOW,
-    ...overrides,
-  };
-}
-
-interface VillageToolResult {
-  candidates: Array<{ title: string; venue: string; when: string }>;
-  inVerification: number;
-  standingOption: { name: string; cadence: string } | null;
-}
-
 async function search(
-  candidates: Array<Record<string, unknown>>,
-  children: Array<Record<string, unknown>> = [],
-  families: Array<Record<string, unknown>> = [],
-  reviews: Array<Record<string, unknown>> = [],
-): Promise<VillageToolResult> {
-  return (await invokeTool(
-    villageTool(fakeDb(candidates, children, families, reviews)),
+  familyId: string,
+  finder: ActivityFinder,
+  recorder?: (rows: readonly unknown[]) => void,
+) {
+  return invokeTool(
+    searchVillageTool(db.database, recorder, finder),
     {},
-    { familyId: FAMILY_ID, actor: 'user-1' },
-    guardDeps,
-  )) as VillageToolResult;
+    { familyId, actor: 'test' },
+    { writeAudit: async () => {} },
+  ) as Promise<{ candidates: { title: string; when: string }[]; liveRead: string }>;
 }
 
-describe('search_village — recalls only the current, in-season, unexpired run', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('drops a superseded, a past one-time, and an out-of-season seasonal candidate', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-
-    const candidates = [
-      candidate({ id: 'live', title: 'EarlyON drop-in' }),
-      candidate({
-        id: 'superseded',
-        title: 'Replaced pick',
-        supersededAt: new Date('2026-07-03T12:00:00Z'),
-      }),
-      candidate({ id: 'past', title: 'Past workshop', eventDate: '2026-07-03' }),
-      candidate({
-        id: 'winter',
-        title: 'Winter skating camp',
-        cadence: 'seasonal',
-        seasons: ['winter'],
-        eventDate: null,
-      }),
-    ];
-
-    const result = await search(candidates);
-
-    expect(result.candidates.map((c) => c.title)).toEqual(['EarlyON drop-in']);
-  });
-});
-
-/**
- * The offer boundary (founder, launch day: "you find a legit activity but not able
- * to verify the location and time"). The model hedged because the tool handed it a
- * title and a blurb and nothing else — it could not name a place or a day without
- * inventing one, and its own honesty rules then made it say so out loud. The fix is
- * structural: only a candidate carrying both fields is describable at all.
- */
-describe('search_village — offers only what it can name in full', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('carries the verified venue and a family-readable day onto each offer', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-
-    const result = await search([
-      candidate({
-        id: 'storytime',
-        title: 'Central Library story time',
-        venueName: 'Bloor/Gladstone branch',
-        eventDate: '2026-07-11',
-      }),
-    ]);
-
-    expect(result.candidates).toEqual([
-      expect.objectContaining({
-        title: 'Central Library story time',
-        venue: 'Bloor/Gladstone branch',
-        // 2026-07-11 is a Saturday. Rendered in UTC so a bare calendar day never
-        // slips back to the Friday for a family west of it.
-        when: 'Sat, Jul 11',
-      }),
-    ]);
-    expect(result.inVerification).toBe(0);
-  });
-
-  it('withholds a candidate missing a venue or a date, and counts it instead', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-
-    const result = await search([
-      candidate({ id: 'ok', title: 'Riverdale Farm visit' }),
-      candidate({ id: 'no-venue', title: 'Somewhere sunny', venueName: null }),
-      candidate({ id: 'blank-venue', title: 'Geocode missed', venueName: '  ' }),
-      candidate({ id: 'no-date', title: 'Sometime soon', eventDate: null, cadence: 'ongoing' }),
-    ]);
-
-    expect(result.candidates.map((c) => c.title)).toEqual(['Riverdale Farm visit']);
-    expect(result.inVerification).toBe(3);
-  });
-
-  it('hands the model the place once when the title is that place plus a generic tail', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-
-    const result = await search([
-      candidate({
-        id: 'farm',
-        title: 'Riverdale Farm visit',
-        venueName: 'Riverdale Farm',
-      }),
-    ]);
-
-    expect(result.candidates).toEqual([
-      expect.objectContaining({
-        title: 'Riverdale Farm',
-        summary: 'a warm local option',
-        when: 'Sat, Jul 11',
-      }),
-    ]);
-    expect(result.candidates[0]).not.toHaveProperty('venue');
-  });
-
-  it('leaves a teen-attributed candidate out of BOTH the offers and the count (rule #1)', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-
-    // 16 at NOW → teenager by the @hale/types boundary, derived from DOB.
-    const teen = { id: 'kid-teen', dateOfBirth: '2010-03-04' };
-
-    const result = await search(
-      [
-        candidate({ id: 'ok', title: 'Riverdale Farm visit' }),
-        candidate({ id: 'teen-row', title: 'Climbing gym', childId: teen.id }),
-      ],
-      [teen],
-    );
-
-    // The teen row is redacted to a placeholder with no venue and no date, so it can
-    // never be offered — and it is not "in verification" either. Counting it would
-    // have Hale promise to come back about a find it may never mention.
-    expect(result.candidates.map((c) => c.title)).toEqual(['Riverdale Farm visit']);
-    expect(result.inVerification).toBe(0);
-  });
-});
-
-/**
- * The empty-handed case. A canned standing place (Baby Time / Toddler Time, EarlyON)
- * used to fill this gap, and the coach treated it as something it could hand over, so
- * the live web search never ran. Production now leaves `standingOption` null. An eval
- * fixture may still inject one; this tool does not.
- */
-describe('search_village — no canned standing place', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  const toddler = { id: 'kid-tot', dateOfBirth: '2024-03-04' }; // 2 at NOW
-  const toronto = [{ areaCoarse: 'M4K 1A1' }];
-
-  it('does not fill an empty run with a canned venue', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-
-    const result = await search(
-      [candidate({ id: 'no-venue', title: 'Somewhere sunny', venueName: null })],
-      [toddler],
-      toronto,
-    );
-
-    expect(result.candidates).toEqual([]);
-    expect(result.inVerification).toBe(1);
-    expect(result.standingOption).toBeNull();
-  });
-
-  it('puts a real page on the offer and keeps a time word from hiding a dated find', async () => {
-    const october = new Date('2026-10-08T18:00:00.000Z');
-    vi.useFakeTimers();
-    vi.setSystemTime(october);
-
-    const lantern = candidate({
-      id: 'lantern',
-      title: 'Fanous Lantern Craft',
-      venueName: 'North York Central Library',
-      eventDate: '2026-10-10',
-      whenLabel: '2:00 p.m.',
-      sourceUrl: 'https://tpl.bibliocommons.com/events/lantern',
-      summary: 'Ages 6-12',
-      discoveredAt: october,
+describe('search_village uses this operation’s live evidence', () => {
+  it('offers fresh facts and records exactly the offered receipt, never an old schedule', async () => {
+    const familyId = await household();
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId,
+      title: 'Stale October 20',
+      kind: 'class',
+      summary: 'Old dates',
+      source: 'legacy',
+      confidence: 1,
     });
-    const result = await search([lantern]);
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({ found: true, picks: [pick] });
+    const offers: unknown[] = [];
+    const result = await search(familyId, { find }, (rows) => offers.push(...rows));
+    expect(result.candidates.map((row) => row.title)).toEqual(['Current swim']);
+    expect(offers).toEqual([
+      expect.objectContaining({
+        title: 'Current swim',
+        venue: 'Current pool',
+        candidateId: expect.any(String),
+      }),
+    ]);
+    expect(JSON.stringify(find.mock.calls)).not.toContain('Private child name');
+    const receipts = await db.database
+      .select()
+      .from(schema.familyActivityHistory)
+      .where(eq(schema.familyActivityHistory.familyId, familyId));
+    expect(receipts.filter((row) => row.offeredAt !== null)).toHaveLength(1);
+  });
 
-    expect(result.standingOption).toBeNull();
-    expect(result.candidates[0]).toMatchObject({
-      title: 'Fanous Lantern Craft',
-      when: 'Sat, Oct 10, 2:00 p.m.',
-      url: 'https://tpl.bibliocommons.com/events/lantern',
+  it('a failed live read never falls back to saved history', async () => {
+    const familyId = await household();
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId,
+      title: 'Old option',
+      kind: 'class',
+      summary: 'Old dates',
+      source: 'legacy',
+      confidence: 1,
     });
-
-    const missed = (await invokeTool(
-      villageTool(
-        fakeDb([
-          {
-            ...lantern,
-            whenLabel: null,
-            sourceUrl: null,
-          },
-        ]),
-      ),
-      { query: 'weekend' },
-      { familyId: FAMILY_ID, actor: 'user-1' },
-      guardDeps,
-    )) as VillageToolResult;
-    expect(missed.candidates.map((item) => item.title)).toEqual(['Fanous Lantern Craft']);
-  });
-
-  it('stays out of the way when there is a real dated find to offer', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-
-    const result = await search(
-      [candidate({ id: 'ok', title: 'Central Library story time' })],
-      [toddler],
-      toronto,
-    );
-
-    expect(result.candidates).toHaveLength(1);
-    expect(result.standingOption).toBeNull();
-  });
-
-  it('stays null for a family whose area is not on file — the honest empty answer', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-
-    const result = await search([], [toddler], [{ areaCoarse: null }]);
-
+    const result = await search(familyId, {
+      find: async () => ({ found: false, reason: 'ground_failed' }),
+    });
     expect(result.candidates).toEqual([]);
-    expect(result.standingOption).toBeNull();
-  });
-});
-
-/**
- * WHAT THE PROCESS LEARNS, AND WHAT THE MODEL DOES NOT.
- *
- * Provenance travels beside the offer on a turn-scoped callback, never inside it. The
- * first case is the pin that keeps it that way: an id added to `OfferableActivity` would
- * be the obvious shortcut, and it is wrong for three recorded reasons (an optional
- * attribute on a non-strict tool is routinely skipped, `inputExamples` are cached
- * outside message protections, and widening this surface costs measured tool reach).
- */
-describe('the offer ledger beside the offer', () => {
-  const toddler = { dateOfBirth: '2023-03-01' };
-
-  it('leaves the model-visible offer shape exactly as it was — field for field', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-
-    const result = await search([
-      candidate({ id: 'cand-1', title: 'Saturday storytime', placeId: 'places/abc' }),
-    ]);
-
-    expect(result.candidates).toEqual([
-      {
-        title: 'Saturday storytime',
-        kind: 'class',
-        summary: 'a warm local option',
-        venue: 'Wychwood Barns',
-        when: 'Sat, Jul 11',
-      },
-    ]);
+    expect(result.liveRead).toBe('ground_failed');
   });
 
-  it('reports the row behind every candidate it just offered', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-    const offered: unknown[] = [];
-
-    const tool = searchVillageTool(
-      fakeDb(
-        [
-          candidate({ id: 'cand-1', title: 'Saturday storytime', placeId: 'places/abc' }),
-          candidate({
-            id: 'cand-2',
-            title: 'EarlyON drop-in',
-            placeId: null,
-            civicVenueId: 'venue-9',
-          }),
-        ],
-        [toddler],
-      ),
-      (offers) => offered.push(...offers),
-    );
-    await invokeTool(tool, {}, { familyId: FAMILY_ID, actor: 'user-1' }, guardDeps);
-
-    expect(offered).toEqual([
-      {
-        title: 'Saturday storytime',
-        // The verified venue rides along, because a pooled verdict is about the place
-        // rather than the programme and the clause has to be able to name it.
-        venue: 'Wychwood Barns',
-        candidateId: 'cand-1',
-        placeId: 'places/abc',
-        civicVenueId: null,
-      },
-      {
-        title: 'EarlyON drop-in',
-        venue: 'Wychwood Barns',
-        candidateId: 'cand-2',
-        placeId: null,
-        civicVenueId: 'venue-9',
-      },
-    ]);
+  it('keeps an unknown clock unknown instead of inventing one', async () => {
+    const familyId = await household();
+    const result = await search(familyId, {
+      find: async () => ({ found: true, picks: [{ ...pick, when: null }] }),
+    });
+    expect(result.candidates[0]?.when).toBe('Current time could not be verified');
   });
 
-  it('reports nothing for a find still being verified — it was never offered', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-    const offered: unknown[] = [];
-
-    const tool = searchVillageTool(
-      fakeDb(
-        [candidate({ id: 'cand-1', title: 'Unplaced find', venueName: null, placeId: 'p-1' })],
-        [toddler],
-      ),
-      (offers) => offered.push(...offers),
-    );
-    const result = (await invokeTool(
-      tool,
-      {},
-      { familyId: FAMILY_ID, actor: 'user-1' },
-      guardDeps,
-    )) as VillageToolResult;
-
-    expect(result.inVerification).toBe(1);
-    expect(offered).toEqual([]);
-  });
-});
-
-describe('search_village — this household’s own verdict reorders the next find', () => {
-  afterEach(() => {
-    vi.useRealTimers();
+  it('does not search for a teen-only household', async () => {
+    const familyId = await household(true);
+    const find = vi.fn<ActivityFinder['find']>();
+    const result = await search(familyId, { find });
+    expect(find).not.toHaveBeenCalled();
+    expect(result.candidates).toEqual([]);
+    expect(result.liveRead).toBe('no_non_teen_children');
   });
 
-  it('floats worth_it and drops not_worth_it when another option remains', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-    const result = await search(
-      [
-        candidate({
-          id: 'avoid',
-          title: 'Avoid me',
-          placeId: 'places/no',
-          venueName: 'North pool',
-          confidence: 0.9,
-        }),
-        candidate({
-          id: 'prefer',
-          title: 'Prefer me',
-          placeId: 'places/yes',
-          venueName: 'South pool',
-          confidence: 0.2,
-        }),
-      ],
-      [],
-      [],
-      [
-        { subjectSource: 'place', subjectRef: 'places/no', verdict: 'not_worth_it' },
-        { subjectSource: 'place', subjectRef: 'places/yes', verdict: 'worth_it' },
-      ],
-    );
-    expect(result.candidates.map((row) => row.title)).toEqual(['Prefer me']);
+  it('asks for location rather than guessing a city when none is known', async () => {
+    const familyId = await household(false, null);
+    const find = vi.fn<ActivityFinder['find']>();
+    const result = await search(familyId, { find });
+    expect(find).not.toHaveBeenCalled();
+    expect(result.liveRead).toBe('no_area');
   });
 });

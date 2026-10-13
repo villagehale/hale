@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { computeDrift } from './migration-drift.mjs';
+import { computeDrift, requiresCatalogCutover } from './migration-drift.mjs';
+
+describe('catalog retirement cutover guard', () => {
+  const retirement = [
+    { tag: '0162_drop_registration_catalog', hash: 'registration' },
+    { tag: '0163_activity_history_only', hash: 'activity' },
+  ];
+  it('blocks uncoordinated retirement while previous catalogs exist', () => {
+    expect(requiresCatalogCutover(retirement, [], true)).toBe(true);
+    expect(requiresCatalogCutover(retirement, ['registration'], true)).toBe(true);
+  });
+  it('allows a fresh database and normal later builds after retirement is recorded', () => {
+    expect(requiresCatalogCutover(retirement, [], false)).toBe(false);
+    expect(requiresCatalogCutover(retirement, ['registration', 'activity'], true)).toBe(false);
+  });
+});
 
 // Journal `when` values are strictly increasing (as drizzle-kit emits them).
 // Expected verdicts are derived from drizzle's own apply rule — a journal entry

@@ -92,6 +92,22 @@ export function decideRegistrationRefresh(
       paused: true,
       pending: { ...change('unavailable'), ...(review ? { reviewCandidate: review } : {}) },
     };
+  // A date-only source does not corroborate the imported midnight scheduling marker.
+  if (
+    state.anchor &&
+    date?.time === null &&
+    reading.timeZone &&
+    new Intl.DateTimeFormat('en-CA', { timeZone: reading.timeZone }).format(state.anchor) ===
+      date.date
+  ) {
+    return {
+      ...base,
+      anchor: candidate,
+      paused: false,
+      pending: state.pausedAt ? change('restored') : null,
+      resetReview: !!review,
+    };
+  }
   if (
     review?.candidateAt === candidate.toISOString() &&
     review.date?.time === date?.time &&

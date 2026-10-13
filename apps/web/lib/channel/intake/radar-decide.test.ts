@@ -1,4 +1,4 @@
-import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
+import type { Municipality, ProgramDomain, RegistrationSourceState } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { HealthChild } from '~/lib/health/match';
 import type {
@@ -64,7 +64,7 @@ function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
   };
 }
 
-function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
+function win(overrides: Partial<RegistrationSourceState> = {}): RegistrationSourceState {
   return {
     id: 'w-1',
     municipality: 'markham' as Municipality,
@@ -102,7 +102,7 @@ function match(overrides: Partial<RegistrationMatch> = {}): RegistrationMatch {
 }
 
 function past(
-  window: RegistrationWindow,
+  window: RegistrationSourceState,
   knownCycleLabels: readonly string[] = [window.cycleLabel],
 ): PastRegistrationCycle {
   return { window, openedForFamilyAt: window.openAt, knownCycleLabels: new Set(knownCycleLabels) };
@@ -681,7 +681,7 @@ describe('decideRadar — registration absence (between cycles)', () => {
     openAt: new Date('2026-09-01T11:00:00.000Z'),
   });
 
-  it('names the town, the cycle that went, and the cycle the sweep is watching for', () => {
+  it('names the observed town and past cycle without inventing a next cycle', () => {
     const decision = decide({ windows: [], pastCycle: past(HALTON_FALL) });
     expect(decision.registrationAbsence).toEqual({
       cycleRef: {
@@ -690,7 +690,7 @@ describe('decideRadar — registration absence (between cycles)', () => {
         cycleLabel: 'Fall 2026',
       },
       lastOpenedAtLocal: 'Sep 1, 7:00 a.m.',
-      nextCycleLabel: 'Winter 2027',
+      nextCycleLabel: null,
       // No still-open cycle was handed in, so the rung keeps its history tense.
       stillOpen: null,
     });
@@ -715,7 +715,7 @@ describe('decideRadar — registration absence (between cycles)', () => {
     });
     const decision = decide({ windows: [], pastCycle: past(torontoFall) });
     expect(decision.registrationAbsence?.nextCycleLabel).not.toBe('Fall 2026');
-    expect(decision.registrationAbsence?.nextCycleLabel).toBe('Winter 2027');
+    expect(decision.registrationAbsence?.nextCycleLabel).toBeNull();
   });
 
   it('names no cycle the dataset already holds a row for, whichever one just went', () => {
@@ -811,7 +811,7 @@ describe('decideRadar — the open-now tense on the absence', () => {
     expect(decision.registrationAbsence).toEqual({
       cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
       lastOpenedAtLocal: 'Sep 15, 7:00 a.m.',
-      nextCycleLabel: 'Winter 2027',
+      nextCycleLabel: null,
       stillOpen: { registerUrl: TORONTO_URL, kidNames: ['Maya'] },
     });
   });

@@ -1,73 +1,72 @@
 import { describe, expect, it } from 'vitest';
+import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
 import {
   deidentifyOfficialQuery,
-  extractOfficialAnswer,
   isOfficialPageAsk,
-  notesGroundADate,
-  officialPageReplyFromNotes,
+  officialPageFallbackReply,
+  officialPageReply,
   officialPageReturnLine,
 } from './official-page';
 
-/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
 const COLD_START_ASK = 'cold start ask (test fixture)';
-/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
 const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
 
-describe('official-page · which inbound is a real rec/camp clock question', () => {
-  it('matches a first-text rec/camp ask that misses the city pins', () => {
-    expect(isOfficialPageAsk('When does swim registration open near me?')).toBe(true);
-    expect(isOfficialPageAsk('When do winter-break camps open?')).toBe(true);
-    expect(isOfficialPageAsk('Hamilton fall rec dates?')).toBe(true);
-    expect(isOfficialPageAsk('Newmarket swim registration?')).toBe(true);
+describe('live official registration answers', () => {
+  it('recognizes registration questions without a city-specific matcher', () => {
+    for (const words of [
+      'New York swim registration dates?',
+      'London camp registration?',
+      'When does swim registration open near me?',
+    ]) {
+      expect(isOfficialPageAsk(words)).toBe(true);
+    }
+    for (const words of ['hi', 'Maya is 4', 'I wanna learn swimming', 'who is this exactly?']) {
+      expect(isOfficialPageAsk(words)).toBe(false);
+    }
   });
-
-  it('leaves Hale-itself, hedges, details, and adult-learn to their own paths', () => {
-    expect(isOfficialPageAsk('who is this exactly?')).toBe(false);
-    expect(isOfficialPageAsk('can you book the swimming lessons for us')).toBe(false);
-    expect(isOfficialPageAsk('hmm maybe, let me ask my husband')).toBe(false);
-    expect(isOfficialPageAsk('thanks')).toBe(false);
-    expect(isOfficialPageAsk('Maya is 4, Theo is 18 months, L3R')).toBe(false);
-    expect(isOfficialPageAsk('I wanna learn swimming')).toBe(false);
-    expect(isOfficialPageAsk("she's not breathing")).toBe(false);
-    expect(isOfficialPageAsk('hi')).toBe(false);
+  it('preserves the pending intake ask without copying the cold-start lock', () => {
+    expect(officialPageReturnLine(COLD_START_ASK)).toBe(OFFICIAL_PAGE_RETURN_ASK);
+    expect(officialPageReturnLine(COLD_START_ASK)).not.toBe(COLD_START_ASK);
+    expect(officialPageReturnLine(WATCH_OFFER_ASK)).toBe('Still want me watching?');
   });
-});
-
-describe('official-page · the return ask is never COLD_START_ASK', () => {
-  it('paraphrases the watch offer without copying it', () => {
-    const line = officialPageReturnLine(WATCH_OFFER_ASK);
-    expect(line).not.toBe(WATCH_OFFER_ASK);
-    // #868: no fixed return line at all; the friend voice asks next turn.
-    expect(line).toBe('');
+  it('an unreadable source is not a claim that the date is unpublished', () => {
+    const body = officialPageFallbackReply(COLD_START_ASK, 'https://example.org/swim');
+    expect(body).toContain(NOT_POSTED_YET);
+    expect(body).toContain('https://example.org/swim');
+    expect(body).not.toMatch(/not posted|no dates|2026/i);
   });
-});
-
-describe('official-page · not posted yet when search cannot ground a date', () => {
-  it('extracts a posted date from official notes and refuses a clock that is not there', () => {
-    const notes =
-      'The City of Hamilton posted swim registration for residents on September 8 at 7:00 a.m.';
-    expect(notesGroundADate(notes)).toBe(true);
-    expect(extractOfficialAnswer(notes)).toContain('September 8');
-    expect(extractOfficialAnswer(notes)).toContain('7:00');
-    expect(notesGroundADate('Their rec page lists the program. No date yet.')).toBe(false);
-    expect(extractOfficialAnswer('Their rec page lists the program. No date yet.')).toBeNull();
-  });
-
-  it('answers from notes when a date is grounded, otherwise not posted yet', () => {
-    const grounded = officialPageReplyFromNotes(
-      'Hamilton swim opens September 8 at 7:00 a.m.',
-      COLD_START_ASK,
-    );
-    expect(grounded).toContain('September 8');
-    expect(grounded).not.toContain(COLD_START_ASK);
-
-    const empty = officialPageReplyFromNotes('Nothing on the municipal page.', COLD_START_ASK);
-    // #868: no fixed fallback; null hands the turn to the model's not_posted line.
-    expect(empty).toBeNull();
+  it('keeps a date-only London source date-only, with its URL', () => {
+    const reading: LiveRegistrationReading = {
+      status: 'verified',
+      reader: 'ai',
+      checkedAt: new Date(),
+      timeZone: 'Europe/London',
+      sourceUrl: 'https://example.org/swim',
+      dates: [
+        {
+          kind: 'general_open',
+          date: '2026-10-20',
+          time: null,
+          evidence: ['Registration opens October 20, 2026'],
+        },
+      ],
+    };
+    const body = officialPageReply(reading, COLD_START_ASK);
+    expect(body).toContain('2026-10-20');
+    expect(body).toContain('Europe/London');
+    expect(body).toContain('opening time not published');
+    expect(body).toContain(reading.sourceUrl);
+    expect(body).not.toMatch(/midnight|noon|12:00|09:00/);
   });
 });
-
 describe('official-page · what may be searched', () => {
+  it('removes accented household names but preserves the requested ISO date', () => {
+    const query = deidentifyOfficialQuery('When does swim open for Chloé on 2026-10-20?', [
+      { name: 'Chloé', ageMonths: 36, agePrecision: 'months' },
+    ]);
+    expect(query).not.toContain('Chloé');
+    expect(query).toContain('2026-10-20');
+  });
   it('strips household names and a postal so they never cross the border', () => {
     const query = deidentifyOfficialQuery('When does swim open for Maya in L3R 2T6?', [
       { name: 'Maya', ageMonths: 48, agePrecision: 'years' },

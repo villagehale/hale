@@ -1,5 +1,11 @@
 import { readFileSync } from 'node:fs';
+const liveSourceText = new Map<string, string>();
+vi.mock('~/lib/registration/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
+  createRegistrationPageFetch: () => async (url: string) => liveSourceText.get(url) ?? '',
+}));
 import { join } from 'node:path';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -375,14 +381,66 @@ async function runSync(subject = SUBJECT) {
 
 async function runBrief() {
   const sent: Array<{ to: string; body: string }> = [];
-  const web = model();
+  const picks = recordedPicks();
+  const requests: string[] = [];
+  const urls = picks.map((_, index) => `https://sources.example/fixture/${index}`);
+  liveSourceText.clear();
+  picks.forEach((pick, index) => liveSourceText.set(urls[index]!, JSON.stringify(pick)));
+  // The new page-read contract is exercised against public fixture facts from the
+  // recording. Booking extraction still uses the content-addressed model recording.
+  const client = () => {
+    // biome-ignore lint/suspicious/noExplicitAny: fixture SDK request shape
+    const respond = async (req: any) => {
+      requests.push(req.messages[0].content);
+      return {
+        content:
+          req.tool_choice?.name === 'activity_picks'
+            ? [
+                {
+                  type: 'tool_use',
+                  name: 'activity_picks',
+                  input: {
+                    picks: picks.map((pick, index) => ({
+                      name: pick.name,
+                      age_fit: pick.ageFit,
+                      when: pick.when,
+                      price: pick.price,
+                      source_name: pick.sourceName,
+                      source_url: urls[index],
+                    })),
+                  },
+                },
+              ]
+            : [
+                {
+                  type: 'web_search_tool_result',
+                  tool_use_id: 'search',
+                  content: urls.map((url) => ({
+                    type: 'web_search_result',
+                    url,
+                    title: 'Recorded public program',
+                    encrypted_content: 'x',
+                  })),
+                },
+              ],
+        usage: { input_tokens: 10, output_tokens: 10 },
+        stop_reason: 'end_turn',
+      };
+    };
+    return {
+      messages: {
+        create: respond,
+        stream: (req: unknown) => ({ finalMessage: () => respond(req) }),
+      },
+    } as unknown as AgentClient;
+  };
   const result = await runTravelBriefSweep(
     db.database,
     {
       ...defaultTravelBriefDeps(),
       // THE REAL FINDER over a RECORDED model. An injected fake could never fail on the
       // lane's behaviour with a travel-shaped query, and that is the only new thing here.
-      finder: createActivityFinder(web.client),
+      finder: createActivityFinder(client),
       buildGate: (database) => buildOutboundGatePorts(database),
       resolvePhone: async () => PHONE,
       transport: {
@@ -397,7 +455,7 @@ async function runBrief() {
   // The de-identified SEARCH payload, picked out of everything that reached the wire by
   // the one field only it carries. The compose turn that follows it is excluded by
   // `research_notes`, which holds the page text and is a different disclosure.
-  const searched = web.requests.filter(
+  const searched = requests.filter(
     (request) => request.includes('"town"') && !request.includes('research_notes'),
   );
   return { result, sent, searched };

@@ -113,6 +113,7 @@ describe('channelCoachRuntime', () => {
       },
     });
     await channelCoachRuntime(p).respond(turn('How do I help with bedtime?'), []);
+    await channelCoachRuntime(p).respond(turn('Cancel Thursday swim'), []);
     expect(reads).toBe(0);
     expect(instructions).toBe(SKILL.instructions);
     await channelCoachRuntime(p).respond(turn('When does registration open?'), []);
@@ -140,15 +141,27 @@ describe('channelCoachRuntime', () => {
   it('a held registration answer retains the source even when the model omits its link', async () => {
     const sourceUrl = 'https://www.king.ca/recreation';
     const p = ports({
-      loadRegistrationWindows: async () => [{
-        town: 'King', programs: 'Winter 2027',
-        opensFor: 'Current date could not be verified. Do not use a cached date.',
-        residentsFirst: false, generalOpens: null, ageApproximate: false,
-        watching: true, reminderState: 'paused', sourceUrl,
-      }],
-      runAgent: answering("I couldn't verify the current date. Date reminders are paused while I check again."),
+      loadRegistrationWindows: async () => [
+        {
+          town: 'King',
+          programs: 'Winter 2027',
+          opensFor: 'Current date could not be verified. Do not use a cached date.',
+          residentsFirst: false,
+          generalOpens: null,
+          ageApproximate: false,
+          watching: true,
+          reminderState: 'paused',
+          sourceUrl,
+        },
+      ],
+      runAgent: answering(
+        "I couldn't verify the current date. Date reminders are paused while I check again.",
+      ),
     });
-    const { reply } = await channelCoachRuntime(p).respond(turn('When does registration open?'), []);
+    const { reply } = await channelCoachRuntime(p).respond(
+      turn('When does registration open?'),
+      [],
+    );
     expect(reply).toContain("couldn't verify");
     expect(reply).toContain(sourceUrl);
     expect(reply).not.toMatch(/\b(?:2026|2027|midnight|09:00)\b/);

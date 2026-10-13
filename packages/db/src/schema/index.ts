@@ -40,7 +40,7 @@ export * from './village.js';
 export * from './village-intros.js';
 export * from './curated-resources.js';
 export * from './civic.js';
-export * from './registration-windows.js';
+export * from './registration-state.js';
 export * from './registration-discovery-readings.js';
 export * from './registration-sequences.js';
 export * from './registration-verify-runs.js';

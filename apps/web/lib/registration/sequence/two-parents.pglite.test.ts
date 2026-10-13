@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { resolveApproval } from '~/lib/channel/router/approval';
 import { matchFastPath } from '~/lib/channel/router/fast-path';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { registrationSourceFixture } from '~/lib/testing/registration-source';
 import { approvedShortlistAskedOf } from './prepare-reply';
 import { defaultSequenceReplyDeps, handleSequenceReply } from './reply';
 import { legDedupeKey } from './run';
@@ -47,6 +48,7 @@ let familyId: string;
 let primaryUserId: string;
 let coParentUserId: string;
 let windowId: string;
+let sourceContext: ReturnType<typeof registrationSourceFixture>;
 let sequenceId: string;
 let actionId: string;
 /** The window registry is unique on (municipality, domain, cycle), so each case gets
@@ -90,21 +92,19 @@ beforeEach(async () => {
     .values({ familyId, name: 'Mia', dateOfBirth: '2021-09-01', dobPrecision: 'exact' });
 
   cycles += 1;
-  const [window] = await db.database
-    .insert(schema.registrationWindows)
-    .values({
-      municipality: 'markham',
-      programDomain: 'rec_program',
-      cycleLabel: `Fall 2026 #${cycles}`,
-      openAt: OPEN_AT,
-      ageMinMonths: 36,
-      ageMaxMonths: 84,
-      waitlistResponseHours: 36,
-      sourceUrl: 'https://www.markham.ca/register',
-      verifiedAt: new Date('2026-08-01T00:00:00.000Z'),
-    })
-    .returning({ id: schema.registrationWindows.id });
-  windowId = window?.id as string;
+  const window = registrationSourceFixture({
+    municipality: 'markham',
+    programDomain: 'rec_program',
+    cycleLabel: `Fall 2026 #${cycles}`,
+    openAt: OPEN_AT,
+    ageMinMonths: 36,
+    ageMaxMonths: 84,
+    waitlistResponseHours: 36,
+    sourceUrl: 'https://www.markham.ca/register',
+    verifiedAt: new Date('2026-08-01T00:00:00.000Z'),
+  });
+  windowId = window.id;
+  sourceContext = window;
 
   const [event] = await db.database
     .insert(schema.events)
@@ -135,7 +135,7 @@ beforeEach(async () => {
     .insert(schema.registrationSequences)
     // The PRIMARY parent's seat claimed the window, which is what every sequence row
     // looks like: the claim is minted by a cron, not by whoever answers.
-    .values({ familyId, windowId, parentUserId: primaryUserId, actionId })
+    .values({ familyId, windowId, sourceContext, parentUserId: primaryUserId, actionId })
     .returning({ id: schema.registrationSequences.id });
   sequenceId = sequence?.id as string;
 });

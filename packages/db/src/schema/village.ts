@@ -3,7 +3,6 @@ import {
   doublePrecision,
   index,
   integer,
-  jsonb,
   numeric,
   pgTable,
   text,
@@ -15,14 +14,10 @@ import { children } from './children.js';
 import { families } from './families.js';
 import { users } from './users.js';
 
-/**
- * One discovered local resource (a class, group, drop-in, program) the village
- * agent surfaces for a family. childId is nullable — a candidate may be
- * family-wide rather than tied to one child. Stores coarse coverage notes only;
- * no precise location is ever persisted (rule #1).
- */
-export const villageCandidates = pgTable(
-  'village_candidates',
+/** Family-owned receipts for activities actually offered, saved, shared, or acted on.
+ * Historical snapshots are provenance, never a current schedule or recommendation feed. */
+export const familyActivityHistory = pgTable(
+  'family_activity_history',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     familyId: uuid('family_id')
@@ -117,14 +112,16 @@ export const villageCandidates = pgTable(
      * /a/:token page. Null = still part of the active set. */
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     discoveredAt: timestamp('discovered_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Null on imported receipts; only a live result actually offered gets this stamp. */
+    offeredAt: timestamp('offered_at', { withTimezone: true }),
   },
   (table) => ({
-    familyIdx: index('village_candidates_family_idx').on(table.familyId),
+    familyIdx: index('family_activity_history_family_idx').on(table.familyId),
   }),
 );
 
 /**
- * The vocabulary {@link villageCandidates.access} is written in. A TS union over a free
+ * The vocabulary {@link familyActivityHistory.access} is written in. A TS union over a free
  * text column, matching this table's house style for every other attribute: a new value
  * lands without a migration, and the one writer that knows the fact (the civic
  * projection) is the only thing that types it.
@@ -151,7 +148,7 @@ export const villageEndorsements = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     candidateId: uuid('candidate_id')
       .notNull()
-      .references(() => villageCandidates.id, { onDelete: 'cascade' }),
+      .references(() => familyActivityHistory.id, { onDelete: 'cascade' }),
     familyId: uuid('family_id')
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
@@ -187,7 +184,7 @@ export const villageSaves = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     candidateId: uuid('candidate_id')
       .notNull()
-      .references(() => villageCandidates.id, { onDelete: 'cascade' }),
+      .references(() => familyActivityHistory.id, { onDelete: 'cascade' }),
     familyId: uuid('family_id')
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
@@ -206,34 +203,9 @@ export const villageSaves = pgTable(
   }),
 );
 
-/**
- * The materialized agent-ranked feed order for one family — one row per family
- * (family_id is the PK). The rank-recommendations agent (~25s) runs in the
- * BACKGROUND on the write events that change the candidate set, and stores the
- * decided order here; the home feed read is then a pure DB lookup, so the model
- * never runs in the request path.
- *
- * fingerprint = the candidate ids joined in their discovery order: an upsert
- * whose fingerprint matches the stored one short-circuits before any model call
- * (bounded spend, rule #7), so the agent re-runs only when the candidate set
- * actually changed. ordered_ids is the agent's permutation of those ids; the read
- * path reconciles it against the live candidates so a stale id is never rendered.
- */
-export const villageFeedRank = pgTable('village_feed_rank', {
-  familyId: uuid('family_id')
-    .primaryKey()
-    .references(() => families.id, { onDelete: 'cascade' }),
-  orderedIds: jsonb('ordered_ids').$type<string[]>().notNull(),
-  fingerprint: text('fingerprint').notNull(),
-  modelUsed: text('model_used').notNull(),
-  computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-export type VillageCandidate = typeof villageCandidates.$inferSelect;
-export type NewVillageCandidate = typeof villageCandidates.$inferInsert;
+export type VillageCandidate = typeof familyActivityHistory.$inferSelect;
+export type NewVillageCandidate = typeof familyActivityHistory.$inferInsert;
 export type VillageEndorsement = typeof villageEndorsements.$inferSelect;
 export type NewVillageEndorsement = typeof villageEndorsements.$inferInsert;
 export type VillageSave = typeof villageSaves.$inferSelect;
 export type NewVillageSave = typeof villageSaves.$inferInsert;
-export type VillageFeedRank = typeof villageFeedRank.$inferSelect;
-export type NewVillageFeedRank = typeof villageFeedRank.$inferInsert;

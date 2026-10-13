@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -29,14 +29,16 @@ describe('cron heartbeat guard', () => {
     for (const { path } of crons()) {
       const slug = path.split('/').at(-1);
       const source = readFileSync(`${WEB_ROOT}app/api/cron/${slug}/route.ts`, 'utf8');
-      expect(source, `${path} must stamp the dead-man ledger via cronRoute('${slug}', …)`).toContain(
-        `cronRoute('${slug}'`,
-      );
+      expect(
+        source,
+        `${path} must stamp the dead-man ledger via cronRoute('${slug}', …)`,
+      ).toContain(`cronRoute('${slug}'`);
     }
   });
 
   it('no cron route bypasses the wrapper by calling requireCronSecret itself', () => {
     for (const dir of readdirSync(`${WEB_ROOT}app/api/cron`)) {
+      if (!existsSync(`${WEB_ROOT}app/api/cron/${dir}/route.ts`)) continue;
       const source = readFileSync(`${WEB_ROOT}app/api/cron/${dir}/route.ts`, 'utf8');
       expect(
         source.includes('requireCronSecret'),

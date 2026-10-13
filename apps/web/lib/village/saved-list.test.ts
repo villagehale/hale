@@ -113,7 +113,13 @@ describe('readSavedVillageCandidates', () => {
       // The child is 13+ (born 2010) → teen; its saved candidate must be redacted.
       children: [{ id: TEEN_ID, dateOfBirth: '2010-01-01' }],
       savedRows: [
-        { candidate: candidateRow({ id: 'cand-teen', childId: TEEN_ID, title: 'Teen LGBTQ+ group' }) },
+        {
+          candidate: candidateRow({
+            id: 'cand-teen',
+            childId: TEEN_ID,
+            title: 'Teen LGBTQ+ group',
+          }),
+        },
       ],
     });
 
@@ -135,7 +141,11 @@ describe('readSavedVillageCandidates', () => {
       endorsedRows: [{ candidateId: 'cand-1' }],
       // listFamilyAcceptedCandidateIds keeps only LIVE drafts (rule: honesty filter).
       acceptedRows: [
-        { candidateId: 'cand-1', userVisibleState: 'drafted_for_approval', reviewerVerdict: 'approved' },
+        {
+          candidateId: 'cand-1',
+          userVisibleState: 'drafted_for_approval',
+          reviewerVerdict: 'approved',
+        },
       ],
     });
 
@@ -149,5 +159,25 @@ describe('readSavedVillageCandidates', () => {
   it('returns an empty list when the family has saved nothing', async () => {
     const db = fakeDb({ children: [], savedRows: [] });
     expect(await readSavedVillageCandidates(db, FAMILY_ID)).toEqual([]);
+  });
+
+  it('preserves the bookmark and source, not an unverified historical schedule', async () => {
+    const db = fakeDb({
+      children: [],
+      savedRows: [
+        {
+          candidate: candidateRow({
+            summary: 'Opens October 20 at 9 AM',
+            eventDate: '2026-10-20',
+          }),
+        },
+      ],
+    });
+    const [view] = await readSavedVillageCandidates(db, FAMILY_ID);
+    expect(view?.saved).toBe(true);
+    expect(view?.eventDate).toBeNull();
+    expect(view?.sourceUrl).toBe('https://ymca.ca/swim');
+    expect(view?.summary).toContain('current dates');
+    expect(view?.summary).not.toContain('October 20');
   });
 });

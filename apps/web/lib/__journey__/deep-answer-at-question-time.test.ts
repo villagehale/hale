@@ -1,4 +1,9 @@
 import { join } from 'node:path';
+vi.mock('~/lib/registration/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
+  createRegistrationPageFetch: () => async () =>
+    'Tiny Gym, Cartwheels Gym Centre: ages 1-3, Sundays 9:30. Fall programs.',
+}));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool, pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
@@ -207,6 +212,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
                     when: 'Sundays, fall block',
                     price: null,
                     source_name: 'Cartwheels Gym Centre',
+                    source_url: VENUE_PAGE,
                   },
                 ],
               }),

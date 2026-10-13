@@ -1,6 +1,8 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { toSmsReply } from '~/lib/channel/coach/reply';
+import { nearbySaidFor } from '~/lib/channel/coach/runtime';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import {
   type FollowupSweepDeps,
@@ -8,16 +10,11 @@ import {
   runFollowupSweep,
 } from '~/lib/channel/followup/run';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { nearbySaidFor } from '~/lib/channel/coach/runtime';
-import { toSmsReply } from '~/lib/channel/coach/reply';
 import type { OfferedCandidate } from '~/lib/coach/tools';
-import {
-  ACTIVITY_REVIEWS_ENABLED_ENV,
-  runReviewCapture,
-} from '~/lib/reviews/capture';
 import { ACTIVITY_REVIEWS_SURFACE_ENV } from '~/lib/reviews/aggregate';
+import { ACTIVITY_REVIEWS_ENABLED_ENV, runReviewCapture } from '~/lib/reviews/capture';
 import type { VerdictOutcome, VerdictReader } from '~/lib/reviews/verdict';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
 /**
  * FEEDBACK THAT REACHES THE NEXT PARENT — the whole path, over one database.
@@ -119,7 +116,7 @@ async function seedHousehold(slug: string): Promise<Household> {
  * from it — the `sourceRef` shape `propose_calendar_add` now writes. */
 async function seedTextedPlacement(home: Household): Promise<string> {
   const [candidate] = await db.database
-    .insert(schema.villageCandidates)
+    .insert(schema.familyActivityHistory)
     .values({
       familyId: home.familyId,
       title: TITLE,
@@ -133,7 +130,7 @@ async function seedTextedPlacement(home: Household): Promise<string> {
       // candidate by the time the ask goes out.
       supersededAt: new Date('2026-09-13T00:00:00.000Z'),
     })
-    .returning({ id: schema.villageCandidates.id });
+    .returning({ id: schema.familyActivityHistory.id });
 
   const [event] = await db.database
     .insert(schema.events)
@@ -154,7 +151,7 @@ async function seedTextedPlacement(home: Household): Promise<string> {
       payload: {
         title: TITLE,
         startsAt: PLACED_AT.toISOString(),
-        sourceRef: { table: 'village_candidates', id: candidate?.id as string },
+        sourceRef: { table: 'family_activity_history', id: candidate?.id as string },
       },
     })
     .returning({ id: schema.actions.id });
@@ -363,6 +360,8 @@ describe('a review reaches the next parent', () => {
 
     // ── 5. and it goes when a household does (PIPEDA, no recompute anywhere) ─
     await db.database.delete(schema.families).where(eq(schema.families.id, home.familyId));
-    expect(await nearbySaidFor(db.database, (await seedHousehold('fourth')).familyId, OFFERED)).toBeNull();
+    expect(
+      await nearbySaidFor(db.database, (await seedHousehold('fourth')).familyId, OFFERED),
+    ).toBeNull();
   });
 });

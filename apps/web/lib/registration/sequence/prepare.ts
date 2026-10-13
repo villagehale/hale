@@ -9,7 +9,7 @@ import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
  * VIL-338 · what a bound course page says, and which single truthful sentence the
  * ladder is allowed to send about it. Pure: no DB, no network, no `new Date()`.
  *
- * THE PAGE IS THE SYSTEM OF RECORD FOR ITS OWN CLOCK. The M1 registration_windows row
+ * THE PAGE IS THE SYSTEM OF RECORD FOR ITS OWN CLOCK. An imported watch observation
  * is a hand-verified municipal announcement; the course page is the software that will
  * actually open the door. On the shipped data they disagree — the Markham fall row
  * carries only the resident instant (Aug 11 06:30) while the course page publishes

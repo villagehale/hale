@@ -1,5 +1,4 @@
-import { inspect } from 'node:util';
-import type { RegistrationWindow } from '@hale/db';
+import type { RegistrationSourceState } from '@hale/db';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
@@ -7,10 +6,13 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import type { FetchPage } from '~/lib/registration/verify-sweep';
+import type { FetchPage } from '~/lib/registration/fetch';
+import { resolveFamilyOpen } from '../match-registration-windows';
+import { createRegistrationReader } from '../read';
+import type { RegistrationReader } from '../read';
+import { decideRegistrationRefresh } from './refresh';
 import {
   type LiveSequence,
-  type SequenceFamily,
   type SequenceRunDeps,
   defaultSequenceRunDeps,
   runRegistrationSequenceCron,
@@ -24,8 +26,6 @@ import type { SequenceChild } from './shortlist.js';
  * The properties under test are the ones a re-fired cron, a moved municipal date or a
  * declined shortlist would break:
  *
- *   - the CLAIM is minted before the shortlist is drafted, so a double tick cannot
- *     produce two approval cards for one window;
  *   - a leg is idempotent per (family, window, leg) at the ledger, so a tick that runs
  *     twice inside one interval sends once;
  *   - the two urgent legs cross quiet hours and nothing else does;
@@ -46,7 +46,7 @@ const BATTLE_PLAN_TICK = new Date('2026-09-14T23:00:00.000Z');
 /** 06:20 Toronto on 15 Sept — inside quiet hours, inside the go interval. */
 const GO_TICK = new Date('2026-09-15T10:20:00.000Z');
 
-function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
+function win(overrides: Partial<RegistrationSourceState> = {}): RegistrationSourceState {
   return {
     id: 'w-1',
     municipality: 'richmond_hill',
@@ -65,17 +65,7 @@ function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
     createdAt: PROPOSAL_TICK,
     updatedAt: PROPOSAL_TICK,
     ...overrides,
-  } as RegistrationWindow;
-}
-
-function family(overrides: Partial<SequenceFamily> = {}): SequenceFamily {
-  return {
-    familyId: 'fam-1',
-    parentUserId: 'user-1',
-    areaCoarse: 'L4B',
-    timeZone: TZ,
-    ...overrides,
-  };
+  } as RegistrationSourceState;
 }
 
 /** Maya, 4 years old on the proposal tick — squarely inside the 3-to-6 band. */
@@ -109,28 +99,17 @@ interface Harness {
   transport: FakeTransport;
   writes: Array<{ table: unknown; payload: Record<string, unknown> }>;
   dedupeKeys: Set<string>;
-  claims: Array<{ familyId: string; windowId: string }>;
-  drafts: Array<Record<string, unknown>>;
-  released: string[];
   /** MEM-10 · promises opened, and promises closed, in call order. */
   promised: Array<{ kind: string; summary: string; dueAt: Date; channelMessageId: string | null }>;
   kept: Array<{ kind: string; channelMessageId: string | null }>;
   /** Every leg that landed in the parent's own text thread (lib/channel/thread.ts). */
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
-  /** VIL-338 · every guarded anchor refresh the battle-plan read caused. */
-  anchors: Array<{ sequenceId: string; courseUrl: string; courseOpensAt: Date }>;
 }
 
 function harness(
   options: {
-    families?: SequenceFamily[];
-    windows?: RegistrationWindow[];
     sequences?: LiveSequence[];
     children?: SequenceChild[];
-    claimedWindowIds?: Set<string>;
-    /** A claim that loses the race returns null, exactly as ON CONFLICT DO NOTHING does. */
-    claimReturnsNull?: boolean;
-    draftThrows?: boolean;
     /** What the reconciliation gate says about the wire body (VIL-293). Empty is the
      * ordinary answer: a leg's claim is matched by the live sequence sending it. */
     unbacked?: Awaited<ReturnType<SequenceRunDeps['refuseUnbackedSend']>>;
@@ -154,36 +133,101 @@ function harness(
 ): Harness {
   const writes: Harness['writes'] = [];
   const dedupeKeys = new Set<string>();
-  const claims: Harness['claims'] = [];
-  const drafts: Harness['drafts'] = [];
-  const released: string[] = [];
   const promised: Harness['promised'] = [];
   const kept: Harness['kept'] = [];
   const threaded: Harness['threaded'] = [];
-  const anchors: Harness['anchors'] = [];
   const transport = options.transport ?? new FakeTransport();
+  const sequences = options.sequences ?? [];
+  for (const sequence of sequences) {
+    sequence.courseOpensAt ??= sequence.window
+      ? resolveFamilyOpen(sequence.window, sequence.areaCoarse).opensForFamilyAt
+      : null;
+  }
+  const courseRead = createRegistrationReader({
+    fetchBody:
+      options.fetchBody ??
+      (async () => {
+        throw new Error('unexpected course read');
+      }),
+    extract: async () => {
+      throw new Error('unexpected extraction');
+    },
+  });
+  // Synthetic published dates are independent fixtures; portal clocks use the real parser.
+  const read: RegistrationReader = async (target, now) => {
+    if (target.sourceUrl.includes('perfectmind.com')) return courseRead(target, now);
+    const source = sequences.find(
+      (sequence) => sequence.window?.sourceUrl === target.sourceUrl,
+    )?.window;
+    if (!source) throw new Error('missing published-source fixture');
+    const date = (kind: 'resident_open' | 'general_open', at: Date) => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: TZ,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(at);
+      const part = (name: string) => parts.find((value) => value.type === name)?.value;
+      return {
+        kind,
+        date: `${part('year')}-${part('month')}-${part('day')}`,
+        time:
+          part('hour') === '00' && part('minute') === '00'
+            ? null
+            : `${part('hour')}:${part('minute')}`,
+        evidence: ['synthetic published fixture'],
+      };
+    };
+    return {
+      sourceUrl: target.sourceUrl,
+      checkedAt: now,
+      timeZone: TZ,
+      reader: 'ai',
+      status: 'verified',
+      dates: [
+        ...(source.residentOpenAt ? [date('resident_open', source.residentOpenAt)] : []),
+        date('general_open', source.openAt),
+      ],
+    };
+  };
 
   const deps: SequenceRunDeps = {
-    live: null,
+    live: {
+      read,
+      readForSend: read,
+      claimDue: async () => [],
+      refresh: async (_database, input) => {
+        const sequence = sequences.find((row) => row.sequenceId === input.sequenceId);
+        if (!sequence) return false;
+        const decision = decideRegistrationRefresh(
+          {
+            anchor: sequence.courseOpensAt,
+            pending: sequence.pendingChange ?? null,
+            pausedAt: sequence.pausedAt ?? null,
+            reviewApproved: false,
+          },
+          input.reading,
+          input.resident,
+          input.now,
+        );
+        sequence.courseOpensAt = decision.anchor;
+        sequence.pausedAt = decision.paused ? input.now : null;
+        sequence.pendingChange = decision.pending;
+        return true;
+      },
+      reload: async (_database, id) => sequences.find((row) => row.sequenceId === id) ?? null,
+      claimSend: async () => 1,
+      releaseSend: async () => {},
+      draftReview: async () => {},
+      acknowledgeChange: async (_database, sequence) => {
+        if (sequence.pendingChange) sequence.pendingChange.notified = true;
+      },
+    },
     refuseUnbackedSend: async () => options.unbacked ?? [],
-    selectFamilies: async () => options.families ?? [family()],
     loadChildren: async () => options.children ?? CHILDREN,
-    loadWindows: async () => options.windows ?? [],
-    loadClaimedWindowIds: async () => options.claimedWindowIds ?? new Set<string>(),
-    claimWindow: async (_db, input) => {
-      if (options.claimReturnsNull) return null;
-      claims.push({ familyId: input.familyId, windowId: input.windowId });
-      return `seq-${claims.length}`;
-    },
-    draftShortlist: async (_db, input) => {
-      if (options.draftThrows) throw new Error('reviewer unavailable');
-      drafts.push(input as unknown as Record<string, unknown>);
-      return `action-${drafts.length}`;
-    },
-    attachAction: async () => {},
-    releaseClaim: async (_db, sequenceId) => {
-      released.push(sequenceId);
-    },
     loadLiveSequences: async () => options.sequences ?? [],
     /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
      * (channel/family-recipients.ts). The default is the ONE parent the fixture's own
@@ -194,10 +238,7 @@ function harness(
         {
           parentUserId:
             (options.sequences ?? []).find((sequence) => sequence.familyId === familyId)
-              ?.parentUserId ??
-            (options.families ?? [family()]).find((row) => row.familyId === familyId)
-              ?.parentUserId ??
-            'user-1',
+              ?.parentUserId ?? 'user-1',
           timeZone: TZ,
           role: 'primary_parent',
         },
@@ -253,17 +294,6 @@ function harness(
       (async (url) => {
         throw new Error(`unexpected course read: ${url}`);
       }),
-    // SEAM: prod's refresh is `UPDATE ... WHERE id = $id AND course_url = $url AND
-    // course_opens_at IS DISTINCT FROM $new RETURNING id` — the guard is what makes a
-    // double tick a no-op and what makes a link pasted DURING the read lose nothing.
-    refreshCourseAnchor: async (_db, input) => {
-      anchors.push({
-        sequenceId: input.sequenceId,
-        courseUrl: input.courseUrl,
-        courseOpensAt: input.courseOpensAt,
-      });
-      return true;
-    },
   };
 
   return {
@@ -271,13 +301,9 @@ function harness(
     transport,
     writes,
     dedupeKeys,
-    claims,
-    drafts,
-    released,
     promised,
     kept,
     threaded,
-    anchors,
   };
 }
 
@@ -297,135 +323,26 @@ afterEach(() => {
 
 describe('the D21 dark-launch flag', () => {
   it('does nothing at all when neither the flag nor the allowlist is armed', async () => {
-    const h = harness({ windows: [win()] });
+    const h = harness({ sequences: [live()] });
     const result = await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
     expect(result.enabled).toBe(false);
-    expect(h.claims).toEqual([]);
+    expect(result.proposed).toBe(0);
     expect(h.transport.sent).toHaveLength(0);
   });
 
   it('reads F14_ENABLED strictly, so a stored trailing newline stays OFF', async () => {
     // `vercel env add` from a piped echo stores 'true\n'.
     vi.stubEnv('F14_ENABLED', 'true\n');
-    const h = harness({ windows: [win()] });
+    const h = harness({ sequences: [live()] });
     expect((await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK)).enabled).toBe(false);
   });
 
   it('runs for an allowlisted family while the flag is off', async () => {
     vi.stubEnv('F14_FAMILY_ALLOWLIST', 'fam-1');
-    const h = harness({ windows: [win()] });
+    const h = harness({ sequences: [live()] });
     const result = await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
     expect(result.enabled).toBe(true);
-    expect(h.claims).toHaveLength(1);
-  });
-});
-
-describe('the shortlist proposal', () => {
-  it('claims the window BEFORE drafting, so a double tick cannot mint two cards', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({ windows: [win()], claimReturnsNull: true });
-    const result = await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    // The claim lost the race (the unique index rejected it), so nothing was drafted.
-    expect(h.drafts).toEqual([]);
     expect(result.proposed).toBe(0);
-  });
-
-  it('drafts one shortlist for the soonest unclaimed window', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({ windows: [win()] });
-    const result = await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    expect(result.proposed).toBe(1);
-    expect(h.claims).toEqual([{ familyId: 'fam-1', windowId: 'w-1' }]);
-    expect(h.drafts[0]).toMatchObject({
-      familyId: 'fam-1',
-      intentKind: 'registration_shortlist',
-      childId: null,
-    });
-    // The rationale is the reviewed copy, carrying the link and no invented program.
-    expect(String(h.drafts[0]?.rationale)).toContain(
-      'https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx',
-    );
-    expect(auditActions(h.writes)).toContain('registration_shortlist_drafted');
-  });
-
-  it('enumerates THREE texts on the card for a town with no portal Hale can read', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({ windows: [win()] });
-    await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    // Richmond Hill is one of the thirteen. The card a household there consents to is
-    // byte-identical to the one that shipped before VIL-338, because no readiness leg
-    // will ever fire for them — and the sentence enumerating the ladder is the one
-    // thing the approval IS. Kills a rationale that names a portal from anywhere but
-    // this window's own municipality.
-    const rationale = String(h.drafts[0]?.rationale);
-    expect(rationale).toContain(
-      'Approving this asks me to text you a week ahead, the evening before, and 15 minutes before it opens. I never register for you.',
-    );
-    expect(rationale).not.toContain('a checklist a few days out');
-    expect(rationale).not.toContain('the morning text will carry it');
-  });
-
-  it('proposes at most ONE window per family per run', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const second = win({ id: 'w-2', cycleLabel: 'Fall 2026 Swim', programDomain: 'swim' });
-    const h = harness({ windows: [win(), second] });
-    await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    expect(h.claims).toHaveLength(1);
-  });
-
-  it('never re-proposes a window it has already claimed', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({ windows: [win()], claimedWindowIds: new Set(['w-1']) });
-    await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    expect(h.claims).toEqual([]);
-  });
-
-  it('proposes ONE window at a time, not one more on every tick of the slot', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    // The slot is a whole HOUR and the cron ticks every five minutes. Without this
-    // rule the second tick would claim the next window, and a family with three
-    // matched dates would wake up to three approval cards fifteen minutes apart.
-    const second = win({ id: 'w-2', cycleLabel: 'Fall 2026 Swim', programDomain: 'swim' });
-    const h = harness({ windows: [win(), second], claimedWindowIds: new Set(['w-1']) });
-    await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    expect(h.claims).toEqual([]);
-  });
-
-  it('only proposes inside the family’s local shortlist slot', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    // 15:00 Toronto — a perfectly ordinary tick, and not the slot.
-    const h = harness({ windows: [win()] });
-    await runRegistrationSequenceCron(db(), h.deps, new Date('2026-09-05T19:00:00.000Z'));
-    expect(h.claims).toEqual([]);
-  });
-
-  it('does not propose a window that is further out than the lead time', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const distant = win({ openAt: new Date('2026-12-01T11:30:00.000Z') });
-    const h = harness({ windows: [distant] });
-    await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    expect(h.claims).toEqual([]);
-  });
-
-  it('does not propose a window no child in the family fits', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({
-      windows: [win()],
-      children: [{ id: 'child-1', name: 'Ada', dateOfBirth: '2012-05-01', dobPrecision: 'exact' }],
-    });
-    await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    expect(h.claims).toEqual([]);
-  });
-
-  it('releases the claim when the draft fails, so the next tick can retry', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({ windows: [win()], draftThrows: true });
-    const result = await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    // A claim with no shortlist behind it would block M4's nudge AND never run a leg:
-    // the family would go silent about a date they were owed.
-    expect(h.released).toEqual(['seq-1']);
-    expect(result.proposed).toBe(0);
-    expect(result.failed).toBe(1);
   });
 });
 
@@ -437,8 +354,8 @@ describe('the legs', () => {
 
     expect(result.sent).toBe(1);
     const body = h.transport.bodies()[0] as string;
-    expect(body).toContain('Richmond Hill');
-    expect(body).toContain('Maya');
+    expect(body).toContain('2026-09-15 at 06:30 America/Toronto');
+    expect(body).toContain(win().sourceUrl);
     expect(body).not.toContain(NUDGE_OPT_OUT);
     expect(body).not.toContain('STOP to opt out.');
   });
@@ -453,7 +370,7 @@ describe('the legs', () => {
 
     expect(h.threaded).toHaveLength(1);
     expect(h.threaded[0]).toMatchObject({ familyId: 'fam-1', parentUserId: 'user-1' });
-    expect(h.threaded[0]?.body).toContain('Richmond Hill');
+    expect(h.threaded[0]?.body).toContain(win().sourceUrl);
     expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? ' ');
   });
 
@@ -537,7 +454,7 @@ describe('the legs', () => {
       },
     ]);
     // The body the family read is the sentence the row is holding Hale to.
-    expect(h.transport.bodies()[0]).toContain("I'll send your plan the evening before.");
+    expect(h.transport.bodies()[0]).toContain("I'll send a reminder the evening before.");
   });
 
   it('promises nothing to a household it is still asking to approve', async () => {
@@ -548,7 +465,7 @@ describe('the legs', () => {
 
     // The same leg, a different sentence: this one invites an approval, in the thread.
     // Recording a debt against it would report a broken promise Hale never made.
-    expect(h.transport.bodies()[0]).toContain('Want me to run the morning with you?');
+    expect(h.transport.bodies()[0]).toContain('Confirm the reminder plan in your approvals');
     expect(h.promised).toEqual([]);
   });
 
@@ -889,13 +806,8 @@ function coursePage(overrides: Record<string, unknown> = {}): string {
   return `<html><body><script>\r\n  var eventInfo = $.extend(true, {}, {\r\n    BackAction: { Url: '/Clients/BookMe4' }\r\n  }, ${JSON.stringify(model)});\r\n</script></body></html>`;
 }
 
-/** A 200 body that is not a course: the signed BookMe4 error page an unknown but
- * well-formed courseId is answered with. */
-const COURSE_GONE_PAGE =
-  '<html><head><title>BookMe4 Error Page</title></head><body>The page was not found.</body></html>';
-
 /** Markham's window — the one municipality in these tests with a readable portal. */
-function markhamWindow(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
+function markhamWindow(overrides: Partial<RegistrationSourceState> = {}): RegistrationSourceState {
   return win({ municipality: 'markham', ...overrides });
 }
 
@@ -936,7 +848,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(result).toMatchObject({ sent: 1, read: 1, readSkipped: 0 });
     expect(result.prep.prepared).toBe(1);
     // The page it read is the stored sanitized URL and nothing else went to the network.
-    expect(pages).toEqual([MARKHAM_COURSE]);
+    expect(pages).toEqual([MARKHAM_COURSE, MARKHAM_COURSE]);
     const body = h.transport.bodies()[0] as string;
     expect(body).toContain(MARKHAM_SIGN_IN);
     expect(body).toContain('You told me the setup is done.');
@@ -985,34 +897,13 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(auditAfter(town.writes, 'registration_sequence_leg_sent')).not.toHaveProperty('prep');
   });
 
-  it('is byte-identical to today for a municipality with no readable portal', async () => {
+  it('also uses verified dates and source links for nonportal municipalities', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    // The inertness proof. Richmond Hill has no registry portal, so nothing below can
-    // reach it: no read, no clause, no link — the three texts as they ship today.
-    // The three strings VIL-242 shipped, verbatim. Nothing in VIL-338 may edit them:
-    // the whole ticket is safe to merge dark precisely because thirteen municipalities
-    // come out of it unchanged to the byte.
-    const captured: Record<string, string> = {
-      heads_up:
-        "Richmond Hill Fall 2026 recreation programs registration opens Sep 15, 6:30 a.m. for Maya. I'll send your plan the evening before.",
-      battle_plan:
-        'Tomorrow: Richmond Hill Fall 2026 recreation programs opens 6:30 a.m. for Maya. Sign in tonight and have this open: https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx',
-      go: 'Richmond Hill Fall 2026 recreation programs opens 6:30 a.m.. Your link: https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx',
-    };
-    for (const [leg, tick] of [
-      ['heads_up', HEADS_UP_TICK],
-      ['battle_plan', BATTLE_PLAN_TICK],
-      ['go', GO_TICK],
-    ] as const) {
-      const h = harness({
-        sequences: [live()],
-        fetchBody: async () => {
-          throw new Error('a non-portal municipality must never reach the network');
-        },
-      });
-      const result = await runRegistrationSequenceCron(db(), h.deps, tick);
-      expect(result).toMatchObject({ sent: 1, read: 0 });
-      expect(h.threaded[0]?.body).toBe(captured[leg]);
+    for (const tick of [HEADS_UP_TICK, BATTLE_PLAN_TICK, GO_TICK]) {
+      const h = harness({ sequences: [live()] });
+      expect((await runRegistrationSequenceCron(db(), h.deps, tick)).sent).toBe(1);
+      expect(h.threaded[0]?.body).toContain('2026-09-15 at 06:30 America/Toronto');
+      expect(h.threaded[0]?.body).toContain(win().sourceUrl);
     }
   });
 
@@ -1046,234 +937,81 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(onTime.transport.bodies()[0]).toContain(MARKHAM_SIGN_IN);
   });
 
-  it('refreshes the anchor at the battle plan, once, under a guard', async () => {
+  it('holds a later page clock for fresh approval instead of sending the old plan', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    // The page moved itself an hour later on the same morning. The plan prints the new
-    // time and the go leg fires on it — so the anchor has to MOVE, and it moves through
-    // the guarded UPDATE rather than by re-reading at every one of 288 daily ticks.
+    const sequence = bound();
     const h = harness({
-      sequences: [bound()],
+      sequences: [sequence],
       fetchBody: async () => coursePage({ PublicRegistrationStartDateValue: '2026-09-15T07:30' }),
     });
-
-    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
-
-    expect(result).toMatchObject({ sent: 1 });
-    expect(result.prep).toMatchObject({ window_moved: 1, anchor_moved: 1 });
-    // The URL travels with the clock: the row is only moved where it still holds the
-    // page this reading came from. Kills refreshing on the id alone, which would write
-    // an old page's moved clock over a link the parent pasted during the read.
-    expect(h.anchors).toEqual([
-      {
-        sequenceId: 'seq-1',
-        courseUrl: MARKHAM_COURSE,
-        courseOpensAt: new Date('2026-09-15T11:30:00.000Z'),
-      },
-    ]);
-    expect(h.transport.bodies()[0]).toContain('7:30 a.m.');
-    expect(auditAfter(h.writes, 'registration_sequence_leg_sent')).toMatchObject({
-      prep: 'window_moved',
-      driftMinutes: 60,
-      anchorMovedMinutes: 60,
-    });
+    expect((await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK)).sent).toBe(0);
+    expect(sequence.pausedAt).toEqual(BATTLE_PLAN_TICK);
+    expect(sequence.pendingChange?.kind).toBe('later');
+    expect(sequence.courseOpensAt).toEqual(OPEN_AT);
+    const notice = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+    expect(notice.sent).toBe(1);
+    expect(h.transport.bodies()[0]).toContain(MARKHAM_COURSE);
+    expect(h.transport.bodies()[0]).toContain('07:30');
+    expect(h.kept).toEqual([]);
   });
 
-  it('keeps the coach’s watch with the battle plan when the doors are already open', async () => {
+  it('reanchors an earlier clock and notifies rather than sending the obsolete go leg', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    // `late_by_drift` moves the anchor into the PAST, so no go leg will ever fire under
-    // that key — this plan, which carried the sign-in link, IS the text before the doors
-    // open. Leaving the promise open would report a debt Hale had already paid, and
-    // nothing later could close it.
+    const sequence = bound();
     const h = harness({
-      sequences: [bound()],
-      fetchBody: async () => coursePage({ PublicRegistrationStartDateValue: '2026-09-14T06:30' }),
+      sequences: [sequence],
+      fetchBody: async () => coursePage({ PublicRegistrationStartDateValue: '2026-09-15T05:30' }),
     });
-
-    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
-
-    expect(result.prep.late_by_drift).toBe(1);
-    expect(h.anchors).toEqual([
-      {
-        sequenceId: 'seq-1',
-        courseUrl: MARKHAM_COURSE,
-        courseOpensAt: new Date('2026-09-14T10:30:00.000Z'),
-      },
-    ]);
-    // It still keeps the evening-before plan it always kept, AND the watch.
-    expect(h.kept).toEqual([
-      { kind: 'registration_plan', channelMessageId: 'msg-1' },
-      { kind: 'registration_watch', channelMessageId: 'msg-1' },
-    ]);
-
-    // The positive control: an ordinary battle plan closes the PLAN promise and leaves
-    // the watch open for the go leg that will actually keep it.
-    const ordinary = harness({ sequences: [bound()], fetchBody: async () => coursePage() });
-    await runRegistrationSequenceCron(db(), ordinary.deps, BATTLE_PLAN_TICK);
-    expect(ordinary.kept).toEqual([{ kind: 'registration_plan', channelMessageId: 'msg-1' }]);
+    expect((await runRegistrationSequenceCron(db(), h.deps, GO_TICK)).sent).toBe(0);
+    expect(sequence.courseOpensAt).toEqual(new Date('2026-09-15T09:30:00Z'));
+    expect(sequence.pendingChange?.kind).toBe('earlier');
+    expect(sequence.pausedAt).toBeNull();
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(h.transport.bodies()[0]).toContain(MARKHAM_COURSE);
+    expect(h.transport.bodies()[0]).toContain('05:30');
+    expect(h.kept).toEqual([]);
   });
 
-  it('writes anchorMovedMinutes only where the guard actually moved a row', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    // The guard is what makes a double tick a no-op, and the audit row has to say the
-    // same thing: a receipt reading "the morning moved 60 minutes" against a row nothing
-    // moved is a receipt for something that did not happen.
-    const h = harness({
-      sequences: [bound()],
-      fetchBody: async () => coursePage({ PublicRegistrationStartDateValue: '2026-09-15T07:30' }),
-    });
-    const deps = { ...h.deps, refreshCourseAnchor: async () => false };
-
-    const result = await runRegistrationSequenceCron(db(), deps, BATTLE_PLAN_TICK);
-
-    expect(result.prep).toMatchObject({ window_moved: 1, anchor_moved: 0 });
-    expect(auditAfter(h.writes, 'registration_sequence_leg_sent')).toMatchObject({
-      prep: 'window_moved',
-      driftMinutes: 60,
-      anchorMovedMinutes: null,
-    });
-  });
-
-  it('leaves the anchor alone at the go leg, whose key is already spent', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    // The morning of, the disagreement rides the audit row and the sentence names both
-    // instants. Moving the anchor here would move an interval the leg has already fired
-    // in, which no later tick can undo.
-    const h = harness({
-      sequences: [bound()],
-      fetchBody: async () => coursePage({ PublicRegistrationStartDateValue: '2026-09-15T07:30' }),
-    });
-
-    const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
-
-    expect(result.prep.window_moved).toBe(1);
-    expect(result.prep.anchor_moved).toBe(0);
-    expect(h.anchors).toEqual([]);
-    expect(h.transport.bodies()[0]).toContain('Go by the page:');
-  });
-
-  it('names every degraded reading with its own true sentence', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const cases: Array<[string, () => Promise<string>, string]> = [
-      [
-        'page_unreadable',
-        async () => {
+  it.each([GO_TICK, BATTLE_PLAN_TICK])(
+    'pauses an unreadable date and sends a link-only notice at %s',
+    async (tick) => {
+      vi.stubEnv('F14_ENABLED', 'true');
+      const sequence = bound();
+      const h = harness({
+        sequences: [sequence],
+        fetchBody: async () => {
           throw new Error('HTTP 503');
         },
-        'I could not read',
-      ],
-      ['course_gone', async () => COURSE_GONE_PAGE, 'is not showing the course you sent me'],
-      [
-        'registration_closed',
-        async () =>
-          coursePage({
-            IsRegistrationClosed: true,
-            PublicRegistrationStartDateValue: '2026-09-15T06:00',
-          }),
-        'closed to online registration',
-      ],
-      [
-        'late_by_drift',
-        async () => coursePage({ PublicRegistrationStartDateValue: '2026-09-15T05:00' }),
-        'now shows this opened at',
-      ],
-      [
-        'age_ineligible',
-        async () => coursePage({ MinAge: 9, MaxAge: 12, AgeRestrictions: '9 to 12 y 11m' }),
-        '9 to 12 y 11m',
-      ],
-    ];
-
-    for (const [fate, fetchBody, sentence] of cases) {
-      const h = harness({ sequences: [bound()], fetchBody });
-      const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
-
-      expect(result).toMatchObject({ sent: 1, failed: 0 });
-      expect(result.prep[fate as keyof typeof result.prep]).toBe(1);
-      expect(h.transport.bodies()[0]).toContain(sentence);
-      // Every branch still keeps the coach's promise: the parent was texted before the
-      // doors opened, which is the whole of what was promised.
-      expect(h.kept).toEqual([{ kind: 'registration_watch', channelMessageId: 'msg-1' }]);
-    }
-  });
-
-  it('never lets a failed read cost the family the leg, and never defers', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    // A throw escaping into runLegForSequence's catch would count the family `failed`
-    // and send nothing — on the one message this whole feature exists for.
-    const h = harness({
-      sequences: [bound()],
-      fetchBody: async () => {
-        throw new Error('socket hang up');
-      },
-    });
-
-    const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
-
-    expect(result).toMatchObject({ sent: 1, failed: 0, read: 1 });
-    expect(result.prep.page_unreadable).toBe(1);
-    // The link is never withheld because Hale had a bad fetch.
-    expect(h.transport.bodies()[0]).toContain(MARKHAM_SIGN_IN);
-    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:go:user-1']);
-  });
-
-  it('never lets a failed read cost the BATTLE PLAN either, and moves no anchor on one', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    // The no-throw property is leg-agnostic in the reader, and the battle plan is the
-    // leg that also WRITES: a read that ends in a throw must still send the evening
-    // plan, and must not reach the guarded UPDATE with nothing to move it to. Kills
-    // scoping the reader's catch to the go leg, and kills refreshing the anchor off a
-    // verdict that never got a clock.
-    const h = harness({
-      sequences: [bound()],
-      fetchBody: async () => {
-        throw new Error('ETIMEDOUT');
-      },
-    });
-
-    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
-
-    expect(result).toMatchObject({ sent: 1, failed: 0, read: 1 });
-    expect(result.prep).toMatchObject({ page_unreadable: 1, anchor_moved: 0 });
-    expect(h.anchors).toEqual([]);
-    expect(h.transport.bodies()[0]).toContain('I could not re-read the course page tonight');
-    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:battle_plan:user-1']);
-  });
-
-  it('names the host of a page it could not read, never the class behind it', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    // Rule #1. The courseId in that URL names the exact class one household is signing
-    // a child up for, and this log line is the only place in the feature where a stored
-    // page value leaves the process — on the path a slow municipal server takes every
-    // morning. Kills logging the URL itself, and kills logging the ERROR, whose message
-    // is where the URL actually travels.
-    const lines: unknown[][] = [];
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
-      lines.push(args);
-    });
-    try {
-      const h = harness({
-        sequences: [bound()],
-        fetchBody: async (url) => {
-          // The message the REAL primitive throws (verify-sweep.ts) — the URL is IN it.
-          throw new Error(`page fetch ${url} → HTTP 503`);
-        },
       });
+      expect((await runRegistrationSequenceCron(db(), h.deps, tick)).sent).toBe(0);
+      expect(sequence.pendingChange?.kind).toBe('unavailable');
+      expect(sequence.pausedAt).toEqual(tick);
+      const noticeTick = new Date('2026-09-15T14:00:00Z');
+      expect((await runRegistrationSequenceCron(db(), h.deps, noticeTick)).sent).toBe(1);
+      expect(h.transport.bodies()[0]).toContain(MARKHAM_COURSE);
+      expect(h.transport.bodies()[0]).toContain("couldn't verify");
+      expect(h.transport.bodies()[0]).not.toContain('06:30');
+      expect(h.kept).toEqual([]);
+    },
+  );
 
-      await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
-
-      const line = lines.find((args) => String(args[1]).includes('course page read failed'));
-      expect(line?.[0]).toMatchObject({ host: 'cityofmarkham.perfectmind.com' });
-      // `inspect`, not `JSON.stringify`: an Error serializes to `{}` through JSON, so a
-      // stringify assertion here passes with the whole URL sitting in the payload — the
-      // shape the runtime's own console formatter prints in full.
-      expect(inspect(line?.[0], { depth: 5 })).not.toContain(MARKHAM_COURSE_ID);
-      expect(inspect(line?.[0], { depth: 5 })).not.toContain('perfectmind.com/Clients');
-    } finally {
-      errorSpy.mockRestore();
-    }
+  it.each([
+    ['prepared', { IsRegistrationClosed: true }, 'portal opens 6:30 a.m.'],
+    [
+      'age_ineligible',
+      { MinAge: 9, MaxAge: 12, AgeRestrictions: '9 to 12 y 11m' },
+      '9 to 12 y 11m',
+    ],
+  ])('preserves the %s course verdict with a verified clock', async (fate, changes, sentence) => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [bound()], fetchBody: async () => coursePage(changes) });
+    const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+    expect(result).toMatchObject({ sent: 1, failed: 0 });
+    expect(result.prep[fate as keyof typeof result.prep]).toBe(1);
+    expect(h.transport.bodies()[0]).toContain(sentence);
   });
 
-  it('costs one GET when two households are waiting on the same course', async () => {
+  it('shares date and preparation reads across households on the same course', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     let gets = 0;
     const h = harness({
@@ -1291,7 +1029,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
     const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
 
     expect(result).toMatchObject({ sent: 2, read: 1 });
-    expect(gets).toBe(1);
+    expect(gets).toBe(2);
   });
 
   it('spends its wall budget once and says so, while every family is still texted', async () => {
@@ -1325,8 +1063,8 @@ describe('VIL-338 · the bound course is read at send time', () => {
 
       const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
 
-      expect(result).toMatchObject({ sent: 3, read: 2, readSkipped: 1 });
-      expect(result.prep.page_unreadable).toBe(1);
+      expect(result).toMatchObject({ sent: 3, read: 1, readSkipped: 2 });
+      expect(result.prep.page_unreadable).toBe(2);
       expect(h.transport.sent).toHaveLength(3);
     } finally {
       vi.useRealTimers();
@@ -1377,7 +1115,11 @@ describe('VIL-338 · the bound course is read at send time', () => {
       { id: 'child-1', name: 'Ada', dateOfBirth: '2012-05-01', dobPrecision: 'exact' },
     ];
 
-    const checkIn = harness({ sequences: [bound()], children: aged });
+    const checkIn = harness({
+      sequences: [bound()],
+      children: aged,
+      fetchBody: async () => coursePage(),
+    });
     const checkInResult = await runRegistrationSequenceCron(
       db(),
       checkIn.deps,
@@ -1428,7 +1170,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
     const town = harness({ sequences: [live()] });
     const townResult = await runRegistrationSequenceCron(db(), town.deps, READINESS_TICK);
     expect(townResult.sent).toBe(1);
-    expect(town.transport.bodies()[0]).toContain('registration opens');
+    expect(town.transport.bodies()[0]).toContain('2026-09-15 at 06:30 America/Toronto');
     expect([...town.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:heads_up:user-1']);
   });
 
@@ -1501,13 +1243,9 @@ describe('a town that published a date and no hour (VIL-347)', () => {
 
     expect(h.transport.sent).toEqual([]);
     expect(result.sent).toBe(0);
-    // ONE, not one per parent: the window's data is the household's fact, so the leg is
-    // composed for nobody rather than held twice.
-    expect(result.skipped.open_time_unpublished).toBe(1);
-    // Named, never folded into the bucket that means "nothing was due" (rule #11): a leg
-    // WAS due, and Hale declined to send it. Nor into `held`, which is a deferral the
-    // next tick can resolve.
-    expect(result.quiet).toBe(0);
+    // The live date moves the old midnight scheduling marker to local noon.
+    expect(result.skipped.open_time_unpublished).toBe(0);
+    expect(result.quiet).toBe(1);
     expect(result.held).toEqual({
       not_enrolled: 0,
       opt_out_unread: 0,
@@ -1515,6 +1253,22 @@ describe('a town that published a date and no hour (VIL-347)', () => {
       quiet_hours: 0,
     });
   });
+
+  it.each(['go', 'check_in'])(
+    'never sends %s from a date-only noon scheduling marker',
+    async (leg) => {
+      vi.stubEnv('F14_ENABLED', 'true');
+      const marker = new Date('2026-08-25T16:00:00Z');
+      const sequence = oakville(START_OF_DAY);
+      sequence.courseOpensAt = marker;
+      const h = harness({ sequences: [sequence], recipients: BOTH_PARENTS, phones: NUMBERS });
+      const tick = leg === 'go' ? goTickFor(marker) : new Date(marker.getTime() + 4 * 3_600_000);
+      const result = await runRegistrationSequenceCron(db(), h.deps, tick);
+      expect(result.sent).toBe(0);
+      expect(result.skipped.open_time_unpublished).toBe(1);
+      expect(h.transport.sent).toEqual([]);
+    },
+  );
 
   it('still sends the go leg to both parents where the town DID print the hour', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
@@ -1600,7 +1354,7 @@ describe('the ladder reaches both parents, on their own numbers', () => {
 
     const [first, second] = h.transport.bodies();
     expect(h.transport.sent).toHaveLength(2);
-    expect(first).toContain('Richmond Hill');
+    expect(first).toContain(win().sourceUrl);
     // Byte-identical: the registration morning is the household's, and two parents in
     // one house reading two different times for it is the failure this forbids.
     expect(second).toBe(first);

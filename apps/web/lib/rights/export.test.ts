@@ -204,7 +204,7 @@ function fakeDb(args: {
     if (which === 2) return { from: () => ({ innerJoin: () => ({ where: membersWhere }) }) };
     if (which === 3) return { from: () => ({ innerJoin: () => ({ where: savesWhere }) }) };
     if (which === 4) return { from: () => ({ innerJoin: () => ({ where: assistantsWhere }) }) };
-    if (which === 5) return { from: () => ({ leftJoin: () => ({ where: preparationsWhere }) }) };
+    if (which === 5) return { from: () => ({ where: preparationsWhere }) };
     if (which === 6) return { from: () => ({ where: watchesWhere }) };
     if (which === 7) return { from: () => ({ where: bookingsWhere }) };
     if (which === 8) return { from: () => ({ where: checkInPrefsWhere }) };

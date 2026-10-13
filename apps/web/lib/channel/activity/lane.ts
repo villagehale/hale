@@ -2,12 +2,14 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { stripHtml } from '~/lib/registration/fetch';
+import { createRegistrationPageFetch, registrationPageUrl } from '~/lib/registration/page';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
+import { namesRetiredRecPortal } from './retired-portal';
 
 /**
  * THE WEB-GROUNDED ACTIVITY LANE — what a parent gets when they ask what their child can
@@ -168,6 +170,13 @@ export interface ActivityPick {
   source: ActivitySource;
   /** The page the pick was read off, when that page is an absolute http(s) URL. */
   url?: string;
+  /** A URL observed in this operation's web evidence, never an invented link. */
+  sourceUrl?: string;
+  eventDate?: string;
+  indoorOutdoor?: 'indoor' | 'outdoor' | 'both';
+  access?: 'drop_in' | 'register_at_venue';
+  placeId?: string;
+  civicVenueId?: string;
 }
 
 /**
@@ -275,6 +284,13 @@ const composeSchema = z.object({
         when: z.string().nullish(),
         price: z.string().nullish(),
         source_name: z.string().nullish(),
+        source_url: z.string().nullish(),
+        event_date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullish(),
+        indoor_outdoor: z.enum(['indoor', 'outdoor', 'both']).nullish(),
+        access: z.enum(['drop_in', 'register_at_venue']).nullish(),
       }),
     ),
   ),
@@ -294,12 +310,25 @@ const composeJsonSchema: Anthropic.Tool.InputSchema = {
           when: { type: 'string' },
           price: { type: 'string' },
           source_name: { type: 'string' },
-          source_url: { type: 'string' },
+          source_url: {
+            type: 'string',
+            description: 'The exact source URL from this research, never guess one.',
+          },
+          event_date: {
+            type: 'string',
+            description: 'YYYY-MM-DD only when the source dates this session. Omit if unknown.',
+          },
+          indoor_outdoor: { type: 'string', enum: ['indoor', 'outdoor', 'both'] },
+          access: {
+            type: 'string',
+            enum: ['drop_in', 'register_at_venue'],
+            description: 'Only the published attendance requirement. Omit if unknown.',
+          },
         },
         // `when` and `price` are OMITTED from required for the reason ActivityPick states:
         // a required field a page never published is a field the model can only satisfy by
         // inventing or by dropping the whole find, and it chose dropping.
-        required: ['name', 'age_fit', 'source_name'],
+        required: ['name', 'age_fit', 'source_name', 'source_url'],
       },
     },
   },
@@ -415,6 +444,9 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
       source: 'web',
       ...(url === null ? {} : { url }),
     };
+    if (item.event_date) pick.eventDate = item.event_date;
+    if (item.indoor_outdoor) pick.indoorOutdoor = item.indoor_outdoor;
+    if (item.access) pick.access = item.access;
     if (
       namesRetiredRecPortal(
         `${pick.name} ${pick.ageFit} ${pick.when ?? ''} ${pick.price ?? ''} ${pick.sourceName}`,
@@ -479,15 +511,30 @@ async function runActivityOnce(
     // this lane is the count, and the inline leg makes no claim that rests on it.
     const evidence = readEvidence(new Date(), research.content);
     if (evidence.searchResults === 0) throw new ActivityUnresolvable('not_grounded');
-    // SEARCH RESULTS ARE NOT RESEARCH. A grounding turn can spend its whole token budget on
-    // the results themselves and never write the summary — 24 real results and an empty
-    // notes string is a shape the corpus actually produced. The result count is satisfied by
-    // that and the composer is handed "", which leaves it a choice between inventing a venue
-    // and shrugging. Both are the failure this lane exists to end, so an empty research body
-    // is the SAME outcome as no results at all: not grounded, retried once, then said
-    // honestly. The detail is what separates the two causes in the log (rule #11).
-    const researchNotes = evidence.notes;
-    if (researchNotes === '') throw new ActivityUnresolvable('not_grounded', 'empty_research');
+    // Search locates sources; facts come from fresh, bounded, DNS-pinned page reads.
+    const sourceUrls = new Set(evidence.urlsRead);
+    for (const block of research.content) {
+      if (block.type !== 'web_search_tool_result' || !Array.isArray(block.content)) continue;
+      for (const result of block.content) {
+        if (result.type === 'web_search_result') sourceUrls.add(result.url);
+      }
+    }
+    const fetchPage = createRegistrationPageFetch();
+    const pages = (
+      await Promise.all(
+        [...sourceUrls].slice(0, MAX_INLINE_FETCHES).map(async (raw) => {
+          try {
+            const url = registrationPageUrl(raw);
+            const text = stripHtml(await fetchPage(url)).slice(0, 20_000);
+            return text.trim() ? { url, text } : null;
+          } catch {
+            return null;
+          }
+        }),
+      )
+    ).filter((page): page is { url: string; text: string } => page !== null);
+    if (pages.length === 0) throw new ActivityUnresolvable('not_grounded', 'sources_unreadable');
+    const researchNotes = pages.map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n');
     if (evidence.pagesRefused > 0 && evidence.pagesRead === 0) {
       // The turn tried to open the venue's pages and was turned away every time, so any gap
       // in what follows is UNREAD rather than unposted. It is not a failure — the snippets
@@ -516,8 +563,16 @@ async function runActivityOnce(
     } catch (err) {
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
+    const pageUrls = new Set(pages.map((page) => page.url));
+    const cited = toPicks(composed.picks).filter((pick) => {
+      const raw = composed.picks.find((item) => field(item.name) === pick.name)?.source_url;
+      if (typeof raw !== 'string' || !pageUrls.has(raw)) return false;
+      pick.sourceUrl = raw;
+      pick.url = raw;
+      return true;
+    });
     return {
-      picks: toPicks(composed.picks),
+      picks: cited,
       searchResults: evidence.searchResults,
       notes: researchNotes,
     };

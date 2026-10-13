@@ -1,13 +1,21 @@
-import { type Database, type Municipality, schema } from '@hale/db';
+import {
+  type Database,
+  type Municipality,
+  type RegistrationSourceState,
+  registrationSourceState,
+  schema,
+} from '@hale/db';
 import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { SPOT_PORTAL_HOSTS, type SpotPortal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { SPOT_PORTAL_HOSTS, type SpotPortal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { formatWhenPhrase } from '~/lib/format/datetime';
+import { type FetchPage, createFetchBody } from '~/lib/registration/fetch';
 import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
-import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
+import { type LiveRegistrationReading, readCourseRegistration } from '../live-reading';
 import { renderCourseBindAck, renderReadinessAck } from './copy.js';
+import { printsReadinessAsk } from './copy.js';
 import {
   type AgeVerdict,
   BIND_FETCH_TIMEOUT_MS,
@@ -16,12 +24,10 @@ import {
   type PrepChild,
   readCoursePrep,
 } from './prepare.js';
+import { refreshRegistrationWatch } from './refresh';
 import { legDedupeKey } from './run.js';
 import { SEQUENCE_LEGS } from './schedule.js';
 import { type FitNote, buildShortlist } from './shortlist.js';
-import { printsReadinessAsk } from './copy.js';
-import { type LiveRegistrationReading, readCourseRegistration } from '../live-reading';
-import { refreshRegistrationWatch } from './refresh';
 
 /**
  * VIL-338 · what a parent may SAY to a registration morning that has not happened yet.
@@ -103,7 +109,7 @@ export interface PreparingSequence {
  * own instant. The exact anchor is resolved in code by {@link familyAnchor}, because
  * the resident head start comes off the family's FSA.
  *
- * Callers must join `actions` and `registration_windows`; there is no shape in Drizzle
+ * Callers must join `actions` and read the watch's imported `source_context`; there is no shape in Drizzle
  * that can make them, and every caller of this predicate is in this file.
  */
 function liveOptedInSequence(familyId: string, now: Date) {
@@ -114,7 +120,7 @@ function liveOptedInSequence(familyId: string, now: Date) {
     isNull(schema.actions.revertedAt),
     or(
       gt(schema.registrationSequences.courseOpensAt, now),
-      gt(schema.registrationWindows.openAt, now),
+      sql`(${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz > ${now}`,
     ),
   );
 }
@@ -123,7 +129,7 @@ function liveOptedInSequence(familyId: string, now: Date) {
  * and otherwise the M1 row resolved against their postal area (a resident household
  * registers days before the general date). */
 function familyAnchor(
-  window: typeof schema.registrationWindows.$inferSelect,
+  window: RegistrationSourceState,
   areaCoarse: string | null,
   courseOpensAt: Date | null,
 ): Date {
@@ -143,21 +149,17 @@ export async function loadPreparingSequence(
   familyId: string,
   now: Date,
 ): Promise<PreparingSequence | null> {
-  const [row] = await database
+  const [stored] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
       courseUrl: schema.registrationSequences.courseUrl,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       readinessReady: schema.registrationSequences.readinessReady,
-      window: schema.registrationWindows,
+      window: schema.registrationSequences.sourceContext,
       timeZone: schema.users.timezone,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
-      schema.registrationWindows,
-      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
-    )
     .innerJoin(schema.users, eq(schema.users.id, schema.registrationSequences.parentUserId))
     .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
     .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
@@ -165,14 +167,20 @@ export async function loadPreparingSequence(
       and(
         liveOptedInSequence(familyId, now),
         isNull(schema.registrationSequences.pausedAt),
-        inArray(schema.registrationWindows.municipality, PORTAL_MUNICIPALITIES),
+        inArray(
+          sql`${schema.registrationSequences.sourceContext}->>'municipality'`,
+          PORTAL_MUNICIPALITIES,
+        ),
       ),
     )
     .orderBy(
-      sql`coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt})`,
+      sql`coalesce(${schema.registrationSequences.courseOpensAt}, (${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz)`,
     )
     .limit(1);
-  if (!row) return null;
+  if (!stored?.window) return null;
+  const window = registrationSourceState(stored.window);
+  if (!window) return null;
+  const row = { ...stored, window };
 
   const portal = portalOf(row.window.municipality);
   if (portal === null) return null;
@@ -744,27 +752,26 @@ export async function approvedShortlistAskedOf(
   parentUserId: string,
   now: Date,
 ): Promise<{ sequenceId: string } | null> {
-  const [row] = await database
+  const [stored] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
-      windowId: schema.registrationWindows.id,
+      windowId: schema.registrationSequences.windowId,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
-      window: schema.registrationWindows,
+      window: schema.registrationSequences.sourceContext,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
-      schema.registrationWindows,
-      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
-    )
     .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
     .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
     .where(liveOptedInSequence(familyId, now))
     .orderBy(
-      sql`coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt})`,
+      sql`coalesce(${schema.registrationSequences.courseOpensAt}, (${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz)`,
     )
     .limit(1);
-  if (!row) return null;
+  if (!stored?.window) return null;
+  const window = registrationSourceState(stored.window);
+  if (!window) return null;
+  const row = { ...stored, window };
   // The morning itself, resolved for THIS family: past it the ladder is asking how it
   // went, and "I'll run the morning with you" is no longer a true sentence.
   if (familyAnchor(row.window, row.areaCoarse, row.courseOpensAt).getTime() <= now.getTime()) {
@@ -772,7 +779,7 @@ export async function approvedShortlistAskedOf(
   }
 
   const asked = await lastWordAt(database, parentUserId, [
-    legDedupeKey(familyId, row.windowId, 'heads_up', parentUserId),
+    legDedupeKey(familyId, row.windowId ?? row.sequenceId, 'heads_up', parentUserId),
   ]);
   return asked === null ? null : { sequenceId: row.sequenceId };
 }

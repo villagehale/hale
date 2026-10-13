@@ -1,8 +1,8 @@
 import { lookup } from 'node:dns/promises';
-import { request, type RequestOptions } from 'node:https';
+import { type RequestOptions, request } from 'node:https';
 import { BlockList, isIP } from 'node:net';
 import { REGISTRATION_COURSE_URL_MAX_CHARS } from '@hale/db';
-import { MAX_PAGE_BYTES, PAGE_FETCH_TIMEOUT_MS, type FetchPage } from './verify-sweep';
+import { type FetchPage, MAX_PAGE_BYTES, PAGE_FETCH_TIMEOUT_MS } from './fetch';
 
 const blocked = new BlockList();
 for (const [address, prefix] of [

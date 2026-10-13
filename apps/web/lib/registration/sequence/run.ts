@@ -1,11 +1,14 @@
-import { type Database, type RegistrationWindow, schema } from '@hale/db';
-import { ageInMonths } from '@hale/types';
+import {
+  type Database,
+  type RegistrationSourceState,
+  registrationSourceState,
+  schema,
+} from '@hale/db';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
   type FamilyTextRecipient,
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
-import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
@@ -29,41 +32,23 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
-import { localParts } from '~/lib/loop/prefs';
 import { pipelineClient } from '~/lib/pipeline/client';
+import { type FetchPage, createFetchBody, pageCache } from '~/lib/registration/fetch';
 import {
   type RegistrationMatch,
-  matchRegistrationWindows,
   resolveFamilyOpen,
 } from '~/lib/registration/match-registration-windows';
-import { type FetchPage, createFetchBody, pageCache } from '~/lib/registration/verify-sweep';
 import type { LiveRegistrationReading } from '../live-reading';
 import {
-  createRegistrationReader,
-  readRegistrationWindows as readRegistrationWindowsLive,
-  registrationDate,
-  registrationWhen,
-  windowReadTarget,
   type RegistrationReader,
   type RegistrationTarget,
+  createRegistrationReader,
+  registrationDate,
+  registrationHasOpened,
+  registrationWhen,
+  windowReadTarget,
 } from '../read';
-import {
-  claimDueRegistrationChecks,
-  claimRegistrationSend,
-  releaseRegistrationSend,
-  refreshRegistrationWatch,
-  registrationChange,
-  registrationChangeBody,
-  type RegistrationChange,
-} from './refresh';
-import { loadClaimedWindowIds } from './claims.js';
-import {
-  headsUpPromisesPlan,
-  readinessClause,
-  renderSequenceLeg,
-  renderShortlistRationale,
-  windowPhrase,
-} from './copy.js';
+import { headsUpPromisesPlan, readinessClause, renderSequenceLeg, windowPhrase } from './copy.js';
 import {
   GO_FETCH_TIMEOUT_MS,
   type PrepInput,
@@ -72,22 +57,29 @@ import {
   readCoursePrep,
 } from './prepare.js';
 import {
-  HEADS_UP_MINUTE_LOCAL,
+  type RegistrationChange,
+  claimDueRegistrationChecks,
+  claimRegistrationSend,
+  refreshRegistrationWatch,
+  registrationChange,
+  registrationChangeBody,
+  releaseRegistrationSend,
+} from './refresh';
+import {
   type RegistrationOutcome,
   type SequenceLeg,
   type SequenceOptIn,
   dueLeg,
   legIsUrgent,
   openLegWindows,
-  openTimeIsPublished,
   waitlistDeadline,
 } from './schedule.js';
 import {
   type SequenceChild,
   type Shortlist,
   buildShortlist,
-  windowShortlist,
   courseShortlist,
+  windowShortlist,
 } from './shortlist.js';
 
 /**
@@ -101,16 +93,9 @@ import {
  * anywhere in this module, and the shortlist's action type has no executor that could
  * grow one.
  *
- * TWO PHASES, and they are separate because they have different costs and cadences:
- *
- *   A. PROPOSE — once a day, in the family's own mid-morning slot, look for a matched
- *      window inside the lead horizon and, if there is one, CLAIM it and draft the
- *      shortlist for approval. The claim is minted FIRST, on a unique index, so two
- *      overlapping ticks cannot produce two approval cards for one window.
- *   B. RUN THE LEGS — every tick, for every live sequence. Which leg is due is a pure
- *      function of the LIVE window row (see schedule.ts), so a municipality that moves
- *      its date re-anchors the entire ladder with no reconciliation: there is nothing
- *      materialized to be stale.
+ * Only existing family-owned watches are refreshed and delivered. The source page is
+ * re-read on scheduled checks and again before an unsent, consent-gated reminder.
+ * No global seasonal catalog is scanned to create new watches.
  *
  * FIVE MINUTES, not an hour. The go leg exists in a fifteen-minute window that must
  * never be crossed — an hourly cron would hit it one time in four, and the one message
@@ -125,28 +110,8 @@ import {
  * arms it, exactly as M4's is.
  */
 
-/**
- * How far ahead of a window the shortlist is drafted. Three days of slack before the
- * heads-up leg at T-7d: long enough that a parent who checks Hale twice a week still
- * approves in time to get the full ladder, short enough that the approvals queue is not
- * full of dates nobody can act on yet.
- */
-export const SHORTLIST_LEAD_DAYS = 10;
-
-/** Filter first, then cap — a cap-then-filter would starve every family past the
- * oldest N of their slot forever. */
+/** Bound the watch work performed in a single cron tick. */
 const MAX_SEQUENCE_FAMILIES_PER_RUN = 100;
-
-/**
- * Whether `now` sits in this family's daily shortlist slot. The same mid-morning hour
- * the heads-up leg lands in, matched as a whole HOUR: an exact-minute match would drop
- * every family whose cron tick ran a minute late.
- */
-export function isShortlistSlot(now: Date, timeZone: string): boolean {
-  return (
-    Math.floor(localParts(now, timeZone).minutes / 60) === Math.floor(HEADS_UP_MINUTE_LOCAL / 60)
-  );
-}
 
 export interface SequenceFamily {
   familyId: string;
@@ -166,17 +131,15 @@ export interface LiveSequence {
    * on the resident date or the general one — and therefore what the whole ladder is
    * anchored on, so it is resolved at send time rather than frozen at proposal. */
   areaCoarse: string | null;
-  /** The LIVE M1 row. Every leg time is derived from it at send time, so a corrected
-   * date moves the whole ladder. */
-  window: RegistrationWindow | null;
+  /** Imported watch-owned metadata; a fresh read owns every parent-facing date. */
+  window: RegistrationSourceState | null;
   /** Read live off the approval spine — see registration-sequences.ts. */
   optIn: SequenceOptIn;
   outcome: RegistrationOutcome | null;
   waitlistPosition: number | null;
   waitlistStartedAt: Date | null;
   /** VIL-338 · the course page the parent pasted, exactly as `sanitizeSpotUrl` rebuilt
-   * it, or null while nothing is bound. Non-null is what turns the two send-time reads
-   * on — it is the whole switch between the ladder that shipped and the prepared one. */
+   * it, or null while nothing is bound. All opening reminders re-read their source, including unbound imported watches. */
   courseUrl: string | null;
   /** THE ANCHOR when a course is bound: the instant that page says it opens for THIS
    * family. Every interval and every sentence is derived from it, so a bind that moves
@@ -215,7 +178,7 @@ export interface SequenceAuditRow {
 }
 
 export interface SequenceRunDeps {
-  /** Null is an explicitly named legacy test harness, never production wiring. */
+  /** Required even in fixtures: a cached scheduling anchor can never authorize a send. */
   live: {
     read: RegistrationReader;
     readForSend: RegistrationReader;
@@ -226,35 +189,8 @@ export interface SequenceRunDeps {
     releaseSend: typeof releaseRegistrationSend;
     draftReview(database: Database, sequence: LiveSequence): Promise<void>;
     acknowledgeChange(database: Database, sequence: LiveSequence): Promise<void>;
-  } | null;
-  selectFamilies(database: Database, now: Date): Promise<SequenceFamily[]>;
+  };
   loadChildren(database: Database, familyId: string): Promise<SequenceChild[]>;
-  loadWindows(database: Database, areaCoarse: string, now?: Date): Promise<RegistrationWindow[]>;
-  loadClaimedWindowIds(database: Database, familyId: string): Promise<Set<string>>;
-  /** Insert the claim, or return null when this family already has one for the window
-   * (the unique index rejected it). The atomic step a double tick races on. */
-  claimWindow(
-    database: Database,
-    input: { familyId: string; windowId: string; parentUserId: string },
-  ): Promise<string | null>;
-  /** Draft the shortlist through the approval spine. Returns the action id. */
-  draftShortlist(
-    database: Database,
-    input: {
-      familyId: string;
-      actorUserId: string;
-      childId: null;
-      intentKind: string;
-      rationale: string;
-      /** The card's heading — what opens, where. */
-      title: string;
-      /** The municipal page. The one link the whole sequence points at. */
-      sourceUrl: string;
-    },
-  ): Promise<string>;
-  attachAction(database: Database, sequenceId: string, actionId: string): Promise<void>;
-  /** Undo a claim whose shortlist could not be drafted. */
-  releaseClaim(database: Database, sequenceId: string): Promise<void>;
   loadLiveSequences(database: Database, now: Date): Promise<LiveSequence[]>;
   /**
    * WHO THIS LADDER IS FOR — every parent seat in the family with a live number, not
@@ -318,24 +254,6 @@ export interface SequenceRunDeps {
    * a different thing from having no way to read at all.
    */
   fetchBody: FetchPage;
-  /**
-   * The one write a send-time read may cause, and only at the battle plan: the page has
-   * moved its own clock, so the anchor the rest of the ladder hangs from moves with it.
-   * Guarded (`WHERE course_url = $url AND course_opens_at IS DISTINCT FROM $new`) so a
-   * double tick is a no-op, and it returns whether a row actually moved — the number the
-   * leg's audit row carries is about a change that happened, never one that was merely
-   * attempted. REQUIRED for the reason above: an anchor that silently failed to move
-   * fires the flagship text on the wrong morning, which is the one failure this ticket
-   * exists to prevent.
-   *
-   * The URL is half the guard because the read takes seconds and a parent may paste a
-   * second link inside them: a clock read off the OLD page is not a fact about the
-   * course the row holds now, and the bind wrote that course's own clock already.
-   */
-  refreshCourseAnchor(
-    database: Database,
-    input: { sequenceId: string; courseUrl: string; courseOpensAt: Date; now: Date },
-  ): Promise<boolean>;
 }
 
 /**
@@ -464,124 +382,7 @@ export function legDedupeKey(
   return `registration_sequence:${familyId}:${windowId}:${leg}:${parentUserId}`;
 }
 
-// ── phase A: propose a shortlist ─────────────────────────────────────────────
-
-async function proposeForFamily(
-  database: Database,
-  family: SequenceFamily,
-  deps: SequenceRunDeps,
-  now: Date,
-): Promise<boolean> {
-  if (!family.areaCoarse) return false;
-  const [children, windowRows, claimed] = await Promise.all([
-    deps.loadChildren(database, family.familyId),
-    deps.loadWindows(database, family.areaCoarse, now),
-    deps.loadClaimedWindowIds(database, family.familyId),
-  ]);
-  if (children.length === 0) return false;
-
-  // Every child's age, 13+ included. M4 drops teens before matching; a teen's
-  // registration deadline is real, and the shortlist keeps their name out of it
-  // instead of keeping them out of the shortlist (see shortlist.ts).
-  const matches = matchRegistrationWindows({
-    windows: windowRows,
-    postal: family.areaCoarse,
-    childrenAgesMonths: children.map((child) => ageInMonths(child.dateOfBirth, now)),
-    now,
-  });
-
-  const horizon = now.getTime() + SHORTLIST_LEAD_DAYS * 86_400_000;
-  for (const match of matches) {
-    if (match.opensForFamilyAt.getTime() > horizon) break; // sorted soonest-first
-    // ONE window at a time. The slot is a whole HOUR and the cron ticks every five
-    // minutes, so `continue` here would claim the next window on the next tick and a
-    // family with three matched dates would collect three approval cards a quarter of
-    // an hour apart. A household preparing for a registration morning is preparing for
-    // ONE; the next is proposed once this window has passed. (A declined shortlist also
-    // holds the slot until its date passes — conservative, and it self-clears.)
-    // Any cycle in this collapsed event counts as claimed: the group is one
-    // registration morning, and a claim on any of its rows already produced the card.
-    if (match.cycleWindows.some((cycle) => claimed.has(cycle.id))) return false;
-    const shortlist = buildShortlist(match, children, now);
-    if (!shortlist) continue;
-
-    // CLAIM FIRST. The unique (family_id, window_id) index is what makes two
-    // overlapping ticks produce one approval card; drafting first and claiming after
-    // would mint the duplicate before the index could refuse it.
-    const sequenceId = await deps.claimWindow(database, {
-      familyId: family.familyId,
-      windowId: match.window.id,
-      parentUserId: family.parentUserId,
-    });
-    if (sequenceId === null) return false;
-
-    try {
-      const publishedReading = (match.window as Partial<import('../read').LiveRegistrationWindow>)
-        .reading;
-      const publishedDate = publishedReading
-        ? registrationDate(publishedReading, match.isResidentWindow)
-        : null;
-      const actionId = await deps.draftShortlist(database, {
-        familyId: family.familyId,
-        actorUserId: family.parentUserId,
-        // Family-scoped: one municipal window is registered for as a household, and a
-        // shortlist may cover two siblings at once.
-        childId: null,
-        intentKind: 'registration_shortlist',
-        // THE SAME REGISTRY LOOKUP THE LEGS RUN ON (`dueLeg`, `renderSequenceLeg`), so
-        // the card enumerates exactly the texts this household will receive: four where
-        // Hale has learned to read the town's portal and the readiness leg therefore
-        // fires, three everywhere else. The sentence a parent consents to and the legs
-        // they then get have to move together.
-        rationale: renderShortlistRationale(
-          shortlist,
-          family.timeZone,
-          now,
-          portalForMunicipality(match.window.municipality),
-          publishedReading && publishedDate
-            ? {
-                when: registrationWhen(publishedReading, publishedDate),
-                hasTime: publishedDate.time !== null,
-              }
-            : undefined,
-        ),
-        // The card's own copy. Without these the approvals surface showed the generic
-        // "Note in your daily digest" over the raw payload keys, so the municipality,
-        // the date, the link and the "I never register for you" line — the things the
-        // quiet-hours exemption is granted on the strength of — were invisible.
-        title: windowPhrase(shortlist),
-        sourceUrl: shortlist.sourceUrl,
-      });
-      await deps.attachAction(database, sequenceId, actionId);
-      await deps.audit(database, {
-        familyId: family.familyId,
-        actor: 'system',
-        actionTaken: 'registration_shortlist_drafted',
-        targetTable: 'registration_sequences',
-        targetId: sequenceId,
-        after: {
-          windowId: match.window.id,
-          municipality: match.window.municipality,
-          cycleLabel: match.window.cycleLabel,
-          actionId,
-          children: shortlist.fitNotes.length,
-        },
-      });
-    } catch (err) {
-      // A claim with no shortlist behind it is the worst of both worlds: it blocks M4's
-      // nudge for this window AND never runs a leg, so the family goes silent about a
-      // date they were owed. Release it and let the next tick try again.
-      await deps.releaseClaim(database, sequenceId);
-      throw err;
-    }
-    // ONE shortlist per family per run. A household with three matched windows gets
-    // them one at a time, not an approvals queue nobody reads.
-    return true;
-  }
-  return false;
-}
-
-// ── phase B: run the legs ────────────────────────────────────────────────────
+// ── run the legs ────────────────────────────────────────────────────
 
 /** What a read caused, carried out of the leg alongside its outcome so the summary can
  * count the reading and the send separately — a refused leg still read a page. */
@@ -746,9 +547,9 @@ async function runLegForSequence(
   if (leg === null) return emptyTally({ quiet: true });
   // A reported waitlist offer has its own clock, independent of registration opening.
   const waitlistLeg = leg === 'waitlist_half' || leg === 'waitlist_final';
-  if (deps.live && !notice && !waitlistLeg && (sequence.pausedAt || !sequence.courseOpensAt))
+  if (!notice && !waitlistLeg && (sequence.pausedAt || !sequence.courseOpensAt))
     return emptyTally({ quiet: true });
-  let reading: LiveRegistrationReading | null = null;
+  let reading: LiveRegistrationReading;
   // VIL-347 · THE 23:45 TEXT. The go leg is the one rung that names a MINUTE, and it
   // spends the quiet-hours exemption to do it. Where the town published a date and no
   // hour the row holds the start of that local day, and fifteen minutes before it is
@@ -759,9 +560,6 @@ async function runLegForSequence(
   // DECIDED BEFORE THE HOUSEHOLD IS READ, above the recipient fan-out: there is no
   // honest version of this leg for anybody, so it is composed for nobody and sent to
   // nobody rather than held for each parent in turn.
-  if (!deps.live && leg === 'go' && !openTimeIsPublished(anchor, sequence.timeZone)) {
-    return emptyTally({ skipped: 'open_time_unpublished' });
-  }
 
   // BOTH NUMBERS. The sequence row carries one parent id — the seat that was claimed —
   // and it is the ladder's owner, never its audience: one household, one registration
@@ -823,7 +621,7 @@ async function runLegForSequence(
   }
   if (allowed.length === 0) return emptyTally({ deduped, held });
 
-  if (deps.live) {
+  {
     // Only an unsent, gated message reads again; ordinary five-minute scans do not.
     reading = await deps.live.readForSend(registrationTargetFor(sequence), now);
     const recorded = await deps.live.refresh(database, {
@@ -863,9 +661,12 @@ async function runLegForSequence(
       );
       // A changed phase needs a new dedupe key and gate on the next tick.
       if (currentLeg !== leg) return emptyTally({ quiet: true });
+      const publishedDate = registrationDate(reading, isResidentWindow);
       if (
-        (leg === 'go' || leg === 'check_in') &&
-        registrationDate(reading, isResidentWindow)?.time == null
+        publishedDate?.time == null &&
+        (leg === 'go' ||
+          (leg === 'check_in' &&
+            (!publishedDate || !registrationHasOpened(reading, publishedDate, now))))
       )
         return emptyTally({ skipped: 'open_time_unpublished' });
     }
@@ -922,18 +723,7 @@ async function runLegForSequence(
     // The anchor moves at the battle plan and NEVER at the go leg, whose key is already
     // spent: moving an interval a leg has fired in is a change no later tick can undo.
     const moved = movedClockOf(prep.verdict);
-    if (deps.live && moved !== null && moved.getTime() !== anchor.getTime())
-      return emptyTally({ quiet: true });
-    if (!deps.live && leg === 'battle_plan' && moved !== null) {
-      effects.anchorMoved = await deps.refreshCourseAnchor(database, {
-        sequenceId: sequence.sequenceId,
-        // The page this clock was read off, so a link pasted while the read was in
-        // flight keeps its own morning.
-        courseUrl: boundCourse.url,
-        courseOpensAt: moved,
-        now,
-      });
-    }
+    if (moved !== null && moved.getTime() !== anchor.getTime()) return emptyTally({ quiet: true });
   } else if (portal !== null && (leg === 'battle_plan' || leg === 'go')) {
     // A morning leg for a household whose town Hale can read, with nothing pasted: the
     // trail should say so in a word, or this row and a no-portal town's are the same row.
@@ -962,9 +752,7 @@ async function runLegForSequence(
   };
   const body = notice
     ? registrationChangeBody(notice)
-    : reading
-      ? renderLiveSequenceLeg(leg, sequence, reading, isResidentWindow, copyInput)
-      : renderSequenceLeg(leg, copyInput);
+    : renderLiveSequenceLeg(leg, sequence, reading, isResidentWindow, copyInput);
 
   // ONE COMPOSED LEG, TWO ENVELOPES. The sentence is about the household's morning and
   // is rendered once, on the LADDER's clock (the sequence row's), so both parents read
@@ -982,7 +770,7 @@ async function runLegForSequence(
   let promiseMessageId: string | null = null;
 
   for (const { recipient, dedupeKey, optOut } of wireCopies) {
-    if (deps.live) {
+    {
       const latest = await deps.live.reload(database, sequence.sequenceId);
       const sendNow = new Date(now.getTime() + Date.now() - sendStartedAt);
       if (
@@ -1170,7 +958,7 @@ async function runLegForSequence(
   // send your plan the evening before" is one plan — so a second recordCommitment would
   // report a debt Hale does not owe, and a second fulfillCommitment would close a
   // promise that was never opened twice.
-  if (notice && deps.live && (sent > 0 || deduped > 0) && held.length === 0 && refused === 0) {
+  if (notice && (sent > 0 || deduped > 0) && held.length === 0 && refused === 0) {
     await deps.live.acknowledgeChange(database, sequence);
   }
   if (!notice && promiseMessageId !== null) {
@@ -1408,7 +1196,7 @@ export async function runRegistrationSequenceCron(
   const armed = (family: { familyId: string }) => allFamilies || allowlist.has(family.familyId);
 
   const startedAt = Date.now();
-  if (deps.live) {
+  {
     const due = new Set(await deps.live.claimDue(database, now));
     for (const sequenceId of due) {
       if (Date.now() - startedAt > 120_000) break;
@@ -1430,27 +1218,9 @@ export async function runRegistrationSequenceCron(
         console.error({ sequenceId }, 'registration refresh failed');
       }
     }
-  } else {
-    console.info('registration sequence: live verification disabled in injected legacy harness');
   }
 
-  // ── Phase A: propose ────────────────────────────────────────────────────────
-  const families = (await deps.selectFamilies(database, now))
-    .filter(armed)
-    .filter((family) => isShortlistSlot(now, family.timeZone))
-    .slice(0, MAX_SEQUENCE_FAMILIES_PER_RUN);
-
-  for (const family of families) {
-    if (Date.now() - startedAt > 120_000) break;
-    try {
-      if (await proposeForFamily(database, family, deps, now)) result.proposed += 1;
-    } catch (err) {
-      result.failed += 1;
-      console.error({ err, familyId: family.familyId }, 'registration sequence: propose failed');
-    }
-  }
-
-  // ── Phase B: run the legs ───────────────────────────────────────────────────
+  // ── Run existing, parent-owned watches ───────────────────────────────────────────────────
   const sequences = (await deps.loadLiveSequences(database, now))
     .filter(armed)
     .slice(0, MAX_SEQUENCE_FAMILIES_PER_RUN);
@@ -1464,20 +1234,18 @@ export async function runRegistrationSequenceCron(
     result.evaluated += 1;
     let lease: number | null = null;
     try {
-      if (deps.live) {
-        lease = await deps.live.claimSend(
-          database,
-          sequence.sequenceId,
-          new Date(now.getTime() + Date.now() - startedAt),
-        );
-        if (lease === null) {
-          result.quiet += 1;
-          continue;
-        }
-        await deps.live.draftReview(database, sequence);
-        if (Date.now() - startedAt > 210_000) continue;
+      lease = await deps.live.claimSend(
+        database,
+        sequence.sequenceId,
+        new Date(now.getTime() + Date.now() - startedAt),
+      );
+      if (lease === null) {
+        result.quiet += 1;
+        continue;
       }
-      const current = deps.live ? await deps.live.reload(database, sequence.sequenceId) : sequence;
+      await deps.live.draftReview(database, sequence);
+      if (Date.now() - startedAt > 210_000) continue;
+      const current = await deps.live.reload(database, sequence.sequenceId);
       if (!current) continue;
       const outcome = await runLegForSequence(database, current, deps, reader, now);
       if (outcome.prep) result.prep[outcome.prep] += 1;
@@ -1496,8 +1264,7 @@ export async function runRegistrationSequenceCron(
       result.failed += 1;
       console.error({ err, sequenceId: sequence.sequenceId }, 'registration sequence: leg failed');
     } finally {
-      if (deps.live && lease !== null)
-        await deps.live.releaseSend(database, sequence.sequenceId, lease);
+      if (lease !== null) await deps.live.releaseSend(database, sequence.sequenceId, lease);
     }
   }
   result.read = reader.tally.read;
@@ -1506,31 +1273,6 @@ export async function runRegistrationSequenceCron(
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
-
-/**
- * The families a shortlist could be proposed to: settled SMS families with a primary
- * parent. Consent, enrolment and the clock are the GATE's business — selecting on them
- * here would put the same policy in two places and let them disagree.
- */
-async function selectSequenceFamilies(database: Database): Promise<SequenceFamily[]> {
-  return database
-    .select({
-      familyId: schema.families.id,
-      areaCoarse: schema.families.areaCoarse,
-      parentUserId: schema.users.id,
-      timeZone: schema.users.timezone,
-    })
-    .from(schema.families)
-    .innerJoin(
-      schema.familyMembers,
-      and(
-        eq(schema.familyMembers.familyId, schema.families.id),
-        eq(schema.familyMembers.role, 'primary_parent'),
-      ),
-    )
-    .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
-    .where(eq(schema.families.onboardingStage, 'sms_active'));
-}
 
 /**
  * Every sequence that could still have a leg due: no outcome yet, or waitlisted (whose
@@ -1564,15 +1306,11 @@ export async function loadLiveSequences(
       actionId: schema.registrationSequences.actionId,
       executedAt: schema.actions.executedAt,
       revertedAt: schema.actions.revertedAt,
-      window: schema.registrationWindows,
+      window: schema.registrationSequences.sourceContext,
       timeZone: schema.users.timezone,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
-    .leftJoin(
-      schema.registrationWindows,
-      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
-    )
     .innerJoin(schema.users, eq(schema.users.id, schema.registrationSequences.parentUserId))
     .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
     .leftJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
@@ -1589,7 +1327,7 @@ export async function loadLiveSequences(
           ? sql`(${schema.registrationSequences.pendingChange}->>'notified' = 'false'
         or (${schema.registrationSequences.pendingChange}->>'kind' = 'later' and ${schema.registrationSequences.dateReviewActionId} is null)
         or ${schema.registrationSequences.outcome} = 'waitlisted'
-        or coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt}) between ${new Date(now.getTime() - 76 * 3_600_000)} and ${new Date(now.getTime() + 7 * 86_400_000)})`
+        or coalesce(${schema.registrationSequences.courseOpensAt}, (${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz) between ${new Date(now.getTime() - 76 * 3_600_000)} and ${new Date(now.getTime() + 7 * 86_400_000)})`
           : undefined,
         or(
           isNull(schema.registrationSequences.outcome),
@@ -1608,7 +1346,7 @@ export async function loadLiveSequences(
     parentUserId: row.parentUserId,
     timeZone: row.timeZone,
     areaCoarse: row.areaCoarse,
-    window: row.window,
+    window: registrationSourceState(row.window),
     optIn: optInOf(row),
     outcome: row.outcome,
     waitlistPosition: row.waitlistPosition,
@@ -1691,18 +1429,16 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
                 userVisibleState: 'reverted',
               })
               .where(eq(schema.actions.id, actionId));
-          await tx
-            .insert(schema.auditLog)
-            .values({
-              familyId: sequence.familyId,
-              actor: 'system',
-              actionTaken: attached
-                ? 'registration_date_review_proposed'
-                : 'registration_date_review_obsolete',
-              targetTable: 'actions',
-              targetId: actionId,
-              after: { sequenceId: sequence.sequenceId, changeKey: change.key },
-            });
+          await tx.insert(schema.auditLog).values({
+            familyId: sequence.familyId,
+            actor: 'system',
+            actionTaken: attached
+              ? 'registration_date_review_proposed'
+              : 'registration_date_review_obsolete',
+            targetTable: 'actions',
+            targetId: actionId,
+            after: { sequenceId: sequence.sequenceId, changeKey: change.key },
+          });
         });
       },
       acknowledgeChange: async (database, sequence) => {
@@ -1720,20 +1456,17 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
             )
             .returning({ id: schema.registrationSequences.id });
           if (!updated) return;
-          await tx
-            .insert(schema.auditLog)
-            .values({
-              familyId: sequence.familyId,
-              actor: 'system',
-              actionTaken: 'registration_change_notified',
-              targetTable: 'registration_sequences',
-              targetId: sequence.sequenceId,
-              after: { changeKey: change.key },
-            });
+          await tx.insert(schema.auditLog).values({
+            familyId: sequence.familyId,
+            actor: 'system',
+            actionTaken: 'registration_change_notified',
+            targetTable: 'registration_sequences',
+            targetId: sequence.sequenceId,
+            after: { changeKey: change.key },
+          });
         });
       },
     },
-    selectFamilies: (database) => selectSequenceFamilies(database),
     loadChildren: async (database, familyId) =>
       database
         .select({
@@ -1746,63 +1479,6 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
         })
         .from(schema.children)
         .where(eq(schema.children.familyId, familyId)),
-    loadWindows: async (database, areaCoarse, now = new Date()) =>
-      readRegistrationWindowsLive(
-        await readRegistrationWindows(database, areaCoarse),
-        read,
-        now,
-        areaCoarse,
-      ),
-    loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),
-    claimWindow: async (database, input) => {
-      const [row] = await database
-        .insert(schema.registrationSequences)
-        .values(input)
-        .onConflictDoNothing({
-          target: [schema.registrationSequences.familyId, schema.registrationSequences.windowId],
-        })
-        .returning({ id: schema.registrationSequences.id });
-      return row?.id ?? null;
-    },
-    draftShortlist: async (database, input) => {
-      // The SAME approval spine an Ask Hale chip uses: drafted, reviewed (rule #3), and
-      // held at drafted_for_approval. Nothing here executes (rule #4), and the action
-      // type it maps to has no executor that could register for anyone (D8).
-      const { actionId } = await draftInlineAction(
-        {
-          familyId: input.familyId,
-          actor: input.actorUserId,
-          intentKind: input.intentKind,
-          childId: input.childId,
-          sourceAnswer: input.rationale,
-          title: input.title,
-          sourceUrl: input.sourceUrl,
-          // Minted by this cron, not asked for by anyone. Without it the draft's event
-          // and audit row would read `ask_hale` — the trail claiming a parent asked for
-          // a shortlist Hale composed on its own (VIL-264).
-          origin: 'registration_sweep',
-          // Composed entirely from municipal registration rows — no child's words are
-          // in it, and it is about the household rather than any one child. Declaring
-          // that is what keeps the rule-#1 family fallback from redacting a card no
-          // grant could ever unlock (VIL-260).
-          contentProvenance: 'hale_authored',
-        },
-        database,
-        pipelineClient(),
-      );
-      return actionId;
-    },
-    attachAction: async (database, sequenceId, actionId) => {
-      await database
-        .update(schema.registrationSequences)
-        .set({ actionId, updatedAt: new Date() })
-        .where(eq(schema.registrationSequences.id, sequenceId));
-    },
-    releaseClaim: async (database, sequenceId) => {
-      await database
-        .delete(schema.registrationSequences)
-        .where(eq(schema.registrationSequences.id, sequenceId));
-    },
     loadLiveSequences: (database, now) => loadLiveSequences(database, undefined, undefined, now),
     loadRecipients: (database, familyId) => loadFamilyTextRecipients(database, familyId),
     buildGate: buildOutboundGatePorts,
@@ -1830,20 +1506,5 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     // throw and a 4 MB ceiling. Six seconds, because this read happens inside a leg
     // whose interval is fifteen minutes wide.
     fetchBody: createFetchBody(GO_FETCH_TIMEOUT_MS),
-    refreshCourseAnchor: async (database, input) => {
-      const [row] = await database
-        .update(schema.registrationSequences)
-        .set({ courseOpensAt: input.courseOpensAt, updatedAt: input.now })
-        .where(
-          and(
-            eq(schema.registrationSequences.id, input.sequenceId),
-            // The page the clock came from, still the page the row holds.
-            eq(schema.registrationSequences.courseUrl, input.courseUrl),
-            sql`${schema.registrationSequences.courseOpensAt} is distinct from ${input.courseOpensAt}`,
-          ),
-        )
-        .returning({ id: schema.registrationSequences.id });
-      return row !== undefined;
-    },
   };
 }

@@ -7,6 +7,7 @@ import { selectByActivityQuery } from '~/lib/coach/activity-query';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { formatCalendarDayLabel } from '~/lib/format/datetime';
 import { safeHttpUrl } from '~/lib/format/http-url';
+import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -15,8 +16,7 @@ import {
   subjectKey,
 } from '~/lib/reviews/aggregate';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
-import { toVillageCandidateView } from '~/lib/village/mappers';
-import { visibleCandidates } from '~/lib/village/visibility';
+import { findFamilyActivities, recordActivityOffers } from '~/lib/village/live';
 import { spokenFind } from './spoken-find';
 
 /**
@@ -75,6 +75,7 @@ function isTeenAttributed(childId: string | null, teenChildIds: ReadonlySet<stri
  * wrong pick, and `inputExamples` on this surface are cached outside the protections
  * message content gets (rule #1). See {@link OfferedCandidate}. */
 interface OfferableActivity {
+  sourceUrl?: string;
   title: string;
   kind: string;
   summary: string;
@@ -109,6 +110,7 @@ export interface OfferedCandidate {
  * about it. Paired rather than two arrays so a drop can never take one and leave the
  * other — that divergence is a count attached to the wrong activity. */
 interface OfferableEntry {
+  pick: ActivityPick;
   candidate: OfferableActivity;
   offer: OfferedCandidate | null;
 }
@@ -185,11 +187,12 @@ export function searchVillageTool(
    * path that collects a provenance nobody will use.
    */
   onOffered?: (offers: readonly OfferedCandidate[]) => void,
+  finder?: ActivityFinder,
 ): RegisteredTool {
   return defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+      'Find current local activities from live web sources for THIS family. Unknown times remain unknown. Never answer from saved history.',
     inputSchema: z.object({ query: z.string().optional() }),
     // Invented values only — examples are compiled into a cached grammar that sits
     // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
@@ -197,72 +200,30 @@ export function searchVillageTool(
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
-      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
-      const timeZone = await readFamilyTimezone(database, ctx.familyId);
       const now = new Date();
-
-      const currentRunRows = await database
-        .select()
-        .from(schema.villageCandidates)
-        .where(
-          and(
-            eq(schema.villageCandidates.familyId, ctx.familyId),
-            isNull(schema.villageCandidates.supersededAt),
-          ),
-        )
-        .orderBy(
-          desc(schema.villageCandidates.confidence),
-          desc(schema.villageCandidates.discoveredAt),
-        )
-        .limit(MEMORY_RESULT_LIMIT);
-
-      const views = selectByActivityQuery(
-        visibleCandidates(currentRunRows, now, timeZone).map((row) =>
-          toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)),
-        ),
-        input.query,
+      const found = await findFamilyActivities(database, ctx.familyId, {
+        subject: input.query,
+        finder,
         now,
-        timeZone,
-      );
-
-      const rowsById = new Map(currentRunRows.map((row) => [row.id, row]));
-      const offerable: OfferableEntry[] = [];
-      let inVerification = 0;
-      for (const view of views) {
-        if (view.teenAttributed) continue;
-        const venue = (view.venueName ?? '').trim();
-        if (venue === '' || view.eventDate === null) {
-          inVerification += 1;
-          continue;
-        }
-        const row = rowsById.get(view.id);
-        const spoken = spokenFind(view.title, venue);
-        const url = safeHttpUrl(view.sourceUrl);
-        const whenLabel = row?.whenLabel?.trim() ?? '';
-        const day = formatCalendarDayLabel(view.eventDate, now);
-        offerable.push({
-          candidate: {
-            title: spoken.title,
-            kind: view.kind,
-            summary: view.summary,
-            ...(spoken.venue === null ? {} : { venue: spoken.venue }),
-            when: whenLabel === '' ? day : `${day}, ${whenLabel}`,
-            ...(url === null ? {} : { url }),
-          },
-          offer: row
-            ? {
-                // The title the model was handed, so a later exact match is that
-                // string and not the stored column it was cleaned from.
-                title: spoken.title,
-                venue,
-                candidateId: row.id,
-                placeId: row.placeId,
-                civicVenueId: row.civicVenueId,
-                ...(url === null ? {} : { url }),
-              }
-            : null,
-        });
-      }
+      });
+      const offerable: OfferableEntry[] = found.picks.map((pick) => ({
+        pick,
+        candidate: {
+          title: pick.name,
+          kind: 'activity',
+          summary: [pick.ageFit, pick.when, pick.price].filter(Boolean).join(' — '),
+          venue: pick.sourceName,
+          when: pick.when ?? 'Current time could not be verified',
+          sourceUrl: pick.sourceUrl,
+        },
+        offer: {
+          title: pick.name,
+          venue: pick.sourceName,
+          candidateId: '',
+          placeId: pick.placeId ?? null,
+          civicVenueId: pick.civicVenueId ?? null,
+        },
+      }));
 
       const offerableNow = await withoutPooledNegatives(database, ctx.familyId, offerable);
       // VIL-366 · this household's own verdicts, after the pooled #677 drop. A
@@ -275,18 +236,30 @@ export function searchVillageTool(
         householdBias,
       );
       const candidates = ordered.map((entry) => entry.candidate);
-      const offered = ordered.flatMap((entry) => (entry.offer ? [entry.offer] : []));
+      const receipts = await recordActivityOffers(
+        database,
+        ctx.familyId,
+        ordered.map((entry) => entry.pick),
+        now,
+      );
+      const offered = receipts.map((row) => ({
+        title: row.title,
+        venue: row.venueName ?? '',
+        candidateId: row.id,
+        placeId: row.placeId,
+        civicVenueId: row.civicVenueId,
+      }));
       // EXACTLY the rows that went out as `candidates` — never the in-verification
       // count and never a teen-attributed row, which has no venue and no date and must
       // not be nameable at all (rule #1).
       onOffered?.(offered);
 
-      // No canned standing place. A fixed Baby/Toddler storytime was something the
-      // coach could "hand over", so the live web search never ran — and it was the
-      // wrong age. An empty candidate list is the signal the skill already treats as
-      // "call find_activities this turn". The field stays on the result so a turn that
-      // still receives one (an eval fixture) can name it; production does not fill it.
-      return { candidates, inVerification, standingOption: null };
+      return {
+        candidates,
+        inVerification: 0,
+        standingOption: null,
+        liveRead: found.reason ?? 'verified',
+      };
     },
   });
 }

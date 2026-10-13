@@ -544,7 +544,8 @@ function availableWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDrop
   const teen = new Set(input.teenChildIds);
   const civic = input.candidates.filter(
     (candidate) =>
-      candidate.source === CIVIC_SOURCE &&
+      (candidate.source === CIVIC_SOURCE ||
+        (candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate)) &&
       (candidate.childId === null || !teen.has(candidate.childId)),
   );
   if (civic.length === 0) return { nudge: null, skips: ['no_civic_candidate'] };
@@ -787,7 +788,8 @@ function decideEmptySaturday(input: DecideNudgeInput): LegOutcome<EmptySaturdayN
   const teen = new Set(input.teenChildIds);
   const running = input.candidates.filter(
     (candidate) =>
-      candidate.source === CIVIC_SOURCE &&
+      (candidate.source === CIVIC_SOURCE ||
+        (candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate)) &&
       candidate.eventDate === saturday.date &&
       (candidate.childId === null || !teen.has(candidate.childId)) &&
       inSeason(candidate, season),

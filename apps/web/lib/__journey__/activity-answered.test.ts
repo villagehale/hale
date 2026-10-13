@@ -1,4 +1,9 @@
 import { join } from 'node:path';
+let liveSourceText = '';
+vi.mock('~/lib/registration/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
+  createRegistrationPageFetch: () => async () => liveSourceText,
+}));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
@@ -215,12 +220,13 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     async function turn(req: any) {
       if (isStage(req, 'activity_picks', 'picks')) {
         return {
-          content: [{ type: 'text', text: JSON.stringify({ picks: picksByCall[call] ?? [] }) }],
+          content: [{ type: 'text', text: JSON.stringify({ picks: (picksByCall[call] ?? []).map((pick) => ({ ...pick, source_url: 'https://venue.example/fall' })) }) }],
           usage: { input_tokens: 10, output_tokens: 10 },
           stop_reason: 'end_turn',
         };
       }
       call += 1;
+      liveSourceText = JSON.stringify(picksByCall[call] ?? []);
       searched.push(req.messages?.[0]?.content as string);
       return {
         content: [

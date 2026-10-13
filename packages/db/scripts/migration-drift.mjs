@@ -20,6 +20,16 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+/** Retiring live catalogs requires a coordinated cutover, not a pre-alias build migration. */
+export function requiresCatalogCutover(journal, ledgerHashes, legacyPresent) {
+  if (!legacyPresent) return false;
+  const recorded = new Set(ledgerHashes);
+  return journal.some(entry =>
+    ['0162_drop_registration_catalog', '0163_activity_history_only'].includes(entry.tag) &&
+    !recorded.has(entry.hash),
+  );
+}
+
 /**
  * @typedef {{ tag: string, when: number }} JournalEntry
  * @typedef {{ tag: string, when: number, hash: string }} HashedJournalEntry

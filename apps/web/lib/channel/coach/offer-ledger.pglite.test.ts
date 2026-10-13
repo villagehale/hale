@@ -3,6 +3,7 @@ import type { GuardDeps } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import * as activityLane from '~/lib/channel/activity/lane';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { productionChannelCoachPorts } from './runtime';
 import { createTurnOfferLedger } from './tools';
@@ -39,6 +40,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   await db.exec('truncate table families, users cascade');
@@ -47,7 +49,6 @@ afterEach(async () => {
 interface Seeded {
   familyId: string;
   parentUserId: string;
-  candidateId: string;
 }
 
 async function seed(): Promise<Seeded> {
@@ -64,22 +65,10 @@ async function seed(): Promise<Seeded> {
   await db.database
     .insert(schema.familyMembers)
     .values({ familyId, userId: parentUserId, role: 'primary_parent' });
-  const [candidate] = await db.database
-    .insert(schema.villageCandidates)
-    .values({
-      familyId,
-      title: TITLE,
-      kind: 'class',
-      summary: 'a warm local option',
-      source: 'civic_registry',
-      confidence: 0.9,
-      venueName: 'Riverdale branch',
-      eventDate: '2030-07-13',
-      cadence: 'one-time',
-      placeId: 'places/riverdale-library',
-    })
-    .returning({ id: schema.villageCandidates.id });
-  return { familyId, parentUserId, candidateId: candidate?.id as string };
+  await db.database
+    .insert(schema.children)
+    .values({ familyId, name: 'Private child', dateOfBirth: '2023-01-01' });
+  return { familyId, parentUserId };
 }
 
 const noop = () => {};
@@ -94,6 +83,23 @@ function productionTools(seeded: Seeded, ledger: ReturnType<typeof createTurnOff
   vi.stubEnv('ANTHROPIC_API_KEY', 'not-used-by-this-test');
   vi.stubGlobal('fetch', async () => {
     throw new Error('offer-ledger.pglite.test: this test makes no network calls');
+  });
+  vi.spyOn(activityLane, 'createActivityFinder').mockReturnValue({
+    find: async () => ({
+      found: true,
+      picks: [
+        {
+          name: TITLE,
+          ageFit: 'ages 2-5',
+          when: 'Saturday 10:30 AM',
+          price: null,
+          sourceName: 'Riverdale branch',
+          source: 'web',
+          sourceUrl: 'https://example.org/storytime',
+          placeId: 'places/riverdale-library',
+        },
+      ],
+    }),
   });
   const ports = productionChannelCoachPorts(db.database);
   guardDeps = ports.guardDeps;
@@ -162,7 +168,7 @@ describe('the turn offer ledger, through the production ports', () => {
       {
         title: TITLE,
         venue: 'Riverdale branch',
-        candidateId: seeded.candidateId,
+        candidateId: expect.any(String),
         placeId: 'places/riverdale-library',
         civicVenueId: null,
       },
@@ -183,8 +189,8 @@ describe('the turn offer ledger, through the production ports', () => {
     await addThatOne(tools, seeded, TITLE);
 
     expect((await draftedPayload(seeded.familyId))?.sourceRef).toEqual({
-      table: 'village_candidates',
-      id: seeded.candidateId,
+      table: 'family_activity_history',
+      id: ledger.read()[0]?.candidateId,
     });
   });
 

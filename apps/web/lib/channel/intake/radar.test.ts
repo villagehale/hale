@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import { cityRecLine } from '~/lib/channel/rec-morning';
+import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { type DailyOutlook, fakeWeather } from '~/lib/weather/open-meteo';
 import { makeFakeDb } from './fakes.js';
 import {
@@ -10,16 +10,6 @@ import {
   weekendPickSurvivedCompose,
 } from './radar.js';
 import { YEAR_OPEN_SUBJECT } from './year-open';
-
-/** The rec-morning lane's Toronto line: a different answer, from a different module,
- * that the radar must never recite back as though it had checked this family. Pinned to
- * the instant the composer under test runs at - a wall-clock line here is a moving
- * target for a negative assertion, and a null one would pass it for free. */
-function torontoRecMorningLine(now: Date): string {
-  const line = cityRecLine('toronto', now);
-  if (line === null) throw new Error(`no Toronto rec-morning line at ${now.toISOString()}`);
-  return line;
-}
 
 /**
  * The radar composer's IO seam: read what Hale knows about this family, decide, and
@@ -36,46 +26,34 @@ function torontoRecMorningLine(now: Date): string {
 const NOW = new Date('2026-07-31T15:00:00.000Z'); // a Friday
 const FAMILY_ID = 'fam-1';
 
-function seedCandidate(db: ReturnType<typeof makeFakeDb>, overrides: Record<string, unknown> = {}) {
-  db.db.insert(schema.villageCandidates).values({
-    familyId: FAMILY_ID,
-    title: 'Library story time',
-    kind: 'activity',
-    summary: 'A weekly drop-in for little ones.',
-    source: 'llm_only',
-    confidence: 0.8,
-    priceLevel: 'free',
-    indoorOutdoor: 'indoor',
-    ageRange: '3-5 years',
-    childId: null,
-    eventDate: null,
-    seasons: null,
-    venueName: null,
-    ...overrides,
-  } as never);
+const freshPicks = new WeakMap<ReturnType<typeof makeFakeDb>, ActivityPick[]>();
+
+function setFinderPicks(
+  db: ReturnType<typeof makeFakeDb>,
+  overrides: Record<string, unknown> = {},
+) {
+  freshPicks.set(db, [
+    {
+      name: String(overrides.title ?? 'Library story time'),
+      ageFit: String(overrides.ageRange ?? '3-5 years'),
+      when: 'Saturday 10 a.m.',
+      price: 'free',
+      sourceName: 'Public Library',
+      source: 'web',
+      sourceUrl: 'https://library.example/storytime',
+      eventDate: '2026-08-01',
+    },
+  ]);
 }
 
-function seedWindow(db: ReturnType<typeof makeFakeDb>) {
-  db.db.insert(schema.registrationWindows).values({
-    municipality: 'toronto',
-    programDomain: 'rec_program',
-    cycleLabel: 'Fall 2026',
-    previewAt: null,
-    residentOpenAt: null,
-    openAt: new Date('2026-08-11T10:30:00.000Z'),
-    residentPriorityDays: null,
-    waitlistResponseHours: null,
-    ageMinMonths: 36,
-    ageMaxMonths: 72,
-    sourceUrl: 'https://www.toronto.ca/example',
-    verifiedAt: new Date('2026-07-30T00:00:00.000Z'),
-    notes: null,
-  } as never);
+function finder(db: ReturnType<typeof makeFakeDb>): ActivityFinder {
+  return { find: async () => ({ found: true, picks: freshPicks.get(db) ?? [] }) };
 }
 
 function composer(db: ReturnType<typeof makeFakeDb>) {
   return createRadarComposer({
     database: db.db,
+    yearFinder: finder(db),
     weather: fakeWeather([]),
     client: null,
     now: () => NOW,
@@ -85,10 +63,9 @@ function composer(db: ReturnType<typeof makeFakeDb>) {
 const MAYA = { name: 'Maya', ageMonths: 48, agePrecision: 'years' } as const;
 
 describe('createRadarComposer', () => {
-  it('names a real age-fit session and not the registration date beside it', async () => {
+  it('names a fresh age-fit session without a stored registration date', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
-    seedWindow(db);
+    setFinderPicks(db);
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
@@ -120,12 +97,12 @@ describe('createRadarComposer', () => {
 
   it('does not call the voice model', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
-    seedWindow(db);
+    setFinderPicks(db);
     const create = vi.fn();
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: fakeWeather([]),
       client: { messages: { create } } as unknown as AgentClient,
       now: () => NOW,
@@ -149,7 +126,6 @@ describe('createRadarComposer', () => {
     // #868: no fixed empty-radar line; an empty search hands the voice nothing.
     expect(payload.message).toBe('');
     expect(payload.message).not.toMatch(/registration opens|registration opened/i);
-    expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('toronto.ca/OnlineReg');
     expect(payload.findWon).toBe(false);
     expect(payload.itemCount).toBe(0);
@@ -163,24 +139,10 @@ describe('createRadarComposer', () => {
     // Halton Hills opened Fall 2026 on Sep 1. It is now Sep 17 and winter is not posted:
     // the production shape of 2026-09-16, where this family was told nothing was on the
     // radar and their own town was never named.
-    db.db.insert(schema.registrationWindows).values({
-      municipality: 'halton_hills',
-      programDomain: 'rec_program',
-      cycleLabel: 'Fall 2026',
-      previewAt: null,
-      residentOpenAt: null,
-      openAt: new Date('2026-09-01T11:00:00.000Z'),
-      residentPriorityDays: null,
-      waitlistResponseHours: null,
-      ageMinMonths: 36,
-      ageMaxMonths: 72,
-      sourceUrl: 'https://www.haltonhills.ca/example',
-      verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
-      notes: null,
-    } as never);
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: fakeWeather([]),
       client: null,
       now: () => new Date('2026-09-17T15:00:00.000Z'),
@@ -202,24 +164,10 @@ describe('createRadarComposer', () => {
    */
   it('stays off the between-cycles sentence once the page is no longer the place to go', async () => {
     const db = makeFakeDb();
-    db.db.insert(schema.registrationWindows).values({
-      municipality: 'halton_hills',
-      programDomain: 'rec_program',
-      cycleLabel: 'Fall 2026',
-      previewAt: null,
-      residentOpenAt: null,
-      openAt: new Date('2026-09-01T11:00:00.000Z'),
-      residentPriorityDays: null,
-      waitlistResponseHours: null,
-      ageMinMonths: 36,
-      ageMaxMonths: 72,
-      sourceUrl: 'https://www.haltonhills.ca/example',
-      verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
-      notes: null,
-    } as never);
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: fakeWeather([]),
       client: null,
       now: () => new Date('2026-09-23T15:00:00.000Z'),
@@ -234,24 +182,10 @@ describe('createRadarComposer', () => {
 
   it('does not recite a past Toronto registration morning', async () => {
     const db = makeFakeDb();
-    db.db.insert(schema.registrationWindows).values({
-      municipality: 'toronto',
-      programDomain: 'rec_program',
-      cycleLabel: 'Fall 2026',
-      previewAt: null,
-      residentOpenAt: null,
-      openAt: new Date('2026-09-08T11:00:00.000Z'),
-      residentPriorityDays: null,
-      waitlistResponseHours: null,
-      ageMinMonths: 36,
-      ageMaxMonths: 72,
-      sourceUrl: 'https://www.toronto.ca/example',
-      verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
-      notes: null,
-    } as never);
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: fakeWeather([]),
       client: null,
       now: () => new Date('2026-09-17T15:00:00.000Z'),
@@ -261,7 +195,6 @@ describe('createRadarComposer', () => {
     expect(payload.message).not.toContain('Sept 9');
     // #868: no fixed empty-radar line; an empty search hands the voice nothing.
     expect(payload.message).toBe('');
-    expect(payload.message).not.toBe(torontoRecMorningLine(new Date('2026-09-17T15:00:00.000Z')));
     expect(payload.findWon).toBe(false);
   });
 
@@ -280,7 +213,6 @@ describe('createRadarComposer', () => {
     // Nothing read, nothing past: the honest empty-handed answer, with the first-find
     // beat on it. A pinned city line here asserted dates this family was never checked
     // against, and by Sept 16 they were dates that had already gone.
-    expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('Sept 9');
     // #868: no fixed empty-radar line; an empty search hands the voice nothing.
     expect(payload.message).toBe('');
@@ -298,7 +230,6 @@ describe('createRadarComposer', () => {
       areaCoarse: 'M5V',
     });
 
-    expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('Sept 9');
     // #868: no fixed empty-radar line; an empty search hands the voice nothing.
     expect(payload.message).toBe('');
@@ -309,7 +240,7 @@ describe('createRadarComposer', () => {
     db.db
       .insert(schema.children)
       .values({ familyId: FAMILY_ID, name: 'Mia', dateOfBirth: '2025-01-31' } as never);
-    seedCandidate(db, { ageRange: '6-24 months' });
+    setFinderPicks(db, { ageRange: '6-24 months' });
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
@@ -355,8 +286,7 @@ describe('createRadarComposer', () => {
 
   it('tells no checkpoint when the two leads already fill the message', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
-    seedWindow(db);
+    setFinderPicks(db);
     // Four years old in Toronto: three Ontario rows admit her, and none of them fits.
     db.db
       .insert(schema.children)
@@ -377,13 +307,14 @@ describe('createRadarComposer', () => {
 
   it('sends only the COARSE area to the weather port — never a postal code (rule #1)', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
+    setFinderPicks(db);
     const getDailyOutlook = vi.fn(
       async (_area: string, _days: number): Promise<DailyOutlook[]> => [],
     );
 
     await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: { getDailyOutlook },
       client: null,
       now: () => NOW,
@@ -393,13 +324,13 @@ describe('createRadarComposer', () => {
     expect(getDailyOutlook.mock.calls[0]?.[0]).toBe('M5V');
   });
 
-  it('never surfaces a candidate belonging to a 13+ child (rule #1)', async () => {
+  it('never searches on behalf of a 13+ child (rule #1)', async () => {
     const db = makeFakeDb();
     const [teen] = (await db.db
       .insert(schema.children)
       .values({ familyId: FAMILY_ID, name: 'Ava', dateOfBirth: '2011-01-01' } as never)
       .returning()) as Array<{ id: string }>;
-    seedCandidate(db, { title: 'Teen climbing night', childId: teen?.id, ageRange: 'all ages' });
+    setFinderPicks(db, { title: 'Teen climbing night', childId: teen?.id, ageRange: 'all ages' });
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
@@ -412,7 +343,6 @@ describe('createRadarComposer', () => {
     // It no longer rides the pre-consent first find (ads-week audit, 2026-08-28) — the
     // post-consent nudge carries it in the generic wording. Nothing else was readable
     // either, so the empty-handed answer goes out, with no teen name in it (rule #1).
-    expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('A routine vaccine record check is due');
     expect(payload.message).not.toContain('Ava');
     expect(payload.itemCount).toBe(0);
@@ -433,10 +363,11 @@ describe('createRadarComposer', () => {
 
   it('never lets a weather outage fail the intake', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
+    setFinderPicks(db);
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: {
         getDailyOutlook: async () => {
           throw new Error('open-meteo is down');
