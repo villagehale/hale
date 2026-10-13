@@ -24,9 +24,8 @@ import {
   searchUserMessage,
   turnsOnTheirPlace,
 } from './answer-request';
-import { namesAMentalCrisis, namesAnEmergency } from './copy';
 import { normalizeLanguage } from './medical';
-import { type Moment, createMomentReply } from './moment-reply';
+import type { Moment } from './moment-reply';
 import { coarsenPlace } from './place';
 import SUFFIXES from './public-suffix/suffixes.json';
 
@@ -703,21 +702,9 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
 
   return {
     async compose(text, family) {
-      // Crisis and emergency stop the ordinary answer: no sanitize, no search, no
-      // compose. The moment writer points to emergency or local help.
-      const stopped = namesAnEmergency(text)
-        ? 'emergency'
-        : namesAMentalCrisis(text)
-          ? 'mental_crisis'
-          : null;
-      if (stopped !== null) {
-        const written = await createMomentReply(client).write(text, stopped);
-        if (written.status === 'unwritten') {
-          return { status: 'unwritten', moment: stopped, reason: written.reason };
-        }
-        return { status: 'composed', reply: written.reply };
-      }
-
+      // Whether someone is hurt, ill or in danger is the compose's own reading
+      // (`hurt_ill_or_danger`), made in any language. No English word list stands
+      // in front of the sanitizer.
       const stage = await setUp();
       if ('missing' in stage) return unavailable(stage.missing, stage.detail);
 

@@ -19,7 +19,28 @@ export const momentJsonSchema = {
   required: ['reply'],
 } as const;
 
-/** The parent's words ride along so the reply can be written in their language. */
-export function momentUserMessage(moment: Moment, text: string): string {
-  return JSON.stringify({ moment, text });
+/**
+ * The coarse place the moment writer may name help for. Country and province or
+ * state only: never a city, a street, or a postal code. Both null when the place
+ * is not known, and the fields are always present so the request has one shape.
+ */
+export interface MomentPlace {
+  country: string | null;
+  provinceOrState: string | null;
+}
+
+export const UNKNOWN_MOMENT_PLACE: MomentPlace = { country: null, provinceOrState: null };
+
+/** The parent's words and the coarse place, so the reply can match their language and their help. */
+export function momentUserMessage(
+  moment: Moment,
+  text: string,
+  place: MomentPlace = UNKNOWN_MOMENT_PLACE,
+): string {
+  return JSON.stringify({
+    moment,
+    text,
+    country: place.country,
+    provinceOrState: place.provinceOrState,
+  });
 }
