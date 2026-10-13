@@ -17,8 +17,10 @@ You receive:
   the person who asked has already been taken out.
 - `today`: today's date where they are.
 - `place`: only sometimes. The city and the country the person asking is in, given
-  when the question depends on where they are and does not say. Look it up for
-  that place, and say in the notes which place they are for.
+  when the question depends on where they are and does not say. It also holds a
+  `province_or_state` when more than one place in that country has the city's
+  name: it says which one. Look it up for that place, and say in the notes which
+  place they are for.
 
 ## What to do
 

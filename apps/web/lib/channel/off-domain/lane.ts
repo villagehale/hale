@@ -16,6 +16,7 @@ import {
   generalAnswerSearchEnabled,
   localDate,
 } from './answer';
+import { safetyDoorFor } from './answer-request';
 import {
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   EMERGENCY_REPLY,
@@ -315,9 +316,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       const language = replyLanguage(input.text);
       const { reply, replySource, pendingAsk } =
         lane === 'safety_critical'
-          ? namesAMentalCrisis(input.text) || reading.category === 'mental-health'
-            ? fixedLine(MENTAL_CRISIS_REPLY)
-            : fixedLine(SAFETY_REPLY_BY_LANGUAGE[language])
+          ? safetyDoor(reading.category, input.text)
           : lane === 'provider_access'
             ? fixedLine(referralReply(input.text, language))
             : replyFor(await ports.answer.compose(input.text, family), input.text);
@@ -356,6 +355,22 @@ interface LaneReply {
 /** One of the doors in copy.ts. It leaves no question open. */
 function fixedLine(reply: string): LaneReply {
   return { reply, replySource: 'fixed', pendingAsk: null };
+}
+
+/**
+ * THE SAFETY DOOR, for a safety reading whoever made it: the screen's, or the compose's
+ * of a text the screen had filed as a question about the world. The kind of reading
+ * picks the line ({@link safetyDoorFor}), so the two readings cannot send one text to two
+ * doors. The compose's used to say only that someone was hurt, and a parent in crisis
+ * got the child-health line that copy.ts says must not go out for that.
+ *
+ * The crisis keywords are main's and sit beside the reading, as they did for the screen.
+ */
+function safetyDoor(category: UnmetIntentCategory, text: string): LaneReply {
+  const door = namesAMentalCrisis(text) ? 'mental_crisis' : safetyDoorFor(category);
+  return fixedLine(
+    door === 'mental_crisis' ? MENTAL_CRISIS_REPLY : SAFETY_REPLY_BY_LANGUAGE[replyLanguage(text)],
+  );
 }
 
 const NO_PENDING_ASK = 'off-domain lane: no pending ask for this parent';
@@ -434,16 +449,13 @@ function replyFor(composed: GeneralAnswerOutcome, text: string): LaneReply {
       pendingAsk: composed.pendingAsk ?? null,
     };
   }
-  const language = replyLanguage(text);
-  // A question about the world that turned out to be about a hurt child. It leaves by
-  // the same door a screened symptom does, words and all, and `fixed` says so — crediting
-  // the composer for a sentence it did not write would cost the founder's weekly count
-  // the one distinction it is for (skill audit P0 #3).
-  if (composed.status === 'safety') {
-    return fixedLine(namesAnEmergency(text) ? EMERGENCY_REPLY : SAFETY_REPLY_BY_LANGUAGE[language]);
-  }
+  // A question about the world that turned out to describe someone hurt, ill or in
+  // danger. It leaves by the door the screen's reading of that kind opens, words and all,
+  // and `fixed` says so — crediting the composer for a sentence it did not write would
+  // cost the founder's weekly count the one distinction it is for (skill audit P0 #3).
+  if (composed.status === 'safety') return safetyDoor(composed.kind, text);
   return {
-    reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE[language],
+    reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE[replyLanguage(text)],
     replySource: composed.reason,
     pendingAsk: null,
   };

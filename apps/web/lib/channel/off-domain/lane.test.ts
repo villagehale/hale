@@ -246,12 +246,12 @@ describe('what each lane says', () => {
   /**
    * Skill audit P0 #3. The general terminal has a fourth outcome: the composer read the
    * text as someone hurt, ill or in danger. The words are not its to carry —
-   * `{ status: 'safety' }` has no reply field — so what goes out is the same reviewed
+   * `{ status: 'safety', kind }` has no reply field — so what goes out is the same reviewed
    * sentence a screened symptom gets, and `replySource` says `fixed` rather than crediting
    * the model for words it did not send.
    */
   it('sends the fixed line, exactly, when the composer read someone hurt, ill or in danger', async () => {
-    const p = ports({ answer: { status: 'safety' } });
+    const p = ports({ answer: { status: 'safety', kind: 'child-safety' } });
 
     const verdict = await consider(p);
 
@@ -1310,17 +1310,25 @@ describe('the screen reads a reply to an open question first', () => {
    */
   describe('when the compose reads the text as someone hurt, ill or in danger', () => {
     const GENERAL = { lane: 'off_domain_general', category: 'general-knowledge', reason: 'x' };
-    const HURT = {
-      hurt_ill_or_danger: 'yes',
+    type Kind = 'medical-symptom' | 'mental-health' | 'child-safety' | 'emergency';
+    /** What the compose returns when it reads the text as one of the screen's safety
+     * categories. */
+    const read = (kind: Kind) => ({
+      hurt_ill_or_danger: kind,
       grounding: [{ states: 'MODEL-GROUNDED-THIS', from: 'settled' }],
       answer: 'MODEL-WROTE-THIS',
-    };
+    });
+    const HURT = read('child-safety');
     const TEXT = 'is it ok to let him nap, he fell off the top bunk and has thrown up twice';
+    /** A parent's own crisis, in words no keyword list has. Invented, and the same text
+     * the eval records the compose's reading of (general-answer-fixtures.mjs). */
+    const OWN_CRISIS =
+      'honestly I do not see the point of any of it anymore, would anyone even notice if I was gone';
 
-    /** What the screen's own safety reading sends for this text. */
-    async function screenedSafetyDoor(text: string) {
+    /** What the screen's own safety reading of that category sends for this text. */
+    async function screenedSafetyDoor(text: string, category: Kind = 'child-safety') {
       const screened = laneWith(
-        scripted({ screen: { lane: 'safety_critical', category: 'child-safety', reason: 'x' } }),
+        scripted({ screen: { lane: 'safety_critical', category, reason: 'x' } }),
         null,
       );
       const verdict = await screened.run(text);
@@ -1328,6 +1336,115 @@ describe('the screen reads a reply to an open question first', () => {
       expect(verdict.replySource).toBe('fixed');
       return verdict.reply;
     }
+
+    /**
+     * ONE FUNCTION PICKS THE DOOR, for the screen's reading and for the compose's. The
+     * compose's reading used to say only that someone was hurt, and every such turn left
+     * by the child-health door: a parent in crisis whose text the screen had filed as a
+     * general question got the line copy.ts says must not go out for that. Now the
+     * reading names its kind, in the screen's own categories, and the door is the one the
+     * screen's reading of that kind opens for the same text.
+     */
+    it.each([
+      ['mental-health', 'mental-health'],
+      ['child-safety', 'child-safety'],
+      ['emergency', 'emergency'],
+      // The screen answers a symptom through the medical lane, which is not a door. The
+      // compose's reading of one leaves by the safety door, as it did before it had a kind.
+      ['medical-symptom', 'child-safety'],
+    ] as const)(
+      'sends a %s reading through the door the screen opens for a %s one',
+      async (kind, screened) => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const turn = scripted({
+          screen: GENERAL,
+          answersPending: 'nothing_pending',
+          composed: read(kind),
+        });
+        const { run } = laneWith(turn, null);
+
+        const verdict = await run(TEXT);
+
+        expect(verdict).toMatchObject({
+          status: 'deflected',
+          lane: 'off_domain_general',
+          reply: await screenedSafetyDoor(TEXT, screened),
+          replySource: 'fixed',
+          medicalSource: null,
+          pendingAsk: null,
+        });
+      },
+    );
+
+    it('sends a parent in crisis, in words no keyword has, through the mental-health door and not the child-health one', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect(namesAnEmergency(OWN_CRISIS) || namesAMentalCrisis(OWN_CRISIS)).toBe(false);
+      // Positive control: the two doors are not the same door.
+      const mentalHealthDoor = await screenedSafetyDoor(OWN_CRISIS, 'mental-health');
+      const childHealthDoor = await screenedSafetyDoor(OWN_CRISIS, 'child-safety');
+      expect(mentalHealthDoor).not.toBe(childHealthDoor);
+      const turn = scripted({
+        screen: GENERAL,
+        answersPending: 'nothing_pending',
+        composed: read('mental-health'),
+      });
+      const { run } = laneWith(turn, null);
+
+      const verdict = await run(OWN_CRISIS);
+
+      expect(turn.calls).toEqual(['screen', 'sanitize', 'compose']);
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        lane: 'off_domain_general',
+        reply: mentalHealthDoor,
+        replySource: 'fixed',
+      });
+      expect(JSON.stringify(verdict)).not.toMatch(/MODEL-WROTE|MODEL-GROUNDED/);
+    });
+
+    /**
+     * Main's crisis keywords sit beside the reading at the door, for the screen's reading
+     * as they always did and now for the compose's too, since it is the one door. A text
+     * that names a crisis and is read as some other kind of danger still leaves by the
+     * mental-health door. Only a reply to an open question can bring such a text to the
+     * compose: with nothing open, the keyword door in compose() answers before any model.
+     */
+    it('sends a text that names a crisis through the mental-health door whatever kind either reading gave it', async () => {
+      lit();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const text = 'Toronto. honestly I want to die';
+      expect(namesAMentalCrisis(text)).toBe(true);
+      const mentalHealthDoor = await screenedSafetyDoor(text, 'mental-health');
+      // Positive control: without the keyword, a child-safety reading has another door.
+      expect(await screenedSafetyDoor(OWN_CRISIS, 'child-safety')).not.toBe(mentalHealthDoor);
+
+      expect(await screenedSafetyDoor(text, 'child-safety')).toBe(mentalHealthDoor);
+      const turn = scripted({ screen: GENERAL, composed: read('child-safety') });
+      expect(await laneWith(turn).run(text)).toMatchObject({
+        status: 'deflected',
+        reply: mentalHealthDoor,
+        replySource: 'fixed',
+      });
+    });
+
+    it('sends a reply to an open question that the compose reads as a crisis through the mental-health door', async () => {
+      lit();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const text = `Toronto. ${OWN_CRISIS}`;
+      expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
+      const turn = scripted({ screen: GENERAL, composed: read('mental-health') });
+      const { run } = laneWith(turn);
+
+      const verdict = await run(text);
+
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        reply: await screenedSafetyDoor(text, 'mental-health'),
+        replySource: 'fixed',
+        pendingAsk: null,
+      });
+      expect(verdict).not.toMatchObject({ reply: await screenedSafetyDoor(text, 'child-safety') });
+    });
 
     it('answers through the door the screen uses for a safety reading, and sends, keeps and logs nothing the model wrote', async () => {
       vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
@@ -1520,7 +1637,7 @@ describe('the lane answers in the language the question was asked in', () => {
    * ones, and `fixed` still says the model did not write them.
    */
   it('substitutes the French safety line when the composer read someone hurt', async () => {
-    const p = ports({ answer: { status: 'safety' } });
+    const p = ports({ answer: { status: 'safety', kind: 'child-safety' } });
 
     const fr = await consider(p, 'Mon fils est tombe de la table, il pleure beaucoup');
     expect(fr).toMatchObject({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });

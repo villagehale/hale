@@ -1083,7 +1083,7 @@ describe('the off-domain lane', () => {
                     needs_search: 'missing_detail',
                   }
                 : {
-                    hurt_ill_or_danger: 'yes',
+                    hurt_ill_or_danger: 'child-safety',
                     grounding: [{ states: 'MODEL-GROUNDED-THIS', from: 'settled' }],
                     answer: 'MODEL-WROTE-THIS',
                   },
