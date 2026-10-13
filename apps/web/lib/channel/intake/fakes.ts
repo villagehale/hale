@@ -105,6 +105,9 @@ export const fakeSilentAnswerComposer: IntakeAnswerComposer = {
   async compose(): Promise<IntakeAnswerOutcome> {
     return { status: 'nothing_to_answer' };
   },
+  async writeMoment(_text, moment) {
+    return { status: 'written', reply: `moment:${moment}` };
+  },
 };
 
 /**
@@ -119,6 +122,10 @@ export class FakeAnswerComposer implements IntakeAnswerComposer {
   async compose(input: IntakeAnswerInput): Promise<IntakeAnswerOutcome> {
     this.calls.push(input);
     return this.outcome;
+  }
+
+  async writeMoment(_text: string, moment: Parameters<IntakeAnswerComposer['writeMoment']>[1]) {
+    return { status: 'written' as const, reply: `moment:${moment}` };
   }
 }
 

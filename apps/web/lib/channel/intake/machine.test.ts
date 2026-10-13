@@ -5,12 +5,6 @@ import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { formatLinqLineForParent, linqCoParentAsk } from '~/lib/channel/linq/group';
 import { YEAR_FIND_POLL_NONE, YEAR_FIND_POLL_PROMPT } from '~/lib/channel/linq/poll';
 import { LinqSendError, createLinqTextTransport } from '~/lib/channel/linq/transport';
-import {
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
-  SAFETY_REPLY,
-  SAFETY_REPLY_BY_LANGUAGE,
-} from '~/lib/channel/off-domain/copy';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { matchHealthCheckpoints } from '~/lib/health/match';
@@ -1093,12 +1087,12 @@ describe('intake · a question mid-signup gets an answer', () => {
     const answered = await text(fake, transport, deps, "she's not breathing");
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
     expect(transport.bodies()).toHaveLength(sent + 1);
-    expect(transport.bodies().at(-1)).toBe(EMERGENCY_REPLY);
+    expect(transport.bodies().at(-1)).toBe('moment:emergency');
     expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     expect(composer.calls).toEqual([]);
     const held = await text(fake, transport, deps, LADDER_BEAT);
     expect(held).toEqual({ status: 'ladder_advanced', step: 'calendar', closed: false });
-    expect(transport.bodies().at(-2)).toBe(EMERGENCY_REPLY);
+    expect(transport.bodies().at(-2)).toBe('moment:emergency');
     expect(transport.bodies().at(-1)).toContain('Connect your calendar:');
   });
 
@@ -1259,15 +1253,9 @@ describe('intake · a first-text question is answered', () => {
 
     const answered = await text(fake, transport, deps, "she's not breathing");
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
-    expect(transport.bodies()).toEqual([EMERGENCY_REPLY]);
-    expect(transport.bodies()[0]).toBe('Call 911 now.');
-    expect(transport.bodies()[0]).not.toContain('811');
-    expect(transport.bodies()[0]).not.toContain('Health811');
-    expect(transport.bodies()[0]).not.toContain('988');
-    expect(transport.bodies()[0]).not.toContain('?');
+    expect(transport.bodies()).toEqual(['moment:emergency']);
     expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
     expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
-    expect(transport.bodies()[0]).not.toBe(SAFETY_REPLY);
   });
 
   it('never sends greeting() alone when a first-text rec question is declined or unavailable', async () => {
@@ -1329,18 +1317,12 @@ describe('intake · a first-text question is answered', () => {
     expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
   });
 
-  it('sends the reviewed 988 line alone on a first-text crisis - no return ask', async () => {
+  it('sends the moment writer alone on a first-text crisis - no return ask', async () => {
     const silent = harness({});
     const answered = await text(silent.fake, silent.transport, silent.deps, 'I want to die');
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
-    expect(silent.transport.bodies()).toEqual([MENTAL_CRISIS_REPLY]);
+    expect(silent.transport.bodies()).toEqual(['moment:mental_crisis']);
     expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
-    expect(silent.transport.bodies()[0]).not.toContain('?');
-    expect(silent.transport.bodies()[0]).not.toContain('811');
-    expect(silent.transport.bodies()[0]).not.toContain('not something I should advise on');
-    expect(silent.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
-    expect(silent.transport.bodies()[0]).not.toBe(EMERGENCY_REPLY);
-    expect(silent.transport.bodies()[0]).not.toBe('Call 911 now.');
   });
 
   it('answers a first-text cheer-up with warmth, not the bare greeting', async () => {
@@ -1993,9 +1975,7 @@ describe('intake · answers in the language the parent wrote in', () => {
     const out = await text(fake, transport, deps, 'Mon fils est tombé, je ne sais pas quoi faire');
 
     expect(out).toEqual({ status: 'question_answered', source: 'safety' });
-    expect(transport.bodies().at(-1)).toBe(SAFETY_REPLY_BY_LANGUAGE.fr);
-    expect(transport.bodies().at(-1)).toContain('811');
-    expect(transport.bodies().at(-1)).toContain('911');
+    expect(transport.bodies().at(-1)).toBe('moment:child_health');
   });
 });
 

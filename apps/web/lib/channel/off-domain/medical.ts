@@ -3,23 +3,21 @@ import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import type { MedicalReplySourceValue } from '@hale/db';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { replyLanguage } from '~/lib/channel/language';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { SAFETY_REPLY_BY_LANGUAGE } from './copy';
+import { createMomentReply } from './moment-reply';
 
 /**
  * The medical-symptom answer lane (founder-locked 2026-08-17).
  *
- * Every OTHER `safety_critical` category still gets the fixed 811/911 line in copy.ts —
- * a model must never be what tells a parent what to do about their child's head injury.
- * A `medical-symptom` is the one the founder decided Hale should ANSWER instead of
- * deflect: a parent who texts "she's had a fever for three days" was getting two phone
- * numbers and a closed door, which reads as a product that cannot rather than one being
- * careful. So this lane composes a real answer — every word model-generated, grounded in
- * a FRESH web search, coarse-age-aware, with the triage written into it — and the fixed
- * line survives only as the LAST RESORT when no grounded answer can be produced.
+ * Every OTHER `safety_critical` category stops the ordinary answer and the moment
+ * writer sends the reply (moment-reply.ts), in the parent's language. A
+ * `medical-symptom` is the one the founder decided Hale should ANSWER: a parent who
+ * texts "she's had a fever for three days" gets a real answer — every word
+ * model-generated, grounded in a FRESH web search, coarse-age-aware, with the triage
+ * written into it. When no grounded answer can be produced, the last resort is the
+ * same moment writer, for a child-health reply. There is no preset sentence.
  *
  * Three phases, because none of them can be skipped safely:
  *
@@ -58,17 +56,14 @@ import { SAFETY_REPLY_BY_LANGUAGE } from './copy';
  * load, zero searches, an empty/oversized body, missing triage — is a thrown
  * {@link MedicalUnresolvable} with a NAMED reason (rule #11). The turn is attempted, and
  * on any failure RETRIED ONCE; only if the retry also fails does {@link onMedicalTurnUnresolvable}
- * hand back the fixed {@link SAFETY_REPLY}. Never silence, never a generic "can't help"
- * line. That fallback is deliberately ONE function so the founder can later swap it for
- * defer/retry-until-generatable without touching the pipeline.
+ * ask the moment writer for a child-health reply. Never silence, never a preset line.
+ * If that reply cannot be written, the miss is named and nothing goes out. That fallback
+ * is deliberately ONE function so the founder can later swap it for defer without
+ * touching the pipeline.
  *
- * WHY THIS BODY IS EXEMPT FROM THE HEALTH-LINE TRIPWIRE. `reachesForTheHealthLine`
- * (copy.ts) substitutes SAFETY_REPLY for any MODEL body that names 811/911, because on
- * the coach and general-answer paths a model reaching for those numbers means the screen
- * failed open. Here naming them is the whole point, so this lane never runs its output
- * through that tripwire — and it does not have to: the router sends a deflect `reply`
- * verbatim (route.ts sendReply), and this composer does its own assembly, never
- * `toSmsReply`/`sendable`.
+ * This lane does not run its output through a health-line swap. The router sends a
+ * deflect `reply` verbatim (route.ts sendReply), and this composer does its own
+ * assembly, never `toSmsReply`/`sendable`.
  *
  * PRIVACY. The raw message reaches ONLY the sanitize call; the search and the compose see
  * the de-identified query alone. Nothing here logs the raw body or any provider text —
@@ -140,10 +135,11 @@ export const RED_FLAG_READINGS = ['emergency', 'not_emergency', 'unsure'] as con
 export type RedFlagReading = (typeof RED_FLAG_READINGS)[number];
 
 /** Where the words that go out came from. `web_grounded` is the composed, searched
- * answer; `fixed` is the last-resort {@link SAFETY_REPLY} after a live attempt and a
- * retry both failed. The two values are @hale/db's, because this outcome is STAMPED on
- * the reply's channel_messages row and read back by the founder scorecard — one
- * vocabulary, checked in SQL, not a second copy that can drift out of what is writable. */
+ * answer; `fixed` is the last-resort moment reply after a live attempt and a retry both
+ * failed. The two values are @hale/db's, because this outcome is STAMPED on the reply's
+ * channel_messages row and read back by the founder scorecard — one vocabulary, checked
+ * in SQL, not a second copy that can drift out of what is writable. `fixed` names the
+ * fallback slot, not a preset sentence. */
 export type MedicalReplySource = MedicalReplySourceValue;
 
 export interface MedicalReply {
@@ -622,21 +618,25 @@ async function judgeEscalation(
 }
 
 /**
- * THE SINGLE SWAP POINT (founder-locked 2026-08-17: "safe line as last resort"). Reached
- * only after a live attempt AND one retry both failed to produce a real, grounded answer.
- * For now it is the fixed safety line; if the founder moves to defer/
- * retry-until-generatable, this is the one function to change — the pipeline above stays.
- * Do NOT fold in the outage smoke-alarm path (route.ts / copy.ts EMERGENCY_TOKENS): that
- * is the model-UNREACHABLE case, and it is a separate, still-pending decision.
- *
- * IT TAKES THE PARENT'S WORDS, and this is the seam where the French twin earns its
- * place rather than being a nicety. The `not_gsm7` gate above rejects any composed body
- * outside the 1985 alphabet, and a real French answer about a sick child carries accents
- * it does not always have — so a francophone parent is MORE likely to land here than an
- * anglophone one, on the one message where being understood is the whole point.
+ * THE SINGLE SWAP POINT. Reached only after a live attempt AND one retry both failed
+ * to produce a real, grounded answer. The moment writer writes the child-health reply
+ * in the parent's language. If that cannot be written, the miss is thrown by name and
+ * nothing preset goes out. Do NOT fold in the outage smoke-alarm path: that is the
+ * model-UNREACHABLE case, and it defers rather than sending a preset body.
  */
-function onMedicalTurnUnresolvable(text: string): MedicalReply {
-  return { reply: SAFETY_REPLY_BY_LANGUAGE[replyLanguage(text)], replySource: 'fixed' };
+async function onMedicalTurnUnresolvable(
+  client: () => AgentClient,
+  text: string,
+): Promise<MedicalReply> {
+  const written = await createMomentReply(client).write(text, 'child_health');
+  if (written.status === 'unwritten') {
+    console.error(
+      { reason: written.reason, moment: 'child_health' },
+      'off-domain medical: moment reply unwritten',
+    );
+    throw new MedicalUnresolvable('compose_failed', `moment_unwritten:${written.reason}`);
+  }
+  return { reply: written.reply, replySource: 'fixed' };
 }
 
 function logMedicalFailure(err: unknown, attempt: number): void {
@@ -664,7 +664,7 @@ export function createMedicalComposer(client: () => AgentClient): MedicalCompose
           logMedicalFailure(err, attempt);
         }
       }
-      return onMedicalTurnUnresolvable(text);
+      return onMedicalTurnUnresolvable(client, text);
     },
   };
 }

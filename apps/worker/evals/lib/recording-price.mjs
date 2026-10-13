@@ -9,6 +9,7 @@
 export function priceRecordedCalls(recorded, { priceFor, tokens, thinkingTokens }) {
   const wrote = new Set();
   const byModel = {};
+  const perCall = [];
   let usd = 0;
   for (const call of recorded) {
     const price = priceFor(call.model);
@@ -23,23 +24,40 @@ export function priceRecordedCalls(recorded, { priceFor, tokens, thinkingTokens 
     };
     byModel[call.model] = bucket;
     let billedInput = userTokens;
+    let fresh = userTokens;
+    let cacheWrite = 0;
+    let cacheRead = 0;
     bucket.fresh += userTokens;
     if (call.promptCache) {
       if (wrote.has(call.prefixId)) {
+        cacheRead = prefixTokens;
         bucket.cacheRead += prefixTokens;
         billedInput += prefixTokens * 0.1;
       } else {
         wrote.add(call.prefixId);
+        cacheWrite = prefixTokens;
         bucket.cacheWrite += prefixTokens;
         billedInput += prefixTokens * 1.25;
       }
     } else {
+      fresh += prefixTokens;
       bucket.fresh += prefixTokens;
       billedInput += prefixTokens;
     }
     const outputTokens = tokens(call.outputChars) + (call.thinkingTokens ?? thinkingTokens);
     bucket.output += outputTokens;
-    usd += (billedInput / 1e6) * price.input + (outputTokens / 1e6) * price.output;
+    const marginal = (billedInput / 1e6) * price.input + (outputTokens / 1e6) * price.output;
+    usd += marginal;
+    perCall.push({
+      usd: marginal,
+      group: call.group ?? 'general-answer',
+      prefixId: call.prefixId,
+      model: call.model,
+      fresh,
+      cacheWrite,
+      cacheRead,
+      output: outputTokens,
+    });
   }
-  return { usd, byModel };
+  return { usd, byModel, perCall };
 }

@@ -1,18 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { replyLanguage } from '~/lib/channel/language';
 import {
-  ANSWER_UNAVAILABLE_REPLY,
-  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
-  SAFETY_REPLY,
-  SAFETY_REPLY_BY_LANGUAGE,
   UNPLACEABLE_PROVIDER_REPLY,
   UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE,
   namesAMentalCrisis,
+  namesAnEmergency,
   reachesForTheHealthLine,
   referralReply,
 } from './copy';
@@ -37,31 +32,16 @@ describe('mental-crisis tripwire · VIL-327', () => {
     expect(namesAMentalCrisis('cheer me up')).toBe(false);
   });
 
-  it('is the reviewed 988 line, not the child-health 811 line', () => {
-    expect(MENTAL_CRISIS_REPLY).toBe(
-      "If you're in crisis, call 988 any time. If it's an emergency, call 911.",
-    );
-    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
-    expect(MENTAL_CRISIS_REPLY).not.toBe('Call 911 now.');
-    expect(SAFETY_REPLY).toBe(
-      "That's not something I should advise on. Health811 (call 811) can help any time - and if it's an emergency, call 911.",
-    );
-    expect(SAFETY_REPLY).not.toContain('988');
-    expect(SAFETY_REPLY).not.toBe('Call 911 now.');
+  it('does not treat a therapist-find or a cheer-up as a crisis', () => {
+    expect(namesAMentalCrisis('can you find a therapist near us')).toBe(false);
+    expect(namesAMentalCrisis('988')).toBe(true);
   });
 });
 
 describe('physical-emergency tripwire · VIL-328', () => {
-  it('is Call 911 now. alone - no 811, no 988, no return ask', () => {
-    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
-    expect(EMERGENCY_REPLY).not.toContain('811');
-    expect(EMERGENCY_REPLY).not.toContain('Health811');
-    expect(EMERGENCY_REPLY).not.toContain('988');
-    expect(EMERGENCY_REPLY).not.toContain('?');
-    expect(EMERGENCY_REPLY).not.toBe(SAFETY_REPLY);
-    expect(EMERGENCY_REPLY).not.toBe(MENTAL_CRISIS_REPLY);
+  it('stops the ordinary answer on the six tokens and not on a rash', () => {
+    expect(namesAnEmergency('she is not breathing')).toBe(true);
+    expect(namesAnEmergency('she has a rash')).toBe(false);
   });
 });
 
@@ -78,40 +58,10 @@ describe('the French off-domain lines', () => {
    * number is the same in both languages, which is what keeps a wrong name from being a
    * dangerous one.
    */
-  it('gives the safety answer in French, with both numbers intact', () => {
-    expect(SAFETY_REPLY_BY_LANGUAGE.fr).toBe(
-      "Ce n'est pas à moi de vous conseiller là-dessus. Santé811 (composez le 811) peut vous aider à toute heure - et en cas d'urgence, faites le 911.",
-    );
-    // The two numbers are the whole message. A translation that dropped one would be the
-    // worst defect in this file.
-    expect(SAFETY_REPLY_BY_LANGUAGE.fr).toContain('811');
-    expect(SAFETY_REPLY_BY_LANGUAGE.fr).toContain('911');
-    // It stays a referral, not a reassurance: Hale cannot see the child, so it must not
-    // say anything that sounds like a clinical judgement, and it asks nothing back.
-    expect(SAFETY_REPLY_BY_LANGUAGE.fr).not.toContain('?');
-  });
-
-  /**
-   * The tripwire that substitutes the reviewed safety line for any MODEL body naming 811
-   * or 911 has to keep firing on the French one. It matches on the digits rather than on
-   * English words, so it does — pinned here because a French line that slipped past it
-   * would be a composed siren going out unreviewed.
-   */
-  it('is still recognised as the health line by the tripwire that guards it', () => {
-    expect(reachesForTheHealthLine(SAFETY_REPLY_BY_LANGUAGE.fr)).toBe(true);
-    // Positive control through the same reader, and its negative: an ordinary French
-    // sentence is not a siren.
-    expect(reachesForTheHealthLine(SAFETY_REPLY)).toBe(true);
+  it('recognises a health-line number in a model-written body, in either language', () => {
+    expect(reachesForTheHealthLine('faites le 911')).toBe(true);
+    expect(reachesForTheHealthLine('call 811')).toBe(true);
     expect(reachesForTheHealthLine('Le cours de natation est a 9h11')).toBe(false);
-  });
-
-  it('says in French that the answer could not be written, and offers the retry', () => {
-    expect(ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr).toBe(
-      "Mes excuses - je n'ai pas réussi à répondre à celle-là. Réessayez dans une minute.",
-    );
-    // The honest shape: it says what happened, it is not a claim about a boundary Hale
-    // does not have, and it points at no app and no link.
-    expect(ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr).not.toMatch(/https?:/i);
   });
 
   it('names the Ontario registry and the number that registers you, in French', () => {
@@ -125,17 +75,10 @@ describe('the French off-domain lines', () => {
   });
 
   it('holds the English constant itself, so the two can never drift apart', () => {
-    expect(SAFETY_REPLY_BY_LANGUAGE.en).toBe(SAFETY_REPLY);
-    expect(ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.en).toBe(ANSWER_UNAVAILABLE_REPLY);
     expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.en).toBe(PROVIDER_ACCESS_REPLY);
   });
 
-  it('routes a French question to the French line and everything else to the English one', () => {
-    const french = 'Mon fils est tombé, je ne sais pas quoi faire';
-    const english = 'my son fell off the couch, what do I do';
-
-    expect(SAFETY_REPLY_BY_LANGUAGE[replyLanguage(french)]).toBe(SAFETY_REPLY_BY_LANGUAGE.fr);
-    expect(SAFETY_REPLY_BY_LANGUAGE[replyLanguage(english)]).toBe(SAFETY_REPLY);
+  it('routes a French provider question to the French line and everything else to the English one', () => {
     expect(
       PROVIDER_ACCESS_REPLY_BY_LANGUAGE[replyLanguage('Je cherche un medecin de famille')],
     ).toBe(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr);

@@ -7,6 +7,11 @@ import {
   namesAnEmergency,
   reachesForTheHealthLine,
 } from '~/lib/channel/off-domain/copy';
+import {
+  type Moment,
+  type MomentWrite,
+  createMomentReply,
+} from '~/lib/channel/off-domain/moment-reply';
 import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -55,12 +60,12 @@ import {
  *
  * FOUR THINGS MAKE IT SAFE TO PUT ON A STRANGER'S THIRD TEXT:
  *
- *   AN EMERGENCY NEVER REACHES A MODEL. `namesAnEmergency` is checked first, before the
- *   client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` — the
- *   machine then sends {@link EMERGENCY_REPLY} (`Call 911 now.`), with no return-to-script
- *   tacked onto it. Intake has never had the screened safety lane the router has
- *   (off-domain/lane.ts), so this is the whole of it, and it works during a provider
- *   outage because it is a substring test.
+ *   AN EMERGENCY STOPS THE ORDINARY ANSWER. `namesAnEmergency` is checked first, before
+ *   the client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` with
+ *   no body. The machine then asks the moment writer for the reply, in the parent's
+ *   language, and does not tack the signup question onto it. The substring test still
+ *   works during a provider outage; when the writer cannot send, nothing preset goes
+ *   out and the outcome is named.
  *
  *   NOTHING IS AGREED TO YET, and the gates say so in code. Consent is the question
  *   still outstanding on the seam that calls this, so a composed line claiming Hale is
@@ -168,14 +173,13 @@ export type IntakeAnswerOutcome =
   /** Not a question. The caller's own reply is the right one and this cost one call. */
   | { status: 'nothing_to_answer' }
   /**
-   * Someone is hurt, ill or in danger. Carries NO body on purpose — the words a parent
-   * gets in that moment are the reviewed ones in off-domain/copy.ts, and a variant with
-   * a text field is one a later edit could fill from a model.
+   * Someone is hurt, ill or in danger. Carries NO body — the machine asks the moment
+   * writer (child health) and does not resume the signup script.
    */
   | { status: 'safety' }
   /**
-   * Caregiver mental crisis. Carries NO body — the machine sends
-   * {@link MENTAL_CRISIS_REPLY} (988 / 911), never the child-health 811 line.
+   * Caregiver mental crisis. Carries NO body — the machine asks the moment writer
+   * and does not send the child-health reply.
    */
   | { status: 'mental_crisis' }
   | { status: 'unavailable'; reason: IntakeAnswerFallback };
@@ -197,6 +201,9 @@ export interface IntakeAnswerInput {
 
 export interface IntakeAnswerComposer {
   compose(input: IntakeAnswerInput): Promise<IntakeAnswerOutcome>;
+  /** Writes the crisis, emergency, or child-health reply. The ordinary answer has
+   * already stopped. An unwritten reply is named and nothing preset goes out. */
+  writeMoment(text: string, moment: Moment): Promise<MomentWrite>;
 }
 
 const answerSchema = z.object({ answer: z.string(), returnLine: z.string() });
@@ -283,10 +290,10 @@ function unavailable(reason: IntakeAnswerFallback, detail?: string): IntakeAnswe
 /**
  * Read the model's pair.
  *
- * The health-line tripwire runs BEFORE every other gate because it SUBSTITUTES where
- * the rest refuse: a parent who turns out to be describing a hurt child must get the
- * reviewed 811/911 line, never the flat signup question a refusal would send them
- * (skill audit P0 #3, the same ordering off-domain/answer.ts uses).
+ * The health-line tripwire runs BEFORE every other gate because it STOPS where the
+ * rest refuse: a parent who turns out to be describing a hurt child must not get the
+ * flat signup question a refusal would send them. The machine then asks the moment
+ * writer for a child-health reply in the parent's language (skill audit P0 #3).
  */
 export function readPair(
   raw: { answer: string; returnLine: string },
@@ -295,7 +302,9 @@ export function readPair(
   const answer = plainText(raw.answer);
   const returnLine = plainText(raw.returnLine);
   if (reachesForTheHealthLine(`${answer} ${returnLine}`)) {
-    console.error('intake answer: composer reached for a referral; sent the fixed line');
+    console.error(
+      'intake answer: composer reached for a referral; handing the turn to the moment writer',
+    );
     return { status: 'safety' };
   }
   // Read before the gates, not after: an empty answer is the model declining, which is
@@ -361,6 +370,9 @@ async function groundOfficialPages(
 
 export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerComposer {
   return {
+    writeMoment(text, moment) {
+      return createMomentReply(() => client).write(text, moment);
+    },
     async compose(input) {
       // FIRST, and with no model in the loop. See the module note: intake has never had
       // the screened safety lane, and an emergency must not wait on a provider that may

@@ -25,7 +25,6 @@ import {
   hurtIllOrDanger,
   safetyDoorFor,
 } from './answer-request';
-import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from './copy';
 import { COMPOSE_MAX_TOKENS } from './medical';
 
 /**
@@ -609,7 +608,7 @@ describe('createGeneralAnswer', () => {
     expect(log.mock.calls).toEqual([
       [
         { reason: 'unsendable', detail: 'empty' },
-        'off-domain answer: falling back to the fixed line',
+        'off-domain answer: no answer composed, the moment writer answers',
       ],
     ]);
   });
@@ -705,15 +704,15 @@ describe('createGeneralAnswer', () => {
     expect(log.mock.calls).toEqual([
       [
         { reason: 'model_failed', detail: 'sanitize_failed:Error' },
-        'off-domain answer: falling back to the fixed line',
+        'off-domain answer: no answer composed, the moment writer answers',
       ],
       [
         { reason: 'model_failed', detail: 'sanitize_failed:StructuredOutputError:truncated' },
-        'off-domain answer: falling back to the fixed line',
+        'off-domain answer: no answer composed, the moment writer answers',
       ],
       [
         { reason: 'model_failed', detail: 'Error' },
-        'off-domain answer: falling back to the fixed line',
+        'off-domain answer: no answer composed, the moment writer answers',
       ],
     ]);
   });
@@ -858,7 +857,7 @@ describe('the sanitize phase', () => {
     expect(log.mock.calls).toEqual([
       [
         { reason: 'model_failed', detail: 'sanitize_failed:empty_question' },
-        'off-domain answer: falling back to the fixed line',
+        'off-domain answer: no answer composed, the moment writer answers',
       ],
     ]);
     expect(seen.compose).toHaveLength(0);
@@ -2200,7 +2199,7 @@ describe('links', () => {
     expect(log.mock.calls).toEqual([
       [
         { reason: 'unsendable', detail: 'link_not_from_search' },
-        'off-domain answer: falling back to the fixed line',
+        'off-domain answer: no answer composed, the moment writer answers',
       ],
     ]);
   });
@@ -2236,7 +2235,7 @@ describe('links', () => {
     expect(log.mock.calls).toEqual([
       [
         { reason: 'unsendable', detail: 'link_not_from_search' },
-        'off-domain answer: falling back to the fixed line',
+        'off-domain answer: no answer composed, the moment writer answers',
       ],
     ]);
   });
@@ -2271,7 +2270,7 @@ describe('links', () => {
     expect(log.mock.calls).toEqual([
       [
         { reason: 'unsendable', detail: 'link_not_from_search' },
-        'off-domain answer: falling back to the fixed line',
+        'off-domain answer: no answer composed, the moment writer answers',
       ],
     ]);
   });
@@ -2327,7 +2326,7 @@ describe('links', () => {
     expect(log.mock.calls).toEqual([
       [
         { reason: 'unsendable', detail: 'link_not_from_search' },
-        'off-domain answer: falling back to the fixed line',
+        'off-domain answer: no answer composed, the moment writer answers',
       ],
     ]);
   });
@@ -2557,44 +2556,42 @@ describe('the one path', () => {
     },
   );
 
-  it('answers a crisis with safety and no return ask', async () => {
-    const exploding = () =>
+  it('stops a crisis before sanitize and sends the moment reply', async () => {
+    const calls: string[] = [];
+    const client = () =>
       ({
         messages: {
-          create: () => {
-            throw new Error('a crisis must not reach a model');
+          async create(request: { messages?: Array<{ content?: string }> }) {
+            calls.push(request.messages?.[0]?.content ?? '');
+            return {
+              content: [{ type: 'text', text: JSON.stringify({ reply: 'moment wrote this' }) }],
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 1, output_tokens: 1 },
+            };
           },
         },
       }) as unknown as AgentClient;
-    expect(await createGeneralAnswer(exploding).compose('I want to die', family)).toEqual({
+    expect(await createGeneralAnswer(client).compose('I want to die', family)).toEqual({
       status: 'composed',
-      reply: MENTAL_CRISIS_REPLY,
+      reply: 'moment wrote this',
     });
-    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
-    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
+    expect(calls).toEqual([JSON.stringify({ moment: 'mental_crisis', text: 'I want to die' })]);
   });
 
-  it('answers a physical emergency with Call 911 now. and no return ask', async () => {
+  it('names an unwritten emergency and sends no preset sentence', async () => {
     const exploding = () =>
       ({
         messages: {
           create: () => {
-            throw new Error('a physical emergency must not reach a model');
+            throw new Error('the moment writer failed');
           },
         },
       }) as unknown as AgentClient;
     expect(await createGeneralAnswer(exploding).compose('she is not breathing', family)).toEqual({
-      status: 'composed',
-      reply: EMERGENCY_REPLY,
+      status: 'unwritten',
+      moment: 'emergency',
+      reason: 'model_failed',
     });
-    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
-    expect(EMERGENCY_REPLY).not.toContain('811');
-    expect(EMERGENCY_REPLY).not.toContain('Health811');
-    expect(EMERGENCY_REPLY).not.toContain('988');
-    expect(EMERGENCY_REPLY).not.toContain('?');
-    expect(EMERGENCY_REPLY).not.toBe(SAFETY_REPLY);
   });
 });
 

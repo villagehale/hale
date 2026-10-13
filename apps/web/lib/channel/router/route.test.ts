@@ -14,7 +14,6 @@ import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   createGeneralAnswer,
 } from '~/lib/channel/off-domain/answer';
-import { EMERGENCY_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import {
   type OffDomainLane,
   type OffDomainVerdict,
@@ -832,7 +831,8 @@ describe('the off-domain lane', () => {
     status: 'deflected',
     lane: 'safety_critical',
     category: 'medical-symptom',
-    reply: medicalSource === 'fixed' ? SAFETY_REPLY : 'Fevers at this age are usually viral.',
+    reply:
+      medicalSource === 'fixed' ? 'MOMENT_CHILD_HEALTH' : 'Fevers at this age are usually viral.',
     replySource: medicalSource,
     medicalSource,
     signal: 'not_applicable',
@@ -1017,6 +1017,7 @@ describe('the off-domain lane', () => {
           throw new Error('not a medical turn');
         },
       },
+      moment: { write: async () => ({ status: 'written', reply: 'moment wrote this' }) },
       recordUnmetIntent: async () => 'recorded',
     });
     const h = harness({ context: { body: "how's the weather tomorrow" }, offDomain: lane });
@@ -1108,6 +1109,9 @@ describe('the off-domain lane', () => {
           throw new Error('not a medical turn');
         },
       },
+      moment: {
+        write: async () => ({ status: 'written', reply: 'moment wrote the safety reply' }),
+      },
       recordUnmetIntent: async () => 'recorded',
     });
     const h = harness({
@@ -1120,9 +1124,9 @@ describe('the off-domain lane', () => {
     const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
     // Positive control: a reply did go out, it is the lane's own fixed line, and the
     // turn logged.
-    expect(h.transport.bodies()).toHaveLength(1);
+    expect(h.transport.bodies()).toEqual(['moment wrote the safety reply']);
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ replySource: 'fixed', body: null });
+    expect(sent[0]).toMatchObject({ replySource: 'composed', body: null });
     expect(pendingAskRows(h.fake)).toEqual([]);
     expect(consoleLines.length).toBeGreaterThan(0);
     expect(
@@ -2139,51 +2143,45 @@ describe('the outage smoke alarm', () => {
     };
   }
 
-  it('sends the fixed safety line, verbatim, instead of the honesty template', async () => {
+  it('defers an emergency during an outage and sends nothing preset', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
-    const result = await routeChannelMessage(h.deps, job());
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
 
-    expect(result.status).toBe('smoke_alarm_fired');
-    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY]);
-    expect(h.transport.bodies()[0]).toBe('Call 911 now.');
-    expect(h.transport.bodies()[0]).not.toContain('811');
-    expect(h.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
+    expect(h.transport.sent).toEqual([]);
     expect(h.transport.bodies()).not.toContain(failureReply());
   });
 
   /** It is a reply like any other: ledgered, audited (rule #6), and in the thread the
    * parent can read back. A siren that skipped the books would be the one message Hale
    * sent that nothing recorded. */
-  it('ledgers, audits and threads it like every other reply', async () => {
+  it('ledgers nothing outbound when the moment reply cannot be written', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
-    await routeChannelMessage(h.deps, job());
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
 
     const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
-    expect(out).toHaveLength(1);
-    expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
+    expect(out).toHaveLength(0);
+    expect(auditRows(h.fake).map((r) => r.actionTaken)).not.toContain('sms_reply_sent');
     const assistant = messageRows(h.fake).filter((r) => r.role === 'assistant');
-    expect(assistant.map((r) => r.content)).toEqual([EMERGENCY_REPLY]);
+    expect(assistant).toEqual([]);
   });
 
   it('records the alarm against the inbound message so a queue retry cannot re-ring it', async () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
 
-    const first = await routeChannelMessage(h.deps, job());
-    expect(first.status).toBe('smoke_alarm_fired');
-    expect(claim.fired).toEqual([job().channel_message_id]);
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    expect(claim.fired).toEqual([]);
 
     // The SAME message, re-driven: at-least-once delivery means the drain can hand this
     // job back after a mid-turn crash (lib/cron/drain.ts), and the defer arc means it
     // does so routinely. The alarm's own claim is now the SECOND line of defence — the
     // turn ledger stops the re-drive before the coach is ever woken, because the safety
     // line was this text's answer.
-    const retry = await routeChannelMessage(h.deps, job());
-    expect(retry.status).toBe('already_answered');
-    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY]);
-    expect(claim.fired).toHaveLength(1);
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    expect(h.transport.sent).toEqual([]);
+    expect(claim.fired).toEqual([]);
   });
 
   /** A different text during the same outage is a different emergency. The claim is
@@ -2192,14 +2190,14 @@ describe('the outage smoke alarm', () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
 
-    await routeChannelMessage(h.deps, job());
-    const second = await routeChannelMessage(
-      h.deps,
-      job({ channel_message_id: '44444444-4444-4444-8444-444444444444' }),
-    );
-
-    expect(second.status).toBe('smoke_alarm_fired');
-    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY, EMERGENCY_REPLY]);
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    await expect(
+      routeChannelMessage(
+        h.deps,
+        job({ channel_message_id: '44444444-4444-4444-8444-444444444444' }),
+      ),
+    ).rejects.toBeInstanceOf(TurnDeferred);
+    expect(h.transport.sent).toEqual([]);
   });
 
   // ── the non-triggers ───────────────────────────────────────────────────────
@@ -2215,7 +2213,6 @@ describe('the outage smoke alarm', () => {
     expect(claim.reads).toEqual([]);
     expect(claim.fired).toEqual([]);
     expect(h.transport.bodies()).toEqual(['Splash pad opens at 10.']);
-    expect(h.transport.bodies()).not.toContain(SAFETY_REPLY);
   });
 
   /** An ordinary text during the same outage. The alarm stays quiet — and, since the
@@ -2271,8 +2268,8 @@ describe('the outage smoke alarm', () => {
         status: 'deflected',
         lane: 'safety_critical',
         category: 'other',
-        reply: SAFETY_REPLY,
-        replySource: 'fixed',
+        reply: 'the lane wrote this',
+        replySource: 'composed',
         medicalSource: null,
         signal: 'recorded',
         pendingAsk: null,
@@ -2285,16 +2282,16 @@ describe('the outage smoke alarm', () => {
 
     expect(result.status).toBe('deflected');
     expect(claim.reads).toEqual([]);
-    expect(h.transport.bodies()).toEqual([SAFETY_REPLY]);
+    expect(h.transport.bodies()).toEqual(['the lane wrote this']);
   });
 
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
-    await routeChannelMessage(h.deps, job());
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
 
     const dump = JSON.stringify(h.logs);
-    expect(dump).toContain('smoke_alarm_fired');
+    expect(dump).toContain('moment_unwritten');
     expect(dump).not.toContain('not breathing');
   });
 });
@@ -4890,7 +4887,9 @@ describe('the reply row, written to a real database', () => {
               await takesAWhile('compose');
               return structured({
                 answer:
-                  payload.live === 'missing_detail' ? 'Which city are you in?' : 'Sunny, high of 14.',
+                  payload.live === 'missing_detail'
+                    ? 'Which city are you in?'
+                    : 'Sunny, high of 14.',
               });
             },
             stream(request: { messages: Array<{ content: string }> }) {
@@ -4924,7 +4923,10 @@ describe('the reply row, written to a real database', () => {
       parent: { familyId: string; parentUserId: string },
       body: string,
       route: ReplyRoute,
-      { slow = null, ...options }: Parameters<typeof harness>[0] & {
+      {
+        slow = null,
+        ...options
+      }: Parameters<typeof harness>[0] & {
         slow?: 'screen' | 'compose' | null;
       } = {},
     ) {
@@ -5036,7 +5038,11 @@ describe('the reply row, written to a real database', () => {
       });
 
       it.each([
-        ['goes out while the screen is still reading', 'screen', ["I'm on it.", 'Sunny, high of 14.']],
+        [
+          'goes out while the screen is still reading',
+          'screen',
+          ["I'm on it.", 'Sunny, high of 14.'],
+        ],
         // Controls. The question is read before the compose, and with no slow call the
         // line never goes out at all.
         ['goes out while the answer is composed', 'compose', ["I'm on it.", 'Sunny, high of 14.']],

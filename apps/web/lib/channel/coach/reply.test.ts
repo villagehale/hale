@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import {
   MAX_REPLY_SEGMENTS,
@@ -279,7 +278,7 @@ describe('an over-budget composition', () => {
  * improvised version already did. What a parent standing over a hurt child gets has to
  * be the reviewed sentence, whole, including the 911 the improvisation drops.
  */
-describe('the fixed safety reply is the only siren that leaves the coach', () => {
+describe('a model-written health-line number goes out as the model wrote it', () => {
   const send = (raw: string) => toSmsReply(raw, { children: [], now: NOW });
 
   it.each([
@@ -287,16 +286,10 @@ describe('the fixed safety reply is the only siren that leaves the coach', () =>
     ['a referral naming only emergency', 'If she is struggling to breathe, call 911 now.'],
     ['a referral wrapped in advice', 'Most bumps are fine. Watch her, and 811 can advise.'],
     ['a referral buried in a scheduling answer', 'Swim is Tuesday. Ring 811 about the rash.'],
-  ])('replaces %s with the fixed line, verbatim', (_name, raw) => {
+  ])('sends %s in the model words', (_name, raw) => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(send(raw)).toBe(SAFETY_REPLY);
-  });
-
-  it('is idempotent — the fixed line survives its own guard unchanged', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    expect(send(SAFETY_REPLY)).toBe(SAFETY_REPLY);
+    expect(send(raw)).toBe(raw);
   });
 
   it('says out loud that it fired, so an improvised siren is countable', () => {

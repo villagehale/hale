@@ -10,15 +10,9 @@ import {
   createGeneralAnswer,
 } from './answer';
 import {
-  ANSWER_UNAVAILABLE_REPLY,
-  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
-  SAFETY_REPLY,
-  SAFETY_REPLY_BY_LANGUAGE,
   UNPLACEABLE_PROVIDER_REPLY,
   namesAMentalCrisis,
   namesAnEmergency,
@@ -84,6 +78,8 @@ interface Harness extends OffDomainPorts {
   continueSeen: Array<{ text: string; pending: PendingAsk }>;
   medicalCalls: number;
   medicalSeen: string[];
+  momentCalls: number;
+  momentSeen: Array<{ text: string; moment: string }>;
   recorded: Recorded[];
 }
 
@@ -116,6 +112,8 @@ function ports(
     continueSeen: [],
     medicalCalls: 0,
     medicalSeen: [],
+    momentCalls: 0,
+    momentSeen: [],
     recorded: [],
     screen: {
       read: async () => {
@@ -155,6 +153,13 @@ function ports(
         return medical;
       },
     },
+    moment: {
+      write: async (text, moment) => {
+        harness.momentCalls += 1;
+        harness.momentSeen.push({ text, moment });
+        return { status: 'written', reply: `written:${moment}` };
+      },
+    },
     recordUnmetIntent: async (input) => {
       harness.recorded.push({
         lane: input.lane,
@@ -178,88 +183,79 @@ const consider = (p: OffDomainPorts, text = 'anything', thread: InboundThread = 
   });
 
 describe('what each lane says', () => {
-  /** Every safety_critical category EXCEPT medical-symptom still gets the fixed line,
-   * with no model between a parent and what they are told about a crisis. medical-symptom
-   * moved to its own answered lane (see the dedicated describe below). */
-  it.each(['child-safety', 'emergency'] as const)(
-    'answers a %s safety ask with the child-health 811 line, exactly',
-    async (category) => {
-      const p = ports({ read: reading({ lane: 'safety_critical', category }) });
+  /** A safety reading stops the ordinary answer. The moment writer sends the reply.
+   * medical-symptom is the answered lane (see the dedicated describe below). */
+  it.each([
+    ['child-safety', 'child_health'],
+    ['emergency', 'emergency'],
+  ] as const)('stops a %s safety ask and asks the moment writer', async (category, moment) => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category }) });
 
-      const verdict = await consider(p);
-
-      expect(verdict).toMatchObject({
-        status: 'deflected',
-        reply: SAFETY_REPLY,
-        replySource: 'fixed',
-      });
-      expect(SAFETY_REPLY).toContain('811');
-      expect(SAFETY_REPLY).toContain('911');
-      expect(p.medicalCalls).toBe(0);
-    },
-  );
-
-  it('answers a mental-health crisis with the reviewed 988 line, never the 811 child-health line', async () => {
-    const p = ports({ read: reading({ lane: 'safety_critical', category: 'mental-health' }) });
-
-    const verdict = await consider(p);
+    const verdict = await consider(p, 'the parent wrote this');
 
     expect(verdict).toMatchObject({
       status: 'deflected',
-      reply: MENTAL_CRISIS_REPLY,
-      replySource: 'fixed',
+      reply: `written:${moment}`,
+      replySource: 'composed',
     });
-    expect(MENTAL_CRISIS_REPLY).toContain('988');
-    expect(MENTAL_CRISIS_REPLY).toContain('911');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
-    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
+    expect(p.momentSeen).toEqual([{ text: 'the parent wrote this', moment }]);
     expect(p.medicalCalls).toBe(0);
+    expect(p.composeCalls).toBe(0);
+  });
+
+  it('stops a mental-health reading and asks for that moment, not child health', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'mental-health' }) });
+
+    const verdict = await consider(p, 'the parent wrote this');
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: 'written:mental_crisis',
+      replySource: 'composed',
+    });
+    expect(p.momentSeen).toEqual([{ text: 'the parent wrote this', moment: 'mental_crisis' }]);
+    expect(p.medicalCalls).toBe(0);
+    expect(p.composeCalls).toBe(0);
   });
 
   it.each(['not breathing', 'unconscious', 'unresponsive', 'choking', 'seizure'] as const)(
-    'answers %s with Call 911 now. alone, never the 811 Telehealth line',
+    'stops %s before the screen and the ordinary compose',
     async (token) => {
+      const text = `she is ${token}`;
       const p = ports({
         read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),
       });
 
-      const verdict = await consider(p, `she is ${token}`);
+      const verdict = await consider(p, text);
 
       expect(verdict).toMatchObject({
         status: 'deflected',
-        reply: EMERGENCY_REPLY,
-        replySource: 'fixed',
+        reply: 'written:emergency',
+        replySource: 'composed',
       });
-      expect(EMERGENCY_REPLY).toBe('Call 911 now.');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('811');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('Health811');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('988');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('?');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toBe(SAFETY_REPLY);
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toBe(MENTAL_CRISIS_REPLY);
+      expect(p.momentSeen).toEqual([{ text, moment: 'emergency' }]);
+      expect(p.screenCalls).toBe(0);
       expect(p.medicalCalls).toBe(0);
       expect(p.composeCalls).toBe(0);
     },
   );
 
   /**
-   * Skill audit P0 #3. The general terminal has a fourth outcome: the composer read the
-   * text as someone hurt, ill or in danger. The words are not its to carry —
-   * `{ status: 'safety', kind }` has no reply field — so what goes out is the same reviewed
-   * sentence a screened symptom gets, and `replySource` says `fixed` rather than crediting
-   * the model for words it did not send.
+   * The composer read the text as someone hurt, ill or in danger. That outcome carries
+   * no reply, so the ordinary answer stops and the moment writer sends one.
    */
-  it('sends the fixed line, exactly, when the composer read someone hurt, ill or in danger', async () => {
+  it('asks the moment writer when the composer read someone hurt, ill or in danger', async () => {
     const p = ports({ answer: { status: 'safety', kind: 'child-safety' } });
 
-    const verdict = await consider(p);
+    const verdict = await consider(p, 'he fell');
 
     expect(verdict).toMatchObject({
       status: 'deflected',
-      reply: SAFETY_REPLY,
-      replySource: 'fixed',
+      reply: 'written:child_health',
+      replySource: 'composed',
     });
+    expect(p.momentSeen).toEqual([{ text: 'he fell', moment: 'child_health' }]);
+    expect(p.composeCalls).toBe(1);
   });
 
   it('answers a provider ask with the Ontario workflow, and invents nothing', async () => {
@@ -422,22 +418,25 @@ describe('what each lane says', () => {
   it.each([
     ['a group thread', GROUP, 'group_thread'],
     ['a thread the job does not describe', UNSAID, 'thread_unknown'],
-  ] as const)("does not read the family's place in %s, and names why", async (_label, thread, reason) => {
-    const p = ports();
-    const places: unknown[] = [];
-    p.answer = {
-      ...p.answer,
-      compose: async (_text, family) => {
-        places.push(await family.place());
-        return { status: 'composed', reply: ANSWER };
-      },
-    };
+  ] as const)(
+    "does not read the family's place in %s, and names why",
+    async (_label, thread, reason) => {
+      const p = ports();
+      const places: unknown[] = [];
+      p.answer = {
+        ...p.answer,
+        compose: async (_text, family) => {
+          places.push(await family.place());
+          return { status: 'composed', reply: ANSWER };
+        },
+      };
 
-    await consider(p, 'hows the weather tomorrow', thread);
+      await consider(p, 'hows the weather tomorrow', thread);
 
-    expect(places).toEqual([{ status: 'unknown', reason }]);
-    expect(p.placeAskedFor).toEqual([]);
-  });
+      expect(places).toEqual([{ status: 'unknown', reason }]);
+      expect(p.placeAskedFor).toEqual([]);
+    },
+  );
 
   /**
    * The fallback, and the promise under it (rule #11): a parent always gets SOMETHING.
@@ -449,20 +448,18 @@ describe('what each lane says', () => {
     'skill_unavailable',
     'model_failed',
     'unsendable',
-  ] as GeneralAnswerFallback[])(
-    'falls back to the fixed line when the answer %s',
-    async (reason) => {
-      const p = ports({ answer: { status: 'unavailable', reason } });
+  ] as GeneralAnswerFallback[])('asks the moment writer when the answer %s', async (reason) => {
+    const p = ports({ answer: { status: 'unavailable', reason } });
 
-      const verdict = await consider(p);
+    const verdict = await consider(p, 'what time does it close');
 
-      expect(verdict).toMatchObject({
-        status: 'deflected',
-        reply: ANSWER_UNAVAILABLE_REPLY,
-        replySource: reason,
-      });
-    },
-  );
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: 'written:could_not_answer',
+      replySource: reason,
+    });
+    expect(p.momentSeen).toEqual([{ text: 'what time does it close', moment: 'could_not_answer' }]);
+  });
 
   /** The two doors are FIXED copy, and the way to keep them that way is for the composer
    * never to be woken for them — not for a prompt to be asked nicely to decline. */
@@ -554,14 +551,14 @@ describe('the medical-symptom answer lane', () => {
   it('carries the composer last-resort fixed line out, still unrecorded', async () => {
     const p = ports({
       read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),
-      medical: { reply: SAFETY_REPLY, replySource: 'fixed' },
+      medical: { reply: 'MOMENT_CHILD_HEALTH', replySource: 'fixed' },
     });
 
     const verdict = await consider(p);
 
     expect(verdict).toMatchObject({
       status: 'deflected',
-      reply: SAFETY_REPLY,
+      reply: 'MOMENT_CHILD_HEALTH',
       replySource: 'fixed',
       medicalSource: 'fixed',
       signal: 'not_applicable',
@@ -755,9 +752,8 @@ describe("today's date", () => {
     vi.restoreAllMocks();
   });
 
-  /** The screen can file a crisis under a question about the world. The composer's own
-   * tripwire answers it with the reviewed line, and that line waits on no read. */
-  it('sends the fixed crisis line when the date cannot be read', async () => {
+  /** A crisis stops before today's date is read. The moment writer sends the reply. */
+  it('asks the moment writer for a crisis when the date cannot be read', async () => {
     const lane = offDomainLane({
       ...ports(),
       answer: createGeneralAnswer(() => {
@@ -777,7 +773,11 @@ describe("today's date", () => {
         now: NOW,
         thread: DIRECT,
       }),
-    ).toMatchObject({ status: 'deflected', reply: MENTAL_CRISIS_REPLY, replySource: 'composed' });
+    ).toMatchObject({
+      status: 'deflected',
+      reply: 'written:mental_crisis',
+      replySource: 'composed',
+    });
   });
 
   /**
@@ -916,7 +916,9 @@ describe('a reply to a question Hale left open', () => {
 
     const verdict = await consider(p, 'Toronto', GROUP);
 
-    expect(p.pendingAskedFor).toMatchObject([{ channel: 'imessage', providerChatId: 'chat-group' }]);
+    expect(p.pendingAskedFor).toMatchObject([
+      { channel: 'imessage', providerChatId: 'chat-group' },
+    ]);
     expect(p.continueSeen).toEqual([]);
     expect(verdict).toMatchObject({ status: 'deflected', reply: ANSWER });
     expect(info.mock.calls).toEqual([
@@ -955,7 +957,9 @@ describe('a reply to a question Hale left open', () => {
 
     const verdict = await consider(p, 'Toronto', GROUP);
 
-    expect(p.pendingAskedFor).toMatchObject([{ channel: 'imessage', providerChatId: 'chat-group' }]);
+    expect(p.pendingAskedFor).toMatchObject([
+      { channel: 'imessage', providerChatId: 'chat-group' },
+    ]);
     expect(p.continueSeen).toEqual([{ text: 'Toronto', pending: PENDING }]);
     expect(verdict).toMatchObject({ status: 'deflected', reply: 'Sunny in Toronto.' });
   });
@@ -1051,19 +1055,20 @@ describe('a reply to a question Hale left open', () => {
 
     expect(await consider(p, 'Toronto')).toMatchObject({
       status: 'deflected',
-      reply: ANSWER_UNAVAILABLE_REPLY,
+      reply: 'written:could_not_answer',
       replySource: 'model_failed',
       pendingAsk: null,
     });
+    expect(p.momentSeen).toEqual([{ text: 'Toronto', moment: 'could_not_answer' }]);
   });
 
-  /** An emergency is answered by the fixed line before anything is looked up. */
+  /** An emergency stops before the pending ask is read. */
   it('reads no pending ask for an emergency', async () => {
     lit();
     const p = ports({ pending: PENDING });
 
     expect(await consider(p, 'she is not breathing')).toMatchObject({
-      reply: EMERGENCY_REPLY,
+      reply: 'written:emergency',
       pendingAsk: null,
     });
     expect(p.pendingAskedFor).toEqual([]);
@@ -1245,7 +1250,8 @@ describe('the screen reads a reply to an open question first', () => {
       status: 'deflected',
       lane: 'safety_critical',
       category: 'mental-health',
-      replySource: 'fixed',
+      reply: 'written:mental_crisis',
+      replySource: 'composed',
       pendingAsk: null,
     });
     expect(turn.calls).toEqual(['screen']);
@@ -1274,7 +1280,7 @@ describe('the screen reads a reply to an open question first', () => {
         status: 'deflected',
         lane: 'safety_critical',
         category,
-        replySource: 'fixed',
+        replySource: 'composed',
         pendingAsk: null,
       });
       expect(turn.calls).toEqual(['screen']);
@@ -1333,7 +1339,7 @@ describe('the screen reads a reply to an open question first', () => {
       );
       const verdict = await screened.run(text);
       if (verdict.status !== 'deflected') throw new Error('the screen did not send it to a door');
-      expect(verdict.replySource).toBe('fixed');
+      expect(verdict.replySource).toBe('composed');
       return verdict.reply;
     }
 
@@ -1369,7 +1375,7 @@ describe('the screen reads a reply to an open question first', () => {
           status: 'deflected',
           lane: 'off_domain_general',
           reply: await screenedSafetyDoor(TEXT, screened),
-          replySource: 'fixed',
+          replySource: 'composed',
           medicalSource: null,
           pendingAsk: null,
         });
@@ -1397,7 +1403,7 @@ describe('the screen reads a reply to an open question first', () => {
         status: 'deflected',
         lane: 'off_domain_general',
         reply: mentalHealthDoor,
-        replySource: 'fixed',
+        replySource: 'composed',
       });
       expect(JSON.stringify(verdict)).not.toMatch(/MODEL-WROTE|MODEL-GROUNDED/);
     });
@@ -1423,7 +1429,7 @@ describe('the screen reads a reply to an open question first', () => {
       expect(await laneWith(turn).run(text)).toMatchObject({
         status: 'deflected',
         reply: mentalHealthDoor,
-        replySource: 'fixed',
+        replySource: 'composed',
       });
     });
 
@@ -1440,7 +1446,7 @@ describe('the screen reads a reply to an open question first', () => {
       expect(verdict).toMatchObject({
         status: 'deflected',
         reply: await screenedSafetyDoor(text, 'mental-health'),
-        replySource: 'fixed',
+        replySource: 'composed',
         pendingAsk: null,
       });
       expect(verdict).not.toMatchObject({ reply: await screenedSafetyDoor(text, 'child-safety') });
@@ -1466,7 +1472,7 @@ describe('the screen reads a reply to an open question first', () => {
         lane: 'off_domain_general',
         category: 'general-knowledge',
         reply: await screenedSafetyDoor(TEXT),
-        replySource: 'fixed',
+        replySource: 'composed',
         medicalSource: null,
         signal: 'recorded',
         pendingAsk: null,
@@ -1493,7 +1499,7 @@ describe('the screen reads a reply to an open question first', () => {
       expect(verdict).toMatchObject({
         status: 'deflected',
         reply: await screenedSafetyDoor(text),
-        replySource: 'fixed',
+        replySource: 'composed',
         pendingAsk: null,
       });
     });
@@ -1599,14 +1605,18 @@ describe('the screen reads a reply to an open question first', () => {
  * pass the first assertion of each of these on its own.
  */
 describe('the lane answers in the language the question was asked in', () => {
-  it('sends the safety line in French to a French safety ask', async () => {
+  it('hands a French safety ask to the moment writer, and an English one too', async () => {
     const p = ports({ read: reading({ lane: 'safety_critical', category: 'child-safety' }) });
+    const french = 'Ma fille a avale quelque chose, je fais quoi';
+    const english = 'my daughter swallowed something, what do I do';
 
-    const fr = await consider(p, 'Ma fille a avale quelque chose, je fais quoi');
-    expect(fr).toMatchObject({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
+    const fr = await consider(p, french);
+    expect(fr).toMatchObject({ reply: 'written:child_health', replySource: 'composed' });
+    expect(p.momentSeen[0]).toEqual({ text: french, moment: 'child_health' });
 
-    const en = await consider(p, 'my daughter swallowed something, what do I do');
-    expect(en).toMatchObject({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    const en = await consider(p, english);
+    expect(en).toMatchObject({ reply: 'written:child_health', replySource: 'composed' });
+    expect(p.momentSeen[1]).toEqual({ text: english, moment: 'child_health' });
   });
 
   it('sends the registry line in French to a French provider ask', async () => {
@@ -1619,27 +1629,30 @@ describe('the lane answers in the language the question was asked in', () => {
     expect(en).toMatchObject({ reply: PROVIDER_ACCESS_REPLY });
   });
 
-  it('says in French that the answer could not be written', async () => {
+  it('hands a French could-not-answer to the moment writer', async () => {
     const p = ports({ answer: { status: 'unavailable', reason: 'model_failed' } });
+    const french = "Quel temps fait-il demain? J'aimerais aller au parc";
 
-    const fr = await consider(p, "Quel temps fait-il demain? J'aimerais aller au parc");
+    const fr = await consider(p, french);
     expect(fr).toMatchObject({
-      reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr,
+      reply: 'written:could_not_answer',
       replySource: 'model_failed',
     });
+    expect(p.momentSeen).toEqual([{ text: french, moment: 'could_not_answer' }]);
 
-    const en = await consider(p, "what's the weather tomorrow");
-    expect(en).toMatchObject({ reply: ANSWER_UNAVAILABLE_REPLY, replySource: 'model_failed' });
+    const english = "what's the weather tomorrow";
+    const en = await consider(p, english);
+    expect(en).toMatchObject({ reply: 'written:could_not_answer', replySource: 'model_failed' });
+    expect(p.momentSeen[1]).toEqual({ text: english, moment: 'could_not_answer' });
   });
 
-  /**
-   * The composer reading a French text as someone hurt. The words are the reviewed French
-   * ones, and `fixed` still says the model did not write them.
-   */
-  it('substitutes the French safety line when the composer read someone hurt', async () => {
+  /** The composer reading a French text as someone hurt. The writer's input is that text. */
+  it('hands the French text to the moment writer when the composer read someone hurt', async () => {
     const p = ports({ answer: { status: 'safety', kind: 'child-safety' } });
+    const french = 'Mon fils est tombe de la table, il pleure beaucoup';
 
-    const fr = await consider(p, 'Mon fils est tombe de la table, il pleure beaucoup');
-    expect(fr).toMatchObject({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
+    const fr = await consider(p, french);
+    expect(fr).toMatchObject({ reply: 'written:child_health', replySource: 'composed' });
+    expect(p.momentSeen).toEqual([{ text: french, moment: 'child_health' }]);
   });
 });

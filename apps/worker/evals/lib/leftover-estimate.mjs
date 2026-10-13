@@ -278,7 +278,58 @@ export async function leftoverGeneralAnswerCalls(ctx) {
     return { ...rec, userMessage };
   }
 
+  function momentCall(user) {
+    return {
+      model: ctx.momentLane.model,
+      promptCache: true,
+      prefixId: 'moment',
+      prefix: `${ctx.momentSkill.instructions}\n${JSON.stringify(ctx.momentJsonSchema)}`,
+      user,
+      outputChars: 220,
+      group: 'moment',
+    };
+  }
+
+  async function priceMoment(fixture) {
+    const before = calls.length;
+    for (let draw = 0; draw < draws; draw += 1) {
+      const user = ctx.momentUserMessage(fixture.directMoment, fixture.text);
+      const rec = await toolRecord(`general-answer-moment:${drawTag(fixture.id, draw)}`, {
+        lane: ctx.momentLane,
+        system: ctx.momentSkill.instructions,
+        userMessage: user,
+        toolName: 'moment_reply',
+        toolSchema: ctx.momentJsonSchema,
+      });
+      const found = { search: 'not_needed', notes: '' };
+      if (!rec.cached) {
+        add(rec.key, momentCall(user));
+        add(`predicted:${fixture.id}:moment-judge:${draw}`, {
+          ...judgeCall(judgePayload(fixture, found, typicalAnswer)),
+          group: 'moment',
+        });
+        continue;
+      }
+      const flattened = flatten(String(rec.cached.value?.reply ?? ''));
+      const judged = await judgeRecord(
+        drawTag(fixture.id, draw),
+        judgePayload(fixture, found, flattened),
+      );
+      if (!judged.hit) {
+        add(judged.key, {
+          ...judgeCall(judgePayload(fixture, found, flattened)),
+          group: 'moment',
+        });
+      }
+    }
+    if (calls.length > before) shortIds.push(fixture.id);
+  }
+
   async function priceFixture(fixture) {
+    if (fixture.directMoment) {
+      await priceMoment(fixture);
+      return;
+    }
     const before = calls.length;
     const pending = fixture.pending ?? null;
     const first = await sanitizeRecord(fixture, pending);

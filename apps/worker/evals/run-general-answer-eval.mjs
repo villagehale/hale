@@ -106,9 +106,11 @@ const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 const SANITIZE_SKILL_PATH = join(SKILLS, 'general-answer-sanitize.md');
 const SEARCH_SKILL_PATH = join(SKILLS, 'general-answer-search.md');
 const SKILL_PATH = join(SKILLS, 'general-answer.md');
+const MOMENT_SKILL_PATH = join(SKILLS, 'moment-reply.md');
 /** Production's own request shapes (see the header). */
 const OFF_DOMAIN = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'off-domain');
 const ANSWER_REQUEST_SRC = join(OFF_DOMAIN, 'answer-request.ts');
+const MOMENT_REQUEST_SRC = join(OFF_DOMAIN, 'moment-request.ts');
 /** Production's own read of a family's place off its row. */
 const PLACE_SRC = join(OFF_DOMAIN, 'place.ts');
 
@@ -361,10 +363,13 @@ async function printRecordingEstimate() {
   const sanitizeSkill = await agent.loadSkill(SANITIZE_SKILL_PATH);
   const searchSkill = await agent.loadSkill(SEARCH_SKILL_PATH);
   const skill = await agent.loadSkill(SKILL_PATH);
+  const momentSkill = await agent.loadSkill(MOMENT_SKILL_PATH);
+  const momentRequest = await tsImport(MOMENT_REQUEST_SRC, import.meta.url);
   const sanitizeLane = agent.pickLane(sanitizeSkill.meta.task);
   const searchModel = agent.pickModel(searchSkill.meta.task);
   const model = agent.pickModel(skill.meta.task);
   const subjectLane = agent.pickLane(skill.meta.task);
+  const momentLane = agent.pickLane(momentSkill.meta.task);
   const judgeModel = await readJudgeModel('sonnet');
 
   const ratios = [];
@@ -496,6 +501,7 @@ async function printRecordingEstimate() {
   const unmatched = [];
 
   for (const fixture of ANSWER_FIXTURES) {
+    if (fixture.directMoment) continue;
     const reading = priorReading(fixture);
     if (reading === null) unmatched.push(fixture.id);
     const pending = fixture.pending ?? null;
@@ -709,6 +715,10 @@ async function printRecordingEstimate() {
     drawTag,
     flatten,
     priorReading,
+    momentSkill,
+    momentLane,
+    momentJsonSchema: momentRequest.momentJsonSchema,
+    momentUserMessage: momentRequest.momentUserMessage,
     homePlace,
     notesBlob,
     typicalAnswer,
@@ -722,11 +732,18 @@ async function printRecordingEstimate() {
   const memoryLeft = await memory.uncachedMemoryCalls(mid(memoryValueChars));
   const leftoverPriced = priceCalls(leftover.calls);
   const memoryPriced = priceCalls(memoryLeft.calls);
+  const momentCalls = leftover.calls.filter((call) => call.group === 'moment');
+  const priorCalls = leftover.calls.filter((call) => call.group !== 'moment');
+  const momentUsd = leftoverPriced.perCall
+    .filter((call) => call.group === 'moment')
+    .reduce((sum, call) => sum + call.usd, 0);
+  const priorTokenUsd = leftoverPriced.usd - momentUsd;
   const leftoverSearchRequests = leftover.searchTurns * requestsPerTurn;
   const leftoverFeeUsd = leftoverSearchRequests * USD_PER_WEB_SEARCH;
-  const leftoverGeneralUsd = leftoverPriced.usd + leftoverFeeUsd;
-  const leftoverCombinedUsd = leftoverGeneralUsd + memoryPriced.usd;
-  const leftoverRole = (id) => leftover.calls.filter((call) => call.prefixId === id).length;
+  const priorGeneralUsd = priorTokenUsd + leftoverFeeUsd;
+  const leftoverCombinedUsd = priorGeneralUsd + momentUsd + memoryPriced.usd;
+  const leftoverRole = (id) => priorCalls.filter((call) => call.prefixId === id).length;
+  const momentRole = (id) => momentCalls.filter((call) => call.prefixId === id).length;
 
   console.log(
     `general-answer eval | mode=estimate (no API calls) | sanitize=${sanitizeLane.model} search=${searchModel} compose=${model} judge=${judgeModel}`,
@@ -755,11 +772,12 @@ async function printRecordingEstimate() {
   console.log(
     `drafter calls: ${drafterCalls.length} | draft ${drafterDrafts}, judge ${drafterJudges}`,
   );
-  console.log(`leftover general-answer recording estimate: $${leftoverGeneralUsd.toFixed(4)} USD`);
+  console.log(`leftover general-answer recording estimate: $${priorGeneralUsd.toFixed(4)} USD`);
+  console.log(`moment-reply cases recording estimate: $${momentUsd.toFixed(4)} USD`);
   console.log(`memory inferencer recording estimate: $${memoryPriced.usd.toFixed(4)} USD`);
   console.log(`leftover combined recording estimate: $${leftoverCombinedUsd.toFixed(4)} USD`);
   console.log(
-    `leftover general-answer tokens (cache writes at 1.25× input, cache reads at 0.1× input): $${leftoverPriced.usd.toFixed(4)} USD`,
+    `leftover general-answer tokens (cache writes at 1.25× input, cache reads at 0.1× input): $${priorTokenUsd.toFixed(4)} USD`,
   );
   console.log(
     `leftover web search requests: ${leftoverSearchRequests} | fee, billed apart from tokens: $${leftoverFeeUsd.toFixed(4)} USD`,
@@ -768,11 +786,22 @@ async function printRecordingEstimate() {
     `memory tokens (cache writes at 1.25× input, cache reads at 0.1× input; thinking off): $${memoryPriced.usd.toFixed(4)} USD`,
   );
   console.log(
-    `leftover general-answer calls: ${leftover.calls.length} | sanitize ${leftoverRole('sanitize')}, search ${leftoverRole('search')}, compose ${leftoverRole('compose')}, judge ${leftoverRole('judge')}`,
+    `leftover general-answer calls: ${priorCalls.length} | sanitize ${leftoverRole('sanitize')}, search ${leftoverRole('search')}, compose ${leftoverRole('compose')}, judge ${leftoverRole('judge')}`,
+  );
+  console.log(
+    `moment-reply calls: ${momentCalls.length} | moment ${momentRole('moment')}, judge ${momentRole('judge')}`,
   );
   console.log(`memory calls: ${memoryLeft.calls.length}`);
+  const momentFixtureIds = new Set(
+    ANSWER_FIXTURES.filter((fixture) => fixture.directMoment).map((fixture) => fixture.id),
+  );
+  const generalShort = leftover.shortIds.filter((id) => !momentFixtureIds.has(id));
+  const momentShort = leftover.shortIds.filter((id) => momentFixtureIds.has(id));
   console.log(
-    `general-answer fixtures still short: ${leftover.shortIds.length === 0 ? 'none' : leftover.shortIds.join(', ')}`,
+    `general-answer fixtures still short: ${generalShort.length === 0 ? 'none' : generalShort.join(', ')}`,
+  );
+  console.log(
+    `moment-reply fixtures still short: ${momentShort.length === 0 ? 'none' : momentShort.join(', ')}`,
   );
   console.log(
     `memory fixtures still short: ${memoryLeft.shortIds.length === 0 ? 'none' : memoryLeft.shortIds.join(', ')}`,
@@ -784,9 +813,23 @@ async function printRecordingEstimate() {
       );
     }
   };
+  const tokensFor = (group) => {
+    const grouped = {};
+    for (const call of leftoverPriced.perCall) {
+      if (call.group !== group) continue;
+      const bucket = grouped[call.model] ?? { fresh: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+      bucket.fresh += call.fresh;
+      bucket.cacheWrite += call.cacheWrite;
+      bucket.cacheRead += call.cacheRead;
+      bucket.output += call.output;
+      grouped[call.model] = bucket;
+    }
+    return grouped;
+  };
   printTokens('general-answer', general.byModel);
   printTokens('drafter', drafted.byModel);
-  printTokens('leftover general-answer', leftoverPriced.byModel);
+  printTokens('leftover general-answer', tokensFor('general-answer'));
+  printTokens('moment-reply', tokensFor('moment'));
   printTokens('memory', memoryPriced.byModel);
   console.log(
     `method: ${charsPerToken.toFixed(4)} characters per token (median of ${ratios.length} non-thinking Sonnet 5.5 outputs in the cache); ${thinkingTokens} thinking tokens added to every general-answer call (median of ${thinking.length} Sonnet 5.5 outputs that thought) and none to a drafter call; a cached prefix is priced at 1.25× input on its first write and 0.1× input on each later read; output characters are the median visible sanitize/compose/judge JSON, search notes, drafter drafts, and drafter tone scores already committed; web searches per turn are the mean of ${noteChars.length} committed search records (${searchRequestSum} requests).`,
@@ -817,10 +860,13 @@ async function main() {
   const sanitizeSkill = await agent.loadSkill(SANITIZE_SKILL_PATH);
   const searchSkill = await agent.loadSkill(SEARCH_SKILL_PATH);
   const skill = await agent.loadSkill(SKILL_PATH);
+  const momentSkill = await agent.loadSkill(MOMENT_SKILL_PATH);
+  const momentRequest = await tsImport(MOMENT_REQUEST_SRC, import.meta.url);
   const sanitizeLane = agent.pickLane(sanitizeSkill.meta.task);
   const searchModel = agent.pickModel(searchSkill.meta.task);
   const model = agent.pickModel(skill.meta.task);
   const subjectLane = agent.pickLane(skill.meta.task);
+  const momentLane = agent.pickLane(momentSkill.meta.task);
   // The rubric-holding tier: this judge has to hold a fact in the answer to the research
   // notes, which is the judgment the whole suite rests on.
   const judgeModel = await readJudgeModel('sonnet');
@@ -1044,6 +1090,60 @@ async function main() {
 
   const results = [];
   for (const fixture of fixtures) {
+    if (fixture.directMoment) {
+      const draws = [];
+      for (let draw = 0; draw < DRAWS; draw += 1) {
+        const written = await cachedToolCall({
+          tag: `general-answer-moment:${drawTag(fixture.id, draw)}`,
+          model: momentLane.model,
+          lane: momentLane,
+          system: momentSkill.instructions,
+          userMessage: momentRequest.momentUserMessage(fixture.directMoment, fixture.text),
+          toolName: 'moment_reply',
+          toolSchema: momentRequest.momentJsonSchema,
+          toolDescription: 'Return the one text for this moment.',
+          maxTokens: 256,
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        const flattened = flatten(String(written.value.reply ?? ''));
+        const found = {
+          search: 'not_needed',
+          notes: '',
+        };
+        const verdict = await judge(
+          drawTag(fixture.id, draw),
+          judgeInput(fixture, found, flattened),
+        );
+        draws.push({
+          door: false,
+          flattened,
+          verdict,
+          score: verdict.score,
+          wrongFact: verdict.wrong_fact === true,
+          safetyMiss: verdict.safety_miss === true,
+          reason: verdict.reason,
+          latencyMs: written.latencyMs,
+        });
+      }
+      results.push({
+        fixture,
+        found: {
+          reading: 'moment',
+          theirPlace: 'n/a',
+          language: '—',
+          question: fixture.text,
+          search: 'not_needed',
+          missing: '',
+          placeSent: null,
+          answersPending: null,
+        },
+        draws,
+        failures: drawFailures(fixture, draws, JUDGE_MIN),
+      });
+      continue;
+    }
     const found = await research(fixture);
     // Rule #1, and not a check on the reply: what the fixture marks must be gone from
     // everything handed on, BEFORE any of it goes to the search or the compose.

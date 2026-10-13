@@ -1,50 +1,35 @@
 import Anthropic from '@anthropic-ai/sdk';
-import {
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
-  namesAMentalCrisis,
-  namesAnEmergency,
-} from '~/lib/channel/off-domain/copy';
+import { namesAMentalCrisis, namesAnEmergency } from '~/lib/channel/off-domain/copy';
 
 /**
- * The outage smoke alarm — the one deliberate exception to the always-LLM doctrine
- * (founder-approved 2026-08-12).
+ * The outage smoke alarm.
  *
- * Hale composes everything it says. A compose that fails recomposes or defers; there
- * are no preset bodies waiting to stand in, because a preset body is a sentence nobody
- * reviewed against the situation it lands in. This is the single exception: when the
- * model API is UNREACHABLE and a parent's text carries an unambiguous emergency token,
- * {@link EMERGENCY_REPLY} (`Call 911 now.`) goes out rather than that text waiting on an
- * outage. Mental crisis during the same outage is {@link MENTAL_CRISIS_REPLY}.
+ * Hale composes everything it says, including a crisis or emergency reply
+ * (moment-reply.ts). There is no preset body to stand in when the model is
+ * unreachable. This module still notices that the text is an emergency or a crisis
+ * during that outage, and names the miss (`unwritten`) so the turn defers instead of
+ * sending a canned line or falling through to the honesty template. When the model is
+ * back, the screened lane writes the reply.
  *
- * IT IS NOT A FALLBACK FOR THE LLM. It fires only when there is no LLM. A turn that
+ * IT IS NOT A FALLBACK FOR THE LLM. It runs only when there is no LLM. A turn that
  * broke on a tool, ran out of steps, hit a bug, or was refused by a gate keeps the
- * honesty line it has always had, however alarming the words in it are — which is why
- * {@link modelIsUnreachable} is a POSITIVE list rather than "anything unrecognised".
- *
- * WHY IT HAS TO EXIST, which the doctrine alone does not show. The deterministic
- * safety lane already answers an emergency token with {@link EMERGENCY_REPLY}
- * (off-domain/lane.ts) — but its screen FAILS OPEN by design (screen.ts
- * openTheGate), so during a provider outage the screen cannot classify, and
- * "she's not breathing" falls through to a coach that is also down. The outage
- * disables the one path built for that message, and what the parent receives
- * instead is "Something went wrong on my end". Every minute the model is up,
- * this module is unreachable and the screened lane does the work.
+ * honesty line it has always had — which is why {@link modelIsUnreachable} is a
+ * POSITIVE list rather than "anything unrecognised".
  *
  * PRIVACY. Nothing here logs, stores or transmits the parent's words. It reads the body
- * to answer one boolean and passes on a constant (rule #1).
+ * to answer one boolean (rule #1).
  */
 
-/** Why the alarm did or did not ring. Four outcomes, none of them silence (rule #11). */
+/** Why the alarm did or did not ring. None of them is silence (rule #11). */
 export type SmokeAlarmOutcome =
-  /** The line went out with no model in the loop. */
-  | 'fired'
+  /** Kept for a claim recorded before preset bodies were removed. Nothing is sent. */
+  | 'already_fired'
+  /** The model is down and the text is an emergency or a crisis. Nothing preset goes out. */
+  | 'unwritten'
   /** The turn broke, but the provider was reachable — an ordinary failed turn. */
   | 'not_an_outage'
   /** An outage, and nothing in the text is an unambiguous emergency. */
-  | 'no_emergency_token'
-  /** This same inbound already rang it: a queue re-drive, not a second emergency. */
-  | 'already_fired';
+  | 'no_emergency_token';
 
 /**
  * The alarm's memory — one row per text that rang it.
@@ -160,16 +145,16 @@ export async function considerSmokeAlarm(input: SmokeAlarmInput): Promise<SmokeA
   if (!namesAnEmergency(input.body) && !namesAMentalCrisis(input.body)) {
     return 'no_emergency_token';
   }
-  const { familyId, parentUserId, channelMessageId } = input;
+  const { familyId, channelMessageId } = input;
   if (await input.claim.alreadyFired({ familyId, channelMessageId })) {
     return 'already_fired';
   }
 
-  // SEND, THEN CLAIM — the router's own ordering rule (route.ts sendReply), for the same
-  // reason turned up one notch. A claim written first would turn a send that failed into
-  // a text the parent never gets at all: the re-drive would read the claim and stay
-  // quiet about an emergency nobody answered.
-  await input.say(namesAnEmergency(input.body) ? EMERGENCY_REPLY : MENTAL_CRISIS_REPLY);
-  await input.claim.recordFired({ familyId, parentUserId, channelMessageId });
-  return 'fired';
+  // The model writes this reply, and the model is unreachable. Nothing preset goes out,
+  // and the claim is not recorded, so a later attempt can still write it.
+  console.error(
+    { outcome: 'unwritten' },
+    'smoke alarm: emergency during an outage; moment reply unwritten',
+  );
+  return 'unwritten';
 }
