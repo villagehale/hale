@@ -1786,12 +1786,11 @@ export function targetNoun(targetTable: string | null): string {
 /**
  * A stored (`target_table`, `target_id`) → a deep link to the surface where the
  * parent can actually SEE that record — never a bare UUID. Only tables with a
- * real viewable surface link (actions → the approvals queue, plans → the plan
- * page); everything else returns null so the row shows its noun without a
- * dead/fake link.
+ * real viewable surface link (plans → the plan page). The Approvals page is
+ * gone, so an action row keeps its noun and does not link at a missing route.
+ * Everything else returns null so the row shows its noun without a dead link.
  */
 const TARGET_ROUTES: Record<string, string> = {
-  actions: '/approvals',
   family_plans: '/plan',
 };
 

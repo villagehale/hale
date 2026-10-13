@@ -123,13 +123,23 @@ test('/settings renders the reveal rows — the #577 page', async ({ browser }) 
   await assertHealthy(page, errors, '04-settings');
 });
 
-test('/approvals renders the queue', async ({ browser }) => {
-  const { page, errors } = await openPage(browser, 'member');
-  const response = await page.goto('/approvals');
-  expect(response?.status()).toBe(200);
-  // Fresh seed ⇒ nothing pending ⇒ the caught-up state is the honest marker.
-  await expect(page.getByText('All caught up')).toBeVisible();
-  await assertHealthy(page, errors, '05-approvals');
+test('/approvals is gone: a plain portal 404, and the address does not move', async ({ browser }) => {
+  const paths = ['/approvals', '/approvals/8f2c'];
+  for (const viewer of ['anonymous', 'member'] as const) {
+    for (const path of paths) {
+      const { page, errors } = await openPage(browser, viewer);
+      const response = await page.goto(path);
+      expect(response?.status(), `${viewer} ${path}`).toBe(404);
+      await expect(page, `${viewer} ${path}`).toHaveURL(new RegExp(`${path}$`));
+      await expect(page, `${viewer} ${path}`).toHaveTitle('Page not found · Hale');
+      await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+      const unexpected = errors.filter(
+        (line) => !/Failed to load resource: the server responded with a status of 404/.test(line),
+      );
+      expect(unexpected, `page/console errors on ${page.url()}`).toEqual([]);
+      await page.context().close();
+    }
+  }
 });
 
 test('/trail renders the audit tally', async ({ browser }) => {

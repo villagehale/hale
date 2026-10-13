@@ -10,15 +10,7 @@
  * hand, which means a NEW authed route is protected by the layout but silently
  * missing from the Edge gate until it is added here.
  */
-export const PROTECTED_PREFIXES = [
-  '/approvals',
-  '/family',
-  '/home',
-  '/messages',
-  '/plan',
-  '/settings',
-  '/trail',
-];
+export const PROTECTED_PREFIXES = ['/family', '/home', '/messages', '/plan', '/settings', '/trail'];
 
 /** True when `pathname` is one of the gated routes, or sits underneath one. */
 export function isProtectedPath(pathname: string): boolean {

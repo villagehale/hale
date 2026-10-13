@@ -64,7 +64,7 @@ describe('toTrailView — the honest frame', () => {
   it('turns the target table into a domain noun + a deep link, never a bare id', () => {
     const view = trail({ targetTable: 'actions', targetId: 'act-9' });
     expect(view.noun).toBe('draft');
-    expect(view.link).toBe('/approvals');
+    expect(view.link).toBeNull();
     // W5: the action id IS carried, structurally — it is the anchor a channel link
     // targets and the key the timeline folds a lifecycle by, the same role the audit
     // row's own `id` has always had. What must never happen is a parent READING it,
@@ -110,7 +110,7 @@ describe('toTrailView — the honest frame', () => {
     expect(view.actor).toBe('hale');
     expect(view.summary).toBe('Hale did this for you on its own');
     expect(view.tone).toBe('done');
-    expect(view.link).toBe('/approvals');
+    expect(view.link).toBeNull();
     expect(JSON.stringify(view)).not.toContain('all checks green');
   });
 

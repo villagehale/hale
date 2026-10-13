@@ -197,8 +197,8 @@ describe('targetNoun — a stored table name becomes a domain noun, never the ra
 });
 
 describe('targetLink — a UUID becomes a deep link, never a bare id', () => {
-  it('links an action target to the approvals surface', () => {
-    expect(targetLink('actions', 'act-9')).toBe('/approvals');
+  it('does not link an action at the deleted Approvals page', () => {
+    expect(targetLink('actions', 'act-9')).toBeNull();
   });
 
   it('links a plan target to the plan surface', () => {
