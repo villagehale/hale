@@ -340,7 +340,6 @@ async function main() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const request = await tsImport(ANSWER_REQUEST_SRC, import.meta.url);
-  const places = await tsImport(PLACE_SRC, import.meta.url);
   const sanitizeSkill = await agent.loadSkill(SANITIZE_SKILL_PATH);
   const searchSkill = await agent.loadSkill(SEARCH_SKILL_PATH);
   const skill = await agent.loadSkill(SKILL_PATH);
@@ -375,8 +374,11 @@ async function main() {
    * city, the country and, for a shared city name, the province or state that production
    * sends for that row. Null with no row, or when production could not name a place.
    */
+  let places;
   async function homePlace(fixture) {
     if (fixture.family === undefined) return null;
+    // Loaded when a turn first needs a place: it brings the database package with it.
+    places ??= await tsImport(PLACE_SRC, import.meta.url);
     const read = await places.placeOf({ ...NO_ROW, ...fixture.family });
     if (read.status !== 'known') return null;
     return {
