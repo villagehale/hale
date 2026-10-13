@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The question left out the location, and the answer correctly asks which city without stating any price from memory. It is in English and brief. The closing 'tell me and I'll look up what it's running' leans a little toward an assistant offering a service, and the explanation is slightly more than a friend would text, but it is still casual enough.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

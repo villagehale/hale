@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer is in French and makes a real pick (yes) with a reason, and nothing in it is factually wrong. It reads a bit stiff and explanatory for a text, though, and the closing 'tout aussi valable : c'est une question de goût' softens the pick toward fence-sitting.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

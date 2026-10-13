@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada notes for Tuesday in Toronto: high 24, showers ending near noon, then a 60% chance, thunderstorm risk, southwest gusts to 40 km/h near noon, and a low of 12. It answers directly with no deflect. The tone reads a bit like a forecast bulletin rather than a casual text, but it is still acceptable.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

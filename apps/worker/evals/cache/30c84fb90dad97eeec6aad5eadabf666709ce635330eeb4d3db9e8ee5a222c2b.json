@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the research notes: Tuesday mostly sunny and dry with a high of 69–73°F, showers likely after midnight Tuesday night at a 60% chance with a low near 46°F, and a cooler Wednesday with lingering showers. It uses the known city, answers directly in English and reads like a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

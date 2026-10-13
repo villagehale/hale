@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure (showers ending near noon, 60% chance after, thunderstorm risk, 10–20 mm, high 24, humidex 28, SW gusts to 40 near noon) matches the Environment Canada forecast in the notes for Tuesday, Oct 13. It answers \"Toronto\" as the city for the earlier weather question, as it should. It's casual, direct and in English, with a friendly umbrella nudge. It's slightly dense with numbers but still reads like a friend texting.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No Leafs game on Sunday, Oct 11, so none last night",
+        "from": "No game on Sunday, Oct 11."
+      },
+      {
+        "states": "Most recent Leafs game was Saturday, Oct 10",
+        "from": "The most recent game was Saturday night, Oct 10, and Toronto won."
+      },
+      {
+        "states": "Leafs won 6-3",
+        "from": "the Maple Leafs' 6-3 win"
+      },
+      {
+        "states": "Opponent was the Colorado Avalanche",
+        "from": "against the Colorado Avalanche"
+      },
+      {
+        "states": "Win was on the road",
+        "from": "the Leafs (3-2-1) got their first road win of the season"
+      }
+    ],
+    "answer": "Nope, no game last night. Their last one was Saturday, Oct 10, and they won 6-3 over the Colorado Avalanche on the road."
+  },
+  "latencyMs": 5827
+}

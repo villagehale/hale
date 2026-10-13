@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail. The answer asks only for the country, in a few casual words, and states no current fact. That is correct, and it reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

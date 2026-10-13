@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick (Messi) and gives a reason. The 2022 World Cup win is settled history, not a tally that could have grown since. It states no counts or records from memory, which matters here because live search was unavailable. It acknowledges Pelé's case. The tone is casual and brief, like a friend's opinion, and it's in English to match the question.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

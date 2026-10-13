@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Assumes 'im8' means IM8, the David Beckham co-founded supplement powder (Daily Ultimate Essentials and Pro)",
+        "from": "Assumption: The question doesn't say what \"im8\" is. These notes assume it means IM8, the David Beckham co-founded supplement powder"
+      },
+      {
+        "states": "Formula is well chosen, third-party tested and NSF Certified for Sport",
+        "from": "Reviewers broadly agree the formula is well chosen, third-party tested and NSF Certified for Sport."
+      },
+      {
+        "states": "Expensive, with proprietary blends that hide doses",
+        "from": "They also agree it is expensive, uses proprietary blends that hide doses"
+      },
+      {
+        "states": "Price about $78/month for Base and about $99/month for Pro (USD)",
+        "from": "It lists a price of about $78/month for Base and about $99/month for Pro."
+      },
+      {
+        "states": "Weak independent evidence behind its benefit claims; no independent clinical evidence it beats a normal diet plus targeted supplements",
+        "from": "has weak independent evidence behind its benefit claims. ... The search found no independent clinical evidence that it beats a normal diet plus targeted supplements."
+      },
+      {
+        "states": "Dietitians are more skeptical than customers are",
+        "from": "Dietitians are more skeptical than customers are."
+      },
+      {
+        "states": "Healthy people eating a varied diet generally don't need this many supplements",
+        "from": "She says healthy people eating a varied diet generally don't need supplementation in this many things."
+      },
+      {
+        "states": "Customers like it: Trustpilot TrustScore 4.5 out of 5",
+        "from": "Trustpilot shows a TrustScore of 4.5 out of 5"
+      },
+      {
+        "states": "Can be worth it if it replaces four or five other supplements",
+        "from": "Running.reviews says it's undeniably expensive, but worth it if it replaces 4 or 5 other supplements."
+      }
+    ],
+    "answer": "Mostly overrated, I'd say. Assuming you mean IM8, the David Beckham one: the formula gets good marks for its ingredients and third-party testing, but it's pricey (about $78/month for Base, $99 for Pro), hides doses in proprietary blends, and dietitians doubt the research backs the claims. Most healthy people eating a varied diet don't need this many supplements. Customers like it a lot, though, and if it replaces four or five things you already take it can make sense. Otherwise I'd skip it."
+  },
+  "latencyMs": 7635
+}

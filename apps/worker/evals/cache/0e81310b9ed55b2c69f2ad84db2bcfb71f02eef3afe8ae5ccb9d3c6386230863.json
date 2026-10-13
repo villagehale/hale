@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is unavailable, and the answer correctly says it can't check right now without stating any score from memory. The tone is casual and friend-like. The closing nudge toward the box score or team app reads a little like a look-it-up line, but since nothing could be checked, it's a minor ding rather than a deflect in place of an answer.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "live is missing_detail, and the answer correctly asks which country in a few words. It states no broadcaster or current fact from memory, so nothing is wrong or invented. The tone is casual and reads like a friend texting back. The 'I'll tell you where to watch' close leans slightly toward an offer but still reads naturally.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

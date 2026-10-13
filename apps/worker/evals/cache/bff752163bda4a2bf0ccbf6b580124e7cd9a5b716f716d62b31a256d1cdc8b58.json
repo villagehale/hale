@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: there was no Blue Jays game on Oct 11, they finished 79-83, and they were eliminated. It answers the question in English with no deflect and nothing invented. The phrasing is a little stiff and search-report-like (\"I couldn't find…\", \"I've got no result for one\"). It also never says plainly that Priya is mistaken, which is what a friend texting back would do.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Mark Carney is the current prime minister of Canada",
+        "from": "Mark Carney is the current prime minister of Canada. He is the 24th and current prime minister"
+      },
+      {
+        "states": "He took office in March 2025, succeeding Justin Trudeau",
+        "from": "assumed office on 14 March 2025 ... He succeeded Justin Trudeau as prime minister and as Liberal leader."
+      }
+    ],
+    "answer": "Mark Carney. He took over from Justin Trudeau in March 2025 and is still in the job as of this week."
+  },
+  "latencyMs": 1911
+}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is unavailable, and the answer correctly says it can't check the score, without stating any result from memory. It is in English, doesn't deflect to an app, and doesn't overreach. The tone is casual enough, but the two sentences repeat each other and the 'Sorry I can't give you the result on this one' close is a bit apologetic and stiff for a friend's text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

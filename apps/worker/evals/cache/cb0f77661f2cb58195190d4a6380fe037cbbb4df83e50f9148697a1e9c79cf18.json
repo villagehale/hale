@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both forecasts match the authoritative sources in the notes: Environment Canada for BC (sun and cloud, 15, showers, 11) and NWS for WA (mostly sunny, 64°F, mostly cloudy, 48°F). Covering both Vancouvers is reasonable given the ambiguity, and the notes did the same. It is brief and casual, though slightly listy, with no offer or deflect.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the research notes: Toronto, a few showers ending near noon, a 60% chance of showers, a thunderstorm risk, a high of 24–25°C and southwest gusts to 40 km/h near noon. It answers directly in English without asking for the city. The tone reads more like a recited forecast than a casual text from a friend, but it is still an answer, not a service offer.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

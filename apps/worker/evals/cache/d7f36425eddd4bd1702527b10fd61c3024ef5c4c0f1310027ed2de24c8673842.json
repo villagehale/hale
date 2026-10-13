@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly says it can't check the forecast, states no weather from memory, and doesn't ask which city. It's in English and reads as a text. The apology and 'don't want to guess and get your plans wrong' are a bit stiff and over-apologetic for a friend's quick reply, but it's essentially right.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

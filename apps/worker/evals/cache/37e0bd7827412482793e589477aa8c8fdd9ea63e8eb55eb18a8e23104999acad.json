@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the notes: Messi's eight Ballon d'Ors and the 2022 World Cup, near-even fan votes with Ronaldo, Brady's seven Super Bowls, and Rice as his main rival. It handles the ambiguous 'football' by giving a real pick for each sport instead of just listing candidates. It's brief and casual, like a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

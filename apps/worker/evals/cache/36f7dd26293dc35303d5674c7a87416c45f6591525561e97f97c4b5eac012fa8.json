@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both forecasts match the research notes. Vancouver, BC follows Environment Canada: sun and cloud, high 15, showers overnight, low 11. Vancouver, WA follows the NWS: mostly sunny, high near 64°F, low around 48°F, and dry, which the sources agree on. The 64°F to 18°C conversion is right. Giving both cities and then asking which one is a natural, friendly way to handle the ambiguity. It reads like a brief, casual text that actually answers the question.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

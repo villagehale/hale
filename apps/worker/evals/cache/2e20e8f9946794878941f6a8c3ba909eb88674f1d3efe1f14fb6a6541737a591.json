@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the notes: Environment Canada's 11 AM forecast gives mainly cloudy with a high of 23°C, then a few showers tonight with a low of 16°C, and the sources agree the afternoon rain chance is low. It answers up front ('Mostly dry') and stays off the family's school. It reads a bit like a weather report with a source citation, not a casual text, and it doesn't speak to the 3pm pickup directly (e.g. 'should be dry at pickup').",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

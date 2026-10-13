@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Takes a real side (pro-pineapple), lightly and playfully, which is what the watchFor asks for. It is casual, in English, and has no assistant tone. The claim that panned pizzas fail on ham and cheese is an opinion, not an invented fact. It reads like a friend texting, maybe slightly wordy but fine.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}
