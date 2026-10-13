@@ -340,11 +340,16 @@ export function isSpendCapStop(err) {
   return err instanceof Error && err.message.startsWith('spend-cap:');
 }
 
+const CAPPED = Symbol.for('hale.spendCap');
+
 export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
-  if (!capEnabled()) return client;
+  const raw = client?.[CAPPED]?.raw ?? client;
+  if (!capEnabled()) return raw;
+  // A suite that wraps the harness client again keeps one check and the outer tag.
+  if (client?.[CAPPED]) return capSdkClient(raw, { rates, tag });
   if (!rates) throw new Error('spend-cap: rates are required when the cap is on');
   const messages = client.messages;
-  return {
+  const wrapped = {
     messages: {
       countTokens: (req) => messages.countTokens(req),
       create: (request) =>
@@ -367,4 +372,6 @@ export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
       }),
     },
   };
+  wrapped[CAPPED] = { raw: client };
+  return wrapped;
 }

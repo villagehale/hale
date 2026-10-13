@@ -28,6 +28,7 @@ import {
   cacheGet,
   cacheKey,
   cachePut,
+  installEvalSpendCap,
   lazyAnthropic,
   liveStructuredCall,
   makeCost,
@@ -184,7 +185,8 @@ async function main() {
   );
   console.log(`skill=${skill.meta.name} task=${skill.meta.task} max_tokens=${MAX_TOKENS}\n`);
 
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('activity-verdict');
   const cost = makeCost();
   let failed = 0;
   let live = 0;
@@ -220,7 +222,9 @@ async function main() {
 
   if (!noSkill) {
     const ok = failed === 0;
-    console.log(`real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
+    console.log(
+      `real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    );
     process.exit(ok ? 0 : 1);
   }
 

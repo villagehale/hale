@@ -51,6 +51,7 @@ import { FOLLOWUP_VOICE_FIXTURES } from './followup-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -80,7 +81,11 @@ async function skillSampleLines() {
 }
 
 function normalizeForCompare(text) {
-  return text.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** The first three words, as the cheap stand-in for "how this message opens". */
@@ -213,7 +218,8 @@ const BROKEN_ASK =
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('followup-voice');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

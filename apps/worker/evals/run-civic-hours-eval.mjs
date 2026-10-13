@@ -31,6 +31,7 @@ import { tsImport } from 'tsx/esm/api';
 import {
   REPO_ROOT,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   totalUsd,
@@ -165,7 +166,8 @@ function brokenAnswer(fixture) {
         : { start: existing.start, end: fixedEnd },
     );
   }
-  if (byDay.size === 0) return { slots: [{ day: 'monday', start: '09:00', end: '12:00', confidence: 0.9 }] };
+  if (byDay.size === 0)
+    return { slots: [{ day: 'monday', start: '09:00', end: '12:00', confidence: 0.9 }] };
   return {
     slots: [...byDay].map(([day, r]) => ({ day, start: r.start, end: r.end, confidence: 0.9 })),
   };
@@ -181,7 +183,8 @@ async function main() {
   const subjectLane = agent.pickLane(skill.meta.task);
   const model = subjectLane.model;
 
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('civic-hours');
   const cost = makeCost();
 
   console.log(
@@ -232,12 +235,16 @@ async function main() {
   if (!broken) {
     const ok = failed === 0;
     console.log(`${FIXTURES.length - failed}/${FIXTURES.length} fixtures exact`);
-    console.log(`real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
+    console.log(
+      `real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    );
     process.exit(ok ? 0 : 1);
   }
 
   const calibrated = failed > 0;
-  console.log(`broken-mode calibration (must fail at least one): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
+  console.log(
+    `broken-mode calibration (must fail at least one): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+  );
   process.exit(calibrated ? 0 : 1);
 }
 

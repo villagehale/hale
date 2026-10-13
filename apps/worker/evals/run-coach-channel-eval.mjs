@@ -109,6 +109,8 @@ import { fileURLToPath } from 'node:url';
 import { TEENAGER_START_MONTHS, ageInMonths, deriveStage } from '@hale/types';
 import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
+import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
+import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import {
   COACH_CHANNEL_FIXTURES,
   FIXTURE_CHILDREN,
@@ -123,9 +125,7 @@ import {
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
-import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
 import { modelProse, nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
-import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
   JUDGE_MIN,
@@ -137,6 +137,7 @@ import {
   evalRunTag,
   evalSubjectClient,
   evalSubjectRequest,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -554,9 +555,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     return `${fitted} ${tail}`;
   }
   const suffix = redactTeenNames(
-    [protectedTail, link]
-      .filter((part) => part.trim() !== '')
-      .join(' '),
+    [protectedTail, link].filter((part) => part.trim() !== '').join(' '),
     children,
     NOW,
   );
@@ -1453,7 +1452,9 @@ function dateSourcesFor(fixture, calls) {
   }
   for (const event of FIXTURE_EVENTS) {
     if (isPrivate(event)) continue;
-    sources.push(dateSource(`${event.title} ${event.location ?? ''}`, calendarDate(event.startsAt)));
+    sources.push(
+      dateSource(`${event.title} ${event.location ?? ''}`, calendarDate(event.startsAt)),
+    );
   }
   // A drafted move or add owns the date the tool resolved and handed back: the skill tells
   // the agent to say THAT day, so naming it is recall, not a date borrowed from a find.
@@ -1864,7 +1865,7 @@ const JUDGE_SYSTEM = [
   'not "storytime", "a lantern thing", or a rewrite built from the venue. A',
   'paraphrase of the name is a miss; score it a 2 at most.',
   "A DATE BELONGS TO ONE FIND. The day on an activity is that activity's own",
-  '`when`, and no other row\'s. Putting Aug 8 on a find whose when is Aug 9 is',
+  "`when`, and no other row's. Putting Aug 8 on a find whose when is Aug 9 is",
   'an invention even when Aug 8 is sitting on a different find in the same turn.',
   'Score that a 1.',
   "REGISTRATION WINDOWS ARE HALE'S OWN VERIFIED FACTS. `knows.registrationWindows` is a",
@@ -2024,8 +2025,9 @@ async function main() {
     notFoundPage: spotPage('markham-course-not-found'),
   };
   const compact = contextInternal.compactTranscript;
-  const getJudgeClient = lazyAnthropic();
-  const getCurrentClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getJudgeClient = lazyAnthropic('coach-channel-judge');
+  const getCurrentClient = lazyAnthropic('coach-channel');
   const getSubjectClient = () => evalSubjectClient(getCurrentClient);
   const cost = makeCost();
   const subjectLatencies = [];
@@ -2273,7 +2275,12 @@ async function main() {
       calls.some((call) => call.tool === 'find_activities') ? pick : null,
     ]);
     const invented =
-      reply === null ? [] : [...fabrications(reply, hay), ...borrowedFindDates(reply, dateSourcesFor(fixture, calls))];
+      reply === null
+        ? []
+        : [
+            ...fabrications(reply, hay),
+            ...borrowedFindDates(reply, dateSourcesFor(fixture, calls)),
+          ];
     const verdict =
       broken || reply === null
         ? null
@@ -2332,7 +2339,11 @@ async function main() {
               // drops undefined, so every judge verdict already committed stays valid.
               nearbyCountAppended:
                 fixture.nearby &&
-                nearbyCountWasAppended(reply, fixture.nearby.clause, activityLinksFor(fixture, calls))
+                nearbyCountWasAppended(
+                  reply,
+                  fixture.nearby.clause,
+                  activityLinksFor(fixture, calls),
+                )
                   ? `${fixture.nearby.clause} - composed by Hale from what other households answered and appended by the runtime; the model neither wrote this sentence nor saw it`
                   : undefined,
               // What THIS text's Village read returned, split the way the

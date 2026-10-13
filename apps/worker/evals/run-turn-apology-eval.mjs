@@ -40,10 +40,10 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { APOLOGY_FIXTURES, MIN_DISTINCT } from './turn-apology-fixtures.mjs';
 import {
-  cachedToolCall,
   JUDGE_MIN,
+  cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -56,6 +56,7 @@ import {
   variationGate,
   variationLines,
 } from './lib/variation.mjs';
+import { APOLOGY_FIXTURES, MIN_DISTINCT } from './turn-apology-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -155,7 +156,7 @@ const PROMISED_RETRY =
 // as naming a cause. So it is told not to.
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring the MEANING of ONE text message Hale sends a parent',
-  'whose request just broke on Hale\'s own side. Hale composed it BLIND: it was shown',
+  "whose request just broke on Hale's own side. Hale composed it BLIND: it was shown",
   'nothing about the parent, the family, or what they asked - only that a turn failed and',
   'nothing was changed.',
   'IMPORTANT: sentence count, character length, punctuation, links, digits, app pointers',
@@ -163,7 +164,7 @@ const JUDGE_SYSTEM = [
   'them and do not comment on them. Judge only whether the message MEANS the right thing',
   'and sounds like Hale.',
   'You are given the message and watchFor - fixture-specific notes. Score 1-5.',
-  'A 5 does BOTH of two things: it owns the failure as Hale\'s own, and it tells the',
+  "A 5 does BOTH of two things: it owns the failure as Hale's own, and it tells the",
   'parent nothing was changed. It reads like a competent friend who dropped something -',
   'first person, short words, no fuss. NOTE: "on my end", "I couldn\'t get that done" and',
   '"that one broke" are the INTENDED way to own it, not vague and not a cause; score them',
@@ -189,7 +190,8 @@ const BROKEN_APOLOGY =
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('turn-apology');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
@@ -288,7 +290,15 @@ async function main() {
 
   const unsendable = results.filter((r) =>
     r.failures.some((f) =>
-      ['empty', 'over_char_cap', 'not_gsm7', 'carries_link', 'not_one_sentence', 'carries_question', 'invented_number'].includes(f),
+      [
+        'empty',
+        'over_char_cap',
+        'not_gsm7',
+        'carries_link',
+        'not_one_sentence',
+        'carries_question',
+        'invented_number',
+      ].includes(f),
     ),
   );
   const promises = results.filter((r) => r.failures.includes('promised_a_time'));
@@ -300,17 +310,22 @@ async function main() {
   const tooSame = distinct < MIN_DISTINCT;
 
   console.log('\n--- corpus metrics ---');
-  console.log(`UNSENDABLE bodies:       ${unsendable.length}  (0 required - three of these and the parent hears nothing)`);
+  console.log(
+    `UNSENDABLE bodies:       ${unsendable.length}  (0 required - three of these and the parent hears nothing)`,
+  );
   console.log(`promised a fix time:     ${promises.length}  (0 required)`);
-  console.log(`claimed it would retry:  ${retries.length}  (0 required - the turn is over, nothing is queued)`);
+  console.log(
+    `claimed it would retry:  ${retries.length}  (0 required - the turn is over, nothing is queued)`,
+  );
   console.log(`pointed at the app:      ${pointers.length}  (0 required)`);
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
   console.log(
     `distinct sentences:      ${distinct}/${variance.length}  (${MIN_DISTINCT}+ required, punctuation normalized away - a constant with an API bill is the failure)`,
   );
-  const duplicatePairs = Object.values(variation.failuresById)
-    .flat()
-    .filter((f) => f.startsWith('near_duplicate')).length / 2;
+  const duplicatePairs =
+    Object.values(variation.failuresById)
+      .flat()
+      .filter((f) => f.startsWith('near_duplicate')).length / 2;
   for (const line of variationLines(variation, { pairGated: false })) console.log(line);
   console.log(
     `near-duplicate pairs:    ${duplicatePairs}  (REPORTED, NOT GATED - blind stage, see the note in main())`,

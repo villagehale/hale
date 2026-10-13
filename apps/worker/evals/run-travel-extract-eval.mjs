@@ -37,6 +37,7 @@ import {
   cacheGet,
   cacheKey,
   cachePut,
+  installEvalSpendCap,
   lazyAnthropic,
   liveStructuredCall,
   makeCost,
@@ -294,7 +295,8 @@ async function main() {
     `skill=${skill.meta.name} task=${skill.meta.task} max_tokens=${maxTokens} | corpus: ${fixtures.length} bookings\n`,
   );
 
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('travel-extract');
   const cost = makeCost();
   let failed = 0;
   let live = 0;

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { installEvalSpendCap, spendCappedFetch } from './lib/harness.mjs';
+
 const ENDPOINT = 'https://ai-gateway.vercel.sh/v1/chat/completions';
 const MODELS = [
   'google/gemini-3.5-flash-lite',
@@ -34,19 +36,25 @@ function numberOrNull(value) {
 }
 
 async function probe(model, auth) {
+  const request = {
+    model,
+    messages: [{ role: 'user', content: 'Reply with exactly READY and nothing else.' }],
+    max_tokens: 32,
+  };
   const startedAt = performance.now();
-  const response = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${auth.value}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: 'Reply with exactly READY and nothing else.' }],
-      max_tokens: 32,
-    }),
-    signal: AbortSignal.timeout(30_000),
+  const response = await spendCappedFetch({
+    tag: 'gateway-smoke',
+    request,
+    send: () =>
+      fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${auth.value}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(30_000),
+      }),
   });
   const latencyMs = Math.round(performance.now() - startedAt);
   const body = await response.json().catch(() => ({}));
@@ -68,6 +76,7 @@ async function probe(model, auth) {
 }
 
 async function main() {
+  installEvalSpendCap();
   const selected = argument('model');
   const cachedOnly = process.argv.includes('--cached-only');
   if (process.argv.includes('--list')) {

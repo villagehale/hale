@@ -36,11 +36,12 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
 import {
   PRICE as LIST_PRICE,
+  installEvalSpendCap,
   judgeLaneFor,
+  lazyAnthropic,
   liveStructuredCall,
 } from './lib/harness.mjs';
 
@@ -106,13 +107,7 @@ async function cachePut(key, value) {
 
 // A real Anthropic client created lazily, only when a cache miss forces a live
 // call. In --cached-only mode it is never constructed and no key is read.
-function lazyAnthropic() {
-  let client;
-  return () => {
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    return client;
-  };
-}
+// The client is the harness one, so the spend cap wraps it.
 
 function noteUsage(cost, tier, usage) {
   cost.liveCalls += 1;
@@ -399,6 +394,7 @@ function record(results, fixture, failures, score) {
 // --- main -------------------------------------------------------------------
 
 async function main() {
+  installEvalSpendCap();
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const suiteArg = process.argv.find((a) => a.startsWith('--suite='));
@@ -410,7 +406,7 @@ async function main() {
   // discover.ts reads its model from the converse lane (lib/coach/model.ts).
   const discoveryLane = agent.pickLane('converse');
   const discoveryModel = discoveryLane.model;
-  const getClient = lazyAnthropic();
+  const getClient = lazyAnthropic('agent');
   const cost = {
     liveCalls: 0,
     sonnetIn: 0,

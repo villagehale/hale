@@ -68,6 +68,7 @@ import {
 import {
   JUDGE_MIN,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -399,7 +400,8 @@ const BROKEN_ASK =
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('intro-voice');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

@@ -53,6 +53,7 @@ import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
 import {
   miscreditedDateFailures,
@@ -71,6 +72,7 @@ import {
   makeCost,
   makeJudge,
   noteUsage,
+  priceRates,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
@@ -876,13 +878,21 @@ async function cachedResearch(opts) {
 }
 
 async function main() {
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.info(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
   const candidateModel = process.argv
     .find((arg) => arg.startsWith('--anthropic-model='))
     ?.slice('--anthropic-model='.length);
-  const getClient = lazyAnthropic();
+  const rawClient = lazyAnthropic();
+  const getClient = () => capSdkClient(rawClient(), { rates: priceRates, tag: 'activity-deep' });
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

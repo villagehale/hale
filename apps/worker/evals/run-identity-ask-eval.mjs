@@ -46,6 +46,7 @@ import { IDENTITY_ASK_FIXTURES } from './identity-ask-fixtures.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -235,7 +236,8 @@ const BROKEN_ASK =
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('identity-ask');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

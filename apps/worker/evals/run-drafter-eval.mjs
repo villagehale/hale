@@ -28,7 +28,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
-import { PRICE as LIST_PRICE, judgeLaneFor, liveStructuredCall } from './lib/harness.mjs';
+import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
+import {
+  PRICE as LIST_PRICE,
+  installEvalSpendCap,
+  judgeLaneFor,
+  liveStructuredCall,
+  priceRates,
+} from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -151,7 +158,10 @@ function makeRealDrafter(lane, prompt, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'drafter',
+    });
     // The production budget (apps/worker/src/agents/drafter.ts), through the same seam.
     const response = await liveStructuredCall({
       client,
@@ -233,7 +243,10 @@ function makeJudge(model, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'drafter-judge',
+    });
     const response = await liveStructuredCall({
       client,
       lane: await judgeLaneFor(model),
@@ -360,6 +373,7 @@ function checkFixture(fixture, result, judgeScore) {
 // --- main -------------------------------------------------------------------
 
 async function main() {
+  installEvalSpendCap();
   const arg = process.argv.find((a) => a.startsWith('--drafter='));
   const mode = arg ? arg.split('=')[1] : 'real';
   const cachedOnly = process.argv.includes('--cached-only');

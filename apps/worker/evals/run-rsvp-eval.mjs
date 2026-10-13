@@ -37,7 +37,14 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { cachedToolCall, evalRunTag, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
+import {
+  cachedToolCall,
+  evalRunTag,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  totalUsd,
+} from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { FAMILY_TIMEZONE, PARTY_FIXTURES, RECEIVED_AT } from './rsvp-fixtures.mjs';
 
@@ -210,7 +217,8 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('rsvp');
   const cost = makeCost();
 
   const skill = await agent.loadSkill(SKILL_PATH);
