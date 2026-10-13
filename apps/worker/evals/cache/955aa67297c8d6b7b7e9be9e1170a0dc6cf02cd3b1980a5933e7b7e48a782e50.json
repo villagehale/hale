@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails autonomously and to ask first. `autonomySwitchOff.turnedOffThisTurn` confirms that `turn_off_autonomy` was already executed this turn — the switch is off. The reply correctly acknowledges the instruction and confirms the new behaviour. It is short, accurate, no greeting or sign-off, no markdown, no extra machinery explained. Exactly what the situation requires.",
+    "score": 5
+  }
+}

@@ -18,6 +18,7 @@ import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-fla
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
   type GmailDraftNoticeBox,
@@ -264,6 +265,8 @@ export interface ChannelCoachToolArgs {
    */
   gmailDrafts?: GmailDraftToolPorts;
   onGmailNotice?: (box: GmailDraftNoticeBox) => void;
+  /** The switch-off verb's ports. Absent in a test that is not exercising it. */
+  autonomySwitchOff?: AutonomySwitchOffPorts;
   /** The texting parent. The allowlist arms this user while the global flag is unset. */
   parentUserId?: string | null;
   now: Date;
@@ -769,6 +772,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   if (args.gmailDrafts && args.onGmailNotice && googleWriteScopesEnabledFor(args.parentUserId)) {
     tools.push(prepareGmailDraftTool(args.gmailDrafts, args.onGmailNotice));
   }
+  // Offered to the model only where the skill lists it (augmentCoachSkillForAutonomySwitchOff).
+  if (args.autonomySwitchOff) tools.push(turnOffAutonomyTool(args.autonomySwitchOff));
   return tools;
 }
 

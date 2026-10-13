@@ -450,6 +450,13 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // so that budget cannot be spent by a nudge or a calendar alert, and a PIPEDA
   // right-to-access read can tell a duty question from either of those.
   'duty_ask',
+  // VIL-131 · the text when a kind turns on or turns back on, and the text when Hale
+  // then does that kind without asking (migration 0166). Their own categories so
+  // neither spends the weekly nudge budget. Hale making contact first, so the
+  // loop-health digest's exclusion list is correct to leave them out. Unmetered:
+  // the bound is the grant, and the execution, held by the dedupe key.
+  'autonomy_armed',
+  'autonomy_acted',
 ]);
 
 /**

@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { PLAN_DISPLAY, PLAN_TIERS_ORDERED } from '@hale/types';
 import postcss from 'postcss';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -206,11 +205,41 @@ describe('/about — the locked page', () => {
 describe('/pricing — the tier cards have anatomy', () => {
   const html = pages['/pricing'];
 
+  const TIERS: readonly { name: string; features: readonly string[] }[] = [
+    {
+      name: 'Free',
+      features: [
+        'Unlimited chat',
+        'Live find',
+        'A text when a spot opens',
+        'Group chats and your co-parent',
+        'A nudge when a weekend’s empty',
+      ],
+    },
+    {
+      name: 'Plus',
+      features: [
+        'Everything in Free',
+        'Year memory, season to season',
+        'Sign-ups done for you, when you say yes',
+      ],
+    },
+    {
+      name: 'Max',
+      features: [
+        'Everything in Plus',
+        'The highest limits on searches and spot watches',
+        'Priority support',
+        'Sign-ups for a whole season in one go',
+      ],
+    },
+  ];
+
   it('names the three tiers in ladder order', () => {
     let cursor = 0;
-    for (const tier of PLAN_TIERS_ORDERED) {
-      const at = html.indexOf(PLAN_DISPLAY[tier].name, cursor);
-      expect(at, PLAN_DISPLAY[tier].name).toBeGreaterThan(cursor);
+    for (const tier of TIERS) {
+      const at = html.indexOf(tier.name, cursor);
+      expect(at, tier.name).toBeGreaterThan(cursor);
       cursor = at;
     }
     expect(html).toContain('$0');
@@ -220,8 +249,9 @@ describe('/pricing — the tier cards have anatomy', () => {
   });
 
   it('lists every shipped feature, and marks Plus and Max coming soon', () => {
-    for (const tier of PLAN_TIERS_ORDERED) {
-      for (const feature of PLAN_DISPLAY[tier].features) {
+    expect(TIERS.flatMap((tier) => tier.features)).toHaveLength(12);
+    for (const tier of TIERS) {
+      for (const feature of tier.features) {
         expect(rawText(html)).toContain(feature);
       }
     }

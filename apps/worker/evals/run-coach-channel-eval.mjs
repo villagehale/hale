@@ -170,6 +170,18 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel
 const SPOTS_URL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'url.ts');
 const SPOTS_READ_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'availability.ts');
 const SPOTS_FIXTURES = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'fixtures');
+/** The REAL switch-off verb and the REAL skill listing for it. Imported, never replicated:
+ * neither reaches for a `~/` alias. Only `autonomy` fixtures list it, as the runtime only
+ * lists it for a family with an autonomy grant, so every other fixture's bytes stay put. */
+const AUTONOMY_SWITCH_OFF_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'coach',
+  'autonomy-switch-off-tool.ts',
+);
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
@@ -1051,6 +1063,17 @@ function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding) {
   };
 }
 
+/** The real switch-off verb over a ledger that records each kind instead of writing it. */
+function recordingSwitchOffTool(turnOffAutonomyTool, calls, parentWords) {
+  return turnOffAutonomyTool({
+    parentWords,
+    revoke: async ({ kind }) => {
+      calls.push({ tool: 'turn_off_autonomy', kind });
+      return { outcome: 'revoked', consentRecordId: 'fixture-consent' };
+    },
+  });
+}
+
 // ── the context the runtime assembles (apps/web/lib/channel/coach/runtime.ts) ──
 // Teen children arrive REDACTED to stage, exactly as loadAgentContext emits them — so
 // the model is never handed the name the reply is checked for.
@@ -1453,6 +1476,15 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   // the model composed.
   for (const tool of expect.mustNotCall ?? []) {
     if (toolNames.has(tool)) failures.push(`called ${tool} with nothing to call it on`);
+  }
+  if (expect.turnOffWithin) {
+    const stray = calls
+      .filter((call) => call.tool === 'turn_off_autonomy')
+      .map((call) => call.kind)
+      .filter((kind) => !expect.turnOffWithin.includes(kind));
+    if (stray.length > 0) {
+      failures.push(`turned off ${stray.join(', ')}, which the text never asked about`);
+    }
   }
 
   if (expect.mustNotDraft && drafts.length > 0) {
@@ -1960,6 +1992,10 @@ async function main() {
     import.meta.url,
   ));
   const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
+  const { turnOffAutonomyTool, augmentCoachSkillForAutonomySwitchOff } = await tsImport(
+    AUTONOMY_SWITCH_OFF_SRC,
+    import.meta.url,
+  );
   const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
   const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
   const { readSpot } = await tsImport(SPOTS_READ_SRC, import.meta.url);
@@ -2088,6 +2124,9 @@ async function main() {
           toolOutputs,
         ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
+        ...(fixture.autonomy
+          ? [recordingSwitchOffTool(turnOffAutonomyTool, calls, fixture.text)]
+          : []),
       ];
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}${nonce}`,
@@ -2099,7 +2138,7 @@ async function main() {
         subjectLatencies,
       );
       const run = await agent.runAgent({
-        skill,
+        skill: augmentCoachSkillForAutonomySwitchOff(skill, fixture.autonomy === true),
         context: turnContext,
         tools,
         client,
@@ -2323,6 +2362,16 @@ async function main() {
                 'watch ONE FULL CLASS for a spot, with `watch_for_opening`, and only on a course-page link the parent pasted in their own message — Hale re-reads that page itself and texts them within about ten minutes of a spot showing. With no link there is nothing to watch, and asking for the link is the right answer rather than a stall',
               ],
               draftCapPerMessage: MAX_DRAFTS_PER_TURN,
+              // `undefined` off the switch-off fixtures, so every committed verdict's key
+              // stays put (JSON.stringify drops it).
+              autonomySwitchOff: fixture.autonomy
+                ? {
+                    fact: 'This family let Hale send and reply to email on its own. `turn_off_autonomy` stops that kind: after it, Hale asks before each one.',
+                    turnedOffThisTurn: calls
+                      .filter((call) => call.tool === 'turn_off_autonomy')
+                      .map((call) => call.kind),
+                  }
+                : undefined,
             },
             week: { summary: FIXTURE_WEEK_SUMMARY, events: redactedWeek() },
             // The thread the model was handed, on the same terms as everything else in
@@ -2413,9 +2462,13 @@ async function main() {
   const menus = results.filter((r) => r.failures.some((f) => f.startsWith('THE MENU')));
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
   const meanScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-  const belowFloor = results.filter(
+  const underFloor = results.filter(
     (r) => typeof r.score === 'number' && r.score < MIN_PER_FIXTURE_VOICE,
   );
+  // A fixture may name a gap the floor would otherwise gate on — printed below with its
+  // reason on every run, never dropped. Only for a gap outside what the fixture controls.
+  const floorWaived = underFloor.filter((r) => r.fixture.expect.voiceFloorWaived);
+  const belowFloor = underFloor.filter((r) => !r.fixture.expect.voiceFloorWaived);
   const voiceOk =
     !broken && !severed && scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0;
   const segments = answered.map((r) => smsSegments(r.reply));
@@ -2460,6 +2513,11 @@ async function main() {
       `BELOW THE FLOOR:              ${belowFloor
         .map((r) => `${r.fixture.id} (${r.score}${r.draws ? ` of ${r.draws.join('/')}` : ''})`)
         .join(', ')}`,
+    );
+  }
+  for (const r of floorWaived) {
+    console.log(
+      `FLOOR WAIVED (named gap):     ${r.fixture.id} (${r.score}${r.draws ? ` of ${r.draws.join('/')}` : ''}) — ${r.fixture.expect.voiceFloorWaived}`,
     );
   }
   if (segments.length) {

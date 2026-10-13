@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The occasion is `acted`, so the text must grade on what was just done and the one-message stop fact. The text says \"Just sent that pickup email to school@example.com for you!\" which confirms the action was completed (matching actionType `send_email` and detail showing the email address and pickup topic). It conveys the one-message stop clearly: \"One text from you and I'll stop doing this on my own.\" The tone is casual and friendly (\"Just sent,\" \"for you\"), matching the voice of a parent texting a friend. It does not invent a recipient, time, price, place, or link beyond what detail provides. It does not ask for anything. The text matches the locale of `recentInbound` (\"email them for me\") and reads natural. All required facts for `acted` are present."
+  }
+}

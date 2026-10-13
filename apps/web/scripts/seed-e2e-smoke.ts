@@ -4,7 +4,8 @@
 // session cookie resolves it:
 //
 //   smoke-admin — primary parent + toddler. The id is historical; the account
-//                 is an ordinary signed-in parent, not a privileged role.
+//                 is an ordinary signed-in parent, not a privileged role. Its
+//                 History carries what Hale did on its own (fixtures/smoke-autonomy-trail).
 //
 // Idempotent: re-running deletes the fixture family (cascade) and re-seeds.
 //
@@ -13,6 +14,7 @@
 
 import { createDb, schema } from '@hale/db';
 import { inArray } from 'drizzle-orm';
+import { seedSmokeAutonomyTrail } from './fixtures/smoke-autonomy-trail';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -87,6 +89,7 @@ await db.insert(schema.children).values({
   name: 'Juniper',
   dateOfBirth: dobMonthsAgo(26),
 });
+await seedSmokeAutonomyTrail(db, { familyId: adminFamily.id, parentUserId: adminUser.id });
 
 console.log('seed-e2e-smoke: seeded smoke-admin (Juniper).');
 process.exit(0);

@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { COVERED_BY_COMBINED_NOTICE } from '~/lib/channel/ledger';
 
 /**
  * The `delivery` incident kind — the pageable half of the delivery-truth invariant.
@@ -86,8 +87,8 @@ export async function loadDeliveryStats(database: Database, since: Date): Promis
 
   const [totals] = await database
     .select({
-      attempted: sql<number>`count(*) filter (where ${m.status} in ('queued','sent','delivered','failed'))::int`,
-      failed: sql<number>`count(*) filter (where ${m.status} = 'failed')::int`,
+      attempted: sql<number>`count(*) filter (where ${m.status} in ('queued','sent','delivered','failed') and coalesce(${m.errorCode}, '') <> ${COVERED_BY_COMBINED_NOTICE})::int`,
+      failed: sql<number>`count(*) filter (where ${m.status} = 'failed' and coalesce(${m.errorCode}, '') <> ${COVERED_BY_COMBINED_NOTICE})::int`,
     })
     .from(m)
     .where(scope);

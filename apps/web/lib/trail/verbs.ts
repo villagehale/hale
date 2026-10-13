@@ -2,7 +2,7 @@ import type { EntryTone } from '../../components/hale/tone';
 
 /**
  * The verb registry. HARD rule (mirrors the label layer): a stored audit verb —
- * memory-writer's `actionTaken` token (`action.executed`, `event.dropped.spend_ceiling`,
+ * memory-writer's `actionTaken` token (`action.executed`, `event.dropped.low_confidence`,
  * …) — is NEVER rendered raw on the trail. Every row runs its verb through here,
  * which returns a warm human SENTENCE and a verb FAMILY. An unknown token degrades
  * to a NEUTRAL sentence + the `neutral` family — never the de-dotted token, never a
@@ -31,7 +31,7 @@ import type { EntryTone } from '../../components/hale/tone';
  *   done     — a settled, successful outcome (executed, approved, recorded)
  *   awaiting — held for a parent's decision (surfaced, gated on consent/window)
  *   note     — a quiet internal checkpoint (classified, drafted, per-stage)
- *   problem  — a failure or a hard block (execution failed, spend ceiling, rejected)
+ *   problem  — a failure or a hard block (execution failed, rejected)
  *   neutral  — an unknown verb; the safe, non-committal fallback
  */
 export type VerbFamily = 'done' | 'awaiting' | 'note' | 'problem' | 'neutral';
@@ -50,7 +50,7 @@ interface Verb {
  *     `event.dropped.${reason}`, `action.reviewer.${column}`, `action.gated.${reason}`,
  *     `event.stage.${stage}`, village discovery/routine;
  *   - web pipeline record.ts: `event.classified`, `action.drafted`,
- *     `action.reviewed.${kind}`, `event.dropped.spend_ceiling`, `action.gated.${reason}`;
+ *     `action.reviewed.${kind}`, `action.gated.${reason}`;
  *   - web household/onboarding/companion/rights/village/coach/plan writes
  *     (`family_created`, `tos_accepted`, `quick_log_${type}`, …).
  * `tool:<name>` sub-steps are excluded upstream (trail-query.ts) and are not
@@ -71,15 +71,11 @@ export const AUDIT_VERBS = [
   'event.dropped.low_confidence',
   'event.dropped.unknown_action_type',
   'event.dropped.needs_human',
-  'event.dropped.spend_ceiling',
-  'spend_ceiling_exceeded_warn',
   'action.surfaced_to_user',
-  'action.entitlement_gated',
   'action.gated.observation_window',
   'action.gated.streak',
   'action.gated.cross_parent_consent',
   'action.gated.teen_redaction',
-  'action.gated.over_allowance',
   'action.send_skipped_duplicate',
   'event.stage.classified',
   'event.stage.drafted',
@@ -351,6 +347,21 @@ export const AUDIT_VERBS = [
   'action.reverted_by_human',
   // The sixth ActionGateReason; the other five were curated, this one was not.
   'action.gated.autonomy_not_opted_in',
+  // The execute lane switched off. It reuses an existing sentence: no new copy.
+  'action.gated.lane_off',
+  // Booking, registration and paying are never autonomous. Same reused sentence.
+  'action.gated.autonomy_denied_kind',
+  // Held because the turn-on text has not been delivered yet.
+  'action.gated.autonomy_notice_pending',
+  'autonomy_armed_notice_sent',
+  'autonomy_acted_notice_sent',
+  'autonomy_notice_covered',
+  'autonomy_notice_cover_released',
+  'autonomy_acted_notice_aged_out',
+  // A parent turned Hale's autonomy off for one kind of action.
+  'autonomous_action_class.revoked',
+  // A parent's own approval that completed their streak turned it on for them.
+  'autonomous_action_class.granted',
   // ── the weekly loop + calendar subscription ─────────────────────────────
   'compose_week_plan',
   'week_plan.calendar_drafted',
@@ -530,19 +541,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   'event.dropped.needs_human': { sentence: 'routed a signal to you', family: 'awaiting' },
-  'event.dropped.spend_ceiling': {
-    sentence: 'stopped at your spending cap',
-    family: 'problem',
-  },
-  spend_ceiling_exceeded_warn: {
-    sentence: 'noted the monthly cost ceiling and kept going',
-    family: 'note',
-  },
   'action.surfaced_to_user': { sentence: 'brought a draft to you', family: 'awaiting' },
-  'action.entitlement_gated': {
-    sentence: 'held an action for your plan',
-    family: 'awaiting',
-  },
   'action.gated.observation_window': {
     sentence: 'held back during your first-week observation window',
     family: 'awaiting',
@@ -557,10 +556,6 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   'action.gated.teen_redaction': {
     sentence: 'held to protect your teenager’s privacy',
-    family: 'awaiting',
-  },
-  'action.gated.over_allowance': {
-    sentence: 'held — past your plan’s allowance',
     family: 'awaiting',
   },
   'action.send_skipped_duplicate': { sentence: 'skipped a duplicate send', family: 'note' },
@@ -1299,6 +1294,40 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'held for your approval — you haven’t let Hale do this on its own',
     family: 'awaiting',
   },
+  'action.gated.lane_off': { sentence: 'brought a draft to you', family: 'awaiting' },
+  'action.gated.autonomy_denied_kind': { sentence: 'brought a draft to you', family: 'awaiting' },
+  'action.gated.autonomy_notice_pending': {
+    sentence: 'held until Hale had told you it would handle this on its own',
+    family: 'awaiting',
+  },
+  autonomy_armed_notice_sent: {
+    sentence: 'texted you that Hale will handle this on its own',
+    family: 'done',
+  },
+  autonomy_acted_notice_sent: {
+    sentence: 'texted you about something Hale did on its own',
+    family: 'done',
+  },
+  autonomy_notice_covered: {
+    sentence: 'noted a notice already covered by the text that went out',
+    family: 'note',
+  },
+  autonomy_notice_cover_released: {
+    sentence: 'cleared a covered notice so it can be tried again',
+    family: 'note',
+  },
+  autonomy_acted_notice_aged_out: {
+    sentence: 'left an on-its-own text unsent after 7 days',
+    family: 'note',
+  },
+  'autonomous_action_class.revoked': {
+    sentence: 'you stopped Hale doing this on its own',
+    family: 'done',
+  },
+  'autonomous_action_class.granted': {
+    sentence: "You've approved this 5 times, so Hale will handle it on its own from now on",
+    family: 'done',
+  },
   // ── the weekly loop + calendar subscription ─────────────────────────────
   compose_week_plan: { sentence: 'put together your week', family: 'done' },
   'week_plan.calendar_drafted': {
@@ -1716,6 +1745,22 @@ export const SHADOW_ONLY_VERBS = [
   'proactive_cadence_skipped',
 ] as const satisfies readonly AuditVerb[];
 
+/**
+ * Written so the next pass does not recount a notice, or so a failed send can
+ * be tried again. The sentence stays in the registry so a drift check still
+ * knows the verb. History hides the row. The right-to-access export keeps it:
+ * the audit row is something the parent is owed a copy of.
+ */
+export const INTERNAL_TRAIL_VERBS = [
+  'autonomy_acted_notice_aged_out',
+  'autonomy_notice_covered',
+  'autonomy_notice_cover_released',
+] as const satisfies readonly AuditVerb[];
+
+export function isInternalTrailVerb(actionTaken: string): boolean {
+  return (INTERNAL_TRAIL_VERBS as readonly string[]).includes(actionTaken);
+}
+
 export function isShadowOnlyRow(actionTaken: string, after: unknown): boolean {
   return (
     (SHADOW_ONLY_VERBS as readonly string[]).includes(actionTaken) &&
@@ -1724,6 +1769,16 @@ export function isShadowOnlyRow(actionTaken: string, after: unknown): boolean {
     (after as { mode?: unknown }).mode === 'shadow'
   );
 }
+
+/**
+ * An `action.executed` row for something Hale did on its own. The stored verb is the
+ * same as for an action a parent approved; only the row's recorded decision tells them
+ * apart, and History is the one place a parent sees the difference.
+ */
+export const EXECUTED_ON_ITS_OWN: Verb = {
+  sentence: 'Hale did this for you on its own',
+  family: 'done',
+};
 
 /**
  * The verb family → row tone. Failures/blocks read `needs-you` (never `done`);
@@ -1778,12 +1833,11 @@ export function targetNoun(targetTable: string | null): string {
 /**
  * A stored (`target_table`, `target_id`) → a deep link to the surface where the
  * parent can actually SEE that record — never a bare UUID. Only tables with a
- * real viewable surface link (actions → the approvals queue, plans → the plan
- * page); everything else returns null so the row shows its noun without a
- * dead/fake link.
+ * real viewable surface link (plans → the plan page). The Approvals page is
+ * gone, so an action row keeps its noun and does not link at a missing route.
+ * Everything else returns null so the row shows its noun without a dead link.
  */
 const TARGET_ROUTES: Record<string, string> = {
-  actions: '/approvals',
   family_plans: '/plan',
 };
 

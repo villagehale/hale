@@ -10,7 +10,7 @@ import { removeDocument } from '~/lib/docs/storage';
 import { type AuthIdentity, requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import { writeUserPreferences } from '~/lib/settings/user-preferences';
-import { type PlanTier, type UnitSystem, parseIntents } from '@hale/types';
+import { type UnitSystem, parseIntents } from '@hale/types';
 import {
   type ChildError,
   type ChildInput,
@@ -21,13 +21,13 @@ import { type LocationInput, normalizeLocation } from './location-input';
 
 /**
  * The family-management mutations behind the Family page: add / edit / remove a
- * child, set the family's structured (coarse) location, set the plan tier, and
- * update the parent's display name. Each one validates, resolves the caller's
+ * child, set the family's structured (coarse) location, and update the parent's
+ * display name. Each one validates, resolves the caller's
  * family from the Auth.js session (never a fabricated id — rule #1), and writes an
  * immutable audit_log row alongside the mutation (rule #6). Each mutation
  * revalidates the page that renders it after a write: the children, location, and
  * intents live on /family (the editor — the Instinct refresh moved it up from
- * /family/members); the parent profile and plan live on /settings
+ * /family/members); the parent profile lives on /settings
  * (the IA split — family control vs. account config).
  *
  * Degradation mirrors saveOnboardingChildren: no DATABASE_URL or auth-unconfigured
@@ -368,78 +368,6 @@ export async function setLocationAction(input: LocationInput): Promise<SetLocati
   });
 
   revalidatePath('/family');
-  return { status: 'updated' };
-}
-
-const PLAN_TIERS: readonly PlanTier[] = ['free', 'plus', 'family'];
-const SELF_SERVE_PLAN_TIER: PlanTier = 'free';
-
-function isPlanTier(value: string): value is PlanTier {
-  return (PLAN_TIERS as readonly string[]).includes(value);
-}
-
-export type SetPlanResult =
-  | { status: 'updated' }
-  | { status: 'preview' }
-  | { status: 'unauthenticated' }
-  | { status: 'not_found' }
-  | { status: 'invalid' };
-
-export async function setPlanAction(planTier: string): Promise<SetPlanResult> {
-  if (!isPlanTier(planTier)) {
-    return { status: 'invalid' };
-  }
-
-  const ctx = await mutationContext();
-  if (ctx.status !== 'ready') {
-    return { status: ctx.status };
-  }
-
-  const { database, externalAuthId } = ctx;
-  const familyId = await resolveFamilyForUser(externalAuthId, database);
-  if (!familyId) {
-    return { status: 'not_found' };
-  }
-  const userId = await requireUserIdForUser(externalAuthId, database);
-
-  // A paid tier is granted only by the Stripe billing webhook; from here a parent
-  // can only move their own family down to free.
-  if (planTier !== SELF_SERVE_PLAN_TIER) {
-    await database.insert(schema.auditLog).values({
-      familyId,
-      actor: userId,
-      actionTaken: 'family_plan_change_refused',
-      targetTable: 'families',
-      targetId: familyId,
-      after: { requestedPlanTier: planTier },
-    });
-    return { status: 'invalid' };
-  }
-
-  await database.transaction(async (tx) => {
-    const existing = await tx
-      .select({ planTier: schema.families.planTier })
-      .from(schema.families)
-      .where(eq(schema.families.id, familyId))
-      .limit(1);
-
-    await tx
-      .update(schema.families)
-      .set({ planTier: SELF_SERVE_PLAN_TIER })
-      .where(eq(schema.families.id, familyId));
-
-    await tx.insert(schema.auditLog).values({
-      familyId,
-      actor: userId,
-      actionTaken: 'family_plan_updated',
-      targetTable: 'families',
-      targetId: familyId,
-      before: { planTier: existing[0]?.planTier ?? null },
-      after: { planTier: SELF_SERVE_PLAN_TIER },
-    });
-  });
-
-  revalidatePath('/settings');
   return { status: 'updated' };
 }
 

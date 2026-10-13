@@ -3661,7 +3661,6 @@ describe('the weekday-care answer', () => {
   function questionsFrom(overrides: Partial<OpenQuestionSources>): OpenQuestionReader {
     const sources: OpenQuestionSources = {
       forwardAddressRevoke: async () => null,
-      yearRetention: async () => null,
       pendingApprovals: async () => [],
       introOptInOpen: async () => false,
       introProposal: async () => null,
@@ -3931,7 +3930,6 @@ describe('a bare yes while the daycare check-in is standing', () => {
   function sources(overrides: Partial<OpenQuestionSources>): OpenQuestionReader {
     return createOpenQuestionReader({
       forwardAddressRevoke: async () => null,
-      yearRetention: async () => null,
       pendingApprovals: async () => [],
       introOptInOpen: async () => false,
       introProposal: async () => null,

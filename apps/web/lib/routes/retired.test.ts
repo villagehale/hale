@@ -33,7 +33,7 @@ describe('isRetiredPath', () => {
   });
 
   it('leaves the surfaces that DO earn their place alone', () => {
-    for (const live of ['/approvals', '/trail', '/settings', '/family', '/plan', '/home']) {
+    for (const live of ['/trail', '/settings', '/family', '/plan', '/home']) {
       expect(isRetiredPath(live), live).toBe(false);
     }
   });

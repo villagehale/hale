@@ -24,6 +24,8 @@ import {
   DEEP_RESEARCH_QUEUE,
   DEEP_RESEARCH_RETRY,
 } from '~/lib/channel/activity/deep-queue';
+import { dispatchAutonomyNotices } from '~/lib/channel/autonomy/dispatch';
+import { autonomyNoticePorts } from '~/lib/channel/autonomy/ports';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
@@ -37,6 +39,7 @@ import {
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
 import type { LoopMessage } from '~/lib/channel/types';
+import { POLICY_VERSION } from '~/lib/consent';
 
 /**
  * Serverless drain of the two HOT worker queues — `events.ingested` and
@@ -184,6 +187,12 @@ export interface DrainHandlers {
    * redelivery is the right answer to it, which is exactly what `boss.fail` buys.
    */
   deepResearch: (job: DeepResearchPayload) => Promise<void>;
+  /**
+   * Send any turn-on or on-its-own text this family is now owed. A throw is logged
+   * and does not fail the approval job: the grant row stays the obligation and the
+   * morning sweep still owes the text.
+   */
+  autonomyNotices: (familyId: string) => Promise<void>;
 }
 
 export interface DrainDeps {
@@ -231,6 +240,17 @@ async function processIngestedJob(
     return 'dropped';
   }
   await deps.handlers.runOrchestrator(parsed.data);
+  try {
+    await deps.handlers.autonomyNotices(parsed.data.family_id);
+  } catch (err) {
+    deps.log.error(
+      {
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+        familyId: parsed.data.family_id,
+      },
+      'drain: autonomy notice dispatch failed; the morning sweep still owes the text',
+    );
+  }
   return 'processed';
 }
 
@@ -253,7 +273,19 @@ async function processApprovedJob(
     actionId: parsed.data.action_id,
     familyId: parsed.data.family_id,
     approvedBy: parsed.data.approved_by,
+    policyVersion: POLICY_VERSION,
   });
+  try {
+    await deps.handlers.autonomyNotices(parsed.data.family_id);
+  } catch (err) {
+    deps.log.error(
+      {
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+        familyId: parsed.data.family_id,
+      },
+      'drain: autonomy notice dispatch failed; the morning sweep still owes the text',
+    );
+  }
   return 'processed';
 }
 
@@ -816,6 +848,12 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
             ).then(() => undefined),
           channelMessage: (job) => routeInboundChannelMessage(db(), job),
           deepResearch: (job) => keepPromiseNow(db(), job).then(() => undefined),
+          autonomyNotices: (familyId) =>
+            dispatchAutonomyNotices(
+              db(),
+              { now: new Date(), familyId, slot: 'now' },
+              autonomyNoticePorts(db()),
+            ).then(() => undefined),
         },
         log: console,
         now: () => Date.now(),

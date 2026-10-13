@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The text meets all criteria for an \"armed\" occasion. It is in Chinese, matching the language of recentInbound (\"帮我给学校发个邮件\"). The voice is casual and friendly—\"好的\" and \"不用每次再问你确认～\" establish a peer-to-peer tone. \n\nFact one (what the sender may now do): \"我就直接帮你发了\" and \"我会以你的名义发邮件\" clearly convey that the sender will send email on the parent's behalf. The sendEmail flag is true and properly reflected.\n\nFact two (standing.never): \"不会帮你预订、报名或付款\" explicitly states the sender does not book (预订), register (报名), or pay (付款)—all three required items from the never list.\n\nFact three (standing.stop): \"如果你想关掉这个功能，发一条消息告诉我就行\" conveys that one message from the parent turns this off. The phrasing is precise and unambiguous—one message (\"发一条消息\") is the requirement.\n\nThe text invents nothing beyond what was provided, asks for nothing, and reads naturally as a friend who is also a parent texting. All three facts are present and clearly stated."
+  }
+}

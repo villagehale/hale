@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
 import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
@@ -128,7 +128,20 @@ export type ProactiveSendKind =
    * discretionary rail, one a day and three a week, is that group's bubble kind,
    * not a second number here.
    */
-  | 'duty_ask';
+  | 'duty_ask'
+  /**
+   * VIL-131 · a kind just turned on, or turned back on after a switch-off.
+   *
+   * The bound is the grant, not a counter: one text per consent row, held by the
+   * dedupe key. A counter could only drop the text that is what makes acting on
+   * that kind allowed.
+   */
+  | 'autonomy_armed'
+  /**
+   * VIL-131 · Hale just did a kind without asking. One text per execution, same
+   * reason the turn-on text is not a counter.
+   */
+  | 'autonomy_acted';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -295,6 +308,10 @@ export const PROACTIVE_CAP: Record<ProactiveSendKind, { max: number; windowHours
     // The tighter discretionary rail (one a day, three a week) is the group bubble
     // kind, counted in family-outbound, not a second number here.
     duty_ask: { max: 2, windowHours: 24 },
+    // THE BOUND IS THE GRANT, and the execution. A counter could only drop the text
+    // a parent is owed before Hale does the kind, or the notice that it just did.
+    autonomy_armed: null,
+    autonomy_acted: null,
   };
 
 /**
@@ -357,6 +374,10 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // is worth a 23:00 text, and the night-before window already ends when quiet
   // hours start.
   duty_ask: false,
+  // A kind turning on keeps until morning. Waking a house to say so is the opposite
+  // of what the text is for, and execution waits until the text has gone out.
+  autonomy_armed: false,
+  autonomy_acted: false,
 };
 
 /**
@@ -407,6 +428,8 @@ export const PROACTIVE_CATEGORY: Record<
   | 'co_parent_departed'
   | 'travel_brief'
   | 'duty_ask'
+  | 'autonomy_armed'
+  | 'autonomy_acted'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -422,6 +445,8 @@ export const PROACTIVE_CATEGORY: Record<
   co_parent_departed: 'co_parent_departed',
   travel_brief: 'travel_brief',
   duty_ask: 'duty_ask',
+  autonomy_armed: 'autonomy_armed',
+  autonomy_acted: 'autonomy_acted',
 };
 
 export interface OutboundGatePorts {
@@ -700,6 +725,7 @@ async function countFamilyProactiveSends(
         eq(schema.channelMessages.direction, 'out'),
         gte(schema.channelMessages.createdAt, since),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        isRealSendRow(),
       ),
     );
   return rows.length;
@@ -725,6 +751,7 @@ async function parentProactiveSentSince(
         eq(schema.channelMessages.direction, 'out'),
         gte(schema.channelMessages.createdAt, since),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        isRealSendRow(),
       ),
     )
     .limit(1);
