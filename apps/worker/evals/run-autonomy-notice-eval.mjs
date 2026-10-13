@@ -28,6 +28,7 @@ import {
   makeCost,
   makeJudge,
   readJudgeModel,
+  scoreFirstJudgeSchema,
   totalUsd,
 } from './lib/harness.mjs';
 import { cachedLaneToolCall } from './lib/lane-tool-call.mjs';
@@ -43,12 +44,17 @@ const TEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'autonomy', 'n
 register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
+const JUDGE_REASON_MAX_CHARS = 160;
+const JUDGE_TOOL_SCHEMA = scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS);
+
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text message Hale, a family planner that lives in',
   "the parent's messages, sends. You are given `context` — the occasion (`armed`, `rearmed`,",
   'or `acted`), the `actionType` token, `recentInbound` (the parent’s own texts),',
   '`localeHint`, `standing`, and sometimes `detail` — and the `text`. Score 1-5.',
-  'Write your argument first, quoting the text, and only then the score.',
+  'Call the score tool with `score` first, then `reason`. The reason is at most',
+  `${JUDGE_REASON_MAX_CHARS} characters. Do not quote the text. A reason that repeats`,
+  'the message does not fit.',
   'A 5 is one text in the language of `recentInbound` when those texts show one, otherwise',
   'the `localeHint`, and not a language the context never gave. It is in the first person and matches the occasion:',
   'armed or rearmed says this kind will be handled without asking from now on; acted says',
@@ -127,14 +133,7 @@ function priced(model, input, output) {
 const JUDGE_TOOL = {
   name: 'score',
   description: 'Return the score.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      reason: { type: 'string' },
-      score: { type: 'integer', minimum: 1, maximum: 5 },
-    },
-    required: ['reason', 'score'],
-  },
+  input_schema: JUDGE_TOOL_SCHEMA,
 };
 
 /** List-price ceiling of one messages.create: estimated input, output at max_tokens. */
@@ -305,6 +304,8 @@ async function main() {
   // The cache key does not include max_tokens. 440 is the same ceiling --estimate prices.
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'autonomy-notice', cachedOnly, gated, cost, {
     maxTokens: JUDGE_MAX_TOKENS,
+    toolSchema: JUDGE_TOOL_SCHEMA,
+    keepTruncatedScore: true,
   });
 
   console.info(

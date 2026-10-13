@@ -1,7 +1,14 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CACHE_DIR, cacheKey, isVerdict, makeCost, makeJudge } from './harness.mjs';
+import {
+  CACHE_DIR,
+  cacheKey,
+  isVerdict,
+  makeCost,
+  makeJudge,
+  scoreFirstJudgeSchema,
+} from './harness.mjs';
 
 /**
  * A DRAW WITHOUT A SCORE IS NOT A VOTE.
@@ -67,7 +74,10 @@ describe('the judge refuses to record a truncated draw', () => {
 
     await expect(judge('fixture', payload)).rejects.toThrow(/truncat/i);
 
-    const key = cacheKey(`${prefix}:judge:fixture`, `${model}\n${system}\n${JSON.stringify(payload)}`);
+    const key = cacheKey(
+      `${prefix}:judge:fixture`,
+      `${model}\n${system}\n${JSON.stringify(payload)}`,
+    );
     expect(existsSync(join(CACHE_DIR, `${key}.json`))).toBe(false);
   });
 
@@ -95,9 +105,68 @@ describe('the judge refuses to record a truncated draw', () => {
     // fixtures' worth of "sound/4" in it has edited the corpus.
     for (const index of [0, 1, 2]) {
       const tag = index === 0 ? `${prefix}:judge:fixture` : `${prefix}:judge:fixture#${index}`;
-      rmSync(join(CACHE_DIR, `${cacheKey(tag, `${model}\n${system}\n${JSON.stringify(payload)}`)}.json`), {
-        force: true,
-      });
+      rmSync(
+        join(CACHE_DIR, `${cacheKey(tag, `${model}\n${system}\n${JSON.stringify(payload)}`)}.json`),
+        {
+          force: true,
+        },
+      );
     }
+  });
+
+  it('still throws when a shared-schema draw is cut off even if a score is already present', async () => {
+    const prefix = `judge-guard-score-cut-${Math.random().toString(36).slice(2)}`;
+    const judge = makeJudge(
+      model,
+      system,
+      prefix,
+      false,
+      fakeClient({
+        stop_reason: 'max_tokens',
+        content: [{ type: 'tool_use', name: 'score', input: { score: 5, reason: 'cut' } }],
+        usage: { input_tokens: 10, output_tokens: 440 },
+      }),
+      makeCost(),
+    );
+
+    await expect(judge('fixture', payload)).rejects.toThrow(/truncat/i);
+    const key = cacheKey(
+      `${prefix}:judge:fixture`,
+      `${model}\n${system}\n${JSON.stringify(payload)}`,
+    );
+    expect(existsSync(join(CACHE_DIR, `${key}.json`))).toBe(false);
+  });
+
+  it('keeps a score-first draw whose reason was cut off', async () => {
+    const prefix = `judge-guard-score-kept-${Math.random().toString(36).slice(2)}`;
+    const judge = makeJudge(
+      model,
+      system,
+      prefix,
+      false,
+      fakeClient({
+        stop_reason: 'max_tokens',
+        content: [{ type: 'tool_use', name: 'score', input: { score: 5, reason: 'cut' } }],
+        usage: { input_tokens: 10, output_tokens: 440 },
+      }),
+      makeCost(),
+      { toolSchema: scoreFirstJudgeSchema(160), keepTruncatedScore: true },
+    );
+
+    await expect(judge('fixture', payload)).resolves.toMatchObject({ score: 5, reason: 'cut' });
+    const key = cacheKey(
+      `${prefix}:judge:fixture`,
+      `${model}\n${system}\n${JSON.stringify(payload)}`,
+    );
+    rmSync(join(CACHE_DIR, `${key}.json`), { force: true });
+  });
+});
+
+describe('score-first judge schema', () => {
+  it('puts score before reason and caps the reason', () => {
+    const schema = scoreFirstJudgeSchema(160);
+    expect(Object.keys(schema.properties)).toEqual(['score', 'reason']);
+    expect(schema.required).toEqual(['score', 'reason']);
+    expect(schema.properties.reason.maxLength).toBe(160);
   });
 });
