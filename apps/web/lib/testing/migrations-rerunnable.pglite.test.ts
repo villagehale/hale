@@ -47,8 +47,10 @@ describe('migrations after the ledger watermark survive a second pass', () => {
   it('retirement migrations preserve their final state on reapplication', async () => {
     await db.applyMigration('0162_drop_registration_catalog.sql');
     await db.applyMigration('0163_activity_history_only.sql');
+    await db.applyMigration('0164_retire_civic_catalog.sql');
     await db.applyMigration('0162_drop_registration_catalog.sql');
     await db.applyMigration('0163_activity_history_only.sql');
+    await db.applyMigration('0164_retire_civic_catalog.sql');
     const rows = await db.client.query<{ old: string | null; history: string | null }>(
       "select to_regclass('registration_windows')::text as old, to_regclass('family_activity_history')::text as history",
     );

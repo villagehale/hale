@@ -489,7 +489,7 @@ export function toExtractedWindow(value: z.infer<typeof extractionSchema>): Extr
 /**
  * Read the dates one municipal page publishes for one stored cycle.
  *
- * The skill is loaded OUTSIDE any catch (as in parseCivicHours): a missing skill
+ * The skill is loaded OUTSIDE any catch: a missing skill
  * file is a deploy bug and must surface as one, never degrade into "this town
  * publishes nothing".
  */

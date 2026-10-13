@@ -21,7 +21,7 @@ export interface IntroEmailRequest {
   parentA: { firstName: string; email: string };
   parentB: { firstName: string; email: string };
   stage: FamilyStage;
-  /** Verbatim from the civic_sessions row, or null when the pair had no anchor. */
+  /** A current activity anchor, or null when no verified activity is attached. */
   anchorTitle: string | null;
 }
 

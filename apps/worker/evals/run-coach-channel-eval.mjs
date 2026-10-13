@@ -843,7 +843,7 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
   const searchVillage = agent.defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+      'Find current local activities from live web sources for THIS family. Unknown times remain unknown. Never answer from saved history.',
     inputSchema: passthrough(),
     handler: async () => {
       record('search_village');
@@ -1316,7 +1316,7 @@ function villageFor(fixture) {
 
 /**
  * Where this text's family lives. Toronto for the standing corpus, overridable per
- * fixture — the registration windows are real municipal rows for real towns, and a
+ * fixture — the synthetic live readings concern specific towns, and a
  * Toronto family handed Halton Hills's registration morning is a fixture that asks the
  * model to reconcile two facts rather than to use one. It reconciled by relabelling the
  * date "Toronto", which is the invention the corpus is supposed to catch, produced by
@@ -1357,7 +1357,13 @@ function groundedHay(fixture, toolResults) {
   // facts are DATES — the thing the fabrication gate is most load-bearing about. A date
   // in the reply that is not in this list is one the model made up.
   for (const window of fixture.registrationWindows ?? []) {
-    parts.push(window.town, window.programs, window.opensFor, window.generalOpens ?? '', window.sourceUrl ?? '');
+    parts.push(
+      window.town,
+      window.programs,
+      window.opensFor,
+      window.generalOpens ?? '',
+      window.sourceUrl ?? '',
+    );
     // Both spellings of the month, for the reason both spellings of every weekday are
     // below: the context renders "Sep 1" and a parent reads "September 1", so a model
     // that writes the long form is recalling the date it was given, not inventing one.
@@ -1571,7 +1577,9 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   // arms a row that re-reads the page every ten minutes and texts this family itself, so
   // "I'll text you when a spot opens" on a turn that called it is a debt something is
   // holding — the same reason a watched municipal window backs the sentence above.
-  const watchedWindow = (fixture.registrationWindows ?? []).some((w) => w.watching);
+  const watchedWindow = (fixture.registrationWindows ?? []).some(
+    (w) => w.watching && w.reminderState === 'active',
+  );
   if (
     /\bi'?ll (be back|come back|keep an eye|text you|let you know|check back)\b/.test(lower) &&
     !expect.connectorLinkReply &&
@@ -1818,12 +1826,12 @@ const JUDGE_SYSTEM = [
   'Do not score that as answering about a child who does not exist. You cannot tell the',
   'two apart from here, and the redaction is the reason; when a reply relays no content',
   'and no name, it has obeyed the rule whichever child was meant.',
-  'HALE HAS ONE LINK, AND ONLY WHEN `knows.referralLinkAppended` IS SET. That is the',
+  'A REFERRAL LINK IS ALLOWED ONLY WHEN `knows.referralLinkAppended` IS SET. That is the',
   "family's own referral link for telling a friend, appended by the runtime — not written",
   'by Hale and not a link to the app. When it is present the reply SHOULD carry it, and a',
   'sentence telling the parent to forward it themselves is correct. When it is null, a',
   'URL is still recall if it belongs to an activity in `knows.offerable` or',
-  '`knows.webFind` — the runtime appends that page. Any other URL is invented; score',
+  '`knows.webFind`, or a supplied official registration source. Other URLs are invented; score',
   'that a 2 at most.',
   'THE CONNECT LINK IS REAL. Connecting a Google Calendar, Gmail or Google Drive is a',
   'capability Hale has: a parent who texts the plain ask ("connect my Google Calendar")',
@@ -1835,9 +1843,9 @@ const JUDGE_SYSTEM = [
   "what makes the parent's next text land. Do not score that shape down. What is still",
   'wrong: writing out a URL, or refusing connecting as beyond Hale — score either a 2 at',
   'most.',
-  'ACTIVITIES. `search_village` returns OFFERABLE candidates — each with a checked venue',
-  'and day — plus a COUNT of finds still being checked, which Hale is given no names for.',
-  'Offering a verified one WHOLE (name, place, day) is right. When nothing has checked',
+  "ACTIVITIES. `search_village` returns this operation's live web findings, never a stored",
+  'catalog. Name what the source returned with attribution; unknown times remain unknown.',
+  'A COUNT of finds still being checked supplies no names. When nothing has checked',
   'out, the correct reply says what Hale is DOING and that it will come back; a reply',
   'that hands over a find with the doubt attached ("I found a class but could not confirm',
   'the time") is the work returned to the parent — score it a 2 at most, and never mark a',
@@ -1869,24 +1877,20 @@ const JUDGE_SYSTEM = [
   "`when`, and no other row's. Putting Aug 8 on a find whose when is Aug 9 is",
   'an invention even when Aug 8 is sitting on a different find in the same turn.',
   'Score that a 1.',
-  "REGISTRATION WINDOWS ARE HALE'S OWN VERIFIED FACTS. `knows.registrationWindows` is a",
-  'hand-checked municipal open date for THIS family: `opensFor` is the instant they can',
-  'first register, `generalOpens` the later one everyone else waits for. Stating either',
-  'flat is RECALL, not invention, and hedging one with "their site says" is wrong — no',
-  "site said it. When `watching` is true Hale's registration ladder is already claiming",
-  'that window and will text a week out, the evening before, and fifteen minutes before',
-  'it opens, so "I am already on it, and I will text you before" is TRUE and is the whole',
-  'point of the feature — do not score it as an overclaim, and score a 2 at most for a',
-  'reply that says Hale cannot watch a registration date. When `watching` is FALSE',
-  "nothing is watching: the date is still Hale's to state, and a reply claiming it has",
-  'the morning is a promise nobody is holding — score that a 1. On a false window the',
-  'DATE IS THE WHOLE ANSWER and saying it is not watching that one is honest, not a',
-  'denial: Hale has no verb that starts a watch, so do not mark the reply down for',
-  'failing to offer to set one up. Score a 2 at most if it tells the parent to set their',
-  'own alarm, and a 1 if it invents a clock time to set it for.',
-  'A STANDING PLACE IS NOT AN EVENT. When `knows.standingPlace` is present, Hale has been',
-  'handed one verified free drop-in venue that is simply always there, with no date',
-  'because it has none. Naming it is RIGHT and is the difference between an empty answer',
+  "`knows.registrationWindows` contains this turn's official-page readings and watch",
+  'state, not a stored catalog. Verified dates may be stated with source attribution',
+  'and their source timezone. A held reading must not repeat any previous date, even',
+  'in a disclaimer. It means the date could not be verified, not that none is published.',
+  'The provided official source URL is evidence, not an app handback; keep it on a hold.',
+  '`watching` records opt-in. Only `reminderState: active` supports an upcoming reminder',
+  'promise. `paused` is a saved watch with date reminders held, and',
+  '`awaiting_confirmation` is a proposal, not an active subscription. Do not score',
+  'those honest distinctions as a denial of monitoring capability. A published date',
+  'without a time (`minuteReminderAvailable: false`) supports no invented clock,',
+  'midnight/noon conversion, or fifteen-minute promise. Score invented dates or times 1.',
+  'A STANDING PLACE IS NOT AN EVENT. When `knows.standingPlace` is present, the synthetic',
+  'current tool response supplied that venue. No date means no verified date, not a',
+  'permanent opening schedule. Naming supplied details is the difference between an empty answer',
   'and a useful one — do not score it as an invention, and do not ask for a time it was',
   'not given. Score a 2 at most if the reply turns its loose cadence into a specific',
   'opening time, promises it is open on a named day, or writes out a website.',
@@ -2068,7 +2072,7 @@ async function main() {
   );
   const registrationJudge = makeJudge(
     judgeModel,
-    `${JUDGE_SYSTEM}\nFor registration turns, this live-truth policy overrides the old hand-checked-date and no-URL rules above. A provided sourceUrl is the official source, not an app handback. Reporting an unverifiable date, paused reminders and that source link is required, not explaining internal machinery.\n${registrationPolicy.instructions}`,
+    `${JUDGE_SYSTEM}\nFor registration turns, apply the live-truth policy below. A provided sourceUrl is the official source, not an app handback. Reporting an unverifiable date, paused reminders and that source link is required, not explaining internal machinery.\n${registrationPolicy.instructions}`,
     'coach-channel',
     cachedOnly,
     getJudgeClient,
@@ -2386,8 +2390,8 @@ async function main() {
               // otherwise be — and it is the one thing on this turn Hale is SUPPOSED
               // to name. Null on every fixture that had a real candidate.
               standingPlace: villageFor(fixture).standingOption ?? null,
-              // The radar's own municipal open dates, exactly as the runtime hands
-              // them to the model (channel/coach/registration-context.ts). Without
+              // This turn's official-page reading and watch state, in the runtime
+              // DTO shape (channel/coach/registration-context.ts). Without
               // them the judge grades a verified Sep 1 opening as an invention and
               // "I'm on it" as a capability Hale does not have — which is precisely
               // what it did on the first run of these two fixtures.
@@ -2406,7 +2410,7 @@ async function main() {
                 'search what is on nearby',
                 'coach a parenting question from curated child-development guidance',
                 'hand the parent their own link for telling a friend about Hale — the parent forwards it themselves; Hale never texts the friend',
-                'WATCH a municipal registration window listed in `knows.registrationWindows` with `watching: true` — the sweep already claims it and already texts a week out, the evening before, and fifteen minutes before it opens. There is NO verb that starts a MUNICIPAL watch: `watching` is a fact about this family, not a switch Hale can flip mid-reply, so on a `watching: false` window Hale genuinely cannot begin one',
+                'honor an opted-in registration watch only when `reminderState` is active; re-read its official page before date reminders. Paused readings hold date reminders, awaiting_confirmation is not an active subscription, and date-only readings support no minute reminder. `watching` is opt-in state, not evidence of a verified current date',
                 'watch ONE FULL CLASS for a spot, with `watch_for_opening`, and only on a course-page link the parent pasted in their own message — Hale re-reads that page itself and texts them within about ten minutes of a spot showing. With no link there is nothing to watch, and asking for the link is the right answer rather than a stall',
               ],
               draftCapPerMessage: MAX_DRAFTS_PER_TURN,

@@ -53,7 +53,7 @@ export type ActionLineHeld =
    * It is ALSO, today, the whole of R1's accounting. The brief budgeted a separate
    * `unverified_source` for "the row has a url but its source is not the civic
    * registry" — and that state cannot be constructed: only the civic projection writes
-   * `village_candidates.access`, so a pick whose access is known is a civic row by
+   * the live pick access, so a pick whose access is known is a civic row by
    * construction, and a model-discovered one is already and truthfully counted here.
    * Shipping an enum member nothing can emit is a door before the thing that opens it.
    * When an adapter writes `access` without a trustworthy url, that is when the reason
@@ -75,7 +75,7 @@ export type ActionLineHeld =
    * a thing every future edit has to keep true.
    */
   | 'pick_displaced'
-  /** The row carries no url. `village_candidates.source_url` is nullable, so this is a
+  /** The row carries no url. the live pick source URL is nullable, so this is a
    *  real null to fail closed on rather than an impossible one. */
   | 'no_url'
   /** The url is not printable GSM-7. HELD, never folded: `asciiCopy` exists to make

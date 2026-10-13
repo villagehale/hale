@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import {
   type ActivityFinder,
@@ -61,14 +61,27 @@ export async function findFamilyActivities(
     const urls = found.picks.flatMap((pick) => (pick.sourceUrl ? [pick.sourceUrl] : []));
     const venues = urls.length
       ? await database
-          .select({ id: schema.civicVenues.id, url: schema.civicVenues.url })
-          .from(schema.civicVenues)
-          .where(inArray(schema.civicVenues.url, urls))
+          .select({
+            id: schema.familyActivityHistory.civicVenueId,
+            url: schema.familyActivityHistory.sourceUrl,
+          })
+          .from(schema.familyActivityHistory)
+          .where(
+            and(
+              eq(schema.familyActivityHistory.familyId, familyId),
+              inArray(schema.familyActivityHistory.sourceUrl, urls),
+              isNotNull(schema.familyActivityHistory.civicVenueId),
+            ),
+          )
       : [];
     // Identity only. A shared dataset URL is not one venue, and no cached date is read.
     for (const pick of found.picks) {
-      const matches = venues.filter((venue) => venue.url === pick.sourceUrl);
-      if (matches.length === 1) pick.civicVenueId ??= matches[0]!.id;
+      const ids = new Set(
+        venues
+          .filter((venue) => venue.url === pick.sourceUrl)
+          .flatMap((venue) => (venue.id ? [venue.id] : [])),
+      );
+      if (ids.size === 1) pick.civicVenueId ??= [...ids][0];
     }
   }
   return found.found ? { picks: found.picks, reason: null } : { picks: [], reason: found.reason };

@@ -135,7 +135,6 @@ export const INTRO_EXPIRY_DAYS = 7;
 
 /** How far ahead a civic session may be and still be worth anchoring on. Same horizon
  * as the expiry: an activity after the card has lapsed is not a shared plan. */
-const ANCHOR_HORIZON_DAYS = 7;
 
 /** Filter first, then cap — a cap-then-filter would starve every family past the
  * oldest N of their FSA forever. */
@@ -1255,49 +1254,6 @@ async function readPairedBefore(database: Database): Promise<Set<string>> {
   return new Set(rows.map((row) => pairKey(row.familyAId, row.familyBId)));
 }
 
-/**
- * The soonest free civic session inside the pair's match area that both families could
- * plausibly be at.
- *
- * Occurrence rows only. A weekly EarlyON slot has no date of its own — expanding it
- * into one is the civic projection's job, and an anchor that names a day Hale computed
- * rather than a day the venue published is the kind of small wrongness that makes a
- * parent show up on the wrong morning.
- *
- * The venue's FSA is derived in SQL from its own published postal code — a venue's
- * address is public, and it is the only postal code in this query.
- */
-async function readAnchorSession(
-  database: Database,
-  fsas: readonly string[],
-  now: Date,
-): Promise<{ id: string; title: string; startsAt: Date } | null> {
-  const horizon = new Date(now.getTime() + ANCHOR_HORIZON_DAYS * 24 * 3_600_000);
-  const [row] = await database
-    .select({
-      id: schema.civicSessions.id,
-      title: schema.civicSessions.title,
-      startsAt: schema.civicSessions.startsAt,
-    })
-    .from(schema.civicSessions)
-    .innerJoin(schema.civicVenues, eq(schema.civicVenues.id, schema.civicSessions.venueId))
-    .where(
-      and(
-        eq(schema.civicSessions.recurrence, 'occurrence'),
-        eq(schema.civicSessions.isCancelled, false),
-        isNull(schema.civicSessions.supersededAt),
-        gte(schema.civicSessions.confidence, MIN_SURFACE_CONFIDENCE),
-        gte(schema.civicSessions.startsAt, now),
-        lte(schema.civicSessions.startsAt, horizon),
-        inArray(sql`upper(left(replace(${schema.civicVenues.postalCode}, ' ', ''), 3))`, [...fsas]),
-      ),
-    )
-    .orderBy(asc(schema.civicSessions.startsAt))
-    .limit(1);
-  if (!row?.startsAt) return null;
-  return { id: row.id, title: row.title, startsAt: row.startsAt };
-}
-
 async function insertProposal(
   database: Database,
   input: Parameters<IntroSweepDeps['createProposal']>[1],
@@ -1336,28 +1292,16 @@ async function readLiveProposals(database: Database): Promise<SweepProposal[]> {
       familyAReply: schema.villageIntroProposals.familyAReply,
       familyBReply: schema.villageIntroProposals.familyBReply,
       expiresAt: schema.villageIntroProposals.expiresAt,
-      anchorTitle: schema.civicSessions.title,
-      anchorStartsAt: schema.civicSessions.startsAt,
-      anchorCancelled: schema.civicSessions.isCancelled,
-      anchorSuperseded: schema.civicSessions.supersededAt,
+      // Historical catalog IDs cannot establish a currently happening activity.
+      anchorTitle: sql<string | null>`null::text`,
+      anchorStartsAt: sql<Date | null>`null::timestamptz`,
     })
     .from(schema.villageIntroProposals)
-    .leftJoin(
-      schema.civicSessions,
-      eq(schema.civicSessions.id, schema.villageIntroProposals.civicSessionId),
-    )
     .where(isNull(schema.villageIntroProposals.closedAt));
 
   return rows.map((row) => ({
     ...row,
     stage: row.stage as FamilyStage,
-    // An anchor that has since been cancelled or retired is dropped rather than
-    // repeated: a card that names a session which is not happening is worse than one
-    // with no anchor at all.
-    anchorTitle:
-      row.anchorCancelled === true || row.anchorSuperseded !== null ? null : row.anchorTitle,
-    anchorStartsAt:
-      row.anchorCancelled === true || row.anchorSuperseded !== null ? null : row.anchorStartsAt,
   }));
 }
 
@@ -1381,7 +1325,8 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
       (await loadLoopPrefsView(parentUserId, database)).childNameLevel,
     loadOpenProposalFamilyIds: readOpenProposalFamilyIds,
     loadPairedBefore: readPairedBefore,
-    loadAnchorSession: readAnchorSession,
+    // Pairing still works without its optional, now-retired catalog activity anchor.
+    loadAnchorSession: async () => null,
     createProposal: insertProposal,
     loadLiveProposals: (database) => readLiveProposals(database),
     markAsked: async (database, proposalId, side, now) => {

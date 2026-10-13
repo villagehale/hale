@@ -52,13 +52,25 @@ export async function applyPendingMigrations() {
     locked = true;
     const [objects] = await sql`
       select to_regclass('public.registration_windows') is not null
-        or to_regclass('public.village_candidates') is not null as legacy_present,
+        or to_regclass('public.village_candidates') is not null
+        or to_regclass('public.civic_sessions') is not null
+        or to_regclass('public.civic_venues') is not null as legacy_present,
         to_regclass('drizzle.__drizzle_migrations') is not null as has_ledger
     `;
-    const ledger = objects.has_ledger ? await sql`select hash from drizzle.__drizzle_migrations` : [];
-    if (requiresCatalogCutover(readJournalWithHashes(drizzleDir), ledger.map(row => row.hash), objects.legacy_present)
-      && process.env.HALE_CATALOG_RETIREMENT_MODE !== 'maintenance') {
-      console.error('::error::VIL-423 removes catalogs still used by the previous deployment. Refusing automatic migration. Arrange a reviewed maintenance cutover and database backup before setting HALE_CATALOG_RETIREMENT_MODE=maintenance for that migration run.');
+    const ledger = objects.has_ledger
+      ? await sql`select hash from drizzle.__drizzle_migrations`
+      : [];
+    if (
+      requiresCatalogCutover(
+        readJournalWithHashes(drizzleDir),
+        ledger.map((row) => row.hash),
+        objects.legacy_present,
+      ) &&
+      process.env.HALE_CATALOG_RETIREMENT_MODE !== 'maintenance'
+    ) {
+      console.error(
+        '::error::VIL-423 removes catalogs still used by the previous deployment. Refusing automatic migration. Arrange a reviewed maintenance cutover and database backup before setting HALE_CATALOG_RETIREMENT_MODE=maintenance for that migration run.',
+      );
       return 1;
     }
     console.info('Applying drizzle migrations.');

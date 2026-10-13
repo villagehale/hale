@@ -70,10 +70,10 @@ export const FIXTURE_BABY = {
 };
 
 /**
- * The radar row a Georgetown family is handed, rendered exactly as
+ * A synthetic official-page reading a Georgetown family is handed, rendered as
  * channel/coach/registration-context.ts renders it (town label, program phrase, the
- * family's own date, the general date). Frozen from the 2026-08-21 live probe, where the
- * real seed produced this object and the coach answered off it.
+ * family's own date, the general date). Synthetic current-page evidence in the
+ * runtime DTO shape; never a production seed or a claim about today's website.
  *
  * `watching` is the field the two fixtures below disagree about, and it is the only one:
  * the same date, the same town, and two different true sentences about whether Hale has
@@ -82,11 +82,14 @@ export const FIXTURE_BABY = {
 export const FIXTURE_REGISTRATION_WINDOW = {
   town: 'Halton Hills',
   programs: 'Fall 2026 recreation programs',
-  opensFor: 'Sep 1, 7:00 a.m.',
+  opensFor: 'Sep 1, 7:00 a.m. America/Toronto',
   residentsFirst: true,
-  generalOpens: 'Sep 8, 7:00 a.m.',
+  generalOpens: 'Sep 8, 7:00 a.m. America/Toronto',
   ageApproximate: false,
   watching: true,
+  sourceUrl: 'https://example.org/registration',
+  reminderState: 'active',
+  minuteReminderAvailable: true,
 };
 
 /** The composed week_plan summary — the B1 artifact `lookup_week` grounds on. */
@@ -757,12 +760,12 @@ export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'registration-watch-asked',
     text: 'can you watch swim registration for Milo this fall?',
-    // The one fixture whose family is not in Toronto: the window below is a real Halton
-    // Hills row, and a Toronto household handed it would be reconciling two facts
+    // This synthetic live reading concerns Halton Hills, not Toronto. A Toronto
+    // household handed it would be reconciling two facts
     // instead of using one.
     city: 'Halton Hills',
     registrationWindows: [FIXTURE_REGISTRATION_WINDOW],
-    note: "The 2026-08-21 probe's worst answer, frozen as a gate. Asked to watch a fall registration, the coach said \"watching for registration openings isn't something I can do yet - I can't monitor a site and ping you when it changes.\" Every clause was false: the window is hand-verified in registration_windows and the M7 ladder texts a week out, hands over the plan the evening before and taps the parent fifteen minutes before the doors open. It was the honest answer to give, because nothing in the turn's tools or context said otherwise - which is why the fix was wiring and not a sentence. What this holds is that a turn HANDED the window uses it: the date, and the fact that it has already started.",
+    note: 'An approved watch has a synthetic fresh official-page reading. The coach must give that date and active watch state, not deny monitoring or treat a stored catalog as current evidence.',
     expect: {
       mustNotDraft: true,
       // The date is the fact a parent sets an alarm by; it must survive into the reply.
@@ -780,7 +783,9 @@ export const COACH_CHANNEL_FIXTURES = [
     // Without this fixture the one above would pass on a model that simply always says
     // it is on it — which is the fabrication, not the fix.
     city: 'Halton Hills',
-    registrationWindows: [{ ...FIXTURE_REGISTRATION_WINDOW, watching: false }],
+    registrationWindows: [
+      { ...FIXTURE_REGISTRATION_WINDOW, watching: false, reminderState: 'awaiting_confirmation' },
+    ],
     note: 'The calibration half of registration-watch-asked. `watching: false` means no sweep is armed for this family, so a reply claiming Hale is on it promises a morning nobody is holding — the exact shape of the referral fabrication, one domain over. The date itself is still true and still worth sending.',
     expect: {
       mustNotDraft: true,

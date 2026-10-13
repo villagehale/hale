@@ -222,8 +222,7 @@ function knownCycleLabelsFor(
 /**
  * How long after a municipal open the page is still where a parent should be sent.
  *
- * Three weeks: the same horizon the civic projection already calls this week's news
- * (FORWARD_WINDOW_DAYS, lib/civic/project.ts), and past it the popular classes are gone
+ * Three weeks: past this horizon the popular classes are gone
  * and the between-cycles sentence is the honest one. The dataset has NO close date —
  * `open_at` is the only required instant (registration-windows.ts) — so this bound is
  * the whole of what stops "opened in March" from reading as news in September.

@@ -85,13 +85,21 @@ describe('loadSkill', () => {
     expect(skill.instructions.length).toBeGreaterThan(0);
   });
 
+  it('keeps the registration context key but requires current source evidence', async () => {
+    const skill = await loadSkill('coach-channel-sms');
+    expect(skill.instructions).toContain('`registrationWindows`');
+    expect(skill.instructions).toContain('NOT a stored catalog');
+    expect(skill.instructions).toContain('no tracked-page reading was returned');
+    expect(skill.instructions).toContain('`reminderState`');
+    expect(skill.instructions).not.toMatch(/checked by hand|strongest facts|no site told you/);
+  });
+
   /** Two more bundled skills, on two other task tiers — `task` is what `pickModel`
    * reads, so a skill whose tier does not survive the parse is one that silently runs on
-   * the wrong model. It named find-activities and log-care until those were deleted as
-   * dead (skill audit #9/#10); these are the live skills on the same two tiers. */
+   * the wrong model. Both fixtures are live skills, not retired catalog rankers. */
   it('parses the task tier of skills that are not converse', async () => {
-    const curate = await loadSkill('curate-shortlist');
-    expect(curate.meta.task).toBe('discover');
+    const search = await loadSkill('parse-village-search');
+    expect(search.meta.task).toBe('discover');
     const classify = await loadSkill('classify-event');
     expect(classify.meta.task).toBe('classify');
   });

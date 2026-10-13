@@ -1191,6 +1191,13 @@
       "when": 1781469803000,
       "tag": "0163_activity_history_only",
       "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1781469804000,
+      "tag": "0164_retire_civic_catalog",
+      "breakpoints": true
     }
   ]
 }

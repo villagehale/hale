@@ -24,9 +24,13 @@ import path from 'node:path';
 export function requiresCatalogCutover(journal, ledgerHashes, legacyPresent) {
   if (!legacyPresent) return false;
   const recorded = new Set(ledgerHashes);
-  return journal.some(entry =>
-    ['0162_drop_registration_catalog', '0163_activity_history_only'].includes(entry.tag) &&
-    !recorded.has(entry.hash),
+  return journal.some(
+    (entry) =>
+      [
+        '0162_drop_registration_catalog',
+        '0163_activity_history_only',
+        '0164_retire_civic_catalog',
+      ].includes(entry.tag) && !recorded.has(entry.hash),
   );
 }
 

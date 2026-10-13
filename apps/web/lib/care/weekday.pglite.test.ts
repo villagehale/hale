@@ -2,7 +2,6 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { readCandidates } from '~/lib/channel/intake/radar';
-import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { loadAgentContext } from '~/lib/coach/context';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -203,7 +202,7 @@ describe('readCandidates — the column the weekday claim rests on', () => {
         title: 'EarlyON drop-in',
         kind: 'drop_in',
         summary: 'Free drop-in at Armour Heights - 9:30 a.m.-11:00 a.m.',
-        source: CIVIC_SOURCE,
+        source: 'civic_registry',
         runType: 'civic',
         eventDate: '2026-09-15',
         confidence: 0.9,

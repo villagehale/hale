@@ -15,7 +15,7 @@ import { families } from './families.js';
  * two families offered the same place carry the same string and two different places
  * never collide — which is the whole precondition for pooling anything across families.
  *
- * A URL is deliberately not a member. `village_candidates.source_url` is one dataset page
+ * A URL is deliberately not a member. An activity receipt's source URL can be one dataset page
  * for every EarlyON centre in Toronto and one page per library OCCURRENCE, so it is
  * either a collision that leaks one family's opinion onto an unrelated venue, or a key
  * three families can never share.
@@ -79,9 +79,8 @@ export const activityReviews = pgTable(
       .notNull()
       .references(() => channelMessages.id, { onDelete: 'cascade' }),
     subjectSource: text('subject_source').notNull().$type<ReviewSubjectSource>(),
-    /** An OPAQUE COMPARED STRING — a Google place id or a `civic_venues` id. Never parsed,
-     * and deliberately not an FK: `village_candidates` is per-family and superseded by
-     * the next discovery run, so a reference would make k>=3 unreachable. */
+    /** An opaque Google place ID or historical civic venue ID, not an FK to a catalog.
+     * It remains comparable after discovery storage is retired. */
     subjectRef: text('subject_ref').notNull(),
     /** `matchAreaKey`'s coarse area, stamped at write time (rule #1 — an FSA's grain). */
     areaKey: text('area_key').notNull(),

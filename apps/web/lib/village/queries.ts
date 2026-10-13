@@ -37,30 +37,11 @@ export interface VillageData {
 
 const EMPTY_VILLAGE: VillageData = { candidates: [] };
 
-/**
- * How to scope the village read. Absent → the STANDING weekly feed (existing
- * behaviour). `searchSeason` → the latest SEARCH run for that season, so a parent's
- * "find fall activities" search reads back without touching the standing feed.
- */
+/** Live search hints for this operation, not a stored feed selector. */
 export interface VillageReadOptions {
   subject?: string;
   searchSeason?: Season;
 }
-
-/**
- * The active-candidate WHERE for a family's feed read. Always family-scoped +
- * supersededAt-null; then scoped by run type so the standing feed and a season
- * search stay separate. Default → the STANDING feed (run_type 'standing' OR legacy
- * null, which the migration backfilled to 'standing'). With `searchSeason` → the
- * latest SEARCH run for that season (run_type 'search' AND search_season = $).
- * Extracted so the coexistence predicate is unit-tested in one place.
- *
- * 'civic' (VIL-252 · M16) rides along with the STANDING feed rather than forming a
- * third view: a free library storytime is one of this family's standing local
- * options, not a separate mode a parent has to go looking for. It is its own run
- * type only so the weekly civic sweep and the LLM discovery run supersede their
- * own rows and never each other's.
- */
 
 /**
  * Reads ONE resolved family's discovered candidates, teen-safe. Split out of

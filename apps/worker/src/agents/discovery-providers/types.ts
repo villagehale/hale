@@ -14,7 +14,7 @@ export type DiscoverySource = 'curated_seed' | 'llm_only' | 'web_grounded';
 /**
  * A provider's output. Extends the @hale/types `DiscoveredActivity` contract
  * (title, description, stage, areaCoarse, sourceUrl?) with the honesty fields
- * the village UI and `village_candidates` row need: `source` (provenance),
+ * the activity UI and offer receipt need: `source` (provenance),
  * `confidence` (calibrated 0–1), and a coarse `coverageNote`. These three are
  * not on the bare contract because both Fake and web-grounded providers must
  * be honest about provenance, and the floor must never present curated guesses

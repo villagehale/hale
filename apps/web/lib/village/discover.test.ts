@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -34,32 +35,66 @@ const pick = {
 describe('live recommendations without a catalog', () => {
   it('keeps a known venue identity for review ranking, never an ambiguous shared URL', async () => {
     const familyId = await family();
-    const [venue] = await db.database
-      .insert(schema.civicVenues)
-      .values({
-        system: 'earlyon_toronto',
-        externalId: 'fixture-one',
-        kind: 'earlyon_centre',
-        name: 'Fixture venue',
-        url: pick.sourceUrl,
-        sourceUrl: 'https://source.org/registry',
-      })
-      .returning();
+    const venueId = randomUUID();
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId,
+      title: 'Earlier receipt',
+      kind: 'activity',
+      summary: 'Not current facts',
+      source: 'web',
+      confidence: 1,
+      civicVenueId: venueId,
+      sourceUrl: pick.sourceUrl,
+    });
     const finder = { find: async () => ({ found: true as const, picks: [{ ...pick }] }) };
     expect(
       (await findFamilyActivities(db.database, familyId, { finder })).picks[0]?.civicVenueId,
-    ).toBe(venue!.id);
-    await db.database.insert(schema.civicVenues).values({
-      system: 'earlyon_toronto',
-      externalId: 'fixture-two',
-      kind: 'earlyon_centre',
-      name: 'Another venue',
-      url: pick.sourceUrl,
-      sourceUrl: 'https://source.org/registry',
+    ).toBe(venueId);
+    // Multiple receipts for one identity are not an ambiguous shared venue URL.
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId,
+      title: 'Another receipt',
+      kind: 'activity',
+      summary: 'Not current facts',
+      source: 'web',
+      confidence: 1,
+      civicVenueId: venueId,
+      sourceUrl: pick.sourceUrl,
+    });
+    expect(
+      (await findFamilyActivities(db.database, familyId, { finder })).picks[0]?.civicVenueId,
+    ).toBe(venueId);
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId,
+      title: 'Different venue',
+      kind: 'activity',
+      summary: 'Not current facts',
+      source: 'web',
+      confidence: 1,
+      civicVenueId: randomUUID(),
+      sourceUrl: pick.sourceUrl,
     });
     expect(
       (await findFamilyActivities(db.database, familyId, { finder })).picks[0]?.civicVenueId,
     ).toBeUndefined();
+  });
+  it('does not use another family receipt to identify a fresh result', async () => {
+    const owner = await family();
+    const other = await family();
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId: other,
+      title: 'Private receipt',
+      kind: 'activity',
+      summary: 'Not current facts',
+      source: 'web',
+      confidence: 1,
+      civicVenueId: randomUUID(),
+      sourceUrl: pick.sourceUrl,
+    });
+    const finder = { find: async () => ({ found: true as const, picks: [{ ...pick }] }) };
+    const found = await findFamilyActivities(db.database, owner, { finder });
+    expect(found.picks[0]?.civicVenueId).toBeUndefined();
+    expect(found.picks[0]?.name).toBe(pick.name);
   });
   it('researches each operation, returns only fresh picks, and preserves offered receipts', async () => {
     const familyId = await family();
@@ -90,7 +125,7 @@ describe('live recommendations without a catalog', () => {
     expect(rows.every((row) => row.offeredAt !== null)).toBe(true);
     expect(rows.map((row) => row.eventDate)).toEqual(['2026-10-18', '2026-10-25']);
     const tables = await db.client.query<{ name: string }>(
-      "select tablename as name from pg_tables where tablename in ('village_candidates','registration_windows')",
+      "select tablename as name from pg_tables where tablename in ('village_candidates','registration_windows','civic_sessions','civic_venues')",
     );
     expect(tables.rows).toEqual([]);
   });
