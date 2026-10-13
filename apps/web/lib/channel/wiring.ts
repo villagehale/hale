@@ -5,8 +5,8 @@ import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { hasOptedOut, recordEmailSend } from '~/lib/cron/email-compliance';
 import { loadLoopPrefsView } from '~/lib/loop/prefs';
 import type { DispatchPorts } from './dispatch';
+import { dedupeActive, recordChannelMessage } from './ledger';
 import { threadIfParent } from './thread';
-import { countRecentSends, dedupeActive, recordChannelMessage } from './ledger';
 import type { Channel, ChannelKind, TemplateRenderer } from './types';
 
 /**
@@ -42,8 +42,6 @@ export function buildDispatchPorts(
     // non-revoked parent_channels row (consent_records is its append-only CASL
     // ledger, not the live state).
     smsConsentLive: async (userId) => (await loadSmsChannelState(database, userId)).enrolled,
-    countRecent: (userId, category, channel, since) =>
-      countRecentSends(userId, category, channel, since, database),
     activeDedupe: (dedupeKey) => dedupeActive(dedupeKey, database),
     record: (write) => recordChannelMessage(write, database),
     capture: captureServerEvent,

@@ -549,12 +549,11 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
   /**
    * It was a module-private `Record` in `integrations/email-alert.ts` and AGAIN in
    * `integrations/calendar-alert.ts`; the travel sweep needed a third, so it was hoisted
-   * here instead. A `Record` over `ProactiveHoldReason`, so a fifth hold reason cannot be
+   * here instead. A `Record` over `ProactiveHoldReason`, so another hold reason cannot be
    * added without choosing what its receipt says.
    */
   it('maps every hold reason to the suppression the ledger records', () => {
     expect(holdStatus('quiet_hours')).toBe('suppressed_quiet_hours');
-    expect(holdStatus('frequency_cap')).toBe('suppressed_cap');
     expect(holdStatus('not_enrolled')).toBe('suppressed_consent');
     expect(holdStatus('no_watch_consent')).toBe('suppressed_consent');
   });

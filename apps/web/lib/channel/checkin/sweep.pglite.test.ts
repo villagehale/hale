@@ -235,9 +235,9 @@ describe('who the sweep actually selects, and what it may call their children', 
       prodDeps(sent, { realCap: true }),
       nextEvening,
     );
-    expect({ asked: second.asked, capped: second.held.frequency_cap }).toEqual({
+    expect({ asked: second.asked, quiet: second.held.quiet_hours }).toEqual({
       asked: 1,
-      capped: 0,
+      quiet: 0,
     });
     expect(sent).toHaveLength(2);
   });
@@ -292,7 +292,6 @@ describe('who the sweep actually selects, and what it may call their children', 
       prodDeps(sent, { realCap: true }),
       tenMinutesOn,
     );
-    expect(deduped.held.frequency_cap).toBe(0);
     expect(deduped.duplicate).toBe(1);
 
     expect(sent).toHaveLength(1);

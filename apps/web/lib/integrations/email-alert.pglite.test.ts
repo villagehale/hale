@@ -341,18 +341,14 @@ describe('alertParentForEmail', () => {
   });
 
   it('names each gate hold separately and records it under its own suppression status', async () => {
-    for (const reason of ['not_enrolled', 'no_watch_consent', 'frequency_cap'] as const) {
+    for (const reason of ['not_enrolled', 'no_watch_consent'] as const) {
       await expect(alert(harness({ verdict: { allowed: false, reason } }))).resolves.toBe(
         `gate_refused:${reason}`,
       );
     }
     const rows = await ledgerRows();
-    expect(rows.map((r) => r.status).sort()).toEqual([
-      'suppressed_cap',
-      'suppressed_consent',
-      'suppressed_consent',
-    ]);
-    expect(rows.map((r) => r.dedupeKey)).toEqual([null, null, null]);
+    expect(rows.map((r) => r.status).sort()).toEqual(['suppressed_consent', 'suppressed_consent']);
+    expect(rows.map((r) => r.dedupeKey)).toEqual([null, null]);
   });
 
   it('a classifier that throws is a named outcome, never a throw into the sweep', async () => {

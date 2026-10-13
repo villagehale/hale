@@ -65,7 +65,7 @@ function harness(
         return overrides.hold !== 'not_enrolled';
       },
       watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
-      countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 99 : 0),
+      countProactiveSends: async () => 0,
       proactiveSentSince: async () => true,
       // NOW is 14:00 UTC, which is 10:00 in Toronto — inside the sendable window. The
       // hold case moves the parent to a zone where the same instant is past 21:00.
@@ -287,7 +287,7 @@ describe('when it must not send', () => {
     const result = await h.run();
 
     expect(result).toMatchObject({ unsendable: 1, sent: 0 });
-    expect(Object.values(result.held)).toEqual([0, 0, 0, 0]);
+    expect(Object.values(result.held)).toEqual([0, 0, 0]);
     logged.mockRestore();
   });
 

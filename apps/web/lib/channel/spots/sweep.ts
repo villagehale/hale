@@ -6,14 +6,14 @@ import { type AcceptedStatus, SENT_STATUSES, acceptedStatus } from '~/lib/channe
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
+  type DeliveryHoldReason,
   type OutboundGatePorts,
-  type ProactiveHoldReason,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
 import { STATE_TOLD, type SpotReading, readSpot, transitionKind } from './availability';
@@ -310,7 +310,7 @@ type SpotFate =
   | { kind: 'quiet' }
   | { kind: 'raced' }
   | { kind: 'closed_before_send' }
-  | { kind: 'held'; reason: ProactiveHoldReason }
+  | { kind: 'held'; reason: DeliveryHoldReason }
   | { kind: 'refused' }
   | { kind: 'sent' }
   | { kind: 'failed' };
@@ -344,7 +344,7 @@ export interface WatchedSpotsSweepSummary {
    * count: nothing broke, and a non-zero here means the TEMPLATE is asserting something. */
   refused: number;
   failed: number;
-  held: Record<ProactiveHoldReason, number>;
+  held: Record<DeliveryHoldReason, number>;
   released: Record<WatchedSpotReleaseReason, number>;
   skipped: {
     wallBudget: number;
@@ -370,7 +370,7 @@ function emptySummary(enabled: boolean): WatchedSpotsSweepSummary {
     awaitingReceipt: 0,
     refused: 0,
     failed: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0, coparent_ask: 0 },
     released: {
       notified: 0,
       expired: 0,
@@ -904,7 +904,7 @@ async function sendSpotOpen(
     legacy: deps.transport,
     shareGroupCap: false,
   });
-  if (delivered.status === 'held') return { kind: 'held', reason: 'frequency_cap' };
+  if (delivered.status === 'held') return { kind: 'held', reason: delivered.reason };
   if (delivered.status === 'skipped') {
     console.warn({ spotId: spot.id, code: delivered.reason }, 'watched spots: outbound skipped');
     if (delivered.reason === 'not_configured') {

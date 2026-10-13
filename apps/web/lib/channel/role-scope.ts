@@ -25,7 +25,7 @@ import { deriveStage } from '@hale/types';
  *
  * WHICH PIPE depends on which sender rides it, and the first sender rides the
  * LOOP: the caregiver event reminders go through the A2 dispatch (channel/dispatch.ts),
- * whose `CATEGORY_CAPS` + quiet hours + live-consent gate + ledger + audit are per
+ * whose quiet hours + live-consent gate + ledger + audit are per
  * RECIPIENT and therefore already meter a caregiver. It does not add a
  * `ProactiveSendKind`, and adding one would have given it a second, differently shaped
  * meter for the same texts. A future caregiver sender on the F14 outbound-gate

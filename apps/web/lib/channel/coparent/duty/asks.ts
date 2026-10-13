@@ -1,16 +1,12 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
 import { gateOptionalAsk, recordOptionalAsk } from '~/lib/channel/intake/cold-start/ledger';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
-  GROUP_DISCRETIONARY_DAY_MAX,
-  GROUP_DISCRETIONARY_WEEK_MAX,
-  GROUP_HARD_DAY_MAX,
   familyOutboundTarget,
-  readGroupBubbleSpend,
 } from '~/lib/channel/linq/family-outbound';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
 import { splitKidEvent, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
@@ -32,7 +28,6 @@ import { closeFacts, writeFact } from '~/lib/memory/facts';
 import {
   type CadenceLine,
   type CadencePlan,
-  DUTY_LLM_DAY_MAX,
   type DutyOccasion,
   type OpenDutyQuestion,
   addCalendarDays,
@@ -74,8 +69,6 @@ export const DUTY_REASK_PREFIX = 'duty-ask/reask/';
 export const DUTY_STOP_ASKING_KEY = 'duty-ask/stop-asking';
 export const DUTY_STOP_ASKING_MS = 30 * 24 * 60 * 60 * 1000;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /** A parent said "stop asking". Not a bare STOP, which is the CASL keyword. */
 export function matchDutyStopAsking(text: string): boolean {
   return /\bstop asking\b/i.test(text.trim().replace(/[’]/g, "'"));
@@ -98,7 +91,6 @@ export interface DutySendPorts {
     text: string;
     fetch?: typeof fetch;
   }) => Promise<{ providerMessageId: string }>;
-  spend: typeof readGroupBubbleSpend;
 }
 
 export function defaultDutySendPorts(): DutySendPorts {
@@ -109,7 +101,6 @@ export function defaultDutySendPorts(): DutySendPorts {
     gatePorts: buildOutboundGatePorts,
     send: (input) =>
       sendLinqChatMessage({ chatId: input.chatId, text: input.text, fetch: input.fetch }),
-    spend: readGroupBubbleSpend,
   };
 }
 
@@ -121,13 +112,7 @@ export type DutyDelivery =
     }
   | {
       status: 'held';
-      reason:
-        | 'quiet_hours'
-        | 'frequency_cap'
-        | 'not_enrolled'
-        | 'no_watch_consent'
-        | 'group_cap'
-        | 'ask_budget';
+      reason: 'quiet_hours' | 'not_enrolled' | 'no_watch_consent' | 'ask_budget';
     }
   | { status: 'not_sent'; reason: string };
 
@@ -269,7 +254,6 @@ async function loadHousehold(database: Database, familyId: string, now: Date): P
     .from(schema.familyMembers)
     .where(eq(schema.familyMembers.familyId, familyId));
   // Flag off: the two parents. Flag on: any live group member as well.
-  // The ask budget stays on the household chat (readGroupBubbleSpend below).
   const parentIds = await dutyAssigneeIds(database, familyId);
   const primary =
     members.find((row) => row.familyId === familyId && row.role === 'primary_parent')?.userId ??
@@ -532,7 +516,6 @@ export async function planFamilyDutyAsks(
     bubbleLeaving: boolean;
     parentAsk?: { role: DutyRole | null; weekday: number | null } | null;
     speakerUserId?: string | null;
-    ports?: Pick<DutySendPorts, 'spend'>;
   },
 ): Promise<FamilyDutyView> {
   if (!coparentDutySendsActive(input.familyId)) return { skipped: 'flag_off' };
@@ -540,28 +523,12 @@ export async function planFamilyDutyAsks(
   if (home.parentIds.length < 2 || !home.primaryUserId) return { skipped: 'single_parent' };
   const built = await buildOccasions(database, input.familyId, home, input.now);
   const local = localParts(input.now, home.timeZone);
-  let proactiveToday = 0;
-  let discretionaryToday = 0;
-  let discretionaryWeek = 0;
-  if (home.chatId) {
-    const spend = await (input.ports?.spend ?? readGroupBubbleSpend)(database, {
-      familyId: input.familyId,
-      chatId: home.chatId,
-      now: input.now,
-    });
-    proactiveToday = spend.ceilingToday;
-    discretionaryToday = spend.discretionaryDay;
-    discretionaryWeek = spend.discretionaryWeek;
-  }
   const plan = planDutyCadence({
     now: input.now,
     bubbleLeaving: input.bubbleLeaving,
     open: built.open,
     occasions: built.occasions,
     parentAsk: input.parentAsk ?? null,
-    proactiveToday,
-    discretionaryToday,
-    discretionaryWeek,
     localMinutes: local.minutes,
     weekday: local.weekday,
     quiet: isWithinQuietHours(
@@ -924,7 +891,6 @@ export async function deliverDutyGroupLine(
     now: Date;
     dedupeKey: string;
     templateKey: string;
-    bubbleKind: 'discretionary' | 'ceiling';
     sendsActive: boolean;
     fetch?: typeof fetch;
   },
@@ -944,19 +910,6 @@ export async function deliverDutyGroupLine(
     ports.gatePorts(database),
   );
   if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
-  const spend = await ports.spend(database, {
-    familyId: input.familyId,
-    chatId: target.chatId,
-    now: input.now,
-  });
-  if (spend.ceilingToday >= GROUP_HARD_DAY_MAX) return { status: 'held', reason: 'group_cap' };
-  if (
-    input.bubbleKind === 'discretionary' &&
-    (spend.discretionaryDay >= GROUP_DISCRETIONARY_DAY_MAX ||
-      spend.discretionaryWeek >= GROUP_DISCRETIONARY_WEEK_MAX)
-  ) {
-    return { status: 'held', reason: 'group_cap' };
-  }
   if (await dedupeActive(input.dedupeKey, database))
     return { status: 'skipped', reason: 'deduped' };
   const body = withOptOut(input.text, verdict.optOut);
@@ -1019,7 +972,6 @@ async function applyPlan(
     now: Date;
     view: Exclude<FamilyDutyView, { skipped: 'flag_off' | 'single_parent' }>;
     lines: readonly CadenceLine[];
-    bubbleKind: 'discretionary' | 'ceiling';
     templateKey: string;
     ports?: DutySendPorts;
     replyClient?: AgentClient | null;
@@ -1045,7 +997,6 @@ async function applyPlan(
       now: input.now,
       dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
       templateKey: input.templateKey,
-      bubbleKind: input.bubbleKind,
       sendsActive: true,
     },
     input.ports,
@@ -1078,7 +1029,6 @@ export async function sweepDutyAsks(
       familyId: family.id,
       now,
       bubbleLeaving: false,
-      ports: input.ports,
     });
     if ('skipped' in view) {
       result.skipped += 1;
@@ -1102,13 +1052,11 @@ export async function sweepDutyAsks(
       result.skipped += 1;
       continue;
     }
-    const discretionary = view.plan.sendLines.some((row) => row.discretionary);
     const delivered = await applyPlan(database, {
       familyId: family.id,
       now,
       view,
       lines: view.plan.sendLines,
-      bubbleKind: discretionary ? 'discretionary' : 'ceiling',
       templateKey: view.plan.sendLines.some((row) => row.mode === 'parent_initiated')
         ? 'linq:group_duty_parent'
         : 'linq:group_duty_night_before',
@@ -1163,31 +1111,6 @@ export async function dutyOverviewForWeeklyBubble(
   };
 }
 
-async function llmCallsToday(database: Database, familyId: string, now: Date): Promise<number> {
-  try {
-    const since = new Date(now.getTime() - DAY_MS);
-    const rows = await database
-      .select({
-        familyId: schema.auditLog.familyId,
-        actionTaken: schema.auditLog.actionTaken,
-        after: schema.auditLog.after,
-        occurredAt: schema.auditLog.occurredAt,
-      })
-      .from(schema.auditLog)
-      .where(and(eq(schema.auditLog.familyId, familyId), gte(schema.auditLog.occurredAt, since)));
-    return rows.filter((row) => {
-      if (row.familyId !== familyId || row.actionTaken !== 'logistics_decision_recorded')
-        return false;
-      const after = row.after;
-      return Boolean(
-        after && typeof after === 'object' && (after as { kind?: string }).kind === 'duty_llm',
-      );
-    }).length;
-  } catch {
-    return DUTY_LLM_DAY_MAX;
-  }
-}
-
 export async function answerParentDutyAsk(
   database: Database,
   input: {
@@ -1204,7 +1127,6 @@ export async function answerParentDutyAsk(
       skipped:
         | 'flag_off'
         | 'no_match'
-        | 'llm_cap'
         | 'single_parent'
         | 'no_event'
         | 'open_question'
@@ -1237,9 +1159,7 @@ export async function answerParentDutyAsk(
   }
   let ask = matchParentDutyAsk(input.text);
   if (!ask && input.extract) {
-    const calls = await llmCallsToday(database, input.familyId, input.now);
-    if (!dutyExtractorMayRun({ sendsActive: true, callsToday: calls }))
-      return { skipped: 'llm_cap' };
+    if (!dutyExtractorMayRun({ sendsActive: true })) return { skipped: 'flag_off' };
     await auditDuty(database, { familyId: input.familyId, after: { kind: 'duty_llm' } });
     try {
       const extracted = await input.extract({
@@ -1261,13 +1181,10 @@ export async function answerParentDutyAsk(
     bubbleLeaving: false,
     parentAsk: ask,
     speakerUserId: input.actorUserId,
-    ports: input.ports,
   });
   if ('skipped' in view) return { skipped: view.skipped };
   if (view.plan.sendLines.length === 0) {
     if (view.plan.held === 'open_question') return { skipped: 'open_question' };
-    if (view.plan.held === 'group_cap')
-      return { delivery: { status: 'held', reason: 'group_cap' } };
     if (view.plan.held === 'quiet_hours')
       return { delivery: { status: 'held', reason: 'quiet_hours' } };
     return { skipped: 'no_event' };
@@ -1277,7 +1194,6 @@ export async function answerParentDutyAsk(
     now: input.now,
     view,
     lines: view.plan.sendLines,
-    bubbleKind: 'ceiling',
     templateKey: 'linq:group_duty_parent',
     ports: input.ports,
     replyClient: input.replyClient,

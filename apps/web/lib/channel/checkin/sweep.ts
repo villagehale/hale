@@ -208,7 +208,7 @@ function emptyResult(enabled: boolean): EveningCheckInResult {
     dormant: 0,
     skipped: { cadence_off: 0, asked_today: 0, not_due: 0 },
     heldForRegistration: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0 },
     duplicate: 0,
     failed: 0,
     anchor: {
@@ -459,7 +459,7 @@ async function runForFamily(
     now,
   });
   if (delivered.status === 'held') {
-    console.warn({ familyId: family.familyId }, 'evening check-in: group cap reached');
+    console.warn({ familyId: family.familyId, reason: delivered.reason }, 'evening check-in: held');
     return;
   }
   if (delivered.status === 'skipped') {

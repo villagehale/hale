@@ -140,15 +140,16 @@ export type ProactiveSendKind =
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
-export type ProactiveHoldReason =
-  | 'not_enrolled'
-  | 'no_watch_consent'
-  | 'frequency_cap'
-  | 'quiet_hours';
+export type ProactiveHoldReason = 'not_enrolled' | 'no_watch_consent' | 'quiet_hours';
+
+/** A gate hold, or a group send waiting because the co-parent ask stays 1:1. */
+export type DeliveryHoldReason = ProactiveHoldReason | 'coparent_ask';
 
 /**
- * WHICH SUPPRESSION THE LEDGER RECORDS, per hold — dispatch.ts's four statuses, chosen by
- * the gate's four reasons.
+ * WHICH SUPPRESSION THE LEDGER RECORDS, per hold.
+ *
+ * `suppressed_cap` stays on the status union so a historical `channel_messages`
+ * row still parses. No hold reason writes it. A count is not a hold.
  *
  * HOISTED HERE (v5 travel) from two module-private copies. It was a six-line
  * `Record<ProactiveHoldReason, …>` in `integrations/email-alert.ts` and AGAIN in
@@ -157,7 +158,7 @@ export type ProactiveHoldReason =
  * the union it is keyed on, in the direction the imports already run (outbound-gate.ts
  * imports `ledger`, never the other way), next to `acceptedStatus`'s mirror there.
  *
- * A `Record`, so a fifth hold reason cannot be added without choosing what its receipt
+ * A `Record`, so another hold reason cannot be added without choosing what its receipt
  * says.
  */
 export type ProactiveHoldStatus =
@@ -171,7 +172,6 @@ export function holdStatus(reason: ProactiveHoldReason): ProactiveHoldStatus {
 
 const HOLD_STATUS: Record<ProactiveHoldReason, ProactiveHoldStatus> = {
   quiet_hours: 'suppressed_quiet_hours',
-  frequency_cap: 'suppressed_cap',
   not_enrolled: 'suppressed_consent',
   no_watch_consent: 'suppressed_consent',
 };
@@ -382,9 +382,8 @@ export interface ProactiveSendRequest {
  * not-enrolled hold is a departed family), and turning routine policy into exception
  * control flow would make the common path the error path.
  *
- * `frequency_cap` stays on {@link ProactiveHoldReason} because group delivery and older
- * ledger rows still name `suppressed_cap`. This function does not return it. A count
- * is never a hold.
+ * A count is not a hold. Historical ledger rows may still say `suppressed_cap`;
+ * this function does not write one.
  */
 export async function assertProactiveSendAllowed(
   request: ProactiveSendRequest,

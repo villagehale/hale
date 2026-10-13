@@ -587,7 +587,6 @@ describe('runNudgeCron — the outbound gate', () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ windows: [win()], recentSends: 1 });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    expect(result.held.frequency_cap).toBe(0);
     expect(result.sent).toBe(1);
     expect(h.transport.sent).toHaveLength(1);
   });
@@ -966,7 +965,6 @@ describe('the nudge reaches both parents, on their own numbers', () => {
     const second = await runNudgeCron(db(), h.deps, new Date('2026-07-31T14:30:00.000Z'));
     expect(second.sent).toBe(0);
     expect(second.deduped).toBe(2);
-    expect(second.held.frequency_cap).toBe(0);
     expect(h.transport.sent).toHaveLength(2);
   });
 

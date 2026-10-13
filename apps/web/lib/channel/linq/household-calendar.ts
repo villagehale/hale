@@ -7,7 +7,6 @@ import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channe
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import { linqGroupCoparentEnabled, linqPollsEnabled } from './config';
-import { groupProactiveCapReached } from './family-outbound';
 import { groupAudienceAllows } from './group-audience';
 import {
   classifyKidCalendarItem,
@@ -954,16 +953,6 @@ export async function narrateHouseholdCalendar(
       { familyId: input.familyId, kind: notice.kind, reason: audience.reason },
       'household calendar: not for this group',
     );
-    return;
-  }
-  if (
-    await groupProactiveCapReached(database, {
-      familyId: input.familyId,
-      chatId: context.chatId,
-      now: input.now,
-    })
-  ) {
-    console.warn({ familyId: input.familyId }, 'household calendar: group cap reached');
     return;
   }
   const sent = await sendGroupNotice(database, {

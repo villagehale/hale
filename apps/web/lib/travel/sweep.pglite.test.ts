@@ -551,7 +551,7 @@ describe('the hold, and how many rows a week of it leaves', () => {
         direction: 'out',
         category: 'travel_brief',
         templateKey: 'travel:brief',
-        dedupeKey: travelBriefHoldKey(trip, 'frequency_cap'),
+        dedupeKey: `travel_brief_hold:${trip}:frequency_cap`,
         status: 'suppressed_cap',
       })
       .onConflictDoNothing();
@@ -672,8 +672,7 @@ describe('a trip closes exactly once', () => {
    * minus `sent`, which is the shape rule #11 forbids.
    *
    * It also pins the ORDER: the dedupe read runs before the gate, so this household is
-   * counted as already claimed rather than as held by the weekly cap their own first text
-   * spent.
+   * counted as already claimed.
    */
   it('names the tick that finds the send already claimed, rather than returning silently', async () => {
     const family = await seedFamily();
@@ -691,7 +690,6 @@ describe('a trip closes exactly once', () => {
     expect(second.due).toBe(1);
     expect(second.sent).toBe(0);
     expect(second.alreadyClaimed).toBe(1);
-    expect(second.held.frequency_cap).toBe(0);
     expect(h.sent).toHaveLength(1);
   });
 

@@ -4,7 +4,6 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, type Skill, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { groupCapResetsAt } from '~/lib/channel/linq/family-outbound';
 import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import {
@@ -122,7 +121,6 @@ describe('workstream follow-up sweep', () => {
       pendingDeferral: async () => null,
       stamp: async () => undefined,
     });
-    expect(result.held.frequency_cap).toBe(0);
     expect(compose).toHaveBeenCalled();
     expect(result.skipped.nothing_to_say).toBe(1);
   });
@@ -208,7 +206,7 @@ describe('workstream follow-up sweep', () => {
     expect(page).not.toHaveBeenCalled();
   });
 
-  it('counts a group hold as that hold and keeps it quiet until the window resets', async () => {
+  it('counts a quiet-hours hold and a co-parent ask, and keeps each quiet until its window ends', async () => {
     vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
     const deferred: Array<{ id: string; reason: string; until: string; attempt: number }> = [];
     const result = await runWorkstreamFollowupSweep({} as Database, {
@@ -234,22 +232,17 @@ describe('workstream follow-up sweep', () => {
       targetFor: async () => ({ channel: 'legacy' }),
       deliver: vi
         .fn()
-        .mockResolvedValueOnce({
-          status: 'held',
-          reason: 'group_cap',
-          until: new Date('2026-08-12T18:00:00.001Z'),
-        })
+        .mockResolvedValueOnce({ status: 'held', reason: 'coparent_ask' })
         .mockResolvedValueOnce({ status: 'held', reason: 'quiet_hours' }),
     });
-    expect(result.held.group_cap).toBe(1);
+    expect(result.held.coparent_ask).toBe(1);
     expect(result.held.quiet_hours).toBe(1);
-    expect(result.held.frequency_cap).toBe(0);
     expect(result.sent).toBe(0);
     expect(deferred).toEqual([
       {
         id: due.id,
-        reason: 'group_cap',
-        until: '2026-08-12T18:00:00.001Z',
+        reason: 'coparent_ask',
+        until: workstreamHoldUntil('coparent_ask', NOW, 'America/Toronto').toISOString(),
         attempt: 0,
       },
       {
@@ -275,7 +268,7 @@ describe('workstream follow-up sweep', () => {
       pendingDeferral: async () => ({
         until: new Date(NOW.getTime() + 60_000),
         attempt: 1,
-        reason: 'group_cap',
+        reason: 'quiet_hours',
       }),
       compose,
     });
@@ -443,40 +436,6 @@ describe('workstream hold windows', () => {
     expect(workstreamHoldUntil('quiet_hours', early, 'America/Toronto').toISOString()).toBe(
       '2026-08-12T12:00:00.000Z',
     );
-  });
-
-  it('holds a group cap until the rolling window resets, not local midnight', () => {
-    const sent = new Date('2026-08-13T14:00:00.000Z');
-    const fridayMorning = new Date('2026-08-14T12:00:00.000Z');
-    const until = groupCapResetsAt(
-      'discretionary',
-      {
-        discretionaryDay: 1,
-        discretionaryWeek: 1,
-        ceilingToday: 1,
-        discretionaryDayAt: [sent],
-        discretionaryWeekAt: [sent],
-        ceilingTodayAt: [sent],
-      },
-      fridayMorning,
-    );
-    expect(until.toISOString()).toBe('2026-08-14T14:00:00.001Z');
-
-    const oldest = new Date('2026-08-08T12:00:00.000Z');
-    const recent = new Date('2026-08-14T10:00:00.000Z');
-    const both = groupCapResetsAt(
-      'discretionary',
-      {
-        discretionaryDay: 1,
-        discretionaryWeek: 3,
-        ceilingToday: 1,
-        discretionaryDayAt: [recent],
-        discretionaryWeekAt: [oldest, sent, recent],
-        ceilingTodayAt: [recent],
-      },
-      fridayMorning,
-    );
-    expect(both.toISOString()).toBe('2026-08-15T12:00:00.001Z');
   });
 });
 

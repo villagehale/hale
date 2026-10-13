@@ -136,7 +136,7 @@ function harness(
   const gate: OutboundGatePorts = {
     channelEnrolled: async () => overrides.hold !== 'not_enrolled',
     watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
-    countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 99 : 0),
+    countProactiveSends: async () => 0,
     proactiveSentSince: async () => true,
     parentTimeZone: async () => (overrides.hold === 'quiet_hours' ? 'America/Toronto' : 'UTC'),
   };

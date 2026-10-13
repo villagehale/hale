@@ -77,7 +77,7 @@ function harness(overrides: Overrides = {}) {
     buildGate: () => ({
       channelEnrolled: async () => overrides.hold !== 'not_enrolled',
       watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
-      countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 9 : 0),
+      countProactiveSends: async () => 0,
       proactiveSentSince: async () => false,
       // The gate reads the PARENT's own clock, which is the family's. The evening
       // instant is 20:17 in Toronto and 02:17 the next morning in Paris, so the hold

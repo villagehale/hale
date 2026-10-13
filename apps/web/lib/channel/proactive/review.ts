@@ -1027,12 +1027,7 @@ async function sendChosen(
       now,
     });
     if (delivered.status !== 'sent') {
-      // A group cap names when it resets; that is the hold's clock.
-      const holdUntil =
-        delivered.status === 'held' && 'until' in delivered ? delivered.until : undefined;
-      await holdByName(database, familyId, copy.items, deliveryHold(delivered.reason), now, {
-        holdUntil,
-      });
+      await holdByName(database, familyId, copy.items, deliveryHold(delivered.reason), now);
       summary.held += 1;
       continue;
     }

@@ -520,9 +520,9 @@ async function runToddlerJourney(): Promise<Journey> {
               .reverse(),
         },
         {
-          // SEAM: the frequency cap counts this FAMILY's delivered proactive sends of
-          // this class. Unscoped, the fake would count every intake message too and
-          // hold the very first nudge.
+          // SEAM: countProactiveSends still reads this family's delivered nudge rows.
+          // The gate does not hold on that count. Unscoped, the fake would count
+          // every intake message too.
           table: schema.channelMessages,
           rows: () =>
             fake
@@ -547,7 +547,7 @@ async function runToddlerJourney(): Promise<Journey> {
         return real.watchConsentGranted(id);
       },
       countProactiveSends: async (fid, kind, since) => {
-        gateCalls.push('frequency_cap');
+        gateCalls.push('send_count');
         return real.countProactiveSends(fid, kind, since);
       },
       // A brand-new family: nothing proactive has reached them yet, so the nudge below is
@@ -1041,7 +1041,6 @@ describe('4 · the 48h sweep passes the gate and stays quiet', () => {
     expect(journey.nudge.held).toEqual({
       not_enrolled: 0,
       no_watch_consent: 0,
-      frequency_cap: 0,
       quiet_hours: 0,
     });
     // Every check ran, against the rows intake wrote — not a stub that said yes.
@@ -1086,8 +1085,6 @@ describe('4c · a withdrawn watch consent holds the next sweep', () => {
     // family, the same slot logic, the same live channel — and no send.
     expect(journey.afterWithdrawal).toMatchObject({ enabled: true, evaluated: 1, sent: 0 });
     expect(journey.afterWithdrawal.held.no_watch_consent).toBe(1);
-    // First failure wins, so nothing past the consent check was even looked at.
-    expect(journey.afterWithdrawal.held.frequency_cap).toBe(0);
   });
 });
 

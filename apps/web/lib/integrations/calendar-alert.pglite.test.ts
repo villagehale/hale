@@ -518,18 +518,14 @@ describe('alertParentForCalendarChanges', () => {
   });
 
   it('names each gate hold separately and records it under its own suppression status', async () => {
-    for (const reason of ['not_enrolled', 'no_watch_consent', 'frequency_cap'] as const) {
+    for (const reason of ['not_enrolled', 'no_watch_consent'] as const) {
       await expect(sweep(harness({ verdict: { allowed: false, reason } }))).resolves.toEqual([
         `gate_refused:${reason}`,
       ]);
     }
     const rows = await ledgerRows();
-    expect(rows.map((r) => r.status).sort()).toEqual([
-      'suppressed_cap',
-      'suppressed_consent',
-      'suppressed_consent',
-    ]);
-    expect(rows.map((r) => r.dedupeKey)).toEqual([null, null, null]);
+    expect(rows.map((r) => r.status).sort()).toEqual(['suppressed_consent', 'suppressed_consent']);
+    expect(rows.map((r) => r.dedupeKey)).toEqual([null, null]);
   });
 
   it('a provider refusal fails the claimed row in place and keeps the key spent', async () => {
@@ -1232,10 +1228,10 @@ describe('a change the gate held is offered again', () => {
 
   it('gives up on a hold older than three days, by name', async () => {
     await expect(
-      sweep(harness({ verdict: { allowed: false, reason: 'frequency_cap' } }), {
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
         changes: [AHEAD],
       }),
-    ).resolves.toEqual(['gate_refused:frequency_cap']);
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
 
     const tooLate = harness();
     const past = await sweepBoth(tooLate, {
@@ -1248,7 +1244,7 @@ describe('a change the gate held is offered again', () => {
   });
 
   it('is still owed one day inside the limit — the control for the expiry above', async () => {
-    await sweep(harness({ verdict: { allowed: false, reason: 'frequency_cap' } }), {
+    await sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
       changes: [AHEAD],
     });
 

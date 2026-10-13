@@ -121,7 +121,6 @@ export const EMAIL_ALERT_OUTCOMES = [
   'no_received_at',
   'gate_refused:not_enrolled',
   'gate_refused:no_watch_consent',
-  'gate_refused:frequency_cap',
   'gate_refused:quiet_hours',
   'classifier_failed',
   'no_send_target',

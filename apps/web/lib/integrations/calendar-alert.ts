@@ -128,7 +128,6 @@ export const CALENDAR_ALERT_OUTCOMES = [
   'no_parent_user',
   'gate_refused:not_enrolled',
   'gate_refused:no_watch_consent',
-  'gate_refused:frequency_cap',
   'gate_refused:quiet_hours',
   'no_send_target',
   'send_failed',
@@ -205,11 +204,7 @@ export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
  * so unless the sweep writes down that it still owes one, the news is gone for good. A
  * consent refusal is deliberately not here: `not_enrolled` is not a wait, it is an answer.
  */
-const HELD_OUTCOMES = new Set<CalendarAlertOutcome>([
-  'gate_refused:quiet_hours',
-  'gate_refused:frequency_cap',
-  'over_sweep_cap',
-]);
+const HELD_OUTCOMES = new Set<CalendarAlertOutcome>(['gate_refused:quiet_hours', 'over_sweep_cap']);
 
 /**
  * Keyed on the CONNECTION, the event and Google's `updated` stamp.

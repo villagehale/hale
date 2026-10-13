@@ -1444,7 +1444,6 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
 
     const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
 
-    expect(summary.held.frequency_cap).toBe(0);
     expect(summary.sent).toBe(1);
     // The observation stays until the receipt confirms. What a count used to hold is
     // the text having left: the notified row is the pointer, and pending_kind clears
@@ -1553,7 +1552,7 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
       awaitingReceipt: 0,
       refused: 0,
       failed: 0,
-      held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+      held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0, coparent_ask: 0 },
       released: {
         notified: 0,
         expired: 0,

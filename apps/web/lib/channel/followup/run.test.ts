@@ -338,9 +338,7 @@ describe('the intro follow-up', () => {
   });
 
   /**
-   * The claim, not the cap, is what stops the second tick — and the assertion says so.
-   * A cap-blocked re-run would look identical on the transport, so `frequency_cap: 0` is
-   * the discriminating half: it fails if the dedupe check is ever moved after the gate.
+   * The claim, not a count, is what stops the second tick.
    */
   it('sends nothing on the next tick, because the send already claimed the key', async () => {
     const h = harness({ intros: [PAIR] });
@@ -350,7 +348,6 @@ describe('the intro follow-up', () => {
 
     expect(second.introAsked).toBe(0);
     expect(second.skipped.already_claimed).toBe(2);
-    expect(second.held.frequency_cap).toBe(0);
     expect(h.transport.sent).toHaveLength(2);
   });
 
@@ -542,7 +539,6 @@ describe('the rails every follow-up rides', () => {
 
     expect(result.introAsked).toBe(2);
     expect(result.activityAsked).toBe(1);
-    expect(result.held.frequency_cap).toBe(0);
     expect(h.transport.bodies()).toEqual([
       withOptOut(INTRO_ASK, 'short'),
       withOptOut(INTRO_ASK, 'short'),
