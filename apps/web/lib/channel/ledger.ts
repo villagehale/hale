@@ -120,9 +120,10 @@ export async function countRecentSends(
 export const CONSUMED_SEND_STATUSES = [...SENT_STATUSES, 'failed'] as const;
 
 /**
- * Set on a channel_messages row whose dedupe key was claimed because a combined
- * notice already covered it. The row is not a second send and never reached a
- * provider. Counts of real sends exclude it. The key still consumes idempotency.
+ * Historical marker on a channel_messages row whose dedupe key was claimed
+ * because a combined notice already covered it. New sends do not write this:
+ * a covered key is an audit row, not a second queued text. Counts of real
+ * sends still exclude any row that already carries it.
  */
 export const COVERED_BY_COMBINED_NOTICE = 'covered_by_combined_notice';
 

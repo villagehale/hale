@@ -75,4 +75,71 @@ export const AUTONOMY_NOTICE_FIXTURES = [
       detail: null,
     },
   },
+  {
+    id: 'combined-armed-acted-en',
+    context: {
+      occasion: 'armed',
+      actionType: 'send_email',
+      localeHint: null,
+      recentInbound: ['can you email the school for me'],
+      detail: null,
+      items: [
+        {
+          occasion: 'armed',
+          actionType: 'send_email',
+          detail: null,
+          why: null,
+          standing: {
+            may: {
+              sendEmail: true,
+              replyToEmail: false,
+              addToCalendar: false,
+              updateCalendar: false,
+              moveCalendar: false,
+              cancelCalendar: false,
+              sharePhotos: false,
+              addToDigest: false,
+              addToRoutine: false,
+            },
+            never: ['book', 'register', 'pay'],
+            stop: 'one_message',
+          },
+        },
+        {
+          occasion: 'acted',
+          actionType: 'send_email',
+          detail: { to: 'school@example.com', subject: 'pickup' },
+          why: 'the kind was on',
+          standing: { may: null, never: null, stop: 'one_message' },
+        },
+      ],
+    },
+  },
+  {
+    id: 'combined-two-acted-en',
+    context: {
+      occasion: 'acted',
+      actionType: 'send_email',
+      localeHint: null,
+      recentInbound: ['email them for me'],
+      detail: { to: 'school@example.com', subject: 'pickup' },
+      why: 'the kind was on',
+      items: [
+        {
+          occasion: 'acted',
+          actionType: 'send_email',
+          detail: { to: 'school@example.com', subject: 'pickup' },
+          why: 'the kind was on',
+          standing: { may: null, never: null, stop: 'one_message' },
+        },
+        {
+          occasion: 'acted',
+          actionType: 'calendar_add',
+          detail: { title: 'soccer' },
+          why: 'the kind was on',
+          standing: { may: null, never: null, stop: 'one_message' },
+        },
+      ],
+    },
+  },
 ];

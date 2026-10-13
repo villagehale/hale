@@ -3,7 +3,7 @@ import type { ActionType } from '@hale/types';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AUTONOMY_STREAK_REQUIRED } from '../orchestrator/autonomy-gate.js';
-import { createTestDb, seedFamily, type SeededFamily, type TestDb } from '../testing/pglite.js';
+import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '../testing/pglite.js';
 import {
   autonomyArmedDedupeKey,
   autonomyTurnOnDelivered,
@@ -217,7 +217,10 @@ describe('recordExecution — the decision travels on the audit row', () => {
       .select({ actor: schema.auditLog.actor, after: schema.auditLog.after })
       .from(schema.auditLog)
       .where(
-        and(eq(schema.auditLog.targetId, actionId), eq(schema.auditLog.actionTaken, 'action.executed')),
+        and(
+          eq(schema.auditLog.targetId, actionId),
+          eq(schema.auditLog.actionTaken, 'action.executed'),
+        ),
       );
     expect(audit).toEqual({
       actor: 'system',
@@ -643,7 +646,9 @@ describe('grants are per parent: each parent’s own approvals arm the kind unde
 
     await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED, coParentId);
 
-    expect((await autonomyConsentRows(fam.familyId)).map((row) => row.userId)).toEqual([coParentId]);
+    expect((await autonomyConsentRows(fam.familyId)).map((row) => row.userId)).toEqual([
+      coParentId,
+    ]);
     expect((await grantAuditRows(fam.familyId)).map((row) => row.actor)).toEqual([coParentId]);
     expect(await standing(fam.familyId, 'send_email')).toEqual(
       new Map([
@@ -727,7 +732,9 @@ describe('a co-parent’s grant for one kind is not their consent to a cross-par
     const coParentId = await addMember(fam.familyId, 'co_parent');
     await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED, coParentId);
 
-    expect(await loadCrossParentConsent(fam.familyId, 'create_calendar_event', db.database)).toEqual({
+    expect(
+      await loadCrossParentConsent(fam.familyId, 'create_calendar_event', db.database),
+    ).toEqual({
       hasCoParent: true,
       coParentConsentGranted: false,
     });
@@ -737,7 +744,9 @@ describe('a co-parent’s grant for one kind is not their consent to a cross-par
 
     // Positive control: a grant for that kind, under the co-parent, in this family.
     await grantOptIn(fam.familyId, coParentId, 'create_calendar_event', new Date());
-    expect(await loadCrossParentConsent(fam.familyId, 'create_calendar_event', db.database)).toEqual({
+    expect(
+      await loadCrossParentConsent(fam.familyId, 'create_calendar_event', db.database),
+    ).toEqual({
       hasCoParent: true,
       coParentConsentGranted: true,
     });
@@ -749,11 +758,18 @@ describe('a co-parent’s grant for one kind is not their consent to a cross-par
   it('a switch-off of the kind ends it; a household with no co-parent has nothing to ask', async () => {
     const fam = await seedFamily(db.database);
     const coParentId = await addMember(fam.familyId, 'co_parent');
-    await grantOptIn(fam.familyId, coParentId, 'create_calendar_event', new Date(Date.now() - HOUR_MS));
+    await grantOptIn(
+      fam.familyId,
+      coParentId,
+      'create_calendar_event',
+      new Date(Date.now() - HOUR_MS),
+    );
 
     await switchOff(fam, 'create_calendar_event');
 
-    expect(await loadCrossParentConsent(fam.familyId, 'create_calendar_event', db.database)).toEqual({
+    expect(
+      await loadCrossParentConsent(fam.familyId, 'create_calendar_event', db.database),
+    ).toEqual({
       hasCoParent: true,
       coParentConsentGranted: false,
     });
@@ -866,6 +882,35 @@ describe('a switch-off restarts the streak', () => {
       templateKey: 'autonomy:armed',
       dedupeKey: autonomyArmedDedupeKey(fifth.autonomy.consentRecordId),
       status: 'queued',
+    });
+    expect(await autonomyTurnOnDelivered(fam.familyId, 'send_email', db.database)).toBe(true);
+  });
+
+  it('a turn-on covered by another text counts only after the sent audit', async () => {
+    const fam = await seedFamily(db.database);
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
+    const fifth = await approve(fam, 'send_email');
+    if (!fifth.claimed || fifth.autonomy.outcome !== 'granted') {
+      throw new Error('expected the fifth approval to grant');
+    }
+    const key = autonomyArmedDedupeKey(fifth.autonomy.consentRecordId);
+    await db.database.insert(schema.auditLog).values({
+      familyId: fam.familyId,
+      actor: 'system',
+      actionTaken: 'autonomy_notice_covered',
+      targetTable: 'channel_messages',
+      targetId: '11111111-1111-4111-8111-111111111111',
+      after: { dedupeKey: key },
+    });
+    expect(await autonomyTurnOnDelivered(fam.familyId, 'send_email', db.database)).toBe(false);
+
+    await db.database.insert(schema.auditLog).values({
+      familyId: fam.familyId,
+      actor: 'system',
+      actionTaken: 'autonomy_armed_notice_sent',
+      targetTable: 'channel_messages',
+      targetId: '11111111-1111-4111-8111-111111111111',
+      after: { dedupeKey: key, occasion: 'armed', actionType: 'send_email' },
     });
     expect(await autonomyTurnOnDelivered(fam.familyId, 'send_email', db.database)).toBe(true);
   });

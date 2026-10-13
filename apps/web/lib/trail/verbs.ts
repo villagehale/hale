@@ -355,6 +355,8 @@ export const AUDIT_VERBS = [
   'action.gated.autonomy_notice_pending',
   'autonomy_armed_notice_sent',
   'autonomy_acted_notice_sent',
+  'autonomy_notice_covered',
+  'autonomy_notice_cover_released',
   'autonomy_acted_notice_aged_out',
   // A parent turned Hale's autonomy off for one kind of action.
   'autonomous_action_class.revoked',
@@ -1306,6 +1308,14 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'texted you about something Hale did on its own',
     family: 'done',
   },
+  autonomy_notice_covered: {
+    sentence: 'noted a notice already covered by the text that went out',
+    family: 'note',
+  },
+  autonomy_notice_cover_released: {
+    sentence: 'cleared a covered notice so it can be tried again',
+    family: 'note',
+  },
   autonomy_acted_notice_aged_out: {
     sentence: 'left an on-its-own text unsent after 7 days',
     family: 'note',
@@ -1736,13 +1746,15 @@ export const SHADOW_ONLY_VERBS = [
 ] as const satisfies readonly AuditVerb[];
 
 /**
- * Written so the next pass does not recount an on-its-own text that aged out.
- * The sentence stays in the registry so a drift check still knows the verb.
- * History hides the row. The right-to-access export keeps it: the audit row is
- * something the parent is owed a copy of.
+ * Written so the next pass does not recount a notice, or so a failed send can
+ * be tried again. The sentence stays in the registry so a drift check still
+ * knows the verb. History hides the row. The right-to-access export keeps it:
+ * the audit row is something the parent is owed a copy of.
  */
 export const INTERNAL_TRAIL_VERBS = [
   'autonomy_acted_notice_aged_out',
+  'autonomy_notice_covered',
+  'autonomy_notice_cover_released',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

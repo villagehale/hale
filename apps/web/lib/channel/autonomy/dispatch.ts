@@ -12,6 +12,7 @@ import {
   type AutonomyNoticePorts,
   type OpenAutonomyObligation,
   autonomousLaneOn,
+  claimedAutonomyNoticeKeys,
   tellParentOpenNotices,
 } from './notice';
 
@@ -72,12 +73,6 @@ export interface AutonomyNoticeDispatchResult {
   laneOff: number;
   /** On-its-own notices marked this pass as older than the redrive window. */
   agedOut: number;
-  /**
-   * Always 0. One text covers every open notice for the parent, so a pass does
-   * not leave the rest owed. Kept so a caller reading the result still sees the
-   * field the old trickle used.
-   */
-  onePerPass: number;
 }
 
 export function emptyAutonomyNoticeDispatch(): AutonomyNoticeDispatchResult {
@@ -95,7 +90,6 @@ export function emptyAutonomyNoticeDispatch(): AutonomyNoticeDispatchResult {
     noSendTarget: 0,
     laneOff: 0,
     agedOut: 0,
-    onePerPass: 0,
   };
 }
 
@@ -112,12 +106,7 @@ function countOutcome(result: AutonomyNoticeDispatchResult, outcome: AutonomyNot
 }
 
 async function claimedKeys(database: Database, keys: string[]): Promise<Set<string>> {
-  if (keys.length === 0) return new Set();
-  const rows = await database
-    .select({ dedupeKey: schema.channelMessages.dedupeKey })
-    .from(schema.channelMessages)
-    .where(inArray(schema.channelMessages.dedupeKey, keys));
-  return new Set(rows.flatMap((row) => (row.dedupeKey ? [row.dedupeKey] : [])));
+  return claimedAutonomyNoticeKeys(database, keys);
 }
 
 async function agedOutMarks(database: Database, actionIds: string[]): Promise<Set<string>> {

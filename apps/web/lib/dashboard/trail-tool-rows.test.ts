@@ -65,6 +65,18 @@ const TRAIL_ROWS = [
     childDob: null,
     childName: null,
   },
+  {
+    entry: auditEntry({ id: 'covered', actionTaken: 'autonomy_notice_covered' }),
+    teenContent: null,
+    childDob: null,
+    childName: null,
+  },
+  {
+    entry: auditEntry({ id: 'cover-released', actionTaken: 'autonomy_notice_cover_released' }),
+    teenContent: null,
+    childDob: null,
+    childName: null,
+  },
 ];
 
 // The fake db returns EVERY audit row (including the tool:* sub-steps), ignoring the
@@ -120,5 +132,8 @@ describe('loadTrail — internal agent tool-call rows never reach the trail', ()
     expect(serialized).not.toContain('get_framework_guidance');
     expect(serialized).not.toContain('aged-out');
     expect(serialized).not.toContain('left an on-its-own text unsent after 7 days');
+    expect(serialized).not.toContain('covered');
+    expect(serialized).not.toContain('noted a notice already covered by the text that went out');
+    expect(serialized).not.toContain('cleared a covered notice so it can be tried again');
   });
 });

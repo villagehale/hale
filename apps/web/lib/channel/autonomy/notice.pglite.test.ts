@@ -185,9 +185,38 @@ async function channelRows(familyId: string) {
     .where(eq(schema.channelMessages.familyId, familyId));
 }
 
-function ports(compose: (input: AutonomyNoticeContext) => Promise<AutonomyNoticeText>) {
+async function messageRows(familyId: string) {
+  return db.database
+    .select({
+      parentUserId: schema.channelMessages.parentUserId,
+      dedupeKey: schema.channelMessages.dedupeKey,
+      status: schema.channelMessages.status,
+      errorCode: schema.channelMessages.errorCode,
+    })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.familyId, familyId));
+}
+
+async function auditDedupeKeys(familyId: string, actionTaken: string) {
+  const rows = await db.database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(eq(schema.auditLog.familyId, familyId), eq(schema.auditLog.actionTaken, actionTaken)),
+    );
+  return rows
+    .flatMap((row) => {
+      const key = (row.after as { dedupeKey?: unknown } | null)?.dedupeKey;
+      return typeof key === 'string' ? [key] : [];
+    })
+    .sort();
+}
+
+function ports(
+  compose: (input: AutonomyNoticeContext) => Promise<AutonomyNoticeText>,
+  transport = new FakeTransport(),
+) {
   const seen: AutonomyNoticeContext[] = [];
-  const transport = new FakeTransport();
   const threaded: string[] = [];
   const sendPorts: AutonomyNoticePorts = {
     ...autonomyNoticeReaders(db.database),
@@ -640,8 +669,8 @@ describe('telling a parent a kind turned on', () => {
   it('sends the on-its-own notice to every live parent', async () => {
     const parent = await seedParent();
     const other = await seedCoParent(parent.familyId, 'Sam');
-    await grant(parent.familyId, parent.parentUserId, 'send_email');
-    await grant(parent.familyId, other.parentUserId, 'send_email');
+    const parentGrant = await grant(parent.familyId, parent.parentUserId, 'send_email');
+    const otherGrant = await grant(parent.familyId, other.parentUserId, 'send_email');
     const actionId = await recordActed(parent.familyId, 'send_email', {
       payload: { to: 'school@example.com', subject: 'pickup' },
     });
@@ -654,7 +683,6 @@ describe('telling a parent a kind turned on', () => {
     );
 
     expect(dispatched.sent).toBe(2);
-    expect(dispatched.onePerPass).toBe(0);
     expect(dispatched.agedOut).toBe(0);
     expect(seen).toHaveLength(2);
     for (const row of seen) {
@@ -670,11 +698,13 @@ describe('telling a parent a kind turned on', () => {
       { now: MORNING, familyId: parent.familyId, slot: 'now' },
       sendPorts,
     );
-    const rows = await channelRows(parent.familyId);
-    const actedKeys = rows
-      .flatMap((row) => (row.dedupeKey?.startsWith('autonomy_acted:') ? [row.dedupeKey] : []))
-      .sort();
-    expect(actedKeys).toEqual(
+    const rows = await messageRows(parent.familyId);
+    expect(rows.filter((row) => row.errorCode === 'covered_by_combined_notice')).toEqual([]);
+    expect(rows.filter((row) => row.status === 'queued')).toHaveLength(2);
+    expect(rows.map((row) => row.dedupeKey).sort()).toEqual(
+      [`autonomy_armed:${parentGrant}`, `autonomy_armed:${otherGrant}`].sort(),
+    );
+    expect(await auditDedupeKeys(parent.familyId, 'autonomy_acted_notice_sent')).toEqual(
       [
         `autonomy_acted:${actionId}:${parent.parentUserId}`,
         `autonomy_acted:${actionId}:${other.parentUserId}`,
@@ -682,22 +712,15 @@ describe('telling a parent a kind turned on', () => {
     );
     expect(later.sent).toBe(0);
     expect(later.open).toBe(0);
-    expect(later.onePerPass).toBe(0);
     expect(later.agedOut).toBe(0);
   });
 
   it('one text covers two on-its-own notices and claims both keys', async () => {
     const parent = await seedParent();
-    await grant(parent.familyId, parent.parentUserId, 'send_email');
+    const grantId = await grant(parent.familyId, parent.parentUserId, 'send_email');
     const first = await recordActed(parent.familyId, 'send_email');
     const second = await recordActed(parent.familyId, 'send_email');
     const { sendPorts, transport } = ports(async () => ({ message: `model acted ${households}` }));
-    const actedKeys = async () => {
-      const rows = await channelRows(parent.familyId);
-      return rows
-        .flatMap((row) => (row.dedupeKey?.startsWith('autonomy_acted:') ? [row.dedupeKey] : []))
-        .sort();
-    };
 
     const firstPass = await dispatchAutonomyNotices(
       db.database,
@@ -705,10 +728,19 @@ describe('telling a parent a kind turned on', () => {
       sendPorts,
     );
     expect(firstPass.sent).toBe(1);
-    expect(firstPass.onePerPass).toBe(0);
     expect(firstPass.agedOut).toBe(0);
     expect(transport.bodies()).toEqual([`model acted ${households}`]);
-    expect(await actedKeys()).toEqual(
+    const rows = await messageRows(parent.familyId);
+    expect(rows.filter((row) => row.errorCode === 'covered_by_combined_notice')).toEqual([]);
+    expect(rows).toEqual([
+      {
+        parentUserId: parent.parentUserId,
+        dedupeKey: `autonomy_armed:${grantId}`,
+        status: 'queued',
+        errorCode: null,
+      },
+    ]);
+    expect(await auditDedupeKeys(parent.familyId, 'autonomy_acted_notice_sent')).toEqual(
       [
         `autonomy_acted:${first}:${parent.parentUserId}`,
         `autonomy_acted:${second}:${parent.parentUserId}`,
@@ -722,9 +754,60 @@ describe('telling a parent a kind turned on', () => {
     );
     expect(secondPass.sent).toBe(0);
     expect(secondPass.open).toBe(0);
-    expect(secondPass.onePerPass).toBe(0);
     expect(secondPass.agedOut).toBe(0);
     expect(transport.bodies()).toEqual([`model acted ${households}`]);
+  });
+
+  it('a refused send leaves no queued text and the covered keys can be tried again', async () => {
+    const parent = await seedParent();
+    const grantId = await grant(parent.familyId, parent.parentUserId, 'send_email');
+    const actionId = await recordActed(parent.familyId, 'send_email');
+    const transport = new FakeTransport();
+    const realSend = transport.send.bind(transport);
+    let refuse = true;
+    transport.send = async (input) => {
+      if (refuse) throw new Error('provider down');
+      return realSend(input);
+    };
+    const { sendPorts } = ports(async () => ({ message: `model acted ${households}` }), transport);
+
+    const failed = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(failed.sendFailed).toBe(1);
+    expect(failed.sent).toBe(0);
+    const held = await messageRows(parent.familyId);
+    expect(held.filter((row) => row.status === 'queued')).toEqual([]);
+    expect(held.filter((row) => row.errorCode === 'covered_by_combined_notice')).toEqual([]);
+    expect(held.map((row) => row.dedupeKey)).toEqual([null]);
+    expect(await auditDedupeKeys(parent.familyId, 'autonomy_notice_covered')).toEqual([
+      `autonomy_acted:${actionId}:${parent.parentUserId}`,
+    ]);
+    expect(await auditDedupeKeys(parent.familyId, 'autonomy_notice_cover_released')).toEqual([
+      `autonomy_acted:${actionId}:${parent.parentUserId}`,
+    ]);
+
+    refuse = false;
+    const retried = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(retried.sent).toBe(1);
+    const sent = (await messageRows(parent.familyId)).filter((row) => row.dedupeKey !== null);
+    expect(sent).toEqual([
+      {
+        parentUserId: parent.parentUserId,
+        dedupeKey: `autonomy_armed:${grantId}`,
+        status: 'queued',
+        errorCode: null,
+      },
+    ]);
+    expect(await auditDedupeKeys(parent.familyId, 'autonomy_acted_notice_sent')).toEqual([
+      `autonomy_acted:${actionId}:${parent.parentUserId}`,
+    ]);
   });
 });
 

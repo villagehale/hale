@@ -1,9 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { autonomyActedDedupeKey, autonomyArmedDedupeKey } from '@hale/worker/memory-writer';
-import { and, desc, eq, inArray, isNotNull, lt, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { COVERED_BY_COMBINED_NOTICE, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -148,6 +148,98 @@ async function releaseClaims(database: Database, ids: string[], errorCode: strin
     .where(inArray(schema.channelMessages.id, ids));
 }
 
+const NOTICE_CLAIM_VERBS = [
+  'autonomy_notice_covered',
+  'autonomy_notice_cover_released',
+  'autonomy_armed_notice_sent',
+  'autonomy_acted_notice_sent',
+] as const;
+
+/**
+ * Keys already taken by a real send, or by a cover audit that a later release
+ * has not cleared. A sent audit keeps the key even if a release was also written.
+ */
+export async function claimedAutonomyNoticeKeys(
+  database: Database,
+  keys: string[],
+): Promise<Set<string>> {
+  if (keys.length === 0) return new Set();
+  const channel = await database
+    .select({ dedupeKey: schema.channelMessages.dedupeKey })
+    .from(schema.channelMessages)
+    .where(inArray(schema.channelMessages.dedupeKey, keys));
+  const claimed = new Set(channel.flatMap((row) => (row.dedupeKey ? [row.dedupeKey] : [])));
+  const audits = await database
+    .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        inArray(schema.auditLog.actionTaken, [...NOTICE_CLAIM_VERBS]),
+        inArray(sql`${schema.auditLog.after} ->> 'dedupeKey'`, keys),
+      ),
+    );
+  const tally = new Map<string, { covers: number; releases: number; sent: boolean }>();
+  for (const row of audits) {
+    const after = row.after as { dedupeKey?: unknown } | null;
+    const key = typeof after?.dedupeKey === 'string' ? after.dedupeKey : null;
+    if (!key) continue;
+    const slot = tally.get(key) ?? { covers: 0, releases: 0, sent: false };
+    if (row.actionTaken === 'autonomy_notice_covered') slot.covers += 1;
+    else if (row.actionTaken === 'autonomy_notice_cover_released') slot.releases += 1;
+    else slot.sent = true;
+    tally.set(key, slot);
+  }
+  for (const [key, slot] of tally) {
+    if (slot.sent || slot.covers > slot.releases) claimed.add(key);
+  }
+  return claimed;
+}
+
+async function noticeKeyClaimed(database: Database, key: string): Promise<boolean> {
+  const claimed = await claimedAutonomyNoticeKeys(database, [key]);
+  return claimed.has(key);
+}
+
+async function coverAuxiliaryClaims(
+  database: Database,
+  input: { familyId: string; primaryId: string; claims: NoticeClaim[] },
+): Promise<void> {
+  for (const claim of input.claims) {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'autonomy_notice_covered',
+      targetTable: 'channel_messages',
+      targetId: input.primaryId,
+      after: {
+        dedupeKey: claim.dedupeKey,
+        occasion: claim.occasion,
+        actionType: claim.actionType,
+      },
+    });
+  }
+}
+
+async function releaseCoveredClaims(
+  database: Database,
+  input: { familyId: string; primaryId: string; claims: NoticeClaim[] },
+): Promise<void> {
+  for (const claim of input.claims) {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'autonomy_notice_cover_released',
+      targetTable: 'channel_messages',
+      targetId: input.primaryId,
+      after: {
+        dedupeKey: claim.dedupeKey,
+        occasion: claim.occasion,
+        actionType: claim.actionType,
+      },
+    });
+  }
+}
+
 interface NoticeClaim {
   dedupeKey: string;
   kind: 'autonomy_armed' | 'autonomy_acted';
@@ -163,9 +255,10 @@ interface BuiltNotice {
 }
 
 /**
- * One text for this parent. The first claim is the row the provider send updates.
- * Each other claim is a ledger row with the same words already covered, so a later
- * pass does not send them again and a turn-on still counts as delivered.
+ * One text for this parent. The first claim is the only channel_messages row.
+ * Each other claim is an audit row written before the provider call, so a later
+ * pass does not send it again. A failed send releases those audits. The sent
+ * audit, not a second queued text, is what marks a covered turn-on delivered.
  */
 async function sendAutonomyNotice(
   database: Database,
@@ -189,7 +282,7 @@ async function sendAutonomyNotice(
     console.info({ familyId }, 'autonomy notice: household is dark, nothing sent');
     return 'dark';
   }
-  if (await dedupeActive(primary.dedupeKey, database)) return 'already_sent';
+  if (await noticeKeyClaimed(database, primary.dedupeKey)) return 'already_sent';
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: primary.kind, now });
   if (!verdict.allowed) {
@@ -219,36 +312,30 @@ async function sendAutonomyNotice(
     return `compose_skipped:${written.skipped}`;
   }
 
-  const claimedIds: string[] = [];
-  const inserted: NoticeClaim[] = [];
-  let primaryId: string | null = null;
-  for (const [index, claim] of input.claims.entries()) {
-    const [row] = await database
-      .insert(schema.channelMessages)
-      .values({
-        familyId,
-        parentUserId,
-        channel: 'sms',
-        direction: 'out',
-        category: claim.kind,
-        templateKey: claim.templateKey,
-        dedupeKey: claim.dedupeKey,
-        status: acceptedStatus('sms'),
-        sentAt: now,
-        errorCode: index === 0 ? null : COVERED_BY_COMBINED_NOTICE,
-      })
-      .onConflictDoNothing()
-      .returning({ id: schema.channelMessages.id });
-    if (!row) continue;
-    claimedIds.push(row.id);
-    inserted.push(claim);
-    if (primaryId === null) primaryId = row.id;
-  }
-  if (!primaryId) return 'already_sent';
+  const auxiliary = input.claims.slice(1);
+  const [row] = await database
+    .insert(schema.channelMessages)
+    .values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: primary.kind,
+      templateKey: primary.templateKey,
+      dedupeKey: primary.dedupeKey,
+      status: acceptedStatus('sms'),
+      sentAt: now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.channelMessages.id });
+  if (!row) return 'already_sent';
+  const primaryId = row.id;
+  await coverAuxiliaryClaims(database, { familyId, primaryId, claims: auxiliary });
 
   const to = await ports.resolvePhone(database, parentUserId);
   if (to === null) {
-    await releaseClaims(database, claimedIds, 'no_send_target');
+    await releaseClaims(database, [primaryId], 'no_send_target');
+    await releaseCoveredClaims(database, { familyId, primaryId, claims: auxiliary });
     console.error(
       { familyId },
       'autonomy notice: the gate allowed a parent with no sendable number',
@@ -269,7 +356,8 @@ async function sendAutonomyNotice(
     });
     if (delivered.status === 'held' || delivered.status === 'skipped') {
       const code = delivered.reason;
-      await releaseClaims(database, claimedIds, code);
+      await releaseClaims(database, [primaryId], code);
+      await releaseCoveredClaims(database, { familyId, primaryId, claims: auxiliary });
       console.warn({ familyId, code }, 'autonomy notice: outbound skipped');
       return 'send_failed';
     }
@@ -278,7 +366,8 @@ async function sendAutonomyNotice(
     chatId = delivered.chatId;
   } catch (err) {
     const code = readSendRefusal(err)?.code ?? 'unknown';
-    await releaseClaims(database, claimedIds, code);
+    await releaseClaims(database, [primaryId], code);
+    await releaseCoveredClaims(database, { familyId, primaryId, claims: auxiliary });
     console.error({ familyId, code }, 'autonomy notice: the provider refused the text');
     return 'send_failed';
   }
@@ -295,7 +384,7 @@ async function sendAutonomyNotice(
     .where(eq(schema.channelMessages.id, primaryId));
 
   await ports.threadMessage(database, { familyId, parentUserId, body: written.message });
-  for (const claim of inserted) {
+  for (const claim of input.claims) {
     await database.insert(schema.auditLog).values({
       familyId,
       actor: 'system',
@@ -375,7 +464,8 @@ export async function tellParentOpenNotices(
         why: null,
         standing: noticeStanding({ occasion, actionType: notice.actionType }),
       };
-      if (await dedupeActive(autonomyArmedDedupeKey(notice.consentRecordId), database)) continue;
+      if (await noticeKeyClaimed(database, autonomyArmedDedupeKey(notice.consentRecordId)))
+        continue;
       built.push({
         item,
         claim: {
@@ -398,7 +488,7 @@ export async function tellParentOpenNotices(
       standing: noticeStanding({ occasion: 'acted', actionType: notice.actionType }),
     };
     const dedupeKey = autonomyActedDedupeKey(notice.actionId, input.parentUserId);
-    if (await dedupeActive(dedupeKey, database)) continue;
+    if (await noticeKeyClaimed(database, dedupeKey)) continue;
     built.push({
       item,
       claim: {

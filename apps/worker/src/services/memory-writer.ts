@@ -1050,8 +1050,9 @@ const TURN_ON_DELIVERED_STATUSES = ['queued', 'sent', 'delivered'] as const;
 /**
  * Whether every parent who currently holds both the streak and a live grant for
  * this kind has had their turn-on text delivered. A quiet-hours hold does not
- * count: its row carries no dedupe key. Hale does not do the kind until this is
- * true, including overnight.
+ * count: its row carries no dedupe key. A kind covered inside a text whose own
+ * row is a different grant counts once the sent audit names this grant. Hale
+ * does not do the kind until this is true, including overnight.
  */
 export async function autonomyTurnOnDelivered(
   familyId: string,
@@ -1108,6 +1109,23 @@ export async function autonomyTurnOnDelivered(
       ),
     );
   const deliveredKeys = new Set(delivered.map((row) => row.dedupeKey));
+  // A second kind covered by the same text has no channel row of its own.
+  // The sent audit is written only after the provider accepts that text.
+  if (deliveredKeys.size < keys.length) {
+    const covered = await database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.actionTaken, 'autonomy_armed_notice_sent'),
+          inArray(sql`${schema.auditLog.after} ->> 'dedupeKey'`, keys),
+        ),
+      );
+    for (const row of covered) {
+      const key = (row.after as { dedupeKey?: unknown } | null)?.dedupeKey;
+      if (typeof key === 'string') deliveredKeys.add(key);
+    }
+  }
   return keys.every((key) => deliveredKeys.has(key));
 }
 
