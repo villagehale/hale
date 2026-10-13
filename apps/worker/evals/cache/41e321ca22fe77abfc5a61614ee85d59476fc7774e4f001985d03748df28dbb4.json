@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asking for activity ideas for their child given weather conditions; this is the family's weekend plan, not a weather question",
+    "language": "en"
+  },
+  "latencyMs": 1598
+}

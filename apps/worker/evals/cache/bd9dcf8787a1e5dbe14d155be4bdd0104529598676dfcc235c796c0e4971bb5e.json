@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "requesting a specific type of practitioner (pediatric dentist)",
+    "language": "en"
+  },
+  "latencyMs": 1399
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "shopping-or-deals",
+    "reason": "asking for current pricing and deals on a consumer product",
+    "language": "en"
+  },
+  "latencyMs": 1430
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child reported to have hit head with ongoing crying; injury and acute distress happening now",
+    "language": "en"
+  },
+  "latencyMs": 1448
+}

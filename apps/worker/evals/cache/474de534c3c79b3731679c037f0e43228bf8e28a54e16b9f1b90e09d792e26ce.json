@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "reports a potential child ingestion of a hazardous object requiring immediate medical intervention",
+    "language": "en"
+  },
+  "latencyMs": 1382
+}

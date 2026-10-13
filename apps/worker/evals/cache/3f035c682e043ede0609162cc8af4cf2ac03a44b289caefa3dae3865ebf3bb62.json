@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "traffic-or-transit",
+    "reason": "asking for real-time traffic conditions on a specific highway",
+    "language": "en"
+  },
+  "latencyMs": 1455
+}

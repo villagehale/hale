@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "requesting help finding or booking a specific specialist",
+    "language": "en"
+  },
+  "latencyMs": 1363
+}

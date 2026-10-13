@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctness: Every fact in the message is directly supported by the page and the slots. Tiny Gym is named, the day (Sundays), time (9:30–10:15 am), dates (Sept 14–Oct 26), price ($124 plus $25 membership), age band (walking–3.5 yrs, with a parent), and registration window (opened July 22, runs until classes fill) are all exactly as printed on the page. No figures are borrowed from another program. The watchFor requirement is fully met: the registration date is carried into the message. pageEvidence is page_has_schedule and no unearned negative claim is made. watch is FALSE and no coming-back promise appears — correct. The message makes no offer or question — correct. Attribution is proper: \"their site says\" is used, not \"I confirmed.\" Only one slot is presented (Tiny Gym, the best age-fit for a toddler), dropping Kinderfun (3–5, drop-off) in full to stay within two sentences — correct, not withholding. Tone: specific, calm, promise-keeping. Language: English Canadian as required. The message is two tight sentences with no question, no link, no proposal. A very clean, complete result.",
+    "score": 5
+  }
+}

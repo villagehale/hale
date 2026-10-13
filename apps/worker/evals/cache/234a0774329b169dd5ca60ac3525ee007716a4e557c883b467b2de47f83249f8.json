@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "parent is asking to find a specific practitioner in a named specialty",
+    "language": "en"
+  },
+  "latencyMs": 1536
+}

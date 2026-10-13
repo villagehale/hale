@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "doctor-access",
+    "reason": "parent is trying to find and access a pediatrician, not asking a medical question",
+    "language": "en"
+  },
+  "latencyMs": 1519
+}

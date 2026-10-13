@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "weather",
+    "reason": "direct question about weather conditions",
+    "language": "en"
+  },
+  "latencyMs": 1309
+}

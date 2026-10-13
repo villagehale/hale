@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does several things well: it attributes both Kids & Me picks to \"Halton Region's site,\" names real specific venues (St. Andrew's United Church Georgetown, Acton Library branch), gives correct days/times from the picks, and correctly marks them as free. All of that is solid.\n\nThe problem is the Links2Care EarlyON sentence: \"their page doesn't list times.\" pageEvidence is `no_page_read` — nobody opened Links2Care's page today. So saying \"their page doesn't list times\" is an unearned negative claim about a page nobody read. Under `no_page_read`, the correct phrasing would be \"I could not get into their page today.\" This is precisely the fault the scoring rules call out as a low-score trigger for an unearned negative claim.\n\nEverything else is fine — no invented times or prices for Links2Care (when/price are null), proper attribution for the two named picks, no closing question, no watch promise needed (watch=false), under the two-segment ceiling, no hedging instead of naming. The sole fault is the unearned negative page claim for Links2Care.",
+    "score": 3
+  }
+}

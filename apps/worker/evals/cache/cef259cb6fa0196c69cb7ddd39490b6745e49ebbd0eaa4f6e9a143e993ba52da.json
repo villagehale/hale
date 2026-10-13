@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reported symptom requiring clinical assessment",
+    "language": "en"
+  },
+  "latencyMs": 1357
+}

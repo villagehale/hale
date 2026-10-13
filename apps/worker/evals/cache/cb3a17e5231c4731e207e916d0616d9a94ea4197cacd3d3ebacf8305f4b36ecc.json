@@ -1,0 +1,6 @@
+{
+  "value": {
+    "picks": "{\"picks\":[{\"name\":\"Children's Museum of Manhattan\",\"age_fit\":\"ages 0-6\",\"when\":\"Monday-Sunday, 10am-5pm (July-September hours, covers Sept 12-15)\",\"source_name\":\"Children's Museum of Manhattan\"},{\"name\":\"Central Park Zoo\",\"age_fit\":\"Child admission 3-12, with free entry for 2 & under\",\"when\":\"Mon-Fri 10:00am-5:00pm, weekends & federal holidays 10:00am-5:30pm, last entry one hour before closing\",\"price\":\"Adult $22.95/$15.95, Senior $18.95/$12.95, Child (3-12) $16.95/$9.95, Child (2 & under) free\",\"source_name\":\"Central Park Zoo\"},{\"name\":\"New York Aquarium\",\"age_fit\":\"Child admission 3-12, with free entry for 2 & under\",\"when\":\"Daily 10:00am-5:00pm (last entry 4:00pm), Sept 8-Oct 31 schedule covers Sept 12-15\",\"price\":\"Adult $29.95 off-peak/$32.95 peak, Senior $27.95/$29.95, Child (3-12) $25.95/$27.95, Child (2 & under) free\",\"source_name\":\"New York Aquarium\"}]}"
+  },
+  "latencyMs": 4532
+}
