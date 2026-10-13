@@ -1,3 +1,4 @@
+import { domainToASCII } from 'node:url';
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
@@ -412,23 +413,57 @@ async function liveSearch(
 const LINK = /(?:https?:\/\/|www\.)\S+/gi;
 
 /**
- * A host written with no scheme, and whatever page is written under it: dotted parts
- * ending in letters, all lower case or all capitals. A phone makes `name.tld` tappable as
- * it stands. Whether the last part is a top-level domain is the table's to say
- * (top-level-domains/README.md): `Node.js` and `7 a.m.` have the shape and are not links.
- * A last part written as a capitalized word is a sentence that began with no space after
- * the full stop before it.
+ * A host as it is written with no scheme: parts in the letters and digits of any script
+ * and hyphens, joined by single dots. A phone makes `name.tld` tappable as it stands.
+ * Every one in the reply is read, the page under a link included, so no host is passed
+ * over for where it stands or what it stands beside. Whether its last part is a
+ * top-level domain is the table's to say (top-level-domains/README.md): `Node.js` and
+ * `7 a.m.` have the shape and are not links.
  */
-const BARE_HOST =
-  /(?<![\p{L}\p{N}._-])((?:[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?\.)+([a-z]{2,}|[A-Z]{2,}))(?![\p{L}\p{N}-])(?:\/\S*)?/gu;
+const HOST_SHAPED = /[\p{L}\p{M}\p{N}-]+(?:\.[\p{L}\p{M}\p{N}-]+)+/gu;
 const TOP_LEVEL: ReadonlySet<string> = new Set(TOP_LEVEL_DOMAINS);
+/** An address written as four numbers, and what makes one a link: a page under it. */
+const NUMBERED_ADDRESS = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+const PAGE_UNDER_IT = /^(?::\d+)?\//;
 
-/** The hosts a reply names with no scheme in front. A link that has one is taken out
- * first, so a file name at the end of its page is not read as a host of its own. */
-function bareHosts(body: string): string[] {
+/**
+ * Text in the one form a host is read and compared in: each character's compatibility
+ * form (Unicode NFKC, so a full-width dot is a dot), in lower case. A host is the same
+ * host however it was typed.
+ */
+function oneForm(text: string): string {
+  return text.normalize('NFKC').toLowerCase();
+}
+
+/** Whether a host's last part is on the table, which lists a name in another script by
+ * its encoded form. A part that has no such form is on no list. */
+function endsInATopLevelDomain(host: string): boolean {
+  return TOP_LEVEL.has(domainToASCII(host.slice(host.lastIndexOf('.') + 1)));
+}
+
+/**
+ * A host-shaped run as the host it names: without a leading `www.`, and ending where its
+ * last part meets a hyphen. No ending but an encoded one (`xn--`) has a hyphen in it, and
+ * a dash typed straight after a host arrives here as one (`plainText`).
+ */
+function hostNamed(run: string): string {
+  const host = run.replace(/^www\./, '');
+  const lastPart = host.lastIndexOf('.') + 1;
+  return host.startsWith('xn--', lastPart)
+    ? host
+    : `${host.slice(0, lastPart)}${host.slice(lastPart).replace(/-.*$/, '')}`;
+}
+
+/** The hosts a reply names with no scheme in front, from a reply already in
+ * {@link oneForm}. */
+function bareHosts(reply: string): string[] {
   const hosts: string[] = [];
-  for (const [, host, lastPart] of body.replace(LINK, ' ').matchAll(BARE_HOST)) {
-    if (host && lastPart && TOP_LEVEL.has(lastPart.toLowerCase())) hosts.push(host);
+  for (const match of reply.matchAll(HOST_SHAPED)) {
+    const host = hostNamed(match[0]);
+    const numbered =
+      NUMBERED_ADDRESS.test(host) &&
+      PAGE_UNDER_IT.test(reply.slice(match.index + match[0].length));
+    if (numbered || endsInATopLevelDomain(host)) hosts.push(host);
   }
   return hosts;
 }
@@ -437,8 +472,7 @@ function bareHosts(body: string): string[] {
  * `www.`, the page under it, or whatever punctuation the sentence put after it. Anything
  * odd in front of the host (a login name, a port) stays in and so matches nothing. */
 function linkHost(url: string): string {
-  return url
-    .toLowerCase()
+  return oneForm(url)
     .replace(/^https?:\/\//, '')
     .replace(/^www\./, '')
     .replace(/[/?#].*$/, '')
@@ -450,12 +484,14 @@ function linkHost(url: string): string {
  * this stage could search, any URL was one the model invented and all of them were
  * refused; now one can be the thing the parent asked for, so what is refused is a host the
  * search did not return. The page is not compared: the front page of a site the search
- * found a deeper page on is still that site. A host written bare is the same link.
+ * found a deeper page on is still that site. A host written bare is the same link, and
+ * the run a link is written in is read for bare hosts like the rest of the reply.
  */
 function carriesUnsearchedLink(body: string, searched: readonly string[]): boolean {
   const known = new Set(searched.map(linkHost));
-  return [...(body.match(LINK) ?? []), ...bareHosts(body)].some(
-    (link) => !known.has(linkHost(link)),
+  const reply = oneForm(body);
+  return [...(reply.match(LINK) ?? []).map(linkHost), ...bareHosts(reply)].some(
+    (host) => !known.has(host),
   );
 }
 

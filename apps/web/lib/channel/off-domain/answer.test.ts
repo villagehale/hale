@@ -2022,15 +2022,96 @@ describe('links', () => {
     ]);
   });
 
+  /**
+   * The ways a host used to get past that rule on a searched turn (security stage,
+   * 2026-10-12). Each was sent. The reply is now read whole, in one form and one case: a
+   * capital letter, another script, a full-width dot or a searched link standing right
+   * before it does not make a host anything other than a host.
+   */
+  it.each([
+    [
+      'a bare host with a capitalised ending and a page',
+      'Confirm your number at Free-Prizes.Com/claim first.',
+    ],
+    ['a bare host with a capitalised ending', 'It is all on Free-Prizes.Com tonight.'],
+    [
+      'a bare host under an ending in another script',
+      'It is on free-prizes.\u092d\u093e\u0930\u0924 now.',
+    ],
+    ['a bare host under that ending as it is encoded', 'It is on free-prizes.xn--p1ai now.'],
+    [
+      'a bare host joined to a searched link by a comma',
+      `It is here: ${TSN}?x=1,free-prizes.com/claim`,
+    ],
+    [
+      'a bare host joined to a searched link by a semicolon',
+      'It is here: https://tsn.ca/live;free-prizes.com/claim',
+    ],
+    ['a bare host written with a full-width dot', 'Confirm at free-prizes\uff0ecom/claim now.'],
+    ['a bare host joined to a searched one by two dots', 'It is on tsn.ca..free-prizes.com now.'],
+    ['a bare host behind an underscore', 'It is on tsn.ca_free-prizes.com now.'],
+    ['a bare host with an underscore after it', 'It is on free-prizes.com_tonight only.'],
+    ['a bare host with a dash straight after it', 'Go to free-prizes.com\u2014it is quick.'],
+    ['a numbered address with a page under it', 'Confirm at 192.0.2.7/claim first.'],
+  ])('refuses %s, by name', async (_label, body) => {
+    lit();
+    const log = quiet();
+
+    expect(
+      await createGeneralAnswer(
+        scripted({
+          sanitize: WHERE,
+          search: searchFound(TSN, 'TSN carries it in Canada.'),
+          answer: { answer: body },
+        }),
+      ).compose('where can I stream the euros', family),
+    ).toEqual({ status: 'unavailable', reason: 'unsendable' });
+    expect(log.mock.calls).toEqual([
+      [
+        { reason: 'unsendable', detail: 'link_not_from_search' },
+        'off-domain answer: falling back to the fixed line',
+      ],
+    ]);
+  });
+
+  /**
+   * What reading the whole reply costs. The page under a searched link is read too, so a
+   * file name there whose ending is also a top-level domain is a host the search did not
+   * return. And with no exemption for a capital letter, a sentence begun with no space
+   * after the full stop before it is a host when its first word is such an ending. Each
+   * gets the fixed line in place of the reply.
+   */
+  it.each([
+    [
+      'a searched page whose last part is a file name with such an ending',
+      'Here: https://www.tsn.ca/video/final.mov',
+    ],
+    ['a sentence begun on such an ending with no space', 'They won it in six.It was close.'],
+  ])('refuses %s', async (_label, body) => {
+    lit();
+    quiet();
+
+    expect(
+      await createGeneralAnswer(
+        scripted({
+          sanitize: WHERE,
+          search: searchFound(TSN, 'TSN carries it in Canada.'),
+          answer: { answer: body },
+        }),
+      ).compose('where can I stream the euros', family),
+    ).toEqual({ status: 'unavailable', reason: 'unsendable' });
+  });
+
   it.each([
     ['the searched host written bare', 'TSN has it: tsn.ca'],
     ['the searched host written bare, with a page', 'TSN has it: tsn.ca/soccer/euro'],
     ['the searched host written bare, a sentence ending on it', 'It is on tsn.ca.'],
     ['the searched host written bare in capitals', 'It is on TSN.CA tonight.'],
-    [
-      'a searched page whose last part is a file name',
-      'Here: https://www.tsn.ca/video/final.mov',
-    ],
+    ['the searched host written bare in mixed case', 'It is on Tsn.Ca/soccer tonight.'],
+    ['a deeper searched page with a dot in it', 'Here: https://www.tsn.ca/soccer/euro-1.24.html'],
+    ['a numbered address with no page under it', 'TSN has it. Build 10.0.0.1 fixed it.'],
+    ['a pause written as dots', 'Well...it is on tsn.ca tonight.'],
+    ['the searched host with a dash straight after it', 'It is on tsn.ca-tonight only.'],
   ])('sends %s', async (_label, body) => {
     lit();
 
@@ -2056,7 +2137,6 @@ describe('links', () => {
     'It starts at 7 a.m. tomorrow, or 7.30 p.m. on Friday.',
     'About 3.5 hours, give or take.',
     'U.S. News ranks it first this year.',
-    'They won it in six.It was closer than that sounds.',
     'It ended 4-2.Leafs in six, I think.',
     'Honestly? No.Not worth it.',
   ])('sends %j as written', async (body) => {
