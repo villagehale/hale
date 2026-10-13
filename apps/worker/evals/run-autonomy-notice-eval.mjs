@@ -11,7 +11,8 @@
 //   node evals/run-autonomy-notice-eval.mjs --cached-only
 
 import { join } from 'node:path';
-import { tsImport } from 'tsx/esm/api';
+import { pathToFileURL } from 'node:url';
+import { register } from 'tsx/esm/api';
 import { AUTONOMY_NOTICE_FIXTURES } from './autonomy-notice-fixtures.mjs';
 import {
   JUDGE_MIN,
@@ -25,9 +26,16 @@ import {
 } from './lib/harness.mjs';
 import { cachedLaneToolCall } from './lib/lane-tool-call.mjs';
 
+const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'autonomy-notice.md');
 const TEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'autonomy', 'notice-text.ts');
+
+// notice-text.ts imports through the web `~` alias. `tsImport()` does not read that
+// tsconfig, so the eval died at load. One registration, as in the add-them-yourself
+// and memory-writeback runners, resolves `~` before either module is imported.
+register({ tsconfig: WEB_TSCONFIG });
+const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text message Hale, a family planner that lives in',
@@ -60,8 +68,8 @@ function grade(written, verdict) {
 
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
-  const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const text = await tsImport(TEXT_SRC, import.meta.url);
+  const agent = await importTs(AGENT_SRC);
+  const text = await importTs(TEXT_SRC);
   const skill = await agent.loadSkill(SKILL_PATH);
   const lane = agent.pickLane(skill.meta.task);
   const getClient = lazyAnthropic();
