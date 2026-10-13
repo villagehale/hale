@@ -136,6 +136,40 @@ function estimateRecording({ lane, skill, text, judgeModel }) {
   ].join('\n');
 }
 
+function maxUsdFlag() {
+  const flag = process.argv.find((arg) => arg.startsWith('--max-usd='));
+  if (!flag) return null;
+  const value = Number(flag.slice('--max-usd='.length));
+  if (!Number.isFinite(value) || value <= 0) {
+    console.error('autonomy-notice: --max-usd needs a positive number of dollars');
+    process.exit(1);
+  }
+  return value;
+}
+
+/** Refuse another live call once actual list-price spend is already at the cap. */
+function spendGate(getClient, cost, maxUsd) {
+  if (maxUsd == null) return getClient;
+  return () => {
+    const client = getClient();
+    return {
+      messages: {
+        create: async (params) => {
+          const spent = totalUsd(cost);
+          if (spent >= maxUsd) {
+            const error = new Error(
+              `abort before API call: actual spend $${spent.toFixed(4)} is at the $${maxUsd.toFixed(4)} cap`,
+            );
+            error.code = 'SPEND_CAP';
+            throw error;
+          }
+          return client.messages.create(params);
+        },
+      },
+    };
+  };
+}
+
 function grade(written, verdict) {
   if ('skipped' in written) return [`writer skipped: ${written.skipped}`];
   if (!verdict || verdict.score < JUDGE_MIN) {
@@ -160,10 +194,11 @@ async function main() {
     console.info(estimateRecording({ lane, skill, text, judgeModel }));
     return;
   }
-  const getClient = lazyAnthropic();
+  const maxUsd = maxUsdFlag();
   const cost = makeCost();
+  const gated = spendGate(lazyAnthropic(), cost, maxUsd);
   const judgeModel = await readJudgeModel();
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'autonomy-notice', cachedOnly, getClient, cost);
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'autonomy-notice', cachedOnly, gated, cost);
 
   console.info(
     `autonomy-notice | ${cachedOnly ? 'cached-only' : 'live'} | model=${lane.model} judge=${judgeModel} | fixtures=${AUTONOMY_NOTICE_FIXTURES.length}`,
@@ -182,7 +217,7 @@ async function main() {
       toolSchema: text.AUTONOMY_NOTICE_TOOL_SCHEMA,
       maxTokens: text.AUTONOMY_NOTICE_MAX_TOKENS,
       cachedOnly,
-      getClient,
+      getClient: gated,
       cost,
     });
     if (call.miss) {
@@ -203,6 +238,16 @@ async function main() {
     console.info(`${failures.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id}`);
     if ('message' in written) console.info(`        > ${written.message}`);
     for (const failure of failures) console.info(`        - ${failure}`);
+    if (maxUsd != null) {
+      const spent = totalUsd(cost);
+      console.info(`        spend so far $${spent.toFixed(4)} / $${maxUsd.toFixed(4)}`);
+      if (spent > maxUsd) {
+        console.error(
+          `autonomy-notice: abort, actual spend $${spent.toFixed(4)} exceeds $${maxUsd.toFixed(4)}. No further calls.`,
+        );
+        process.exit(2);
+      }
+    }
   }
   if (misses.length > 0) {
     console.error(`autonomy-notice: ${misses.length} cache miss(es) in --cached-only`);
@@ -217,6 +262,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  if (err && err.code === 'SPEND_CAP') {
+    console.error(`autonomy-notice: ${err.message}`);
+    process.exit(2);
+  }
+  console.error(err instanceof Error ? err.message : 'autonomy-notice failed');
   process.exit(1);
 });

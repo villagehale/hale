@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly matches the \"acted\" occasion by using past tense (\"I went ahead and sent\") and clearly states what was just done without asking. It's in first person and has a casual, friendly tone. However, it fails on a critical standing requirement: the text says \"I'll never book, register, or pay for anything,\" which explicitly states the negatives as promises. The instruction requires the text to \"convey that the sender does not book, does not register, and does not pay\" — grading standing as facts, not as phrases the writer chooses. By stating this as a promise (\"I'll never...\"), the text reads like an assistant offering a service contract rather than stating existing facts about the sender's limitations. Additionally, while it does convey the key standing facts (repliesToEmail and stop:one_message), the phrasing around the \"never\" facts breaks the natural voice of \"a friend who is also a parent texting.\" It should state these as facts about Hale, not as commitments. The text also invents framing (\"Going forward, I'll also reply...\") that goes beyond what detail provides, adding unnecessary explanation beyond the one thing asked.",
+    "score": 3
+  }
+}
