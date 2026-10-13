@@ -1,14 +1,15 @@
 import { AGENT_TOOL_ACTION_PREFIX } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, inArray, notLike, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, notInArray, notLike, sql } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE } from '../format/datetime';
+import { NO_TEEN_UNLOCKS, type TeenAccessUnlocks, redactsTeenContent } from '../teen-access';
 import {
-  NO_TEEN_UNLOCKS,
-  type TeenAccessUnlocks,
-  redactsTeenContent,
-} from '../teen-access';
-import { SHADOW_ONLY_VERBS, isShadowOnlyRow } from '../trail/verbs';
+  INTERNAL_TRAIL_VERBS,
+  SHADOW_ONLY_VERBS,
+  isInternalTrailVerb,
+  isShadowOnlyRow,
+} from '../trail/verbs';
 import { type ActorResolver, type TrailView, effectiveTeenContent, toTrailView } from './mappers';
 
 /**
@@ -159,6 +160,9 @@ export async function loadTrailForFamily(
         // VIL-226 · the proactive decider's shadow rows (trail/verbs.ts SHADOW_ONLY_VERBS):
         // nothing the parent got, so not on their receipts, and not in the 50-row window.
         sql`not (${inArray(schema.auditLog.actionTaken, [...SHADOW_ONLY_VERBS])} and coalesce(${schema.auditLog.after} ->> 'mode', '') = 'shadow')`,
+        // The 7-day unsent mark stays in the audit log. It is not a parent-facing
+        // History line, and the export uses this same query.
+        notInArray(schema.auditLog.actionTaken, [...INTERNAL_TRAIL_VERBS]),
       ),
     )
     .orderBy(desc(schema.auditLog.occurredAt))
@@ -167,7 +171,8 @@ export async function loadTrailForFamily(
     .filter(
       (row) =>
         !isAgentToolStep(row.entry.actionTaken) &&
-        !isShadowOnlyRow(row.entry.actionTaken, row.entry.after),
+        !isShadowOnlyRow(row.entry.actionTaken, row.entry.after) &&
+        !isInternalTrailVerb(row.entry.actionTaken),
     )
     .map((row) => {
       const resolvedToEvent = row.teenContent !== null;

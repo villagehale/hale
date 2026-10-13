@@ -35,18 +35,35 @@ describe('readAutonomyNotice', () => {
 });
 
 describe('autonomyNoticeContext', () => {
-  it('puts the standing facts on an email kind', () => {
+  it('puts send, never, and one-message on a send-email turn-on', () => {
     const parsed = JSON.parse(autonomyNoticeContext(context));
     expect(parsed.standing).toEqual({
+      may: { sendEmail: true, replyToEmail: false, addToCalendar: false },
       never: ['book', 'register', 'pay'],
-      repliesToEmail: true,
       stop: 'one_message',
     });
   });
 
-  it('leaves the email-reply fact off a calendar kind', () => {
-    const parsed = JSON.parse(autonomyNoticeContext({ ...context, actionType: 'calendar_add' }));
-    expect(parsed.standing.repliesToEmail).toBe(false);
+  it('marks reply only when the kind covers replying', () => {
+    const parsed = JSON.parse(autonomyNoticeContext({ ...context, actionType: 'reply_to_email' }));
+    expect(parsed.standing.may).toEqual({
+      sendEmail: false,
+      replyToEmail: true,
+      addToCalendar: false,
+    });
+  });
+
+  it('marks add-to-calendar on a calendar add, and not on a move', () => {
+    const add = JSON.parse(autonomyNoticeContext({ ...context, actionType: 'calendar_add' }));
+    expect(add.standing.may.addToCalendar).toBe(true);
+    expect(add.standing.may.sendEmail).toBe(false);
+    const moved = JSON.parse(autonomyNoticeContext({ ...context, actionType: 'calendar_move' }));
+    expect(moved.standing.may.addToCalendar).toBe(false);
+  });
+
+  it('leaves may and never off an on-its-own notice', () => {
+    const parsed = JSON.parse(autonomyNoticeContext({ ...context, occasion: 'acted' }));
+    expect(parsed.standing).toEqual({ may: null, never: null, stop: 'one_message' });
   });
 });
 

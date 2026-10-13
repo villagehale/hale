@@ -22,8 +22,10 @@ import {
  * suppression: a quiet-hours hold and a crash before the send are both still owed.
  * A turn-on text is owed for as long as the grant is live and undelivered. An
  * on-its-own notice older than the redrive window is marked and not sent, once.
- * One parent hears at most one turn-on text per pass, and a turn-on text goes
- * first. Every on-its-own notice owed in the pass is sent, to every live parent.
+ * One parent hears one text per pass, armed or acted. A turn-on text goes first
+ * because open armed is listed before open acted. The rest stay owed for a later
+ * pass. They are not dropped and not aged out. Each live parent is still a
+ * recipient of an on-its-own notice.
  * The morning pass only sends inside the re-drive hour. The drain pass tries
  * now, including right after an execution, and the gate holds quiet hours.
  * Nothing sends while the execute lane is off.
@@ -69,6 +71,11 @@ export interface AutonomyNoticeDispatchResult {
   laneOff: number;
   /** On-its-own notices marked this pass as older than the redrive window. */
   agedOut: number;
+  /**
+   * Open texts left owed because this parent already got one text this pass.
+   * Not `deferred` — that count is the redrive-window overflow, still owed.
+   */
+  onePerPass: number;
 }
 
 export function emptyAutonomyNoticeDispatch(): AutonomyNoticeDispatchResult {
@@ -86,6 +93,7 @@ export function emptyAutonomyNoticeDispatch(): AutonomyNoticeDispatchResult {
     noSendTarget: 0,
     laneOff: 0,
     agedOut: 0,
+    onePerPass: 0,
   };
 }
 
@@ -362,18 +370,25 @@ export async function dispatchAutonomyNotices(
   }
 
   const due: OpenNotice[] = [];
-  const heardArmed = new Set<string>();
+  const heard = new Set<string>();
   for (const notice of open) {
     if (input.slot === 'morning') {
       const zone = await redriveParentTimeZone(database, notice.parentUserId);
       if (!isRedriveSlot(input.now, zone)) continue;
     }
-    if (notice.kind === 'armed') {
-      const parentKey = `${notice.familyId}:${notice.parentUserId}`;
-      if (heardArmed.has(parentKey)) continue;
-      heardArmed.add(parentKey);
+    const parentKey = `${notice.familyId}:${notice.parentUserId}`;
+    if (heard.has(parentKey)) {
+      result.onePerPass += 1;
+      continue;
     }
+    heard.add(parentKey);
     due.push(notice);
+  }
+  if (result.onePerPass > 0) {
+    console.info(
+      { onePerPass: result.onePerPass, familyId: input.familyId ?? null },
+      'autonomy notice: one text per parent this pass, the rest stay owed',
+    );
   }
   result.due = due.length;
   result.deferred = Math.max(0, due.length - MAX_REDRIVE_PER_RUN);

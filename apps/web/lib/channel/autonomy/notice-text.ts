@@ -14,10 +14,21 @@ export const AUTONOMY_NOTICE_MAX_TOKENS = 400;
 
 export type AutonomyNoticeOccasion = 'armed' | 'rearmed' | 'acted';
 
-/** Facts the writer must convey. Computed here so a fixture cannot leave them off. */
+/** What this kind lets Hale do from now on. False flags are left out of the text. */
+export interface AutonomyMay {
+  sendEmail: boolean;
+  /** True only when this kind covers replying, not merely sending. */
+  replyToEmail: boolean;
+  addToCalendar: boolean;
+}
+
+/**
+ * Facts the writer must convey. Computed here so a fixture cannot leave them off.
+ * An on-its-own notice carries the stop fact only: what was just done is `detail`.
+ */
 export interface AutonomyNoticeStanding {
-  never: readonly ['book', 'register', 'pay'];
-  repliesToEmail: boolean;
+  may: AutonomyMay | null;
+  never: readonly ['book', 'register', 'pay'] | null;
   stop: 'one_message';
 }
 
@@ -35,12 +46,21 @@ export interface AutonomyNoticeContext extends AutonomyNoticeFacts {
   standing: AutonomyNoticeStanding;
 }
 
-const EMAIL_KINDS = new Set(['send_email', 'reply_to_email']);
-
-export function noticeStanding(input: { actionType: string }): AutonomyNoticeStanding {
+export function noticeStanding(input: {
+  occasion: AutonomyNoticeOccasion;
+  actionType: string;
+}): AutonomyNoticeStanding {
+  if (input.occasion === 'acted') {
+    return { may: null, never: null, stop: 'one_message' };
+  }
   return {
+    may: {
+      sendEmail: input.actionType === 'send_email',
+      replyToEmail: input.actionType === 'reply_to_email',
+      addToCalendar:
+        input.actionType === 'calendar_add' || input.actionType === 'create_calendar_event',
+    },
     never: ['book', 'register', 'pay'],
-    repliesToEmail: EMAIL_KINDS.has(input.actionType),
     stop: 'one_message',
   };
 }

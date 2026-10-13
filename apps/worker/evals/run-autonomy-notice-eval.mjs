@@ -4,8 +4,9 @@
 // (apps/web/lib/channel/autonomy/compose.ts): the `autonomy_notice` tool forced on the
 // skill's lane, then the runtime's own structural check (readAutonomyNotice).
 //
-// The model picks the words. Nothing here matches a phrase. Tone — including that the
-// parent can say stop, and that there is one ask — is the judge's grade.
+// The model picks the words. Nothing here matches a phrase. The judge grades the
+// standing facts (what this kind may do, never book/register/pay, one message turns
+// it off). An on-its-own text is graded on what was done and the one-message stop.
 //
 //   ANTHROPIC_API_KEY=... node evals/run-autonomy-notice-eval.mjs
 //   node evals/run-autonomy-notice-eval.mjs --cached-only
@@ -51,14 +52,25 @@ const JUDGE_SYSTEM = [
   'it was just done without asking. It asks for at most one thing. It reads like a friend',
   'who is also a parent texting: chill, casual, specific. It does not invent a recipient,',
   'a time, a price, a place, or a link beyond `detail`.',
-  'Grade `standing` as facts, not as phrases. The writer chooses the words. A missing fact',
-  'keeps the score at 3 or below:',
+  'Grade `standing` as facts, not as phrases. The writer chooses the words.',
+  'When the occasion is `armed` or `rearmed`, a missing fact keeps the score at 3 or below.',
+  'When `standing.may.sendEmail` is true, the text conveys that the sender will send email',
+  "on the parent's behalf. When it is false, do not require that.",
+  'When `standing.may.replyToEmail` is true, the text conveys that the sender will reply to',
+  "email on the parent's behalf. When it is false, do not require a reply claim. Replying is",
+  'required only when this kind covers replying.',
+  'When `standing.may.addToCalendar` is true, the text conveys that the sender will add',
+  "things to the parent's calendar. When it is false, do not require that.",
   '`standing.never` lists book, register, and pay — the text conveys that the sender does',
   'not book, does not register, and does not pay.',
-  'When `standing.repliesToEmail` is true, the text conveys that the sender will reply to',
-  "email on the parent's behalf. When it is false, do not require that fact.",
   '`standing.stop` is `one_message` — the text conveys that one message from the parent',
-  'turns this off.',
+  'turns this off. A vaguer stop (they can say so, or ask you to stop, without it being',
+  'one message — for example "just say so") is a missing fact.',
+  'When the occasion is `acted`, the text conveys what was just done (the occasion, and',
+  '`detail` when it is present) and the same one-message stop fact. `standing.may` and',
+  '`standing.never` are absent. Do not require a line that the sender never books,',
+  'registers, or pays, and do not mark the text down for leaving that out. Do not require',
+  'a from-now-on list of what the sender may do.',
   'Do not grade word choice, length or punctuation for their own sake.',
   'A 1 or 2 is any of: the wrong occasion; a third-person "Hale" as the subject; more than',
   'one ask; a word the parent is told to reply with; a numbered list or a template; an',
@@ -111,6 +123,7 @@ function estimateRecording({ lane, skill, text, judgeModel }) {
   let usd = 0;
   let inputTokens = 0;
   let outputTokens = 0;
+  const rows = [];
   for (const fixture of AUTONOMY_NOTICE_FIXTURES) {
     const contextJson = text.autonomyNoticeContext(fixture.context);
     const writerInput =
@@ -123,16 +136,24 @@ function estimateRecording({ lane, skill, text, judgeModel }) {
       ESTIMATE_WRITER_OUTPUT_TOKENS;
     inputTokens += writerInput + judgeInput;
     outputTokens += ESTIMATE_WRITER_OUTPUT_TOKENS + ESTIMATE_JUDGE_OUTPUT_TOKENS;
-    usd += priced(lane.model, writerInput, ESTIMATE_WRITER_OUTPUT_TOKENS);
-    usd += priced(judgeModel, judgeInput, ESTIMATE_JUDGE_OUTPUT_TOKENS);
+    const fixtureUsd =
+      priced(lane.model, writerInput, ESTIMATE_WRITER_OUTPUT_TOKENS) +
+      priced(judgeModel, judgeInput, ESTIMATE_JUDGE_OUTPUT_TOKENS);
+    usd += fixtureUsd;
+    rows.push({ id: fixture.id, usd: fixtureUsd });
   }
-  const calls = AUTONOMY_NOTICE_FIXTURES.length * 2;
+  const named = new Set(['armed-email-en', 'acted-email-en']);
+  const namedUsd = rows.filter((row) => named.has(row.id)).reduce((sum, row) => sum + row.usd, 0);
+  const calls = rows.length * 2;
   return [
-    `autonomy-notice | estimate | model=${lane.model} judge=${judgeModel} | fixtures=${AUTONOMY_NOTICE_FIXTURES.length}`,
+    `autonomy-notice | estimate | model=${lane.model} judge=${judgeModel} | fixtures=${rows.length}`,
+    ...rows.map((row) => `  ${row.id}  calls=2  $${row.usd.toFixed(4)}`),
+    `named subset (armed-email-en + acted-email-en): calls=4 | $${namedUsd.toFixed(4)}`,
+    `other fixtures: calls=${calls - 4} | $${(usd - namedUsd).toFixed(4)}`,
     `calls=${calls} (every fixture is a miss: writer and judge both) | input tokens≈${inputTokens} | output tokens≈${outputTokens}`,
     'tokenizer: Latin and whitespace ≈ 4 chars/token; every other character ≈ 1 token.',
     `output assumption: writer ${ESTIMATE_WRITER_OUTPUT_TOKENS} tokens, judge ${ESTIMATE_JUDGE_OUTPUT_TOKENS} tokens. Caps of 400 and 4096 are not billed.`,
-    `live API calls: 0 | estimated cost: $${usd.toFixed(4)} USD`,
+    `live API calls: 0 | estimated cost if every fixture misses: $${usd.toFixed(4)} USD`,
   ].join('\n');
 }
 

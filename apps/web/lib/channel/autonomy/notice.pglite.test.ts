@@ -362,8 +362,8 @@ describe('telling a parent a kind turned on', () => {
     expect(seen.map((row) => row.occasion)).toEqual(['acted']);
     expect(seen[0]?.detail).toBe('school@example.com\npickup\nthe kind was on');
     expect(seen[0]?.standing).toEqual({
-      never: ['book', 'register', 'pay'],
-      repliesToEmail: true,
+      may: null,
+      never: null,
       stop: 'one_message',
     });
 
@@ -472,7 +472,12 @@ describe('telling a parent a kind turned on', () => {
     expect(seen[0]?.localeHint).toBe('fr');
     expect(seen[0]?.recentInbound).toEqual(['premier message', '第二个']);
     expect(seen[0]).not.toHaveProperty('language');
-    expect(seen[0]?.standing.repliesToEmail).toBe(true);
+    expect(seen[0]?.standing.may).toEqual({
+      sendEmail: true,
+      replyToEmail: false,
+      addToCalendar: false,
+    });
+    expect(seen[0]?.standing.never).toEqual(['book', 'register', 'pay']);
     expect(seen[0]?.standing.stop).toBe('one_message');
   });
 
@@ -640,6 +645,16 @@ describe('telling a parent a kind turned on', () => {
       sendPorts,
     );
 
+    expect(dispatched.sent).toBe(2);
+    expect(dispatched.onePerPass).toBe(2);
+    expect(dispatched.agedOut).toBe(0);
+    expect(seen.filter((row) => row.occasion === 'acted')).toHaveLength(0);
+
+    const later = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
     const acted = seen.filter((row) => row.occasion === 'acted');
     expect(acted).toHaveLength(2);
     expect(acted.every((row) => row.detail === 'school@example.com\npickup\nthe kind was on')).toBe(
@@ -655,28 +670,53 @@ describe('telling a parent a kind turned on', () => {
         `autonomy_acted:${actionId}:${other.parentUserId}`,
       ].sort(),
     );
-    expect(dispatched.sent).toBe(4);
+    expect(later.sent).toBe(2);
+    expect(later.onePerPass).toBe(0);
+    expect(later.agedOut).toBe(0);
   });
 
-  it('sends every on-its-own notice in one pass', async () => {
+  it('sends one text per parent per pass and leaves the rest owed', async () => {
     const parent = await seedParent();
     await grant(parent.familyId, parent.parentUserId, 'send_email');
     const first = await recordActed(parent.familyId, 'send_email');
     const second = await recordActed(parent.familyId, 'send_email');
     const { sendPorts } = ports(async () => ({ message: `model acted ${households}` }));
+    const actedKeys = async () => {
+      const rows = await channelRows(parent.familyId);
+      return rows
+        .flatMap((row) => (row.dedupeKey?.startsWith('autonomy_acted:') ? [row.dedupeKey] : []))
+        .sort();
+    };
 
-    const dispatched = await dispatchAutonomyNotices(
+    const firstPass = await dispatchAutonomyNotices(
       db.database,
       { now: MORNING, familyId: parent.familyId, slot: 'now' },
       sendPorts,
     );
+    expect(firstPass.sent).toBe(1);
+    expect(firstPass.onePerPass).toBe(2);
+    expect(firstPass.agedOut).toBe(0);
+    expect(await actedKeys()).toEqual([]);
 
-    expect(dispatched.sent).toBe(3);
-    const rows = await channelRows(parent.familyId);
-    const actedKeys = rows
-      .flatMap((row) => (row.dedupeKey?.startsWith('autonomy_acted:') ? [row.dedupeKey] : []))
-      .sort();
-    expect(actedKeys).toEqual(
+    const secondPass = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(secondPass.sent).toBe(1);
+    expect(secondPass.onePerPass).toBe(1);
+    expect(secondPass.agedOut).toBe(0);
+    expect(await actedKeys()).toHaveLength(1);
+
+    const thirdPass = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(thirdPass.sent).toBe(1);
+    expect(thirdPass.onePerPass).toBe(0);
+    expect(thirdPass.agedOut).toBe(0);
+    expect(await actedKeys()).toEqual(
       [
         `autonomy_acted:${first}:${parent.parentUserId}`,
         `autonomy_acted:${second}:${parent.parentUserId}`,

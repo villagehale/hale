@@ -15,7 +15,8 @@ const REAL_VERB = 'action.executed';
 const REAL_SENTENCE = 'carried out the action';
 
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
-vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID,
+vi.mock('~/lib/family', () => ({
+  currentFamilyId: async () => FAMILY_ID,
   // VIL-147: no signed-in parent → no teen access grants can apply.
   currentUserId: async () => null,
 }));
@@ -40,7 +41,12 @@ function auditEntry(overrides: Record<string, unknown>) {
 
 // A real parent-facing action + two internal agent tool sub-steps.
 const TRAIL_ROWS = [
-  { entry: auditEntry({ id: 'real', actionTaken: REAL_VERB }), teenContent: null, childDob: null, childName: null },
+  {
+    entry: auditEntry({ id: 'real', actionTaken: REAL_VERB }),
+    teenContent: null,
+    childDob: null,
+    childName: null,
+  },
   {
     entry: auditEntry({ id: 'tool-1', actionTaken: 'tool:get_framework_guidance' }),
     teenContent: null,
@@ -49,6 +55,12 @@ const TRAIL_ROWS = [
   },
   {
     entry: auditEntry({ id: 'tool-2', actionTaken: 'tool:get_child_profile' }),
+    teenContent: null,
+    childDob: null,
+    childName: null,
+  },
+  {
+    entry: auditEntry({ id: 'aged-out', actionTaken: 'autonomy_acted_notice_aged_out' }),
     teenContent: null,
     childDob: null,
     childName: null,
@@ -106,5 +118,7 @@ describe('loadTrail — internal agent tool-call rows never reach the trail', ()
     expect(serialized).not.toContain('tool:');
     expect(serialized).not.toContain('get_child_profile');
     expect(serialized).not.toContain('get_framework_guidance');
+    expect(serialized).not.toContain('aged-out');
+    expect(serialized).not.toContain('left an on-its-own text unsent after 7 days');
   });
 });
