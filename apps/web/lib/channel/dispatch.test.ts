@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
-import { CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
+import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
 import { SEND_RETRIES_EXHAUSTED } from './config';
 import {
   ChannelRetryableError,
@@ -97,7 +97,7 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
       emailOptedOut: async () => true,
       channels: { email: emailChannel },
     });
-    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_consent' }]);
     expect(ledger[0]).toMatchObject({ status: 'suppressed_consent', channel: 'email' });
     expect(emailChannel.calls).toHaveLength(0);
@@ -148,7 +148,7 @@ describe('per-channel dedupe idempotency — a re-drain never double-sends', () 
       channels: { email: emailChannel },
     });
     const result = await dispatchLoopMessage(
-      message({ category: 'weekly_plan', dedupeKey: 'fam-1:2026-W23:weekly' }),
+      message({ category: 'reminder', dedupeKey: 'fam-1:2026-W23:weekly' }),
       ports,
     );
     expect(result.legs).toEqual([{ channel: 'email', outcome: 'deduped' }]);
@@ -160,25 +160,25 @@ describe('per-channel dedupe idempotency — a re-drain never double-sends', () 
 describe('email CASL dual-write + audit', () => {
   it('writes channel_messages + email_sends + an audit row on a real email send', async () => {
     const { ports, ledger, emailSends, audits } = makePorts();
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(ledger.filter((r) => r.channel === 'email' && r.status === 'sent')).toHaveLength(1);
-    expect(emailSends).toEqual([{ emailType: 'weekly_plan', recipient: 'parent@example.com' }]);
+    expect(emailSends).toEqual([{ emailType: 'reminder', recipient: 'parent@example.com' }]);
     expect(audits).toEqual([
       {
         actionTaken: 'channel_sent',
-        after: { channel: 'email', category: 'weekly_plan', templateKey: 'weekly-plan-v1' },
+        after: { channel: 'email', category: 'reminder', templateKey: 'weekly-plan-v1' },
       },
     ]);
   });
 
   it("names a caregiver leg by WHO received it — the trail must not say 'Hale sent you a message'", async () => {
-    // A caregiver's week is a DISCLOSURE of the household to a third party, and the verb
+    // A caregiver's reminder is a DISCLOSURE of the household to a third party, and the verb
     // is how a PIPEDA read finds it later. Pinned here because the templateKey is the
     // only thing that distinguishes the two rows: with the branch collapsed back to
     // `channel_sent`, every other dispatch assertion stays green.
     const { ports, audits } = makePorts({ prefs: { loopChannel: 'sms' } });
     await dispatchLoopMessage(
-      message({ templateKey: CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY, category: 'weekly_plan' }),
+      message({ templateKey: CAREGIVER_REMINDER_TEMPLATE_KEY, category: 'reminder' }),
       ports,
     );
     expect(audits).toEqual([
@@ -186,8 +186,8 @@ describe('email CASL dual-write + audit', () => {
         actionTaken: 'caregiver_schedule_sent',
         after: {
           channel: 'sms',
-          category: 'weekly_plan',
-          templateKey: CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY,
+          category: 'reminder',
+          templateKey: CAREGIVER_REMINDER_TEMPLATE_KEY,
         },
       },
     ]);
@@ -195,7 +195,7 @@ describe('email CASL dual-write + audit', () => {
 
   it('keeps the generic verb for the same category sent to a parent (positive control)', async () => {
     const { ports, audits } = makePorts({ prefs: { loopChannel: 'sms' } });
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(audits.map((a) => a.actionTaken)).toEqual(['channel_sent']);
   });
 
@@ -208,11 +208,11 @@ describe('email CASL dual-write + audit', () => {
 
 describe("the parent's own text thread", () => {
   it('threads a delivered SMS leg with the body that went on the wire', async () => {
-    // The weekly plan is a thing Hale SAID, and the parent answers it by text.
+    // A loop message is a thing Hale SAID, and the parent answers it by text.
     // `channel_messages` stores no body (rule #1), so this is the only record a coach
     // turn can read the reply against.
     const { ports, threaded } = makePorts({ prefs: { loopChannel: 'sms' } });
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
 
     expect(threaded).toEqual([
       { familyId: 'fam-1', parentUserId: 'user-1', body: 'weekly-plan-v1' },
@@ -222,13 +222,13 @@ describe("the parent's own text thread", () => {
   it('threads the SMS leg only — an email is not a text', async () => {
     // The thread is the SMS thread (channelSmsNoteKey).
     const { ports, threaded } = makePorts({ prefs: { loopChannel: 'sms' } });
-    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
 
     expect(result.legs.map((l) => `${l.channel}:${l.outcome}`)).toEqual(['sms:sent']);
     expect(threaded).toHaveLength(1);
 
     const viaEmail = makePorts();
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), viaEmail.ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), viaEmail.ports);
     expect(viaEmail.threaded).toEqual([]);
   });
 
@@ -239,7 +239,7 @@ describe("the parent's own text thread", () => {
       prefs: { loopChannel: 'sms' },
       smsConsentLive: async () => false,
     });
-    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
 
     expect(result.legs).toEqual([{ channel: 'sms', outcome: 'suppressed_consent' }]);
     expect(threaded).toEqual([]);
@@ -338,13 +338,13 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
 
   it('a real send writes one ledger row and one loop_message_sent capture, reason = sent', async () => {
     const { ports, ledger, captures } = makePorts();
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(captures).toHaveLength(ledger.length);
     expect(captures).toEqual([
       {
         event: 'loop_message_sent',
         distinctId: 'user-1',
-        properties: { channel: 'email', category: 'weekly_plan', templateKey: 'weekly-plan-v1', reason: 'sent' },
+        properties: { channel: 'email', category: 'reminder', templateKey: 'weekly-plan-v1', reason: 'sent' },
       },
     ]);
   });
@@ -361,7 +361,7 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
       channels: { sms: fakeChannel('sms') },
     });
 
-    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
 
     expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
     expect(ledger[0]).toMatchObject({ channel: 'sms', status: 'queued' });
@@ -382,7 +382,7 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
 
   it('a suppressed leg fires its paired capture, one per row', async () => {
     const { ports, ledger, captures } = makePorts({ emailOptedOut: async () => true });
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(captures).toHaveLength(ledger.length);
     expect(captures.map((c) => `${c.properties.channel}:${c.event}`)).toEqual([
       'email:loop_message_failed',

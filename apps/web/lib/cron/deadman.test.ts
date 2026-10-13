@@ -52,7 +52,7 @@ function runChecker(httpStatus: number, body: string): { exitCode: number; outpu
 describe('cronSlug', () => {
   it('takes the path segment the route stamps under', () => {
     expect(cronSlug('/api/cron/drain')).toBe('drain');
-    expect(cronSlug('/api/cron/week-plan')).toBe('week-plan');
+    expect(cronSlug('/api/cron/reminders')).toBe('reminders');
   });
 
   it('refuses a non-cron path', () => {
@@ -67,7 +67,7 @@ describe('schedulePeriodSeconds', () => {
     expect(schedulePeriodSeconds('*/10 * * * *')).toBe(600); // queue-maintenance
     expect(schedulePeriodSeconds('4-59/10 * * * *')).toBe(600); // stepped range
     expect(schedulePeriodSeconds('*/15 * * * *')).toBe(900); // connector-sync
-    expect(schedulePeriodSeconds('2 * * * *')).toBe(3_600); // week-plan (hourly)
+    expect(schedulePeriodSeconds('12 * * * *')).toBe(3_600); // reminders (hourly)
     expect(schedulePeriodSeconds('42 6 * * *')).toBe(86_400); // inference (daily)
     expect(schedulePeriodSeconds('47 13 * * 1')).toBe(604_800); // discovery (weekly)
   });
@@ -93,7 +93,7 @@ describe('schedulePeriodSeconds', () => {
 describe('assessCronHealth', () => {
   const entries: CronManifestEntry[] = [
     { path: '/api/cron/drain', schedule: '* * * * *' },
-    { path: '/api/cron/week-plan', schedule: '2 * * * *' },
+    { path: '/api/cron/reminders', schedule: '12 * * * *' },
   ];
   const now = new Date('2026-09-03T12:00:00Z');
 
@@ -102,7 +102,7 @@ describe('assessCronHealth', () => {
       entries,
       [
         { name: 'drain', lastRanAt: new Date('2026-09-03T11:59:00Z') },
-        { name: 'week-plan', lastRanAt: new Date('2026-09-03T11:02:00Z') },
+        { name: 'reminders', lastRanAt: new Date('2026-09-03T11:12:00Z') },
       ],
       now,
     );
@@ -115,7 +115,7 @@ describe('assessCronHealth', () => {
       entries,
       [
         { name: 'drain', lastRanAt: new Date('2026-09-03T09:00:00Z') }, // 3h > 17min limit
-        { name: 'week-plan', lastRanAt: new Date('2026-09-03T11:02:00Z') },
+        { name: 'reminders', lastRanAt: new Date('2026-09-03T11:12:00Z') },
       ],
       now,
     );
@@ -125,7 +125,7 @@ describe('assessCronHealth', () => {
       ageSeconds: 3 * 3_600,
       staleAfterSeconds: 2 * 60 + STALE_GRACE_SECONDS,
     });
-    expect(report.crons.find((cron) => cron.name === 'week-plan')?.status).toBe('ok');
+    expect(report.crons.find((cron) => cron.name === 'reminders')?.status).toBe('ok');
   });
 
   it('a cron the ledger has never seen is armed, not a false page', () => {
@@ -135,7 +135,7 @@ describe('assessCronHealth', () => {
       now,
     );
     expect(report.ok).toBe(true);
-    expect(report.crons.find((cron) => cron.name === 'week-plan')).toMatchObject({
+    expect(report.crons.find((cron) => cron.name === 'reminders')).toMatchObject({
       status: 'armed',
       ageSeconds: null,
     });

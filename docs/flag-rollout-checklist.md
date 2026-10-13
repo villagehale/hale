@@ -31,7 +31,6 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `LINQ_GROUP_COPARENT` | unset (anything except `off`) | on | `off` | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | unset (anything except `false`) | on | `false` | Noah |
 | `VOICE_DISABLED` | unset | unset (voice runs) | `true` | Sloane |
-| `WEEK_PLAN_SUMMARY_DISABLED` | unset | unset (summary runs) | `true` | Sloane |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `candidate` | unset (means `current`) | `current` | Eugene |
 | `HALE_TRIAGE_MODEL_MODE` | `candidate` | unset (means `current`) | `current` | Eugene |
 | `HALE_REPLY_INTENT_MODEL_MODE` | `candidate` | unset (means `current`) | `current` | Eugene |
@@ -129,7 +128,6 @@ These are the flags the brief says are on. Confirm the Vercel value before treat
 | `LINQ_GROUP_COPARENT` | Co-parent seating and calendar notices stay in the Linq group. | Group `channel_messages` with status `failed`. | `off` | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | Calendar items that already ended skip the classifier. | A jump in classify volume or Anthropic spend after a calendar connect. | `false` | Noah |
 | `VOICE_DISABLED` | Unset, voice compose runs when `ANTHROPIC_API_KEY` is set. | Odd parent-visible wording on composed sends, and `sms_turn_failed` on those turns. | `true` | Sloane |
-| `WEEK_PLAN_SUMMARY_DISABLED` | Unset, the week-plan summary is composed. Sending still needs `LOOP_SEND_ENABLED`. | Summary text that names the wrong child or the wrong day. | `true` | Sloane |
 
 ### Ready to turn on
 
@@ -150,7 +148,7 @@ Code is merged. The repo still has these off. Flip one at a time, during a week 
 | `LINQ_GROUP_MEMBERS_ENABLED` | A household group can hold more seats. | A seat added with no opt-in from that phone. | `false` | Noah |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | One Linq group can hold more than one family. | A message in the shared thread that names another family's child. | `false` | Noah |
 | `LINQ_POLLS` | After a find with two or more hits, Hale can ask which to look at first. | A poll on an empty find, a conflict, or a receipt. | empty, or `off` | Sloane |
-| `LOOP_SEND_ENABLED` | The weekly plan and calendar reminders are allowed to send. | `channel_messages` for `weekly_plan` and reminders with status `failed`, and new `email_opt_outs`. | `false` | Noah |
+| `LOOP_SEND_ENABLED` | Calendar reminders are allowed to send. | `channel_messages` for reminders with status `failed`, and new `email_opt_outs`. | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | Hale asks once how the household covers weekdays. | A second weekday question to the same family. | `false` | Sloane |
 | `WATCHED_SPOTS_ENABLED` | Hale polls a spot the parent asked to watch. | Spot texts with status `failed`, or a text for a spot the parent did not name. | `false` | Noah |
 | `WORKSTREAMS_ENABLED` | Open workstreams ride the reply context, and a due check-back can send one follow-up. | A follow-up during quiet hours, or a second follow-up to the same family the same day. | `false` | Noah |
@@ -190,7 +188,7 @@ The first five real families are watched every day until each has been on the th
 
 Each day's note names the five family ids and these counts:
 
-1. `channel_messages` for those families: `failed` versus `sent` and `delivered`, split by category (`duty_ask`, onboarding, `followup`, weekly plan).
+1. `channel_messages` for those families: `failed` versus `sent` and `delivered`, split by category (`duty_ask`, onboarding, `followup`).
 2. `audit_log` rows with `action_taken` = `sms_turn_failed`.
 3. No-reply gaps: an outbound ask with no inbound from that parent for 24 hours.
 4. Latency from the inbound `channel_messages` row to `sms_turn_answered`.

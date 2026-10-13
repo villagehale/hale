@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Agent-skill QUALITY eval harness (week-summary, discovery).
+// Agent-skill QUALITY eval harness (discovery).
 //
 // Root CLAUDE.md hard rule #8: no LLM mocking — real Claude responses, cached.
 // The @hale/agent skills already have LOOP-MECHANICS tests (a fake client feeding
@@ -7,19 +7,8 @@
 // harness closes that gap: it exercises the REAL agent against real (cached) Claude
 // and gates on CHECKABLE properties + a cached LLM-as-judge.
 //
-// Two suites, each calibrated in BOTH directions (real cached model PASSES; a
+// The suite is calibrated in BOTH directions (real cached model PASSES; a
 // --broken known-bad generator FAILS):
-//
-//   week-summary  — the weekly-plan composer's VOICE stage (VIL-229). Same REAL
-//                   runAgent loop over the REAL week-summary skill, but the skill has
-//                   NO tools: the already-composed, already-redacted week `items` ride
-//                   in context and the model writes a JSON voice object (greeting/
-//                   weekFraming/itemLines/signOff) around them. Gates: non-empty +
-//                   length-bounded framing, no invented/alarming/health-beyond-title
-//                   token, never opens with a hype phrase, no fabricated specific
-//                   (email/$/long-digit) or invented time/link not grounded in an
-//                   item, itemLines keyed to real item ids only, and a cached Haiku
-//                   judge for calm & faithfulness (>= 4).
 //
 //   discovery     — web-side village discovery. REPLICATES the exact request shape of
 //                   apps/web/lib/village/discover.ts (same prompt apps/worker/prompts/
@@ -30,12 +19,7 @@
 //                   (rule #1), calibrated confidence honesty, cached Haiku judge for
 //                   local-fit (>= 4).
 //
-// IMPORT vs REPLICATE (same discipline as run-village-eval.mjs):
-//   - week-summary: we IMPORT the real runAgent + loadSkill
-//     from packages/agent/src via the tsx loader (the way `tsx watch` runs the
-//     worker) — so the eval drives the genuine loop + genuine skill instructions,
-//     not a re-implementation. The model id comes from the skill's own pickModel
-//     (single source: packages/agent/src/model.ts), exactly as the live agents do.
+// REPLICATE (same discipline as run-village-eval.mjs):
 //   - discovery: we REPLICATE the discover.ts request shape (it reaches web-only
 //     modules across the process boundary; its model id is read from the worker's
 //     SONNET_MODEL, the same constant discover.ts's loadCoachModel reads).
@@ -45,7 +29,7 @@
 //   node --env-file=../../.env evals/run-agent-eval.mjs                 # live pass, then caches
 //   node --env-file=../../.env evals/run-agent-eval.mjs --broken        # calibration: must FAIL
 //   node evals/run-agent-eval.mjs --cached-only                         # CI: replay only, never calls the API
-//   node evals/run-agent-eval.mjs --suite=week-summary [...]            # restrict to one suite
+//   node evals/run-agent-eval.mjs --suite=discovery [...]               # restrict to one suite
 
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -53,17 +37,12 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
-import { tsImport } from 'tsx/esm/api';
-import { z } from 'zod';
-import { evalRunTag, evalSubjectClient, evalSubjectRequest, noteLatency } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
 const REPO_ROOT = join(WORKER_ROOT, '..', '..');
 const MODEL_TS_PATH = join(REPO_ROOT, 'packages', 'agent', 'src', 'model.ts');
 const DISCOVERY_PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'discovery.md');
-const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
-const SKILLS_DIR = join(REPO_ROOT, 'packages', 'agent', 'skills');
 const FIXTURE_ROOT = join(HERE, 'fixtures');
 const CACHE_DIR = join(HERE, 'cache');
 
@@ -142,81 +121,6 @@ function noteUsage(cost, tier, usage) {
   }
 }
 
-// --- cached client for the REAL runAgent loop -------------------------------
-// runAgent calls client.messages.create repeatedly (the tool loop). We wrap a
-// cache around create(): the key is the canonical (model + system + messages),
-// so each round-trip of a deterministic, fixture-driven loop replays exactly.
-// On a miss in --cached-only mode we fail loudly rather than silently call live.
-
-function makeCachedAgentClient(tag, cachedOnly, getClient, cost) {
-  return {
-    messages: {
-      async create(params) {
-        const request = evalSubjectRequest(params);
-        const canonical = JSON.stringify({
-          model: request.model,
-          system: request.system,
-          tools: request.tools,
-          messages: request.messages,
-          max_tokens: request.max_tokens,
-          ...(process.env.EVAL_GATEWAY_MODEL ? { thinking: request.thinking } : {}),
-        });
-        const key = cacheKey(evalRunTag(`${tag}:agent`), canonical);
-
-        const cached = await cacheGet(key);
-        if (cached) return cached.response;
-
-        if (cachedOnly) {
-          console.error(
-            `agent cache miss in --cached-only mode (${tag}, key ${key}). Re-run live to populate, then commit the cache.`,
-          );
-          process.exit(1);
-        }
-
-        const startedAt = performance.now();
-        const response = await evalSubjectClient(getClient).messages.create(request);
-        noteLatency(request.model, Math.round(performance.now() - startedAt));
-        noteUsage(cost, process.env.EVAL_GATEWAY_MODEL ? 'gateway' : 'sonnet', response.usage);
-        // Store the raw SDK message shape runAgent consumes (content + usage +
-        // stop_reason). We persist a plain object so JSON round-trips losslessly.
-        const stored = {
-          id: response.id,
-          type: response.type,
-          role: response.role,
-          model: response.model,
-          stop_reason: response.stop_reason,
-          stop_sequence: response.stop_sequence,
-          content: response.content,
-          usage: response.usage,
-        };
-        await cachePut(key, { response: stored });
-        return stored;
-      },
-    },
-  };
-}
-
-// --- guard deps for the REAL invoker (rules genuinely fire in the eval) ------
-// The eval dispatches every fixture tool through the real invokeTool, so we wire
-// real-shaped guards: writeAudit records each call (rule #6 — we assert >=1), and
-// checkChildContentAccess refuses a teenager's profile exactly as the live web
-// guard does (rule #1/#5) so a model that asks for teen content is blocked here too.
-
-function makeGuardDeps(auditLog, teenChildIds) {
-  return {
-    async writeAudit(entry) {
-      auditLog.push(entry);
-    },
-    async checkChildContentAccess(_familyId, _toolName, input) {
-      const childId = input && typeof input === 'object' ? input.childId : undefined;
-      if (childId && teenChildIds.has(childId)) {
-        return { ok: false, reason: `teen child ${childId} content is redacted (rule #1)` };
-      }
-      return { ok: true, reason: 'ok' };
-    },
-  };
-}
-
 // --- LLM-as-judge (cached, real haiku) --------------------------------------
 
 const JUDGE_TOOL = 'score';
@@ -279,248 +183,6 @@ function ungroundedSpecifics(text, grounded) {
 
 function containsAny(haystackLower, tokens) {
   return (tokens ?? []).filter((t) => haystackLower.includes(t.toLowerCase()));
-}
-
-// --- voice-object parse + invented-fact lint (VIL-229) ----------------------
-// The voice skills answer with a single JSON object of voice fields. We replicate
-// the first-balanced-object extraction + the facts lint (times/URLs not grounded in
-// the injected slots) the web composer runs — same discipline as the discovery
-// replicate: the web modules are cross-process, so the eval mirrors the contract.
-
-function firstJsonObject(text) {
-  const start = text.indexOf('{');
-  if (start === -1) return null;
-  let depth = 0;
-  for (let i = start; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === '{') depth += 1;
-    else if (ch === '}') {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
-  }
-  return null;
-}
-
-function parseVoiceObject(answer) {
-  if (!answer) return null;
-  const json = firstJsonObject(answer);
-  if (!json) return null;
-  try {
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
-/** Times/URLs in `text` not present in any grounded slot — the invented-fact guard. */
-function inventedTimesUrls(text, grounded) {
-  const hay = grounded.join(' ');
-  const toks = [
-    ...(text.match(/\b\d{1,2}:\d{2}\b/g) ?? []),
-    ...(text.match(/https?:\/\/\S+/g) ?? []).map((u) => u.replace(/[).,;:!?'"]+$/, '')),
-  ];
-  return [...new Set(toks)].filter((t) => !hay.includes(t));
-}
-
-// ===========================================================================
-// SUITE 4: week-summary (real runAgent loop, real skill, NO tools)
-// ===========================================================================
-// The weekly-plan composer's VOICE stage (VIL-229). The skill has NO tools:
-// the already-composed, already-redacted week `items` ride in
-// context, and the model writes a JSON voice object (greeting/weekFraming/itemLines/
-// signOff) around them. So the eval drives the REAL runAgent loop over the REAL
-// week-summary.md skill with an empty tools array (and real guard deps — they never
-// fire without a tool call, but keep the eval path identical
-// to prod), then parses + validates the answer the SAME way composeVoice does
-// (firstJsonObject + a strict schema) before checking it.
-
-const weekVoiceSchema = z
-  .object({
-    greeting: z.string(),
-    weekFraming: z.string(),
-    itemLines: z.record(z.string()).default({}),
-    signOff: z.string(),
-  })
-  .strict();
-
-const WEEK_SUMMARY_JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring the VOICE object (greeting, weekFraming,',
-  "itemLines, signOff) Hale wrote to sit atop a family's already-composed upcoming-",
-  'week plan. Score CALM & FAITHFULNESS on a 1-5 integer scale. A 5 is warm, calm,',
-  'written in ordinary SENTENCE CASE (every sentence starting with a capital, the',
-  'greeting and sign-off included — a lowercase dialect is a different voice from the',
-  'one every other Hale surface writes in, and it is marked down here), keeps',
-  'weekFraming to one/two sentences naming only the one or',
-  'two most notable SUPPLIED items, any itemLines are brief framings (never restating',
-  'a time/date), and — on an empty item list — weekFraming simply says the week is',
-  'quiet. A LOW score is alarming or cold tone, opening with "Great news!"/"Exciting!",',
-  'a wall of text, OR — most important — any claim NOT supported by the supplied items',
-  '(an invented appointment, name, date, or time) or health detail beyond an item',
-  'title (a diagnosis, a dose, a named clinic). Reply with ONLY the score tool.',
-].join(' ');
-
-// Never open with a hype phrase — the skill's explicit "Never open with 'Great
-// news!', 'Exciting!'" voice rule. Anchored to the start so a mid-sentence mention
-// is not a false positive.
-const BANNED_SUMMARY_OPENER = /^\s*(great news|exciting)\b/i;
-
-// Deterministic broken stand-in: opens with the banned "Great news!", invents an
-// appointment (a child, clinic, therapy, phone, and price none of which are in any
-// fixture's items), invents a time + link in the sign-off, and pads well past one/two
-// sentences. Every deterministic check (opener, forbidden token, ungrounded specific,
-// invented-fact lint, length) must reject it — no API call, no cache read.
-function brokenWeekVoiceAnswer() {
-  return {
-    greeting: 'Great news!',
-    weekFraming: [
-      "huge week ahead — don't forget kai's dentist appointment on 2026-08-15 at",
-      "bright smiles clinic, plus rowan's therapy session; call 4165559999 to confirm and budget about $80.",
-      'here is a very long extra clause padding this summary well past one or two calm sentences so the length bound is clearly exceeded; '.repeat(
-        4,
-      ),
-    ].join(' '),
-    itemLines: {},
-    signOff: 'see you at 9:15 sharp — https://evil.example.com/click',
-  };
-}
-
-function checkWeekVoice(fixture, voice, judgeScore) {
-  const failures = [];
-  if (!voice) {
-    failures.push('voice object failed to parse/validate against the strict schema');
-    return failures;
-  }
-  const e = fixture.expect;
-  const { greeting, weekFraming, itemLines, signOff } = voice;
-
-  for (const [field, value] of [
-    ['greeting', greeting],
-    ['weekFraming', weekFraming],
-    ['signOff', signOff],
-  ]) {
-    if (typeof value !== 'string' || value.trim().length === 0) failures.push(`empty ${field}`);
-  }
-
-  // Length bound on the narrative sentence: one/two calm sentences, never a wall of text.
-  if (typeof e.maxChars === 'number' && weekFraming.length > e.maxChars) {
-    failures.push(
-      `weekFraming ${weekFraming.length} chars > maxChars ${e.maxChars} (not one/two sentences)`,
-    );
-  }
-
-  const allText = [greeting, weekFraming, signOff, ...Object.values(itemLines ?? {})].join(' ');
-  const lower = allText.toLowerCase();
-
-  // No invented / alarming / health-beyond-title tokens, anywhere in the voice.
-  for (const tok of containsAny(lower, e.forbiddenTokens)) {
-    failures.push(`forbidden content: ${JSON.stringify(tok)}`);
-  }
-
-  // Calm voice: never open with a hype phrase.
-  if (
-    e.mustStayCalm &&
-    (BANNED_SUMMARY_OPENER.test(greeting) || BANNED_SUMMARY_OPENER.test(weekFraming))
-  ) {
-    failures.push(`banned hype opener: ${JSON.stringify((greeting || weekFraming).slice(0, 24))}`);
-  }
-
-  // Sentence case, held mechanically. The judge used to be told a 5 was
-  // "lowercase-friendly", which sanctioned by rubric the one Hale surface with its own
-  // typography (2026-08-13 tone audit) — so this is checked rather than graded, the way
-  // every other decidable voice property in this battery is.
-  for (const [field, value] of [
-    ['greeting', greeting],
-    ['weekFraming', weekFraming],
-    ['signOff', signOff],
-  ]) {
-    const first = String(value).trim().charAt(0);
-    if (first !== '' && first === first.toLowerCase() && first !== first.toUpperCase()) {
-      failures.push(`${field} opens lower case: ${JSON.stringify(String(value).slice(0, 32))}`);
-    }
-  }
-
-  // No fabricated specifics: any email / $ / long-digit token must be grounded in an
-  // item title or date the skill was handed (it invents nothing — rule #1). With no
-  // tools, the items ARE the entire grounding set.
-  const grounded = (fixture.context.items ?? []).flatMap((i) => [i.title, i.when ?? '']);
-  const ungrounded = ungroundedSpecifics(allText, grounded);
-  if (ungrounded.length) failures.push(`ungrounded specifics: ${ungrounded.join(', ')}`);
-
-  // The facts-lint every voice string carries in prod (composeVoice/findInventedFacts):
-  // a clock time or URL not present in a grounded slot is a fabrication.
-  const invented = inventedTimesUrls(allText, grounded);
-  if (invented.length)
-    failures.push(`invented time/url not grounded in any item: ${invented.join(', ')}`);
-
-  // itemLines is keyed by the item's index (the id the composer hands the model) — a
-  // key outside that range means the model invented an item.
-  const validIds = new Set((fixture.context.items ?? []).map((_item, i) => String(i)));
-  for (const key of Object.keys(itemLines ?? {})) {
-    if (!validIds.has(key)) failures.push(`itemLines has unknown item id ${JSON.stringify(key)}`);
-  }
-
-  if (judgeScore !== null && !(judgeScore >= JUDGE_MIN)) {
-    failures.push(`calm/faithfulness score ${judgeScore} < ${JUDGE_MIN}`);
-  }
-  return failures;
-}
-
-async function runWeekSummarySuite(opts) {
-  const { agent, broken, cachedOnly, getClient, cost, judge } = opts;
-  const fixtures = await loadFixtures('agent-week-summary');
-  const skill = await agent.loadSkill(join(SKILLS_DIR, 'week-summary.md'));
-  const results = [];
-
-  console.log('--- week-summary (real runAgent loop, real skill, no tools) ---');
-  for (const fixture of fixtures) {
-    const auditLog = [];
-    // Mirror the composer's weekVoiceContext: each item keyed by its index — the id
-    // the model's itemLines answer is keyed by.
-    const context = {
-      items: (fixture.context.items ?? []).map((item, i) => ({ id: String(i), ...item })),
-    };
-    let voice;
-    if (broken) {
-      voice = brokenWeekVoiceAnswer();
-    } else {
-      const client = makeCachedAgentClient(
-        `week-summary:${fixture.id}`,
-        cachedOnly,
-        getClient,
-        cost,
-      );
-      const guardDeps = makeGuardDeps(auditLog, new Set());
-      const run = await agent.runAgent({
-        skill,
-        context,
-        tools: [],
-        client,
-        maxSteps: 1,
-        maxTokens: 512,
-        toolContext: { familyId: fixture.context.familyId, actor: 'system' },
-        guardDeps,
-      });
-      if (run.answer === null) {
-        results.push({ id: fixture.id, failures: ['agent returned no answer'] });
-        console.log(`  FAIL ${fixture.id}\n       - agent returned no answer`);
-        continue;
-      }
-      const raw = parseVoiceObject(run.answer);
-      const parsed = raw ? weekVoiceSchema.safeParse(raw) : null;
-      voice = parsed?.success ? parsed.data : null;
-    }
-
-    const score =
-      broken || !voice ? null : (await judge(weekSummaryJudgePayload(fixture, voice))).score;
-    const failures = checkWeekVoice(fixture, voice, score);
-    record(results, fixture, failures, score);
-  }
-  return results;
-}
-
-function weekSummaryJudgePayload(fixture, voice) {
-  return { items: fixture.context.items ?? [], voice };
 }
 
 // ===========================================================================
@@ -739,8 +401,6 @@ async function main() {
   const suiteArg = process.argv.find((a) => a.startsWith('--suite='));
   const only = suiteArg ? suiteArg.split('=')[1] : null;
 
-  const agent = await tsImport(AGENT_SRC, import.meta.url);
-
   const { discovery: discoveryModel, judge: judgeModel } = await readModelIds();
   const getClient = lazyAnthropic();
   const cost = {
@@ -753,14 +413,6 @@ async function main() {
     gatewayOut: 0,
   };
 
-  const weekSummaryJudge = makeJudge(
-    judgeModel,
-    WEEK_SUMMARY_JUDGE_SYSTEM,
-    'week-summary',
-    cachedOnly,
-    getClient,
-    cost,
-  );
   const discoveryJudge = makeJudge(
     judgeModel,
     DISCOVERY_JUDGE_SYSTEM,
@@ -778,18 +430,6 @@ async function main() {
 
   const all = [];
   const suites = [
-    [
-      'week-summary',
-      () =>
-        runWeekSummarySuite({
-          agent,
-          broken,
-          cachedOnly,
-          getClient,
-          cost,
-          judge: weekSummaryJudge,
-        }),
-    ],
     [
       'discovery',
       () =>

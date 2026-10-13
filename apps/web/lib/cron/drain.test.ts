@@ -56,7 +56,7 @@ function validChannelSend() {
     templateKey: 'weekly-plan-v1',
     familyId: FAMILY,
     parentUserId: PARENT,
-    category: 'weekly_plan' as const,
+    category: 'reminder' as const,
     urgency: 'normal' as const,
     payload: {},
     dedupeKey: 'fam:2026-W23:weekly',
@@ -349,7 +349,7 @@ describe('drainHotQueues', () => {
 
     expect(deps.handlers.channelSend).toHaveBeenCalledTimes(1);
     expect(deps.handlers.channelSend).toHaveBeenCalledWith(
-      expect.objectContaining({ category: 'weekly_plan', parentUserId: PARENT }),
+      expect.objectContaining({ category: 'reminder', parentUserId: PARENT }),
     );
     expect(completed(CHANNEL)).toEqual(['c1']);
     expect(summary.processed).toBe(1);
@@ -365,6 +365,19 @@ describe('drainHotQueues', () => {
 
     expect(deps.handlers.channelSend).not.toHaveBeenCalled();
     expect(completed(CHANNEL)).toEqual(['bad']);
+    expect(summary.dropped).toBe(1);
+  });
+
+  it('DROPS a weekly_plan job queued before the weekly plan was retired', async () => {
+    const { boss, completed } = makeFakeBoss({
+      [CHANNEL]: [{ id: 'stale', data: { ...validChannelSend(), category: 'weekly_plan' } }],
+    });
+    const deps = makeDeps(boss);
+
+    const summary = await drainHotQueues(deps);
+
+    expect(deps.handlers.channelSend).not.toHaveBeenCalled();
+    expect(completed(CHANNEL)).toEqual(['stale']);
     expect(summary.dropped).toBe(1);
   });
 

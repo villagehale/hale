@@ -1,12 +1,6 @@
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  createFamilyEvent,
-  hasWeekPlan,
-  listFamilyEventsInWindow,
-  readWeekPlan,
-  upsertWeekPlan,
-} from './queries.js';
+import { createFamilyEvent, listFamilyEventsInWindow, readWeekPlan } from './queries.js';
 
 /**
  * The drizzle operators are replaced with inspectable MARKERS (the real module is
@@ -190,65 +184,6 @@ function makeEvent(
     ...over,
   };
 }
-
-describe('upsertWeekPlan — one idempotent plan per (family, week)', () => {
-  it('inserts the family-scoped plan (status default composed) and targets the (family, week) conflict', async () => {
-    const items: schema.WeekPlanItem[] = [
-      {
-        kind: 'appointment',
-        title: 'Checkup',
-        childIds: [CHILD_ID],
-        startsAt: WEEK_START,
-        endsAt: null,
-        location: null,
-        sourceRef: null,
-        needs: 'calendar_add',
-        privacySensitive: true,
-      },
-    ];
-    const { db, capture } = fakeDb({});
-    await upsertWeekPlan(db, {
-      familyId: FAMILY_ID,
-      weekStart: WEEK_START,
-      summary: 'A calm week.',
-      items,
-    });
-
-    const insert = capture.inserts.find((i) => i.table === schema.weekPlans);
-    expect(insert).toBeDefined();
-    const row = insert?.rows[0] as Record<string, unknown>;
-    expect(row.familyId).toBe(FAMILY_ID);
-    expect(row.weekStart).toBe(WEEK_START);
-    expect(row.summary).toBe('A calm week.');
-    // The typed jsonb item array is stored verbatim.
-    expect(row.items).toBe(items);
-    expect(row.status).toBe('composed');
-    expect(row.composedAt).toBeInstanceOf(Date);
-
-    const conflict = capture.conflicts.find((c) => c.table === schema.weekPlans);
-    expect(conflict).toBeDefined();
-    // Idempotent per (family_id, week_start): the unique pair IS the conflict target.
-    const target = conflict?.target as unknown[];
-    expect(target).toHaveLength(2);
-    expect(target[0]).toBe(schema.weekPlans.familyId);
-    expect(target[1]).toBe(schema.weekPlans.weekStart);
-    // A recompose overwrites summary/items/status/composedAt.
-    expect(conflict?.set.summary).toBe('A calm week.');
-    expect(conflict?.set.items).toBe(items);
-    expect(conflict?.set.status).toBe('composed');
-    expect(conflict?.set.composedAt).toBeInstanceOf(Date);
-  });
-});
-
-describe('hasWeekPlan — the idempotent-spend pre-check', () => {
-  it('is true when the week already has a plan, false when it has none', async () => {
-    const present = fakeDb({ weekPlanRows: [{ id: PLAN_ID }] });
-    expect(await hasWeekPlan(present.db, FAMILY_ID, WEEK_START)).toBe(true);
-
-    const absent = fakeDb({ weekPlanRows: [] });
-    expect(await hasWeekPlan(absent.db, FAMILY_ID, WEEK_START)).toBe(false);
-  });
-});
 
 describe('readWeekPlan', () => {
   it('returns the plan row, or null when the week has none', async () => {

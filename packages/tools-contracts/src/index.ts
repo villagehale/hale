@@ -90,7 +90,7 @@ export const channelSendJobPayloadSchema = z.object({
   templateKey: z.string().min(1),
   familyId: z.string().uuid(),
   parentUserId: z.string().uuid(),
-  category: z.enum(['weekly_plan', 'reminder', 'approval', 'alert']),
+  category: z.enum(['reminder', 'approval', 'alert']),
   urgency: z.enum(['normal', 'time_sensitive']),
   payload: z.record(z.unknown()),
   dedupeKey: z.string().optional(),

@@ -12,29 +12,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * that throws exactly what the SDK throws, so what is under test is our failure
  * handling against the real error shape rather than a stub of our own verdict.
  *
- * The loop cron statically imports query modules that transitively pull next-auth;
- * those edges are stubbed the way lib/loop/cron.test.ts already does so this Node test
- * resolves.
+ * The crons statically import modules that transitively pull next-auth; those edges
+ * are stubbed so this Node test resolves.
  */
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
 vi.mock('~/lib/dashboard/trail-query', () => ({
   readFamilyTimezone: vi.fn(async () => 'America/Toronto'),
 }));
-vi.mock('~/lib/loop/queries', () => ({
-  hasWeekPlan: vi.fn(async () => false),
-  upsertWeekPlan: vi.fn(async () => ({ id: 'plan-1' })),
-}));
 
 import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { runInferenceCron } from '~/lib/cron/inference';
-import { runWeekPlanCron } from '~/lib/loop/cron';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '99999999-9999-4999-8999-999999999999';
 const NOW = new Date('2026-08-01T12:00:00Z');
-/** Sunday 08:15 America/Toronto — inside the default weekly compose slot (the
- * day before the Monday-morning brief, 2026-08-11 retime). */
-const COMPOSE_SLOT = new Date('2026-08-02T12:15:00Z');
 /** 10:00 America/Toronto — the nudge send hour. */
 const NUDGE_SLOT = new Date('2026-08-01T14:00:00Z');
 
@@ -108,7 +99,7 @@ function selectChain(rows: unknown[]): SelectChain {
 /**
  * A fake DB that answers each cron's family-selection query and the incident claim, and
  * records every insert so "did any per-family work happen?" is checkable. loop_prefs
- * reads return nothing so the documented defaults apply (weekly plan on, 19:30).
+ * reads return nothing so the documented defaults apply.
  */
 function fakeDb(): { database: Database; capture: DbCapture } {
   const capture: DbCapture = { insertedTables: [] };
@@ -182,42 +173,6 @@ describe('the memory-inference window (the 06:00Z cron that failed on 2026-08-01
     expect(synthesize).toHaveBeenCalledWith(database, [FAMILY_ID], NOW);
     expect(result.synthesis.families).toBe(1);
     expect(result.aborted?.failure).toBe('billing');
-  });
-});
-
-describe('the weekly-plan compose window', () => {
-  it('aborts before gathering or composing any family', async () => {
-    const { database, capture } = fakeDb();
-    const { client } = brokeClient();
-    const gather = vi.fn();
-
-    const result = await runWeekPlanCron(
-      database,
-      { client, gather: gather as never, mint: async () => ({ minted: [], skipped: 0 }) },
-      COMPOSE_SLOT,
-    );
-
-    expect(result.aborted?.failure).toBe('billing');
-    expect(result.aborted?.skipped).toBe(1);
-    expect(gather).not.toHaveBeenCalled();
-    expect(result.results).toEqual([]);
-    assertNoFamilyWork(capture);
-  });
-
-  it('composes as before when the voice stage is off — no client, no probe, no abort', async () => {
-    const { database } = fakeDb();
-    const gather = vi.fn(async () => {
-      throw new Error('gather ran');
-    });
-
-    const result = await runWeekPlanCron(
-      database,
-      { client: null, gather: gather as never, mint: async () => ({ minted: [], skipped: 0 }) },
-      COMPOSE_SLOT,
-    );
-
-    expect(result.aborted).toBeUndefined();
-    expect(gather).toHaveBeenCalledTimes(1);
   });
 });
 

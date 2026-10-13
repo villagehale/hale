@@ -13,7 +13,7 @@ import type { captureServerEvent } from '~/lib/analytics/server-capture';
  * so a failure here must never surface as a broken unsubscribe confirmation.
  *
  * Privacy (rule #1): the alert names only the loop STREAM (an enum, e.g.
- * 'weekly_plan') — no parent email, no userId, no child content.
+ * 'reminder') — no parent email, no userId, no child content.
  */
 
 const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
