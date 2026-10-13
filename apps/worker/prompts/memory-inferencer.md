@@ -58,5 +58,6 @@ record a wrong one. Examples:
 
 - 0.95+: stated explicitly by a parent
 - 0.85: pattern observed 5+ times consistently
-- 0.7: pattern observed 3 times with no counter-examples
+- 0.7: a preference or a routine observed 3 times with no counter-examples
+- 0.7: a logistic fact computed from two orders that name the same item and the same quantity, when the days between them are in the input. The value is those quantities, those intervals, or the rate they divide to. Do not invent a number that is not in the input and not that division.
 - < 0.7: do not record
