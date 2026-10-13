@@ -363,6 +363,11 @@ describe('createGeneralAnswer', () => {
    * is going to state, beside the words in the research it comes from. The model writes
    * its fields in the order the schema lists them, so `grounding` is first, both are
    * required of it, and the list's entries are sealed.
+   *
+   * Sloane's findings 1a and 1b (2026-10-13). Each field of an entry says, where the
+   * model reads it as it writes the entry, what belongs in it: the specific with the kind
+   * of thing the notes give it for, and `settled` only for what can no longer change. The
+   * words are hers and are pinned on the request itself.
    */
   it('asks the compose for its reading of the text, then its grounding, then the answer', async () => {
     const seen = seenNothing();
@@ -379,7 +384,18 @@ describe('createGeneralAnswer', () => {
           type: 'array',
           items: {
             type: 'object',
-            properties: { states: { type: 'string' }, from: { type: 'string' } },
+            properties: {
+              states: {
+                type: 'string',
+                description:
+                  'the specific as the notes qualify it, with the class, group or date they attach to it.',
+              },
+              from: {
+                type: 'string',
+                description:
+                  'the words in research_notes it comes from, or `settled` only for what can no longer change. A running count, a record or who holds a title today is never `settled`.',
+              },
+            },
             required: ['states', 'from'],
             additionalProperties: false,
           },
