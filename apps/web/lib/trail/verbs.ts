@@ -351,6 +351,7 @@ export const AUDIT_VERBS = [
   'action.reverted_by_human',
   // The sixth ActionGateReason; the other five were curated, this one was not.
   'action.gated.autonomy_not_opted_in',
+  'action.gated.parent_commitment',
   // ── the weekly loop + calendar subscription ─────────────────────────────
   'compose_week_plan',
   'week_plan.calendar_drafted',
@@ -1297,6 +1298,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   'action.reverted_by_human': { sentence: 'you reversed a completed action', family: 'done' },
   'action.gated.autonomy_not_opted_in': {
     sentence: 'held for your approval — you haven’t let Hale do this on its own',
+    family: 'awaiting',
+  },
+  'action.gated.parent_commitment': {
+    sentence: 'held an enrollment, booking, or payment for your tap',
     family: 'awaiting',
   },
   // ── the weekly loop + calendar subscription ─────────────────────────────

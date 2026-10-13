@@ -457,7 +457,11 @@ describe('the postal tables', () => {
  * Census). What is sent instead is the nearest place of 10,000 or more in that province
  * or state, or the province or state when none is within 150 km. The same area on a
  * question that is not sensitive is the small place, and a place of 10,000 or more is
- * never replaced. Addison, Illinois is about 36,000 people and stays itself.
+ * never replaced. A name is sent only when the census shows 10,000 or more people
+ * for it in that province or state, after St. and Saint, Ste. and Sainte, Mt. and
+ * Mount, Ft. and Fort, and Mc spellings are treated as one name. Every other name
+ * is coarsened. Addison, Illinois is about 36,000 people and stays itself.
+ * Mc Graw, New York is not on that list.
  */
 describe('a sensitive search is not told a place under 10,000 people', () => {
   async function readPlace(row: {
@@ -500,6 +504,9 @@ describe('a sensitive search is not told a place under 10,000 people', () => {
       country: 'United States',
     });
     expect(coarsen.US.some((row) => row[0] === 'Addison' && row[1] === 'Illinois')).toBe(false);
+    expect(coarsen.large.US.some((row) => row[0] === 'Addison' && row[1] === 'Illinois')).toBe(
+      true,
+    );
     expect(await coarsenPlace(read, true)).toEqual(read);
     expect(await coarsenPlace(read, false)).toEqual(read);
   });
@@ -517,6 +524,85 @@ describe('a sensitive search is not told a place under 10,000 people', () => {
       country: 'United States',
     });
     expect(await coarsenPlace(read, false)).toEqual(read);
+  });
+
+  it('keeps East Saint Louis, Illinois, the census place East St. Louis', async () => {
+    const read = {
+      city: 'East Saint Louis',
+      provinceOrState: 'Illinois',
+      country: 'United States',
+    };
+    expect(
+      coarsen.large.US.some((row) => row[0] === 'East Saint Louis' && row[1] === 'Illinois'),
+    ).toBe(true);
+    expect(await coarsenPlace(read, true)).toEqual(read);
+  });
+
+  it('coarsens Mc Graw, New York, which the census does not show at 10,000', async () => {
+    expect(coarsen.large.US.some((row) => row[0] === 'Mc Graw' && row[1] === 'New York')).toBe(
+      false,
+    );
+    expect(
+      await coarsenPlace(
+        { city: 'Mc Graw', provinceOrState: 'New York', country: 'United States' },
+        true,
+      ),
+    ).toEqual({
+      city: 'Cortland',
+      provinceOrState: 'New York',
+      country: 'United States',
+    });
+  });
+
+  it('sends a name the census does not list as the state alone', async () => {
+    expect(
+      await coarsenPlace(
+        { city: 'Zz Not In The Census', provinceOrState: 'Illinois', country: 'United States' },
+        true,
+      ),
+    ).toEqual({ provinceOrState: 'Illinois', country: 'United States' });
+  });
+
+  it('lists every postal place as proven at 10,000 or coarsened, and no place as both', () => {
+    const tables = { CA: ca, US: us } as const;
+    for (const code of ['CA', 'US'] as const) {
+      const table = tables[code];
+      const allow = new Set(coarsen.large[code].map(([name, region]) => `${name}\t${region}`));
+      const small = new Set(coarsen[code].map(([name, region]) => `${name}\t${region}`));
+      const names = new Set<string>();
+      for (const row of coarsen.large[code]) {
+        const name = row[0];
+        if (name !== undefined) names.add(name);
+      }
+      for (const row of coarsen[code]) {
+        const name = row[0];
+        if (typeof name === 'string') names.add(name);
+      }
+      const missing: string[] = [];
+      const both: string[] = [];
+      const seen = new Set<string>();
+      for (let i = 0; i < table.codes.length; i++) {
+        const cityAt = table.cityOf[i] ?? -1;
+        const regionAt = table.regionOf[i] ?? -1;
+        if (cityAt < 0 || regionAt < 0) continue;
+        const city = table.cities[cityAt];
+        const region = table.regions[regionAt];
+        if (city === undefined || region === undefined) continue;
+        const pair = `${city}\t${region}`;
+        if (seen.has(pair)) continue;
+        seen.add(pair);
+        const onLarge = allow.has(pair);
+        const onSmall = small.has(pair);
+        if (onLarge && onSmall) both.push(pair);
+        else if (!onLarge && !onSmall) missing.push(pair);
+      }
+      expect(missing, `${code} pairs missing`).toEqual([]);
+      expect(both, `${code} pairs on both lists`).toEqual([]);
+      expect(
+        table.cities.filter((city) => !names.has(city)),
+        `${code} city names missing`,
+      ).toEqual([]);
+    }
   });
 
   it('does not guess which small place a shared name is', async () => {

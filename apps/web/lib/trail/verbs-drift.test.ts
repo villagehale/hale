@@ -133,6 +133,7 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'action.gated.teen_redaction',
     'action.gated.over_allowance',
     'action.gated.autonomy_not_opted_in',
+    'action.gated.parent_commitment',
     'event.stage.classified',
     'event.stage.drafted',
     'event.stage.reviewed',

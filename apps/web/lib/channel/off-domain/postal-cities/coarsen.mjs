@@ -1,5 +1,11 @@
-// Builds coarsen.json: which checked-in place names are under 10,000 people, and the
-// nearest place of 10,000 or more in the same province or state to send instead.
+// Builds coarsen.json. A checked-in place is sent as itself on a sensitive search only
+// when the census proves 10,000 or more people for that name in that province or state.
+// Every other name is listed, with the nearest proven place of 10,000 or more in the
+// same province or state, or none when there isn't one within the cap.
+//
+// Names are joined to the census with Saint/St., Sainte/Ste., Mount/Mt., Fort/Ft.,
+// Mc X/McX, and with periods and hyphens removed, on both sides. A spelling the census
+// does not prove is not given the benefit of the doubt.
 //
 //   node coarsen.mjs <98100002.csv> <cgn_canada_csv_eng.csv> <dir of *2020.pl.zip>
 //
@@ -52,6 +58,20 @@ const CA_PR = {
 const fold = (text) =>
   text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
+/** The same place under either spelling. Applied to the census and to the postal table. */
+function canon(text) {
+  return fold(text)
+    .replace(/\./g, '')
+    .replace(/-/g, ' ')
+    .replace(/\bst\b/g, 'saint')
+    .replace(/\bste\b/g, 'sainte')
+    .replace(/\bmt\b/g, 'mount')
+    .replace(/\bft\b/g, 'fort')
+    .replace(/\bmc\s+/g, 'mc')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function kilometres(a, b) {
   const rad = Math.PI / 180;
   const dLat = (b.lat - a.lat) * rad;
@@ -60,35 +80,6 @@ function kilometres(a, b) {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
   return 2 * 6371 * Math.asin(Math.sqrt(h));
-}
-
-function loadPostal(file) {
-  const table = JSON.parse(readFileSync(join(HERE, file), 'utf8'));
-  const spelling = new Map();
-  for (const city of table.cities) {
-    const key = fold(city);
-    if (!spelling.has(key)) spelling.set(key, city);
-  }
-  const shared = new Set();
-  for (const index of table.sharedCities) shared.add(fold(table.cities[index]));
-  const stateName = new Map(
-    (table.regionCodes ?? []).map((code, index) => [code, table.regions[index]]),
-  );
-  // Where the postal table itself puts each name. A census namesake in some other
-  // province or state is not a place this table would send, and must not become the
-  // only match for a name the table uses in one region (Toronto, Ontario).
-  const inRegion = new Map();
-  for (let i = 0; i < table.codes.length; i++) {
-    const city = table.cityOf[i];
-    const region = table.regionOf[i];
-    if (city < 0 || region < 0) continue;
-    const key = fold(table.cities[city]);
-    const name = table.regions[region];
-    const set = inRegion.get(key);
-    if (set === undefined) inRegion.set(key, new Set([name]));
-    else set.add(name);
-  }
-  return { spelling, shared, stateName, inRegion };
 }
 
 function parseCsv(line) {
@@ -155,45 +146,79 @@ function nearestLarge(small, larges, spelling, shared) {
   return { city: best.name, province: shared.has(best.key) ? small.region : null };
 }
 
-function entriesFor(features, spelling, shared, inRegion) {
+function entriesFor(features, table) {
+  const spelling = new Map();
+  for (const city of table.cities) {
+    const key = canon(city);
+    if (!spelling.has(key)) spelling.set(key, city);
+  }
+  const shared = new Set();
+  for (const index of table.sharedCities) shared.add(canon(table.cities[index]));
+
+  const proven = new Set();
   const largesByRegion = new Map();
+  const regionsOf = new Map();
   for (const [key, feature] of features) {
-    if (!(feature.pop >= FLOOR)) continue;
     const tab = key.indexOf('\t');
     const name = key.slice(0, tab);
-    if (!spelling.has(name)) continue;
     const region = key.slice(tab + 1);
-    const list = largesByRegion.get(region);
+    const list = regionsOf.get(name);
+    if (list === undefined) regionsOf.set(name, [region]);
+    else list.push(region);
+    if (!(feature.pop >= FLOOR)) continue;
+    proven.add(key);
+    if (!spelling.has(name)) continue;
     const point = { key: name, lat: feature.lat, lon: feature.lon };
-    if (list === undefined) largesByRegion.set(region, [point]);
-    else list.push(point);
+    const dest = largesByRegion.get(region);
+    if (dest === undefined) largesByRegion.set(region, [point]);
+    else dest.push(point);
   }
+
+  const pairs = [];
+  const seen = new Set();
+  const add = (display, region) => {
+    const id = `${display}\t${region}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    pairs.push([display, region]);
+  };
+  const named = new Set();
+  for (let i = 0; i < table.codes.length; i++) {
+    const city = table.cityOf[i];
+    const region = table.regionOf[i];
+    if (city < 0 || region < 0) continue;
+    named.add(table.cities[city]);
+    add(table.cities[city], table.regions[region]);
+  }
+  for (const city of table.cities) {
+    if (named.has(city)) continue;
+    for (const region of regionsOf.get(canon(city)) ?? []) add(city, region);
+  }
+
   const entries = [];
+  const large = [];
   let withCity = 0;
   let regionOnly = 0;
-  for (const [key, feature] of features) {
-    if (feature.pop >= FLOOR) continue;
-    const tab = key.indexOf('\t');
-    const name = key.slice(0, tab);
-    if (!spelling.has(name)) continue;
-    const region = key.slice(tab + 1);
-    // A name the postal table pins to specific regions is coarsened only there.
-    // A name it lists and never pins (no area points at it) still coarsens: the
-    // stored city can be that name, and every census region of it is small.
-    const pinned = inRegion.get(name);
-    if (pinned !== undefined && !pinned.has(region)) continue;
+  for (const [display, region] of pairs) {
+    const name = canon(display);
+    const feature = features.get(`${name}\t${region}`);
+    if (proven.has(`${name}\t${region}`)) {
+      large.push([display, region]);
+      continue;
+    }
     const nearest = nearestLarge(
-      { ...feature, key: name, region },
+      { lat: feature?.lat ?? null, lon: feature?.lon ?? null, key: name, region },
       largesByRegion.get(region) ?? [],
       spelling,
       shared,
     );
     if (nearest.city === null) regionOnly += 1;
     else withCity += 1;
-    entries.push([spelling.get(name), region, nearest.city, nearest.province]);
+    entries.push([display, region, nearest.city, nearest.province]);
   }
   entries.sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
-  return { entries, withCity, regionOnly };
+  large.sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  return { entries, large, withCity, regionOnly };
 }
 
 async function readCanadaPopulation(path) {
@@ -213,7 +238,7 @@ async function readCanadaPopulation(path) {
     const count = Number(row[4]);
     // A suppressed count is not a place we can show is large.
     const people = Number.isFinite(count) ? count : 0;
-    const key = `${fold(row[1])}\t${region}`;
+    const key = `${canon(row[1])}\t${region}`;
     const before = pop.get(key);
     if (before === undefined || people > before) pop.set(key, people);
   }
@@ -235,7 +260,7 @@ async function readCanadaPoints(path) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     const region = CGNDB_PROVINCE[row[12]] ?? row[12];
     const relevance = Number(row[13]);
-    const key = `${fold(row[1])}\t${region}`;
+    const key = `${canon(row[1])}\t${region}`;
     const before = points.get(key);
     if (before === undefined || relevance > before.relevance) {
       points.set(key, { lat, lon, relevance });
@@ -319,7 +344,7 @@ async function readUnitedStates(dir, stateName) {
       if (pop === undefined) continue;
       consider(
         features,
-        `${fold(placeName)}\t${region}`,
+        `${canon(placeName)}\t${region}`,
         pop,
         Number.isFinite(lat) && Number.isFinite(lon) ? lat : null,
         Number.isFinite(lat) && Number.isFinite(lon) ? lon : null,
@@ -338,21 +363,18 @@ if (!statCanPath || !cgnPath || !plDir) {
   process.exit(1);
 }
 
-const ca = loadPostal('ca.json');
-const us = loadPostal('us.json');
+const ca = JSON.parse(readFileSync(join(HERE, 'ca.json'), 'utf8'));
+const us = JSON.parse(readFileSync(join(HERE, 'us.json'), 'utf8'));
 const caPop = await readCanadaPopulation(statCanPath);
 const caPoints = await readCanadaPoints(cgnPath);
-const canada = entriesFor(canadaFeatures(caPop, caPoints), ca.spelling, ca.shared, ca.inRegion);
-const states = entriesFor(
-  await readUnitedStates(plDir, us.stateName),
-  us.spelling,
-  us.shared,
-  us.inRegion,
-);
+const canada = entriesFor(canadaFeatures(caPop, caPoints), ca);
+const stateName = new Map((us.regionCodes ?? []).map((code, index) => [code, us.regions[index]]));
+const states = entriesFor(await readUnitedStates(plDir, stateName), us);
 
 const coarsen = {
   floor: FLOOR,
   capKm: CAP_KM,
+  large: { CA: canada.large, US: states.large },
   CA: canada.entries,
   US: states.entries,
 };
@@ -360,9 +382,9 @@ const json = `${JSON.stringify(coarsen)}\n`;
 writeFileSync(join(HERE, 'coarsen.json'), json);
 const sha = createHash('sha256').update(json).digest('hex');
 console.log(
-  `CA under ${FLOOR}: ${canada.entries.length} (nearest ${canada.withCity}, region ${canada.regionOnly})`,
+  `CA proven ${FLOOR}+: ${canada.large.length}; under: ${canada.entries.length} (nearest ${canada.withCity}, region ${canada.regionOnly})`,
 );
 console.log(
-  `US under ${FLOOR}: ${states.entries.length} (nearest ${states.withCity}, region ${states.regionOnly})`,
+  `US proven ${FLOOR}+: ${states.large.length}; under: ${states.entries.length} (nearest ${states.withCity}, region ${states.regionOnly})`,
 );
 console.log(`coarsen.json sha256 ${sha}`);

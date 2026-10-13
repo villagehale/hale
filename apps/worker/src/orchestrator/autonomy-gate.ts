@@ -70,3 +70,17 @@ export function streakSatisfiesAutonomy(
 export function teenRedactionCapApplies(stages: FamilyStage[], teenContent: boolean): boolean {
   return teenContent && stages.includes('teenager');
 }
+
+/**
+ * True when the drafter read the reply as committing the parent to an enrollment,
+ * a booking, or a payment. That reading is the model's, on the draft or, after a
+ * resume, on the stored payload. Absent is not that reading: a draft from before
+ * the field existed, and a deterministic pin, are not held by this gate.
+ */
+export function commitsParentToEnrollmentBookingOrPayment(draft: {
+  commitsParentToEnrollmentBookingOrPayment?: boolean;
+  payload?: Record<string, unknown>;
+}): boolean {
+  if (draft.commitsParentToEnrollmentBookingOrPayment === true) return true;
+  return draft.payload?.commits_parent_to_enrollment_booking_or_payment === true;
+}

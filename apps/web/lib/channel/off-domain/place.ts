@@ -193,15 +193,26 @@ interface VillageInstead {
 }
 
 type CoarsenRow = [string, string, string | null, string | null];
+type LargeRow = [string, string];
 
 interface CoarsenIndex {
   byNameRegion: Map<string, VillageInstead>;
   byName: Map<string, VillageInstead[]>;
 }
 
+interface LargeIndex {
+  byNameRegion: Set<string>;
+  byName: Map<string, number>;
+}
+
+interface PlaceLists {
+  small: CoarsenIndex;
+  large: LargeIndex;
+}
+
 /** Opened only when a search is about to be told a place the sanitizer read as
  * sensitive. One file for both countries; the module system keeps it. */
-let coarsenLoaded: Promise<Record<PostalCountry, CoarsenIndex>> | null = null;
+let coarsenLoaded: Promise<Record<PostalCountry, PlaceLists>> | null = null;
 
 function indexCoarsen(rows: readonly CoarsenRow[]): CoarsenIndex {
   const byNameRegion = new Map<string, VillageInstead>();
@@ -217,10 +228,28 @@ function indexCoarsen(rows: readonly CoarsenRow[]): CoarsenIndex {
   return { byNameRegion, byName };
 }
 
-function loadCoarsen(): Promise<Record<PostalCountry, CoarsenIndex>> {
+function indexLarge(rows: readonly LargeRow[]): LargeIndex {
+  const byNameRegion = new Set<string>();
+  const byName = new Map<string, number>();
+  for (const [name, region] of rows) {
+    byNameRegion.add(`${folded(name)}\t${folded(region)}`);
+    const key = folded(name);
+    byName.set(key, (byName.get(key) ?? 0) + 1);
+  }
+  return { byNameRegion, byName };
+}
+
+function loadCoarsen(): Promise<Record<PostalCountry, PlaceLists>> {
   coarsenLoaded ??= import('./postal-cities/coarsen.json').then((file) => {
-    const data = file.default as unknown as { CA: CoarsenRow[]; US: CoarsenRow[] };
-    return { CA: indexCoarsen(data.CA), US: indexCoarsen(data.US) };
+    const data = file.default as unknown as {
+      large: { CA: LargeRow[]; US: LargeRow[] };
+      CA: CoarsenRow[];
+      US: CoarsenRow[];
+    };
+    return {
+      CA: { small: indexCoarsen(data.CA), large: indexLarge(data.large.CA) },
+      US: { small: indexCoarsen(data.US), large: indexLarge(data.large.US) },
+    };
   });
   return coarsenLoaded;
 }
@@ -230,10 +259,12 @@ function loadCoarsen(): Promise<Record<PostalCountry, CoarsenIndex>> {
  * family's area belongs to, and this is the step in front of the search (answer.ts):
  * a place of fewer than 10,000 people is not that place.
  *
- * WHICH NAMES ARE UNDER 10,000 is coarsen.json, built by postal-cities/coarsen.mjs from
- * the 2021 Census of Population (Statistics Canada table 98-10-0002) and the 2020 Census
- * (P.L. 94-171). A name at or above 10,000 in the province or state the postal table
- * would send is not in the file, and is sent as itself. Addison, Illinois is one of those.
+ * WHICH NAMES MAY BE SENT is the allowlist in coarsen.json (`large`), built by
+ * postal-cities/coarsen.mjs from the 2021 Census of Population (Statistics Canada table
+ * 98-10-0002) and the 2020 Census (P.L. 94-171). A name is on it only when that census
+ * shows 10,000 or more people for it in that province or state, after Saint/St.,
+ * Sainte/Ste., Mount/Mt., Fort/Ft., Mc X/McX, and period and hyphen spellings are
+ * treated as one name. Every other name is coarsened. Addison, Illinois is on the list.
  *
  * WHAT IS SENT INSTEAD is the nearest place of 10,000 or more in that same province or
  * state, within the cap the file records, or the province or state alone when there is
@@ -256,27 +287,30 @@ export async function coarsenPlace(
   const index = (await loadCoarsen())[country];
   const name = folded(city);
   const region = place.provinceOrState === undefined ? null : folded(place.provinceOrState);
-  let chosen: VillageInstead | null | undefined;
+  const asRead = () => place;
+  const coarsened = (chosen: VillageInstead) => {
+    if (chosen.city !== null) {
+      return {
+        city: chosen.city,
+        ...(chosen.cityProvince !== null ? { provinceOrState: chosen.cityProvince } : {}),
+        country: place.country,
+      };
+    }
+    return { provinceOrState: chosen.region, country: place.country };
+  };
   if (region !== null) {
-    // Not a village in the province this place is in: send the place as read.
-    chosen = index.byNameRegion.get(`${name}\t${region}`);
-    if (chosen === undefined) return place;
-  } else {
-    const matches = index.byName.get(name) ?? [];
-    if (matches.length === 0) return place;
-    // A village in more than one province or state, and this place does not say which.
-    if (matches.length > 1) return { country: place.country };
-    chosen = matches[0] ?? null;
+    if (index.large.byNameRegion.has(`${name}\t${region}`)) return asRead();
+    const chosen = index.small.byNameRegion.get(`${name}\t${region}`);
+    if (chosen !== undefined) return coarsened(chosen);
+    // Not proven to have 10,000 people: the province or state, not the name.
+    return { provinceOrState: place.provinceOrState, country: place.country };
   }
-  if (chosen === null) return { country: place.country };
-  if (chosen.city !== null) {
-    return {
-      city: chosen.city,
-      ...(chosen.cityProvince !== null ? { provinceOrState: chosen.cityProvince } : {}),
-      country: place.country,
-    };
-  }
-  return { provinceOrState: chosen.region, country: place.country };
+  const largeCount = index.large.byName.get(name) ?? 0;
+  const matches = index.small.byName.get(name) ?? [];
+  const only = matches[0];
+  if (largeCount > 0 && matches.length === 0) return asRead();
+  if (matches.length === 1 && largeCount === 0 && only !== undefined) return coarsened(only);
+  return { country: place.country };
 }
 
 /**

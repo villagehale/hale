@@ -27,7 +27,7 @@
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-general-answer-eval.mjs            # live, then caches
 //   node evals/run-general-answer-eval.mjs --cached-only                    # CI: replay only
-//   node evals/run-general-answer-eval.mjs --estimate                       # no API: price a full 3-draw
+//   node evals/run-general-answer-eval.mjs --estimate                       # no API: price a full 3-draw and the drafter recording
 //   node evals/run-general-answer-eval.mjs --broken --cached-only           # calibration
 //   ... --min-samples=50                                                    # expanded synthetic corpus
 //
@@ -83,6 +83,7 @@ import {
 import {
   CACHE_DIR,
   JUDGE_MIN,
+  PRICE,
   cacheGet,
   cacheKey,
   cachePut,
@@ -332,15 +333,18 @@ function percentile(values, q) {
 }
 
 /**
- * What a full 3-draw recording would cost, with no API call.
+ * What a recording would cost, with no API call.
  *
- * The harness prices a live run as `totalUsd`: cache writes are counted at the input
- * rate and cache reads are not counted. This applies that same rule to the calls the
- * recording makes. Input size is the prompt this process would send. Output size is the
- * last recording's visible JSON or notes, plus the median thinking tokens on the Sonnet
- * 5.5 calls in this cache that thought. A character-per-token ratio is the median over
+ * A prompt-cached prefix is written once at 1.25× the input price and read after that
+ * at 0.1×. The user message stays at 1×. A call with no cache breakpoint (the search)
+ * pays 1× for its whole prefix every time. Output size is the last recording's visible
+ * JSON or notes, plus, for the general-answer calls, the median thinking tokens on the
+ * Sonnet 5.5 calls in this cache that thought. The drafter lane and its judge run with
+ * thinking off, so those calls add none. A character-per-token ratio is the median over
  * this cache's non-thinking outputs. Web search requests per turn are the mean of the
- * committed search cache. `--cached-only` is unchanged: a miss there still exits 1.
+ * committed search cache. The drafter recording is one draft per fixture and one judge
+ * where the fixture asks for tone. `--cached-only` is unchanged: a miss there still
+ * exits 1.
  */
 async function printRecordingEstimate() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
@@ -362,6 +366,9 @@ async function printRecordingEstimate() {
   const noteChars = [];
   const noteTexts = [];
   const sanitizeValues = [];
+  const draftJsonChars = [];
+  const drafterJudgeChars = [];
+  const draftTexts = [];
   let searchRequestSum = 0;
   for (const name of await readdir(CACHE_DIR)) {
     if (!name.endsWith('.json')) continue;
@@ -388,6 +395,24 @@ async function printRecordingEstimate() {
     }
     if (cached.parsed && typeof cached.parsed.score === 'number' && 'wrong_fact' in cached.parsed) {
       judgeChars.push(JSON.stringify(cached.parsed).length);
+    }
+    if (cached.parsed && typeof cached.parsed === 'object') {
+      const parsed = cached.parsed;
+      if (
+        'recipient_visibility' in parsed &&
+        parsed.payload &&
+        typeof parsed.confidence === 'number'
+      ) {
+        draftJsonChars.push(JSON.stringify(parsed).length);
+        const parts = [];
+        if (typeof parsed.payload.subject === 'string') parts.push(parsed.payload.subject);
+        if (typeof parsed.payload.body === 'string') parts.push(parsed.payload.body);
+        if (parts.length > 0) draftTexts.push(parts.join('\n'));
+      }
+      const keys = Object.keys(parsed).sort();
+      if (keys.length === 2 && keys[0] === 'reason' && keys[1] === 'score') {
+        drafterJudgeChars.push(JSON.stringify(parsed).length);
+      }
     }
     if (typeof cached.searchRequests === 'number') {
       searchRequestSum += cached.searchRequests;
@@ -580,29 +605,93 @@ async function printRecordingEstimate() {
     });
   }
 
-  const cost = makeCost();
-  const wrote = new Set();
-  for (const call of calls) {
-    let input = tokens(call.user.length);
-    if (call.promptCache) {
-      if (!wrote.has(call.prefixId)) {
-        wrote.add(call.prefixId);
-        input += tokens(call.prefix.length);
-      }
-    } else {
-      input += tokens(call.prefix.length);
-    }
-    noteUsage(cost, call.model, {
-      input_tokens: input,
-      output_tokens: tokens(call.outputChars) + thinkingTokens,
-      cache_creation_input_tokens: 0,
+  if (draftJsonChars.length === 0 || drafterJudgeChars.length === 0 || draftTexts.length === 0) {
+    throw new Error('drafter estimate: the cache has no draft to price a recording from');
+  }
+  const drafter = await import('./run-drafter-eval.mjs');
+  const drafterPrompt = await readFile(drafter.PROMPT_PATH, 'utf8');
+  const drafterIds = await drafter.readModelIds();
+  const drafterFixtures = await drafter.loadFixtures(drafter.FIXTURE_DIR);
+  const typicalDraft = [...draftTexts].sort((a, b) => a.length - b.length)[
+    Math.ceil(draftTexts.length / 2) - 1
+  ];
+  const drafterCalls = [];
+  for (const fixture of drafterFixtures) {
+    drafterCalls.push({
+      model: drafterIds.drafter.model,
+      promptCache: true,
+      prefixId: 'drafter-draft',
+      prefix: `${drafterPrompt}\n${JSON.stringify(drafter.DRAFTER_JSON_SCHEMA)}`,
+      user: drafter.userMessageFor(fixture),
+      outputChars: mid(draftJsonChars),
+      thinkingTokens: 0,
+    });
+    if (fixture.expect.judgeTone === false) continue;
+    drafterCalls.push({
+      model: drafterIds.judge,
+      promptCache: true,
+      prefixId: 'drafter-judge',
+      prefix: `${drafter.JUDGE_SYSTEM}\n${JSON.stringify(drafter.JUDGE_JSON_SCHEMA)}`,
+      user: JSON.stringify({
+        context: fixture.note,
+        action_type: fixture.input.actionType,
+        draft: typicalDraft,
+      }),
+      outputChars: mid(drafterJudgeChars),
+      thinkingTokens: 0,
     });
   }
+
+  // A cached prefix is written once at 1.25× and read later at 0.1×. The user
+  // message, and a prefix with no breakpoint, stay at the input price.
+  function priceCalls(recorded) {
+    const wrote = new Set();
+    const byModel = {};
+    let usd = 0;
+    for (const call of recorded) {
+      const price = PRICE[call.model];
+      if (!price) throw new Error(`estimate: no price for ${call.model}`);
+      const userTokens = tokens(call.user.length);
+      const prefixTokens = tokens(call.prefix.length);
+      const bucket = byModel[call.model] ?? {
+        fresh: 0,
+        cacheWrite: 0,
+        cacheRead: 0,
+        output: 0,
+      };
+      byModel[call.model] = bucket;
+      let billedInput = userTokens;
+      bucket.fresh += userTokens;
+      if (call.promptCache) {
+        if (wrote.has(call.prefixId)) {
+          bucket.cacheRead += prefixTokens;
+          billedInput += prefixTokens * 0.1;
+        } else {
+          wrote.add(call.prefixId);
+          bucket.cacheWrite += prefixTokens;
+          billedInput += prefixTokens * 1.25;
+        }
+      } else {
+        bucket.fresh += prefixTokens;
+        billedInput += prefixTokens;
+      }
+      const outputTokens = tokens(call.outputChars) + (call.thinkingTokens ?? thinkingTokens);
+      bucket.output += outputTokens;
+      usd += (billedInput / 1e6) * price.input + (outputTokens / 1e6) * price.output;
+    }
+    return { usd, byModel };
+  }
+
   const requestsPerTurn = searchRequestSum / noteChars.length;
   const webSearchRequests = searchTurns * requestsPerTurn;
-  const tokenUsd = totalUsd(cost);
   const feeUsd = webSearchRequests * USD_PER_WEB_SEARCH;
+  const general = priceCalls(calls);
+  const drafted = priceCalls(drafterCalls);
+  const generalUsd = general.usd + feeUsd;
+  const combinedUsd = generalUsd + drafted.usd;
   const byRole = (id) => calls.filter((call) => call.prefixId === id).length;
+  const drafterDrafts = drafterCalls.filter((call) => call.prefixId === 'drafter-draft').length;
+  const drafterJudges = drafterCalls.filter((call) => call.prefixId === 'drafter-judge').length;
 
   console.log(
     `general-answer eval | mode=estimate (no API calls) | sanitize=${sanitizeLane.model} search=${searchModel} compose=${model} judge=${judgeModel}`,
@@ -613,21 +702,35 @@ async function printRecordingEstimate() {
   if (unmatched.length > 0)
     console.log(`fixtures with no prior sanitize reading: ${unmatched.join(', ')}`);
   console.log('\n--- cost telemetry ---');
-  console.log(`full 3-draw recording estimate: $${(tokenUsd + feeUsd).toFixed(4)} USD`);
+  console.log(`full 3-draw recording estimate: $${generalUsd.toFixed(4)} USD`);
+  console.log(`drafter recording estimate: $${drafted.usd.toFixed(4)} USD`);
+  console.log(`combined recording estimate: $${combinedUsd.toFixed(4)} USD`);
   console.log(
-    `tokens, harness totalUsd (cache reads uncounted, cache writes at the input rate): $${tokenUsd.toFixed(4)} USD`,
+    `general-answer tokens (cache writes at 1.25× input, cache reads at 0.1× input): $${general.usd.toFixed(4)} USD`,
   );
   console.log(
     `web search requests: ${webSearchRequests} | fee, billed apart from tokens: $${feeUsd.toFixed(4)} USD`,
   );
   console.log(
+    `drafter tokens (cache writes at 1.25× input, cache reads at 0.1× input; thinking off): $${drafted.usd.toFixed(4)} USD`,
+  );
+  console.log(
     `calls: ${calls.length} | sanitize ${byRole('sanitize')}, search ${byRole('search')}, compose ${byRole('compose')}, judge ${byRole('judge')}`,
   );
-  for (const [name, bucket] of Object.entries(cost.byModel)) {
-    console.log(`tokens, ${name}: ${bucket.input} in / ${bucket.output} out`);
-  }
   console.log(
-    `method: ${charsPerToken.toFixed(4)} characters per token (median of ${ratios.length} non-thinking Sonnet 5.5 outputs in the cache); ${thinkingTokens} thinking tokens added to every call (median of ${thinking.length} Sonnet 5.5 outputs that thought); output characters are the median visible sanitize/compose/judge JSON and search notes already committed; web searches per turn are the mean of ${noteChars.length} committed search records (${searchRequestSum} requests).`,
+    `drafter calls: ${drafterCalls.length} | draft ${drafterDrafts}, judge ${drafterJudges}`,
+  );
+  const printTokens = (label, byModel) => {
+    for (const [name, bucket] of Object.entries(byModel)) {
+      console.log(
+        `tokens, ${label} ${name}: ${bucket.fresh} fresh in / ${bucket.cacheWrite} cache-write / ${bucket.cacheRead} cache-read / ${bucket.output} out`,
+      );
+    }
+  };
+  printTokens('general-answer', general.byModel);
+  printTokens('drafter', drafted.byModel);
+  console.log(
+    `method: ${charsPerToken.toFixed(4)} characters per token (median of ${ratios.length} non-thinking Sonnet 5.5 outputs in the cache); ${thinkingTokens} thinking tokens added to every general-answer call (median of ${thinking.length} Sonnet 5.5 outputs that thought) and none to a drafter call; a cached prefix is priced at 1.25× input on its first write and 0.1× input on each later read; output characters are the median visible sanitize/compose/judge JSON, search notes, drafter drafts, and drafter tone scores already committed; web searches per turn are the mean of ${noteChars.length} committed search records (${searchRequestSum} requests).`,
   );
   await exitWhenPrinted(0);
 }

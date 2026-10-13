@@ -630,7 +630,8 @@ export type ActionGateReason =
   | 'cross_parent_consent'
   | 'teen_redaction'
   | 'over_allowance'
-  | 'autonomy_not_opted_in';
+  | 'autonomy_not_opted_in'
+  | 'parent_commitment';
 
 interface RecordActionGateInput {
   familyId: string;

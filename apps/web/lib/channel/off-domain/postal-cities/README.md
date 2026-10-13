@@ -115,11 +115,17 @@ credit.
 
 ## Places under 10,000, for a sensitive search
 
-`coarsen.json` says which checked-in place names have fewer than 10,000 people, and
+`coarsen.json` is the allowlist of checked-in place names the census shows have
+10,000 or more people (`large`), and every other checked-in name (`CA`, `US`), with
 the nearest place of 10,000 or more to send instead when a search is about a sensitive
-question (`../place.ts`, `coarsenPlace`). Only an explicit not-sensitive reading is
-sent the place as read. A missing or unparseable reading coarsens. A place of 10,000
-or more is never in this file: Addison, Illinois stays itself.
+question (`../place.ts`, `coarsenPlace`). A name is on the allowlist only when the
+census shows 10,000 or more people for it in that province or state, after Saint and
+St., Sainte and Ste., Mount and Mt., Fort and Ft., Mc X and McX, and spellings with a
+period or a hyphen are treated as one name. Every other name is coarsened, including
+one the census does not list. Only an explicit not-sensitive reading is sent the
+place as read. A missing or unparseable reading coarsens. Addison, Illinois is on
+the allowlist and stays itself. Mc Graw, New York is not, and a sensitive search is
+sent Cortland.
 
 The count is the higher one when a name is more than one census feature in that
 province or state (a census designated place and the town of the same name). A small
@@ -151,7 +157,7 @@ https://open.canada.ca/en/open-government-licence-canada. Contains information l
 under the Open Government Licence - Canada.
 
 SHA-256 of `coarsen.json`:
-`320db349d9ddbc779b27da7ffb29595dc2272dd27ae6cd54b0c9155c379391bb`.
+`b21bd419afe57aa30a2e53ef4d1bac1bd0d53dec0f8d12dd1a3b484db4801395`.
 
 ## Rebuilding
 

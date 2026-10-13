@@ -64,6 +64,7 @@ import {
 } from '../services/memory-writer.js';
 import { postWorkerOpsSlack } from '../services/ops-slack.js';
 import {
+  commitsParentToEnrollmentBookingOrPayment,
   streakSatisfiesAutonomy,
   teenRedactionCapApplies,
   withinObservationWindow,
@@ -512,6 +513,8 @@ export async function runOrchestrator(
       rationale: 'resumed from stored draft',
       recipientVisibility: 'internal_only',
       draftedAt: new Date().toISOString(),
+      commitsParentToEnrollmentBookingOrPayment:
+        existing.payload.commits_parent_to_enrollment_booking_or_payment === true,
     };
     logger.info({ familyId, eventId, actionId }, 'orchestrator: resuming from stored draft');
   } else {
@@ -567,6 +570,18 @@ export async function runOrchestrator(
       });
       draft = drafted.draft;
       drafterMetrics = drafted.runMetrics;
+    }
+
+    // The flag rides the stored payload so a resume from `drafted` still sees it.
+    // The executor reads to/subject/body and leaves this key alone.
+    if (draft.commitsParentToEnrollmentBookingOrPayment === true) {
+      draft = {
+        ...draft,
+        payload: {
+          ...draft.payload,
+          commits_parent_to_enrollment_booking_or_payment: true,
+        },
+      };
     }
 
     // recordAction advances the event to 'drafted' inside its own transaction
@@ -783,6 +798,25 @@ export async function runOrchestrator(
       });
       return;
     }
+  }
+
+  // Enrollment, a booking, or a payment is never autonomous, whatever the streak
+  // and the opt-in say. The parent's tap is executeApprovedAction, which does not
+  // re-apply this gate.
+  if (commitsParentToEnrollmentBookingOrPayment(draft)) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, actionType: draft.actionType },
+      'orchestrator: reply commits the parent to enrollment, booking, or payment — held for their tap',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      reason: 'parent_commitment',
+      detail: { commitsParentToEnrollmentBookingOrPayment: true },
+    });
+    return;
   }
 
   // Mint BEFORE the checkpoint: minting can throw (coverage/result gate, hard

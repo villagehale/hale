@@ -1,15 +1,16 @@
-import { z } from 'zod';
-import type { ActionType, DraftedAction } from '@hale/types';
 import { forceToolJson, pickLane } from '@hale/agent';
+import type { ActionType, DraftedAction } from '@hale/types';
+import { z } from 'zod';
 import { anthropicClient } from '../anthropic/client.js';
-import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { loadPrompt } from '../prompts/loader.js';
+import { type AgentRunMetrics, metricsFromUsage } from './run-metrics.js';
 
 const drafterOutputSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
   confidence: z.number().min(0).max(1),
   rationale: z.string(),
   recipient_visibility: z.enum(['public', 'internal_only']),
+  commits_parent_to_enrollment_booking_or_payment: z.boolean(),
 });
 
 const drafterOutputJsonSchema = {
@@ -19,8 +20,15 @@ const drafterOutputJsonSchema = {
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     rationale: { type: 'string' },
     recipient_visibility: { type: 'string', enum: ['public', 'internal_only'] },
+    commits_parent_to_enrollment_booking_or_payment: { type: 'boolean' },
   },
-  required: ['payload', 'confidence', 'rationale', 'recipient_visibility'],
+  required: [
+    'payload',
+    'confidence',
+    'rationale',
+    'recipient_visibility',
+    'commits_parent_to_enrollment_booking_or_payment',
+  ],
 } as const;
 
 interface DrafterRunInput {
@@ -80,6 +88,8 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
       rationale: parsed.rationale,
       recipientVisibility: parsed.recipient_visibility,
       draftedAt: new Date().toISOString(),
+      commitsParentToEnrollmentBookingOrPayment:
+        parsed.commits_parent_to_enrollment_booking_or_payment,
     },
     runMetrics: metricsFromUsage('drafter', lane.model, usage, Date.now() - startedAt),
   };
