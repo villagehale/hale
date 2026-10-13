@@ -1,7 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { isStage } from '~/lib/testing/structured-reply';
-import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from './copy';
 import {
   createMedicalComposer,
   groundUserMessage,
@@ -31,7 +30,7 @@ vi.mock('~/lib/cron/skill', async (actual) => {
  * de-identified query is the only thing searched (rule #1); that an ungrounded answer
  * never ships (the founder's invariant); that an answer with no triage never ships; that
  * nothing unsendable ever leaves; that a failed turn is retried once and then falls
- * CLOSED to the fixed 811/911 line rather than to silence or a generic apology; and that
+ * CLOSED to a moment-written child-health reply rather than to silence or a generic apology; and that
  * no path logs the parent's words. Every negative assertion is paired with a positive
  * control through the same path.
  */
@@ -103,6 +102,8 @@ const OK_SANITIZE = {
   red_flag_sign: 'none',
   red_flag: 'not_emergency',
 };
+const MOMENT_FALLBACK = 'moment wrote the child-health reply';
+
 const OK_COMPOSE = {
   answer:
     'A fever this high for a few days at this age is most often a viral illness, and fluids, rest and comfort usually carry them through it.',
@@ -118,6 +119,7 @@ function makeClient(
     ground?: PhaseResponse;
     compose?: PhaseResponse;
     escalation?: PhaseResponse;
+    moment?: PhaseResponse;
   },
   seen: Seen[] = [],
 ): () => AgentClient {
@@ -126,6 +128,7 @@ function makeClient(
       messages: {
         // biome-ignore lint/suspicious/noExplicitAny: a fake driving the request mechanics
         async create(req: any) {
+          const isMoment = isStage(req, 'moment_reply', 'reply');
           const isSanitize = isStage(req, 'sanitize', 'clinical_query');
           const isCompose = isStage(req, 'medical_answer', 'triage');
           const isEscalation = isStage(req, 'escalation', 'escalates');
@@ -135,26 +138,30 @@ function makeClient(
             schema:
               req.output_config?.format?.schema ??
               req.tools?.find((t: { input_schema?: unknown }) => t.input_schema)?.input_schema,
-            toolChoice: isSanitize
-              ? 'sanitize'
-              : isCompose
-                ? 'medical_answer'
-                : isEscalation
-                  ? 'escalation'
-                  : undefined,
+            toolChoice: isMoment
+              ? 'moment_reply'
+              : isSanitize
+                ? 'sanitize'
+                : isCompose
+                  ? 'medical_answer'
+                  : isEscalation
+                    ? 'escalation'
+                    : undefined,
             tools: req.tools,
             userMessage: req.messages?.[0]?.content,
             maxTokens: req.max_tokens,
           });
-          const pick = isSanitize
-            ? script.sanitize
-            : isCompose
-              ? script.compose
-              : isEscalation
-                ? script.escalation
-                : isGround
-                  ? script.ground
-                  : undefined;
+          const pick = isMoment
+            ? (script.moment ?? composeResult({ reply: MOMENT_FALLBACK }))
+            : isSanitize
+              ? script.sanitize
+              : isCompose
+                ? script.compose
+                : isEscalation
+                  ? script.escalation
+                  : isGround
+                    ? script.ground
+                    : undefined;
           const resolved = typeof pick === 'function' ? (pick as () => unknown)() : pick;
           if (resolved instanceof Error) throw resolved;
           if (resolved === undefined) throw new Error('medical test: no script for this phase');
@@ -372,7 +379,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
         }),
       ).answer('raw message');
 
-      expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+      expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
       const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
       expect(reasons).toEqual(['under_escalated', 'under_escalated']);
       log.mockRestore();
@@ -390,7 +397,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toEqual(['under_escalated', 'under_escalated']);
     log.mockRestore();
@@ -407,7 +414,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const details = log.mock.calls.map((c) => (c[0] as { detail?: string })?.detail);
     expect(details).toEqual(['emergency:off_list', 'emergency:off_list']);
     log.mockRestore();
@@ -451,12 +458,18 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
     ['skill_unavailable', makeClient({ sanitize: sanitizeResult(RED_FLAG_SANITIZE) })],
   ] as const)('logs %s by name, without the provider message', async (reason, client) => {
     const log = quiet();
-    if (reason === 'skill_unavailable') skillLoad.error = new Error('echo: her daughter is wheezing');
+    if (reason === 'skill_unavailable')
+      skillLoad.error = new Error('echo: her daughter is wheezing');
     try {
-      await createMedicalComposer(client).answer('raw message');
+      await expect(createMedicalComposer(client).answer('raw message')).rejects.toMatchObject({
+        name: 'MedicalUnresolvable',
+        reason: 'compose_failed',
+      });
       expect(log.mock.calls.map((c) => c[0])).toEqual([
         { reason, attempt: 1, detail: undefined },
         { reason, attempt: 2, detail: undefined },
+        { reason, detail: undefined },
+        { reason, moment: 'child_health' },
       ]);
     } finally {
       skillLoad.error = null;
@@ -475,7 +488,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toEqual(['escalation_unjudged', 'escalation_unjudged']);
     log.mockRestore();
@@ -553,7 +566,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('under_escalated');
     log.mockRestore();
@@ -570,7 +583,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     log.mockRestore();
   });
 
@@ -586,7 +599,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
           escalation: escalationResult('no'),
         }),
       ).answer('raw message');
-      expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+      expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     }
     log.mockRestore();
   });
@@ -621,7 +634,6 @@ describe('the happy path', () => {
     ).answer('raw message');
 
     expect(out.replySource).toBe('web_grounded');
-    expect(out.reply).not.toBe(SAFETY_REPLY);
     expect(out.reply).toContain('811');
     expect(out.reply).toContain('911');
     // The body is the answer AND the triage, assembled — not one or the other.
@@ -752,7 +764,7 @@ describe('the clinical query must come back in English', () => {
       }),
     ).answer('raw message');
 
-    expect(french).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    expect(french).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('sanitize_failed');
     log.mockRestore();
@@ -766,7 +778,7 @@ describe('the clinical query must come back in English', () => {
           compose: composeResult(OK_COMPOSE),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     quietZh.mockRestore();
   });
 
@@ -785,7 +797,7 @@ describe('the clinical query must come back in English', () => {
             compose: composeResult(OK_COMPOSE),
           }),
         ).answer('raw message'),
-      ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+      ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     }
     log.mockRestore();
   });
@@ -805,7 +817,7 @@ describe('the clinical query must come back in English', () => {
           compose: composeResult(OK_COMPOSE),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     log.mockRestore();
   });
 
@@ -988,7 +1000,7 @@ describe('retry, then fall closed', () => {
     log.mockRestore();
   });
 
-  it('falls closed to the fixed 811/911 line when BOTH attempts fail', async () => {
+  it('falls closed to the moment writer when BOTH attempts fail', async () => {
     const log = quiet();
     const out = await createMedicalComposer(
       makeClient({
@@ -1000,18 +1012,24 @@ describe('retry, then fall closed', () => {
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     // Both attempts named and logged, never silent (rule #11).
     const attempts = log.mock.calls.map((c) => (c[0] as { attempt?: number })?.attempt);
     expect(attempts).toEqual([1, 2]);
     log.mockRestore();
   });
 
-  it('falls closed when there is no client, and never throws', async () => {
+  it('names the miss when there is no client and the moment reply cannot be written', async () => {
     const log = quiet();
-    expect(await createMedicalComposer(throwingClient).answer('raw message')).toEqual({
-      reply: SAFETY_REPLY,
-      replySource: 'fixed',
+    await expect(createMedicalComposer(throwingClient).answer('raw message')).rejects.toMatchObject(
+      {
+        name: 'MedicalUnresolvable',
+        reason: 'compose_failed',
+      },
+    );
+    expect(log.mock.calls.map((c) => c[0])).toContainEqual({
+      reason: 'client_unavailable',
+      moment: 'child_health',
     });
     log.mockRestore();
   });
@@ -1033,7 +1051,7 @@ describe('grounding is required', () => {
           compose: composeResult(OK_COMPOSE),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('not_grounded');
     log.mockRestore();
@@ -1069,7 +1087,7 @@ describe('triage is required', () => {
           compose: composeResult(noTriage),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     log.mockRestore();
   });
 
@@ -1151,7 +1169,7 @@ describe('the body must be sendable', () => {
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     // Closed by the SEGMENT gate, not for missing triage: the triage names both numbers.
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('unsendable');
@@ -1175,8 +1193,10 @@ describe('the body must be sendable', () => {
    * line could never pass the GSM-7 authoring gate every string in copy.ts is held to.
    * That is a decision about the segment budget, not a translation.
    */
-  it('falls closed to the FRENCH safety line when the parent asked in French', async () => {
+  it('asks the moment writer in the language the parent used when French cannot ship', async () => {
     const log = quiet();
+    const seen: Seen[] = [];
+    const parent = 'Ma fille de deux mois fait de la fievre, je dois faire quoi';
     const french = {
       // ô makes the body UCS-2 (~67 chars/segment); repeated past the ceiling it throws
       // unsendable/over_segment_cap — the surviving fail-closed path now that the
@@ -1188,16 +1208,18 @@ describe('the body must be sendable', () => {
       triage: "Composez le 911 ou allez à l'hôpital; le 811 répond aux questions.",
     };
     const out = await createMedicalComposer(
-      makeClient({
-        sanitize: sanitizeResult(OK_SANITIZE),
-        ground: groundResult(2),
-        compose: composeResult(french),
-      }),
-    ).answer('Ma fille de deux mois fait de la fievre, je dois faire quoi');
+      makeClient(
+        {
+          sanitize: sanitizeResult(OK_SANITIZE),
+          ground: groundResult(2),
+          compose: composeResult(french),
+        },
+        seen,
+      ),
+    ).answer(parent);
 
-    expect(out).toEqual({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
-    expect(out.reply).toContain('811');
-    expect(out.reply).toContain('911');
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(seen.at(-1)?.userMessage).toContain(parent);
     // Closed by the SEGMENT ceiling (UCS-2 over-budget), not for missing triage.
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('unsendable');
@@ -1224,7 +1246,6 @@ describe('the body must be sendable', () => {
     ).answer('Ma fille de deux mois fait de la fievre, je dois faire quoi');
 
     expect(out.replySource).toBe('web_grounded');
-    expect(out.reply).not.toBe(SAFETY_REPLY_BY_LANGUAGE.fr);
   });
 
   it('falls closed when the composed body runs past the segment ceiling', async () => {
@@ -1241,7 +1262,7 @@ describe('the body must be sendable', () => {
           compose: composeResult(long),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     log.mockRestore();
   });
 

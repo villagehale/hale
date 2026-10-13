@@ -1323,6 +1323,13 @@ async function routeChannelMessageInner(
       await noteUnanswered(deps, job, OFF_DOMAIN_TIMEOUT);
       verdict = { status: 'in_domain', fallback: null };
     }
+    if (verdict.status === 'unwritten') {
+      deps.log.error(
+        { familyId: job.family_id, moment: verdict.moment, reason: verdict.reason },
+        'channel router: moment reply unwritten',
+      );
+      throw new Error(`moment_unwritten:${verdict.moment}`);
+    }
     if (verdict.status === 'deflected') {
       await answer(
         verdict.reply,
@@ -2214,9 +2221,9 @@ async function disposeOfFailedTurn(
 
   if (classifyTurnFailure(err) === 'model_unreachable') {
     // THE SMOKE ALARM (smoke-alarm.ts), consulted first and only ever from here. During
-    // a provider outage the off-domain screen fails open, so the lane that owns the
-    // 811/911 sentence never got to classify — and deferring is what that parent would
-    // otherwise get: silence, for hours, standing over a child who is not breathing.
+    // a provider outage the off-domain screen fails open, so the lane that would write
+    // the moment reply never got to. Nothing preset goes out. The miss is named
+    // `unwritten` and the turn defers until a model can write it.
     const smokeAlarm = await considerSmokeAlarm({
       claim: deps.smokeAlarm,
       err,
@@ -2228,26 +2235,18 @@ async function disposeOfFailedTurn(
       // a re-drive must never repeat — so it claims the turn like every other. Adapted
       // rather than passed straight through because `answer` now hands back the ledger
       // row id (a promise is minted against the message that carried it), and the alarm
-      // has no use for one: it sends a fixed line and is done.
+      // has no use for one: an outage sends nothing.
       say: async (body) => {
         await args.answer(body);
       },
     });
-    if (smokeAlarm === 'fired') {
-      // No draft notice appended, deliberately. The alarm answers a parent who should be
-      // dialling, and the drafts are still in the approvals queue for the next turn to
-      // surface — a count of pending changes is not what that message is for.
-      return {
-        outcome: 'smoke_alarm_fired',
-        reply: null,
-        reason: 'smoke_alarm',
-        log: { smokeAlarm },
-      };
-    }
     return {
       outcome: 'deferred',
       reason: 'model_unreachable',
-      log: { smokeAlarm, deferred: 'model_unreachable' },
+      log: {
+        smokeAlarm,
+        deferred: smokeAlarm === 'unwritten' ? 'moment_unwritten' : 'model_unreachable',
+      },
     };
   }
 

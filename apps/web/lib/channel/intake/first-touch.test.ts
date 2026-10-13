@@ -2,7 +2,6 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
-import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY } from '~/lib/channel/off-domain/copy';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   EMAIL_ASK_BY_LANGUAGE,
@@ -1281,13 +1280,13 @@ describe('friend voice onboarding', () => {
     const { fake, transport, deps } = harness({ voice: true });
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
-    expect(transport.bodies()).toEqual([EMERGENCY_REPLY]);
+    expect(transport.bodies()).toEqual(['moment:emergency']);
     expect(transport.bodies()[0]).not.toMatch(/postal/i);
 
     const { fake: fake2, transport: transport2, deps: deps2 } = harness({ voice: true });
     const mental = await handleInboundSms(fake2.db, inbound(transport2, '988'), deps2);
     expect(mental.status).toBe('first_touch');
-    expect(transport2.bodies()).toEqual([MENTAL_CRISIS_REPLY]);
+    expect(transport2.bodies()).toEqual(['moment:mental_crisis']);
   });
 
   it('always replies on a place miss, including a place outside coverage', async () => {

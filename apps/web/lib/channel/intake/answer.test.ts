@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { cityRecLine } from '~/lib/channel/rec-morning';
 import { adultLearnDoor } from './adult-learn';
 import {
@@ -125,7 +124,7 @@ describe('intake answer · reading the pair', () => {
     });
   });
 
-  it('substitutes the reviewed safety line when the composer reaches for a referral', () => {
+  it('stops on a health-line referral so the moment writer can answer, never a signup question', () => {
     // Before every other gate: this parent must never get a signup question instead.
     const outcome = readPair(
       { answer: 'Call 811 if you are worried', returnLine: `${'x'.repeat(200)}?` },
@@ -162,12 +161,6 @@ describe('intake answer · the emergency tripwire', () => {
     expect(
       await composer.compose({ ...INPUT, parentWords: "she's not breathing, what do I do" }),
     ).toEqual({ status: 'safety' });
-    // And the machine turns that into Call 911 now. (machine.test.ts asserts the send).
-    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
-    expect(EMERGENCY_REPLY).not.toContain('811');
-    expect(EMERGENCY_REPLY).not.toContain('?');
-    expect(SAFETY_REPLY).toContain('811');
-    expect(SAFETY_REPLY).not.toBe(EMERGENCY_REPLY);
   });
 
   it('answers an identity challenge with the locked line and never calls the model', async () => {
@@ -476,7 +469,7 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).not.toContain(COLD_START_ASK);
   });
 
-  it('answers a crisis inbound with the reviewed 988 line and no return ask', async () => {
+  it('stops a crisis inbound before the model, with no return ask', async () => {
     const exploding = {
       messages: {
         create: () => {
@@ -492,18 +485,6 @@ describe('intake answer · the emergency tripwire', () => {
         children: [],
       }),
     ).toEqual({ status: 'mental_crisis' });
-    expect(MENTAL_CRISIS_REPLY).toBe(
-      "If you're in crisis, call 988 any time. If it's an emergency, call 911.",
-    );
-    expect(MENTAL_CRISIS_REPLY).toContain('988');
-    expect(MENTAL_CRISIS_REPLY).toContain('911');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
-    expect(SAFETY_REPLY).toContain('811');
-    expect(SAFETY_REPLY).not.toContain('988');
-    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
-    expect(MENTAL_CRISIS_REPLY).not.toBe('Call 911 now.');
   });
 });
 

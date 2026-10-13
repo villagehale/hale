@@ -1,12 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
-import {
-  EMERGENCY_REPLY,
-  EMERGENCY_TOKENS,
-  MENTAL_CRISIS_REPLY,
-  SAFETY_REPLY,
-  namesAnEmergency,
-} from '~/lib/channel/off-domain/copy';
+import { EMERGENCY_TOKENS, namesAnEmergency } from '~/lib/channel/off-domain/copy';
 import { ChannelTurnFailed } from './coach-runtime';
 import {
   type SmokeAlarmClaim,
@@ -251,28 +245,17 @@ function alarm(
 }
 
 describe('the smoke alarm', () => {
-  it('sends Call 911 now. alone when the model is gone and the text is an emergency', async () => {
+  it('names an emergency during an outage and sends nothing', async () => {
     const a = alarm();
 
-    expect(await a.run()).toBe('fired');
-    expect(a.sent).toEqual([EMERGENCY_REPLY]);
-    expect(a.sent[0]).toBe('Call 911 now.');
-    expect(a.sent[0]).not.toContain('811');
-    expect(a.sent[0]).not.toContain('Health811');
-    expect(a.sent[0]).not.toContain('988');
-    expect(a.sent[0]).not.toContain('?');
-    expect(a.sent[0]).not.toBe(SAFETY_REPLY);
+    expect(await a.run()).toBe('unwritten');
+    expect(a.sent).toEqual([]);
   });
 
-  it('sends the reviewed 988 line on a suicide crisis during an outage', async () => {
+  it('names a crisis during an outage and sends nothing', async () => {
     const a = alarm({ body: 'I want to die' });
-    expect(await a.run()).toBe('fired');
-    expect(a.sent).toEqual([MENTAL_CRISIS_REPLY]);
-    expect(a.sent[0]).not.toContain('?');
-    expect(a.sent[0]).not.toContain('811');
-    expect(a.sent[0]).not.toBe(SAFETY_REPLY);
-    expect(a.sent[0]).not.toBe(EMERGENCY_REPLY);
-    expect(a.sent[0]).not.toBe('Call 911 now.');
+    expect(await a.run()).toBe('unwritten');
+    expect(a.sent).toEqual([]);
   });
 
   /** Both conditions, independently insufficient. Either one alone is an ordinary
@@ -291,18 +274,16 @@ describe('the smoke alarm', () => {
     expect(a.sent).toEqual([]);
   });
 
-  it('records the alarm so the same message cannot set it off twice', async () => {
+  it('does not record the alarm, so a later attempt can still write the reply', async () => {
     const claim = fakeClaim();
     const first = alarm({ claim });
-    expect(await first.run()).toBe('fired');
-    expect(claim.recorded).toEqual([
-      { familyId: FAMILY, parentUserId: PARENT, channelMessageId: MESSAGE },
-    ]);
+    expect(await first.run()).toBe('unwritten');
+    expect(claim.recorded).toEqual([]);
 
     const retry = alarm({ claim });
-    expect(await retry.run()).toBe('already_fired');
+    expect(await retry.run()).toBe('unwritten');
     expect(retry.sent).toEqual([]);
-    expect(claim.recorded).toHaveLength(1);
+    expect(claim.recorded).toEqual([]);
   });
 
   /**
@@ -310,7 +291,7 @@ describe('the smoke alarm', () => {
    * AFTER the send. A claim written first would mean a send that failed is never
    * retried — the parent gets silence and the ledger says the alarm rang.
    */
-  it('does not claim an alarm whose send failed, so the retry can ring it', async () => {
+  it('does not call say, so a send failure cannot be what keeps the reply unwritten', async () => {
     const claim = fakeClaim();
     const failing = alarm({
       claim,
@@ -319,12 +300,9 @@ describe('the smoke alarm', () => {
       },
     });
 
-    await expect(failing.run()).rejects.toThrow('provider is down too');
+    expect(await failing.run()).toBe('unwritten');
+    expect(failing.sent).toEqual([]);
     expect(claim.recorded).toEqual([]);
-
-    const retry = alarm({ claim });
-    expect(await retry.run()).toBe('fired');
-    expect(retry.sent).toEqual([EMERGENCY_REPLY]);
   });
 
   /** The claim read is a query. It must not be spent on the overwhelmingly common

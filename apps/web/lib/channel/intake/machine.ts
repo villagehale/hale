@@ -56,13 +56,8 @@ import {
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
 import { offerYearFindPoll } from '~/lib/channel/linq/poll';
-import {
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
-  SAFETY_REPLY_BY_LANGUAGE,
-  namesAMentalCrisis,
-  namesAnEmergency,
-} from '~/lib/channel/off-domain/copy';
+import { namesAMentalCrisis, namesAnEmergency } from '~/lib/channel/off-domain/copy';
+import type { Moment } from '~/lib/channel/off-domain/moment-request';
 import {
   plainTextWithoutLinks,
   readSendRefusal,
@@ -372,7 +367,7 @@ export type IntakeOutcome =
    * next inbound is handled by the same branch as if this turn had not happened.
    *
    * `source` separates the two very different messages that can go out: `composed` is
-   * the answer, `safety` is the fixed 811/911 line with no signup question after it.
+   * the answer, `safety` is the moment writer's reply with no signup question after it.
    */
   | { status: 'question_answered'; source: 'composed' | 'safety' | 'identity' }
   /**
@@ -963,19 +958,13 @@ async function offScriptReply(
     postalCode?: string | null;
   },
   deps: IntakeDeps,
-): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
-  // Crisis / physical emergency go out ALONE, and before any model. A parent in
-  // that moment should be dialling, not answering a signup question. Token matches
-  // never reach the composer; a composer that still returns `safety` or
-  // `mental_crisis` (a phrasing the tokens missed) is honoured below so a silent
-  // fake cannot ask-alone. Physical emergency is Call 911 now. Mental crisis is
-  // the 988 line. Neither is the child-health 811 SAFETY_REPLY.
-  if (namesAnEmergency(args.parentWords)) {
-    return { body: EMERGENCY_REPLY, source: 'safety' };
-  }
-  if (namesAMentalCrisis(args.parentWords)) {
-    return { body: MENTAL_CRISIS_REPLY, source: 'safety' };
-  }
+): Promise<
+  { body: string; source: 'composed' | 'safety' | 'identity' } | { unwritten: string } | null
+> {
+  // Crisis / physical emergency go out ALONE. The ordinary signup answer stops.
+  // The moment writer points to emergency or local help, in the parent's language.
+  const stopped = await momentStop(deps, args.parentWords);
+  if (stopped !== null) return stopped;
   // VIL-333. The locked disclosure is the whole turn: no composed concession,
   // no return to the watch ask, no model.
   const disclosure = identityChallengeReply(args.parentWords);
@@ -983,11 +972,11 @@ async function offScriptReply(
     return { body: disclosure, source: 'identity' };
   }
   const outcome = await deps.answerComposer.compose(args);
-  if (outcome.status === 'mental_crisis') {
-    return { body: MENTAL_CRISIS_REPLY, source: 'safety' };
-  }
-  if (outcome.status === 'safety') {
-    return { body: SAFETY_REPLY_BY_LANGUAGE[replyLanguage(args.parentWords)], source: 'safety' };
+  if (outcome.status === 'mental_crisis' || outcome.status === 'safety') {
+    const moment: Moment = outcome.status === 'mental_crisis' ? 'mental_crisis' : 'child_health';
+    const written = await deps.answerComposer.writeMoment(args.parentWords, moment);
+    if (written.status === 'unwritten') return { unwritten: written.reason };
+    return { body: written.reply, source: 'safety' };
   }
   if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };
   // VIL-326 / VIL-327: unavailable / empty must not fall back to the greet or
@@ -1153,13 +1142,29 @@ async function deliverFirstHello(
   // inbound that is a question (the site chips, a rec/camp ask) is answered with the
   // same off-script path turn 2 already had — then Hale's pending ask, in one text.
   // VIL-322: two site intakes dropped because greet() never read the inbound body.
+  const postalCollected = postal
+    ? {
+        collected: {
+          children: [],
+          // The FSA when that is all they sent (D2) — the token the extractor is
+          // handed back as `already_known` on the next turn, so it has to read the
+          // way a parent's own postal code does.
+          postalCode: postal.postalCode ?? postal.areaCoarse,
+        },
+      }
+    : {};
   let body = postal ? greetingWithArea(postal.areaCoarse) : greeting(venue?.name ?? null, language);
   let outcome: IntakeOutcome = { status: 'greeted' };
   if (postal === null && !isBareFirstHello(args.inbound.body) && onboardingFriendVoiceEnabled()) {
-    // Only the two safety lines stay fixed; a first question is answered by the friend voice below.
-    const safety = fixedSafetyReply(args.inbound.body);
-    if (safety) {
-      body = safety;
+    // A crisis or emergency is written by the moment model. A first question is
+    // answered by the friend voice below.
+    const safety = await momentStop(deps, args.inbound.body);
+    if (safety && 'unwritten' in safety) {
+      await saveUnsentMoment(database, session, recorded.transcript, args, deps, postalCollected);
+      return { status: 'question_answered', source: 'safety' };
+    }
+    if (safety && 'body' in safety) {
+      body = safety.body;
       outcome = { status: 'question_answered', source: 'safety' };
     }
   } else if (postal === null && !isBareFirstHello(args.inbound.body)) {
@@ -1172,22 +1177,15 @@ async function deliverFirstHello(
       },
       deps,
     );
-    if (offScript) {
+    if (offScript && 'unwritten' in offScript) {
+      await saveUnsentMoment(database, session, recorded.transcript, args, deps, postalCollected);
+      return { status: 'question_answered', source: 'safety' };
+    }
+    if (offScript && 'body' in offScript) {
       body = offScript.body;
       outcome = { status: 'question_answered', source: offScript.source };
     }
   }
-  const postalCollected = postal
-    ? {
-        collected: {
-          children: [],
-          // The FSA when that is all they sent (D2) — the token the extractor is
-          // handed back as `already_known` on the next turn, so it has to read the
-          // way a parent's own postal code does.
-          postalCode: postal.postalCode ?? postal.areaCoarse,
-        },
-      }
-    : {};
   if (onboardingFriendVoiceEnabled() && outcome.status === 'greeted') {
     const spoken = await friendSpeak(
       deps,
@@ -1315,15 +1313,50 @@ function friendFields(
 }
 
 /**
- * The two replies that stay fixed when the friend voice is on: a physical
- * emergency and a mental-health crisis go out alone, before any model. Who is
- * behind this number is answered by the model from `facts.identity`, and the
- * judge refuses a reply to a challenge that does not name the company.
+ * A physical emergency or a mental-health crisis stops the ordinary reply. The
+ * moment writer sends the text. An unwritten reply is named and nothing preset
+ * goes out. Who is behind this number is still answered by the model from
+ * `facts.identity`.
  */
-function fixedSafetyReply(body: string): string | null {
-  if (namesAnEmergency(body)) return EMERGENCY_REPLY;
-  if (namesAMentalCrisis(body)) return MENTAL_CRISIS_REPLY;
-  return null;
+/** A moment the model could not write. The inbound is kept; the greeting is not sent. */
+async function saveUnsentMoment(
+  database: Database,
+  session: IntakeSession,
+  transcript: TranscriptEntry[],
+  args: { inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+  postalCollected: { collected?: IntakeSession['collected'] },
+): Promise<void> {
+  await saveSession(
+    database,
+    session,
+    {
+      state: 'awaiting_details',
+      transcript,
+      lastProviderId: args.inbound.providerId,
+      ...postalCollected,
+    },
+    args.now,
+  );
+  await reportIntakeStep(deps, 'intake_started', session.id);
+}
+
+async function momentStop(
+  deps: IntakeDeps,
+  body: string,
+): Promise<{ body: string; source: 'safety' } | { unwritten: string } | null> {
+  const moment: Moment | null = namesAnEmergency(body)
+    ? 'emergency'
+    : namesAMentalCrisis(body)
+      ? 'mental_crisis'
+      : null;
+  if (moment === null) return null;
+  const written = await deps.answerComposer.writeMoment(body, moment);
+  if (written.status === 'unwritten') {
+    console.error({ moment, reason: written.reason }, 'intake: moment reply unwritten');
+    return { unwritten: written.reason };
+  }
+  return { body: written.reply, source: 'safety' };
 }
 
 /** The kids as the model sees them: name and age only, so a line's age fit lands on the right kid. */
@@ -1599,9 +1632,11 @@ async function friendOnboardingTurn(
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
-  const safety = fixedSafetyReply(inbound.body);
+  const safety = await momentStop(deps, inbound.body);
   if (safety) {
-    ({ transcript } = await sendAndRecord(database, ctx, safety, deps, transcript));
+    if ('body' in safety) {
+      ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
+    }
     await saveSession(
       database,
       session,
@@ -1805,14 +1840,16 @@ async function openFirstTouch(
 ): Promise<IntakeOutcome> {
   if (onboardingFriendVoiceEnabled()) return friendOnboardingTurn(database, args, deps, true);
   const { session } = args;
-  const safety = namesAnEmergency(args.inbound.body)
-    ? EMERGENCY_REPLY
-    : namesAMentalCrisis(args.inbound.body)
-      ? MENTAL_CRISIS_REPLY
-      : identityChallengeReply(args.inbound.body);
-  if (safety) {
+  const stopped = await momentStop(deps, args.inbound.body);
+  const identity = stopped === null ? identityChallengeReply(args.inbound.body) : null;
+  if (stopped || identity) {
     const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
-    const sent = await sendAndRecord(database, ctx, safety, deps, recorded.transcript);
+    const sent =
+      stopped && 'body' in stopped
+        ? await sendAndRecord(database, ctx, stopped.body, deps, recorded.transcript)
+        : identity
+          ? await sendAndRecord(database, ctx, identity, deps, recorded.transcript)
+          : { transcript: recorded.transcript };
     const language = replyLanguage(args.inbound.body);
     await saveSession(
       database,
@@ -1922,10 +1959,10 @@ async function continueFirstTouch(
       locationRequest: null,
     };
     if (onboardingFriendVoiceEnabled()) {
-      const safety = fixedSafetyReply(inbound.body);
-      if (safety) {
-        ({ transcript } = await sendAndRecord(database, ctx, safety, deps, transcript));
-      } else {
+      const safety = await momentStop(deps, inbound.body);
+      if (safety && 'body' in safety) {
+        ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
+      } else if (!safety) {
         const spoken = await friendSpeak(
           deps,
           transcript,
@@ -1948,9 +1985,9 @@ async function continueFirstTouch(
         },
         deps,
       );
-      if (offScript) {
+      if (offScript && 'body' in offScript) {
         ({ transcript } = await sendAndRecord(database, ctx, offScript.body, deps, transcript));
-      } else {
+      } else if (!offScript) {
         ({ transcript } = await sendAndRecord(
           database,
           ctx,
@@ -2718,10 +2755,12 @@ async function friendColdTurn(
   const language =
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const ctx = sendContext(args);
-  const safety = fixedSafetyReply(inbound.body);
+  const safety = await momentStop(deps, inbound.body);
   if (safety) {
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    await sendAndRecord(database, ctx, safety, deps, recorded.transcript);
+    if ('body' in safety) {
+      await sendAndRecord(database, ctx, safety.body, deps, recorded.transcript);
+    }
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'first_touch', step: 'find_sent' };
   }
@@ -3446,7 +3485,11 @@ async function handleDetails(
       },
       deps,
     );
-    if (offScript) {
+    if (offScript && 'unwritten' in offScript) {
+      await saveSession(database, session, { ...base, transcript }, now);
+      return { status: 'question_answered', source: 'safety' };
+    }
+    if (offScript && 'body' in offScript) {
       ({ transcript } = await sendAndRecord(database, ctx, offScript.body, deps, transcript));
       // The step does not move: `state` and `followUpCount` are untouched, so the ask
       // is still outstanding and the one follow-up is still unspent.
@@ -4255,8 +4298,20 @@ async function handleWatchReply(
   // A session left waiting on it still gets an answer, written by the model,
   // and is closed so the next text reaches the family's own thread.
   if (onboardingFriendVoiceEnabled()) {
-    const safety = fixedSafetyReply(inbound.body);
-    const body = safety ?? (await helpBody(deps, session, language, inbound.body));
+    const safety = await momentStop(deps, inbound.body);
+    if (safety && 'unwritten' in safety) {
+      await saveSession(
+        database,
+        session,
+        { state: 'complete', closedAt: now, lastProviderId: inbound.providerId },
+        now,
+      );
+      return { status: 'question_answered', source: 'safety' };
+    }
+    const body =
+      safety && 'body' in safety
+        ? safety.body
+        : await helpBody(deps, session, language, inbound.body);
     if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
     await saveSession(
       database,
@@ -4288,7 +4343,11 @@ async function handleWatchReply(
       },
       deps,
     );
-    if (offScript) {
+    if (offScript && 'unwritten' in offScript) {
+      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+      return { status: 'question_answered', source: 'safety' };
+    }
+    if (offScript && 'body' in offScript) {
       await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
       // `state` and `clarifyCount` are untouched: the consent ask is still outstanding
       // and the one clarification is still unspent, so the next inbound lands here again.
@@ -4403,9 +4462,11 @@ async function handleLadder(
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
 
-  if (namesAnEmergency(inbound.body) || namesAMentalCrisis(inbound.body)) {
-    const crisis = namesAnEmergency(inbound.body) ? EMERGENCY_REPLY : MENTAL_CRISIS_REPLY;
-    await sendAndRecord(database, ctx, crisis, deps, recorded.transcript);
+  const crisis = await momentStop(deps, inbound.body);
+  if (crisis) {
+    if ('body' in crisis) {
+      await sendAndRecord(database, ctx, crisis.body, deps, recorded.transcript);
+    }
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'question_answered', source: 'safety' };
   }
@@ -4430,8 +4491,10 @@ async function handleLadder(
       },
       deps,
     );
-    if (offScript) {
+    if (offScript && 'body' in offScript) {
       await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+      heldForQuestion = true;
+    } else if (offScript && 'unwritten' in offScript) {
       heldForQuestion = true;
     }
   }

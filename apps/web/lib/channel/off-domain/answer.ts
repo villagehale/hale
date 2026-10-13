@@ -24,8 +24,9 @@ import {
   searchUserMessage,
   turnsOnTheirPlace,
 } from './answer-request';
-import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, namesAMentalCrisis, namesAnEmergency } from './copy';
+import { namesAMentalCrisis, namesAnEmergency } from './copy';
 import { normalizeLanguage } from './medical';
+import { type Moment, createMomentReply } from './moment-reply';
 import { coarsenPlace } from './place';
 import SUFFIXES from './public-suffix/suffixes.json';
 
@@ -158,14 +159,15 @@ export type GeneralAnswerOutcome =
   /**
    * The question turned out to describe someone hurt, ill or in danger, and the compose
    * said so in its own field (skill audit P0 #3; Sloane, 2026-10-12: "the AI reads a
-   * crisis and nothing keys off words or digits"). This branch carries NO reply on
-   * purpose: the words a parent gets in that moment are the reviewed ones in copy.ts,
-   * and a variant with a text field is one an edit could later fill from the model.
-   * `kind` is which of the screen's safety categories the compose read, and the lane
-   * picks the door from it as it does from the screen's own reading (lane.ts).
+   * crisis and nothing keys off words or digits"). This branch carries NO reply: the
+   * lane stops the ordinary answer and the moment writer sends one (lane.ts).
+   * `kind` is which of the screen's safety categories the compose read.
    */
   | { status: 'safety'; kind: SafetyKind }
-  | { status: 'unavailable'; reason: GeneralAnswerFallback };
+  | { status: 'unavailable'; reason: GeneralAnswerFallback }
+  /** A crisis or emergency stopped the ordinary answer, and the moment reply could not
+   * be written. Nothing preset goes out. */
+  | { status: 'unwritten'; moment: Moment; reason: string };
 
 /**
  * Why a family's place cannot be named. Each is its own story: no country on the row
@@ -268,7 +270,10 @@ function failureName(err: unknown): string {
 }
 
 function unavailable(reason: GeneralAnswerFallback, detail?: string): GeneralAnswerOutcome {
-  console.error({ reason, detail }, 'off-domain answer: falling back to the fixed line');
+  console.error(
+    { reason, detail },
+    'off-domain answer: no answer composed, the moment writer answers',
+  );
   return { status: 'unavailable', reason };
 }
 
@@ -553,11 +558,10 @@ function sendable(
   searched: readonly string[],
   pendingAsk: PendingAsk | null,
 ): GeneralAnswerOutcome {
-  // Before every other gate, because this one SUBSTITUTES where the rest refuse: a
-  // parent who turns out to be describing a hurt child must get the fixed line, never
-  // the "couldn't get to that one" a refusal would send them. It is the compose's own
-  // reading that decides, never a word or a digit in what it wrote, and nothing it wrote
-  // goes past this line.
+  // Before every other gate, because this one STOPS where the rest refuse: a parent
+  // who turns out to be describing a hurt child must not get a could-not-answer. The
+  // lane then asks the moment writer. It is the compose's own reading that decides,
+  // never a word or a digit in what it wrote, and nothing it wrote goes past this line.
   const kind = hurtIllOrDanger(composed.hurt_ill_or_danger);
   if (kind !== null) {
     console.error('off-domain answer: the compose read someone hurt; the safety door answers');
@@ -699,13 +703,19 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
 
   return {
     async compose(text, family) {
-      // VIL-328: physical emergency is Call 911 now., never the 811 Telehealth
-      // line. Mental crisis is the reviewed 988 line, no return ask.
-      if (namesAnEmergency(text)) {
-        return { status: 'composed', reply: EMERGENCY_REPLY };
-      }
-      if (namesAMentalCrisis(text)) {
-        return { status: 'composed', reply: MENTAL_CRISIS_REPLY };
+      // Crisis and emergency stop the ordinary answer: no sanitize, no search, no
+      // compose. The moment writer points to emergency or local help.
+      const stopped = namesAnEmergency(text)
+        ? 'emergency'
+        : namesAMentalCrisis(text)
+          ? 'mental_crisis'
+          : null;
+      if (stopped !== null) {
+        const written = await createMomentReply(client).write(text, stopped);
+        if (written.status === 'unwritten') {
+          return { status: 'unwritten', moment: stopped, reason: written.reason };
+        }
+        return { status: 'composed', reply: written.reply };
       }
 
       const stage = await setUp();

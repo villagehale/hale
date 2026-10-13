@@ -1,141 +1,44 @@
 /**
- * VIL-273 — every word the off-domain lane can send WITHOUT a model, in one file.
+ * VIL-273 — the off-domain lines that still go out without a model, in one file.
  *
- * This is the SPEC, not a template layer. The two door lines below are NOT composed: a
- * model that could write them could also write a third, and the third is the one that
- * tells a parent what to do about their child's head injury. So for those two the
- * lane's only decision is WHICH goes out, and the words are a reviewable diff.
+ * Could-not-answer, child health, a parent's crisis, and a physical emergency are not
+ * among them. Those replies are written by moment-reply.md, in the parent's language
+ * (moment-reply.ts). Crisis and emergency stop the ordinary answer first; the model
+ * then points to emergency or local help and does not recite a number.
  *
- * BOUNDARY V3 (founder-locked 2026-08-11) narrowed what belongs here. Hale is not a
- * closed door: asked something a friend would just answer, it answers, once, briefly,
- * and stops, looking it up first where the answer turns on something current (founder,
- * 2026-10-12; see answer.ts). The charm deflect that used to live here and go
- * out for weather, trivia, recipes and homework is retired; what survives is the line
- * for the one case where the answer could not be WRITTEN, and it now says that rather
- * than claiming a boundary Hale does not have.
+ * What survives here is the provider door (a table keyed by service) and the two
+ * substring detectors that decide WHEN the ordinary answer stops. The detectors are
+ * not the reply.
  *
  * NOTHING HERE POINTS AT THE APP. Not as a fallback, not for an overflow. A parent who
  * texted is owed a text back, and "finish this in the app" is the shape of dead end the
  * F14 voice rules and the v3 doctrine both refuse.
  *
  * GSM-7 (VIL-265): plain hyphens, straight apostrophes, no em dashes, no emoji. Every
- * string here is scanned by lib/channel/sms-copy-encoding.test.ts and the rendered
- * results are segment-counted below it.
+ * string here is scanned by lib/channel/sms-copy-encoding.test.ts.
  *
- * THREE OF THEM NOW HAVE A FRENCH TWIN, picked by `replyLanguage` from the message that
- * just arrived (lib/channel/language.ts). The safety line is the reason this could not
- * wait: a French medical turn falls closed onto it BY CONSTRUCTION, because medical.ts
- * refuses any composed body that is not GSM-7 and a real French answer carries accents
- * the alphabet cannot always take. Until now that meant the parent most likely to get
- * the fixed line was the one least able to read it.
- *
- * The French is written INSIDE the GSM-7 alphabet rather than folded into it afterwards —
- * é è à ù are in it, â ê î ô û ç are not, and the wording works around them. See the
- * same note at the top of intake/copy.ts.
+ * The provider lines have a French twin, picked by `replyLanguage` from the message
+ * that just arrived (lib/channel/language.ts). The French is written INSIDE the GSM-7
+ * alphabet — é è à ù are in it, â ê î ô û ç are not. See the same note at the top of
+ * intake/copy.ts.
  */
 import type { ReplyLanguage } from '~/lib/channel/language';
 
 /**
- * What a parent hears when the general answer could not be composed — a missing key, a
- * provider outage, or a body that came back unsendable (see GeneralAnswerFallback).
+ * The tokens that stop the ordinary answer for a physical emergency — the outage
+ * smoke alarm's trigger (router/smoke-alarm.ts) and the lane's, before any search.
  *
- * It says the true thing. Under v3 "not my department" would be a claim about Hale's
- * boundaries that is no longer true, and a parent who got a real answer to this exact
- * question yesterday would be told a different policy today; an honest "I could not get
- * to it" survives both. It offers the one action that might work, so it is not a dead
- * end, and it names no queue, no count and no app.
- *
- * FOUNDER REVIEW (tone audit, 2026-08-13). This line predates the 2026-08-12 no-preset
- * doctrine and is the one surviving twin of the failure constant the apology arc retired
- * (router/apology.ts) — its triggers are the same DEFECT class (a skill that would not
- * load, a body the gates refused, a single failed call), and "Try me again in a minute"
- * is a shape apology.ts's own promised_a_time gate would refuse. NOT converted tonight
- * because the honest conversion is compose-or-DEFER, and gate 4 (route.ts) has no defer:
- * the deferral machinery — recordDeferred plus the TurnDeferred throw the re-drive reads
- * — lives inside runAgentTurn's catch, which the off-domain screen returns before. That
- * is a build, not a seam reuse. Options for the founder: (a) lift the defer out of
- * runAgentTurn so any gate can use it, then compose here; (b) declare this line an
- * allowed class; (c) leave the defect path answering with the composed apology and no
- * defer underneath it.
- */
-export const ANSWER_UNAVAILABLE_REPLY =
-  "Sorry - I couldn't get to that one just now. Try me again in a minute.";
-
-/** `Mes excuses` rather than `Désolé(e)`: the apology carries no gender, which is the
- * same choice made everywhere else Hale speaks French about itself. */
-export const ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: ANSWER_UNAVAILABLE_REPLY,
-  fr: "Mes excuses - je n'ai pas réussi à répondre à celle-là. Réessayez dans une minute.",
-};
-
-/**
- * The safety answer. Fixed, never composed, never conditioned on anything in the
- * message.
- *
- * It names the two numbers and stops. It does not ask a follow-up question, because a
- * parent standing over a hurt child should be dialling rather than texting; it does not
- * say "it's probably fine" or "that sounds normal", because Hale cannot see the child
- * and a reassurance is a clinical judgement; and it does not point at the app, because
- * the app has nothing for them either.
- *
- * Health811 is the Ontario service behind 811. 911 is named for the emergency case so
- * that the one message covers both without asking the parent to self-triage first.
- */
-export const SAFETY_REPLY =
-  "That's not something I should advise on. Health811 (call 811) can help any time - and if it's an emergency, call 911.";
-
-/**
- * The safety answer in French — the single most load-bearing translation in this change,
- * for two reasons that compound.
- *
- * It is the line a French medical turn falls closed onto (see the file header), so a
- * francophone parent is MORE likely to receive it than an anglophone one. And it is the
- * line whose job is to get someone off their phone and onto a telephone: the two numbers
- * are the message, and everything else is there to make them act on it.
- *
- * FOUNDER REVIEW, on the proper noun specifically: "Santé811" is the French face of
- * Ontario's Health811 service. It was written from the same source as the English line
- * and NOT re-fetched in this change. The failure mode is bounded — 811 and 911 are the
- * same digits in both languages, so a wrong service name still dials the right place —
- * but it should be confirmed before this goes live.
- */
-export const SAFETY_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: SAFETY_REPLY,
-  fr: "Ce n'est pas à moi de vous conseiller là-dessus. Santé811 (composez le 811) peut vous aider à toute heure - et en cas d'urgence, faites le 911.",
-};
-
-/**
- * VIL-327 — caregiver mental crisis. Designer-locked 2026-08-28. Not
- * {@link SAFETY_REPLY}: that line is the child-health 811 reply and must not
- * go out for suicide / self-harm. 988 is the Canada Suicide Crisis Helpline.
- * No return ask. No 811. No "not something I should advise on."
- */
-export const MENTAL_CRISIS_REPLY =
-  "If you're in crisis, call 988 any time. If it's an emergency, call 911.";
-
-/**
- * VIL-328 — physical emergency. Designer-locked 2026-08-27, Advisor override
- * the same night. Not {@link SAFETY_REPLY}: that line is Telehealth 811 and
- * must not lead a real emergency. Not {@link MENTAL_CRISIS_REPLY}: 988 is the
- * mental-crisis line. This is the line alone, verbatim. No return ask. No 811.
- */
-export const EMERGENCY_REPLY = 'Call 911 now.';
-
-/**
- * The tokens that make {@link EMERGENCY_REPLY} go out with no model in the loop at all —
- * the outage smoke alarm's trigger (router/smoke-alarm.ts, founder-approved
- * 2026-08-12), and the ONE place Hale answers a parent without composing anything.
- *
- * THE BAR, and nothing else gets on this list: a token belongs only if sending
- * {@link EMERGENCY_REPLY} to someone who was NOT in an emergency is obviously
- * acceptable, and missing a real one is obviously not. "Fever", "rash" and "hit her head" all fail it —
- * a parent asking about a rash during an outage is owed a composed answer once the
- * model is back, not two phone numbers now. The six below pass it: there is no ordinary
- * Tuesday sentence they turn up in.
+ * THE BAR, and nothing else gets on this list: a token belongs only if stopping the
+ * ordinary answer for someone who was NOT in an emergency is obviously acceptable,
+ * and missing a real one is obviously not. "Fever", "rash" and "hit her head" all
+ * fail it — a parent asking about a rash is owed a composed answer, not an emergency
+ * stop. The six below pass it: there is no ordinary Tuesday sentence they turn up in.
  *
  * No fuzzy matching, no scoring, no model. The alarm exists for the minutes when the
  * model is unreachable, so anything cleverer than a substring would be a dependency on
- * the thing that just failed.
+ * the thing that just failed. While the model is up, the same tokens stop the ordinary
+ * answer and a model writes the reply (moment-reply.ts). While it is down, nothing
+ * preset goes out: the outcome is named and the turn waits.
  *
  * WHAT IT DOES NOT CATCH, stated so nobody mistakes it for triage: the list is literal.
  * "isn't breathing" and "stopped breathing" both miss where "not breathing" hits, and a
@@ -163,16 +66,15 @@ export const EMERGENCY_TOKENS = [
  */
 const EMERGENCY_PATTERN = new RegExp(`(?<![\\w$])(?:${EMERGENCY_TOKENS.join('|')})(?!\\d)`, 'i');
 
-/** Whether an inbound text names an emergency unambiguously enough to answer without a
- * model. Calibrated toward the false positive on purpose — see the bar above. */
+/** Whether an inbound text names an emergency unambiguously enough to stop the ordinary
+ * answer. Calibrated toward the false positive on purpose — see the bar above. */
 export function namesAnEmergency(body: string): boolean {
   return EMERGENCY_PATTERN.test(body);
 }
 
 /**
- * VIL-327 — caregiver mental crisis. Sends {@link MENTAL_CRISIS_REPLY}
- * (988 / 911), never {@link SAFETY_REPLY}. A therapist-find or cheer-up
- * must not match.
+ * VIL-327 — caregiver mental crisis. Stops the ordinary answer. A therapist-find or
+ * cheer-up must not match.
  */
 const MENTAL_CRISIS_PATTERN =
   /\b(?:suicide|suicidal|kill(?:ing)? myself|end my life|self[-\s]?harm|want to die|wanna die|not want to be alive)\b|(?<![\w$])988(?!\d)/i;
@@ -182,32 +84,11 @@ export function namesAMentalCrisis(body: string): boolean {
 }
 
 /**
- * The tripwire that makes {@link SAFETY_REPLY} the ONLY siren Hale sends (skill audit
- * P0 #3).
- *
- * The lane screen fails open by design (screen.ts openTheGate), so a missing key, a
- * skill-load failure or a provider outage puts "she hit her head and won't stop crying"
- * in front of a model instead of in front of the line above — and both composing skills
- * answer that by writing a siren of their own, one of which names a doctor and no number
- * at all. The fix cannot be a better instruction: the paths that reach a model are
- * exactly the paths where the deterministic layer already failed.
- *
- * So the numbers themselves are the signal. Hale's own vocabulary contains 811 and 911
- * in two fixed lines and nowhere else, and neither passes through a composer — a
- * MODEL-WRITTEN body carrying either is a model reaching for the health line, and the
- * reviewed sentence is strictly better than whatever it reached for. Callers substitute
- * rather than refuse: a parent describing a hurt child must never be answered with "try
- * me again in a minute".
+ * Whether a model-written body is reaching for a health-line number (skill audit P0 #3).
  *
  * Whole tokens only, so an ordinary week does not trip it — `9:11` is a swim time and
- * `647-555-0811` is a phone number, and neither contains the token. Calibrated toward
- * the false positive on purpose: sending the fixed line about a $911 fee is a bad
- * message, and missing a real one is the failure this file exists to prevent.
- *
- * What it does NOT catch, stated so nobody reads it as more than it is: an improvised
- * referral that names no number ("that one's for your doctor") is invisible here. The
- * skills' own siren prose and a coach-eval fixture that gates on both numbers are what
- * close that half; this closes the half a prompt cannot.
+ * `647-555-0811` is a phone number, and neither contains the token. An improvised
+ * referral that names no number ("that one's for your doctor") is invisible here.
  */
 export function reachesForTheHealthLine(body: string): boolean {
   return /\b(?:811|911)\b/.test(body);

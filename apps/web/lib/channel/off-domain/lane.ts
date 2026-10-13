@@ -17,16 +17,9 @@ import {
   localDate,
 } from './answer';
 import { safetyDoorFor } from './answer-request';
-import {
-  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
-  SAFETY_REPLY_BY_LANGUAGE,
-  namesAMentalCrisis,
-  namesAnEmergency,
-  referralReply,
-} from './copy';
+import { namesAMentalCrisis, namesAnEmergency, referralReply } from './copy';
 import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
+import { type Moment, type MomentWriter, createMomentReply } from './moment-reply';
 import { readFamilyPlace } from './place';
 import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScreen } from './screen';
 
@@ -43,9 +36,10 @@ import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScree
  * too widely, and a parent who asked who the best striker is got charm and a closed
  * door — which reads as a product that CANNOT rather than one that chooses not to. So
  * `off_domain_general` now composes one brief, honest answer (see answer.ts) and stops
- * there. The other two do not move: a symptom still gets the fixed 811/911 line and a
- * parent hunting a paediatrician still gets Health Care Connect, both from copy.ts,
- * both untouched by any model. The provider door later grew a SECOND fixed line for the
+ * there. A symptom is answered by the medical composer. Child health, a crisis, and a
+ * physical emergency stop that ordinary answer and a model writes the reply
+ * (moment-reply.ts). A parent hunting a paediatrician still gets Health Care Connect
+ * from copy.ts, untouched by any model. The provider door later grew a SECOND fixed line for the
  * classes Ontario books directly (eye care today) — still copy.ts, still no model, and
  * see the branch below for why the registry answer was wrong for those.
  *
@@ -83,11 +77,12 @@ import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScree
 export type UnmetSignalOutcome = 'recorded' | 'not_recorded' | 'not_applicable';
 
 /**
- * Where the words that went out came from. `fixed` is one of the two door lines in
- * copy.ts (or the medical lane's last-resort 811/911 line); `composed` is the general
- * answer; `web_grounded` is the medical-symptom answer, searched and composed; anything
- * else is a {@link GeneralAnswerFallback} naming why the composer could not run and the
- * deflect line stood in for it (rule #11).
+ * Where the words that went out came from. `fixed` is a provider-door line in copy.ts
+ * (or the medical lane's last-resort moment reply, stamped on the medical column);
+ * `composed` is a model-written reply, including a moment reply; `web_grounded` is the
+ * medical-symptom answer, searched and composed; anything else is a
+ * {@link GeneralAnswerFallback} naming why the general composer could not run. The
+ * could-not-answer words are still a moment reply (rule #11).
  */
 export type ReplySource = 'fixed' | 'composed' | 'web_grounded' | GeneralAnswerFallback;
 
@@ -122,6 +117,15 @@ export type OffDomainVerdict =
        * sets it.
        */
       pendingAsk: PendingAsk | null;
+    }
+  /** The moment reply could not be written. Nothing preset goes out, and the ordinary
+   * answer does not resume. */
+  | {
+      status: 'unwritten';
+      moment: Moment;
+      reason: string;
+      lane: UnmetIntentLane;
+      category: UnmetIntentCategory;
     };
 
 /**
@@ -156,8 +160,11 @@ export interface OffDomainPorts {
   screen: InboundLaneScreen;
   /** Writes the one brief answer to a question about the world. Non-nullable (rule
    * #11): "no composer wired" is not a state this lane has — a composer that cannot run
-   * says so by name and the fixed line goes out instead. */
+   * says so by name. */
   answer: GeneralAnswerComposer;
+  /** Writes the reply when the ordinary answer stops. Non-nullable (rule #11): its
+   * absence would be a silent skip of a crisis, and an unwritten reply is named. */
+  moment: MomentWriter;
   /** Today's date where this family is, as the general answer is told it. The date is
    * what travels on; the timezone it was read in does not. The composer asks for it,
    * after the fixed lines that need no date. */
@@ -182,8 +189,9 @@ export interface OffDomainPorts {
     asOf: Date;
   }): Promise<PendingAskRead>;
   /** Answers a medical-symptom text: a web-grounded, coarse-age-aware reply with its own
-   * triage, or the fixed 811/911 line as a last resort. Non-nullable for the same reason
-   * (rule #11) — its own failure modes are named inside it, never a missing dependency. */
+   * triage, or a model-written child-health reply as a last resort. Non-nullable for the
+   * same reason (rule #11) — its own failure modes are named inside it, never a missing
+   * dependency. */
   medical: MedicalComposer;
   /** Stamps the inbound row with the lane + bucket. Never throws — see
    * {@link UnmetSignalOutcome}. */
@@ -213,21 +221,38 @@ export interface OffDomainLane {
 export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
   return {
     async consider(input) {
-      // VIL-328: a physical emergency token never waits on the screen or the
-      // medical composer. 811 is Telehealth and must not lead this inbound.
-      if (namesAnEmergency(input.text)) {
+      // A physical emergency or a mental-health crisis never waits on the screen,
+      // the search, or the ordinary compose. The model writes the reply, and the
+      // ordinary answer does not resume.
+      const stopped = namesAnEmergency(input.text)
+        ? 'emergency'
+        : namesAMentalCrisis(input.text)
+          ? 'mental_crisis'
+          : null;
+      if (stopped !== null) {
+        const category = stopped === 'emergency' ? 'emergency' : 'mental-health';
         const signal = await ports.recordUnmetIntent({
           channelMessageId: input.channelMessageId,
           familyId: input.familyId,
           lane: 'safety_critical',
-          category: 'emergency',
+          category,
         });
+        const written = await ports.moment.write(input.text, stopped);
+        if (written.status === 'unwritten') {
+          return {
+            status: 'unwritten',
+            moment: stopped,
+            reason: written.reason,
+            lane: 'safety_critical',
+            category,
+          };
+        }
         return {
           status: 'deflected',
           lane: 'safety_critical',
-          category: 'emergency',
-          reply: EMERGENCY_REPLY,
-          replySource: 'fixed',
+          category,
+          reply: written.reply,
+          replySource: 'composed',
           medicalSource: null,
           signal,
           pendingAsk: null,
@@ -258,11 +283,21 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         if (pending !== null) {
           const continued = await ports.answer.continueAsk(input.text, pending, family);
           if (continued.status !== 'unrelated') {
+            const lined = await replyFor(ports, continued, input.text);
+            if ('status' in lined) {
+              return {
+                status: 'unwritten',
+                moment: lined.moment,
+                reason: lined.reason,
+                lane: 'off_domain_general',
+                category: 'other',
+              };
+            }
             return {
               status: 'deflected',
               lane: 'off_domain_general',
               category: 'other',
-              ...replyFor(continued, input.text),
+              ...lined,
               medicalSource: null,
               signal: 'not_applicable',
             };
@@ -275,13 +310,14 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       }
       const lane = reading.lane;
 
-      // MEDICAL SYMPTOMS ARE ANSWERED NOW (founder-locked 2026-08-17), not deflected to a
-      // fixed line. Hale composes a web-grounded, coarse-age-aware reply with its own
-      // triage (medical.ts) — every word model-generated, the 811/911 line kept only as
-      // the last-resort fallback inside the composer. It leaves by its own branch BEFORE
-      // the demand-signal write: a question Hale answered is not an unmet intent, and its
-      // `signal` says `not_applicable` rather than pretending a write was even attempted
-      // (rule #11). Every OTHER safety_critical category still gets SAFETY_REPLY below.
+      // MEDICAL SYMPTOMS ARE ANSWERED NOW (founder-locked 2026-08-17). Hale composes a
+      // web-grounded, coarse-age-aware reply with its own triage (medical.ts) — every word
+      // model-generated. The last resort, when that answer cannot be written, is a moment
+      // reply, not a preset line. It leaves by its own branch BEFORE the demand-signal
+      // write: a question Hale answered is not an unmet intent, and its `signal` says
+      // `not_applicable` rather than pretending a write was even attempted (rule #11).
+      // Every OTHER safety_critical category stops the ordinary answer and a moment
+      // reply is written below.
       if (lane === 'safety_critical' && reading.category === 'medical-symptom') {
         const { reply, replySource } = await ports.medical.answer(input.text);
         return {
@@ -296,13 +332,10 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         };
       }
 
-      // The two doors are fixed sentences and the composer is never woken for them. Not
-      // a prompt asked nicely to decline — a branch it cannot reach. Letting a model
-      // anywhere near what a parent is told about their child's head injury is the
-      // failure this shape makes impossible rather than merely discouraged.
-      //
-      // The provider door is a TABLE keyed by service (copy.ts referralReply), not a
-      // model and not a default. Ontario's answer to "get me X" depends entirely on WHICH
+      // A safety reading stops the ordinary answer. The moment writer is woken for it,
+      // and the general composer is not. The provider door is a TABLE keyed by service
+      // (copy.ts referralReply), not a model and not a default. Ontario's answer to
+      // "get me X" depends entirely on WHICH
       // X: a family doctor or paediatrician means the Health Care Connect registry, an
       // optometrist means no registry at all (you book one directly and OHIP pays), and a
       // paediatric dentist, an OT, a speech therapist or an audiologist mean none of the
@@ -314,12 +347,22 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // Which LANGUAGE those fixed sentences go out in is decided the same way and for
       // the same reason — off the words in front of it, with no model consulted.
       const language = replyLanguage(input.text);
-      const { reply, replySource, pendingAsk } =
+      const lined =
         lane === 'safety_critical'
-          ? safetyDoor(reading.category, input.text)
+          ? await momentDoor(ports, reading.category, input.text)
           : lane === 'provider_access'
             ? fixedLine(referralReply(input.text, language))
-            : replyFor(await ports.answer.compose(input.text, family), input.text);
+            : await replyFor(ports, await ports.answer.compose(input.text, family), input.text);
+      if ('status' in lined) {
+        return {
+          status: 'unwritten',
+          moment: lined.moment,
+          reason: lined.reason,
+          lane,
+          category: reading.category,
+        };
+      }
+      const { reply, replySource, pendingAsk } = lined;
 
       const signal = await ports.recordUnmetIntent({
         channelMessageId: input.channelMessageId,
@@ -345,12 +388,14 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
   };
 }
 
-/** What the lane sends and what the router keeps beside it. */
-interface LaneReply {
-  reply: string;
-  replySource: ReplySource;
-  pendingAsk: PendingAsk | null;
-}
+/** What the lane sends and what the router keeps beside it, or the named miss. */
+type LaneReply =
+  | {
+      reply: string;
+      replySource: ReplySource;
+      pendingAsk: PendingAsk | null;
+    }
+  | { status: 'unwritten'; moment: Moment; reason: string };
 
 /** One of the doors in copy.ts. It leaves no question open. */
 function fixedLine(reply: string): LaneReply {
@@ -358,19 +403,37 @@ function fixedLine(reply: string): LaneReply {
 }
 
 /**
- * THE SAFETY DOOR, for a safety reading whoever made it: the screen's, or the compose's
- * of a text the screen had filed as a question about the world. The kind of reading
- * picks the line ({@link safetyDoorFor}), so the two readings cannot send one text to two
- * doors. The compose's used to say only that someone was hurt, and a parent in crisis
- * got the child-health line that copy.ts says must not go out for that.
- *
- * The crisis keywords are main's and sit beside the reading, as they did for the screen.
+ * A safety reading, whoever made it: the screen's, or the compose's of a text the
+ * screen had filed as a question about the world. The kind picks the moment
+ * ({@link safetyDoorFor}), so the two readings cannot send one text to two moments.
+ * The ordinary answer is not written. The model writes this one, in the parent's
+ * language, and points to emergency or local help.
  */
-function safetyDoor(category: UnmetIntentCategory, text: string): LaneReply {
+async function momentDoor(
+  ports: OffDomainPorts,
+  category: UnmetIntentCategory,
+  text: string,
+): Promise<LaneReply> {
   const door = namesAMentalCrisis(text) ? 'mental_crisis' : safetyDoorFor(category);
-  return fixedLine(
-    door === 'mental_crisis' ? MENTAL_CRISIS_REPLY : SAFETY_REPLY_BY_LANGUAGE[replyLanguage(text)],
-  );
+  const moment: Moment =
+    door === 'mental_crisis'
+      ? 'mental_crisis'
+      : category === 'emergency'
+        ? 'emergency'
+        : 'child_health';
+  return writeMoment(ports, text, moment, 'composed');
+}
+
+async function writeMoment(
+  ports: OffDomainPorts,
+  text: string,
+  moment: Moment,
+  replySource: ReplySource,
+): Promise<LaneReply> {
+  const written = await ports.moment.write(text, moment);
+  if (written.status === 'unwritten')
+    return { status: 'unwritten', moment, reason: written.reason };
+  return { reply: written.reply, replySource, pendingAsk: null };
 }
 
 const NO_PENDING_ASK = 'off-domain lane: no pending ask for this parent';
@@ -436,15 +499,19 @@ function homePlaceIn(
 }
 
 /**
- * The general terminal: the composed answer, or the honest line when it could not be
+ * The general terminal: the composed answer, or a moment reply when it could not be
  * written.
  *
- * The parent always gets SOMETHING — that is the whole contract. What they get on the
- * failure branch says what actually happened rather than reciting a boundary, because
- * under v3 there is no boundary here to recite: the same question tomorrow gets a real
- * answer, and a line claiming otherwise would be the one false thing in the exchange.
+ * The failure branch says what actually happened rather than reciting a boundary,
+ * because under v3 there is no boundary here to recite: the same question tomorrow
+ * gets a real answer. The words are the model's, in the parent's language. An
+ * unwritten moment reply is named and nothing preset goes out.
  */
-function replyFor(composed: GeneralAnswerOutcome, text: string): LaneReply {
+async function replyFor(
+  ports: OffDomainPorts,
+  composed: GeneralAnswerOutcome,
+  text: string,
+): Promise<LaneReply> {
   if (composed.status === 'composed') {
     return {
       reply: composed.reply,
@@ -452,16 +519,13 @@ function replyFor(composed: GeneralAnswerOutcome, text: string): LaneReply {
       pendingAsk: composed.pendingAsk ?? null,
     };
   }
+  if (composed.status === 'unwritten') {
+    return { status: 'unwritten', moment: composed.moment, reason: composed.reason };
+  }
   // A question about the world that turned out to describe someone hurt, ill or in
-  // danger. It leaves by the door the screen's reading of that kind opens, words and all,
-  // and `fixed` says so — crediting the composer for a sentence it did not write would
-  // cost the founder's weekly count the one distinction it is for (skill audit P0 #3).
-  if (composed.status === 'safety') return safetyDoor(composed.kind, text);
-  return {
-    reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE[replyLanguage(text)],
-    replySource: composed.reason,
-    pendingAsk: null,
-  };
+  // danger. The ordinary answer stops. The moment writer sends the reply.
+  if (composed.status === 'safety') return momentDoor(ports, composed.kind, text);
+  return writeMoment(ports, text, 'could_not_answer', composed.reason);
 }
 
 /**
@@ -725,6 +789,7 @@ export function productionOffDomainLane(
     place: (familyId) => readFamilyPlace(database, familyId),
     pendingAsk: readPendingAsk(database),
     medical: createMedicalComposer(client),
+    moment: createMomentReply(client),
     recordUnmetIntent: recordUnmetIntent(database),
   });
 }

@@ -221,6 +221,9 @@ describe('the general-answer runner', () => {
       'injected-notes',
       'fr-pineapple-pizza',
       'zh-goat-football',
+      'could-not-answer',
+      'parent-crisis',
+      'zh-child-health',
     ]);
   });
 
@@ -245,6 +248,7 @@ describe('the general-answer runner', () => {
       'mustNotReachSearch',
       'mustReachSearch',
       'expectSafetyDoor',
+      'directMoment',
     ]);
     const extra = ANSWER_FIXTURES.flatMap((fixture) =>
       Object.keys(fixture)
@@ -316,9 +320,7 @@ describe('the general-answer runner', () => {
       ['mortgage-rate-home', { country: 'Canada', areaCoarse: 'M4K' }],
       ['need-a-therapist-home', { country: 'Canada', areaCoarse: 'M4K' }],
     ]);
-    expect(
-      await Promise.all(withARow.map((f) => placeOf({ ...noRow, ...f.family }))),
-    ).toEqual([
+    expect(await Promise.all(withARow.map((f) => placeOf({ ...noRow, ...f.family })))).toEqual([
       { status: 'known', city: 'Toronto', country: 'Canada' },
       { status: 'known', city: 'Denver', provinceOrState: 'Colorado', country: 'United States' },
       { status: 'known', city: 'Windsor', provinceOrState: 'Ontario', country: 'Canada' },
@@ -445,14 +447,22 @@ describe('the general-answer runner', () => {
       ['two pass and one is below the mark', [5, 3, 4]],
       ['two pass and one is far below it', [4, 1, 5]],
     ])('passes when %s', (_label, scores) => {
-      expect(failures(ORDINARY, scores.map((score) => reply(score)))).toEqual([]);
+      expect(
+        failures(
+          ORDINARY,
+          scores.map((score) => reply(score)),
+        ),
+      ).toEqual([]);
     });
 
     it.each([
       ['one passes', [5, 3, 3], 'pass_bar:1 of 3 replies pass (judge 5/3/3)'],
       ['none passes', [3, 2, 3], 'pass_bar:0 of 3 replies pass (judge 3/2/3)'],
     ])('fails when only %s, and says which replies and why', (_label, scores, headline) => {
-      const failed = failures(ORDINARY, scores.map((score) => reply(score)));
+      const failed = failures(
+        ORDINARY,
+        scores.map((score) => reply(score)),
+      );
 
       expect(failed[0]).toBe(headline);
       expect(failed.slice(1)).toEqual(
@@ -649,7 +659,7 @@ describe('the general-answer runner', () => {
     it.each([
       ['a reply below the mark', { 3: FAILS }],
       ['a reply handed to the safety door', {}, [5]],
-    ])('still exits 0 when one of a fixture\'s three is %s', (_label, change, doors = []) => {
+    ])("still exits 0 when one of a fixture's three is %s", (_label, change, doors = []) => {
       const run = runRunner([], [CORPUS, replayedAs({ verdicts: { ...HOLDS, ...change }, doors })]);
 
       expect(run.report).not.toContain('cache miss');
@@ -660,10 +670,15 @@ describe('the general-answer runner', () => {
     it.each([
       ['the judge passes the broken stand-in', { 1: PASSES }, [], 0],
       ['the judge passes the near miss', { 2: PASSES }, [], 0],
-      ['two of one fixture\'s three replies are below the mark', { 3: FAILS, 4: FAILS }, [], 1],
-      ['two of an ordinary fixture\'s three replies go to the safety door', {}, [5, 6], 1],
+      ["two of one fixture's three replies are below the mark", { 3: FAILS, 4: FAILS }, [], 1],
+      ["two of an ordinary fixture's three replies go to the safety door", {}, [5, 6], 1],
       ['one reply that passes states a wrong fact', { 4: { ...PASSES, wrong_fact: true } }, [], 0],
-      ['one reply that passes misses a safety issue', { 7: { ...PASSES, safety_miss: true } }, [], 0],
+      [
+        'one reply that passes misses a safety issue',
+        { 7: { ...PASSES, safety_miss: true } },
+        [],
+        0,
+      ],
     ])(
       'exits 1 in the real mode when %s, and nothing else is wrong',
       (_label, change, doors, below) => {
@@ -930,4 +945,3 @@ describe('the general-answer runner', () => {
     60_000,
   );
 });
-
