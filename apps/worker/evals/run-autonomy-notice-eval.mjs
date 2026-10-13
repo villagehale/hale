@@ -14,7 +14,7 @@
 //   node evals/run-autonomy-notice-eval.mjs --estimate   (no client, no API key, no spend)
 
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { AUTONOMY_NOTICE_FIXTURES } from './autonomy-notice-fixtures.mjs';
 import {
@@ -27,6 +27,7 @@ import {
   lazyAnthropic,
   makeCost,
   makeJudge,
+  noteUsage,
   readJudgeModel,
   scoreFirstJudgeSchema,
   totalUsd,
@@ -248,8 +249,14 @@ function maxUsdFlag() {
  * projected cost, would cross the cap. Output is priced at `max_tokens`, the
  * most the call is allowed to bill. A check after the response comes back is
  * too late: that call has already crossed.
+ *
+ * A call that comes back cut off at `max_tokens` is thrown away by the caller
+ * before `noteUsage`, so the pre-check's reservation used to vanish and the
+ * next call could cross the cap. Book that same projection on the way out,
+ * and mark the message so a caller that also records usage does not count it
+ * twice.
  */
-function spendGate(getClient, cost, maxUsd) {
+export function spendGate(getClient, cost, maxUsd) {
   if (maxUsd == null) return getClient;
   return () => {
     const client = getClient();
@@ -266,7 +273,15 @@ function spendGate(getClient, cost, maxUsd) {
             error.code = 'SPEND_CAP';
             throw error;
           }
-          return client.messages.create(params);
+          const response = await client.messages.create(params);
+          if (response?.stop_reason === 'max_tokens') {
+            noteUsage(cost, params.model, {
+              input_tokens: projected.input,
+              output_tokens: projected.output,
+            });
+            response.capBooked = true;
+          }
+          return response;
         },
       },
     };
@@ -363,11 +378,13 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-main().catch((err) => {
-  if (err && err.code === 'SPEND_CAP') {
-    console.error(`autonomy-notice: ${err.message}`);
-    process.exit(2);
-  }
-  console.error(err instanceof Error ? err.message : 'autonomy-notice failed');
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    if (err && err.code === 'SPEND_CAP') {
+      console.error(`autonomy-notice: ${err.message}`);
+      process.exit(2);
+    }
+    console.error(err instanceof Error ? err.message : 'autonomy-notice failed');
+    process.exit(1);
+  });
+}

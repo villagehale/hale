@@ -160,6 +160,33 @@ describe('the judge refuses to record a truncated draw', () => {
     );
     rmSync(join(CACHE_DIR, `${key}.json`), { force: true });
   });
+
+  it('does not count a truncated draw again when the cap gate already booked it', async () => {
+    const prefix = `judge-guard-cap-booked-${Math.random().toString(36).slice(2)}`;
+    const cost = makeCost();
+    const judge = makeJudge(
+      model,
+      system,
+      prefix,
+      false,
+      fakeClient({
+        stop_reason: 'max_tokens',
+        capBooked: true,
+        content: [{ type: 'tool_use', name: 'score', input: { score: 5, reason: 'cut' } }],
+        usage: { input_tokens: 10, output_tokens: 440 },
+      }),
+      cost,
+      { toolSchema: scoreFirstJudgeSchema(160), keepTruncatedScore: true },
+    );
+
+    await expect(judge('fixture', payload)).resolves.toMatchObject({ score: 5 });
+    expect(cost.liveCalls).toBe(0);
+    const key = cacheKey(
+      `${prefix}:judge:fixture`,
+      `${model}\n${system}\n${JSON.stringify(payload)}`,
+    );
+    rmSync(join(CACHE_DIR, `${key}.json`), { force: true });
+  });
 });
 
 describe('score-first judge schema', () => {

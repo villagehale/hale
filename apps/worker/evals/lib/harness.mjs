@@ -652,7 +652,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
         `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
       );
     }
-    noteUsage(cost, model, response.usage);
+    if (!response.capBooked) noteUsage(cost, model, response.usage);
     await cachePut(key, { parsed: toolUse.input });
     return toolUse.input;
   }
