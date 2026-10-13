@@ -26,13 +26,14 @@
 //   node apps/worker/evals/run-eval.mjs --cached-only   (CI: replay only, never calls the API)
 
 import { createHash } from 'node:crypto';
-import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
-import { PRICE, liveStructuredCall } from './lib/harness.mjs';
+import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
+import { PRICE, installEvalSpendCap, liveStructuredCall, priceRates } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -66,7 +67,8 @@ async function readLane() {
 async function readAutonomyThreshold() {
   const src = await readFile(ORCHESTRATOR_PATH, 'utf8');
   const m = src.match(/CONFIDENCE_AUTONOMY_THRESHOLD\s*=\s*([\d.]+)/);
-  if (!m) throw new Error(`could not parse CONFIDENCE_AUTONOMY_THRESHOLD from ${ORCHESTRATOR_PATH}`);
+  if (!m)
+    throw new Error(`could not parse CONFIDENCE_AUTONOMY_THRESHOLD from ${ORCHESTRATOR_PATH}`);
   return Number(m[1]);
 }
 
@@ -166,9 +168,7 @@ async function systemPromptFor(basePrompt, fixture) {
 // so stale answers are never silently reused. A present key = no API call.
 
 function cacheKey(model, prompt, userMessage) {
-  return createHash('sha256')
-    .update(`${model}\n${prompt}\n${userMessage}`)
-    .digest('hex');
+  return createHash('sha256').update(`${model}\n${prompt}\n${userMessage}`).digest('hex');
 }
 
 async function cacheGet(key) {
@@ -204,7 +204,10 @@ function makeRealClassifier(lane, basePrompt, cachedOnly) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'classifier',
+    });
     const response = await liveStructuredCall({
       client,
       lane,
@@ -307,6 +310,7 @@ function attributionMatches(fixture, returned) {
 }
 
 async function main() {
+  installEvalSpendCap();
   const arg = process.argv.find((a) => a.startsWith('--classifier='));
   const mode = arg ? arg.split('=')[1] : 'real';
   const includeHoldout = process.argv.includes('--include-holdout');
@@ -404,7 +408,9 @@ async function main() {
 
   console.log('');
   console.log('--- results ---');
-  console.log(`event_type accuracy: ${(accuracy * 100).toFixed(1)}% (${correct}/${typeScoredCount})`);
+  console.log(
+    `event_type accuracy: ${(accuracy * 100).toFixed(1)}% (${correct}/${typeScoredCount})`,
+  );
   if (typeMisses.length) {
     console.log(`type misses (${typeMisses.length}):`);
     for (const m of typeMisses) console.log(`  - ${m.id} (expected ${m.expectedKind})`);

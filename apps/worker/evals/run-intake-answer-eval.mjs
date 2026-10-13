@@ -39,8 +39,9 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { INTAKE_ANSWER_FIXTURES, WATCH_OFFER_ASK } from './intake-answer-fixtures.mjs';
 import {
-  cachedToolCall,
   JUDGE_MIN,
+  cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -141,7 +142,8 @@ function gateFailures(answer, returnLine, fixture, smsEncoding) {
   if (LINK_SHAPE.test(joined)) failures.push('carries_link');
   if (answer.includes('?')) failures.push('answer_carries_question');
   if (!returnLine.endsWith('?')) failures.push('return_asks_nothing');
-  if (returnLine === (fixture.pendingAsk ?? WATCH_OFFER_ASK)) failures.push('return_repeats_the_ask');
+  if (returnLine === (fixture.pendingAsk ?? WATCH_OFFER_ASK))
+    failures.push('return_repeats_the_ask');
   if (APP_POINTER.test(joined)) failures.push('points_at_the_app');
   if (CLAIMED_WORK.test(joined)) failures.push('claimed_work');
   if (HUMANNESS.test(joined) && !DISCLOSES_AI.test(joined)) failures.push('claimed_to_be_human');
@@ -157,7 +159,7 @@ const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text message Hale sends a parent who is part-way',
   'through signing up by SMS. Hale had asked them something (pendingAsk); instead of',
   'answering, they asked something of their own (parentWords). The message has two halves:',
-  'the ANSWER to their question, then a RETURN LINE putting Hale\'s question back to them.',
+  "the ANSWER to their question, then a RETURN LINE putting Hale's question back to them.",
   'Hale saw only their words, its own pending question, and the children they had named -',
   'no calendar, no tools, no live data, no price list, no policy document.',
   'YOU ARE SCORING THE ANSWER. The return line is checked mechanically elsewhere for',
@@ -220,7 +222,8 @@ const MIN_DISTINCT_RETURN_OPENERS = 3;
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('intake-answer');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

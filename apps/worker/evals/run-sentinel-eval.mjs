@@ -43,8 +43,10 @@ import {
   cachePut,
   cachedToolCall,
   evalRunTag,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
+  spendCappedFetch,
   totalUsd,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
@@ -172,11 +174,16 @@ async function evaluateJevTriage(fixture, instructions, cachedOnly) {
   const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
   if (!apiKey) throw new Error('Set AI_GATEWAY_API_KEY, VERCEL_KEY, or JEV_KEY');
   const startedAt = performance.now();
-  const response = await fetch(JEV_ENDPOINT, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-    signal: AbortSignal.timeout(10_000),
+  const response = await spendCappedFetch({
+    tag: 'sentinel-jev',
+    request,
+    send: () =>
+      fetch(JEV_ENDPOINT, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(10_000),
+      }),
   });
   const result = await response.json();
   if (!response.ok) {
@@ -220,7 +227,8 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('sentinel');
   const cost = makeCost();
 
   const triageSkill = await agent.loadSkill(TRIAGE_SKILL_PATH);

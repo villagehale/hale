@@ -79,6 +79,7 @@ import {
   cachePut,
   cachedToolCall,
   evalRunTag,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -1024,7 +1025,8 @@ async function main() {
   if (!Number.isInteger(followupMaxTokens) || followupMaxTokens < 1) {
     throw new Error('--followup-max-tokens must be a positive integer');
   }
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('activity-finder');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

@@ -28,7 +28,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { EXTRACTION_FIXTURES, INTENT_FIXTURES, INTENT_QUESTION } from './intake-fixtures.mjs';
-import { cachedToolCall, evalRunTag, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
+import {
+  cachedToolCall,
+  evalRunTag,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  totalUsd,
+} from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -186,7 +193,8 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('intake');
   const cost = makeCost();
 
   const extractSkill = await agent.loadSkill(EXTRACT_SKILL_PATH);

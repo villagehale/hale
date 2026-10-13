@@ -45,6 +45,7 @@ import { COACH_PLAN_FIXTURES } from './coach-plan-fixtures.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -427,7 +428,8 @@ async function main() {
   if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
     throw new Error('--min-samples must be a positive integer');
   }
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('coach-plan');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

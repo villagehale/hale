@@ -10,6 +10,7 @@ import {
   cachePut,
   evalAnthropicRequest,
   evalRunTag,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   noteLatency,
@@ -135,7 +136,8 @@ async function runOne(agent, name, getClient, cost) {
 
 async function main() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('village-rank');
   const cost = makeCost();
   const results = [];
   for (const name of ['rank-recommendations', 'curate-shortlist']) {

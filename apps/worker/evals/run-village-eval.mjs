@@ -38,12 +38,14 @@
 //   node evals/run-village-eval.mjs --cached-only                         # CI: replay only, never calls the API
 
 import { createHash } from 'node:crypto';
-import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
+import { installEvalSpendCap, priceRates } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -78,15 +80,7 @@ async function readModelIds() {
 // src/agents/routine.ts. The day enum is duplicated here intentionally so a
 // divergence between the prompt's day vocabulary and the code surfaces as drift.
 const ROUTINE_TOOL = 'submit_routine';
-const ROUTINE_DAYS = [
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-  'sunday',
-];
+const ROUTINE_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const ROUTINE_JSON_SCHEMA = {
   type: 'object',
   properties: {
@@ -145,9 +139,7 @@ function routineUserMessageFor(fixture) {
 // stale answer is never silently reused. `tag` separates routine vs judge calls.
 
 function cacheKey(model, prompt, userMessage, tag) {
-  return createHash('sha256')
-    .update(`${model}\n${prompt}\n${userMessage}\n${tag}`)
-    .digest('hex');
+  return createHash('sha256').update(`${model}\n${prompt}\n${userMessage}\n${tag}`).digest('hex');
 }
 
 async function cacheGet(key) {
@@ -179,7 +171,10 @@ function makeRealRoutine(model, prompt, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'village-routine',
+    });
     const response = await client.messages.create({
       model,
       max_tokens: 4096,
@@ -270,13 +265,20 @@ function makeJudge(model, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'village-judge',
+    });
     const response = await client.messages.create({
       model,
       max_tokens: 256,
       system: JUDGE_SYSTEM,
       tools: [
-        { name: JUDGE_TOOL, description: 'Return the stage-fit score.', input_schema: JUDGE_JSON_SCHEMA },
+        {
+          name: JUDGE_TOOL,
+          description: 'Return the stage-fit score.',
+          input_schema: JUDGE_JSON_SCHEMA,
+        },
       ],
       tool_choice: { type: 'tool', name: JUDGE_TOOL },
       messages: [{ role: 'user', content: userMessage }],
@@ -375,10 +377,14 @@ function checkDiscovery(fixture, candidates) {
       failures.push(`candidate '${c.title}' has empty coverageNote`);
     }
     if (c.areaCoarse !== fixture.input.areaCoarse) {
-      failures.push(`candidate '${c.title}' areaCoarse '${c.areaCoarse}' != query '${fixture.input.areaCoarse}'`);
+      failures.push(
+        `candidate '${c.title}' areaCoarse '${c.areaCoarse}' != query '${fixture.input.areaCoarse}'`,
+      );
     }
     if (c.sourceUrl !== undefined) {
-      failures.push(`candidate '${c.title}' leaked a sourceUrl '${c.sourceUrl}' (rule #1: no finer location)`);
+      failures.push(
+        `candidate '${c.title}' leaked a sourceUrl '${c.sourceUrl}' (rule #1: no finer location)`,
+      );
     }
     if (typeof e.allStageFit === 'string' && c.stage !== e.allStageFit) {
       failures.push(`candidate '${c.title}' stage '${c.stage}' != expected '${e.allStageFit}'`);
@@ -403,6 +409,7 @@ function checkDiscovery(fixture, candidates) {
 // --- main -------------------------------------------------------------------
 
 async function main() {
+  installEvalSpendCap();
   const arg = process.argv.find((a) => a.startsWith('--routine='));
   const mode = arg ? arg.split('=')[1] : 'real';
   const cachedOnly = process.argv.includes('--cached-only');
@@ -419,7 +426,9 @@ async function main() {
 
   const cost = { liveCalls: 0, sonnetIn: 0, sonnetOut: 0, haikuIn: 0, haikuOut: 0 };
   const plan =
-    mode === 'broken' ? makeBrokenRoutine() : makeRealRoutine(routineModel, routinePrompt, cachedOnly, cost);
+    mode === 'broken'
+      ? makeBrokenRoutine()
+      : makeRealRoutine(routineModel, routinePrompt, cachedOnly, cost);
   const judge = makeJudge(judgeModel, cachedOnly, cost);
 
   console.log(
@@ -459,7 +468,8 @@ async function main() {
     // on-list routine. Broken mode is a pure deterministic calibration — its
     // invented, off-stage, inflated item already fails, so we never spend a
     // live judge call there.
-    const score = mode === 'broken' || items.length === 0 ? null : (await judge(fixture, parsed.routine)).score;
+    const score =
+      mode === 'broken' || items.length === 0 ? null : (await judge(fixture, parsed.routine)).score;
     const failures = checkRoutine(fixture, parsed, score);
     if (failures.length) {
       failed.push({ id: fixture.id, failures });
@@ -492,7 +502,9 @@ async function main() {
 
   console.log('');
   console.log('--- gate ---');
-  console.log(`fixtures failing checks: ${failed.length}/${routineFixtures.length + discoveryFixtures.length}`);
+  console.log(
+    `fixtures failing checks: ${failed.length}/${routineFixtures.length + discoveryFixtures.length}`,
+  );
   if (expectPass) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

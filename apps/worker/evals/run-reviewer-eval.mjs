@@ -30,11 +30,14 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
 import {
   PRICE,
   evalAnthropicRequest,
   evalSubjectClient,
   evalSubjectRequest,
+  installEvalSpendCap,
+  priceRates,
 } from './lib/harness.mjs';
 import { SMS_CALENDAR_REVIEWER_FIXTURES } from './sms-calendar-reviewer-fixtures.mjs';
 
@@ -81,7 +84,7 @@ const cost = {
 let lazyClient;
 function getClient() {
   lazyClient ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  return lazyClient;
+  return capSdkClient(lazyClient, { rates: priceRates, tag: 'reviewer' });
 }
 
 function makeCachedClient(tag, { anthropicModel, directModel, maxTokens }) {
@@ -217,6 +220,7 @@ function percentile(values, quantile) {
 }
 
 async function main() {
+  installEvalSpendCap();
   const modelArg = process.argv.find((arg) => arg.startsWith('--model='))?.split('=')[1];
   const anthropicModel = process.argv
     .find((arg) => arg.startsWith('--anthropic-model='))

@@ -45,6 +45,7 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -158,7 +159,8 @@ async function main() {
     .find((arg) => arg.startsWith('--anthropic-model='))
     ?.slice('--anthropic-model='.length);
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('reminder-voice');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

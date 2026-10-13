@@ -31,6 +31,7 @@ import { tsImport } from 'tsx/esm/api';
 import { INTAKE_VOICE_FIXTURES, MAX_ACK_CHARS } from './intake-voice-fixtures.mjs';
 import {
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -274,7 +275,8 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('intake-voice');
   const cost = makeCost();
 
   const skill = await agent.loadSkill(SKILL_PATH);

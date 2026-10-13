@@ -25,6 +25,7 @@ import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -135,7 +136,7 @@ const JUDGE_SYSTEM = [
   'about the parent or what they asked - only that the answer is still coming, and which',
   'language to write in. The real answer arrives right after this line.',
   'IMPORTANT: links, digits and times are ALREADY verified mechanically, and sentence count,',
-  'length and punctuation are the writer\'s own. Do not score any of them. Judge only what the',
+  "length and punctuation are the writer's own. Do not score any of them. Judge only what the",
   'message MEANS and whether it sounds like Hale.',
   'You are given the message, the language and watchFor. Score 1-5.',
   'A 5 says plainly, in the first person and in the requested language, that Hale is on it',
@@ -154,7 +155,8 @@ const BROKEN_LINE =
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('holding-line');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
