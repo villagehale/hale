@@ -2,8 +2,8 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, desc, eq, inArray, lte } from 'drizzle-orm';
 import { replyLanguage } from '~/lib/channel/language';
-import { isUndefinedTable } from '~/lib/channel/linq/roster';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { isUndefinedTable } from '~/lib/channel/linq/roster';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import {
   type FamilyFacts,
@@ -424,7 +424,10 @@ async function standingAsk(
  * all and the composer gets the reason by name, which is the turn it had before a place
  * existed: it asks which city.
  */
-function homePlaceIn(thread: InboundThread, read: () => Promise<FamilyPlace>): Promise<FamilyPlace> {
+function homePlaceIn(
+  thread: InboundThread,
+  read: () => Promise<FamilyPlace>,
+): Promise<FamilyPlace> {
   if (thread.inGroup === false) return read();
   return Promise.resolve({
     status: 'unknown',
@@ -547,8 +550,10 @@ export function readPendingAsk(database: Database) {
  * while its reply is Hale's last word to that parent ({@link readPendingAsk}), and this
  * reply is a newer one. So the answer to it, or anything else Hale answers with, takes
  * it out here. A newer word from a sender that is not the router (a reminder, a nudge)
- * closes it for the reader too, and the hourly retention sweep deletes those, and any
- * question a year old (rights/message-retention.ts). Then the question THIS reply left
+ * closes it for the reader too, and the hourly retention sweep deletes those once the
+ * word is older than the turn deadline, so a holding line this turn has not read yet
+ * is left for that read. A question a year old is deleted without waiting
+ * (rights/message-retention.ts). Then the question THIS reply left
  * open, if it left one, is kept beside its row.
  *
  * A QUESTION LONGER THAN THE TABLE HOLDS IS NOT KEPT (channel-pending-asks.ts names the

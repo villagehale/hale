@@ -6,6 +6,7 @@ import { runDeletionSweep } from './delete';
 import {
   INTAKE_CONTENT_REDACTED,
   type MessageRetentionSummary,
+  PENDING_ASK_READ_LEASE_MS,
   sweepMessageRetention,
 } from './message-retention';
 
@@ -664,7 +665,8 @@ describe('sweepMessageRetention', () => {
   /**
    * A holding line is not an answer, so the router leaves the question open when it
    * sends one. It is still a later word to that parent, and the reader no longer treats
-   * the question as the last thing Hale sent. The hourly sweep deletes the row.
+   * the question as the last thing Hale sent once the turn that sent it is over. Ten
+   * minutes is past the turn deadline, so the hourly sweep deletes the row.
    */
   it('deletes a question once a holding line is the later word to that parent', async () => {
     const MINUTE_MS = 60 * 1000;
@@ -714,6 +716,137 @@ describe('sweepMessageRetention', () => {
         .select({ id: schema.channelPendingAsks.channelMessageId })
         .from(schema.channelPendingAsks),
     ).toEqual([{ id: stillOpen.channelMessageId }]);
+  });
+
+  /**
+   * The sweep can land while a turn is still working. The holding line goes out before
+   * the turn reads the question, and a word inside the turn deadline is that line.
+   */
+  it('keeps a question whose later word is still inside the turn deadline', async () => {
+    const secondsAgo = (seconds: number) => new Date(NOW.getTime() - seconds * 1000);
+    const to = await seedFamily();
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        ...to,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        status: 'sent',
+        createdAt: secondsAgo(30),
+      })
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.channelPendingAsks).values({
+      channelMessageId: row?.id as string,
+      familyId: to.familyId,
+      question: 'hows the weather tomorrow',
+      missing: 'which city',
+    });
+    await db.database.insert(schema.channelMessages).values({
+      ...to,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      status: 'sent',
+      templateKey: 'holding_line',
+      createdAt: secondsAgo(10),
+    });
+
+    const summary = await sweepMessageRetention(db.database, NOW, {
+      removeObject: async () => {},
+    });
+
+    expect(summary).toEqual({ ...ZEROS, pendingAsksDeleted: 0 });
+    expect(
+      await db.database
+        .select({ id: schema.channelPendingAsks.channelMessageId })
+        .from(schema.channelPendingAsks),
+    ).toEqual([{ id: row?.id }]);
+  });
+
+  it('deletes a question once the later word is older than the turn deadline', async () => {
+    const to = await seedFamily();
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        ...to,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        status: 'sent',
+        createdAt: new Date(NOW.getTime() - PENDING_ASK_READ_LEASE_MS - 60_000),
+      })
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.channelPendingAsks).values({
+      channelMessageId: row?.id as string,
+      familyId: to.familyId,
+      question: 'hows the weather tomorrow',
+      missing: 'which city',
+    });
+    await db.database.insert(schema.channelMessages).values({
+      ...to,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      status: 'sent',
+      templateKey: 'holding_line',
+      createdAt: new Date(NOW.getTime() - PENDING_ASK_READ_LEASE_MS - 1),
+    });
+
+    const summary = await sweepMessageRetention(db.database, NOW, {
+      removeObject: async () => {},
+    });
+
+    expect(summary).toEqual({ ...ZEROS, pendingAsksDeleted: 1 });
+    expect(
+      await db.database
+        .select({ id: schema.channelPendingAsks.channelMessageId })
+        .from(schema.channelPendingAsks),
+    ).toEqual([]);
+  });
+
+  /** A year-old reply is the retention promise. A holding line sent a second ago does
+   * not keep the question. */
+  it('deletes a year-old question even when a holding line went out a second ago', async () => {
+    const to = await seedFamily();
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        ...to,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        status: 'sent',
+        createdAt: ago(366),
+      })
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.channelPendingAsks).values({
+      channelMessageId: row?.id as string,
+      familyId: to.familyId,
+      question: 'hows the weather tomorrow',
+      missing: 'which city',
+      createdAt: ago(1),
+    });
+    await db.database.insert(schema.channelMessages).values({
+      ...to,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      status: 'sent',
+      templateKey: 'holding_line',
+      createdAt: new Date(NOW.getTime() - 1000),
+    });
+
+    const summary = await sweepMessageRetention(db.database, NOW, {
+      removeObject: async () => {},
+    });
+
+    expect(summary).toEqual({ ...ZEROS, pendingAsksDeleted: 1 });
+    expect(
+      await db.database
+        .select({ id: schema.channelPendingAsks.channelMessageId })
+        .from(schema.channelPendingAsks),
+    ).toEqual([]);
   });
 
   /** Erasure is the family cascade (runDeletionSweep deletes the family row). The
