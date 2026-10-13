@@ -4,23 +4,23 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 
 /**
  * The turn-on, re-arm, and on-its-own notices. The model writes the text. This
- * module is the tool contract and the checks on what comes back: empty, a time or
- * a link the context did not give, or a text too long to be one message. Tone is
- * the eval judge's grade. Nothing here matches a phrase.
+ * module is the tool contract and the checks on what comes back: empty, or a time
+ * or a link the context did not give. Tone, and which language, are the eval
+ * judge's grade. Nothing here matches a phrase or cuts a text for length.
  */
 
 export const AUTONOMY_NOTICE_TOOL = 'autonomy_notice';
 export const AUTONOMY_NOTICE_MAX_TOKENS = 400;
-
-/** One text. The same bound the proactive writer uses for a message a parent reads. */
-export const AUTONOMY_NOTICE_TEXT_CHARS = 640;
 
 export type AutonomyNoticeOccasion = 'armed' | 'rearmed' | 'acted';
 
 export interface AutonomyNoticeContext {
   occasion: AutonomyNoticeOccasion;
   actionType: string;
-  language: string;
+  /** `users.locale` when it is set. A hint only — never a language this code picked. */
+  localeHint: string | null;
+  /** The parent's own recent inbound texts, oldest first. */
+  recentInbound: string[];
   detail: string | null;
 }
 
@@ -37,12 +37,7 @@ const textSchema = z
   .object({ message: z.string().refine((value) => value.trim().length > 0) })
   .strict();
 
-export type AutonomyNoticeSkip =
-  | 'no_client'
-  | 'model_failed'
-  | 'unparsed'
-  | 'invented'
-  | 'over_length';
+export type AutonomyNoticeSkip = 'no_client' | 'model_failed' | 'unparsed' | 'invented';
 
 export type AutonomyNoticeText = { message: string } | { skipped: AutonomyNoticeSkip };
 
@@ -51,14 +46,15 @@ export function autonomyNoticeContext(input: AutonomyNoticeContext): string {
   return JSON.stringify({
     occasion: input.occasion,
     actionType: input.actionType,
-    language: input.language,
+    localeHint: input.localeHint,
+    recentInbound: input.recentInbound,
     ...(input.detail ? { detail: input.detail } : {}),
   });
 }
 
 /**
- * The tool input, checked: one non-empty message, no time or link the context did
- * not already contain, and no longer than one text.
+ * The tool input, checked: one non-empty message, and no time or link the context
+ * did not already contain.
  */
 export function readAutonomyNotice(
   value: unknown,
@@ -67,10 +63,12 @@ export function readAutonomyNotice(
   const parsed = textSchema.safeParse(value);
   if (!parsed.success) return { skipped: 'unparsed' };
   const message = parsed.data.message.trim();
-  const slots = [context.actionType, context.language, context.detail ?? ''].filter(
-    (slot) => slot.length > 0,
-  );
+  const slots = [
+    context.actionType,
+    context.localeHint ?? '',
+    context.detail ?? '',
+    ...context.recentInbound,
+  ].filter((slot) => slot.length > 0);
   if (findInventedFacts(message, slots).length > 0) return { skipped: 'invented' };
-  if (message.length > AUTONOMY_NOTICE_TEXT_CHARS) return { skipped: 'over_length' };
   return { message };
 }

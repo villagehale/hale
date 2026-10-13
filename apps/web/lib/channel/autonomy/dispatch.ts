@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { autonomyActedDedupeKey, autonomyArmedDedupeKey } from '@hale/worker/memory-writer';
-import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import {
   MAX_REDRIVE_PER_RUN,
   REDRIVE_MAX_AGE_MS,
@@ -10,6 +10,7 @@ import {
 import {
   type AutonomyNoticeOutcome,
   type AutonomyNoticePorts,
+  autonomousLaneOn,
   tellParentHaleActed,
   tellParentKindArmed,
 } from './notice';
@@ -19,9 +20,11 @@ import {
  *
  * The obligation is the audit row (the grant, or the autonomous execution), not the
  * suppression: a quiet-hours hold and a crash before the send are both still owed.
+ * A turn-on text is owed for as long as the grant is live and undelivered. An
+ * on-its-own notice older than the redrive window is counted and not sent.
  * One parent hears at most one of these per pass, and a turn-on text goes first.
  * The morning pass only sends inside the re-drive hour; the drain pass tries now
- * and the gate holds quiet hours.
+ * and the gate holds quiet hours. Nothing sends while the execute lane is off.
  */
 
 interface OpenArmed {
@@ -54,6 +57,10 @@ export interface AutonomyNoticeDispatchResult {
   composeSkipped: number;
   sendFailed: number;
   noSendTarget: number;
+  /** Open notices left unsent because the execute lane is not exactly `true`. */
+  laneOff: number;
+  /** On-its-own notices older than the redrive window, still unsent, and counted. */
+  agedOut: number;
 }
 
 export function emptyAutonomyNoticeDispatch(): AutonomyNoticeDispatchResult {
@@ -69,12 +76,15 @@ export function emptyAutonomyNoticeDispatch(): AutonomyNoticeDispatchResult {
     composeSkipped: 0,
     sendFailed: 0,
     noSendTarget: 0,
+    laneOff: 0,
+    agedOut: 0,
   };
 }
 
 function countOutcome(result: AutonomyNoticeDispatchResult, outcome: AutonomyNoticeOutcome): void {
   if (outcome === 'sent') result.sent += 1;
   else if (outcome === 'already_sent') result.alreadySent += 1;
+  else if (outcome === 'lane_off') result.laneOff += 1;
   else if (outcome === 'dark') result.dark += 1;
   else if (outcome === 'no_send_target') result.noSendTarget += 1;
   else if (outcome === 'send_failed') result.sendFailed += 1;
@@ -96,49 +106,14 @@ export async function selectOpenAutonomyNotices(
   database: Database,
   now: Date,
   familyId?: string,
-): Promise<OpenNotice[]> {
+): Promise<{ notices: OpenNotice[]; agedOut: number }> {
+  const armed = await selectLiveArmed(database, familyId);
   const since = new Date(now.getTime() - REDRIVE_MAX_AGE_MS);
-  const grants = await database
-    .select({
-      familyId: schema.auditLog.familyId,
-      parentUserId: schema.auditLog.actor,
-      consentRecordId: schema.auditLog.targetId,
-      after: schema.auditLog.after,
-    })
-    .from(schema.auditLog)
-    .where(
-      and(
-        eq(schema.auditLog.actionTaken, 'autonomous_action_class.granted'),
-        eq(schema.auditLog.targetTable, 'consent_records'),
-        isNotNull(schema.auditLog.targetId),
-        gte(schema.auditLog.occurredAt, since),
-        familyId ? eq(schema.auditLog.familyId, familyId) : undefined,
-      ),
-    )
-    .orderBy(asc(schema.auditLog.occurredAt));
-
-  const armed: OpenArmed[] = [];
-  for (const row of grants) {
-    if (!row.consentRecordId) continue;
-    const actionType =
-      row.after && typeof row.after === 'object' && 'consentScope' in row.after
-        ? String((row.after as { consentScope?: unknown }).consentScope ?? '')
-        : '';
-    if (!actionType) continue;
-    armed.push({
-      kind: 'armed',
-      familyId: row.familyId,
-      parentUserId: row.parentUserId,
-      consentRecordId: row.consentRecordId,
-      actionType,
-    });
-  }
-
   const executions = await database
     .select({
       familyId: schema.auditLog.familyId,
       actionId: schema.auditLog.targetId,
-      after: schema.auditLog.after,
+      occurredAt: schema.auditLog.occurredAt,
     })
     .from(schema.auditLog)
     .where(
@@ -146,39 +121,120 @@ export async function selectOpenAutonomyNotices(
         eq(schema.auditLog.actionTaken, 'action.executed'),
         eq(schema.auditLog.targetTable, 'actions'),
         isNotNull(schema.auditLog.targetId),
-        gte(schema.auditLog.occurredAt, since),
         sql`${schema.auditLog.after} -> 'decision' ->> 'source' = 'autonomous'`,
         familyId ? eq(schema.auditLog.familyId, familyId) : undefined,
       ),
     )
     .orderBy(asc(schema.auditLog.occurredAt));
 
-  const acted: OpenActed[] = [];
+  const actedRows: Array<OpenActed & { occurredAt: Date }> = [];
   for (const row of executions) {
     if (!row.actionId) continue;
     const actionType = await actionTypeOf(database, row.actionId);
     if (!actionType) continue;
     const parentUserId = await recipientForActed(database, row.familyId, actionType);
     if (!parentUserId) continue;
-    acted.push({
+    actedRows.push({
       kind: 'acted',
       familyId: row.familyId,
       parentUserId,
       actionId: row.actionId,
       actionType,
+      occurredAt: row.occurredAt,
     });
   }
 
   const keys = [
     ...armed.map((row) => autonomyArmedDedupeKey(row.consentRecordId)),
-    ...acted.map((row) => autonomyActedDedupeKey(row.actionId)),
+    ...actedRows.map((row) => autonomyActedDedupeKey(row.actionId)),
   ];
   const claimed = await claimedKeys(database, keys);
   const openArmed = armed.filter(
     (row) => !claimed.has(autonomyArmedDedupeKey(row.consentRecordId)),
   );
-  const openActed = acted.filter((row) => !claimed.has(autonomyActedDedupeKey(row.actionId)));
-  return [...openArmed, ...openActed];
+  const openActed: OpenActed[] = [];
+  let agedOut = 0;
+  for (const row of actedRows) {
+    if (claimed.has(autonomyActedDedupeKey(row.actionId))) continue;
+    if (row.occurredAt.getTime() < since.getTime()) {
+      agedOut += 1;
+      continue;
+    }
+    openActed.push({
+      kind: 'acted',
+      familyId: row.familyId,
+      parentUserId: row.parentUserId,
+      actionId: row.actionId,
+      actionType: row.actionType,
+    });
+  }
+  return { notices: [...openArmed, ...openActed], agedOut };
+}
+
+/**
+ * Live grants, one per parent per kind. Newest consent row first. A switch-off
+ * ends every grant before it. No age limit: a text that was never delivered is
+ * still owed, including one written while the lane was off.
+ */
+async function selectLiveArmed(database: Database, familyId?: string): Promise<OpenArmed[]> {
+  const rows = await database
+    .select({
+      id: schema.consentRecords.id,
+      familyId: schema.consentRecords.familyId,
+      userId: schema.consentRecords.userId,
+      scope: schema.consentRecords.consentScope,
+      granted: schema.consentRecords.granted,
+      revokedAt: schema.consentRecords.revokedAt,
+      grantedAt: schema.consentRecords.grantedAt,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.consentType, 'autonomous_action_class'),
+        familyId ? eq(schema.consentRecords.familyId, familyId) : undefined,
+      ),
+    )
+    .orderBy(
+      desc(schema.consentRecords.grantedAt),
+      asc(schema.consentRecords.granted),
+      desc(schema.consentRecords.id),
+    );
+
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = `${row.familyId}:${row.scope ?? ''}`;
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  }
+
+  const armed: Array<OpenArmed & { grantedAt: Date }> = [];
+  for (const list of groups.values()) {
+    const decided = new Set<string>();
+    for (const row of list) {
+      if (!row.granted) break;
+      if (!row.scope) continue;
+      if (decided.has(row.userId)) continue;
+      decided.add(row.userId);
+      if (row.revokedAt !== null) continue;
+      armed.push({
+        kind: 'armed',
+        familyId: row.familyId,
+        parentUserId: row.userId,
+        consentRecordId: row.id,
+        actionType: row.scope,
+        grantedAt: row.grantedAt,
+      });
+    }
+  }
+  armed.sort((a, b) => a.grantedAt.getTime() - b.grantedAt.getTime());
+  return armed.map((row) => ({
+    kind: row.kind,
+    familyId: row.familyId,
+    parentUserId: row.parentUserId,
+    consentRecordId: row.consentRecordId,
+    actionType: row.actionType,
+  }));
 }
 
 async function actionTypeOf(database: Database, actionId: string): Promise<string | null> {
@@ -232,8 +288,26 @@ export async function dispatchAutonomyNotices(
   ports: AutonomyNoticePorts,
 ): Promise<AutonomyNoticeDispatchResult> {
   const result = emptyAutonomyNoticeDispatch();
-  const open = await selectOpenAutonomyNotices(database, input.now, input.familyId);
+  const selected = await selectOpenAutonomyNotices(database, input.now, input.familyId);
+  const open = selected.notices;
   result.open = open.length;
+  result.agedOut = selected.agedOut;
+  if (selected.agedOut > 0) {
+    console.info(
+      { agedOut: selected.agedOut, familyId: input.familyId ?? null },
+      'autonomy notice: on-its-own texts older than 7 days were left unsent',
+    );
+  }
+  if (!autonomousLaneOn()) {
+    result.laneOff = open.length;
+    if (open.length > 0) {
+      console.info(
+        { open: open.length, familyId: input.familyId ?? null },
+        'autonomy notice: lane is off, texts stay owed',
+      );
+    }
+    return result;
+  }
 
   const due: OpenNotice[] = [];
   const heard = new Set<string>();

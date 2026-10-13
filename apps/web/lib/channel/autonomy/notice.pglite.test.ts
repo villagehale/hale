@@ -41,6 +41,7 @@ afterAll(async () => {
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', 'true');
 });
 
 afterEach(async () => {
@@ -314,5 +315,163 @@ describe('telling a parent a kind turned on', () => {
     expect(again.open).toBe(0);
     expect(again.sent).toBe(0);
     expect(transport.bodies()).toEqual([`model acted ${households}`, `model armed ${households}`]);
+  });
+
+  it('sends nothing while the lane is unset, then sends when it is exactly true', async () => {
+    vi.unstubAllEnvs();
+    vi.stubEnv('F14_ENABLED', 'true');
+    expect(process.env.AUTONOMOUS_EXECUTE_ENABLED).not.toBe('true');
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'send_email');
+    const text = `model arm ${households}`;
+    const { sendPorts, seen, transport } = ports(async () => ({ message: text }));
+
+    const held = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(held.laneOff).toBe(1);
+    expect(held.sent).toBe(0);
+    expect(seen).toEqual([]);
+
+    vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', 'true ');
+    const trimmed = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(trimmed.laneOff).toBe(1);
+    expect(trimmed.sent).toBe(0);
+    expect(seen).toEqual([]);
+
+    const claimed = await db.database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, parent.familyId));
+    expect(claimed).toEqual([]);
+
+    vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', 'true');
+    const sent = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(sent.sent).toBe(1);
+    expect(sent.laneOff).toBe(0);
+    expect(transport.bodies()).toEqual([text]);
+  });
+
+  it('gives the model the parent’s own texts and the stored locale, and picks no language', async () => {
+    const parent = await seedParent();
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'fr' })
+      .where(eq(schema.users.id, parent.parentUserId));
+    await db.database.insert(schema.channelMessages).values([
+      {
+        familyId: parent.familyId,
+        parentUserId: parent.parentUserId,
+        channel: 'sms',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        body: 'premier message',
+        createdAt: new Date('2026-09-01T12:00:00.000Z'),
+      },
+      {
+        familyId: parent.familyId,
+        parentUserId: parent.parentUserId,
+        channel: 'sms',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        body: '第二个',
+        createdAt: new Date('2026-09-02T12:00:00.000Z'),
+      },
+    ]);
+    const consentRecordId = await grant(parent.familyId, parent.parentUserId, 'send_email');
+    const { sendPorts, seen } = ports(async () => ({ message: `model arm ${households}` }));
+
+    await tellParentKindArmed(
+      db.database,
+      { ...parent, consentRecordId, actionType: 'send_email', now: MORNING },
+      sendPorts,
+    );
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.localeHint).toBe('fr');
+    expect(seen[0]?.recentInbound).toEqual(['premier message', '第二个']);
+    expect(seen[0]).not.toHaveProperty('language');
+  });
+
+  it('still owes a turn-on text that is older than seven days', async () => {
+    const parent = await seedParent();
+    const consentRecordId = await grant(
+      parent.familyId,
+      parent.parentUserId,
+      'send_email',
+      new Date('2026-08-01T12:00:00.000Z'),
+    );
+    const { sendPorts, seen } = ports(async () => ({ message: `model arm ${households}` }));
+
+    const dispatched = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(dispatched.sent).toBe(1);
+    expect(dispatched.agedOut).toBe(0);
+    expect(seen.map((row) => row.occasion)).toEqual(['armed']);
+    const claimed = await db.database
+      .select({ dedupeKey: schema.channelMessages.dedupeKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.dedupeKey, `autonomy_armed:${consentRecordId}`));
+    expect(claimed).toHaveLength(1);
+  });
+
+  it('counts an on-its-own notice older than seven days and does not send it', async () => {
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'send_email');
+    const [event] = await db.database
+      .insert(schema.events)
+      .values({
+        familyId: parent.familyId,
+        source: 'test',
+        eventType: 'signal.test',
+        dedupHash: `aged-${households}`,
+        status: 'actioned',
+      })
+      .returning({ id: schema.events.id });
+    const [action] = await db.database
+      .insert(schema.actions)
+      .values({
+        eventId: event?.id as string,
+        familyId: parent.familyId,
+        actionType: 'send_email',
+        payload: {},
+      })
+      .returning({ id: schema.actions.id });
+    await db.database.insert(schema.auditLog).values({
+      familyId: parent.familyId,
+      actor: 'system',
+      actionTaken: 'action.executed',
+      targetTable: 'actions',
+      targetId: action?.id as string,
+      occurredAt: new Date(MORNING.getTime() - 8 * 24 * 60 * 60 * 1000),
+      after: { decision: { source: 'autonomous', reason: 'the kind was on' } },
+    });
+    const { sendPorts, seen } = ports(async () => ({ message: `model acted ${households}` }));
+
+    const dispatched = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(dispatched.agedOut).toBe(1);
+    expect(seen.map((row) => row.occasion)).toEqual(['armed']);
+    expect(dispatched.sent).toBe(1);
   });
 });

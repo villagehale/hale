@@ -32,9 +32,11 @@ const TEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'autonomy', 'n
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text message Hale, a family planner that lives in',
   "the parent's messages, sends. You are given `context` — the occasion (`armed`, `rearmed`,",
-  'or `acted`), the `actionType` token, and the `language` — and the `text`. Score 1-5.',
+  'or `acted`), the `actionType` token, `recentInbound` (the parent’s own texts), and',
+  '`localeHint` — and the `text`. Score 1-5.',
   'Write your argument first, quoting the text, and only then the score.',
-  'A 5 is one text in that language, in the first person, that matches the occasion:',
+  'A 5 is one text in the language of `recentInbound` when those texts show one, otherwise',
+  'the `localeHint`, and not a language the context never gave. It is in the first person and matches the occasion:',
   'armed or rearmed says this kind will be handled without asking from now on; acted says',
   'it was just done without asking. It says the parent can tell Hale to stop anytime. It',
   'asks for at most one thing. It reads like a friend who is also a parent texting: chill,',

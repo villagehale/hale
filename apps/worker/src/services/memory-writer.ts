@@ -1,13 +1,13 @@
-import { type Database, schema } from '@hale/db';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { schema, type Database } from '@hale/db';
 import type {
-  ActionType,
-  ClassifierSuggestion,
   EventType,
-  FamilyStage,
+  ActionType,
   ReviewerVerdict,
+  ClassifierSuggestion,
+  FamilyStage,
 } from '@hale/types';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
@@ -213,10 +213,7 @@ export async function recordEvent(
     if (!existingId) {
       throw new Error('event conflict but no existing row found — investigate');
     }
-    logger.debug(
-      { familyId: input.familyId, eventId: existingId },
-      'memory: duplicate event ignored',
-    );
+    logger.debug({ familyId: input.familyId, eventId: existingId }, 'memory: duplicate event ignored');
     // The classifier still ran (and was billed) even though the event is a
     // re-delivery; record its standalone run so cost accounting stays honest.
     await recordAgentRun(
@@ -233,23 +230,26 @@ export async function recordEvent(
   const eventId = insertedRow.id;
   logger.debug({ familyId: input.familyId, eventId }, 'memory: event recorded');
 
-  await recordTransition(async (tx) => {
-    await recordAgentRun(
-      { familyId: input.familyId, eventId, metrics: input.classifierMetrics },
-      tx,
-    );
-    return {
-      value: undefined,
-      audit: {
-        familyId: input.familyId,
-        actor: 'system',
-        actionTaken: 'event.classified',
-        targetTable: 'events',
-        targetId: eventId,
-        after: { eventType: input.eventType, confidence: input.classifierConfidence },
-      },
-    };
-  }, database);
+  await recordTransition(
+    async (tx) => {
+      await recordAgentRun(
+        { familyId: input.familyId, eventId, metrics: input.classifierMetrics },
+        tx,
+      );
+      return {
+        value: undefined,
+        audit: {
+          familyId: input.familyId,
+          actor: 'system',
+          actionTaken: 'event.classified',
+          targetTable: 'events',
+          targetId: eventId,
+          after: { eventType: input.eventType, confidence: input.classifierConfidence },
+        },
+      };
+    },
+    database,
+  );
 
   return { eventId, duplicate: false };
 }
@@ -387,7 +387,8 @@ export async function recordReviewerVerdict(
           ok: r.ok,
           result: r.result,
         })),
-        userVisibleState: input.verdict.kind === 'approve' ? 'drafted_for_approval' : 'needs_human',
+        userVisibleState:
+          input.verdict.kind === 'approve' ? 'drafted_for_approval' : 'needs_human',
       })
       .where(eq(schema.actions.id, input.actionId));
 
@@ -452,7 +453,10 @@ export async function recordExecution(
  * previously returned silently. Updates the event's status and writes the audit
  * row so PIPEDA right-to-access shows why nothing happened (hard rule #6).
  */
-export async function recordDrop(input: RecordDropInput, database: Database = db()): Promise<void> {
+export async function recordDrop(
+  input: RecordDropInput,
+  database: Database = db(),
+): Promise<void> {
   const actionTaken = `event.dropped.${input.reason}` as const;
   // unknown_action_type is an automated-handling failure; low_confidence and
   // needs_human are routed onward to the human queue. Both are existing

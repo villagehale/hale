@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { autonomyActedDedupeKey, autonomyArmedDedupeKey } from '@hale/worker/memory-writer';
-import { and, eq, lt, ne } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, lt, ne } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
@@ -36,10 +36,16 @@ export type AutonomyNoticeOutcome =
   | 'sent'
   | 'dark'
   | 'already_sent'
+  | 'lane_off'
   | 'no_send_target'
   | 'send_failed'
   | `compose_skipped:${AutonomyNoticeSkip}`
   | `gate_refused:${ProactiveHoldReason}`;
+
+/** The same brake as the orchestrator: exact `=== 'true'`, no trim. */
+export function autonomousLaneOn(): boolean {
+  return process.env.AUTONOMOUS_EXECUTE_ENABLED === 'true';
+}
 
 export interface AutonomyNoticePorts {
   gate(request: ProactiveSendRequest): Promise<ProactiveSendVerdict>;
@@ -58,14 +64,43 @@ export function autonomyNoticeReaders(
   };
 }
 
-async function parentLanguage(database: Database, userId: string): Promise<string> {
+/** How many of the parent's own inbound texts the writer sees. Oldest first. */
+const RECENT_INBOUND = 5;
+
+/**
+ * What the writer may use to pick a language. `localeHint` is the stored locale
+ * and nothing else — a blank column is null, never a language this code chose.
+ * `recentInbound` is the parent's own words.
+ */
+async function parentVoice(
+  database: Database,
+  userId: string,
+): Promise<{ localeHint: string | null; recentInbound: string[] }> {
   const rows = await database
     .select({ locale: schema.users.locale })
     .from(schema.users)
     .where(eq(schema.users.id, userId))
     .limit(1);
-  const locale = rows[0]?.locale?.trim();
-  return locale && locale.length > 0 ? locale : 'en';
+  const locale = rows[0]?.locale?.trim() ?? '';
+  const inbound = await database
+    .select({ body: schema.channelMessages.body })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, userId),
+        eq(schema.channelMessages.direction, 'in'),
+        isNotNull(schema.channelMessages.body),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(RECENT_INBOUND);
+  const recentInbound = inbound
+    .flatMap((row) => {
+      const body = row.body?.trim() ?? '';
+      return body.length > 0 ? [body] : [];
+    })
+    .reverse();
+  return { localeHint: locale.length > 0 ? locale : null, recentInbound };
 }
 
 async function occasionForGrant(
@@ -124,6 +159,13 @@ async function sendAutonomyNotice(
   ports: AutonomyNoticePorts,
 ): Promise<AutonomyNoticeOutcome> {
   const { familyId, parentUserId, now } = input;
+  if (!autonomousLaneOn()) {
+    console.info(
+      { familyId, kind: input.kind },
+      'autonomy notice: lane is off, text stays owed',
+    );
+    return 'lane_off';
+  }
   if (!f14EnabledFor(familyId)) {
     console.info({ familyId }, 'autonomy notice: household is dark, nothing sent');
     return 'dark';
@@ -232,7 +274,7 @@ async function sendAutonomyNotice(
     after: {
       occasion: input.context.occasion,
       actionType: input.actionType,
-      language: input.context.language,
+      localeHint: input.context.localeHint,
     },
   });
   return 'sent';
@@ -250,7 +292,7 @@ export async function tellParentKindArmed(
   ports: AutonomyNoticePorts,
 ): Promise<AutonomyNoticeOutcome> {
   const occasion = await occasionForGrant(database, input);
-  const language = await parentLanguage(database, input.parentUserId);
+  const voice = await parentVoice(database, input.parentUserId);
   return sendAutonomyNotice(
     database,
     {
@@ -260,7 +302,7 @@ export async function tellParentKindArmed(
       kind: 'autonomy_armed',
       dedupeKey: autonomyArmedDedupeKey(input.consentRecordId),
       templateKey: AUTONOMY_ARMED_TEMPLATE_KEY,
-      context: { occasion, actionType: input.actionType, language, detail: null },
+      context: { occasion, actionType: input.actionType, ...voice, detail: null },
       auditVerb: 'autonomy_armed_notice_sent',
       now: input.now,
     },
@@ -279,7 +321,7 @@ export async function tellParentHaleActed(
   },
   ports: AutonomyNoticePorts,
 ): Promise<AutonomyNoticeOutcome> {
-  const language = await parentLanguage(database, input.parentUserId);
+  const voice = await parentVoice(database, input.parentUserId);
   return sendAutonomyNotice(
     database,
     {
@@ -289,7 +331,7 @@ export async function tellParentHaleActed(
       kind: 'autonomy_acted',
       dedupeKey: autonomyActedDedupeKey(input.actionId),
       templateKey: AUTONOMY_ACTED_TEMPLATE_KEY,
-      context: { occasion: 'acted', actionType: input.actionType, language, detail: null },
+      context: { occasion: 'acted', actionType: input.actionType, ...voice, detail: null },
       auditVerb: 'autonomy_acted_notice_sent',
       now: input.now,
     },

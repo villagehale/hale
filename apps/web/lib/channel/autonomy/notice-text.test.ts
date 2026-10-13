@@ -4,7 +4,8 @@ import { readAutonomyNotice } from './notice-text';
 const context = {
   occasion: 'armed' as const,
   actionType: 'send_email',
-  language: 'en',
+  localeHint: null,
+  recentInbound: [],
   detail: null,
 };
 
@@ -27,9 +28,8 @@ describe('readAutonomyNotice', () => {
     expect(readAutonomyNotice({ message: 'at 9:30' }, context)).toEqual({ skipped: 'invented' });
   });
 
-  it('names a text longer than one message', () => {
-    expect(readAutonomyNotice({ message: 'a'.repeat(641) }, context)).toEqual({
-      skipped: 'over_length',
-    });
+  it('keeps a long message', () => {
+    const message = 'a'.repeat(2000);
+    expect(readAutonomyNotice({ message }, context)).toEqual({ message });
   });
 });
