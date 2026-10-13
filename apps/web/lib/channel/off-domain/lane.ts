@@ -525,12 +525,15 @@ export function readPendingAsk(database: Database) {
 }
 
 /**
- * What a reply Hale just sent a parent does to the questions it has left open for them,
- * which is the production write behind a pending ask (migration 0167).
+ * What an answer Hale just sent a parent does to the questions it has left open for them,
+ * which is the production write behind a pending ask (migration 0167). The router calls
+ * it for a turn's ANSWER and for nothing else it sends: the holding line goes out while
+ * the turn is still reading, and would close the question the turn is about to read
+ * (router/route.ts `openAsks`).
  *
  * EVERY EARLIER QUESTION IS CLOSED, AND CLOSED MEANS DELETED. A question is open only
  * while its reply is Hale's last word to that parent ({@link readPendingAsk}), and this
- * reply is a newer one. So the answer to it, or anything else Hale replies with, takes
+ * reply is a newer one. So the answer to it, or anything else Hale answers with, takes
  * it out here. A newer word from a sender that is not the router (a reminder, a nudge)
  * closes it for the reader too, and the hourly retention sweep deletes those, and any
  * question a year old (rights/message-retention.ts). Then the question THIS reply left

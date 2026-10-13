@@ -833,6 +833,7 @@ async function routeChannelMessageInner(
         job,
         conversationId: null,
         claim: claimAnswer,
+        openAsks: { leaves: null },
       });
     }
     return done(deps, job, {
@@ -981,7 +982,7 @@ async function routeChannelMessageInner(
       claim: claimAnswer,
       medicalSource,
       replySource,
-      pendingAsk,
+      openAsks: { leaves: pendingAsk },
       groupSync,
       templateKey,
       beforeSend: stopTyping,
@@ -1199,6 +1200,7 @@ async function routeChannelMessageInner(
           job,
           conversationId: null,
           claim: claimAnswer,
+          openAsks: { leaves: null },
         });
       } else {
         await answer(FLOOD_REPLY);
@@ -1243,6 +1245,7 @@ async function routeChannelMessageInner(
           job,
           conversationId: null,
           templateKey: HOLDING_LINE_TEMPLATE_KEY,
+          openAsks: 'untouched',
         });
         if (typingTimer) {
           clearInterval(typingTimer);
@@ -2361,12 +2364,23 @@ async function sendReply(
      * papercut digest split real answers from ANSWER_UNAVAILABLE sends; it is a closed
      * vocabulary and never a word of what was said (rule #1). */
     replySource?: ReplySource | null;
-    /** The question a general answer left open, or null on every other reply. It is kept
-     * in a table of its own beside this reply's row (migration 0167). De-identified by
-     * the lane before it gets here: never the parent's words and never what Hale said,
-     * so `body` stays null as ever (rule #1). The parent's next text is read beside it
-     * (off-domain/lane.ts readPendingAsk). */
-    pendingAsk?: PendingAsk | null;
+    /**
+     * What this send does to the questions Hale has left open for this parent (migration
+     * 0167). Every caller says, because it is a fact about WHICH send this is and not
+     * about sending: only the turn's ANSWER settles them.
+     *
+     * `{ leaves }` is that answer. Every earlier question is closed, and the one this
+     * reply left open itself, or null on every reply but a general answer's, is kept in a
+     * table of its own beside this reply's row. De-identified by the lane before it gets
+     * here: never the parent's words and never what Hale said, so `body` stays null as
+     * ever (rule #1). The parent's next text is read beside it (off-domain/lane.ts
+     * readPendingAsk).
+     *
+     * `'untouched'` is a line that is not an answer (the holding line). It goes out while
+     * the turn is still reading, and the question the turn is about to read is one it
+     * must not close.
+     */
+    openAsks: { leaves: PendingAsk | null } | 'untouched';
     /** The lane's own name for this receipt, or null for a reply nothing reads back
      * (see {@link HandlerVerdict.templateKey}). */
     templateKey?: string | null;
@@ -2382,6 +2396,24 @@ async function sendReply(
   },
 ): Promise<string> {
   assertTurnLive();
+  // Flag dark, it returns before any read or write. A failure here must not unsend the
+  // reply the parent already has.
+  const settleOpenAsks = async (channelMessageId: string) => {
+    if (args.openAsks === 'untouched') return;
+    try {
+      await settlePendingAsks(deps.database, {
+        familyId: args.job.family_id,
+        parentUserId: args.job.parent_user_id,
+        channelMessageId,
+        ask: args.openAsks.leaves,
+      });
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'pending ask: the reply landed; the question it left open was not kept',
+      );
+    }
+  };
   if (args.beforeSend) await args.beforeSend();
   if (args.route.channel === 'imessage' && args.inboundBody !== undefined) {
     try {
@@ -2400,6 +2432,8 @@ async function sendReply(
           await appendMessage(args.conversationId, 'assistant', moment.threadBody, deps.database);
         }
         await mirrorActivityDecision(deps, args);
+        // A tapback that stood in for the answer is the answer.
+        await settleOpenAsks(moment.channelMessageId);
         return moment.channelMessageId;
       }
     } catch (err) {
@@ -2476,23 +2510,7 @@ async function sendReply(
     await appendMessage(args.conversationId, 'assistant', args.body, deps.database);
   }
 
-  // What this reply does to the questions Hale has left open for this parent: the earlier
-  // ones are closed, and the one it left open itself, if any, is kept beside its row
-  // (off-domain/lane.ts). Flag dark, it returns before any read or write. A failure here
-  // must not unsend the reply the parent already has.
-  try {
-    await settlePendingAsks(deps.database, {
-      familyId: args.job.family_id,
-      parentUserId: args.job.parent_user_id,
-      channelMessageId,
-      ask: args.pendingAsk ?? null,
-    });
-  } catch (err) {
-    deps.log.warn(
-      { code: err instanceof Error ? err.name : 'unknown' },
-      'pending ask: the reply landed; the question it left open was not kept',
-    );
-  }
+  await settleOpenAsks(channelMessageId);
 
   // ENG-1. After the utility reply, maybe the later year-retention ask.
   // Flag off returns before any read. A failure here must not unsend the
