@@ -2272,18 +2272,98 @@ describe('links', () => {
     ).toEqual({ status: 'composed', reply: body, search: 'not_needed' });
   });
 
-  it('refuses any URL shape when no search ran', async () => {
+  it('refuses a link written with a scheme or www when no search ran', async () => {
     quiet();
     for (const body of [
       'Check https://espn.com for the full debate.',
       'See www.consumerlab.com - they reviewed it.',
       'It is at http://parks.ca today.',
-      'It is all on parks.ca today.',
     ]) {
       expect(
         await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, family),
       ).toEqual({ status: 'unavailable', reason: 'unsendable' });
     }
+  });
+
+  /**
+   * Sloane's ruling, 2026-10-13: a bare host is held to the searched-host rule "only on a
+   * `searched` turn. On dark / unavailable / not_needed, keep main's rule (`https://` /
+   * `www.` only)." A planted link can only come from a search's notes, and a turn that
+   * did not search has none, so a site named by its domain there is a name. On main such
+   * a reply was sent, and for a while this lane sent the could-not-get-to-it line in its
+   * place.
+   */
+  describe('a site named by its bare domain, on a turn that did not search', () => {
+    const NAMED = [
+      'Booking.com is the usual one for that.',
+      'Amazon.ca tends to have it cheapest.',
+      'It is all on parks.ca today.',
+      'The file is README.md, at the top.',
+    ];
+    const NEEDED = reading({ needs_search: 'yes' });
+
+    it.each(NAMED)('sends %j as written when nothing needed looking up', async (body) => {
+      expect(
+        await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK, family),
+      ).toEqual({ status: 'composed', reply: body, search: 'not_needed' });
+    });
+
+    it.each(NAMED)('sends %j as written with the search dark', async (body) => {
+      quietWarn();
+      expect(
+        await createGeneralAnswer(scripted({ sanitize: NEEDED, answer: { answer: body } })).compose(
+          ASK,
+          family,
+        ),
+      ).toEqual({ status: 'composed', reply: body, search: 'search_off' });
+    });
+
+    const UNSEARCHED: Array<[string, Script, string]> = [
+      ['failed', { search: new Error('upstream 529') }, 'search_failed'],
+      ['returned nothing', { search: [] }, 'nothing_usable'],
+    ];
+    it.each(UNSEARCHED)('sends it as written when the search %s', async (_label, script, search) => {
+      lit();
+      quietWarn();
+      const body = 'Booking.com is the usual one for that.';
+
+      expect(
+        await createGeneralAnswer(
+          scripted({ sanitize: NEEDED, answer: { answer: body }, ...script }),
+        ).compose(ASK, family),
+      ).toMatchObject({ status: 'composed', reply: body, search });
+    });
+
+    it('sends it as written when the question was missing a detail', async () => {
+      lit();
+      quietInfo();
+      const body = 'Booking.com is the usual one for that.';
+
+      expect(
+        await createGeneralAnswer(
+          scripted({
+            sanitize: reading({ needs_search: 'missing_detail', missing_detail: 'which city' }),
+            answer: { answer: body },
+          }),
+        ).compose(ASK, family),
+      ).toMatchObject({ status: 'composed', reply: body, search: 'missing_detail' });
+    });
+
+    /** Positive control: on a turn that searched, the same sentence is refused. */
+    it('still refuses the same sentence on a turn that searched', async () => {
+      lit();
+      quiet();
+
+      expect(
+        await createGeneralAnswer(
+          scripted({
+            sanitize: NEEDED,
+            search: searchFound(TSN, 'TSN carries it in Canada.'),
+            answer: { answer: 'Booking.com is the usual one for that.' },
+          }),
+        ).compose(ASK, family),
+      ).toEqual({ status: 'unavailable', reason: 'unsendable' });
+    });
   });
 });
 

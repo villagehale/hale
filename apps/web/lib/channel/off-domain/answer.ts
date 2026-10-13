@@ -490,13 +490,23 @@ function linkHost(url: string): string {
  * search did not return. The page is not compared: the front page of a site the search
  * found a deeper page on is still that site. A host written bare is the same link, and
  * the run a link is written in is read for bare hosts like the rest of the reply.
+ *
+ * A BARE HOST IS READ ONLY ON A TURN THAT SEARCHED (Sloane, 2026-10-13). A planted link
+ * comes from a search's notes, and a turn with no notes has none: a site named there by
+ * its domain (`Booking.com`) is a name, and main sends it. So on every other turn the
+ * rule is main's, and only a link written with a scheme or `www.` is refused.
  */
-function carriesUnsearchedLink(body: string, searched: readonly string[]): boolean {
+function carriesUnsearchedLink(
+  body: string,
+  search: LiveSearch,
+  searched: readonly string[],
+): boolean {
   const known = new Set(searched.map(linkHost));
   const reply = oneForm(body);
-  return [...(reply.match(LINK) ?? []).map(linkHost), ...bareHosts(reply)].some(
-    (host) => !known.has(host),
-  );
+  return [
+    ...(reply.match(LINK) ?? []).map(linkHost),
+    ...(search === 'searched' ? bareHosts(reply) : []),
+  ].some((host) => !known.has(host));
 }
 
 /**
@@ -530,7 +540,7 @@ function sendable(
   }
   const flattened = plainText(composed.answer);
   if (flattened === '') return unavailable('unsendable', 'empty');
-  if (carriesUnsearchedLink(flattened, searched)) {
+  if (carriesUnsearchedLink(flattened, search, searched)) {
     return unavailable('unsendable', 'link_not_from_search');
   }
   return { status: 'composed', reply: flattened, search, ...(pendingAsk ? { pendingAsk } : {}) };
