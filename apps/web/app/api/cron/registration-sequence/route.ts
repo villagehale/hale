@@ -33,8 +33,8 @@ export const maxDuration = 300;
  * REGISTRATION_LADDER_ENABLED is exactly `true` the ladder runs nothing and the sequence
  * rows are left as they are, so a leg whose window is still open goes out once it is
  * back on. F14_ENABLED / F14_FAMILY_ALLOWLIST is the D21 dark-launch gate: unarmed, the
- * sweep does not even select a family. The group-decision flush is not the ladder and
- * runs either way.
+ * sweep does not even select a family. The group-decision flush sends group bubbles, so
+ * the same lane holds it: the response names `groupSync: 'lane_off'` and nothing is flushed.
  */
 export const GET = cronRoute('registration-sequence', async () => {
   try {

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * The registration ladder's lane switch lives in this route (VIL-226): unless
  * REGISTRATION_LADDER_ENABLED is exactly `true` the ladder runs nothing and the route
- * names why. The group-decision flush is not part of the ladder and runs either way.
+ * names why. The group-decision flush sends group bubbles, so the same lane holds it.
  */
 
 const runRegistrationSequenceCronMock = vi.fn();
