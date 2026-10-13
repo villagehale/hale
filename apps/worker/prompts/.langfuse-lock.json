@@ -17,7 +17,7 @@
   "drafter": {
     "name": "drafter",
     "version": 1,
-    "sha256": "102257c4cad313b48e7368a70c32cc500caf5c11aaa23c09cd3b985a471c5066"
+    "sha256": "dad1768840c95c35e9afd5494dd3579f9b5dfd87c18752d352e59106c3b5baed"
   },
   "memory-inferencer": {
     "name": "memory-inferencer",
