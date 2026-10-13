@@ -894,6 +894,35 @@ describe('a coach offer is the calendar, not the sentence', () => {
     );
   });
 
+  it('a bare yes on Oct 2 does not add the Thursday gymnastics that already started', async () => {
+    // VIL-410. The Thursday offer is still inside a flat day, which is how a bare yes
+    // placed Gymnastics Thu Oct 1 4:15pm. It is not an open offer on Oct 2, and a bare
+    // yes has no reading to bind.
+    await seedOffer({
+      title: 'Gymnastics',
+      startsAt: THURSDAY,
+      expiresAt: new Date(OCTOBER_SECOND.getTime() + EMAIL_ALERT_OFFER_TTL_MS),
+    });
+    const sundayId = await seedOffer({
+      title: 'Gymnastics',
+      startsAt: SUNDAY,
+      expiresAt: new Date(OCTOBER_SECOND.getTime() + EMAIL_ALERT_OFFER_TTL_MS),
+    });
+
+    const open = await loadOpenEmailAlertOffers(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: OCTOBER_SECOND,
+    });
+    expect(open.map((offer) => offer.id)).toEqual([sundayId]);
+
+    const ctx = await turn('yes');
+    const verdict = await handler().handle(db.database, { ...ctx, now: OCTOBER_SECOND });
+
+    expect(verdict).toEqual({ claimed: false });
+    await expect(events()).resolves.toEqual([]);
+  });
+
   it('places the Sunday the reading named, not the Thursday that already started', async () => {
     await seedOffer({
       title: 'Gymnastics',

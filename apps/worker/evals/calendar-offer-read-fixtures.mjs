@@ -56,6 +56,17 @@ export const CALENDAR_OFFER_FIXTURES = [
     why: 'One specific future add. 9:00 a.m. Toronto in October is 13:00 UTC.',
   },
   {
+    id: 'vil-410-bare-yes',
+    role: 'parent',
+    text: 'yes',
+    now: '2026-10-02T15:00:00.000Z',
+    timeZone: 'America/Toronto',
+    questions: [THURSDAY_OFFER, SUNDAY_OFFER],
+    pastOfferId: THURSDAY,
+    expect: { status: 'unresolved', reason: 'ambiguous' },
+    why: 'VIL-410, 2026-10-02. A bare yes added Gymnastics Thu Oct 1 4:15pm (2026-10-01T20:15:00.000Z). That start was already past. Sunday Oct 4 9:00 a.m. was the other offer. A bare yes names neither and must not place Thursday.',
+  },
+  {
     id: 'coach-past-thursday',
     role: 'coach',
     text: 'Want me to add Gymnastics on Thursday, Oct 1 at 4:15 p.m.?',

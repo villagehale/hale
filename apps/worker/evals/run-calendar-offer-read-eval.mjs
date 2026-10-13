@@ -138,9 +138,20 @@ function toCoachOffer(raw) {
 function check(fixture, outcome) {
   const want = fixture.expect;
   const failures = [];
+  if (
+    fixture.pastOfferId &&
+    outcome.status === 'resolved' &&
+    outcome.questionId === fixture.pastOfferId &&
+    outcome.polarity === 'yes'
+  ) {
+    failures.push('VIL-410: a bare yes would add the past event');
+  }
   if (outcome.status !== want.status) {
     failures.push(`status ${outcome.status} - wanted ${want.status}`);
     return failures;
+  }
+  if (want.status === 'unresolved' && want.reason && outcome.reason !== want.reason) {
+    failures.push(`reason ${outcome.reason} - wanted ${want.reason}`);
   }
   if (want.status === 'resolved') {
     if (outcome.questionId !== want.questionId) {
