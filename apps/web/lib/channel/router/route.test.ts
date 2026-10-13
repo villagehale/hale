@@ -4772,6 +4772,38 @@ describe('the reply row, written to a real database', () => {
         .where(eq(schema.channelMessages.familyId, familyId));
       expect(sent).toEqual([{ direction: 'out' }]);
     });
+
+    /**
+     * The same database with the search lit, which is the order the checklist allows:
+     * the flag can be lit before 0167 is applied. The settle after the send then fails on
+     * a table that is not there, and the parent already has the reply, so the turn ends
+     * as it would have and the failure is named.
+     */
+    it('answers with the search lit, and names the question it could not keep', async () => {
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+      const { h, familyId, turn } = await onRealDatabase(db, {
+        coach: fakeCoach('Saturday is dry.'),
+      });
+
+      const result = await routeChannelMessage(h.deps, turn());
+      vi.unstubAllEnvs();
+
+      expect(result.status).toBe('agent_replied');
+      expect(h.transport.bodies()).toEqual(['Saturday is dry.']);
+      expect(
+        await db.database
+          .select({ direction: schema.channelMessages.direction })
+          .from(schema.channelMessages)
+          .where(eq(schema.channelMessages.familyId, familyId)),
+      ).toEqual([{ direction: 'out' }]);
+      expect(
+        h.logs.filter(
+          (entry) =>
+            (entry as unknown[])[1] ===
+            'pending ask: the reply landed; the question it left open was not kept',
+        ),
+      ).toHaveLength(1);
+    });
   });
 
   /**
@@ -4805,10 +4837,17 @@ describe('the reply row, written to a real database', () => {
     const ASKED = { question: 'hows the weather tomorrow', missing: 'which city' };
     const COMBINED = 'hows the weather tomorrow in Maplewood';
 
+    /** How long a slow stage takes: well past the holding line's shortened wait. */
+    const SLOW_MS = 150;
+    const HOLDING_AFTER_MS = 10;
+
     /** The lane's one client: the screen files the text as off-topic, the sanitizer reads
-     * a text beside a pending ask as its answer, and the search finds something. */
-    function scripted() {
+     * a text beside a pending ask as its answer, and the search finds something. `slow`
+     * is the one call that takes {@link SLOW_MS}: the screen's, or the compose's. */
+    function scripted(slow: 'screen' | 'compose' | null = null) {
       const seen = { sanitize: [] as unknown[], search: [] as unknown[] };
+      const takesAWhile = (stage: 'screen' | 'compose') =>
+        slow === stage ? new Promise((resolve) => setTimeout(resolve, SLOW_MS)) : null;
       const structured = (payload: unknown) => ({
         content: [{ type: 'text', text: JSON.stringify(payload) }],
         usage: { input_tokens: 10, output_tokens: 5 },
@@ -4823,6 +4862,7 @@ describe('the reply row, written to a real database', () => {
               const system = request.system.map((block) => block.text).join('');
               const payload = JSON.parse(request.messages[0]?.content ?? '{}');
               if (system.includes('Which lane does this text belong in')) {
+                await takesAWhile('screen');
                 return structured({ lane: 'off_domain_general', category: 'weather', reason: 'x' });
               }
               if (system.includes('Take the family out, keep the question')) {
@@ -4849,6 +4889,7 @@ describe('the reply row, written to a real database', () => {
                       },
                 );
               }
+              await takesAWhile('compose');
               return structured({
                 answer:
                   payload.live === 'missing_detail' ? 'Which city are you in?' : 'Sunny, high of 14.',
@@ -4878,16 +4919,22 @@ describe('the reply row, written to a real database', () => {
       return { client, seen };
     }
 
-    /** One text from this parent, in one chat, through the router and the production lane. */
+    /** One text from this parent, in one chat, through the router and the production lane.
+     * `options` are the harness's own, for a turn that is not an ordinary one, and `slow`
+     * the lane call that outlasts the holding line's wait. */
     async function text(
       parent: { familyId: string; parentUserId: string },
       body: string,
       route: ReplyRoute,
+      { slow = null, ...options }: Parameters<typeof harness>[0] & {
+        slow?: 'screen' | 'compose' | null;
+      } = {},
     ) {
-      const turn = scripted();
+      const turn = scripted(slow);
       const h = harness({
-        context: { body, reply: route },
         offDomain: productionOffDomainLane(db.database, turn.client),
+        ...options,
+        context: { body, reply: route, ...options.context },
       });
       h.deps.database = db.database;
       // The reply rows are stamped by the database's clock, so the turn reads on it too.
@@ -4912,7 +4959,7 @@ describe('the reply row, written to a real database', () => {
           channel_message_id: inbound?.id as string,
         }),
       );
-      return { said: h.transport.bodies(), seen: turn.seen };
+      return { said: h.transport.bodies(), seen: turn.seen, logs: h.logs };
     }
 
     const keptAsks = (familyId: string) =>
@@ -4974,6 +5021,143 @@ describe('the reply row, written to a real database', () => {
       // one this reply left open is.
       expect(await keptAsks(parent.familyId)).toEqual([
         { ...ASKED, chat: 'chat-other', direction: 'out' },
+      ]);
+    });
+
+    /**
+     * ONLY THE TURN'S ANSWER SETTLES. The holding line goes out through the same send as
+     * the answer does, while the turn is still reading, and it used to close the parent's
+     * open questions like any reply: when it went out before the screen had finished, the
+     * question was deleted before the lane read it, and "Maplewood" after "Which city are
+     * you in?" got the question asked again. Both flags lit, the production lane, a real
+     * database.
+     */
+    describe('the holding line is not an answer', () => {
+      beforeEach(() => {
+        vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+      });
+
+      it.each([
+        ['goes out while the screen is still reading', 'screen', ["I'm on it.", 'Sunny, high of 14.']],
+        // Controls. The question is read before the compose, and with no slow call the
+        // line never goes out at all.
+        ['goes out while the answer is composed', 'compose', ["I'm on it.", 'Sunny, high of 14.']],
+        ['never goes out', null, ['Sunny, high of 14.']],
+      ] as const)(
+        'still reads the reply beside its question when the holding line %s',
+        async (_label, slow, said) => {
+          lit();
+          const parent = await seedFamily(db.database);
+          const asked = await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+          expect(asked.said).toEqual(['Which city are you in?']);
+          expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+          const answered = await text(parent, 'Maplewood', OWN_CHAT, {
+            slow,
+            holdingLine: fakeHoldingLine("I'm on it."),
+            holdingLineAfterMs: HOLDING_AFTER_MS,
+          });
+
+          expect(answered.said).toEqual(said);
+          expect(answered.seen.sanitize).toEqual([{ text: 'Maplewood', pending: ASKED }]);
+          expect(answered.seen.search).toMatchObject([{ question: COMBINED }]);
+          // The answer closed it: the holding line's own row is in the ledger, and the
+          // question is gone.
+          expect(await keptAsks(parent.familyId)).toEqual([]);
+        },
+      );
+    });
+
+    /**
+     * WHICH SENDS ARE AN ANSWER, each through the router. A question is open only while
+     * the reply that left it is Hale's last word to that parent (lane.ts readPendingAsk),
+     * so every reply that answers the parent's text is a newer word and takes it out:
+     * what the coach says, the line a spent budget gets on either of its two routes, the
+     * line someone who is not a parent gets, and a tapback that stood in for the words.
+     */
+    describe('every answer closes the question', () => {
+      const SPENT: RateLimiter = { check: async () => ({ allowed: false, retryAfterSec: 60 }) };
+
+      it.each([
+        ['what the coach says', {}, ['coach says hi']],
+        ['the line a spent budget gets', { limiter: SPENT }, [FLOOD_REPLY]],
+        [
+          'the line a spent budget gets from a group, on their own phone',
+          { limiter: SPENT, context: { inGroup: true } },
+          [FLOOD_REPLY],
+        ],
+        [
+          'the line someone who is not a parent gets',
+          { context: { role: 'nanny' } },
+          [scopedReply('Sam')],
+        ],
+      ] as const)('%s', async (_label, options, said) => {
+        lit();
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        // Positive control: the question is open.
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        const next = await text(parent, 'never mind, what is on this weekend', OWN_CHAT, {
+          offDomain: fakeLane(IN_DOMAIN),
+          ...options,
+        });
+
+        expect(next.said).toEqual(said);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+      });
+
+      it('a tapback that stood in for the words', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        const reacted: string[] = [];
+        vi.stubGlobal('fetch', async (url: string) => {
+          reacted.push(new URL(url).pathname);
+          return new Response(null, { status: 204 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        const next = await text(
+          parent,
+          'thanks',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          { offDomain: fakeLane(IN_DOMAIN), coach: fakeCoach('Anytime.') },
+        );
+        vi.unstubAllGlobals();
+
+        // Positive control: the reaction went out, and no words did.
+        expect(reacted.filter((path) => path.endsWith('/reactions'))).toEqual([
+          '/api/partner/v3/messages/in-1/reactions',
+        ]);
+        expect(next.said).toEqual([]);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+      });
+    });
+
+    /** One person, two households. A question is put to a parent in one family, and
+     * what Hale says to the same person about another family is not a word in the first. */
+    it('keeps a question open in one household when Hale replies to the same person in another', async () => {
+      lit();
+      const parent = await seedFamily(db.database);
+      const other = await seedFamily(db.database, 'Second Household');
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId: other.familyId, userId: parent.parentUserId, role: 'co_parent' });
+      await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+
+      const elsewhere = await text(
+        { familyId: other.familyId, parentUserId: parent.parentUserId },
+        'what is on this weekend',
+        OTHER_CHAT,
+        { offDomain: fakeLane(IN_DOMAIN) },
+      );
+
+      // Positive control: Hale did reply to them there.
+      expect(elsewhere.said).toEqual(['coach says hi']);
+      expect(await keptAsks(parent.familyId)).toEqual([
+        { ...ASKED, chat: 'chat-own', direction: 'out' },
       ]);
     });
   });
