@@ -11,10 +11,11 @@ import {
   type HomePlace,
   type LiveSearch,
   type PendingAsk,
+  type SafetyKind,
   answerJsonSchema,
   answersPending,
-  describesHurtIllOrDanger,
   generalAnswerUserMessage,
+  hurtIllOrDanger,
   needsSearch,
   questionSanitizeUserMessage,
   sanitizeJsonSchema,
@@ -158,8 +159,10 @@ export type GeneralAnswerOutcome =
    * crisis and nothing keys off words or digits"). This branch carries NO reply on
    * purpose: the words a parent gets in that moment are the reviewed ones in copy.ts,
    * and a variant with a text field is one an edit could later fill from the model.
+   * `kind` is which of the screen's safety categories the compose read, and the lane
+   * picks the door from it as it does from the screen's own reading (lane.ts).
    */
-  | { status: 'safety' }
+  | { status: 'safety'; kind: SafetyKind }
   | { status: 'unavailable'; reason: GeneralAnswerFallback };
 
 /**
@@ -534,9 +537,10 @@ function sendable(
   // the "couldn't get to that one" a refusal would send them. It is the compose's own
   // reading that decides, never a word or a digit in what it wrote, and nothing it wrote
   // goes past this line.
-  if (describesHurtIllOrDanger(composed.hurt_ill_or_danger)) {
+  const kind = hurtIllOrDanger(composed.hurt_ill_or_danger);
+  if (kind !== null) {
     console.error('off-domain answer: the compose read someone hurt; the safety door answers');
-    return { status: 'safety' };
+    return { status: 'safety', kind };
   }
   const flattened = plainText(composed.answer);
   if (flattened === '') return unavailable('unsendable', 'empty');

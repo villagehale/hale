@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { pickModel } from '@hale/agent';
+import { UNMET_INTENT_CATEGORIES } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type FamilyFacts,
@@ -14,7 +15,15 @@ import {
   scrubDirectIdentifiers,
   searchUserMessage,
 } from './answer';
-import { ANSWER_ENDS_ON_THE_ANSWER, ANSWER_MAX_TOKENS, answerJsonSchema } from './answer-request';
+import {
+  ANSWER_ENDS_ON_THE_ANSWER,
+  ANSWER_MAX_TOKENS,
+  ANSWER_WITH_NOTHING_CHECKED,
+  SAFETY_KINDS,
+  answerJsonSchema,
+  hurtIllOrDanger,
+  safetyDoorFor,
+} from './answer-request';
 import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from './copy';
 import { COMPOSE_MAX_TOKENS } from './medical';
 
@@ -379,7 +388,10 @@ describe('createGeneralAnswer', () => {
     expect(seen.compose[0]?.output_config?.format?.schema).toEqual({
       type: 'object',
       properties: {
-        hurt_ill_or_danger: { type: 'string', enum: ['yes', 'no'] },
+        hurt_ill_or_danger: {
+          type: 'string',
+          enum: ['no', 'medical-symptom', 'mental-health', 'child-safety', 'emergency'],
+        },
         grounding: {
           type: 'array',
           items: {
@@ -388,7 +400,7 @@ describe('createGeneralAnswer', () => {
               states: {
                 type: 'string',
                 description:
-                  'the specific as the notes qualify it, with the class, group or date they attach to it.',
+                  'the specific as the notes qualify it, with the class, group or date they attach to it. The day or night the notes attach to a forecast figure is part of the specific, and the answer uses that day or night label, not a nearer one.',
               },
               from: {
                 type: 'string',
@@ -400,7 +412,10 @@ describe('createGeneralAnswer', () => {
             additionalProperties: false,
           },
         },
-        answer: { type: 'string', description: ANSWER_ENDS_ON_THE_ANSWER },
+        answer: {
+          type: 'string',
+          description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED}`,
+        },
       },
       required: ['hurt_ill_or_danger', 'grounding', 'answer'],
       additionalProperties: false,
@@ -420,7 +435,22 @@ describe('createGeneralAnswer', () => {
     expect(ANSWER_ENDS_ON_THE_ANSWER).toBe(
       'The text message, and nothing but it. Its last words are the answer itself, or with missing_detail the question. Nothing is offered after it, and nothing after it points them somewhere else.',
     );
-    expect(answerJsonSchema.properties.answer.description).toBe(ANSWER_ENDS_ON_THE_ANSWER);
+    expect(answerJsonSchema.properties.answer.description).toContain(ANSWER_ENDS_ON_THE_ANSWER);
+  });
+
+  /**
+   * Sloane's finding 1a, 2026-10-13, the second of its two levers: two replies stated a
+   * trophy tally from memory with the search dark, and both had written an empty
+   * `grounding` list, so nothing said on that list could reach them. The words are hers,
+   * said on the field the tally was written in.
+   */
+  it('tells the model, on the answer field itself, that a tally is not a number when nothing was checked', () => {
+    expect(ANSWER_WITH_NOTHING_CHECKED).toBe(
+      'With `live` unavailable, no running count, record or title tally appears as a number.',
+    );
+    expect(answerJsonSchema.properties.answer.description).toBe(
+      `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED}`,
+    );
   });
 
   /**
@@ -2471,10 +2501,38 @@ describe('the one path', () => {
  */
 describe('the compose reads someone hurt, ill or in danger', () => {
   const WROTE = 'MODEL-WROTE-THIS';
-  const hurt = (answer = WROTE) => ({
-    hurt_ill_or_danger: 'yes',
+  const hurt = (answer = WROTE, kind = 'child-safety') => ({
+    hurt_ill_or_danger: kind,
     grounding: [{ states: 'MODEL-GROUNDED-THIS', from: 'settled' }],
     answer,
+  });
+
+  /**
+   * The reading names its kind in the lane screen's own safety categories, and no others:
+   * the lane picks the door from the kind as it does from the screen's reading.
+   */
+  it('reads the kind in the screen\'s own safety categories', () => {
+    expect(SAFETY_KINDS).toEqual(['medical-symptom', 'mental-health', 'child-safety', 'emergency']);
+    expect(SAFETY_KINDS.filter((kind) => !UNMET_INTENT_CATEGORIES.includes(kind))).toEqual([]);
+    expect(SAFETY_KINDS.map((kind) => hurtIllOrDanger(kind))).toEqual([...SAFETY_KINDS]);
+  });
+
+  it.each(SAFETY_KINDS)('carries a %s reading out with the turn', async (kind) => {
+    quiet();
+    expect(
+      await createGeneralAnswer(clientReturning(hurt(WROTE, kind))).compose(ASK, family),
+    ).toEqual({ status: 'safety', kind });
+  });
+
+  /** One rule for the screen's reading and the compose's: a mental-health reading leaves
+   * by the crisis door, and every other safety reading by the child-health one. */
+  it('sends a mental-health reading to the crisis door and every other one to the safety door', () => {
+    expect(SAFETY_KINDS.map((kind) => [kind, safetyDoorFor(kind)])).toEqual([
+      ['medical-symptom', 'safety'],
+      ['mental-health', 'mental_crisis'],
+      ['child-safety', 'safety'],
+      ['emergency', 'safety'],
+    ]);
   });
 
   it('hands the turn to the safety door, and sends, keeps and logs nothing it wrote', async () => {
@@ -2499,9 +2557,9 @@ describe('the compose reads someone hurt, ill or in danger', () => {
     const empty = await createGeneralAnswer(clientReturning(hurt(''))).compose(ASK, family);
 
     expect([answered, asked, empty]).toEqual([
-      { status: 'safety' },
-      { status: 'safety' },
-      { status: 'safety' },
+      { status: 'safety', kind: 'child-safety' },
+      { status: 'safety', kind: 'child-safety' },
+      { status: 'safety', kind: 'child-safety' },
     ]);
     // Positive control: each turn logged that the door answered.
     expect(logged.filter(([line]) => String(line).includes('safety door'))).toHaveLength(3);
@@ -2520,7 +2578,7 @@ describe('the compose reads someone hurt, ill or in danger', () => {
           answer: hurt(),
         }),
       ).continueAsk('Toronto. he fell and will not wake up properly', PENDING_CITY, family),
-    ).toEqual({ status: 'safety' });
+    ).toEqual({ status: 'safety', kind: 'child-safety' });
   });
 
   /**
@@ -2540,9 +2598,10 @@ describe('the compose reads someone hurt, ill or in danger', () => {
     ).toEqual({ status: 'composed', reply: body, search: 'not_needed' });
   });
 
-  /** Only an explicit `yes` is the door. The request's schema allows two values, so
-   * anything else is a reply that arrived without a reading, and it is still the reply. */
-  it.each(['no', 'maybe', '', null, undefined, true])(
+  /** Only a kind on the list is the door. The request's schema allows those and `no`, so
+   * anything else, the `yes` this field used to hold among them, is a reply that arrived
+   * without a reading, and it is still the reply. */
+  it.each(['no', 'yes', 'maybe', '', null, undefined, true])(
     'sends the reply when the reading is %j',
     async (hurt_ill_or_danger) => {
       expect(

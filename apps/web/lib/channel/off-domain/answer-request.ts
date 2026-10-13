@@ -97,23 +97,51 @@ export const ANSWER_ENDS_ON_THE_ANSWER =
   'The text message, and nothing but it. Its last words are the answer itself, or with missing_detail the question. Nothing is offered after it, and nothing after it points them somewhere else.';
 
 /**
+ * What a reply may not state when nothing could be checked, said on the `answer` field
+ * beside the sentence above (Sloane, 2026-10-13; the words are hers). Two replies stated
+ * a trophy tally from memory with the search dark, and both had written an empty
+ * `grounding` list, so what is said on that list never reached them. general-answer.md
+ * says the same under `unavailable`.
+ */
+export const ANSWER_WITH_NOTHING_CHECKED =
+  'With `live` unavailable, no running count, record or title tally appears as a number.';
+
+/**
  * What belongs in each field of a `grounding` entry, said on the field itself, where the
  * model reads it as it writes the entry (Sloane, 2026-10-13; the words are hers). A
  * figure the notes gave for one kind of mortgage went out as the figure for another, and
- * a count that can still grow was written down as settled. general-answer.md says both
- * once, where it describes `grounding`.
+ * a count that can still grow was written down as settled. Then a low the notes gave for
+ * Tuesday night went out as tonight's, so the day or night a forecast figure belongs to
+ * is part of the specific too. general-answer.md says each once, where it describes
+ * `grounding`.
  */
 const GROUNDING_STATES =
-  'the specific as the notes qualify it, with the class, group or date they attach to it.';
+  'the specific as the notes qualify it, with the class, group or date they attach to it. The day or night the notes attach to a forecast figure is part of the specific, and the answer uses that day or night label, not a nearer one.';
 const GROUNDING_FROM =
   'the words in research_notes it comes from, or `settled` only for what can no longer change. A running count, a record or who holds a title today is never `settled`.';
 
 /**
+ * The kinds of safety reading, which are the lane screen's own `safety_critical`
+ * categories (inbound-lane.md; `UNMET_INTENT_CATEGORIES` in @hale/db). The compose's
+ * reading of a text names one of them, so that a text the screen filed as a general
+ * question and the compose reads as a crisis leaves by the door the screen's reading of
+ * the same kind would have opened (lane.ts).
+ */
+export const SAFETY_KINDS = [
+  'medical-symptom',
+  'mental-health',
+  'child-safety',
+  'emergency',
+] as const;
+export type SafetyKind = (typeof SAFETY_KINDS)[number];
+
+/**
  * The model writes its fields in this order. First its READING of the text:
- * `hurt_ill_or_danger`, `yes` when the question turns out to describe someone hurt, ill
- * or in danger, which hands the turn to the safety door and sends nothing it wrote
- * (answer.ts). Then `grounding`: every specific the answer is about to state, beside the
- * words in the research it comes from (general-answer.md). Only then the answer. All
+ * `hurt_ill_or_danger`, `no`, or which kind it is when the question turns out to describe
+ * someone hurt, ill or in danger, which hands the turn to the safety door for that kind
+ * and sends nothing it wrote (answer.ts). Then `grounding`: every specific the answer is
+ * about to state, beside the words in the research it comes from (general-answer.md).
+ * Only then the answer. All
  * three are required OF THE MODEL. The lane reads the reading and `answer` and nothing
  * else, so the list is never sent, kept or logged, and a reply that arrives without it is
  * still the reply. The eval keeps the whole object with its recording.
@@ -121,7 +149,7 @@ const GROUNDING_FROM =
 export const answerJsonSchema = {
   type: 'object',
   properties: {
-    hurt_ill_or_danger: { type: 'string', enum: ['yes', 'no'] },
+    hurt_ill_or_danger: { type: 'string', enum: ['no', ...SAFETY_KINDS] },
     grounding: {
       type: 'array',
       items: {
@@ -133,7 +161,10 @@ export const answerJsonSchema = {
         required: ['states', 'from'],
       },
     },
-    answer: { type: 'string', description: ANSWER_ENDS_ON_THE_ANSWER },
+    answer: {
+      type: 'string',
+      description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED}`,
+    },
   },
   required: ['hurt_ill_or_danger', 'grounding', 'answer'],
 } as const;
@@ -231,12 +262,26 @@ export function answersPending(raw: unknown): boolean {
 }
 
 /**
- * The compose's reading that the text describes someone hurt, ill or in danger. Only an
- * explicit `yes` is that reading: the schema the request carries allows two values, so
- * anything else is a reply that arrived without one, and it is still the reply.
+ * The compose's reading that the text describes someone hurt, ill or in danger, as the
+ * kind it read, or null. Only a kind on the list is that reading: the schema the request
+ * carries allows those and `no`, so anything else is a reply that arrived without one,
+ * and it is still the reply.
  */
-export function describesHurtIllOrDanger(raw: unknown): boolean {
-  return raw === 'yes';
+export function hurtIllOrDanger(raw: unknown): SafetyKind | null {
+  return SAFETY_KINDS.find((kind) => kind === raw) ?? null;
+}
+
+/** The lane's two safety doors (copy.ts): the mental-health crisis line, and the
+ * child-health line every other safety reading gets. */
+export type SafetyDoor = 'mental_crisis' | 'safety';
+
+/**
+ * Which door a safety reading leaves by, whoever made the reading: the lane screen, or
+ * the compose. One rule for both, here because the eval reads it too
+ * (run-general-answer-eval.mjs). `category` is one of the screen's.
+ */
+export function safetyDoorFor(category: string): SafetyDoor {
+  return category === 'mental-health' ? 'mental_crisis' : 'safety';
 }
 
 /**

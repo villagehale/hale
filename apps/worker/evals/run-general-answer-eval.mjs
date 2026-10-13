@@ -18,8 +18,10 @@
 // it ships until then.
 //
 // What is NOT tested here: the lane routing (run-inbound-lane-eval.mjs); the flag, the
-// named fallbacks, the link and health-line gates, and where the family's place and a
-// pending ask are read from (apps/web/lib/channel/off-domain/*.test.ts).
+// named fallbacks, the link and health-line gates, and where the family's row and a
+// pending ask are read from (apps/web/lib/channel/off-domain/*.test.ts). The place a
+// search is sent IS production's: a fixture gives the family's row, and production's own
+// `placeOf` reads the place off it.
 //
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-general-answer-eval.mjs            # live, then caches
@@ -42,10 +44,11 @@
 // one draw always had, the second and third carry `#1` and `#2`.
 //
 // One outcome is not a reply. When the compose reads the text as someone hurt, ill or in
-// danger it says so in its own field, production sends nothing it wrote and the lane's
-// safety door answers (answer.ts). That draw is not judged: the door's line is fixed copy.
-// A fixture marked `expectSafetyDoor` is right only at the door, and any other fixture
-// that lands there got the safety line in place of its answer.
+// danger it says which kind in its own field, production sends nothing it wrote and the
+// lane's safety door for that kind answers (answer.ts, lane.ts). That draw is not judged:
+// the door's line is fixed copy. A fixture marked `expectSafetyDoor` is right only at the
+// door it names, and any other fixture that lands at one got a safety line in place of
+// its answer.
 //
 // Three checks are not about the reply at all. What the fixture marks
 // `mustNotReachSearch` must be gone from everything handed on to the search and the
@@ -97,19 +100,16 @@ const SANITIZE_SKILL_PATH = join(SKILLS, 'general-answer-sanitize.md');
 const SEARCH_SKILL_PATH = join(SKILLS, 'general-answer-search.md');
 const SKILL_PATH = join(SKILLS, 'general-answer.md');
 /** Production's own request shapes (see the header). */
-const ANSWER_REQUEST_SRC = join(
-  REPO_ROOT,
-  'apps',
-  'web',
-  'lib',
-  'channel',
-  'off-domain',
-  'answer-request.ts',
-);
+const OFF_DOMAIN = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'off-domain');
+const ANSWER_REQUEST_SRC = join(OFF_DOMAIN, 'answer-request.ts');
+/** Production's own read of a family's place off its row. */
+const PLACE_SRC = join(OFF_DOMAIN, 'place.ts');
 
 // ── what the lane does around its requests, replicated from answer.ts ───────
 
 const MAX_SEARCHES = 2;
+/** A family row with nothing on it: a fixture names only the columns it sets. */
+const NO_ROW = { country: null, province: null, city: null, postalCode: null, areaCoarse: null };
 const SANITIZE_MAX_TOKENS = 512;
 const SEARCH_MAX_TOKENS = 4096;
 
@@ -340,6 +340,7 @@ async function main() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const request = await tsImport(ANSWER_REQUEST_SRC, import.meta.url);
+  const places = await tsImport(PLACE_SRC, import.meta.url);
   const sanitizeSkill = await agent.loadSkill(SANITIZE_SKILL_PATH);
   const searchSkill = await agent.loadSkill(SEARCH_SKILL_PATH);
   const skill = await agent.loadSkill(SKILL_PATH);
@@ -369,10 +370,27 @@ async function main() {
   console.log(`corpus: ${fixtures.length} questions | today: ${EVAL_TODAY}\n`);
 
   /**
+   * The family's place for a search, as answer.ts's `homePlace` hands it on: read off the
+   * fixture's family row by production's own `placeOf`, so a recorded search carries the
+   * city, the country and, for a shared city name, the province or state that production
+   * sends for that row. Null with no row, or when production could not name a place.
+   */
+  async function homePlace(fixture) {
+    if (fixture.family === undefined) return null;
+    const read = await places.placeOf({ ...NO_ROW, ...fixture.family });
+    if (read.status !== 'known') return null;
+    return {
+      city: read.city,
+      ...(read.provinceOrState ? { provinceOrState: read.provinceOrState } : {}),
+      country: read.country,
+    };
+  }
+
+  /**
    * Phases 0 and 1 for one fixture, as answer.ts runs them: what the compose, and the
-   * judge, are handed. `fixture.place` is what the lane's place read would return for
-   * this family, `fixture.pending` the question Hale's last reply left open, and
-   * `fixture.research` a search result supplied by the fixture in place of a live one.
+   * judge, are handed. `fixture.family` is the family's own row, `fixture.pending` the
+   * question Hale's last reply left open, and `fixture.research` a search result supplied
+   * by the fixture in place of a live one.
    */
   async function research(fixture, pending = fixture.pending ?? null) {
     const sanitize = await cachedToolCall({
@@ -408,7 +426,7 @@ async function main() {
     const searching = request.needsSearch(sanitize.value.needs_search);
     const place =
       lit && searching && request.turnsOnTheirPlace(sanitize.value.their_place)
-        ? (fixture.place ?? null)
+        ? await homePlace(fixture)
         : null;
 
     let search = 'not_needed';
@@ -452,7 +470,10 @@ async function main() {
       reading: String(sanitize.value.needs_search),
       theirPlace: String(sanitize.value.their_place),
       answersPending,
-      placeSent: searchMessage !== '' && place !== null,
+      placeSent:
+        searchMessage !== '' && place !== null
+          ? [place.city, place.provinceOrState, place.country].filter(Boolean).join(', ')
+          : null,
       search,
       notes,
       missing,
@@ -463,8 +484,9 @@ async function main() {
 
   /**
    * Phase 2 for one draw of one fixture: the reply, flattened as production flattens it,
-   * or the safety door when the compose read the text as someone hurt, ill or in danger
-   * (production's own reading of that field, and nothing it wrote is used then).
+   * or which safety door the turn left by when the compose read the text as someone hurt,
+   * ill or in danger (production's own reading of that field and its own rule for the
+   * door, and nothing the compose wrote is used then).
    */
   async function compose(fixture, found, draw = 0) {
     const composed = await cachedToolCall({
@@ -488,8 +510,9 @@ async function main() {
       getClient,
       cost,
     });
-    if (request.describesHurtIllOrDanger(composed.value.hurt_ill_or_danger)) {
-      return { door: true, flattened: '', latencyMs: composed.latencyMs };
+    const kind = request.hurtIllOrDanger(composed.value.hurt_ill_or_danger);
+    if (kind !== null) {
+      return { door: request.safetyDoorFor(kind), flattened: '', latencyMs: composed.latencyMs };
     }
     return {
       door: false,
@@ -569,7 +592,7 @@ async function main() {
       const composed = await compose(fixture, found, draw);
       const latencyMs = found.latencyMs + composed.latencyMs;
       if (composed.door) {
-        draws.push({ door: true, flattened: '', latencyMs });
+        draws.push({ door: composed.door, flattened: '', latencyMs });
         continue;
       }
       const verdict = await judge(
@@ -597,7 +620,7 @@ async function main() {
   console.log('--- de-identified questions ---');
   for (const r of results) {
     console.log(
-      `${r.fixture.id.padEnd(22)} needs_search=${r.found.reading.padEnd(14)} their_place=${r.found.theirPlace.padEnd(10)} ${r.found.language}  "${r.found.question}"${r.found.search === 'missing_detail' ? `  missing: "${r.found.missing}"` : ''}${r.found.placeSent ? '  [searched with the family place]' : ''}${r.found.answersPending === null ? '' : `  [pending ask: ${r.found.answersPending ? 'completed' : 'unrelated'}]`}`,
+      `${r.fixture.id.padEnd(22)} needs_search=${r.found.reading.padEnd(14)} their_place=${r.found.theirPlace.padEnd(10)} ${r.found.language}  "${r.found.question}"${r.found.search === 'missing_detail' ? `  missing: "${r.found.missing}"` : ''}${r.found.placeSent ? `  [searched with the family place: ${r.found.placeSent}]` : ''}${r.found.answersPending === null ? '' : `  [pending ask: ${r.found.answersPending ? 'completed' : 'unrelated'}]`}`,
     );
   }
 
@@ -609,7 +632,7 @@ async function main() {
     r.draws.forEach((draw, at) => {
       console.log(
         draw.door
-          ? `      ${at + 1} [safety door, ${draw.latencyMs} ms]`
+          ? `      ${at + 1} [${draw.door} door, ${draw.latencyMs} ms]`
           : `      ${at + 1} [judge ${draw.score}${flags(draw.verdict)}, ${draw.latencyMs} ms] "${draw.flattened}"`,
       );
     });
