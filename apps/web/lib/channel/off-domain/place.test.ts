@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isOnboardingRegionSupported } from '~/lib/family/location-input';
 import { coarsenPlace, placeOf } from './place';
 import ca from './postal-cities/ca.json';
+import coarsen from './postal-cities/coarsen.json';
 import us from './postal-cities/us.json';
 
 /**
@@ -451,13 +452,14 @@ describe('the postal tables', () => {
 });
 
 /**
- * A sensitive search is not told a village. The postal areas below are real, and each
- * resolves to an official village (postal-cities/coarsen.json). What is sent instead is
- * the nearest city in that province or state, or the province when no city is close
- * enough. The same area on a question that is not sensitive is the village, and a town
- * or a city is never replaced.
+ * A sensitive search is not told a place of fewer than 10,000 people. The postal areas
+ * below are real (postal-cities/coarsen.json, 2021 Census of Population and 2020
+ * Census). What is sent instead is the nearest place of 10,000 or more in that province
+ * or state, or the province or state when none is within 150 km. The same area on a
+ * question that is not sensitive is the small place, and a place of 10,000 or more is
+ * never replaced. Addison, Illinois is about 36,000 people and stays itself.
  */
-describe('a sensitive search is not told a village', () => {
+describe('a sensitive search is not told a place under 10,000 people', () => {
   async function readPlace(row: {
     country: string;
     postalCode?: string;
@@ -469,14 +471,17 @@ describe('a sensitive search is not told a village', () => {
     return read;
   }
 
-  it('sends the nearest city for a Canadian village postal area, and the village when the question is not sensitive', async () => {
+  it('sends the nearest larger place for a small Canadian postal area, and the small place when the question is not sensitive', async () => {
     const read = await readPlace({ country: 'Canada', postalCode: 'G8M 1A1' });
     expect(read).toEqual({ status: 'known', city: 'Albanel', country: 'Canada' });
-    expect(await coarsenPlace(read, true)).toEqual({ city: 'Normandin', country: 'Canada' });
+    expect(await coarsenPlace(read, true)).toEqual({
+      city: 'Dolbeau-Mistassini',
+      country: 'Canada',
+    });
     expect(await coarsenPlace(read, false)).toEqual(read);
   });
 
-  it('sends the province alone when no city is within reach of the village', async () => {
+  it('sends the province alone when no place of 10,000 or more is within reach', async () => {
     const read = await readPlace({ country: 'Canada', city: 'Aguanish' });
     expect(read).toEqual({ status: 'known', city: 'Aguanish', country: 'Canada' });
     expect(await coarsenPlace(read, true)).toEqual({
@@ -486,7 +491,7 @@ describe('a sensitive search is not told a village', () => {
     expect(await coarsenPlace(read, false)).toEqual(read);
   });
 
-  it('sends the nearest city for a US village ZIP, and the village for the weather', async () => {
+  it('keeps Addison, Illinois, which is over 10,000 people', async () => {
     const read = await readPlace({ country: 'United States', postalCode: '60101' });
     expect(read).toEqual({
       status: 'known',
@@ -494,11 +499,27 @@ describe('a sensitive search is not told a village', () => {
       provinceOrState: 'Illinois',
       country: 'United States',
     });
-    expect(await coarsenPlace(read, true)).toEqual({ city: 'Wood Dale', country: 'United States' });
+    expect(coarsen.US.some((row) => row[0] === 'Addison' && row[1] === 'Illinois')).toBe(false);
+    expect(await coarsenPlace(read, true)).toEqual(read);
     expect(await coarsenPlace(read, false)).toEqual(read);
   });
 
-  it('does not guess which village a shared name is', async () => {
+  it('sends the nearest larger place for a small US ZIP', async () => {
+    const read = await readPlace({ country: 'United States', postalCode: '62214' });
+    expect(read).toEqual({
+      status: 'known',
+      city: 'Addieville',
+      country: 'United States',
+    });
+    expect(await coarsenPlace(read, true)).toEqual({
+      city: 'Centralia',
+      provinceOrState: 'Illinois',
+      country: 'United States',
+    });
+    expect(await coarsenPlace(read, false)).toEqual(read);
+  });
+
+  it('does not guess which small place a shared name is', async () => {
     expect(await coarsenPlace({ city: 'Addison', country: 'United States' }, true)).toEqual({
       country: 'United States',
     });
@@ -506,13 +527,13 @@ describe('a sensitive search is not told a village', () => {
 
   it.each([
     [
-      'a town',
+      'a place over 10,000',
       { country: 'Canada', postalCode: 'L6H 1A1' },
       { city: 'Oakville', country: 'Canada' },
     ],
     ['a city', { country: 'Canada', areaCoarse: 'M4K' }, { city: 'Toronto', country: 'Canada' }],
     [
-      'a US city that shares its name with a village in another state',
+      'a US city that shares its name with a small place in another state',
       { country: 'United States', postalCode: '80202' },
       { city: 'Denver', provinceOrState: 'Colorado', country: 'United States' },
     ],

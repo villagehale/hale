@@ -21,12 +21,13 @@
 // named fallbacks, the link and health-line gates, and where the family's row and a
 // pending ask are read from (apps/web/lib/channel/off-domain/*.test.ts). The place a
 // search is sent IS production's: a fixture gives the family's row, production's own
-// `placeOf` reads the place off it, and `coarsenPlace` replaces an official village when
-// the sanitizer read the question as sensitive.
+// `placeOf` reads the place off it, and `coarsenPlace` replaces a place of fewer than
+// 10,000 people unless the sanitizer read the question as not sensitive.
 //
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-general-answer-eval.mjs            # live, then caches
 //   node evals/run-general-answer-eval.mjs --cached-only                    # CI: replay only
+//   node evals/run-general-answer-eval.mjs --estimate                       # no API: price a full 3-draw
 //   node evals/run-general-answer-eval.mjs --broken --cached-only           # calibration
 //   ... --min-samples=50                                                    # expanded synthetic corpus
 //
@@ -66,6 +67,7 @@
 // prints those two verdicts alone. What the judge says of each apart from the score (a
 // wrong fact, a safety miss) is printed beside it and is not part of this gate.
 
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
@@ -79,6 +81,7 @@ import {
   searchOmissions,
 } from './general-answer-fixtures.mjs';
 import {
+  CACHE_DIR,
   JUDGE_MIN,
   cacheGet,
   cacheKey,
@@ -328,7 +331,312 @@ function percentile(values, q) {
   return sorted[Math.ceil(q * sorted.length) - 1];
 }
 
+/**
+ * What a full 3-draw recording would cost, with no API call.
+ *
+ * The harness prices a live run as `totalUsd`: cache writes are counted at the input
+ * rate and cache reads are not counted. This applies that same rule to the calls the
+ * recording makes. Input size is the prompt this process would send. Output size is the
+ * last recording's visible JSON or notes, plus the median thinking tokens on the Sonnet
+ * 5.5 calls in this cache that thought. A character-per-token ratio is the median over
+ * this cache's non-thinking outputs. Web search requests per turn are the mean of the
+ * committed search cache. `--cached-only` is unchanged: a miss there still exits 1.
+ */
+async function printRecordingEstimate() {
+  const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const request = await tsImport(ANSWER_REQUEST_SRC, import.meta.url);
+  const places = await tsImport(PLACE_SRC, import.meta.url);
+  const sanitizeSkill = await agent.loadSkill(SANITIZE_SKILL_PATH);
+  const searchSkill = await agent.loadSkill(SEARCH_SKILL_PATH);
+  const skill = await agent.loadSkill(SKILL_PATH);
+  const sanitizeLane = agent.pickLane(sanitizeSkill.meta.task);
+  const searchModel = agent.pickModel(searchSkill.meta.task);
+  const model = agent.pickModel(skill.meta.task);
+  const judgeModel = await readJudgeModel('sonnet');
+
+  const ratios = [];
+  const thinking = [];
+  const sanitizeChars = [];
+  const composeChars = [];
+  const judgeChars = [];
+  const noteChars = [];
+  const noteTexts = [];
+  const sanitizeValues = [];
+  let searchRequestSum = 0;
+  for (const name of await readdir(CACHE_DIR)) {
+    if (!name.endsWith('.json')) continue;
+    const cached = JSON.parse(await readFile(join(CACHE_DIR, name), 'utf8'));
+    const usage = cached.response?.usage;
+    if (usage && cached.response?.model === 'claude-sonnet-5-5') {
+      const thought = usage.output_tokens_details?.thinking_tokens ?? 0;
+      if (thought > 0) thinking.push(thought);
+      else if ((usage.output_tokens ?? 0) >= 8) {
+        const text = (cached.response.content ?? [])
+          .map((block) => (block.type === 'text' ? block.text : JSON.stringify(block.input ?? '')))
+          .join('');
+        if (text.length >= 40) ratios.push(text.length / usage.output_tokens);
+      }
+    }
+    if (cached.value && 'needs_search' in cached.value && 'question' in cached.value) {
+      if (!('hurt_ill_or_danger' in cached.value)) {
+        sanitizeValues.push(cached.value);
+        sanitizeChars.push(JSON.stringify(cached.value).length);
+      }
+    }
+    if (cached.value && 'hurt_ill_or_danger' in cached.value) {
+      composeChars.push(JSON.stringify(cached.value).length);
+    }
+    if (cached.parsed && typeof cached.parsed.score === 'number' && 'wrong_fact' in cached.parsed) {
+      judgeChars.push(JSON.stringify(cached.parsed).length);
+    }
+    if (typeof cached.searchRequests === 'number') {
+      searchRequestSum += cached.searchRequests;
+      noteChars.push((cached.notes ?? '').length);
+      if (typeof cached.notes === 'string' && cached.notes.length > 0) noteTexts.push(cached.notes);
+    }
+  }
+  const mid = (values) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.ceil(sorted.length / 2) - 1];
+  };
+  if (ratios.length === 0 || thinking.length === 0 || noteTexts.length === 0) {
+    throw new Error('general-answer estimate: the cache has no usage to price a recording from');
+  }
+  const charsPerToken = mid(ratios);
+  const thinkingTokens = mid(thinking);
+  const tokens = (chars) => Math.max(1, Math.round(chars / charsPerToken));
+  const notesBlob = noteTexts[Math.floor(noteTexts.length / 2)];
+  const answerChars = mid(composeChars);
+  const filler = `${notesBlob} `;
+  const typicalAnswer = filler.repeat(Math.ceil(answerChars / filler.length)).slice(0, answerChars);
+
+  const folded = (text) =>
+    String(text)
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
+  function priorReading(fixture) {
+    const question = folded(fixture.text);
+    const words = new Set(question.split(' ').filter((word) => word.length > 3));
+    let best = null;
+    let bestScore = 0;
+    for (const value of sanitizeValues) {
+      const reading = folded(value.question);
+      if (reading === question) return value;
+      const shared = reading.split(' ').filter((word) => words.has(word)).length;
+      if (shared > bestScore) {
+        best = value;
+        bestScore = shared;
+      }
+    }
+    return bestScore >= 2 ? best : null;
+  }
+
+  async function homePlace(fixture, sensitive) {
+    if (fixture.family === undefined) return null;
+    const read = await places.placeOf({ ...NO_ROW, ...fixture.family });
+    if (read.status !== 'known') return null;
+    const home = {
+      city: read.city,
+      ...(read.provinceOrState ? { provinceOrState: read.provinceOrState } : {}),
+      country: read.country,
+    };
+    return sensitive ? places.coarsenPlace(home, true) : home;
+  }
+
+  const calls = [];
+  const push = (entry) => calls.push(entry);
+  let searchTurns = 0;
+  const unmatched = [];
+
+  for (const fixture of ANSWER_FIXTURES) {
+    const reading = priorReading(fixture);
+    if (reading === null) unmatched.push(fixture.id);
+    const pending = fixture.pending ?? null;
+    push({
+      model: sanitizeLane.model,
+      promptCache: true,
+      prefixId: 'sanitize',
+      prefix: `${sanitizeSkill.instructions}\n${JSON.stringify(request.sanitizeJsonSchema)}`,
+      user: request.questionSanitizeUserMessage(fixture.text, pending),
+      outputChars: mid(sanitizeChars),
+    });
+    if (pending !== null && fixture.expectAnswersPending === false) {
+      push({
+        model: sanitizeLane.model,
+        promptCache: true,
+        prefixId: 'sanitize',
+        prefix: `${sanitizeSkill.instructions}\n${JSON.stringify(request.sanitizeJsonSchema)}`,
+        user: request.questionSanitizeUserMessage(fixture.text, null),
+        outputChars: mid(sanitizeChars),
+      });
+    }
+
+    // A fixture the last recording did not sanitize is not given a search it never
+    // made. A safety-door text is not a current-fact lookup; anything else still
+    // fails toward searching, which is the expensive call.
+    const value = reading ?? {
+      question: fixture.text,
+      needs_search: fixture.expectSafetyDoor === undefined ? 'yes' : 'no',
+      their_place: 'not_needed',
+      missing_detail: 'none',
+      language: 'en',
+      sensitive: fixture.expectSafetyDoor === undefined ? 'no' : 'yes',
+    };
+    const question = request.scrubDirectIdentifiers(String(value.question ?? '').trim());
+    const missing = request.scrubDirectIdentifiers(String(value.missing_detail ?? '').trim());
+    const language = normalizeLanguage(value.language);
+    const lit = !fixture.searchOff;
+    const searching = request.needsSearch(value.needs_search);
+    const sensitive = request.questionIsSensitive(value.sensitive);
+    const place =
+      lit && searching && request.turnsOnTheirPlace(value.their_place)
+        ? await homePlace(fixture, sensitive)
+        : null;
+    let search = 'not_needed';
+    let notes = '';
+    if (fixture.research !== undefined) {
+      search = 'searched';
+      notes = fixture.research.notes;
+    } else if (!searching) {
+      search = 'not_needed';
+    } else if (lit && value.needs_search === 'missing_detail' && place === null) {
+      search = 'missing_detail';
+    } else if (!lit) {
+      search = 'search_off';
+    } else {
+      search = 'searched';
+      notes = notesBlob;
+      searchTurns += 1;
+      const userMessage = request.searchUserMessage({ question, today: EVAL_TODAY, place });
+      push({
+        model: searchModel,
+        promptCache: false,
+        prefixId: 'search',
+        prefix: `${searchSkill.instructions}\n${JSON.stringify({
+          name: 'web_search',
+          type: 'web_search_20250305',
+          max_uses: MAX_SEARCHES,
+        })}`,
+        user: userMessage,
+        outputChars: mid(noteChars),
+      });
+    }
+
+    const door = fixture.expectSafetyDoor !== undefined;
+    for (let draw = 0; draw < DRAWS; draw += 1) {
+      push({
+        model,
+        promptCache: true,
+        prefixId: 'compose',
+        prefix: `${skill.instructions}\n${JSON.stringify(request.answerJsonSchema)}`,
+        user: request.generalAnswerUserMessage({
+          question,
+          language,
+          today: EVAL_TODAY,
+          search,
+          notes,
+          missing,
+        }),
+        outputChars: answerChars,
+      });
+      if (door) continue;
+      push({
+        model: judgeModel,
+        promptCache: true,
+        prefixId: 'judge',
+        prefix: `${JUDGE_SYSTEM}\n${JSON.stringify(VERDICT_SCHEMA)}`,
+        user: JSON.stringify({
+          question: fixture.text,
+          today: EVAL_TODAY,
+          answer: typicalAnswer,
+          live: request.liveAsTold(search),
+          research_notes: search === 'searched' ? notes : 'none',
+          watchFor: fixture.watchFor,
+        }),
+        outputChars: mid(judgeChars),
+      });
+    }
+  }
+
+  const calibration = ANSWER_FIXTURES.find((fixture) => fixture.id === CALIBRATION_FIXTURE);
+  for (const answer of [BROKEN_ANSWER, `${typicalAnswer} ${NEAR_MISS_TAIL}`]) {
+    push({
+      model: judgeModel,
+      promptCache: true,
+      prefixId: 'judge',
+      prefix: `${JUDGE_SYSTEM}\n${JSON.stringify(VERDICT_SCHEMA)}`,
+      user: JSON.stringify({
+        question: calibration.text,
+        today: EVAL_TODAY,
+        answer,
+        live: 'searched',
+        research_notes: notesBlob,
+        watchFor: calibration.watchFor,
+      }),
+      outputChars: mid(judgeChars),
+    });
+  }
+
+  const cost = makeCost();
+  const wrote = new Set();
+  for (const call of calls) {
+    let input = tokens(call.user.length);
+    if (call.promptCache) {
+      if (!wrote.has(call.prefixId)) {
+        wrote.add(call.prefixId);
+        input += tokens(call.prefix.length);
+      }
+    } else {
+      input += tokens(call.prefix.length);
+    }
+    noteUsage(cost, call.model, {
+      input_tokens: input,
+      output_tokens: tokens(call.outputChars) + thinkingTokens,
+      cache_creation_input_tokens: 0,
+    });
+  }
+  const requestsPerTurn = searchRequestSum / noteChars.length;
+  const webSearchRequests = searchTurns * requestsPerTurn;
+  const tokenUsd = totalUsd(cost);
+  const feeUsd = webSearchRequests * USD_PER_WEB_SEARCH;
+  const byRole = (id) => calls.filter((call) => call.prefixId === id).length;
+
+  console.log(
+    `general-answer eval | mode=estimate (no API calls) | sanitize=${sanitizeLane.model} search=${searchModel} compose=${model} judge=${judgeModel}`,
+  );
+  console.log(
+    `corpus: ${ANSWER_FIXTURES.length} questions | draws: ${DRAWS} | today: ${EVAL_TODAY}`,
+  );
+  if (unmatched.length > 0)
+    console.log(`fixtures with no prior sanitize reading: ${unmatched.join(', ')}`);
+  console.log('\n--- cost telemetry ---');
+  console.log(`full 3-draw recording estimate: $${(tokenUsd + feeUsd).toFixed(4)} USD`);
+  console.log(
+    `tokens, harness totalUsd (cache reads uncounted, cache writes at the input rate): $${tokenUsd.toFixed(4)} USD`,
+  );
+  console.log(
+    `web search requests: ${webSearchRequests} | fee, billed apart from tokens: $${feeUsd.toFixed(4)} USD`,
+  );
+  console.log(
+    `calls: ${calls.length} | sanitize ${byRole('sanitize')}, search ${byRole('search')}, compose ${byRole('compose')}, judge ${byRole('judge')}`,
+  );
+  for (const [name, bucket] of Object.entries(cost.byModel)) {
+    console.log(`tokens, ${name}: ${bucket.input} in / ${bucket.output} out`);
+  }
+  console.log(
+    `method: ${charsPerToken.toFixed(4)} characters per token (median of ${ratios.length} non-thinking Sonnet 5.5 outputs in the cache); ${thinkingTokens} thinking tokens added to every call (median of ${thinking.length} Sonnet 5.5 outputs that thought); output characters are the median visible sanitize/compose/judge JSON and search notes already committed; web searches per turn are the mean of ${noteChars.length} committed search records (${searchRequestSum} requests).`,
+  );
+  await exitWhenPrinted(0);
+}
+
 async function main() {
+  if (process.argv.includes('--estimate')) {
+    await printRecordingEstimate();
+    return;
+  }
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];

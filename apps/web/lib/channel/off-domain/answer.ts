@@ -657,9 +657,10 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
     const searching = needsSearch(sanitized.needs_search);
     const located =
       lit && searching && turnsOnTheirPlace(sanitized.their_place) ? await homePlace(family) : null;
-    // A village is not sent on a question the sanitizer read as sensitive. The reading
-    // is the model's; the replacement is this code (place.ts). Anything else, including
-    // a missing reading, is the place as read: the weather stays the town.
+    // A place of fewer than 10,000 people is not sent unless the sanitizer read the
+    // question as not sensitive. The reading is the model's; the replacement is this
+    // code (place.ts). A missing or unparseable reading coarsens. The weather stays
+    // the town because the sanitizer reads it as not sensitive.
     const place =
       located === null || !questionIsSensitive(sanitized.sensitive)
         ? located

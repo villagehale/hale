@@ -113,31 +113,45 @@ All three licences allow copying, adapting and redistributing with this credit. 
 is adapted from all three sources and `us.json` from GeoNames, and they carry the same
 credit.
 
-## Villages, for a sensitive search
+## Places under 10,000, for a sensitive search
 
-`coarsen.json` says which of those place names are official villages, and the nearest
-city to send instead when a search is about a sensitive question (`../place.ts`,
-`coarsenPlace`). A question that is not sensitive is sent the place as read, village
-included. A town is never in this file.
+`coarsen.json` says which checked-in place names have fewer than 10,000 people, and
+the nearest place of 10,000 or more to send instead when a search is about a sensitive
+question (`../place.ts`, `coarsenPlace`). Only an explicit not-sensitive reading is
+sent the place as read. A missing or unparseable reading coarsens. A place of 10,000
+or more is never in this file: Addison, Illinois stays itself.
 
-A name is a village only when that is its best class in that province or state. In
-Canada a city, a town or a municipal district (`CITY`, `TOWN`, `MUN1`, `MUN2`) beats
-`VILG`. In the United States a city, a borough or a town (Census LSAD 25, 21, 43) beats
-a village (LSAD 47). A census designated place (LSAD 57) is not a village and is not
-read. The nearest city is the nearest `CITY` or LSAD 25 in the same province or state,
-within 150 km. Farther than that, the file names no city and the search is sent the
-province or state alone.
+The count is the higher one when a name is more than one census feature in that
+province or state (a census designated place and the town of the same name). A small
+row is written only for a province or state the postal table itself uses that name in,
+or, when no area points at the name, for each province or state the census has it in.
+The nearest place of 10,000 or more is in that same province or state, within 150 km,
+and its spelling is the postal table's. Farther than that, the file names no city and
+the search is sent the province or state alone.
 
-Built by `node coarsen.mjs <cgn_canada_csv_eng.csv> <2024_Gaz_place_national.txt>`. The
-Canadian file is the same download as above. The United States file is the 2024 Census
-Gazetteer national places file, retrieved 2026-10-13:
+Built by `node coarsen.mjs <98100002.csv> <cgn_canada_csv_eng.csv> <dir of *2020.pl.zip>`.
+No network call. Retrieved 2026-10-13.
 
 | File | From | SHA-256 |
 |---|---|---|
-| `2024_Gaz_place_national.txt` | https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip | `ba197a3c0cef828d47981ed7435d820d040d3199bf39a719cd9b11412c59afa6` |
+| `98100002.csv` | Statistics Canada, 2021 Census of Population, table 98-10-0002 (census subdivisions), inside `98100002-eng.zip` | `1e983c04a99ab93d270ae8d113aa6113203c5f872afa5a62918066c499416b3d` |
+| `cgn_canada_csv_eng.csv` | Geographical Names Data Base, the same download as above, for coordinates | `49125a94a87aae2affb257fdb5f97d209f1b103e4e094753d20216cb0bca19d8` |
 
-The gazetteer is a work of the United States government. SHA-256 of `coarsen.json`:
-`66660d512618afc9279b0a27b77d42981b6ef4063e9c6a8b005231cffacc7696`.
+The United States population is the 2020 Census Redistricting Data (P.L. 94-171) table
+P1 total, from each state's `*2020.pl.zip` at
+`https://www2.census.gov/programs-surveys/decennial/2020/data/01-Redistricting_File--PL_94-171/`.
+Places (summary level 160, census designated places included) and county subdivisions
+(summary level 060). Those files are a work of the United States government.
+
+Statistics Canada Open Licence, https://www.statcan.gc.ca/en/terms-conditions/open-licence.
+Adapted from Statistics Canada, table 98-10-0002, 2021 Census of Population. This does
+not constitute an endorsement by Statistics Canada of this product. Coordinates are
+from the Geographical Names Data Base under the Open Government Licence - Canada,
+https://open.canada.ca/en/open-government-licence-canada. Contains information licensed
+under the Open Government Licence - Canada.
+
+SHA-256 of `coarsen.json`:
+`320db349d9ddbc779b27da7ffb29595dc2272dd27ae6cd54b0c9155c379391bb`.
 
 ## Rebuilding
 

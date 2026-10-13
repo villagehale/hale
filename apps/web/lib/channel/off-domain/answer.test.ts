@@ -1469,6 +1469,8 @@ describe("the family's city and country", () => {
       missing_detail: 'which city',
       their_place: 'needed',
       needs_search: 'missing_detail',
+      // The weather is not a sensitive question. An omitted reading would coarsen.
+      sensitive: 'no',
       ...overrides,
     });
   const searchMessage = (seen: Seen) => JSON.parse(seen.search[0]?.messages?.[0]?.content ?? '{}');
@@ -1529,12 +1531,13 @@ describe("the family's city and country", () => {
   });
 
   /**
-   * A sensitive question is not searched for a village. The place the lane read is a
-   * real village postal area (postal-cities/coarsen.json); what the search is handed is
-   * the nearest city, or the province when there is none. The same place on a question
-   * that is not sensitive, the weather included, is sent as read.
+   * A sensitive question is not searched for a place of fewer than 10,000 people. The
+   * place the lane read is a real small postal area (postal-cities/coarsen.json); what
+   * the search is handed is the nearest larger place. The same place on a question the
+   * sanitizer read as not sensitive, the weather included, is sent as read. A missing
+   * or unparseable reading coarsens.
    */
-  it('sends a sensitive search the nearest city for a village, and the village itself otherwise', async () => {
+  it('sends a sensitive search the nearest larger place, and the small place only on an explicit no', async () => {
     lit();
     quietInfo();
     const village = familyAt({ status: 'known', city: 'Albanel', country: 'Canada' });
@@ -1556,7 +1559,10 @@ describe("the family's city and country", () => {
       ),
     ).compose('hows the weather tomorrow', village);
 
-    expect(searchMessage(sensitive).place).toEqual({ city: 'Normandin', country: 'Canada' });
+    expect(searchMessage(sensitive).place).toEqual({
+      city: 'Dolbeau-Mistassini',
+      country: 'Canada',
+    });
     expect(JSON.stringify(sensitive.search)).not.toContain('Albanel');
 
     const weather = seenNothing();
@@ -1581,6 +1587,40 @@ describe("the family's city and country", () => {
 
     expect(searchMessage(weather).place).toEqual({ city: 'Albanel', country: 'Canada' });
   });
+
+  it.each([undefined, null, '', 'maybe'])(
+    'sends the coarser place when the sensitive reading is %j',
+    async (sensitive) => {
+      lit();
+      quietInfo();
+      const seen = seenNothing();
+
+      await createGeneralAnswer(
+        scripted(
+          {
+            sanitize: reading({
+              question: 'hows the weather tomorrow',
+              their_place: 'needed',
+              needs_search: 'yes',
+              sensitive,
+            }),
+            search: searchFound(),
+            answer: { answer: 'Sunny.' },
+          },
+          seen,
+        ),
+      ).compose(
+        'hows the weather tomorrow',
+        familyAt({ status: 'known', city: 'Albanel', country: 'Canada' }),
+      );
+
+      expect(searchMessage(seen).place).toEqual({
+        city: 'Dolbeau-Mistassini',
+        country: 'Canada',
+      });
+      expect(JSON.stringify(seen.search)).not.toContain('Albanel');
+    },
+  );
 
   /** The province goes where the city goes and nowhere else: to the search. */
   it('sends the search the province the lane read with a shared city name, and nobody else', async () => {

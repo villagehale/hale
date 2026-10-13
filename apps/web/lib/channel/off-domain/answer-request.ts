@@ -40,9 +40,9 @@ export interface PendingAsk {
 /** The family's own city and country: what leaves for a search about where a family is
  * (founder, 2026-10-12), never the postal code, never anything finer than the city. The
  * province or state goes with them only when the city's name alone is more than one
- * place (Sloane, 2026-10-12; place.ts). On a sensitive question an official village is
- * not sent: `city` is the nearest city, or absent when the place is the province or
- * state alone (place.ts coarsenPlace). */
+ * place (Sloane, 2026-10-12; place.ts). On a sensitive question a place of fewer than
+ * 10,000 people is not sent: `city` is the nearest place of 10,000 or more, or absent
+ * when the place is the province or state alone (place.ts coarsenPlace). */
 export interface HomePlace {
   city?: string;
   provinceOrState?: string;
@@ -268,11 +268,12 @@ export function turnsOnTheirPlace(raw: unknown): boolean {
   return raw === 'needed';
 }
 
-/** ONLY AN EXPLICIT `yes` COARSENS THE PLACE. The weather stays the town, including when
- * the reading is missing: a village is replaced only when the sanitizer read the
- * question as sensitive. */
+/** FAIL TOWARD THE COARSER PLACE. Only an explicit `no` sends the municipality as
+ * read. A missing reading and anything that is not `no` coarsen: the failure worth
+ * avoiding is a place of fewer than 10,000 people on a question the sanitizer did not
+ * clear. The weather stays the town because the sanitizer reads it as `no`. */
 export function questionIsSensitive(raw: unknown): boolean {
-  return raw === 'yes';
+  return raw !== 'no';
 }
 
 /** FAIL TOWARD A NEW QUESTION: a text is read as the reply to a pending ask only on an

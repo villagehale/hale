@@ -14,6 +14,9 @@ are not links.
 `public_suffix_list.dat` is the file the list was built from, header included.
 `build.mjs` reads that file as text and writes `suffixes.json`.
 
+This list replaced the IANA root-zone table that used to live beside this directory
+(Barton, 2026-10-13). That table is not part of the build.
+
 ## Source
 
 | File | From | Version line | SHA-256 of the download |

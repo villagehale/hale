@@ -122,9 +122,10 @@ everywhere, what is missing is something other than a place, or you are not sure
 
 Then `sensitive`. Write `yes` when the question is about someone's health or mind, a
 therapist or a clinic, money, the law, or safety. The place a search is given for
-those is never a village. Write `no` for the weather, a score, a price, trivia, and
-for anything you are not sure is one of those. Judge the meaning, in whatever
-language they wrote. There is no list of words that makes a question sensitive.
+those is never a place of fewer than 10,000 people. Write `no` for the weather, a
+score, a price, trivia, and for anything you are not sure is one of those. Judge
+the meaning, in whatever language they wrote. There is no list of words that makes
+a question sensitive.
 
 Then `current_fact`: the thing in the question that could have changed recently,
 named in a few plain words and de-identified like the question, or `none`.

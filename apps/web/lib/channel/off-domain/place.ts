@@ -180,10 +180,11 @@ export async function placeOf(family: {
 }
 
 /**
- * A place name the search may be told, and the nearest city to send instead when that
- * name is an official village. `city` is null when no city in the same province or
- * state is within the cap: the province or state is sent on its own. `cityProvince`
- * is set only when the nearest city's name is more than one place.
+ * A place name the search may be told, and the nearest larger place to send instead
+ * when fewer than 10,000 people live there. `city` is null when no place of 10,000 or
+ * more in the same province or state is within the cap: the province or state is sent
+ * on its own. `cityProvince` is set only when the nearest place's name is more than
+ * one place.
  */
 interface VillageInstead {
   region: string;
@@ -227,23 +228,21 @@ function loadCoarsen(): Promise<Record<PostalCountry, CoarsenIndex>> {
 /**
  * The place a sensitive search may be told. {@link placeOf} names the municipality the
  * family's area belongs to, and this is the step in front of the search (answer.ts):
- * an official village is not that place.
+ * a place of fewer than 10,000 people is not that place.
  *
- * WHICH NAMES ARE VILLAGES is coarsen.json, built by postal-cities/coarsen.mjs. Canada's
- * are Geographical Names Data Base concise code VILG, and only where that name's best
- * class in that province is a village: a city, a town or a municipal district of the
- * same name wins, and is sent as itself. The United States' are Census places whose
- * legal status is a village, and not a city, a town, a borough or a census designated
- * place. A town is still sent.
+ * WHICH NAMES ARE UNDER 10,000 is coarsen.json, built by postal-cities/coarsen.mjs from
+ * the 2021 Census of Population (Statistics Canada table 98-10-0002) and the 2020 Census
+ * (P.L. 94-171). A name at or above 10,000 in the province or state the postal table
+ * would send is not in the file, and is sent as itself. Addison, Illinois is one of those.
  *
- * WHAT IS SENT INSTEAD is the nearest city in that same province or state, within the
- * cap the file records, or the province or state alone when there is none. The city's
- * own province or state goes with it only when its name is more than one place, the
- * same rule as {@link placeOf}. A village name that belongs to more than one province
- * or state, on a place that does not say which, is sent as the country alone.
+ * WHAT IS SENT INSTEAD is the nearest place of 10,000 or more in that same province or
+ * state, within the cap the file records, or the province or state alone when there is
+ * none. That place's own province or state goes with it only when its name is more than
+ * one place, the same rule as {@link placeOf}. A small name that belongs to more than
+ * one province or state, on a place that does not say which, is sent as the country alone.
  *
- * ONLY WHEN ASKED. A question the sanitizer did not read as sensitive is returned as
- * {@link placeOf} read it, village included, and the file stays unopened.
+ * ONLY WHEN ASKED. The caller decides, and only an explicit not-sensitive reading asks
+ * for the place as {@link placeOf} read it. This file stays unopened until then.
  */
 export async function coarsenPlace(
   place: { city?: string; provinceOrState?: string; country: string },

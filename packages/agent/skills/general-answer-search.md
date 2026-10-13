@@ -19,9 +19,10 @@ You receive:
 - `place`: only sometimes. The city and the country the person asking is in, given
   when the question depends on where they are and does not say. It also holds a
   `province_or_state` when more than one place in that country has the city's
-  name: it says which one. On a sensitive question the place is never a village:
-  `city` may be absent and `province_or_state` is the place to look up. Look it
-  up for that place, and say in the notes which place they are for.
+  name: it says which one. On a sensitive question the place is never one of
+  fewer than 10,000 people: `city` may be absent and `province_or_state` is the
+  place to look up. Look it up for that place, and say in the notes which place
+  they are for.
 
 ## What to do
 
