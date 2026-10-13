@@ -80,6 +80,8 @@ function harness(
     unbacked?: Awaited<ReturnType<ActivityFollowUpDeps['refuseUnbackedSend']>>;
     /** The thread the promise's own message carried, or null when it carried none. */
     conversationId?: string | null;
+    /** `users.locale` for the parent the promise was sent to. */
+    language?: string;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -97,6 +99,7 @@ function harness(
     resolveRecipient: async () => ({
       parentUserId: PARENT,
       conversationId: overrides.conversationId === undefined ? 'conv-1' : overrides.conversationId,
+      language: overrides.language ?? 'en-CA',
     }),
     reader: {
       municipality: async () => 'halton_hills',
@@ -216,7 +219,21 @@ describe('a promise with finds', () => {
     const h = harness();
     await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    expect(h.composed[0]).toMatchObject({ subject: 'toddler gymnastics this fall' });
+    expect(h.composed[0]).toMatchObject({
+      subject: 'toddler gymnastics this fall',
+      language: 'en-CA',
+    });
+  });
+
+  it('hands the composer the language tag stored for this parent', async () => {
+    armed();
+    const h = harness({ language: 'zh' });
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.composed[0]).toMatchObject({ language: 'zh' });
+    const ar = harness({ language: 'ar' });
+    await runActivityFollowUpSweep(database, ar.deps, NOW);
+    expect(ar.composed[0]).toMatchObject({ language: 'ar' });
   });
 });
 

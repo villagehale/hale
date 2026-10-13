@@ -37,6 +37,7 @@ const PICK: ActivityPick = {
 function grounding(over: Partial<FollowUpGrounding> = {}): FollowUpGrounding {
   return {
     subject: 'toddler gymnastics',
+    language: 'en-CA',
     picks: [PICK],
     pageEvidence: 'page_has_no_schedule',
     watch: false,
@@ -412,6 +413,7 @@ describe('the payload the composer is handed', () => {
     );
 
     expect(Object.keys(payload).sort()).toEqual([
+      'language',
       'mode',
       'picks',
       'picks_empty',
@@ -428,6 +430,7 @@ describe('the payload the composer is handed', () => {
     );
 
     expect(Object.keys(payload).sort()).toEqual([
+      'language',
       'mode',
       'page_evidence',
       'picks',
@@ -446,6 +449,7 @@ describe('the payload the composer is handed', () => {
     expect(Object.keys(held)).toEqual([
       'mode',
       'subject',
+      'language',
       'page_evidence',
       'watch',
       'more_remaining',
@@ -456,6 +460,14 @@ describe('the payload the composer is handed', () => {
     const none = JSON.parse(followUpUserMessage(grounding({ moreRemaining: 0 })));
     expect(none).not.toHaveProperty('more_remaining');
     expect(none).not.toHaveProperty('more_remaining_instruction');
+  });
+
+  it('passes the language tag through unchanged, and never the parent\'s words', () => {
+    for (const language of ['zh', 'ar', 'en-CA']) {
+      const payload = JSON.parse(followUpUserMessage(grounding({ language })));
+      expect(payload.language).toBe(language);
+      expect(JSON.stringify(payload)).not.toMatch(/parent said|raw message/i);
+    }
   });
 });
 

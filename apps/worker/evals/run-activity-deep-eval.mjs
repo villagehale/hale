@@ -224,10 +224,19 @@ function readExtract(raw) {
  * pages: a model that never sees a page fact cannot blame a page for a programme that does
  * not exist ("I could not get into any pages today for toddler underwater basket weaving",
  * 2026-08-24). */
-function followUpUserMessage(subject, slots, pageEvidence, watch, moreRemaining = 0) {
+function followUpUserMessage(
+  subject,
+  slots,
+  pageEvidence,
+  watch,
+  moreRemaining = 0,
+  language = 'en-CA',
+) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    // `users.locale`, passed through. The composer never sees the parent's words.
+    language,
     ...(slots.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
     watch,
     // Omitted at zero so an existing cache key stays a hit. Mirrors followup-note.ts.
@@ -235,7 +244,7 @@ function followUpUserMessage(subject, slots, pageEvidence, watch, moreRemaining 
       ? {
           more_remaining: moreRemaining,
           more_remaining_instruction:
-            'In your own words, in whatever language this parent writes in, say that more options exist and that they can ask in this chat for the next ones. Do not list any option you were not given. Do not use a stock sentence.',
+            'In your own words, in the language named by `language` on this request, say that more options exist and that they can ask in this chat for the next ones. Do not list any option you were not given. Do not use a stock sentence.',
         }
       : {}),
     picks: slots.map((slot) => ({
@@ -669,20 +678,25 @@ const JUDGE_SYSTEM = [
   "operator's own pages, extracted structured slots, and wrote one SMS from them. It never",
   'saw the child - only a de-identified subject, the town and a coarse stage. You are given',
   'the subject, the town, the stage, what the pages said (notes), the slots it extracted,',
-  'the message it wrote, and watchFor (fixture-specific notes). Score 1-5.',
+  'the message it wrote, the language tag, and watchFor (fixture-specific notes). Score 1-5.',
   'A 5: every slot is a real thing on the page, with the day, the session dates and the fee',
   'exactly as printed, each cited to the page it was read off, and where the page gave a',
   'REGISTRATION date the slot carries it and so does the message. The message leads with the',
-  'best slot by name, attributes the facts ("their site says"), carries the registration',
-  'window, attributes rather than claiming to have confirmed, and is one or two short',
-  'plain-ASCII sentences with no link and NO QUESTION AT ALL.',
+  'best slot by name, attributes the facts to the venue\'s own page, carries the registration',
+  'window, and attributes rather than claiming to have confirmed. It is one or two short',
+  'sentences with no link and NO QUESTION AT ALL.',
+  'Grade three things. Correctness: every fact in the message is a fact the slots and the',
+  'notes support. Tone: a person keeping a promise, specific and calm. Language: the message',
+  'is written in the language named by `language`. A message in that language is scored on',
+  'the facts and the tone. A message in a different language from that tag is a low score.',
   'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
   'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
   'down; nothing on this path can write one, so a "want me to..." here is a yes with',
   'nowhere to land (2026-08-22: it landed on an unrelated approvals queue). Do not mark a',
   'message down for ending on a statement.',
   'You are given `watch`. When it is TRUE, Hale has ALREADY written a continuation promise',
-  'to go back and look again, and the message must say so in the first person ("I\'ll keep',
+  'to go back and look again, and the message must say so in the first person, in the',
+  'language named by `language` (the English shape of that commitment is "I\'ll keep',
   'watching and text you when they post"): that is a commitment that exists, not an',
   'unverified claim, and scoring it as one is wrong. When it is FALSE no such row exists',
   'and any coming-back sentence is a promise nothing is behind - THAT is the low score.',
@@ -1056,7 +1070,14 @@ async function main() {
               model: composerModel,
               system: finderSkill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, inText, pageEvidence, watch),
+                followUpUserMessage(
+                  fixture.subject,
+                  inText,
+                  pageEvidence,
+                  watch,
+                  0,
+                  fixture.language ?? 'en-CA',
+                ),
                 violations,
               ),
               toolName: 'followup_text',
@@ -1091,6 +1112,7 @@ async function main() {
       const verdict = await judge(fixture.id, {
         watch,
         pageEvidence,
+        language: fixture.language ?? 'en-CA',
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,

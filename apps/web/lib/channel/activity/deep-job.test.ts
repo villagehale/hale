@@ -142,6 +142,7 @@ interface Harness {
   threaded: string[];
   audited: Array<Record<string, unknown>>;
   watched: unknown[];
+  composed: unknown[];
 }
 
 function harness(
@@ -161,10 +162,15 @@ function harness(
   const threaded: string[] = [];
   const audited: Array<Record<string, unknown>> = [];
   const watched: unknown[] = [];
+  const composed: unknown[] = [];
 
   const deps: DeepJobDeps = {
     loadOpen: async () => (overrides.open === undefined ? OPEN : overrides.open),
-    resolveRecipient: async () => ({ parentUserId: PARENT, conversationId: 'conv-1' }),
+    resolveRecipient: async () => ({
+      parentUserId: PARENT,
+      conversationId: 'conv-1',
+      language: 'en-CA',
+    }),
     reader: {
       municipality: async () => 'halton_hills',
       stage: async () => 'toddler',
@@ -188,7 +194,8 @@ function harness(
     lane: scriptedLane(overrides.result ?? READ),
     delivery: {
       composer: {
-        async compose() {
+        async compose(grounding) {
+          composed.push(grounding);
           return overrides.compose ?? { status: 'composed', message: 'Tiny Gym runs Sundays 9:30.' };
         },
       },
@@ -218,7 +225,7 @@ function harness(
     },
   };
 
-  return { deps, transport, fulfilled, cancelled, threaded, audited, watched };
+  return { deps, transport, fulfilled, cancelled, threaded, audited, watched, composed };
 }
 
 describe('runDeepResearchJob', () => {
@@ -228,6 +235,7 @@ describe('runDeepResearchJob', () => {
     const outcome = await runDeepResearchJob(database, PAYLOAD, h.deps, NOW);
 
     expect(outcome.status).toBe('sent');
+    expect(h.composed[0]).toMatchObject({ language: 'en-CA' });
     expect(h.transport.sent).toHaveLength(1);
     // Threaded, so the parent's reply arrives as an ordinary coach turn with the finds
     // above it (#531).

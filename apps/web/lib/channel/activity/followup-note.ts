@@ -67,7 +67,7 @@ const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\
  * parent writes in.
  */
 const MORE_REMAINING_INSTRUCTION =
-  'In your own words, in whatever language this parent writes in, say that more options exist and that they can ask in this chat for the next ones. Do not list any option you were not given. Do not use a stock sentence.';
+  'In your own words, in the language named by `language` on this request, say that more options exist and that they can ask in this chat for the next ones. Do not list any option you were not given. Do not use a stock sentence.';
 
 export type FollowUpFallback =
   | 'client_unavailable'
@@ -97,6 +97,12 @@ export type FollowUpPick = ActivityPick & { registration?: string | null };
 export interface FollowUpGrounding {
   /** The de-identified subject the promise was about, off the ledger row. */
   subject: string;
+  /**
+   * The language this parent writes in, as a tag already stored on their profile
+   * (`users.locale`). Passed through as stored. This leg never sees their words, and it
+   * does not detect a language from them.
+   */
+  language: string;
   /** What the re-run search found. EMPTY is a valid, sendable grounding — see the module
    * note on why the bad-news half is the half that makes the promise honest. */
   picks: readonly FollowUpPick[];
@@ -173,6 +179,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
   const payload: Record<string, unknown> = {
     mode: 'followup_text',
     subject: grounding.subject,
+    language: grounding.language,
   };
   // The two facts about the SWEEP rather than about a pick, and both are here for the
   // reason `registration` is: a projection that does not carry them is a model that

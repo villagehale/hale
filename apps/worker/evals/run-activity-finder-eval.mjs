@@ -179,10 +179,19 @@ function composeUserMessage(q, researchNotes) {
  * pages: a model that never sees a page fact cannot blame a page for a programme that does
  * not exist ("I could not get into any pages today for toddler underwater basket weaving",
  * 2026-08-24). */
-function followUpUserMessage(subject, picks, pageEvidence, watch, moreRemaining = 0) {
+function followUpUserMessage(
+  subject,
+  picks,
+  pageEvidence,
+  watch,
+  moreRemaining = 0,
+  language = 'en-CA',
+) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    // `users.locale`, passed through. The composer never sees the parent's words.
+    language,
     ...(picks.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
     watch,
     // Omitted at zero so an existing cache key stays a hit. Mirrors followup-note.ts.
@@ -190,7 +199,7 @@ function followUpUserMessage(subject, picks, pageEvidence, watch, moreRemaining 
       ? {
           more_remaining: moreRemaining,
           more_remaining_instruction:
-            'In your own words, in whatever language this parent writes in, say that more options exist and that they can ask in this chat for the next ones. Do not list any option you were not given. Do not use a stock sentence.',
+            'In your own words, in the language named by `language` on this request, say that more options exist and that they can ask in this chat for the next ones. Do not list any option you were not given. Do not use a stock sentence.',
         }
       : {}),
     picks: picks.map((pick) => ({
@@ -1260,7 +1269,14 @@ async function main() {
               model,
               system: skill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, kept, pageEvidence, watch),
+                followUpUserMessage(
+                  fixture.subject,
+                  kept,
+                  pageEvidence,
+                  watch,
+                  0,
+                  fixture.language ?? 'en-CA',
+                ),
                 violations,
               ),
               toolName: 'followup_text',

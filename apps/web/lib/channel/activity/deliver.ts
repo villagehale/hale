@@ -130,6 +130,8 @@ export interface FollowUpRecipient {
   /** The conversation the promise was made in, so the answer lands where the question was
    * asked. Null when the carrying message was not threaded. */
   conversationId: string | null;
+  /** `users.locale` for this parent, unchanged. The follow-up is written in this language. */
+  language: string;
 }
 
 /** The effects a delivery performs. Every one is REQUIRED (rule #11): a sender that could
@@ -235,6 +237,7 @@ export async function deliverFollowUp(
   const watch = watchWarranted(input.picks);
   const composed = await deps.composer.compose({
     subject: input.subject,
+    language: input.recipient.language,
     picks: input.picks,
     pageEvidence: input.pageEvidence,
     watch,

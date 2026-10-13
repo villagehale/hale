@@ -458,12 +458,21 @@ export async function resolveFollowUpRecipient(
     .select({
       parentUserId: schema.channelMessages.parentUserId,
       conversationId: schema.channelMessages.relatedConversationId,
+      language: schema.users.locale,
     })
     .from(schema.channelMessages)
+    .innerJoin(schema.users, eq(schema.users.id, schema.channelMessages.parentUserId))
     .where(eq(schema.channelMessages.id, channelMessageId))
     .limit(1);
-  if (!row?.parentUserId) return null;
-  return { parentUserId: row.parentUserId, conversationId: row.conversationId ?? null };
+  // No user row means there is nobody to write to, and no locale means there is no
+  // language to write in. Both are the same outcome the sweep already names: the
+  // recipient no longer resolves. A default language here would be a language nobody stored.
+  if (!row?.parentUserId || row.language.trim() === '') return null;
+  return {
+    parentUserId: row.parentUserId,
+    conversationId: row.conversationId ?? null,
+    language: row.language,
+  };
 }
 
 export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
