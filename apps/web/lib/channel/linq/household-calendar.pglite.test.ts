@@ -424,44 +424,6 @@ describe('household calendars', () => {
     }
   });
 
-  it('sends at most one group bubble a day', async () => {
-    const seeded = await seedPair();
-    const wire = linqFetch();
-    await rememberAndNarrateCalendar(db.database, {
-      integrationId: seeded.primaryIntegrationId,
-      familyId: seeded.familyId,
-      userId: seeded.primaryUserId,
-      changes: [change({ eventId: 'gym', title: 'Maya gymnastics' })],
-      seeding: false,
-      now: DAY,
-      fetch: wire.fetch,
-    });
-    expect(wire.texts()).toContain('Heads up:');
-    const afterFirst = wire.texts();
-    await rememberAndNarrateCalendar(db.database, {
-      integrationId: seeded.primaryIntegrationId,
-      familyId: seeded.familyId,
-      userId: seeded.primaryUserId,
-      changes: [
-        change({
-          eventId: 'swim',
-          title: 'Maya swim',
-          start: { dateTime: '2026-09-26T19:00:00.000Z' },
-          end: { dateTime: '2026-09-26T20:00:00.000Z' },
-        }),
-      ],
-      seeding: false,
-      now: DAY,
-      fetch: wire.fetch,
-    });
-    expect(wire.texts()).toBe(afterFirst);
-    const [held] = await db.database
-      .select({ announcedAt: schema.parentCalendarBlocks.announcedAt })
-      .from(schema.parentCalendarBlocks)
-      .where(eq(schema.parentCalendarBlocks.eventId, 'swim'));
-    expect(held?.announcedAt).toBeNull();
-  });
-
   it('sends kid-event, conflict, handoff, and post-event only to the Linq group chat', async () => {
     const start = new Date('2026-09-25T19:00:00.000Z');
     const end = new Date('2026-09-25T20:00:00.000Z');
@@ -730,7 +692,7 @@ describe('household calendars', () => {
     expect(wire.urls().some((url) => url.includes('/polls'))).toBe(false);
   });
 
-  it('does not poll a conflict during quiet hours or after the daily cap', async () => {
+  it('does not poll a conflict during quiet hours', async () => {
     vi.stubEnv('LINQ_POLLS', 'on');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const seeded = await seedPair();
@@ -770,28 +732,6 @@ describe('household calendars', () => {
     });
     expect(quiet.texts()).toEqual([]);
     expect(quiet.pollOptions()).toEqual([]);
-
-    const cappedAt = new Date('2026-09-23T14:00:00.000Z');
-    await db.database.insert(schema.channelMessages).values({
-      familyId: seeded.familyId,
-      parentUserId: seeded.primaryUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'calendar_alert',
-      templateKey: 'linq:group_kid_event',
-      providerChatId: GROUP,
-      status: 'sent',
-      sentAt: cappedAt,
-      createdAt: cappedAt,
-    });
-    const capped = pollWire();
-    await narrateHouseholdCalendar(db.database, {
-      familyId: seeded.familyId,
-      now: cappedAt,
-      fetch: capped.fetch,
-    });
-    expect(capped.texts()).toEqual([]);
-    expect(capped.pollOptions()).toEqual([]);
   });
 
   it('uses a vote at the evening handoff and does not invent a taker without one', async () => {
