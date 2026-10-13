@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
 import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
@@ -725,6 +725,7 @@ async function countFamilyProactiveSends(
         eq(schema.channelMessages.direction, 'out'),
         gte(schema.channelMessages.createdAt, since),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        isRealSendRow(),
       ),
     );
   return rows.length;
@@ -750,6 +751,7 @@ async function parentProactiveSentSince(
         eq(schema.channelMessages.direction, 'out'),
         gte(schema.channelMessages.createdAt, since),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        isRealSendRow(),
       ),
     )
     .limit(1);

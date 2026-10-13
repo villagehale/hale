@@ -41,7 +41,8 @@ export const AUTONOMY_NOTICE_FIXTURES = [
       actionType: 'send_email',
       localeHint: null,
       recentInbound: ['email them for me'],
-      detail: 'school@example.com\npickup\nthe kind was on',
+      detail: { to: 'school@example.com', subject: 'pickup' },
+      why: 'the kind was on',
     },
   },
   {
@@ -61,6 +62,16 @@ export const AUTONOMY_NOTICE_FIXTURES = [
       actionType: 'reply_to_email',
       localeHint: null,
       recentInbound: ['رد على بريد المدرسة'],
+      detail: null,
+    },
+  },
+  {
+    id: 'armed-calendar-move-en',
+    context: {
+      occasion: 'armed',
+      actionType: 'calendar_move',
+      localeHint: null,
+      recentInbound: ['move it on the calendar'],
       detail: null,
     },
   },

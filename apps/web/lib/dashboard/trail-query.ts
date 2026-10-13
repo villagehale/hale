@@ -27,7 +27,8 @@ function isAgentToolStep(actionTaken: string): boolean {
  * reuses it). Kept OUT of queries.ts — which is session/auth-bound — so a caller
  * that already holds an audited family id (the export) can reuse the identical
  * rule-#1 teen redaction without dragging Auth.js into its module graph. One body,
- * so the export can never drift open from the History page.
+ * so the export can never drift open from the History page on teen content.
+ * History hides internal audit verbs. The export asks for them.
  */
 
 /**
@@ -98,10 +99,19 @@ export async function buildActorResolver(
  * in-app surface; an export is a durable file that leaves the app, so it is a
  * different channel and always renders at the most-private level.
  */
+export interface LoadTrailOptions {
+  /**
+   * History leaves internal verbs out. The right-to-access export passes true so
+   * the aged-out audit row stays in the file.
+   */
+  includeInternal?: boolean;
+}
+
 export async function loadTrailForFamily(
   database: Database,
   familyId: string,
   unlocks: TeenAccessUnlocks = NO_TEEN_UNLOCKS,
+  options: LoadTrailOptions = {},
 ): Promise<TrailView[]> {
   // Rule #1: a trail row's teen_content lives two hops away — audit_log targets
   // an actions row (target_table='actions', target_id=action uuid), which points
@@ -151,8 +161,8 @@ export async function loadTrailForFamily(
     // Exclude the Ask Hale agent's internal tool-call sub-steps (action_taken
     // `tool:<name>`, see packages/agent): they're not parent-facing actions, so they
     // must neither render on the timeline nor inflate the tally. Filtered in the
-    // query so the 50-row window stays 50 MEANINGFUL rows (both callers — History
-    // and the right-to-access export — get the same parent-facing set).
+    // query so the 50-row window stays 50 MEANINGFUL rows. History and the export
+    // share that exclusion. The export alone also keeps internal audit verbs.
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
@@ -160,9 +170,11 @@ export async function loadTrailForFamily(
         // VIL-226 · the proactive decider's shadow rows (trail/verbs.ts SHADOW_ONLY_VERBS):
         // nothing the parent got, so not on their receipts, and not in the 50-row window.
         sql`not (${inArray(schema.auditLog.actionTaken, [...SHADOW_ONLY_VERBS])} and coalesce(${schema.auditLog.after} ->> 'mode', '') = 'shadow')`,
-        // The 7-day unsent mark stays in the audit log. It is not a parent-facing
-        // History line, and the export uses this same query.
-        notInArray(schema.auditLog.actionTaken, [...INTERNAL_TRAIL_VERBS]),
+        // The 7-day unsent mark stays in the audit log. History does not show it.
+        // The export passes includeInternal so the row stays in the access file.
+        options.includeInternal
+          ? undefined
+          : notInArray(schema.auditLog.actionTaken, [...INTERNAL_TRAIL_VERBS]),
       ),
     )
     .orderBy(desc(schema.auditLog.occurredAt))
@@ -172,7 +184,7 @@ export async function loadTrailForFamily(
       (row) =>
         !isAgentToolStep(row.entry.actionTaken) &&
         !isShadowOnlyRow(row.entry.actionTaken, row.entry.after) &&
-        !isInternalTrailVerb(row.entry.actionTaken),
+        (options.includeInternal || !isInternalTrailVerb(row.entry.actionTaken)),
     )
     .map((row) => {
       const resolvedToEvent = row.teenContent !== null;

@@ -10,9 +10,9 @@ import {
 import {
   type AutonomyNoticeOutcome,
   type AutonomyNoticePorts,
+  type OpenAutonomyObligation,
   autonomousLaneOn,
-  tellParentHaleActed,
-  tellParentKindArmed,
+  tellParentOpenNotices,
 } from './notice';
 
 /**
@@ -22,10 +22,11 @@ import {
  * suppression: a quiet-hours hold and a crash before the send are both still owed.
  * A turn-on text is owed for as long as the grant is live and undelivered. An
  * on-its-own notice older than the redrive window is marked and not sent, once.
- * One parent hears one text per pass, armed or acted. A turn-on text goes first
- * because open armed is listed before open acted. The rest stay owed for a later
- * pass. They are not dropped and not aged out. Each live parent is still a
- * recipient of an on-its-own notice.
+ * One parent gets one text this pass, and that text covers every notice still open
+ * for them. Armed is listed before acted, so a turn-on is the first item. Every
+ * dedupe key in the text is claimed when it sends. Nothing inside the window is
+ * left for a later pass, and nothing inside the window is aged out. Each live
+ * parent is still a recipient of an on-its-own notice.
  * The morning pass only sends inside the re-drive hour. The drain pass tries
  * now, including right after an execution, and the gate holds quiet hours.
  * Nothing sends while the execute lane is off.
@@ -72,8 +73,9 @@ export interface AutonomyNoticeDispatchResult {
   /** On-its-own notices marked this pass as older than the redrive window. */
   agedOut: number;
   /**
-   * Open texts left owed because this parent already got one text this pass.
-   * Not `deferred` — that count is the redrive-window overflow, still owed.
+   * Always 0. One text covers every open notice for the parent, so a pass does
+   * not leave the rest owed. Kept so a caller reading the result still sees the
+   * field the old trickle used.
    */
   onePerPass: number;
 }
@@ -369,34 +371,54 @@ export async function dispatchAutonomyNotices(
     return result;
   }
 
-  const due: OpenNotice[] = [];
-  const heard = new Set<string>();
+  const dueNotices: OpenNotice[] = [];
   for (const notice of open) {
     if (input.slot === 'morning') {
       const zone = await redriveParentTimeZone(database, notice.parentUserId);
       if (!isRedriveSlot(input.now, zone)) continue;
     }
+    dueNotices.push(notice);
+  }
+  const groups: OpenNotice[][] = [];
+  const byParent = new Map<string, OpenNotice[]>();
+  for (const notice of dueNotices) {
     const parentKey = `${notice.familyId}:${notice.parentUserId}`;
-    if (heard.has(parentKey)) {
-      result.onePerPass += 1;
-      continue;
+    const list = byParent.get(parentKey);
+    if (list) list.push(notice);
+    else {
+      const created = [notice];
+      byParent.set(parentKey, created);
+      groups.push(created);
     }
-    heard.add(parentKey);
-    due.push(notice);
   }
-  if (result.onePerPass > 0) {
-    console.info(
-      { onePerPass: result.onePerPass, familyId: input.familyId ?? null },
-      'autonomy notice: one text per parent this pass, the rest stay owed',
-    );
-  }
-  result.due = due.length;
-  result.deferred = Math.max(0, due.length - MAX_REDRIVE_PER_RUN);
-  for (const notice of due.slice(0, MAX_REDRIVE_PER_RUN)) {
-    const outcome =
+  result.due = groups.length;
+  result.deferred = Math.max(0, groups.length - MAX_REDRIVE_PER_RUN);
+  for (const group of groups.slice(0, MAX_REDRIVE_PER_RUN)) {
+    const [first] = group;
+    if (!first) continue;
+    const notices: OpenAutonomyObligation[] = group.map((notice) =>
       notice.kind === 'armed'
-        ? await tellParentKindArmed(database, { ...notice, now: input.now }, ports)
-        : await tellParentHaleActed(database, { ...notice, now: input.now }, ports);
+        ? {
+            kind: 'armed' as const,
+            consentRecordId: notice.consentRecordId,
+            actionType: notice.actionType,
+          }
+        : {
+            kind: 'acted' as const,
+            actionId: notice.actionId,
+            actionType: notice.actionType,
+          },
+    );
+    const outcome = await tellParentOpenNotices(
+      database,
+      {
+        familyId: first.familyId,
+        parentUserId: first.parentUserId,
+        now: input.now,
+        notices,
+      },
+      ports,
+    );
     countOutcome(result, outcome);
   }
   return result;

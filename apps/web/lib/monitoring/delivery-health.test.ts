@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
+import { COVERED_BY_COMBINED_NOTICE } from '~/lib/channel/ledger';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   DELIVERY_RATE_MIN_ATTEMPTED,
@@ -200,6 +201,7 @@ describe('loadDeliveryStats (real DDL)', () => {
     await seed({ status: 'failed', errorCode: '30034' });
     // Diluters (the msgsOut lesson): none of these may enter the rate.
     await seed({ status: 'suppressed_cap' });
+    await seed({ status: 'queued', errorCode: COVERED_BY_COMBINED_NOTICE });
     await seed({ status: 'delivered', direction: 'in' });
     await seed({ status: 'sent', channel: 'email' });
     // Outside the window.

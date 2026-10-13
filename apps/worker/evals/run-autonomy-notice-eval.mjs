@@ -66,7 +66,15 @@ const JUDGE_SYSTEM = [
   "reply to email on the parent's behalf. Reply is required only when `replyToEmail` is",
   'true. When it is false, do not require a reply claim, and do not mark the text down',
   'for leaving reply out. When `addToCalendar` is true, the text conveys that the sender',
-  "will add things to the parent's calendar. When a flag is false, do not require it.",
+  "will add things to the parent's calendar. When `updateCalendar` is true, the text conveys",
+  "that the sender will update things already on the parent's calendar. When `moveCalendar`",
+  "is true, the text conveys that the sender will move things on the parent's calendar.",
+  'When `cancelCalendar` is true, the text conveys that the sender will cancel things on',
+  "the parent's calendar. When `sharePhotos` is true, the text conveys that the sender will",
+  "share photos with the parent's family. When `addToDigest` is true, the text conveys that",
+  "the sender will add things only to the parent's digest. When `addToRoutine` is true, the",
+  "text conveys that the sender will add things to the parent's routine. When a flag is",
+  'false, do not require it. A true flag that the text leaves out is a missing fact.',
   'Fact two, `standing.never`, is required on every turn-on and every re-arm. The text',
   'must convey that the sender does not book, does not register, and does not pay. A',
   'turn-on or re-arm text that leaves this out scores 3 or below. Stating it is correct.',
@@ -76,8 +84,10 @@ const JUDGE_SYSTEM = [
   'the parent turns this off. A vaguer stop (they can say so, or ask you to stop, without',
   'it being one message — for example "just say so") is a missing fact.',
   'Only when the occasion is `acted`: ignore the three turn-on facts. Grade what was just',
-  'done (the occasion, and `detail` when it is present) and the same one-message stop',
-  'fact. `standing.may` and `standing.never` are absent. This is the only occasion that',
+  'done (the occasion, and labelled `detail` when it is present) and the same one-message',
+  'stop fact. `detail` may have `to`, `subject`, `title`, and `summary`. `why` is not a',
+  'fact to quote. Do not require the text to repeat `why`, and do not mark it down for',
+  'leaving `why` out. `standing.may` and `standing.never` are absent. This is the only occasion that',
   'skips the never-book fact. Do not require a line that the sender never books,',
   'registers, or pays, and do not mark the text down for leaving that out. Do not require',
   'a from-now-on list of what the sender may do. If the occasion is `armed` or `rearmed`,',
@@ -92,10 +102,10 @@ const JUDGE_SYSTEM = [
   'Reply with ONLY the score tool.',
 ].join(' ');
 
-// A re-record prices the tokens a short text and a short argument actually use.
-// The writer cap (400) and the judge cap (4096) are ceilings, not the bill.
-const ESTIMATE_WRITER_OUTPUT_TOKENS = 120;
-const ESTIMATE_JUDGE_OUTPUT_TOKENS = 280;
+// The live gate prices each call's output at that call's max_tokens and refuses
+// the call before it is sent. These are those ceilings, not a guess at a short reply.
+const JUDGE_MAX_TOKENS = 440;
+const ESTIMATE_JUDGE_OUTPUT_TOKENS = JUDGE_MAX_TOKENS;
 
 function estimateTokens(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
@@ -186,7 +196,7 @@ async function estimateRecording({ agent, lane, skill, text, judgeModel }) {
       estimateTokens(JUDGE_SYSTEM) +
       estimateTokens(judgeUser) +
       estimateTokens(JUDGE_TOOL) +
-      (writerCached ? 0 : ESTIMATE_WRITER_OUTPUT_TOKENS);
+      (writerCached ? 0 : text.AUTONOMY_NOTICE_MAX_TOKENS);
     const judgeUsd = priced(judgeModel, judgeInput, ESTIMATE_JUDGE_OUTPUT_TOKENS);
     let rowUsd = judgeUsd;
     let calls = 1;
@@ -199,9 +209,9 @@ async function estimateRecording({ agent, lane, skill, text, judgeModel }) {
           description: 'The one text Hale sends.',
           input_schema: text.AUTONOMY_NOTICE_TOOL_SCHEMA,
         });
-      rowUsd += priced(lane.model, writerInput, ESTIMATE_WRITER_OUTPUT_TOKENS);
+      rowUsd += priced(lane.model, writerInput, text.AUTONOMY_NOTICE_MAX_TOKENS);
       inputTokens += writerInput;
-      outputTokens += ESTIMATE_WRITER_OUTPUT_TOKENS;
+      outputTokens += text.AUTONOMY_NOTICE_MAX_TOKENS;
       calls += 1;
     }
     judgeCalls += 1;
@@ -213,13 +223,13 @@ async function estimateRecording({ agent, lane, skill, text, judgeModel }) {
     );
   }
   return [
-    `autonomy-notice | estimate | re-judge only | model=${lane.model} judge=${judgeModel} | fixtures=${AUTONOMY_NOTICE_FIXTURES.length}`,
+    `autonomy-notice | estimate | every cache miss | model=${lane.model} judge=${judgeModel} | fixtures=${AUTONOMY_NOTICE_FIXTURES.length}`,
     `writer cache: ${writerHits}/${AUTONOMY_NOTICE_FIXTURES.length} hit (those calls are not in this bill)`,
     ...lines,
     `calls=${judgeCalls + (AUTONOMY_NOTICE_FIXTURES.length - writerHits)} | input tokens≈${inputTokens} | output tokens≈${outputTokens}`,
     'tokenizer: Latin and whitespace ≈ 4 chars/token; every other character ≈ 1 token.',
-    `output assumption: judge ${ESTIMATE_JUDGE_OUTPUT_TOKENS} tokens. The live --max-usd check prices output at that call's max_tokens and refuses the call before it is sent when actual spend plus that projection would cross the cap.`,
-    `live API calls: 0 | estimated cost to re-judge: $${usd.toFixed(4)} USD`,
+    `output assumption matches the live gate: writer ${text.AUTONOMY_NOTICE_MAX_TOKENS} tokens, judge ${ESTIMATE_JUDGE_OUTPUT_TOKENS} tokens. The --max-usd check prices output at that call's max_tokens and refuses the call before it is sent when actual spend plus that projection would cross the cap.`,
+    `live API calls: 0 | estimated cost of every miss, priced at the gate ceiling: $${usd.toFixed(4)} USD`,
   ].join('\n');
 }
 
@@ -292,11 +302,9 @@ async function main() {
   const cost = makeCost();
   const gated = spendGate(lazyAnthropic(), cost, maxUsd);
   const judgeModel = await readJudgeModel();
-  // 4096 Haiku output tokens price above $0.02 before the first call. 440 is the
-  // ceiling at which six calls, billed at that ceiling, stay under $0.02.
-  // Replies are about 280 tokens. The cache key does not include max_tokens.
+  // The cache key does not include max_tokens. 440 is the same ceiling --estimate prices.
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'autonomy-notice', cachedOnly, gated, cost, {
-    maxTokens: 440,
+    maxTokens: JUDGE_MAX_TOKENS,
   });
 
   console.info(

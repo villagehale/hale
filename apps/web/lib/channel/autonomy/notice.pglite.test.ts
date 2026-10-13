@@ -360,7 +360,9 @@ describe('telling a parent a kind turned on', () => {
 
     expect(outcome).toBe('sent');
     expect(seen.map((row) => row.occasion)).toEqual(['acted']);
-    expect(seen[0]?.detail).toBe('school@example.com\npickup\nthe kind was on');
+    expect(seen[0]?.detail).toEqual({ to: 'school@example.com', subject: 'pickup' });
+    expect(seen[0]?.why).toBe('the kind was on');
+    expect(seen[0]?.items).toBeUndefined();
     expect(seen[0]?.standing).toEqual({
       may: null,
       never: null,
@@ -476,6 +478,12 @@ describe('telling a parent a kind turned on', () => {
       sendEmail: true,
       replyToEmail: false,
       addToCalendar: false,
+      updateCalendar: false,
+      moveCalendar: false,
+      cancelCalendar: false,
+      sharePhotos: false,
+      addToDigest: false,
+      addToRoutine: false,
     });
     expect(seen[0]?.standing.never).toEqual(['book', 'register', 'pay']);
     expect(seen[0]?.standing.stop).toBe('one_message');
@@ -646,19 +654,21 @@ describe('telling a parent a kind turned on', () => {
     );
 
     expect(dispatched.sent).toBe(2);
-    expect(dispatched.onePerPass).toBe(2);
+    expect(dispatched.onePerPass).toBe(0);
     expect(dispatched.agedOut).toBe(0);
-    expect(seen.filter((row) => row.occasion === 'acted')).toHaveLength(0);
+    expect(seen).toHaveLength(2);
+    for (const row of seen) {
+      expect(row.occasion).toBe('armed');
+      expect(row.items?.map((item) => item.occasion)).toEqual(['armed', 'acted']);
+      const acted = row.items?.find((item) => item.occasion === 'acted');
+      expect(acted?.detail).toEqual({ to: 'school@example.com', subject: 'pickup' });
+      expect(acted?.why).toBe('the kind was on');
+    }
 
     const later = await dispatchAutonomyNotices(
       db.database,
       { now: MORNING, familyId: parent.familyId, slot: 'now' },
       sendPorts,
-    );
-    const acted = seen.filter((row) => row.occasion === 'acted');
-    expect(acted).toHaveLength(2);
-    expect(acted.every((row) => row.detail === 'school@example.com\npickup\nthe kind was on')).toBe(
-      true,
     );
     const rows = await channelRows(parent.familyId);
     const actedKeys = rows
@@ -670,17 +680,18 @@ describe('telling a parent a kind turned on', () => {
         `autonomy_acted:${actionId}:${other.parentUserId}`,
       ].sort(),
     );
-    expect(later.sent).toBe(2);
+    expect(later.sent).toBe(0);
+    expect(later.open).toBe(0);
     expect(later.onePerPass).toBe(0);
     expect(later.agedOut).toBe(0);
   });
 
-  it('sends one text per parent per pass and leaves the rest owed', async () => {
+  it('one text covers two on-its-own notices and claims both keys', async () => {
     const parent = await seedParent();
     await grant(parent.familyId, parent.parentUserId, 'send_email');
     const first = await recordActed(parent.familyId, 'send_email');
     const second = await recordActed(parent.familyId, 'send_email');
-    const { sendPorts } = ports(async () => ({ message: `model acted ${households}` }));
+    const { sendPorts, transport } = ports(async () => ({ message: `model acted ${households}` }));
     const actedKeys = async () => {
       const rows = await channelRows(parent.familyId);
       return rows
@@ -694,34 +705,26 @@ describe('telling a parent a kind turned on', () => {
       sendPorts,
     );
     expect(firstPass.sent).toBe(1);
-    expect(firstPass.onePerPass).toBe(2);
+    expect(firstPass.onePerPass).toBe(0);
     expect(firstPass.agedOut).toBe(0);
-    expect(await actedKeys()).toEqual([]);
-
-    const secondPass = await dispatchAutonomyNotices(
-      db.database,
-      { now: MORNING, familyId: parent.familyId, slot: 'now' },
-      sendPorts,
-    );
-    expect(secondPass.sent).toBe(1);
-    expect(secondPass.onePerPass).toBe(1);
-    expect(secondPass.agedOut).toBe(0);
-    expect(await actedKeys()).toHaveLength(1);
-
-    const thirdPass = await dispatchAutonomyNotices(
-      db.database,
-      { now: MORNING, familyId: parent.familyId, slot: 'now' },
-      sendPorts,
-    );
-    expect(thirdPass.sent).toBe(1);
-    expect(thirdPass.onePerPass).toBe(0);
-    expect(thirdPass.agedOut).toBe(0);
+    expect(transport.bodies()).toEqual([`model acted ${households}`]);
     expect(await actedKeys()).toEqual(
       [
         `autonomy_acted:${first}:${parent.parentUserId}`,
         `autonomy_acted:${second}:${parent.parentUserId}`,
       ].sort(),
     );
+
+    const secondPass = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(secondPass.sent).toBe(0);
+    expect(secondPass.open).toBe(0);
+    expect(secondPass.onePerPass).toBe(0);
+    expect(secondPass.agedOut).toBe(0);
+    expect(transport.bodies()).toEqual([`model acted ${households}`]);
   });
 });
 

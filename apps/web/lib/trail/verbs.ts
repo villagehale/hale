@@ -1738,7 +1738,8 @@ export const SHADOW_ONLY_VERBS = [
 /**
  * Written so the next pass does not recount an on-its-own text that aged out.
  * The sentence stays in the registry so a drift check still knows the verb.
- * History and the right-to-access export drop the row: a parent does not see it.
+ * History hides the row. The right-to-access export keeps it: the audit row is
+ * something the parent is owed a copy of.
  */
 export const INTERNAL_TRAIL_VERBS = [
   'autonomy_acted_notice_aged_out',

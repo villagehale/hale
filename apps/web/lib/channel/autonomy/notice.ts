@@ -1,9 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { autonomyActedDedupeKey, autonomyArmedDedupeKey } from '@hale/worker/memory-writer';
-import { and, desc, eq, isNotNull, lt, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, lt, ne } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { COVERED_BY_COMBINED_NOTICE, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -19,10 +19,12 @@ import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type AutonomyNoticeContext,
+  type AutonomyNoticeItem,
+  type AutonomyNoticeOccasion,
   type AutonomyNoticeSkip,
   type AutonomyNoticeText,
   actedNoticeDetail,
-  autonomyNoticeInput,
+  noticeStanding,
 } from './notice-text';
 
 /**
@@ -138,57 +140,71 @@ async function occasionForGrant(
   return prior.length > 0 ? 'rearmed' : 'armed';
 }
 
-async function releaseClaim(database: Database, id: string, errorCode: string): Promise<void> {
+async function releaseClaims(database: Database, ids: string[], errorCode: string): Promise<void> {
+  if (ids.length === 0) return;
   await database
     .update(schema.channelMessages)
     .set({ status: 'failed', errorCode, dedupeKey: null })
-    .where(eq(schema.channelMessages.id, id));
+    .where(inArray(schema.channelMessages.id, ids));
+}
+
+interface NoticeClaim {
+  dedupeKey: string;
+  kind: 'autonomy_armed' | 'autonomy_acted';
+  templateKey: string;
+  auditVerb: 'autonomy_armed_notice_sent' | 'autonomy_acted_notice_sent';
+  occasion: AutonomyNoticeOccasion;
+  actionType: string;
+}
+
+interface BuiltNotice {
+  claim: NoticeClaim;
+  item: AutonomyNoticeItem;
 }
 
 /**
- * Send one notice. `kind` is the proactive class; `dedupeKey` is the obligation
- * (one per grant, or one per autonomous execution).
+ * One text for this parent. The first claim is the row the provider send updates.
+ * Each other claim is a ledger row with the same words already covered, so a later
+ * pass does not send them again and a turn-on still counts as delivered.
  */
 async function sendAutonomyNotice(
   database: Database,
   input: {
     familyId: string;
     parentUserId: string;
-    actionType: string;
-    kind: 'autonomy_armed' | 'autonomy_acted';
-    dedupeKey: string;
-    templateKey: string;
     context: AutonomyNoticeContext;
-    auditVerb: 'autonomy_armed_notice_sent' | 'autonomy_acted_notice_sent';
+    claims: NoticeClaim[];
     now: Date;
   },
   ports: AutonomyNoticePorts,
 ): Promise<AutonomyNoticeOutcome> {
   const { familyId, parentUserId, now } = input;
+  const [primary] = input.claims;
+  if (!primary) return 'already_sent';
   if (!autonomousLaneOn()) {
-    console.info({ familyId, kind: input.kind }, 'autonomy notice: lane is off, text stays owed');
+    console.info({ familyId, kind: primary.kind }, 'autonomy notice: lane is off, text stays owed');
     return 'lane_off';
   }
   if (!f14EnabledFor(familyId)) {
     console.info({ familyId }, 'autonomy notice: household is dark, nothing sent');
     return 'dark';
   }
-  if (await dedupeActive(input.dedupeKey, database)) return 'already_sent';
+  if (await dedupeActive(primary.dedupeKey, database)) return 'already_sent';
 
-  const verdict = await ports.gate({ familyId, parentUserId, kind: input.kind, now });
+  const verdict = await ports.gate({ familyId, parentUserId, kind: primary.kind, now });
   if (!verdict.allowed) {
     await database.insert(schema.channelMessages).values({
       familyId,
       parentUserId,
       channel: 'sms',
       direction: 'out',
-      category: input.kind,
-      templateKey: input.templateKey,
+      category: primary.kind,
+      templateKey: primary.templateKey,
       dedupeKey: null,
       status: holdStatus(verdict.reason),
     });
     console.warn(
-      { familyId, reason: verdict.reason, kind: input.kind },
+      { familyId, reason: verdict.reason, kind: primary.kind },
       'autonomy notice: held by the outbound gate',
     );
     return `gate_refused:${verdict.reason}`;
@@ -197,32 +213,42 @@ async function sendAutonomyNotice(
   const written = await ports.compose(input.context);
   if ('skipped' in written) {
     console.warn(
-      { familyId, skipped: written.skipped, kind: input.kind },
+      { familyId, skipped: written.skipped, kind: primary.kind },
       'autonomy notice: model wrote nothing, send stays owed',
     );
     return `compose_skipped:${written.skipped}`;
   }
 
-  const [claimed] = await database
-    .insert(schema.channelMessages)
-    .values({
-      familyId,
-      parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: input.kind,
-      templateKey: input.templateKey,
-      dedupeKey: input.dedupeKey,
-      status: acceptedStatus('sms'),
-      sentAt: now,
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.channelMessages.id });
-  if (!claimed) return 'already_sent';
+  const claimedIds: string[] = [];
+  const inserted: NoticeClaim[] = [];
+  let primaryId: string | null = null;
+  for (const [index, claim] of input.claims.entries()) {
+    const [row] = await database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: claim.kind,
+        templateKey: claim.templateKey,
+        dedupeKey: claim.dedupeKey,
+        status: acceptedStatus('sms'),
+        sentAt: now,
+        errorCode: index === 0 ? null : COVERED_BY_COMBINED_NOTICE,
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.channelMessages.id });
+    if (!row) continue;
+    claimedIds.push(row.id);
+    inserted.push(claim);
+    if (primaryId === null) primaryId = row.id;
+  }
+  if (!primaryId) return 'already_sent';
 
   const to = await ports.resolvePhone(database, parentUserId);
   if (to === null) {
-    await releaseClaim(database, claimed.id, 'no_send_target');
+    await releaseClaims(database, claimedIds, 'no_send_target');
     console.error(
       { familyId },
       'autonomy notice: the gate allowed a parent with no sendable number',
@@ -243,7 +269,7 @@ async function sendAutonomyNotice(
     });
     if (delivered.status === 'held' || delivered.status === 'skipped') {
       const code = delivered.reason;
-      await releaseClaim(database, claimed.id, code);
+      await releaseClaims(database, claimedIds, code);
       console.warn({ familyId, code }, 'autonomy notice: outbound skipped');
       return 'send_failed';
     }
@@ -252,7 +278,7 @@ async function sendAutonomyNotice(
     chatId = delivered.chatId;
   } catch (err) {
     const code = readSendRefusal(err)?.code ?? 'unknown';
-    await releaseClaim(database, claimed.id, code);
+    await releaseClaims(database, claimedIds, code);
     console.error({ familyId, code }, 'autonomy notice: the provider refused the text');
     return 'send_failed';
   }
@@ -264,27 +290,34 @@ async function sendAutonomyNotice(
       channel: carried,
       providerChatId: chatId,
       status: acceptedStatus(carried),
+      errorCode: null,
     })
-    .where(eq(schema.channelMessages.id, claimed.id));
+    .where(eq(schema.channelMessages.id, primaryId));
 
   await ports.threadMessage(database, { familyId, parentUserId, body: written.message });
-  await database.insert(schema.auditLog).values({
-    familyId,
-    actor: 'system',
-    actionTaken: input.auditVerb,
-    targetTable: 'channel_messages',
-    targetId: claimed.id,
-    after: {
-      occasion: input.context.occasion,
-      actionType: input.actionType,
-      localeHint: input.context.localeHint,
-    },
-  });
+  for (const claim of inserted) {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: claim.auditVerb,
+      targetTable: 'channel_messages',
+      targetId: primaryId,
+      after: {
+        occasion: claim.occasion,
+        actionType: claim.actionType,
+        localeHint: input.context.localeHint,
+        dedupeKey: claim.dedupeKey,
+      },
+    });
+  }
   return 'sent';
 }
 
-/** Payload fields plus the decision reason. Null when the execution stored neither. */
-async function executionDetail(database: Database, actionId: string): Promise<string | null> {
+/** Labelled payload fields, and the decision reason as `why`. */
+async function executionDetail(
+  database: Database,
+  actionId: string,
+): Promise<{ detail: AutonomyNoticeItem['detail']; why: string | null }> {
   const [action] = await database
     .select({ payload: schema.actions.payload })
     .from(schema.actions)
@@ -307,6 +340,102 @@ async function executionDetail(database: Database, actionId: string): Promise<st
   return actedNoticeDetail({ payload: action?.payload ?? null, reason });
 }
 
+export type OpenAutonomyObligation =
+  | { kind: 'armed'; consentRecordId: string; actionType: string }
+  | { kind: 'acted'; actionId: string; actionType: string };
+
+/**
+ * One text that covers every notice this parent is still owed. A quiet-hours hold
+ * claims nothing. A send claims every dedupe key.
+ */
+export async function tellParentOpenNotices(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    notices: OpenAutonomyObligation[];
+  },
+  ports: AutonomyNoticePorts,
+): Promise<AutonomyNoticeOutcome> {
+  const voice = await parentVoice(database, input.parentUserId);
+  const built: BuiltNotice[] = [];
+  for (const notice of input.notices) {
+    if (notice.kind === 'armed') {
+      const occasion = await occasionForGrant(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        consentRecordId: notice.consentRecordId,
+        actionType: notice.actionType,
+      });
+      const item: AutonomyNoticeItem = {
+        occasion,
+        actionType: notice.actionType,
+        detail: null,
+        why: null,
+        standing: noticeStanding({ occasion, actionType: notice.actionType }),
+      };
+      if (await dedupeActive(autonomyArmedDedupeKey(notice.consentRecordId), database)) continue;
+      built.push({
+        item,
+        claim: {
+          dedupeKey: autonomyArmedDedupeKey(notice.consentRecordId),
+          kind: 'autonomy_armed',
+          templateKey: AUTONOMY_ARMED_TEMPLATE_KEY,
+          auditVerb: 'autonomy_armed_notice_sent',
+          occasion,
+          actionType: notice.actionType,
+        },
+      });
+      continue;
+    }
+    const parts = await executionDetail(database, notice.actionId);
+    const item: AutonomyNoticeItem = {
+      occasion: 'acted',
+      actionType: notice.actionType,
+      detail: parts.detail,
+      why: parts.why,
+      standing: noticeStanding({ occasion: 'acted', actionType: notice.actionType }),
+    };
+    const dedupeKey = autonomyActedDedupeKey(notice.actionId, input.parentUserId);
+    if (await dedupeActive(dedupeKey, database)) continue;
+    built.push({
+      item,
+      claim: {
+        dedupeKey,
+        kind: 'autonomy_acted',
+        templateKey: AUTONOMY_ACTED_TEMPLATE_KEY,
+        auditVerb: 'autonomy_acted_notice_sent',
+        occasion: 'acted',
+        actionType: notice.actionType,
+      },
+    });
+  }
+  const first = built[0];
+  if (!first) return 'already_sent';
+  const context: AutonomyNoticeContext = {
+    occasion: first.item.occasion,
+    actionType: first.item.actionType,
+    localeHint: voice.localeHint,
+    recentInbound: voice.recentInbound,
+    detail: first.item.detail,
+    why: first.item.why,
+    standing: first.item.standing,
+    ...(built.length > 1 ? { items: built.map((row) => row.item) } : {}),
+  };
+  return sendAutonomyNotice(
+    database,
+    {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      context,
+      claims: built.map((row) => row.claim),
+      now: input.now,
+    },
+    ports,
+  );
+}
+
 export async function tellParentKindArmed(
   database: Database,
   input: {
@@ -318,25 +447,19 @@ export async function tellParentKindArmed(
   },
   ports: AutonomyNoticePorts,
 ): Promise<AutonomyNoticeOutcome> {
-  const occasion = await occasionForGrant(database, input);
-  const voice = await parentVoice(database, input.parentUserId);
-  return sendAutonomyNotice(
+  return tellParentOpenNotices(
     database,
     {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
-      actionType: input.actionType,
-      kind: 'autonomy_armed',
-      dedupeKey: autonomyArmedDedupeKey(input.consentRecordId),
-      templateKey: AUTONOMY_ARMED_TEMPLATE_KEY,
-      context: autonomyNoticeInput({
-        occasion,
-        actionType: input.actionType,
-        ...voice,
-        detail: null,
-      }),
-      auditVerb: 'autonomy_armed_notice_sent',
       now: input.now,
+      notices: [
+        {
+          kind: 'armed',
+          consentRecordId: input.consentRecordId,
+          actionType: input.actionType,
+        },
+      ],
     },
     ports,
   );
@@ -353,25 +476,13 @@ export async function tellParentHaleActed(
   },
   ports: AutonomyNoticePorts,
 ): Promise<AutonomyNoticeOutcome> {
-  const voice = await parentVoice(database, input.parentUserId);
-  const detail = await executionDetail(database, input.actionId);
-  return sendAutonomyNotice(
+  return tellParentOpenNotices(
     database,
     {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
-      actionType: input.actionType,
-      kind: 'autonomy_acted',
-      dedupeKey: autonomyActedDedupeKey(input.actionId, input.parentUserId),
-      templateKey: AUTONOMY_ACTED_TEMPLATE_KEY,
-      context: autonomyNoticeInput({
-        occasion: 'acted',
-        actionType: input.actionType,
-        ...voice,
-        detail,
-      }),
-      auditVerb: 'autonomy_acted_notice_sent',
       now: input.now,
+      notices: [{ kind: 'acted', actionId: input.actionId, actionType: input.actionType }],
     },
     ports,
   );

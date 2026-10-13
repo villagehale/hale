@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { LedgerWrite } from './dispatch';
 import type { ChannelKind, LoopCategory } from './types';
 
@@ -101,6 +101,7 @@ export async function countRecentSends(
         eq(schema.channelMessages.channel, channel),
         gte(schema.channelMessages.createdAt, since),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        isRealSendRow(),
       ),
     );
   return rows.length;
@@ -117,6 +118,18 @@ export async function countRecentSends(
  * and deliberate retries, when we build them, will mint their own keys.
  */
 export const CONSUMED_SEND_STATUSES = [...SENT_STATUSES, 'failed'] as const;
+
+/**
+ * Set on a channel_messages row whose dedupe key was claimed because a combined
+ * notice already covered it. The row is not a second send and never reached a
+ * provider. Counts of real sends exclude it. The key still consumes idempotency.
+ */
+export const COVERED_BY_COMBINED_NOTICE = 'covered_by_combined_notice';
+
+/** True for a ledger row that is a send the parent could read, not a covered claim. */
+export function isRealSendRow() {
+  return sql`coalesce(${schema.channelMessages.errorCode}, '') <> ${COVERED_BY_COMBINED_NOTICE}`;
+}
 
 /** Whether this dedupe key already carries an attempted send — the idempotency
  * guard that makes a re-drain a no-op. Suppressions never carry the key, so a
