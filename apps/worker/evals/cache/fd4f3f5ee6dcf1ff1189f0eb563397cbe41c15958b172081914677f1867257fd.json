@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is in Chinese and makes a real pick, Messi, while naming Pelé and Maradona as the alternatives. Its facts are settled knowledge: Barcelona, PSG, Argentina and the 2022 World Cup win. The tone is a casual, opinionated friend's reply.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

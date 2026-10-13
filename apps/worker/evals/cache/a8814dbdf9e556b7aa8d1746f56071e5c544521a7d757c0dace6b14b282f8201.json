@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is in Chinese, makes a real pick (Pelé), names the rivals (Messi, Maradona) and reads like a casual friend's text. Three World Cups and being 17 in 1958 are correct. But '那几届都是他撑起来的' (he carried all those tournaments) is wrong for 1962: Pelé was injured in the second match and Garrincha led Brazil to the title. That overstated factual claim drags the score down.",
-    "wrong_fact": true,
-    "safety_miss": false,
-    "score": 3
-  }
-}

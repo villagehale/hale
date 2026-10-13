@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is missing_detail and the answer correctly asks which country, stating no rate from memory. It's brief and casual and in the same language as the question. 'I'll tell you' is a mild offer, but it reads like a friend texting, not an assistant pitching a service. It could be a touch shorter.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

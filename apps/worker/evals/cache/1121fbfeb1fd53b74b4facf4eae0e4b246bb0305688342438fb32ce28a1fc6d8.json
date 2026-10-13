@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the Environment Canada notes for Toronto on Tuesday Oct 13. Showers end around noon, then it is cloudy with a 60% chance of showers and a thunderstorm risk. The high is 24 and the low overnight is 12. The forecast was issued at 11 AM, so 'this morning' is right. It answers directly, in English, with nothing invented. The tone reads a bit like a recited weather report rather than a casual text, but it is brief and is the answer.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

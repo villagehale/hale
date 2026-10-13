@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday Oct 13 in Denver mostly sunny, high around 73°F",
+        "from": "It calls for Tuesday to be sunny, with a high near 73."
+      },
+      {
+        "states": "Denver International Airport Tuesday mostly sunny, high around 69°F, updated Oct 11",
+        "from": "The Denver International Airport forecast is newer, updated Oct 11. It has Tuesday mostly sunny, with a high near 69"
+      },
+      {
+        "states": "Tuesday night low around 46–47°F",
+        "from": "with a low around 47"
+      },
+      {
+        "states": "Showers likely Tuesday night, mainly after midnight, 60% chance of precipitation",
+        "from": "showers are likely, mainly after midnight... a 60% chance of precipitation"
+      },
+      {
+        "states": "Cooler on Wednesday",
+        "from": "noticeably cooler weather on Wednesday"
+      }
+    ],
+    "answer": "Tomorrow in Denver looks sunny, with a high around 69 to 73°F and a low around 46 to 48 tonight. Showers are likely after midnight, with about a 60% chance, and it gets cooler on Wednesday. That's from the latest National Weather Service update."
+  },
+  "latencyMs": 5013
+}

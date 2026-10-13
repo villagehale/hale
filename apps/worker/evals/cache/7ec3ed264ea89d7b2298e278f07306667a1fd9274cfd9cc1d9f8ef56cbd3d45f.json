@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With live set to missing_detail, the right move is to ask for the country, and the answer does that without stating any rate from memory. It also stays on the 5 year fixed term that was asked. The tone is slightly service-like ('tell me and I'll check') and a bit more explanation than a friend's text would need, but it is still brief and natural.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes. 4.34% is the lowest insured (under 20% down) 5-year fixed, from both Ratehub and WOWA. 4.44% is WOWA's conventional rate, 5.17% is nesto's Big 6 average, and the 30 bps rise over the last month is from WOWA. The answer stays on the 5-year fixed term in Canada, dates the figures, and splits them by down payment. It reads like a casual friend's text, gives the number directly, and doesn't deflect.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

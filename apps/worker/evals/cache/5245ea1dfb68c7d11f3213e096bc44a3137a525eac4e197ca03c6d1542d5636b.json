@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick, Messi, which is right for an opinion ask, and it sounds like a friend texting. Live is unavailable, though, and it states counts and records from memory anyway. 'Seven Ballon d'Ors' is outdated, since he won an eighth in 2023, and 'more trophies than anyone else' is a current record it cannot check. The disclaimer at the end does not make up for stating a wrong figure as fact.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 2
+  }
+}

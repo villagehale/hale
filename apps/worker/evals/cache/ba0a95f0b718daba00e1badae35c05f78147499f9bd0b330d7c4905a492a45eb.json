@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Ontario Structured Psychotherapy (OSP) is free, publicly funded cognitive-behavioural therapy for adults with depression and anxiety-related concerns",
+        "from": "Adults with depression and anxiety-related concerns can get free, publicly funded cognitive-behavioural therapy through OSP."
+      },
+      {
+        "states": "Adults 18 or older living in Ontario are eligible for OSP, which does not require an Ontario health card or family doctor and accepts self-referrals",
+        "from": "No Ontario health card or primary care provider is required, and self-referrals are accepted. Eligibility includes being 18 or older, living in Ontario"
+      },
+      {
+        "states": "Find your local OSP network and fill out the referral form at ontariohealth.ca/osp",
+        "from": "To use it, find your local network at ontariohealth.ca/osp and fill out the referral form."
+      },
+      {
+        "states": "Affordable Therapy Services lists online sessions from $50 on a sliding scale",
+        "from": "Affordable Therapy Services lists online sessions from $50 on a sliding scale."
+      },
+      {
+        "states": "Psychology Today's Canadian therapist directory lists therapists accepting new patients for low-cost therapy",
+        "from": "Psychology Today has a Canadian therapist directory, and its listings include therapists accepting new patients for low-cost therapy."
+      }
+    ],
+    "answer": "Good on you for looking. If it's for depression or anxiety, the free option is Ontario Structured Psychotherapy (OSP): publicly funded CBT for adults 18+ living in Ontario. You don't need a health card or a family doctor, and you can refer yourself. Find your local network and the referral form at ontariohealth.ca/osp. If things get urgent, call 911 or go to the nearest ER. If you'd rather go private, Affordable Therapy Services lists online sessions from $50 on a sliding scale, and Psychology Today's Canadian directory has therapists taking new patients for low-cost therapy. What's it for, roughly?"
+  },
+  "latencyMs": 8275
+}

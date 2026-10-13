@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "911 is the emergency number across the US",
+        "from": "settled"
+      }
+    ],
+    "answer": "It's 911, same across the whole US. Works from any phone, even one without service."
+  },
+  "latencyMs": 3242
+}

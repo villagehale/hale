@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Matches the notes: no Blue Jays game on Oct 11, season over at 79-83, out of the playoffs. It reads like a friend texting, brief and casual, and it answers directly. The phrasing \"didn't play\" is slightly more definitive than \"no game found\", but the notes support it well (eliminated, no next game).",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

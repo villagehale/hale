@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto had no game on Sunday, Oct 11",
+        "from": "No game on Sunday, Oct 11. The Yahoo Sports schedule lists Toronto's October games as Oct 3, 6, 8 and 10."
+      },
+      {
+        "states": "Toronto's most recent game was Saturday night, Oct 10",
+        "from": "The most recent game was Saturday night, Oct 10, and Toronto won."
+      },
+      {
+        "states": "Toronto beat the Colorado Avalanche 6-3",
+        "from": "the Maple Leafs' 6-3 win against the Colorado Avalanche at Ball Arena on Saturday."
+      }
+    ],
+    "answer": "No game last night, they didn't play Sunday. Their last game was Saturday, and the Leafs won 6-3 at Colorado."
+  },
+  "latencyMs": 4833
+}

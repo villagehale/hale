@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi is the soccer GOAT pick, with Ronaldo, Pelé and Maradona as the main alternatives",
+        "from": "Overall, the results mostly point to Messi, with Ronaldo, Pelé and Maradona as the main alternatives."
+      },
+      {
+        "states": "Messi has eight Ballon d'Or awards",
+        "from": "It cites his eight Ballon d'Or awards, 672 goals for Barcelona, the 2022 World Cup title and more than 15 years at the top."
+      },
+      {
+        "states": "Messi won the 2022 World Cup",
+        "from": "It cites his eight Ballon d'Or awards, 672 goals for Barcelona, the 2022 World Cup title and more than 15 years at the top."
+      },
+      {
+        "states": "Tom Brady is the NFL GOAT pick",
+        "from": "Overall, Brady is the usual pick for NFL GOAT, with Jerry Rice the main alternative."
+      },
+      {
+        "states": "Brady has seven Super Bowl titles",
+        "from": "Sports Media X cites seven Super Bowl titles, five Super Bowl MVPs and three NFL MVPs."
+      },
+      {
+        "states": "Jerry Rice is the main alternative, and Brady himself named Rice the greatest",
+        "from": "with Jerry Rice the main alternative. He named Jerry Rice the greatest football player of all time (\"still the GOAT, without a doubt\")"
+      }
+    ],
+    "answer": "Soccer: Messi, and it's not close for most people. Eight Ballon d'Or and the 2022 World Cup, and Ronaldo is the name people argue with him about. American football: Tom Brady, with seven Super Bowl titles. Jerry Rice is the one most people put second, and Brady himself has said Rice is the GOAT."
+  },
+  "latencyMs": 8847
+}

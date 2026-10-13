@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches research_notes. The Leafs had no game Sunday, played Saturday, and won 6-3 at Colorado. It answers the question directly and reads like a quick, casual text from a friend. It is in English, sticks to the topic and doesn't deflect.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

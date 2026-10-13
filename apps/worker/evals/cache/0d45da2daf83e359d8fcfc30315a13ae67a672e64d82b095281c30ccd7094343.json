@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact checks out against the notes: no Blue Jays game on Oct 11, season over at 79-83, eliminated from the playoffs. Saying they didn't play is the right answer. The wording is a little stiff and search-report-like ('I couldn't find… no result to give you', 'I couldn't find anything on that one') rather than a casual 'nope, they didn't play, their season's over'. Still a direct, correct answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

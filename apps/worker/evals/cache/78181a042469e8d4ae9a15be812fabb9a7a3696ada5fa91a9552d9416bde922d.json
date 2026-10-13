@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure is supported by the notes for Toronto on Tuesday Oct 13. The high of 24–25 matches EC and TWN, the low of 12–13, the 60–80% chance of showers, thunderstorm risk morning and afternoon, SW gusts to 40 near noon, and rain of 2–20 mm spanning both sources. It uses the known city without asking, gives the forecast directly and makes no service offer. It reads more like a weather bulletin than a casual friend's text (the full wind detail, 'totals vary between sources'), so not top marks.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

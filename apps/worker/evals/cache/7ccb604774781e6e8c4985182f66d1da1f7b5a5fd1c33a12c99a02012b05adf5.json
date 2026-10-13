@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in Chinese and makes a real pick, Pelé, with a brief rationale. It names the other contenders, Maradona and Messi, so it shows who the debate is between while still leaning one way. The claims about Pelé are opinion or common knowledge, with no invented specifics. The tone is a casual friend's take, not an assistant's. The phrase 马拉多纳和梅西也很难比 is a bit ambiguous but doesn't undermine the answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

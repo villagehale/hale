@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Both forecasts match the most authoritative sources in the notes. BC matches Environment Canada: sun and cloud, high 15, evening/night showers, low 11. WA matches NWS: mostly sunny, high near 64°F, mostly cloudy night, low around 48°F. The 'evening' timing for the BC showers is backed by yr.no. Covering both Vancouvers is a reasonable way to handle the ambiguity, and it still states the facts outright. The reply is brief, casual, in English, and offers no service. Small nitpick: 'tonight' for WA is slightly loose, since it means Tuesday night.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

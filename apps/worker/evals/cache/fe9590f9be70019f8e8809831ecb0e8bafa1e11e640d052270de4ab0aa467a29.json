@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure checks out against the notes: 4.34% is the lowest insured 5-year fixed (Ratehub/WOWA), 4.44% the lowest conventional (WOWA), and 5.17% the Big 6 average (nesto, Oct 9). The note that rates are climbing in October is also supported. It is in Canada and on the 5-year term, and it reads like a casual text. Minor gap: no explicit as-of date beyond 'this month', and it doesn't name the lender or source behind each lowest rate.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}
