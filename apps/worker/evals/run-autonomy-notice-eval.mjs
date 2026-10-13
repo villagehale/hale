@@ -4,9 +4,10 @@
 // (apps/web/lib/channel/autonomy/compose.ts): the `autonomy_notice` tool forced on the
 // skill's lane, then the runtime's own structural check (readAutonomyNotice).
 //
-// The model picks the words. Nothing here matches a phrase. The judge grades the
-// standing facts (what this kind may do, never book/register/pay, one message turns
-// it off). An on-its-own text is graded on what was done and the one-message stop.
+// The model picks the words. Nothing here matches a phrase. A turn-on or re-arm text
+// is graded on its three facts and the tone. An on-its-own text is graded on what
+// was done and the one-message stop. Those on-its-own rules are not applied to a
+// turn-on or a re-arm.
 //
 //   ANTHROPIC_API_KEY=... node evals/run-autonomy-notice-eval.mjs
 //   node evals/run-autonomy-notice-eval.mjs --cached-only
@@ -20,6 +21,8 @@ import {
   JUDGE_MIN,
   PRICE,
   REPO_ROOT,
+  cacheGet,
+  cacheKey,
   evalRunTag,
   lazyAnthropic,
   makeCost,
@@ -52,31 +55,37 @@ const JUDGE_SYSTEM = [
   'it was just done without asking. It asks for at most one thing. It reads like a friend',
   'who is also a parent texting: chill, casual, specific. It does not invent a recipient,',
   'a time, a price, a place, or a link beyond `detail`.',
-  'Grade `standing` as facts, not as phrases. The writer chooses the words.',
-  'When the occasion is `armed` or `rearmed`, a missing fact keeps the score at 3 or below.',
-  'When `standing.may.sendEmail` is true, the text conveys that the sender will send email',
-  "on the parent's behalf. When it is false, do not require that.",
-  'When `standing.may.replyToEmail` is true, the text conveys that the sender will reply to',
-  "email on the parent's behalf. When it is false, do not require a reply claim. Replying is",
-  'required only when this kind covers replying.',
-  'When `standing.may.addToCalendar` is true, the text conveys that the sender will add',
-  "things to the parent's calendar. When it is false, do not require that.",
-  '`standing.never` lists book, register, and pay — the text conveys that the sender does',
-  'not book, does not register, and does not pay.',
-  '`standing.stop` is `one_message` — the text conveys that one message from the parent',
-  'turns this off. A vaguer stop (they can say so, or ask you to stop, without it being',
-  'one message — for example "just say so") is a missing fact.',
-  'When the occasion is `acted`, the text conveys what was just done (the occasion, and',
-  '`detail` when it is present) and the same one-message stop fact. `standing.may` and',
-  '`standing.never` are absent. Do not require a line that the sender never books,',
-  'registers, or pays, and do not mark the text down for leaving that out. Do not require',
-  'a from-now-on list of what the sender may do.',
+  'Grade facts, not phrases. The writer chooses the words. Use only the block that',
+  'matches `context.occasion`. Do not apply the other block.',
+  'When the occasion is `armed` or `rearmed`, grade the text on tone plus exactly three',
+  'facts. A missing fact keeps the score at 3 or below. The on-its-own rules do not apply',
+  'here. Do not quote them, and do not use them.',
+  'Fact one, what the sender may now do. Read only the true flags in `standing.may`.',
+  'When `sendEmail` is true, the text conveys that the sender will send email on the',
+  "parent's behalf. When `replyToEmail` is true, the text conveys that the sender will",
+  "reply to email on the parent's behalf. Reply is required only when `replyToEmail` is",
+  'true. When it is false, do not require a reply claim, and do not mark the text down',
+  'for leaving reply out. When `addToCalendar` is true, the text conveys that the sender',
+  "will add things to the parent's calendar. When a flag is false, do not require it.",
+  'Fact two, `standing.never`. The text conveys that the sender does not book, does not',
+  'register, and does not pay. This fact is required. Stating it is correct. Do not lower',
+  'the score because the text includes it.',
+  'Fact three, `standing.stop` is `one_message`. The text conveys that one message from',
+  'the parent turns this off. A vaguer stop (they can say so, or ask you to stop, without',
+  'it being one message — for example "just say so") is a missing fact.',
+  'When the occasion is `acted`, ignore the three turn-on facts. Grade what was just done',
+  '(the occasion, and `detail` when it is present) and the same one-message stop fact.',
+  '`standing.may` and `standing.never` are absent. Do not require a line that the sender',
+  'never books, registers, or pays, and do not mark the text down for leaving that out.',
+  'Do not require a from-now-on list of what the sender may do. This acted paragraph',
+  'applies only when the occasion is `acted`.',
   'Do not grade word choice, length or punctuation for their own sake.',
   'A 1 or 2 is any of: the wrong occasion; a third-person "Hale" as the subject; more than',
   'one ask; a word the parent is told to reply with; a numbered list or a template; an',
   'invented fact.',
-  'A 3 matches the occasion and the voice but is missing a standing fact, or reads like a',
-  'notification or an assistant offering a service.',
+  'A 3 matches the occasion and the voice but is missing a fact required for THAT',
+  'occasion, or reads like a notification or an assistant offering a service. On `armed`',
+  'or `rearmed`, naming book, register, and pay is a required fact, not a reason for a 3.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -102,58 +111,112 @@ function priced(model, input, output) {
   return (input / 1e6) * price.input + (output / 1e6) * price.output;
 }
 
-function estimateRecording({ lane, skill, text, judgeModel }) {
-  const writerTool = JSON.stringify({
-    name: text.AUTONOMY_NOTICE_TOOL,
-    description: 'The one text Hale sends.',
-    input_schema: text.AUTONOMY_NOTICE_TOOL_SCHEMA,
-  });
-  const judgeTool = JSON.stringify({
-    name: 'score',
-    description: 'Return the score.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        reason: { type: 'string' },
-        score: { type: 'integer', minimum: 1, maximum: 5 },
-      },
-      required: ['reason', 'score'],
+const JUDGE_TOOL = {
+  name: 'score',
+  description: 'Return the score.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      reason: { type: 'string' },
+      score: { type: 'integer', minimum: 1, maximum: 5 },
     },
+    required: ['reason', 'score'],
+  },
+};
+
+/** List-price ceiling of one messages.create: estimated input, output at max_tokens. */
+function projectCallUsd(params) {
+  const input = estimateTokens(
+    [params.system, JSON.stringify(params.tools ?? []), JSON.stringify(params.messages ?? [])].join(
+      '\n',
+    ),
+  );
+  const output = typeof params.max_tokens === 'number' ? params.max_tokens : 0;
+  return { input, output, usd: priced(params.model, input, output) };
+}
+
+function writerCacheKey(agent, lane, skill, text, fixture) {
+  const userMessage = text.autonomyNoticeContext(fixture.context);
+  const fields = agent.laneRequestFields(lane);
+  const toolChoice =
+    lane.model === agent.SONNET55_MODEL
+      ? { type: 'auto' }
+      : { type: 'tool', name: text.AUTONOMY_NOTICE_TOOL };
+  const canonical = JSON.stringify({
+    fields,
+    system: skill.instructions,
+    userMessage,
+    toolName: text.AUTONOMY_NOTICE_TOOL,
+    toolSchema: text.AUTONOMY_NOTICE_TOOL_SCHEMA,
+    toolChoice,
+    maxTokens: text.AUTONOMY_NOTICE_MAX_TOKENS,
   });
+  return cacheKey(evalRunTag(`autonomy-notice:${fixture.id}`), canonical);
+}
+
+async function estimateRecording({ agent, lane, skill, text, judgeModel }) {
   let usd = 0;
   let inputTokens = 0;
   let outputTokens = 0;
-  const rows = [];
+  let judgeCalls = 0;
+  let writerHits = 0;
+  const lines = [];
   for (const fixture of AUTONOMY_NOTICE_FIXTURES) {
     const contextJson = text.autonomyNoticeContext(fixture.context);
-    const writerInput =
-      estimateTokens(skill.instructions) + estimateTokens(contextJson) + estimateTokens(writerTool);
-    const judgeUser = JSON.stringify({ context: JSON.parse(contextJson), text: '' });
+    const writerCached = await cacheGet(writerCacheKey(agent, lane, skill, text, fixture));
+    if (writerCached) writerHits += 1;
+    const written = writerCached
+      ? text.readAutonomyNotice(writerCached.value, fixture.context)
+      : { skipped: 'miss' };
+    const message = 'message' in written ? written.message : '';
+    const judgeUser = JSON.stringify({ context: JSON.parse(contextJson), text: message });
+    const judgeKey = cacheKey(
+      `autonomy-notice:judge:${fixture.id}`,
+      `${judgeModel}\n${JUDGE_SYSTEM}\n${judgeUser}`,
+    );
+    const judgeCached = message.length > 0 ? await cacheGet(judgeKey) : undefined;
+    if (judgeCached) {
+      lines.push(`  ${fixture.id}  judge hit`);
+      continue;
+    }
     const judgeInput =
       estimateTokens(JUDGE_SYSTEM) +
       estimateTokens(judgeUser) +
-      estimateTokens(judgeTool) +
-      ESTIMATE_WRITER_OUTPUT_TOKENS;
-    inputTokens += writerInput + judgeInput;
-    outputTokens += ESTIMATE_WRITER_OUTPUT_TOKENS + ESTIMATE_JUDGE_OUTPUT_TOKENS;
-    const fixtureUsd =
-      priced(lane.model, writerInput, ESTIMATE_WRITER_OUTPUT_TOKENS) +
-      priced(judgeModel, judgeInput, ESTIMATE_JUDGE_OUTPUT_TOKENS);
-    usd += fixtureUsd;
-    rows.push({ id: fixture.id, usd: fixtureUsd });
+      estimateTokens(JUDGE_TOOL) +
+      (writerCached ? 0 : ESTIMATE_WRITER_OUTPUT_TOKENS);
+    const judgeUsd = priced(judgeModel, judgeInput, ESTIMATE_JUDGE_OUTPUT_TOKENS);
+    let rowUsd = judgeUsd;
+    let calls = 1;
+    if (!writerCached) {
+      const writerInput =
+        estimateTokens(skill.instructions) +
+        estimateTokens(contextJson) +
+        estimateTokens({
+          name: text.AUTONOMY_NOTICE_TOOL,
+          description: 'The one text Hale sends.',
+          input_schema: text.AUTONOMY_NOTICE_TOOL_SCHEMA,
+        });
+      rowUsd += priced(lane.model, writerInput, ESTIMATE_WRITER_OUTPUT_TOKENS);
+      inputTokens += writerInput;
+      outputTokens += ESTIMATE_WRITER_OUTPUT_TOKENS;
+      calls += 1;
+    }
+    judgeCalls += 1;
+    inputTokens += judgeInput;
+    outputTokens += ESTIMATE_JUDGE_OUTPUT_TOKENS;
+    usd += rowUsd;
+    lines.push(
+      `  ${fixture.id}  judge miss${writerCached ? '' : ' + writer miss'}  calls=${calls}  $${rowUsd.toFixed(4)}`,
+    );
   }
-  const named = new Set(['armed-email-en', 'acted-email-en']);
-  const namedUsd = rows.filter((row) => named.has(row.id)).reduce((sum, row) => sum + row.usd, 0);
-  const calls = rows.length * 2;
   return [
-    `autonomy-notice | estimate | model=${lane.model} judge=${judgeModel} | fixtures=${rows.length}`,
-    ...rows.map((row) => `  ${row.id}  calls=2  $${row.usd.toFixed(4)}`),
-    `named subset (armed-email-en + acted-email-en): calls=4 | $${namedUsd.toFixed(4)}`,
-    `other fixtures: calls=${calls - 4} | $${(usd - namedUsd).toFixed(4)}`,
-    `calls=${calls} (every fixture is a miss: writer and judge both) | input tokens≈${inputTokens} | output tokens≈${outputTokens}`,
+    `autonomy-notice | estimate | re-judge only | model=${lane.model} judge=${judgeModel} | fixtures=${AUTONOMY_NOTICE_FIXTURES.length}`,
+    `writer cache: ${writerHits}/${AUTONOMY_NOTICE_FIXTURES.length} hit (those calls are not in this bill)`,
+    ...lines,
+    `calls=${judgeCalls + (AUTONOMY_NOTICE_FIXTURES.length - writerHits)} | input tokens≈${inputTokens} | output tokens≈${outputTokens}`,
     'tokenizer: Latin and whitespace ≈ 4 chars/token; every other character ≈ 1 token.',
-    `output assumption: writer ${ESTIMATE_WRITER_OUTPUT_TOKENS} tokens, judge ${ESTIMATE_JUDGE_OUTPUT_TOKENS} tokens. Caps of 400 and 4096 are not billed.`,
-    `live API calls: 0 | estimated cost if every fixture misses: $${usd.toFixed(4)} USD`,
+    `output assumption: judge ${ESTIMATE_JUDGE_OUTPUT_TOKENS} tokens. The live --max-usd check prices output at that call's max_tokens and refuses the call before it is sent when actual spend plus that projection would cross the cap.`,
+    `live API calls: 0 | estimated cost to re-judge: $${usd.toFixed(4)} USD`,
   ].join('\n');
 }
 
@@ -168,7 +231,12 @@ function maxUsdFlag() {
   return value;
 }
 
-/** Refuse another live call once actual list-price spend is already at the cap. */
+/**
+ * Refuse the call before it is sent when money already spent, plus this call's
+ * projected cost, would cross the cap. Output is priced at `max_tokens`, the
+ * most the call is allowed to bill. A check after the response comes back is
+ * too late: that call has already crossed.
+ */
 function spendGate(getClient, cost, maxUsd) {
   if (maxUsd == null) return getClient;
   return () => {
@@ -177,9 +245,11 @@ function spendGate(getClient, cost, maxUsd) {
       messages: {
         create: async (params) => {
           const spent = totalUsd(cost);
-          if (spent >= maxUsd) {
+          const projected = projectCallUsd(params);
+          const next = spent + projected.usd;
+          if (next > maxUsd) {
             const error = new Error(
-              `abort before API call: actual spend $${spent.toFixed(4)} is at the $${maxUsd.toFixed(4)} cap`,
+              `abort before API call: actual spend $${spent.toFixed(4)} plus projected $${projected.usd.toFixed(4)} (${projected.input} input tokens, output at max_tokens ${projected.output}) would be $${next.toFixed(4)}, over the $${maxUsd.toFixed(4)} cap`,
             );
             error.code = 'SPEND_CAP';
             throw error;
@@ -212,7 +282,7 @@ async function main() {
   const lane = agent.pickLane(skill.meta.task);
   if (estimateOnly) {
     const judgeModel = await readJudgeModel();
-    console.info(estimateRecording({ lane, skill, text, judgeModel }));
+    console.info(await estimateRecording({ agent, lane, skill, text, judgeModel }));
     return;
   }
   const maxUsd = maxUsdFlag();
@@ -262,12 +332,6 @@ async function main() {
     if (maxUsd != null) {
       const spent = totalUsd(cost);
       console.info(`        spend so far $${spent.toFixed(4)} / $${maxUsd.toFixed(4)}`);
-      if (spent > maxUsd) {
-        console.error(
-          `autonomy-notice: abort, actual spend $${spent.toFixed(4)} exceeds $${maxUsd.toFixed(4)}. No further calls.`,
-        );
-        process.exit(2);
-      }
     }
   }
   if (misses.length > 0) {
