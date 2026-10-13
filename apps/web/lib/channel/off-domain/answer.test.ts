@@ -825,9 +825,9 @@ describe('the sanitize phase', () => {
  */
 describe('scrubDirectIdentifiers', () => {
   it.each([
-    ['a phone number', 'text me at 416-555-0142 about it', 'text me at [redacted] about it'],
-    ['a phone number typed as one run', 'call 4165550142 after six', 'call [redacted] after six'],
-    ['a phone number with a country code', 'its +1 (416) 555-0142', 'its [redacted]'],
+    ['a phone number', 'text me at 212-555-0100 about it', 'text me at [redacted] about it'],
+    ['a phone number typed as one run', 'call 2125550100 after six', 'call [redacted] after six'],
+    ['a phone number with a country code', 'its +1 (212) 555-0100', 'its [redacted]'],
     ['an email address', 'send it to pat@example.com please', 'send it to [redacted] please'],
     ['a Canadian postal code', 'will it rain near A1A 1A1', 'will it rain near [redacted]'],
     ['a postal code typed tight', 'will it rain near a1a1a1', 'will it rain near [redacted]'],
@@ -904,12 +904,12 @@ describe('scrubDirectIdentifiers', () => {
     ],
     [
       'a phone number in full-width digits',
-      'text me at \uff14\uff11\uff16-\uff15\uff15\uff15-\uff10\uff11\uff14\uff12',
+      'text me at \uff12\uff11\uff12-\uff15\uff15\uff15-\uff10\uff11\uff10\uff10',
       'text me at [redacted]',
     ],
     [
       'a phone number typed with en dashes',
-      'text me at 416\u2013555\u20130142',
+      'text me at 212\u2013555\u20130100',
       'text me at [redacted]',
     ],
     [
@@ -931,56 +931,56 @@ describe('scrubDirectIdentifiers', () => {
   it.each([
     [
       'a phone number in Arabic-Indic digits',
-      'text me at ٤١٦-٥٥٥-٠١٤٢ about it',
+      'text me at \u0662\u0661\u0662-\u0665\u0665\u0665-\u0660\u0661\u0660\u0660 about it',
       'text me at [redacted] about it',
     ],
     [
       'nine digits in three groups, in Arabic-Indic digits',
-      'is ١٢٣-٤٥٦-٧٨٩ a real number',
+      'is \u0661\u0662\u0663-\u0664\u0665\u0666-\u0667\u0668\u0669 a real number',
       'is [redacted] a real number',
     ],
     [
       'a phone number in Devanagari digits',
-      'text me at ४१६-५५५-०१४२ about it',
+      'text me at \u0968\u0967\u0968-\u096b\u096b\u096b-\u0966\u0967\u0966\u0966 about it',
       'text me at [redacted] about it',
     ],
     [
       'nine digits in three groups, in Devanagari digits',
-      'is १२३-४५६-७८९ a real number',
+      'is \u0967\u0968\u0969-\u096a\u096b\u096c-\u096d\u096e\u096f a real number',
       'is [redacted] a real number',
     ],
     [
       'a phone number that mixes two kinds of digit',
-      'text me at 416-٥٥٥-0142 about it',
+      'text me at 212-\u0665\u0665\u0665-0100 about it',
       'text me at [redacted] about it',
     ],
     [
       'a run that mixes three kinds of digit',
-      'what is 123٤٥٦७८९ for',
+      'what is 123\u0664\u0665\u0666\u096d\u096e\u096f for',
       'what is [redacted] for',
     ],
     [
       'a phone number with a zero-width space inside it',
-      'text me at 416-555-01​42 about it',
+      'text me at 212-555-01\u200b00 about it',
       'text me at [redacted] about it',
     ],
     [
       'a run of digits with a zero-width space inside it',
-      'what is 1234​56789 for',
+      'what is 1234\u200b56789 for',
       'what is [redacted] for',
     ],
     // The value is read too, not only that it is a digit: the leading one of a North
     // American number goes with the number.
     [
       'a phone number with its leading one, in Arabic-Indic digits',
-      'its ١-٤١٦-٥٥٥-٠١٤٢',
+      'its \u0661-\u0662\u0661\u0662-\u0665\u0665\u0665-\u0660\u0661\u0660\u0660',
       'its [redacted]',
     ],
     // Around the number, the text is handed on as it was typed.
     [
       'the number and nothing else, in a sentence in Arabic script',
-      'رقمي ٤١٦-٥٥٥-٠١٤٢ صح؟',
-      'رقمي [redacted] صح؟',
+      '\u0631\u0642\u0645\u064a \u0662\u0661\u0662-\u0665\u0665\u0665-\u0660\u0661\u0660\u0660 \u0635\u062d\u061f',
+      '\u0631\u0642\u0645\u064a [redacted] \u0635\u062d\u061f',
     ],
   ])('takes out %s', (_label, text, scrubbed) => {
     expect(scrubDirectIdentifiers(text)).toBe(scrubbed);
@@ -1023,7 +1023,7 @@ describe('scrubDirectIdentifiers', () => {
     'how much should a 3 year old sleep',
     'what should I pack for a 10 hour road trip',
     'is a 5 minute drive worth it for cheaper gas',
-    'did the raptors win 112-104 last night',
+    'did the celtics win 112-104 last night',
     'what happened on 2026-10-11',
     'is the game @ 7 or 8',
     'is 1,250,000 dollars normal for a house here',
@@ -1036,7 +1036,7 @@ describe('scrubDirectIdentifiers', () => {
     'what is 0.123456789 as a fraction',
     'what happened on 2026/10/11',
     'what happened on 11.10.2026',
-    'did the raptors win 112\u2013104 last night',
+    'did the celtics win 112\u2013104 last night',
     // Nothing is taken out here, so not one character changes: full-width digits and a
     // full-width question mark are handed on as typed.
     '\u6bd4\u5206\u662f\uff13\u6bd4\uff11\u5417\uff1f',
@@ -1046,7 +1046,7 @@ describe('scrubDirectIdentifiers', () => {
     // Eight digits is still a count, whatever script it is typed in.
     'what is \u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668 times 2',
     // A character nobody sees beside a number, not inside it, stays where it was typed.
-    'did the raptors win 112-104\u200b last night',
+    'did the celtics win 112-104\u200b last night',
   ])('leaves %j as it was', (text) => {
     expect(scrubDirectIdentifiers(text)).toBe(text);
   });
