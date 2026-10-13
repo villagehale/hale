@@ -11,6 +11,7 @@ import type {
   IdentityAskRequest,
   IdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
+import type { MomentWrite } from '~/lib/channel/off-domain/moment-reply';
 import type { IntroAskRequest, IntroVoice, IntroVoiceOutcome } from '~/lib/village/intros/voice';
 import type { IntakeAnswerComposer, IntakeAnswerInput, IntakeAnswerOutcome } from './answer';
 import { followUp } from './copy';
@@ -124,8 +125,11 @@ export class FakeAnswerComposer implements IntakeAnswerComposer {
     return this.outcome;
   }
 
-  async writeMoment(_text: string, moment: Parameters<IntakeAnswerComposer['writeMoment']>[1]) {
-    return { status: 'written' as const, reply: `moment:${moment}` };
+  async writeMoment(
+    _text: string,
+    moment: Parameters<IntakeAnswerComposer['writeMoment']>[1],
+  ): Promise<MomentWrite> {
+    return { status: 'written', reply: `moment:${moment}` };
   }
 }
 
@@ -581,10 +585,29 @@ export function makeFakeDb(): FakeDb {
 
   const handle = {
     select: () => ({ from: selectFrom }),
-    // Retention housekeeping only (turn-claim.ts): rows are kept here — the claim's
-    // exactly-once property is the unique index's (modelled above), never the sweep's,
-    // and the sweep itself is proven against real DDL in the pglite suite.
-    delete: (_table: unknown) => ({ where: () => thenable([]) }),
+    // The retention sweep's `lt(claimedAt, cutoff)` stays unmodelled — that sweep is
+    // proven against real DDL in the pglite suite, and an unrecognised predicate
+    // leaves the rows. Releasing one claim is an equality on provider_message_id
+    // and must remove that row, or a deferred moment answers the retry `duplicate`.
+    delete: (table: unknown) => ({
+      where: (expr: unknown) => {
+        if (table === schema.smsIntakeTurnClaims) {
+          const stored = store.get(table) ?? [];
+          const kept: Record<string, unknown>[] = [];
+          for (const row of stored) {
+            let drop = false;
+            try {
+              drop = matchesWhere(table, expr, row);
+            } catch {
+              drop = false;
+            }
+            if (!drop) kept.push(row);
+          }
+          store.set(table, kept);
+        }
+        return thenable([]);
+      },
+    }),
     insert: (table: unknown) => {
       const chain = thenable([]);
       chain.values = (payload: Record<string, unknown> | Record<string, unknown>[]) => {

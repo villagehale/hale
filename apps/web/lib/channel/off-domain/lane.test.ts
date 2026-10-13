@@ -219,7 +219,7 @@ describe('what each lane says', () => {
   });
 
   it.each(['not breathing', 'unconscious', 'unresponsive', 'choking', 'seizure'] as const)(
-    'stops %s before the screen and the ordinary compose',
+    'follows the screen when %s is read as a symptom, and does not keyword-route it',
     async (token) => {
       const text = `she is ${token}`;
       const p = ports({
@@ -230,13 +230,12 @@ describe('what each lane says', () => {
 
       expect(verdict).toMatchObject({
         status: 'deflected',
-        reply: 'written:emergency',
-        replySource: 'composed',
+        reply: MEDICAL_ANSWER,
+        medicalSource: 'web_grounded',
       });
-      expect(p.momentSeen).toEqual([{ text, moment: 'emergency' }]);
-      expect(p.screenCalls).toBe(0);
-      expect(p.medicalCalls).toBe(0);
-      expect(p.composeCalls).toBe(0);
+      expect(p.screenCalls).toBe(1);
+      expect(p.medicalCalls).toBe(1);
+      expect(p.momentCalls).toBe(0);
     },
   );
 
@@ -752,12 +751,12 @@ describe("today's date", () => {
     vi.restoreAllMocks();
   });
 
-  /** A crisis stops before today's date is read. The moment writer sends the reply. */
+  /** The screen's crisis reading does not need today's date. The moment writer sends the reply. */
   it('asks the moment writer for a crisis when the date cannot be read', async () => {
     const lane = offDomainLane({
-      ...ports(),
+      ...ports({ read: reading({ lane: 'safety_critical', category: 'mental-health' }) }),
       answer: createGeneralAnswer(() => {
-        throw new Error('a crisis must not reach a model');
+        throw new Error('a crisis must not reach the general answer');
       }),
       today: async () => {
         throw new Error('connection terminated');
@@ -1062,16 +1061,20 @@ describe('a reply to a question Hale left open', () => {
     expect(p.momentSeen).toEqual([{ text: 'Toronto', moment: 'could_not_answer' }]);
   });
 
-  /** An emergency stops before the pending ask is read. */
+  /** An emergency the screen read stops before the pending ask is read. */
   it('reads no pending ask for an emergency', async () => {
     lit();
-    const p = ports({ pending: PENDING });
+    const p = ports({
+      pending: PENDING,
+      read: reading({ lane: 'safety_critical', category: 'emergency' }),
+    });
 
     expect(await consider(p, 'she is not breathing')).toMatchObject({
       reply: 'written:emergency',
       pendingAsk: null,
     });
     expect(p.pendingAskedFor).toEqual([]);
+    expect(p.screenCalls).toBe(1);
   });
 
   it('carries no pending ask out of a door that is not the general answer', async () => {
@@ -1409,26 +1412,22 @@ describe('the screen reads a reply to an open question first', () => {
     });
 
     /**
-     * Main's crisis keywords sit beside the reading at the door, for the screen's reading
-     * as they always did and now for the compose's too, since it is the one door. A text
-     * that names a crisis and is read as some other kind of danger still leaves by the
-     * mental-health door. Only a reply to an open question can bring such a text to the
-     * compose: with nothing open, the keyword door in compose() answers before any model.
+     * The words do not pick the door. A text that names a crisis and is read as some
+     * other kind of danger leaves by that reading's door.
      */
-    it('sends a text that names a crisis through the mental-health door whatever kind either reading gave it', async () => {
+    it('follows the compose kind when the words name a crisis', async () => {
       lit();
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const text = 'Toronto. honestly I want to die';
       expect(namesAMentalCrisis(text)).toBe(true);
+      const childHealthDoor = await screenedSafetyDoor(text, 'child-safety');
       const mentalHealthDoor = await screenedSafetyDoor(text, 'mental-health');
-      // Positive control: without the keyword, a child-safety reading has another door.
-      expect(await screenedSafetyDoor(OWN_CRISIS, 'child-safety')).not.toBe(mentalHealthDoor);
+      expect(childHealthDoor).not.toBe(mentalHealthDoor);
 
-      expect(await screenedSafetyDoor(text, 'child-safety')).toBe(mentalHealthDoor);
       const turn = scripted({ screen: GENERAL, composed: read('child-safety') });
       expect(await laneWith(turn).run(text)).toMatchObject({
         status: 'deflected',
-        reply: mentalHealthDoor,
+        reply: childHealthDoor,
         replySource: 'composed',
       });
     });

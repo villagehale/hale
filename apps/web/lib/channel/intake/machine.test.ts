@@ -56,7 +56,7 @@ import {
 } from './fakes';
 import type { IntentReading } from './intent';
 import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
-import { type IntakeDeps, handleInboundSms } from './machine';
+import { type IntakeDeps, IntakeMomentDeferred, handleInboundSms } from './machine';
 import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from './radar';
 import { FakeTransport } from './transport';
@@ -1075,7 +1075,13 @@ describe('intake · a question mid-signup gets an answer', () => {
   });
 
   it('does not stay in intake to answer a safety text after the year is open', async () => {
-    const composer = new FakeAnswerComposer({ status: 'safety' });
+    const composer = new FakeAnswerComposer({ status: 'nothing_to_answer' });
+    composer.compose = async (input) => {
+      composer.calls.push(input);
+      return /not breathing/i.test(input.parentWords)
+        ? { status: 'safety' }
+        : { status: 'nothing_to_answer' };
+    };
     const { fake, transport, deps } = harness({
       intents: [ambiguous("she's not breathing")],
       answerComposer: composer,
@@ -1087,12 +1093,12 @@ describe('intake · a question mid-signup gets an answer', () => {
     const answered = await text(fake, transport, deps, "she's not breathing");
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
     expect(transport.bodies()).toHaveLength(sent + 1);
-    expect(transport.bodies().at(-1)).toBe('moment:emergency');
+    expect(transport.bodies().at(-1)).toBe('moment:child_health');
     expect(transport.bodies()).not.toContain(WELCOME_CARD_BODY);
-    expect(composer.calls).toEqual([]);
+    expect(composer.calls.map((call) => call.parentWords)).toContain("she's not breathing");
     const held = await text(fake, transport, deps, LADDER_BEAT);
     expect(held).toEqual({ status: 'ladder_advanced', step: 'calendar', closed: false });
-    expect(transport.bodies().at(-2)).toBe('moment:emergency');
+    expect(transport.bodies().at(-2)).toBe('moment:child_health');
     expect(transport.bodies().at(-1)).toContain('Connect your calendar:');
   });
 
@@ -1253,9 +1259,10 @@ describe('intake · a first-text question is answered', () => {
 
     const answered = await text(fake, transport, deps, "she's not breathing");
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
-    expect(transport.bodies()).toEqual(['moment:emergency']);
+    expect(transport.bodies()).toEqual(['moment:child_health']);
     expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
     expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(composer.calls.map((call) => call.parentWords)).toEqual(["she's not breathing"]);
   });
 
   it('never sends greeting() alone when a first-text rec question is declined or unavailable', async () => {
@@ -1317,12 +1324,39 @@ describe('intake · a first-text question is answered', () => {
     expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
   });
 
-  it('sends the moment writer alone on a first-text crisis - no return ask', async () => {
-    const silent = harness({});
-    const answered = await text(silent.fake, silent.transport, silent.deps, 'I want to die');
+  it('re-drives an unwritten moment and answers it once', async () => {
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    let writes = 0;
+    composer.writeMoment = async (_text, moment) => {
+      writes += 1;
+      if (writes === 1) return { status: 'unwritten', reason: 'model_failed' };
+      return { status: 'written', reply: `moment:${moment}` };
+    };
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+    const inbound = transport.inbound(PHONE, "she's not breathing");
+
+    await expect(handleInboundSms(fake.db, inbound, deps)).rejects.toBeInstanceOf(
+      IntakeMomentDeferred,
+    );
+    expect(transport.bodies()).toEqual([]);
+    const [session] = fake.rows(schema.smsIntakeSessions);
+    expect(session?.state).toBe('awaiting_details');
+    expect(session?.closedAt ?? null).toBeNull();
+
+    const answered = await handleInboundSms(fake.db, { ...inbound }, deps);
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
-    expect(silent.transport.bodies()).toEqual(['moment:mental_crisis']);
-    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+    expect(transport.bodies()).toEqual(['moment:child_health']);
+    expect(writes).toBe(2);
+  });
+
+  it('sends the moment writer alone on a first-text crisis - no return ask', async () => {
+    const composer = new FakeAnswerComposer({ status: 'mental_crisis' });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+    const answered = await text(fake, transport, deps, 'I want to die');
+    expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(transport.bodies()).toEqual(['moment:mental_crisis']);
+    expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
+    expect(composer.calls.map((call) => call.parentWords)).toEqual(['I want to die']);
   });
 
   it('answers a first-text cheer-up with warmth, not the bare greeting', async () => {

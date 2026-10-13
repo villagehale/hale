@@ -582,7 +582,11 @@ export interface ChannelRouterDeps {
 /** Why a turn went back to the queue instead of answering. `model_unreachable` is the
  * arc's own reason; the rest are the composer's, and they mean Hale had nothing
  * sendable to say rather than nobody to say it. */
-export type TurnDeferralReason = 'model_unreachable' | 'turn_timeout' | ApologyFallback;
+export type TurnDeferralReason =
+  | 'model_unreachable'
+  | 'turn_timeout'
+  | 'moment_unwritten'
+  | ApologyFallback;
 
 /**
  * The turn is not finished, and the parent gets NOTHING right now.
@@ -1327,7 +1331,20 @@ async function routeChannelMessageInner(
         { familyId: job.family_id, moment: verdict.moment, reason: verdict.reason },
         'channel router: moment reply unwritten',
       );
-      throw new Error(`moment_unwritten:${verdict.moment}`);
+      try {
+        await deps.turns.recordDeferred({
+          familyId: job.family_id,
+          parentUserId: job.parent_user_id,
+          channelMessageId: job.channel_message_id,
+          reason: 'moment_unwritten',
+        });
+      } catch (ledgerErr) {
+        deps.log.error(
+          { code: ledgerErr instanceof Error ? ledgerErr.name : 'unknown' },
+          'channel router: could not record the unwritten moment',
+        );
+      }
+      throw new TurnDeferred('moment_unwritten', new Error(`moment_unwritten:${verdict.moment}`));
     }
     if (verdict.status === 'deflected') {
       await answer(

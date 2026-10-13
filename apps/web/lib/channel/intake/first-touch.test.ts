@@ -21,6 +21,7 @@ import {
 } from './copy';
 import type { IntakeCollected } from './extract';
 import {
+  FakeAnswerComposer,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -1278,12 +1279,14 @@ describe('friend voice onboarding', () => {
   });
   it('answers a first-text question and sends the safety line before any ask', async () => {
     const { fake, transport, deps } = harness({ voice: true });
+    deps.answerComposer = new FakeAnswerComposer({ status: 'safety' });
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
-    expect(transport.bodies()).toEqual(['moment:emergency']);
+    expect(transport.bodies()).toEqual(['moment:child_health']);
     expect(transport.bodies()[0]).not.toMatch(/postal/i);
 
     const { fake: fake2, transport: transport2, deps: deps2 } = harness({ voice: true });
+    deps2.answerComposer = new FakeAnswerComposer({ status: 'mental_crisis' });
     const mental = await handleInboundSms(fake2.db, inbound(transport2, '988'), deps2);
     expect(mental.status).toBe('first_touch');
     expect(transport2.bodies()).toEqual(['moment:mental_crisis']);

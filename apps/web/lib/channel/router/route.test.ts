@@ -2285,6 +2285,46 @@ describe('the outage smoke alarm', () => {
     expect(h.transport.bodies()).toEqual(['the lane wrote this']);
   });
 
+  it('defers an unwritten moment and answers it once on the re-drive', async () => {
+    let calls = 0;
+    const lane = {
+      async consider() {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            status: 'unwritten' as const,
+            moment: 'emergency' as const,
+            reason: 'model_failed',
+            lane: 'safety_critical' as const,
+            category: 'emergency' as const,
+          };
+        }
+        return {
+          status: 'deflected' as const,
+          lane: 'safety_critical' as const,
+          category: 'emergency' as const,
+          reply: 'Get help where you are.',
+          replySource: 'composed' as const,
+          medicalSource: null,
+          signal: 'recorded' as const,
+          pendingAsk: null,
+        };
+      },
+    };
+    const h = harness({ offDomain: lane });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toMatchObject({
+      name: 'TurnDeferred',
+      reason: 'moment_unwritten',
+    });
+    expect(h.transport.bodies()).toEqual([]);
+
+    const again = await routeChannelMessage(h.deps, job());
+    expect(again.status).toBe('deflected');
+    expect(h.transport.bodies()).toEqual(['Get help where you are.']);
+    expect(calls).toBe(2);
+  });
+
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 

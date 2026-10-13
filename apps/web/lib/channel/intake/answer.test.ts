@@ -146,13 +146,11 @@ describe('intake answer · the emergency tripwire', () => {
     vi.useRealTimers();
   });
 
-  it('answers an emergency with no model in the loop at all', async () => {
-    // Intake has never had the router's screened safety lane. A client that throws on
-    // use proves the token check runs BEFORE anything reaches a provider.
+  it('does not route an English emergency phrase before the model', async () => {
     const exploding = {
       messages: {
         create: () => {
-          throw new Error('the model must not have been called');
+          throw new Error('the model was asked');
         },
       },
     } as never;
@@ -160,7 +158,7 @@ describe('intake answer · the emergency tripwire', () => {
 
     expect(
       await composer.compose({ ...INPUT, parentWords: "she's not breathing, what do I do" }),
-    ).toEqual({ status: 'safety' });
+    ).toEqual({ status: 'unavailable', reason: 'model_failed' });
   });
 
   it('answers an identity challenge with the locked line and never calls the model', async () => {
@@ -469,11 +467,11 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).not.toContain(COLD_START_ASK);
   });
 
-  it('stops a crisis inbound before the model, with no return ask', async () => {
+  it('does not route an English crisis phrase before the model', async () => {
     const exploding = {
       messages: {
         create: () => {
-          throw new Error('a crisis must not reach a model');
+          throw new Error('the model was asked');
         },
       },
     } as never;
@@ -484,7 +482,7 @@ describe('intake answer · the emergency tripwire', () => {
         pendingAsk: COLD_START_ASK,
         children: [],
       }),
-    ).toEqual({ status: 'mental_crisis' });
+    ).toEqual({ status: 'unavailable', reason: 'model_failed' });
   });
 });
 

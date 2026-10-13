@@ -2,11 +2,7 @@ import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
-import {
-  namesAMentalCrisis,
-  namesAnEmergency,
-  reachesForTheHealthLine,
-} from '~/lib/channel/off-domain/copy';
+import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import {
   type Moment,
   type MomentWrite,
@@ -60,12 +56,12 @@ import {
  *
  * FOUR THINGS MAKE IT SAFE TO PUT ON A STRANGER'S THIRD TEXT:
  *
- *   AN EMERGENCY STOPS THE ORDINARY ANSWER. `namesAnEmergency` is checked first, before
- *   the client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` with
- *   no body. The machine then asks the moment writer for the reply, in the parent's
- *   language, and does not tack the signup question onto it. The substring test still
- *   works during a provider outage; when the writer cannot send, nothing preset goes
- *   out and the outcome is named.
+ *   A HURT CHILD OR A CRISIS STOPS THE ORDINARY ANSWER. The composer's own reading
+ *   returns {@link IntakeAnswerOutcome} `safety` or `mental_crisis`, with no body,
+ *   in any language. The machine then asks the moment writer for the reply, in the
+ *   parent's language, and does not tack the signup question onto it. When the writer
+ *   cannot send, nothing preset goes out and the turn is deferred so it can be
+ *   re-driven.
  *
  *   NOTHING IS AGREED TO YET, and the gates say so in code. Consent is the question
  *   still outstanding on the seam that calls this, so a composed line claiming Hale is
@@ -374,11 +370,9 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       return createMomentReply(() => client).write(text, moment);
     },
     async compose(input) {
-      // FIRST, and with no model in the loop. See the module note: intake has never had
-      // the screened safety lane, and an emergency must not wait on a provider that may
-      // be the reason this turn is degraded at all.
-      if (namesAnEmergency(input.parentWords)) return { status: 'safety' };
-      if (namesAMentalCrisis(input.parentWords)) return { status: 'mental_crisis' };
+      // Whether this is a crisis is the model's reading, returned as `safety` or
+      // `mental_crisis` by the machine that reads the pair. No English word list
+      // stands in front of that reading.
 
       // VIL-333. Identity / distrust is a locked disclosure, not a composed answer
       // plus the pending ask. The machine short-circuits on the same read; this

@@ -175,6 +175,10 @@
     "file": "medical-symptom.md",
     "sha256": "ef7b7494d7943f38554945a450181da54f19431360d77a6e928ad6df0be4c9a4"
   },
+  "moment-reply.md": {
+    "file": "moment-reply.md",
+    "sha256": "e46208f7a10eb70ff7f59b4638b8a5f32e18011ca77ebc679d478b99c05749e2"
+  },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
     "sha256": "ff2d07e32fbf2323e658ff343a631dba28e0051446f4df7ea8081e41d202fff4"

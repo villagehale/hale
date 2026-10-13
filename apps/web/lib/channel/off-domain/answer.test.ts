@@ -2556,42 +2556,22 @@ describe('the one path', () => {
     },
   );
 
-  it('stops a crisis before sanitize and sends the moment reply', async () => {
+  it('asks the sanitizer about an English crisis phrase', async () => {
     const calls: string[] = [];
     const client = () =>
       ({
         messages: {
-          async create(request: { messages?: Array<{ content?: string }> }) {
-            calls.push(request.messages?.[0]?.content ?? '');
-            return {
-              content: [{ type: 'text', text: JSON.stringify({ reply: 'moment wrote this' }) }],
-              stop_reason: 'end_turn',
-              usage: { input_tokens: 1, output_tokens: 1 },
-            };
+          async create() {
+            calls.push('create');
+            throw new Error('stop after the sanitizer is asked');
           },
         },
       }) as unknown as AgentClient;
     expect(await createGeneralAnswer(client).compose('I want to die', family)).toEqual({
-      status: 'composed',
-      reply: 'moment wrote this',
-    });
-    expect(calls).toEqual([JSON.stringify({ moment: 'mental_crisis', text: 'I want to die' })]);
-  });
-
-  it('names an unwritten emergency and sends no preset sentence', async () => {
-    const exploding = () =>
-      ({
-        messages: {
-          create: () => {
-            throw new Error('the moment writer failed');
-          },
-        },
-      }) as unknown as AgentClient;
-    expect(await createGeneralAnswer(exploding).compose('she is not breathing', family)).toEqual({
-      status: 'unwritten',
-      moment: 'emergency',
+      status: 'unavailable',
       reason: 'model_failed',
     });
+    expect(calls.length).toBeGreaterThan(0);
   });
 });
 

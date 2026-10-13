@@ -17,9 +17,10 @@ import {
   localDate,
 } from './answer';
 import { safetyDoorFor } from './answer-request';
-import { namesAMentalCrisis, namesAnEmergency, referralReply } from './copy';
+import { referralReply } from './copy';
 import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
 import { type Moment, type MomentWriter, createMomentReply } from './moment-reply';
+import { type MomentPlace, UNKNOWN_MOMENT_PLACE } from './moment-request';
 import { readFamilyPlace } from './place';
 import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScreen } from './screen';
 
@@ -221,44 +222,6 @@ export interface OffDomainLane {
 export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
   return {
     async consider(input) {
-      // A physical emergency or a mental-health crisis never waits on the screen,
-      // the search, or the ordinary compose. The model writes the reply, and the
-      // ordinary answer does not resume.
-      const stopped = namesAnEmergency(input.text)
-        ? 'emergency'
-        : namesAMentalCrisis(input.text)
-          ? 'mental_crisis'
-          : null;
-      if (stopped !== null) {
-        const category = stopped === 'emergency' ? 'emergency' : 'mental-health';
-        const signal = await ports.recordUnmetIntent({
-          channelMessageId: input.channelMessageId,
-          familyId: input.familyId,
-          lane: 'safety_critical',
-          category,
-        });
-        const written = await ports.moment.write(input.text, stopped);
-        if (written.status === 'unwritten') {
-          return {
-            status: 'unwritten',
-            moment: stopped,
-            reason: written.reason,
-            lane: 'safety_critical',
-            category,
-          };
-        }
-        return {
-          status: 'deflected',
-          lane: 'safety_critical',
-          category,
-          reply: written.reply,
-          replySource: 'composed',
-          medicalSource: null,
-          signal,
-          pendingAsk: null,
-        };
-      }
-
       const family: FamilyFacts = {
         today: () => ports.today(input.familyId),
         place: () => homePlaceIn(input.thread, () => ports.place(input.familyId)),
@@ -283,7 +246,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         if (pending !== null) {
           const continued = await ports.answer.continueAsk(input.text, pending, family);
           if (continued.status !== 'unrelated') {
-            const lined = await replyFor(ports, continued, input.text);
+            const lined = await replyFor(ports, family, continued, input.text);
             if ('status' in lined) {
               return {
                 status: 'unwritten',
@@ -349,10 +312,15 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       const language = replyLanguage(input.text);
       const lined =
         lane === 'safety_critical'
-          ? await momentDoor(ports, reading.category, input.text)
+          ? await momentDoor(ports, family, reading.category, input.text)
           : lane === 'provider_access'
             ? fixedLine(referralReply(input.text, language))
-            : await replyFor(ports, await ports.answer.compose(input.text, family), input.text);
+            : await replyFor(
+                ports,
+                family,
+                await ports.answer.compose(input.text, family),
+                input.text,
+              );
       if ('status' in lined) {
         return {
           status: 'unwritten',
@@ -402,35 +370,44 @@ function fixedLine(reply: string): LaneReply {
   return { reply, replySource: 'fixed', pendingAsk: null };
 }
 
+/** Country and province or state, or neither. A city is finer than this reply may see. */
+async function coarseMomentPlace(family: FamilyFacts): Promise<MomentPlace> {
+  const place = await family.place();
+  if (place.status !== 'known') return UNKNOWN_MOMENT_PLACE;
+  return { country: place.country, provinceOrState: place.provinceOrState ?? null };
+}
+
 /**
  * A safety reading, whoever made it: the screen's, or the compose's of a text the
  * screen had filed as a question about the world. The kind picks the moment
  * ({@link safetyDoorFor}), so the two readings cannot send one text to two moments.
  * The ordinary answer is not written. The model writes this one, in the parent's
- * language, and points to emergency or local help.
+ * language, and may name the emergency or crisis help for the coarse place.
  */
 async function momentDoor(
   ports: OffDomainPorts,
+  family: FamilyFacts,
   category: UnmetIntentCategory,
   text: string,
 ): Promise<LaneReply> {
-  const door = namesAMentalCrisis(text) ? 'mental_crisis' : safetyDoorFor(category);
+  const door = safetyDoorFor(category);
   const moment: Moment =
     door === 'mental_crisis'
       ? 'mental_crisis'
       : category === 'emergency'
         ? 'emergency'
         : 'child_health';
-  return writeMoment(ports, text, moment, 'composed');
+  return writeMoment(ports, family, text, moment, 'composed');
 }
 
 async function writeMoment(
   ports: OffDomainPorts,
+  family: FamilyFacts,
   text: string,
   moment: Moment,
   replySource: ReplySource,
 ): Promise<LaneReply> {
-  const written = await ports.moment.write(text, moment);
+  const written = await ports.moment.write(text, moment, await coarseMomentPlace(family));
   if (written.status === 'unwritten')
     return { status: 'unwritten', moment, reason: written.reason };
   return { reply: written.reply, replySource, pendingAsk: null };
@@ -509,6 +486,7 @@ function homePlaceIn(
  */
 async function replyFor(
   ports: OffDomainPorts,
+  family: FamilyFacts,
   composed: GeneralAnswerOutcome,
   text: string,
 ): Promise<LaneReply> {
@@ -524,8 +502,8 @@ async function replyFor(
   }
   // A question about the world that turned out to describe someone hurt, ill or in
   // danger. The ordinary answer stops. The moment writer sends the reply.
-  if (composed.status === 'safety') return momentDoor(ports, composed.kind, text);
-  return writeMoment(ports, text, 'could_not_answer', composed.reason);
+  if (composed.status === 'safety') return momentDoor(ports, family, composed.kind, text);
+  return writeMoment(ports, family, text, 'could_not_answer', composed.reason);
 }
 
 /**
