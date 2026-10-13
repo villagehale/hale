@@ -1,6 +1,52 @@
 import { cacheGet, cacheKey, isVerdict } from './harness.mjs';
 
 /**
+ * The object the general-answer judge is handed. Field order is part of the cache key,
+ * so the runner and both estimates build it here and nowhere else.
+ *
+ * `grounding` is the compose's own list. A stand-in, a moment reply, or a compose that
+ * has not been recorded yet passes none, which is an empty list, not an omitted field:
+ * omitting it would keep the old key and replay a verdict that never saw the list.
+ */
+export function generalAnswerJudgePayload({
+  question,
+  today,
+  answer,
+  live,
+  researchNotes,
+  grounding,
+  watchFor,
+}) {
+  return {
+    question,
+    today,
+    answer,
+    live,
+    research_notes: researchNotes,
+    grounding: Array.isArray(grounding) ? grounding : [],
+    watchFor,
+  };
+}
+
+/** The same object, from a fixture and the research the runner already resolved. */
+export function judgePayloadFromFound(request, today, fixture, found, answer, grounding) {
+  return generalAnswerJudgePayload({
+    question: fixture.text,
+    today,
+    answer,
+    live: request.liveAsTold(found.search),
+    researchNotes: found.search === 'searched' ? found.notes : 'none',
+    grounding,
+    watchFor: fixture.watchFor,
+  });
+}
+
+/** The compose's grounding list, or none when the recording did not write one. */
+export function recordedGrounding(value) {
+  return Array.isArray(value?.grounding) ? value.grounding : [];
+}
+
+/**
  * The general-answer calls a fresh recording would still send.
  *
  * A hit is skipped. When the sanitize for a fixture is cached, the search, the
@@ -46,6 +92,7 @@ export async function leftoverGeneralAnswerCalls(ctx) {
   const calls = [];
   const priced = new Set();
   const shortIds = [];
+  const searchTurnsByFixture = {};
   let searchTurns = 0;
 
   function add(key, call) {
@@ -53,6 +100,11 @@ export async function leftoverGeneralAnswerCalls(ctx) {
     priced.add(key);
     calls.push(call);
     return true;
+  }
+
+  /** So the estimate can price one fixture's calls apart from the rest of the leftover. */
+  function stamp(fixture, call) {
+    return { ...call, fixtureId: fixture.id };
   }
 
   function sanitizeCall(user) {
@@ -151,15 +203,8 @@ export async function leftoverGeneralAnswerCalls(ctx) {
     };
   }
 
-  function judgePayload(fixture, found, answer) {
-    return {
-      question: fixture.text,
-      today,
-      answer,
-      live: request.liveAsTold(found.search),
-      research_notes: found.search === 'searched' ? found.notes : 'none',
-      watchFor: fixture.watchFor,
-    };
+  function judgePayload(fixture, found, answer, grounding) {
+    return judgePayloadFromFound(request, today, fixture, found, answer, grounding);
   }
 
   async function resolveSearch(fixture, value, lookup) {
@@ -217,8 +262,12 @@ export async function leftoverGeneralAnswerCalls(ctx) {
   }
 
   async function priceDraws(fixture, found, lookup) {
-    if (found.searchMiss && add(found.searchMiss.key, searchCall(found.searchMiss.user))) {
+    if (
+      found.searchMiss &&
+      add(found.searchMiss.key, stamp(fixture, searchCall(found.searchMiss.user)))
+    ) {
       searchTurns += 1;
+      searchTurnsByFixture[fixture.id] = (searchTurnsByFixture[fixture.id] ?? 0) + 1;
     }
     const unknown = !lookup || found.searchMiss?.unknownNotes === true;
     for (let draw = 0; draw < draws; draw += 1) {
@@ -231,11 +280,11 @@ export async function leftoverGeneralAnswerCalls(ctx) {
         missing: found.missing,
       });
       if (unknown) {
-        add(`predicted:${fixture.id}:compose:${draw}`, composeCall(user));
+        add(`predicted:${fixture.id}:compose:${draw}`, stamp(fixture, composeCall(user)));
         if (fixture.expectSafetyDoor !== undefined) continue;
         add(
           `predicted:${fixture.id}:judge:${draw}`,
-          judgeCall(judgePayload(fixture, found, typicalAnswer)),
+          stamp(fixture, judgeCall(judgePayload(fixture, found, typicalAnswer))),
         );
         continue;
       }
@@ -247,22 +296,21 @@ export async function leftoverGeneralAnswerCalls(ctx) {
         toolSchema: request.answerJsonSchema,
       });
       if (!rec.cached) {
-        add(rec.key, composeCall(user));
+        add(rec.key, stamp(fixture, composeCall(user)));
         if (fixture.expectSafetyDoor !== undefined) continue;
         add(
           `predicted:${fixture.id}:judge-after-compose-miss:${draw}`,
-          judgeCall(judgePayload(fixture, found, typicalAnswer)),
+          stamp(fixture, judgeCall(judgePayload(fixture, found, typicalAnswer))),
         );
         continue;
       }
       const kind = request.hurtIllOrDanger(rec.cached.value?.hurt_ill_or_danger);
       if (kind !== null) continue;
       const flattened = flatten(String(rec.cached.value?.answer ?? ''));
-      const judged = await judgeRecord(
-        drawTag(fixture.id, draw),
-        judgePayload(fixture, found, flattened),
-      );
-      if (!judged.hit) add(judged.key, judgeCall(judgePayload(fixture, found, flattened)));
+      const grounding = recordedGrounding(rec.cached.value);
+      const payload = judgePayload(fixture, found, flattened, grounding);
+      const judged = await judgeRecord(drawTag(fixture.id, draw), payload);
+      if (!judged.hit) add(judged.key, stamp(fixture, judgeCall(payload)));
     }
   }
 
@@ -303,23 +351,21 @@ export async function leftoverGeneralAnswerCalls(ctx) {
       });
       const found = { search: 'not_needed', notes: '' };
       if (!rec.cached) {
-        add(rec.key, momentCall(user));
-        add(`predicted:${fixture.id}:moment-judge:${draw}`, {
-          ...judgeCall(judgePayload(fixture, found, typicalAnswer)),
-          group: 'moment',
-        });
+        add(rec.key, stamp(fixture, momentCall(user)));
+        add(
+          `predicted:${fixture.id}:moment-judge:${draw}`,
+          stamp(fixture, {
+            ...judgeCall(judgePayload(fixture, found, typicalAnswer)),
+            group: 'moment',
+          }),
+        );
         continue;
       }
       const flattened = flatten(String(rec.cached.value?.reply ?? ''));
-      const judged = await judgeRecord(
-        drawTag(fixture.id, draw),
-        judgePayload(fixture, found, flattened),
-      );
+      const payload = judgePayload(fixture, found, flattened);
+      const judged = await judgeRecord(drawTag(fixture.id, draw), payload);
       if (!judged.hit) {
-        add(judged.key, {
-          ...judgeCall(judgePayload(fixture, found, flattened)),
-          group: 'moment',
-        });
+        add(judged.key, stamp(fixture, { ...judgeCall(payload), group: 'moment' }));
       }
     }
     if (calls.length > before) shortIds.push(fixture.id);
@@ -334,10 +380,10 @@ export async function leftoverGeneralAnswerCalls(ctx) {
     const pending = fixture.pending ?? null;
     const first = await sanitizeRecord(fixture, pending);
     if (!first.cached) {
-      add(first.key, sanitizeCall(first.userMessage));
+      add(first.key, stamp(fixture, sanitizeCall(first.userMessage)));
       if (pending !== null && fixture.expectAnswersPending === false) {
         const alone = request.questionSanitizeUserMessage(fixture.text, null);
-        add(`predicted:${fixture.id}:sanitize-alone`, sanitizeCall(alone));
+        add(`predicted:${fixture.id}:sanitize-alone`, stamp(fixture, sanitizeCall(alone)));
       }
       const value = priorReading(fixture) ?? fallbackReading(fixture);
       await priceDraws(fixture, await resolveSearch(fixture, value, false), false);
@@ -347,7 +393,7 @@ export async function leftoverGeneralAnswerCalls(ctx) {
       if (answersPending === false) {
         const second = await sanitizeRecord(fixture, null);
         if (!second.cached) {
-          add(second.key, sanitizeCall(second.userMessage));
+          add(second.key, stamp(fixture, sanitizeCall(second.userMessage)));
           const value = priorReading(fixture) ?? fallbackReading(fixture);
           await priceDraws(fixture, await resolveSearch(fixture, value, false), false);
         } else {
@@ -423,12 +469,17 @@ export async function leftoverGeneralAnswerCalls(ctx) {
       } else {
         const kind = request.hurtIllOrDanger(composed.cached.value?.hurt_ill_or_danger);
         const flattened = kind !== null ? '' : flatten(String(composed.cached.value?.answer ?? ''));
-        const near = judgePayload(calibration, found, `${flattened} ${nearMissTail}`);
+        const near = judgePayload(
+          calibration,
+          found,
+          `${flattened} ${nearMissTail}`,
+          recordedGrounding(composed.cached.value),
+        );
         const nearHit = await judgeRecord(`calibration-near-miss:${calibration.id}`, near);
         if (!nearHit.hit) add(nearHit.key, judgeCall(near));
       }
     }
   }
 
-  return { calls, searchTurns, shortIds };
+  return { calls, searchTurns, shortIds, searchTurnsByFixture };
 }

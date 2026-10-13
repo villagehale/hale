@@ -57,6 +57,7 @@ export function priceRecordedCalls(recorded, { priceFor, tokens, thinkingTokens 
       cacheWrite,
       cacheRead,
       output: outputTokens,
+      ...(call.fixtureId ? { fixtureId: call.fixtureId } : {}),
     });
   }
   return { usd, byModel, perCall };

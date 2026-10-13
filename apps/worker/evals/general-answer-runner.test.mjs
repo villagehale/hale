@@ -15,6 +15,7 @@ import {
   searchOmissions,
 } from './general-answer-fixtures.mjs';
 import { JUDGE_MIN } from './lib/harness.mjs';
+import { generalAnswerJudgePayload } from './lib/leftover-estimate.mjs';
 
 /**
  * What grades a reply in this suite, taken off the runner's own report.
@@ -159,6 +160,44 @@ function runRunner(args, preloads = []) {
   );
   return { status: run.status, report: `${run.stdout}${run.stderr}` };
 }
+
+describe('the judge payload', () => {
+  it('always includes grounding, empty when a reply has not been composed', () => {
+    const payload = generalAnswerJudgePayload({
+      question: 'who is it',
+      today: EVAL_TODAY,
+      answer: 'a pick',
+      live: 'searched',
+      researchNotes: 'the notes',
+      watchFor: 'name who it is',
+    });
+    expect(Object.keys(payload)).toEqual([
+      'question',
+      'today',
+      'answer',
+      'live',
+      'research_notes',
+      'grounding',
+      'watchFor',
+    ]);
+    expect(payload.grounding).toEqual([]);
+  });
+
+  it('passes the compose list through, and the shape names no fixture fact', () => {
+    const grounding = [{ states: 'a running count', from: 'settled' }];
+    const payload = generalAnswerJudgePayload({
+      question: 'who is it',
+      today: EVAL_TODAY,
+      answer: 'a pick',
+      live: 'searched',
+      researchNotes: 'the notes',
+      grounding,
+      watchFor: 'name who it is',
+    });
+    expect(payload.grounding).toBe(grounding);
+    expect(JSON.stringify(payload)).not.toMatch(/messi|ballon|\b8\b|\beight\b/i);
+  });
+});
 
 describe('the general-answer runner', () => {
   let report;
