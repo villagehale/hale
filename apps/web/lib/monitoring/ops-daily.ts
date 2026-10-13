@@ -1,7 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gt, gte, inArray, isNull, like, lt, notInArray, or, sql } from 'drizzle-orm';
-import { percentileNearestRank } from '~/lib/loop/funnel-scoreboard';
-import { resolveOpsExclusions } from '~/lib/loop/metrics-scope';
+import { aggregateCommitmentDebt } from '~/lib/commitments/ledger';
+import {
+  aggregateMedicalAnswers,
+  aggregateRadarVerification,
+  aggregateW4Retention,
+} from '~/lib/loop/founder-counts';
+import { aggregateFunnelScoreboard, percentileNearestRank } from '~/lib/loop/funnel-scoreboard';
+import { resolveMetricsExclusions, resolveOpsExclusions } from '~/lib/loop/metrics-scope';
+import { RETENTION_GRADED_WEEK } from '~/lib/loop/scorecard-rubric';
 import { alertCode } from '~/lib/monitoring/delivery-health';
 import {
   DEAD_LETTER_PAGE_ROUTE,
@@ -12,6 +19,7 @@ import {
   parseDeadLetterIdentifier,
   parseHelloIdentifier,
 } from '~/lib/monitoring/failure-page';
+import { LINQ_CHAT_ID_LIMIT, countDbChatIds } from '~/lib/monitoring/linq-capacity';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
 import { type ReplyLatencyStat, computeReplyLatency } from '~/lib/monitoring/reply-latency';
 
@@ -31,6 +39,14 @@ import { type ReplyLatencyStat, computeReplyLatency } from '~/lib/monitoring/rep
  * Real families are the families active in the window minus `resolveOpsExclusions`:
  * the METRICS_EXCLUDED_FAMILY_IDS list, the founder's household and every household
  * with a channel in the probe range (the canary and the live probes).
+ *
+ * The founder counts below the 24h block are the five the Monday email graded, so
+ * deleting that email (VIL-437) drops no number. W4 and open promises are point-in-time
+ * as of the window end. Intake, medical answers and the re-verify sweep are the
+ * trailing 7 days ending there. All four family-scoped reads use the metrics exclusion
+ * set. An empty METRICS_EXCLUDED_FAMILY_IDS counts the QA households.
+ *
+ * The Linq line is the database's chat-id count (VIL-407), not a live list of Linq.
  */
 
 export const OPS_DAILY_ROUTE = 'ops:daily';
@@ -43,6 +59,7 @@ export const TURN_ANSWERED_AUDIT_ACTION = 'sms_turn_answered';
 export const TURN_UNANSWERED_AUDIT_ACTION = 'sms_turn_unanswered';
 
 const WINDOW_MS = 24 * 60 * 60_000;
+const TRAILING_WEEK_MS = 7 * WINDOW_MS;
 const HOUR_MS = 60 * 60_000;
 
 /** The turn ledger's target table, as wiring.ts writes it. */
@@ -91,6 +108,36 @@ export interface OpsDailyReport {
     p95Usd: number | null;
     maxUsd: number | null;
   };
+  /** Pooled week-4 cell as of the window end. `families === 0` means no cohort has
+   * finished that week — not a 0% retention rate. */
+  w4: { retained: number; families: number };
+  /** Intake sessions started in the trailing 7 days, and the median first answer. */
+  intake: {
+    started: number;
+    provisioned: number;
+    medianSeconds: number | null;
+    derivedFamilies: number;
+    notDerivableFamilies: number;
+  };
+  /** Open promises as of the window end. `open === 0` is an empty ledger, not a
+   * clean week. */
+  promises: { open: number; overdue: number; overdueFamilies: number };
+  /** Medical answers in the trailing 7 days, and how many were the fixed 811/911 line. */
+  medical: { answered: number; fallbacks: number };
+  /** Whether a re-verify sweep's week overlapped the trailing 7 days, and the tally
+   * that run recorded. A sweep that did not run has no outcomes; a sweep that died
+   * mid-run has `ran` and no outcomes. Neither is zero discrepancies. */
+  reverify: {
+    ran: boolean;
+    outcomes: {
+      checked: number;
+      confirmed: number;
+      discrepancies: number;
+      unverified: number;
+    } | null;
+  };
+  /** Distinct chat ids the database has recorded, canary excluded. Not the live Linq total. */
+  linqChatIds: number;
 }
 
 export type OpsDailyOutcome = 'posted' | 'already_posted' | 'failed' | 'skipped_not_configured';
@@ -394,6 +441,20 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
   const deferred = await loadDeferred(database, realIds, window);
   const runs = await loadRuns(database, realIds, window);
 
+  // The metrics set, not the 24h active set: a QA family quiet today is still a QA
+  // family in the trailing week. W4 resolves the same set itself.
+  const metricsExcluded = [...(await resolveMetricsExclusions(database))];
+  const weekStart = new Date(window.end.getTime() - TRAILING_WEEK_MS);
+  const [w4Cohorts, funnel, debt, medical, radar, linqChatIds] = await Promise.all([
+    aggregateW4Retention(database, window.end),
+    aggregateFunnelScoreboard(database, weekStart, window.end, metricsExcluded),
+    aggregateCommitmentDebt(database, window.end, metricsExcluded),
+    aggregateMedicalAnswers(database, weekStart, window.end, metricsExcluded),
+    aggregateRadarVerification(database, weekStart, window.end),
+    countDbChatIds(database),
+  ]);
+  const graded = w4Cohorts.filter((row) => row.weekN === RETENTION_GRADED_WEEK);
+
   return {
     window,
     families: { real: realIds.length, excluded: active.length - realIds.length },
@@ -410,6 +471,25 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
     },
     cache: summarizeCache(runs),
     spend: summarizeSpend(runs),
+    w4: {
+      retained: graded.reduce((sum, row) => sum + row.retained, 0),
+      families: graded.reduce((sum, row) => sum + row.cohortSize, 0),
+    },
+    intake: {
+      started: funnel.intake.sessionsStarted,
+      provisioned: funnel.intake.provisioned,
+      medianSeconds: funnel.ttfa.p50Seconds,
+      derivedFamilies: funnel.ttfa.derivedFamilies,
+      notDerivableFamilies: funnel.ttfa.notDerivableFamilies,
+    },
+    promises: {
+      open: debt.openCommitments,
+      overdue: debt.overdueCommitments,
+      overdueFamilies: debt.overdueFamilies,
+    },
+    medical,
+    reverify: { ran: radar.sweptThisWeek, outcomes: radar.outcomes },
+    linqChatIds,
   };
 }
 
@@ -427,6 +507,37 @@ function usd(value: number | null): string {
 
 function tally(rows: Array<{ reason: string; count: number }>): string {
   return rows.map((row) => `${failureCategory(row.reason)} ${row.count}`).join(', ');
+}
+
+function w4Line(w4: OpsDailyReport['w4']): string {
+  if (w4.families === 0) return `W4: no cohort has finished week ${RETENTION_GRADED_WEEK}`;
+  return `W4: ${w4.retained} of ${w4.families} texted back in week ${RETENTION_GRADED_WEEK} (pooled)`;
+}
+
+function intakeLine(intake: OpsDailyReport['intake']): string {
+  if (intake.started === 0) return 'Intake (7d): no sessions started';
+  const hidden =
+    intake.notDerivableFamilies > 0 ? ` | ${intake.notDerivableFamilies} not derivable` : '';
+  return `Intake (7d): ${intake.started} started | ${intake.provisioned} provisioned | median first answer ${seconds(intake.medianSeconds)} (${intake.derivedFamilies} families)${hidden}`;
+}
+
+function promisesLine(promises: OpsDailyReport['promises']): string {
+  if (promises.open === 0) return 'Promises: ledger empty';
+  if (promises.overdue === 0) return `Promises: ${promises.open} open | none overdue`;
+  const word = promises.overdueFamilies === 1 ? 'family' : 'families';
+  return `Promises: ${promises.open} open | ${promises.overdue} overdue (${promises.overdueFamilies} ${word})`;
+}
+
+function medicalLine(medical: OpsDailyReport['medical']): string {
+  if (medical.answered === 0) return 'Medical (7d): no medical answers';
+  return `Medical (7d): ${medical.fallbacks} of ${medical.answered} answers used the fixed 811/911 line`;
+}
+
+function reverifyLine(reverify: OpsDailyReport['reverify']): string {
+  if (!reverify.ran) return 'Re-verify (7d): did not run';
+  if (!reverify.outcomes) return 'Re-verify (7d): ran | no tally';
+  const o = reverify.outcomes;
+  return `Re-verify (7d): ran | checked ${o.checked} | confirmed ${o.confirmed} | discrepancies ${o.discrepancies} | unverified ${o.unverified}`;
 }
 
 /** The #ops text. ASCII, counts and closed-vocabulary reasons only. */
@@ -453,6 +564,12 @@ export function composeOpsDailyPost(report: OpsDailyReport): string {
     spend.families > 0
       ? `Spend (recorded runs): ${usd(spend.totalUsd)} | ${spend.families} families | median ${usd(spend.medianUsd)} | p95 ${usd(spend.p95Usd)} | max ${usd(spend.maxUsd)}`
       : `Spend (recorded runs): ${usd(spend.totalUsd)} | 0 families`,
+    w4Line(report.w4),
+    intakeLine(report.intake),
+    promisesLine(report.promises),
+    medicalLine(report.medical),
+    reverifyLine(report.reverify),
+    `Linq chat IDs (DB): ${report.linqChatIds} of ${LINQ_CHAT_ID_LIMIT}`,
   ].join('\n');
 }
 

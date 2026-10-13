@@ -1,20 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import {
-  type SQL,
   and,
   count,
   countDistinct,
-  desc,
   eq,
-  gt,
   gte,
   inArray,
   isNotNull,
   lt,
-  notInArray,
-  sql,
 } from 'drizzle-orm';
-import type { PgColumn } from 'drizzle-orm/pg-core';
 import { type CommitmentDebt, aggregateCommitmentDebt } from '~/lib/commitments/ledger';
 import { LOOP_EMAIL_TYPES } from '~/lib/cron/email-compliance';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
@@ -23,14 +17,17 @@ import {
   escalateDigestSendFailure,
   providerIncidentKind,
 } from '~/lib/monitoring/provider-health';
-import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
+import {
+  aggregateMedicalAnswers,
+  aggregateRadarVerification,
+  aggregateW4Retention,
+} from './founder-counts';
 import {
   DELIVERED_STATUSES,
   type FunnelScoreboard,
   aggregateFunnelScoreboard,
   formatFunnelScoreboard,
 } from './funnel-scoreboard';
-import { resolveMetricsExclusions } from './metrics-scope';
 import {
   type FamilyEngagement,
   type MedicalAnswers,
@@ -46,6 +43,8 @@ import {
   gradeUnitCost,
   gradeW4Retention,
 } from './scorecard-rubric';
+
+export { aggregateMedicalAnswers, aggregateRadarVerification, aggregateW4Retention };
 
 /**
  * X1 (VIL-227) · the weekly loop-health digest to the founder. Reuses the
@@ -378,54 +377,6 @@ const RETENTION_CURVE_WEEKS = 8;
  * conversation; no `status` filter because inbound rows are always written `delivered`,
  * so filtering would be a second reader of a fact one column already answers.
  */
-export async function aggregateW4Retention(
-  database: Database,
-  asOf: Date,
-): Promise<RetentionCohort[]> {
-  // Resolved HERE rather than passed in, so a caller cannot measure the founder's own
-  // household by forgetting an argument.
-  const excluded = await resolveMetricsExclusions(database);
-
-  const provisionedAt = schema.families.createdAt;
-  const weekN = sql`w.n`;
-  /** The per-family boundary `weeks` whole weeks after provisioning. Per-family, so a
-   * Wednesday signup gets a fair week 1 — reversible to a calendar-aligned boundary. */
-  const afterWeeks = (weeks: SQL) => sql`${provisionedAt} + make_interval(days => 7 * (${weeks}))`;
-  const signupWeek = sql<string>`(date_trunc('week', ${provisionedAt} at time zone ${RETENTION_TIME_ZONE}))::date::text`;
-
-  const cameBack = sql`exists (select 1 from ${schema.channelMessages} where ${and(
-    eq(schema.channelMessages.familyId, schema.families.id),
-    eq(schema.channelMessages.direction, 'in'),
-    eq(schema.channelMessages.category, 'reply'),
-    gte(schema.channelMessages.createdAt, afterWeeks(weekN)),
-    lt(schema.channelMessages.createdAt, afterWeeks(sql`${weekN} + 1`)),
-  )})`;
-
-  return (
-    database
-      .select({
-        signupWeek,
-        weekN: sql<number>`w.n`,
-        cohortSize: sql<number>`count(*)::int`,
-        retained: sql<number>`count(*) filter (where ${cameBack})::int`,
-      })
-      .from(
-        sql`${schema.families} cross join generate_series(1, ${RETENTION_CURVE_WEEKS}::int) as w(n)`,
-      )
-      .where(
-        and(
-          notInArray(schema.families.id, [...excluded]),
-          sql`${afterWeeks(sql`${weekN} + 1`)} <= ${asOf.toISOString()}::timestamptz`,
-        ),
-      )
-      // Grouped by OUTPUT POSITION rather than by repeating the expression. Postgres
-      // matches a GROUP BY expression to the select list structurally, and Drizzle binds
-      // the timezone as a placeholder — so the repeated form is two different `$n` and
-      // Postgres rejects `families.created_at` as ungrouped.
-      .groupBy(sql`1`, sql`2`)
-      .orderBy(sql`1`, sql`2`)
-  );
-}
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -450,41 +401,6 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
  * before windowEnd, which is what the predicate below says — and because that spans two
  * Mondays, the tally is taken newest-first.
  */
-export async function aggregateRadarVerification(
-  database: Database,
-  windowStart: Date,
-  windowEnd: Date,
-): Promise<RadarVerification> {
-  const sweptWeek = (column: PgColumn) =>
-    and(gt(column, new Date(windowStart.getTime() - WEEK_MS)), lt(column, windowEnd));
-
-  const [claimRow] = await database
-    .select({ count: count() })
-    .from(schema.rateLimits)
-    .where(
-      and(
-        eq(schema.rateLimits.route, REGISTRATION_VERIFY_ROUTE),
-        sweptWeek(schema.rateLimits.windowStart),
-      ),
-    );
-
-  const [run] = await database
-    .select({
-      checked: schema.registrationVerifyRuns.checked,
-      confirmed: schema.registrationVerifyRuns.confirmed,
-      discrepancies: schema.registrationVerifyRuns.discrepancies,
-      unverified: schema.registrationVerifyRuns.unverified,
-    })
-    .from(schema.registrationVerifyRuns)
-    .where(sweptWeek(schema.registrationVerifyRuns.weekStart))
-    .orderBy(desc(schema.registrationVerifyRuns.weekStart))
-    .limit(1);
-
-  return {
-    sweptThisWeek: (claimRow?.count ?? 0) > 0,
-    outcomes: run ?? null,
-  };
-}
 
 /**
  * The safety row's other half: medical-symptom texts Hale ANSWERED this week, and how
@@ -496,31 +412,6 @@ export async function aggregateRadarVerification(
  * is not decoration: this number feeds the one row that must never be flattered, and a
  * parent's own text is not one of Hale's answers.
  */
-export async function aggregateMedicalAnswers(
-  database: Database,
-  windowStart: Date,
-  windowEnd: Date,
-): Promise<MedicalAnswers> {
-  const rows = await database
-    .select({ source: schema.channelMessages.medicalReplySource, count: count() })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.direction, 'out'),
-        isNotNull(schema.channelMessages.medicalReplySource),
-        gte(schema.channelMessages.createdAt, windowStart),
-        lt(schema.channelMessages.createdAt, windowEnd),
-      ),
-    )
-    .groupBy(schema.channelMessages.medicalReplySource);
-
-  return {
-    answered: rows.reduce((sum, row) => sum + row.count, 0),
-    fallbacks: rows
-      .filter((row) => row.source === 'fixed')
-      .reduce((sum, row) => sum + row.count, 0),
-  };
-}
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);

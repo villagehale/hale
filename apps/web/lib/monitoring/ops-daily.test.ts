@@ -1,12 +1,12 @@
-import { describe, expect, it } from 'vitest';
 import type { Database } from '@hale/db';
+import { describe, expect, it } from 'vitest';
 import { TURN_ANSWERED_ACTION, auditTurnLedger } from '~/lib/channel/router/wiring';
 import { SYNTHETIC_PROBE_PREFIX } from '~/lib/channels/phone';
 import {
+  type OpsDailyReport,
   TURN_ANSWERED_AUDIT_ACTION,
   TURN_UNANSWERED_AUDIT_ACTION,
   composeOpsDailyPost,
-  type OpsDailyReport,
 } from './ops-daily';
 
 /**
@@ -57,6 +57,21 @@ const SAMPLE: OpsDailyReport = {
     },
   ],
   spend: { totalUsd: 4.12, families: 6, medianUsd: 0.51, p95Usd: 1.3, maxUsd: 1.42 },
+  w4: { retained: 3, families: 8 },
+  intake: {
+    started: 5,
+    provisioned: 4,
+    medianSeconds: 75,
+    derivedFamilies: 4,
+    notDerivableFamilies: 0,
+  },
+  promises: { open: 6, overdue: 2, overdueFamilies: 1 },
+  medical: { answered: 4, fallbacks: 1 },
+  reverify: {
+    ran: true,
+    outcomes: { checked: 20, confirmed: 17, discrepancies: 1, unverified: 2 },
+  },
+  linqChatIds: 47,
 };
 
 const ZERO: OpsDailyReport = {
@@ -85,6 +100,18 @@ const ZERO: OpsDailyReport = {
   },
   cache: [],
   spend: { totalUsd: 0, families: 0, medianUsd: null, p95Usd: null, maxUsd: null },
+  w4: { retained: 0, families: 0 },
+  intake: {
+    started: 0,
+    provisioned: 0,
+    medianSeconds: null,
+    derivedFamilies: 0,
+    notDerivableFamilies: 0,
+  },
+  promises: { open: 0, overdue: 0, overdueFamilies: 0 },
+  medical: { answered: 0, fallbacks: 0 },
+  reverify: { ran: false, outcomes: null },
+  linqChatIds: 0,
 };
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -92,7 +119,7 @@ const LONG_DIGITS = /\d{7,}/;
 const NON_ASCII = /[^ -~\n]/;
 
 describe('composeOpsDailyPost', () => {
-  it('renders a day of traffic as eight ASCII lines of counts', () => {
+  it('renders a day of traffic as fourteen ASCII lines of counts', () => {
     expect(composeOpsDailyPost(SAMPLE)).toBe(
       [
         'Hale daily | 24h to 2026-10-12 13:00 UTC | real families 7 | excluded 3',
@@ -103,6 +130,12 @@ describe('composeOpsDailyPost', () => {
         'Turns: failed 1 (apology_sent 1) | deferred 4 (billing 0, auth 0) | dead-lettered 0 | first-hello failures 0',
         'Cache: coach-channel-sms 34/40 runs, tokens 71% (40 runs), p95 6.2s',
         'Spend (recorded runs): $4.12 | 6 families | median $0.51 | p95 $1.30 | max $1.42',
+        'W4: 3 of 8 texted back in week 4 (pooled)',
+        'Intake (7d): 5 started | 4 provisioned | median first answer 1m15s (4 families)',
+        'Promises: 6 open | 2 overdue (1 family)',
+        'Medical (7d): 1 of 4 answers used the fixed 811/911 line',
+        'Re-verify (7d): ran | checked 20 | confirmed 17 | discrepancies 1 | unverified 2',
+        'Linq chat IDs (DB): 47 of 200',
       ].join('\n'),
     );
   });
@@ -118,8 +151,36 @@ describe('composeOpsDailyPost', () => {
         'Turns: failed 0 | deferred 0 (billing 0, auth 0) | dead-lettered 0 | first-hello failures 0',
         'Cache: none',
         'Spend (recorded runs): $0.00 | 0 families',
+        'W4: no cohort has finished week 4',
+        'Intake (7d): no sessions started',
+        'Promises: ledger empty',
+        'Medical (7d): no medical answers',
+        'Re-verify (7d): did not run',
+        'Linq chat IDs (DB): 0 of 200',
       ].join('\n'),
     );
+  });
+
+  it('does not read an open ledger or a sweep with no tally as a clean zero', () => {
+    const text = composeOpsDailyPost({
+      ...ZERO,
+      intake: {
+        started: 2,
+        provisioned: 2,
+        medianSeconds: null,
+        derivedFamilies: 0,
+        notDerivableFamilies: 2,
+      },
+      promises: { open: 4, overdue: 0, overdueFamilies: 0 },
+      reverify: { ran: true, outcomes: null },
+    });
+    expect(text).toContain(
+      'Intake (7d): 2 started | 2 provisioned | median first answer n/a (0 families) | 2 not derivable',
+    );
+    expect(text).toContain('Promises: 4 open | none overdue');
+    expect(text).toContain('Re-verify (7d): ran | no tally');
+    expect(text).not.toContain('ledger empty');
+    expect(text).not.toContain('did not run');
   });
 
   it('carries no id-shaped or phone-shaped token and no non-ASCII character', () => {

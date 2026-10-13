@@ -1,5 +1,5 @@
 import { type AgentCommitment, type Database, schema } from '@hale/db';
-import { and, asc, eq, isNull, lte } from 'drizzle-orm';
+import { and, asc, eq, isNull, lte, notInArray } from 'drizzle-orm';
 
 /**
  * MEM-10 · THE OPEN-LOOPS LEDGER — Hale's own promises, as data.
@@ -461,14 +461,21 @@ export interface CommitmentDebt {
 export async function aggregateCommitmentDebt(
   database: Database,
   now: Date,
+  excludeFamilyIds?: readonly string[],
 ): Promise<CommitmentDebt> {
+  // An empty list is not a filter. Omitted, every open promise counts — which is how
+  // an unset METRICS_EXCLUDED_FAMILY_IDS counts a QA household's debt as the product's.
+  const excluded =
+    excludeFamilyIds && excludeFamilyIds.length > 0
+      ? notInArray(schema.agentCommitments.familyId, [...excludeFamilyIds])
+      : undefined;
   const rows = await database
     .select({
       familyId: schema.agentCommitments.familyId,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)
-    .where(openPredicate());
+    .where(and(openPredicate(), excluded));
 
   const overdueFamilies = new Set<string>();
   let overdueCommitments = 0;

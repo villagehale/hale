@@ -7,8 +7,15 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { METRICS_EXCLUDED_FAMILIES_ENV } from '~/lib/loop/metrics-scope';
 import { DEAD_LETTER_PAGE_ROUTE, FIRST_HELLO_PAGE_ROUTE } from '~/lib/monitoring/failure-page';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
-import { createTestDb, seedFamily, type SeededFamily, type TestDb } from '~/lib/testing/pglite';
-import { aggregateOpsDaily, OPS_DAILY_ROUTE, type OpsDailyReport, runOpsDaily } from './ops-daily';
+import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
+import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import {
+  OPS_DAILY_ROUTE,
+  type OpsDailyReport,
+  aggregateOpsDaily,
+  composeOpsDailyPost,
+  runOpsDaily,
+} from './ops-daily';
 
 /**
  * The daily #ops post over the real tables (VIL-409). Every family is invented, its
@@ -333,6 +340,29 @@ describe('aggregateOpsDaily', () => {
     expect(report.spend.families).toBe(1);
     expect(report.spend.totalUsd).toBeCloseTo(0.6, 6);
   });
+
+  it('reads an empty founder ledger as empty, and the database chat-id count', () => {
+    expect(report.w4).toEqual({ retained: 0, families: 0 });
+    expect(report.promises).toEqual({ open: 0, overdue: 0, overdueFamilies: 0 });
+    expect(report.medical).toEqual({ answered: 0, fallbacks: 0 });
+    expect(report.reverify).toEqual({ ran: false, outcomes: null });
+    // The first-hello session opened inside the trailing 7 days and belongs to no family.
+    expect(report.intake).toEqual({
+      started: 1,
+      provisioned: 0,
+      medianSeconds: null,
+      derivedFamilies: 0,
+      notDerivableFamilies: 0,
+    });
+    expect(report.linqChatIds).toBe(1);
+    const text = composeOpsDailyPost(report);
+    expect(text).toContain('W4: no cohort has finished week 4');
+    expect(text).toContain('Promises: ledger empty');
+    expect(text).toContain('Medical (7d): no medical answers');
+    expect(text).toContain('Re-verify (7d): did not run');
+    expect(text).toContain('Linq chat IDs (DB): 1 of 200');
+    expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
+  });
 });
 
 describe('aggregateOpsDaily — spend across families', () => {
@@ -425,5 +455,189 @@ describe('runOpsDaily', () => {
       'posted',
     );
     expect(post.mock.calls[0]?.[0]).toContain('real families 0 | excluded 0');
+  });
+});
+
+describe('aggregateOpsDaily — the founder counts', () => {
+  // Trailing 7 days ending 2026-06-15 13:00 UTC. Provisioning six weeks earlier puts
+  // week 4 fully inside the past, and a reply on 2026-06-03 sits in that week.
+  const AS_OF = new Date('2026-06-15T13:14:00Z');
+  const PROVISIONED = new Date('2026-05-04T13:00:00Z');
+  const IN_WEEK_4 = new Date('2026-06-03T12:00:00Z');
+  const IN_TRAILING_WEEK = new Date('2026-06-10T15:00:00Z');
+  const FAMILY_CREATED = new Date('2026-06-10T12:00:00Z');
+
+  async function backdate(family: SeededFamily, createdAt: Date): Promise<void> {
+    await db.database
+      .update(schema.families)
+      .set({ createdAt })
+      .where(eq(schema.families.id, family.familyId));
+  }
+
+  async function medical(
+    family: SeededFamily,
+    source: 'fixed' | 'web_grounded',
+    at: Date,
+  ): Promise<void> {
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      status: 'sent',
+      medicalReplySource: source,
+      createdAt: at,
+    });
+  }
+
+  async function promise(
+    family: SeededFamily,
+    kind: 'first_find' | 'registration_plan',
+    dueAt: Date,
+  ): Promise<void> {
+    await db.database.insert(schema.agentCommitments).values({
+      familyId: family.familyId,
+      commitmentKind: kind,
+      createdFrom: 'ops-daily-fixture',
+      summary: 'a short promise',
+      dueAt,
+    });
+  }
+
+  async function intakeSession(phone: string, at: Date, familyId: string | null): Promise<void> {
+    await db.database.insert(schema.smsIntakeSessions).values({
+      phoneHash: phoneBlindIndex(phone),
+      phoneEncrypted: encryptString(phone),
+      state: 'complete',
+      dataEncrypted: encryptString('{}'),
+      createdAt: at,
+      familyId,
+    });
+  }
+
+  async function intakeLeg(
+    family: SeededFamily,
+    direction: 'in' | 'out',
+    sentAt: Date,
+  ): Promise<void> {
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms',
+      direction,
+      category: 'intake',
+      status: direction === 'in' ? 'delivered' : 'sent',
+      sentAt,
+      createdAt: sentAt,
+    });
+  }
+
+  /** First text at provisioning, radar reply `latencySeconds` later. */
+  async function derivableIntake(
+    family: SeededFamily,
+    phone: string,
+    latencySeconds: number,
+  ): Promise<void> {
+    await intakeLeg(family, 'in', FAMILY_CREATED);
+    await intakeLeg(family, 'out', new Date(FAMILY_CREATED.getTime() + latencySeconds * 1000));
+    await intakeSession(phone, FAMILY_CREATED, family.familyId);
+  }
+
+  it('counts the real family and drops the env-listed household, on both sides', async () => {
+    const kept = await seedFamilyWithPhone('Kept Household', '+15555550188');
+    await backdate(kept, PROVISIONED);
+    await backdate(listed, PROVISIONED);
+    await inbound(kept, IN_WEEK_4, 'ops-daily-real-chat');
+    await inbound(listed, IN_WEEK_4, 'canary-ops-daily');
+    await medical(kept, 'web_grounded', IN_TRAILING_WEEK);
+    await medical(kept, 'fixed', IN_TRAILING_WEEK);
+    await medical(listed, 'fixed', IN_TRAILING_WEEK);
+    await promise(kept, 'first_find', new Date('2026-06-01T00:00:00Z'));
+    await promise(kept, 'registration_plan', new Date('2026-06-20T00:00:00Z'));
+    await promise(listed, 'first_find', new Date('2026-06-01T00:00:00Z'));
+
+    const fast = await seedFamilyWithPhone('Fast Household', '+15555550189');
+    const slowA = await seedFamilyWithPhone('Slow Household A', '+15555550190');
+    const slowB = await seedFamilyWithPhone('Slow Household B', '+15555550191');
+    await backdate(fast, FAMILY_CREATED);
+    await backdate(slowA, FAMILY_CREATED);
+    await backdate(slowB, FAMILY_CREATED);
+    await derivableIntake(fast, '+15555550201', 40);
+    await derivableIntake(slowA, '+15555550202', 10);
+    await derivableIntake(slowB, '+15555550203', 10);
+    await intakeSession('+15555550192', IN_TRAILING_WEEK, null);
+
+    await db.database.insert(schema.rateLimits).values({
+      identifier: 'weekly-sweep',
+      route: REGISTRATION_VERIFY_ROUTE,
+      windowStart: new Date('2026-06-08T00:00:00Z'),
+      count: 1,
+    });
+    await db.database.insert(schema.registrationVerifyRuns).values({
+      weekStart: new Date('2026-06-08T00:00:00Z'),
+      checked: 4,
+      confirmed: 3,
+      discrepancies: 1,
+      unverified: 0,
+    });
+
+    vi.stubEnv(
+      METRICS_EXCLUDED_FAMILIES_ENV,
+      [listed.familyId, slowA.familyId, slowB.familyId].join(','),
+    );
+    const excluded = await aggregateOpsDaily(db.database, AS_OF);
+    expect(excluded.w4).toEqual({ retained: 1, families: 1 });
+    expect(excluded.intake).toEqual({
+      started: 2,
+      provisioned: 1,
+      medianSeconds: 40,
+      derivedFamilies: 1,
+      notDerivableFamilies: 0,
+    });
+    expect(excluded.promises).toEqual({ open: 2, overdue: 1, overdueFamilies: 1 });
+    expect(excluded.medical).toEqual({ answered: 2, fallbacks: 1 });
+    expect(excluded.reverify).toEqual({
+      ran: true,
+      outcomes: { checked: 4, confirmed: 3, discrepancies: 1, unverified: 0 },
+    });
+    expect(excluded.linqChatIds).toBe(2);
+
+    const text = composeOpsDailyPost(excluded);
+    expect(text).toContain('W4: 1 of 1 texted back in week 4 (pooled)');
+    expect(text).toContain(
+      'Intake (7d): 2 started | 1 provisioned | median first answer 40s (1 families)',
+    );
+    expect(text).toContain('Promises: 2 open | 1 overdue (1 family)');
+    expect(text).toContain('Medical (7d): 1 of 2 answers used the fixed 811/911 line');
+    expect(text).toContain(
+      'Re-verify (7d): ran | checked 4 | confirmed 3 | discrepancies 1 | unverified 0',
+    );
+    expect(text).toContain('Linq chat IDs (DB): 2 of 200');
+
+    // The poisoned control: the same rows, with the env empty, count the QA households.
+    vi.stubEnv(METRICS_EXCLUDED_FAMILIES_ENV, '');
+    const counted = await aggregateOpsDaily(db.database, AS_OF);
+    expect(counted.w4).toEqual({ retained: 2, families: 2 });
+    expect(counted.intake.started).toBe(4);
+    expect(counted.intake.provisioned).toBe(3);
+    expect(counted.intake.medianSeconds).toBe(10);
+    expect(counted.intake.derivedFamilies).toBe(3);
+    expect(counted.promises).toEqual({ open: 3, overdue: 2, overdueFamilies: 2 });
+    expect(counted.medical).toEqual({ answered: 3, fallbacks: 2 });
+
+    vi.stubEnv(METRICS_EXCLUDED_FAMILIES_ENV, listed.familyId);
+  });
+
+  it('reports a claimed sweep that left no tally as ran, not as a clean week', async () => {
+    await db.database.insert(schema.rateLimits).values({
+      identifier: 'weekly-sweep',
+      route: REGISTRATION_VERIFY_ROUTE,
+      windowStart: new Date('2026-01-05T00:00:00Z'),
+      count: 1,
+    });
+    const day = await aggregateOpsDaily(db.database, new Date('2026-01-12T13:14:00Z'));
+    expect(day.reverify).toEqual({ ran: true, outcomes: null });
+    expect(composeOpsDailyPost(day)).toContain('Re-verify (7d): ran | no tally');
   });
 });
