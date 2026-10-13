@@ -65,6 +65,20 @@ already appeared, so a page you never surfaced is a page you cannot read.
 including tables and "schedule at a glance" grids. Those grids are exactly where
 the answer was hiding both times.
 
+**Open a schedule document the page links.** A schedule at a glance, a term grid,
+a fee table — often a PDF linked from the page you just opened. Fetch that
+document. The day, the time and the price are frequently in it and on no page you
+have read. If the fetch is refused, or the budget runs out before you reach it,
+say in the notes which document it was and that you could not read it, and leave
+`when` and `price` out. Do not fill either from a page that does not print them.
+
+**Credit a date only to a page whose text you opened.** A day, a session date or
+a registration date goes on a slot only when that page's text contains it, and
+`source_url` is that page. A search snippet is not the page. If you did not fetch
+the home page, the registration page, or any other page, you do not attribute a
+date to it. When the date is on a page you opened, cite that page. When the date
+is only in a snippet of a page you did not open, leave it off the slot.
+
 **A page you could not open is NOT a page that says nothing.** Fetches come back
 refused (`url_not_allowed`) or unreachable (`url_not_accessible`) more often than
 you would expect, sometimes for one page on a site whose front page opens fine.
@@ -121,9 +135,11 @@ Return what you READ, as structured rows. Never a paragraph, never a guess.
   This is the fact that decides whether a parent acts today, and it is the one
   most often sitting in plain sight while Hale says nothing about it.
 - **`source_name`** — whose page. The organisation, never a URL.
-- **`source_url`** — THE PAGE THIS ROW WAS READ OFF. Not the home page, not the
-  search result: the page that actually printed these facts. A row you cannot
-  point at a page for is a row you invented, and it does not go in the list.
+- **`source_url`** — THE PAGE THIS ROW WAS READ OFF. Not the home page unless you
+  opened the home page and the fact is in its text, and not the search result:
+  the page that actually printed these facts. A date this page does not contain
+  does not go on the row. A row you cannot point at a page for is a row you
+  invented, and it does not go in the list.
 
 `pages_read` is every URL you actually opened. Leave it empty if you opened none
 — that is a true and useful thing for Hale to know, and it is far better than a
