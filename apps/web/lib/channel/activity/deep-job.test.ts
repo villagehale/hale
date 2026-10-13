@@ -192,7 +192,6 @@ function harness(
           return overrides.compose ?? { status: 'composed', message: 'Tiny Gym runs Sundays 9:30.' };
         },
       },
-      sharePage: async () => ({ status: 'skipped' as const, reason: 'nothing_to_share' as const }),
       refuseUnbackedSend: async () => overrides.unbacked ?? [],
       resolveSendablePhone: async () => '+14165550100',
       transport,
@@ -232,7 +231,9 @@ describe('runDeepResearchJob', () => {
     expect(h.transport.sent).toHaveLength(1);
     // Threaded, so the parent's reply arrives as an ordinary coach turn with the finds
     // above it (#531).
-    expect(h.threaded).toEqual(['Tiny Gym runs Sundays 9:30.']);
+    expect(h.threaded).toEqual([
+      `Tiny Gym runs Sundays 9:30.\n${SLOT.sourceUrl}`,
+    ]);
     // KEPT, against the message that kept it.
     expect(h.fulfilled).toEqual([
       { familyId: FAMILY, kind: 'activity_followup', channelMessageId: 'msg-out-1', now: NOW },

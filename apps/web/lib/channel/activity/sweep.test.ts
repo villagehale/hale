@@ -46,8 +46,6 @@ const PICK: ActivityPick = {
   source: 'web',
 };
 
-const SHARE_URL = 'https://app.villagehale.com/a/tok3n';
-
 const database = {} as Database;
 
 afterEach(() => {
@@ -64,7 +62,7 @@ interface Harness {
   threaded: string[];
   audited: unknown[];
   composed: unknown[];
-  shared: unknown[];
+  heldNotes: string[];
   watched: unknown[];
 }
 
@@ -76,7 +74,6 @@ function harness(
     compose?: Awaited<ReturnType<ActivityFollowUpDeps['composer']['compose']>>;
     householdNames?: string[];
     deep?: Awaited<ReturnType<ActivityFollowUpDeps['deep']['research']>>;
-    sharePage?: Awaited<ReturnType<ActivityFollowUpDeps['sharePage']>>;
     recordWatch?: Awaited<ReturnType<ActivityFollowUpDeps['recordWatch']>>;
     /** What the reconciliation gate says about the wire body (VIL-293). Empty is the
      * ordinary answer: nothing in an activity follow-up claims a row by default. */
@@ -91,7 +88,7 @@ function harness(
   const threaded: string[] = [];
   const audited: unknown[] = [];
   const composed: unknown[] = [];
-  const shared: unknown[] = [];
+  const heldNotes: string[] = [];
   const watched: unknown[] = [];
 
   const deps: ActivityFollowUpDeps = {
@@ -118,10 +115,6 @@ function harness(
         return overrides.deep ?? { status: 'unavailable', reason: 'client_unavailable' };
       },
     },
-    sharePage: async (_db, input) => {
-      shared.push(input);
-      return overrides.sharePage ?? { status: 'minted', url: SHARE_URL, slots: input.slots.length };
-    },
     composer: {
       async compose(grounding) {
         composed.push(grounding);
@@ -142,8 +135,9 @@ function harness(
     audit: async (_db, row) => {
       audited.push(row);
     },
-    threadMessage: (async (_db: Database, input: { body: string }) => {
-      threaded.push(input.body);
+    threadMessage: (async (_db: Database, input: { body: string; topic?: string | null }) => {
+      if (input.topic === 'activity_held') heldNotes.push(input.body);
+      else threaded.push(input.body);
       return 'conv-1';
     }) as unknown as ActivityFollowUpDeps['threadMessage'],
     fulfillCommitment: (async (_db: Database, input: unknown) => {
@@ -159,7 +153,7 @@ function harness(
       return overrides.recordWatch ?? { status: 'recorded', commitmentId: 'commitment-2' };
     },
   };
-  return { deps, transport, fulfilled, cancelled, threaded, audited, composed, shared, watched };
+  return { deps, transport, fulfilled, cancelled, threaded, audited, composed, heldNotes, watched };
 }
 
 function armed() {
@@ -440,31 +434,43 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     ]);
   });
 
-  it('grounds the composer on the best TWO slots and puts the other two on a page', async () => {
+  it('grounds the composer on the best TWO slots and holds the other two for the chat', async () => {
     armed();
     const h = payable();
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    // The text is written about two; the share page is offered all four.
-    expect((h.composed[0] as { picks: unknown[] }).picks).toHaveLength(2);
-    expect((h.shared[0] as { slots: unknown[] }).slots).toHaveLength(4);
-    expect(result.shared).toBe(1);
-    expect(h.transport.sent[0]?.body).toContain(SHARE_URL);
+    expect(result.sent).toBe(1);
+    const composed = h.composed[0] as { picks: { name: string }[]; moreRemaining: number };
+    expect(composed.picks).toHaveLength(2);
+    expect(composed.moreRemaining).toBe(2);
+    expect(h.transport.sent[0]?.body).toContain(PAGE);
+    expect(h.transport.sent[0]?.body).not.toContain('villagehale.com');
+    const held = JSON.parse(h.heldNotes[0] ?? '{}') as {
+      unsent_activity_options: { name: string; source_url: string }[];
+    };
+    expect(held.unsent_activity_options.map((option) => option.name)).toEqual([
+      'Mini Gym, Cartwheels Gym Centre',
+      'Tumble n Learn, Cartwheels Gym Centre',
+    ]);
+    expect(held.unsent_activity_options.every((option) => option.source_url === PAGE)).toBe(true);
   });
 
-  it('threads the message the parent actually got - link and all', async () => {
+  it('threads the message the parent actually got - venue page and all', async () => {
     armed();
     const h = payable();
 
     await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    // The link is part of the answer. The opt-out line is not.
-    expect(h.threaded[0]).toContain(SHARE_URL);
+    // The venue page is part of the answer. The opt-out line is not. The held note is
+    // a second thread row, not the sentence the parent was sent.
+    expect(h.threaded[0]).toContain(PAGE);
     expect(h.threaded[0]).not.toContain('STOP');
+    expect(h.threaded).toHaveLength(1);
+    expect(h.heldNotes).toHaveLength(1);
   });
 
-  it('mints no page when everything found already fits in the text', async () => {
+  it('holds nothing when everything found already fits in the text, and still links the venue', async () => {
     armed();
     const h = harness({
       due: [CARTWHEELS_DUE],
@@ -479,22 +485,12 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
       },
     });
 
-    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    expect(h.shared).toEqual([]);
-    expect(result.shared).toBe(0);
-    expect(h.transport.sent[0]?.body).not.toContain('/a/');
-  });
-
-  it('still sends when the share page could not be written', async () => {
-    armed();
-    const h = payable({ sharePage: { status: 'skipped', reason: 'write_failed' } });
-
-    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
-
-    expect(result.sent).toBe(1);
-    expect(result.shared).toBe(0);
-    expect(h.transport.sent[0]?.body).not.toContain('/a/');
+    expect(h.heldNotes).toEqual([]);
+    expect((h.composed[0] as { moreRemaining: number }).moreRemaining).toBe(0);
+    expect(h.transport.sent[0]?.body).toContain(PAGE);
+    expect(h.transport.sent[0]?.body).not.toContain('villagehale.com');
   });
 
   it('THE DEFECT: a deep pass that opened NO page falls back rather than claiming nothing is posted', async () => {
@@ -939,15 +935,16 @@ describe('the last read of the string that actually leaves', () => {
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    // The share link is what code still appends after the gate. The opt-out line is
-    // not. Neither carries a question mark, and this is the assertion that says so
-    // out loud - without it the refusal above would pass just as well on a sweep that
+    // The venue page is what code appends after the gate. The opt-out line is not.
+    // Neither carries a question mark, and this is the assertion that says so out
+    // loud - without it the refusal above would pass just as well on a sweep that
     // sends nothing.
-    expect(result).toMatchObject({ sent: 1, refusedAtSend: 0, shared: 1 });
+    expect(result).toMatchObject({ sent: 1, refusedAtSend: 0 });
     const sent = h.transport.sent[0]?.body ?? '';
     expect(sent).not.toContain('STOP to opt out.');
     expect(sent).not.toContain('Reply STOP to opt out.');
-    expect(sent).toContain(SHARE_URL);
+    expect(sent).toContain('https://haltonhillsgymnastics.ca/programs');
+    expect(sent).not.toContain('villagehale.com');
     expect(sent).not.toContain('?');
   });
 });

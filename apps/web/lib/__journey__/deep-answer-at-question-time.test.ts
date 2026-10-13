@@ -12,10 +12,6 @@ import { MAX_PAGE_NOTE_CHARS, boundEvidence } from '~/lib/channel/activity/fanou
 import { claimsNotPosted, createFollowUpComposer } from '~/lib/channel/activity/followup-note';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
-import {
-  defaultActivitySharePorts,
-  mintActivitySharePage,
-} from '~/lib/channel/activity/share-page';
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -624,7 +620,6 @@ describe('the deep answer arrives at question time', () => {
       lane,
       delivery: {
         composer,
-        sharePage: (db2, input) => mintActivitySharePage(db2, input, defaultActivitySharePorts()),
         refuseUnbackedSend,
         resolveSendablePhone: async () => PHONE,
         transport,

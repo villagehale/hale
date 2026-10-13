@@ -915,7 +915,7 @@ describe('the activity question is answered', () => {
 
     // It read a page rather than re-running the snippet search — `deepRead`, not `sent`
     // alone, is the difference between this sweep and the one it replaced.
-    expect(result).toMatchObject({ due: 1, sent: 1, deepRead: 1, deepUnread: 0, shared: 0 });
+    expect(result).toMatchObject({ due: 1, sent: 1, deepRead: 1, deepUnread: 0 });
 
     // ── the projection boundary ──────────────────────────────────────────────
     const payload = JSON.parse(composer.requests[0] ?? '{}');
@@ -932,9 +932,9 @@ describe('the activity question is answered', () => {
     const body = sweepTransport.bodies()[0] ?? '';
     expect(body).toMatch(/July 22/);
     expect(body).toMatch(/Cartwheels/);
-    // Two slots is under SLOTS_IN_TEXT, so there is no share page to have carried the fact
-    // instead — the text was its only route to the parent.
-    expect(body).not.toMatch(/https?:\/\//);
+    // The page the fixture served, on the wire. Not a Hale page.
+    expect(body).toContain('https://cartwheelsgymcentre.example/programs');
+    expect(body).not.toContain('villagehale.com');
   });
 
   // ── THE MUTATION ───────────────────────────────────────────────────────────

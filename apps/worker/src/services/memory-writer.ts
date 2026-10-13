@@ -1390,7 +1390,7 @@ export async function recordDiscovery(
   return recordTransition<{ insertedCount: number }>(async (tx) => {
     // REPLACE, don't accumulate: soft-retire this family's prior active set so a
     // fresh discovery run swaps in. Soft (not DELETE) so an endorsed / shared
-    // candidate survives for its public /a/:token page; the live feed filters
+    // candidate and its share token survive; the live feed filters
     // superseded_at IS NULL. Sets ONLY superseded_at — never clears shareToken.
     await tx
       .update(schema.villageCandidates)

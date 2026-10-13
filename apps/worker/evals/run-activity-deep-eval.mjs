@@ -224,12 +224,20 @@ function readExtract(raw) {
  * pages: a model that never sees a page fact cannot blame a page for a programme that does
  * not exist ("I could not get into any pages today for toddler underwater basket weaving",
  * 2026-08-24). */
-function followUpUserMessage(subject, slots, pageEvidence, watch) {
+function followUpUserMessage(subject, slots, pageEvidence, watch, moreRemaining = 0) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
     ...(slots.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
     watch,
+    // Omitted at zero so an existing cache key stays a hit. Mirrors followup-note.ts.
+    ...(moreRemaining > 0
+      ? {
+          more_remaining: moreRemaining,
+          more_remaining_instruction:
+            'In your own words, in whatever language this parent writes in, say that more options exist and that they can ask in this chat for the next ones. Do not list any option you were not given. Do not use a stock sentence.',
+        }
+      : {}),
     picks: slots.map((slot) => ({
       name: slot.name,
       age_fit: slot.ageFit,

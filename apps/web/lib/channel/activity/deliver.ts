@@ -11,7 +11,6 @@ import {
   type ActivityPromise,
   type ActivityPromiseRecordOutcome,
 } from './commitment';
-import type { DeepSlot } from './deep';
 import type { PageVerdict } from './evidence';
 import { statesAFigure, statesNoCost } from './quote-match';
 import {
@@ -21,7 +20,7 @@ import {
   asksTheParent,
   claimsNotPosted,
 } from './followup-note';
-import { type ActivitySharePage, SLOTS_IN_TEXT, withSharePage } from './share-page';
+import { ACTIVITY_HELD_TOPIC, heldOptionsNote, venuePage, withVenuePages } from './venue-pages';
 
 /**
  * THE ONE PATH A KEPT PROMISE TAKES TO A PHONE.
@@ -35,18 +34,18 @@ import { type ActivitySharePage, SLOTS_IN_TEXT, withSharePage } from './share-pa
  * parent reading them.
  *
  * That stretch is this module, and it is a single copy on purpose. It holds the two send
- * gates, the share page, the CASL line, the ledger row, the thread append, the fulfilment
- * and the continuation promise — nine steps in a fixed order where seven of them were
- * added because one had gone wrong in production. A second implementation of it would
- * pass its own tests and drift on the eighth: this codebase already ran two parallel
- * classify→review pipelines and learned what that costs.
+ * gates, the venue pages, the CASL line, the ledger row, the thread append, the fulfilment
+ * and the continuation promise — steps in a fixed order where several of them were added
+ * because one had gone wrong in production. A second implementation of it would pass its
+ * own tests and drift: this codebase already ran two parallel classify→review pipelines
+ * and learned what that costs.
  *
  * THE ORDER IS THE DESIGN, and two places in it are load-bearing:
  *
- *   THE GATES RUN LAST, on the string that actually leaves. `withSharePage` and
- *   `withOptOut` both append AFTER the composer's own gates have passed, and on
- *   2026-08-22 a question appended past a green gate reached a parent. Everything between
- *   a gate and `transport.send` is unchecked by construction, so nothing may sit there.
+ *   THE GATES RUN LAST, on the string that actually leaves. Venue pages are appended
+ *   AFTER the composer's own gates have passed, and on 2026-08-22 a question appended
+ *   past a green gate reached a parent. Everything between a gate and `transport.send`
+ *   is unchecked by construction, so the question check runs again on the wire body.
  *
  *   THE WATCH IS WRITTEN AFTER THE FULFILMENT. The ledger permits one open promise of a
  *   kind per family, so recording the continuation first would be refused by the partial
@@ -138,10 +137,6 @@ export interface FollowUpRecipient {
  * is a sender that can close a promise having sent nothing, and look identical doing it. */
 export interface FollowUpDelivery {
   composer: FollowUpComposer;
-  sharePage(
-    database: Database,
-    input: { familyId: string; slots: readonly DeepSlot[] },
-  ): Promise<ActivitySharePage>;
   refuseUnbackedSend: typeof refuseUnbackedSend;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
   transport: ChannelTransport;
@@ -187,11 +182,11 @@ export interface FollowUpDeliveryInput {
   dedupeKey: string;
   /** The CASL form this send carries, decided by the outbound gate. */
   optOut: OptOutForm;
-  /** What goes in the TEXT — at most {@link SLOTS_IN_TEXT}. */
+  /** What goes in the TEXT — the best one or two. */
   picks: readonly FollowUpPick[];
-  /** Everything found, including what the text cannot carry. A share page is minted only
-   * when this is longer than the text can hold. */
-  rest: readonly DeepSlot[];
+  /** Options that did not fit in the text. Empty when everything found is already in
+   * `picks`. The parent can ask for these in the chat. */
+  held: readonly FollowUpPick[];
   /** What the pages actually read license this message to say about what a page does NOT
    * carry (evidence.ts `PageVerdict`). Never inferred from how many facts survived the
    * refutation - see `FollowUpGrounding.pageEvidence`. */
@@ -209,8 +204,6 @@ export type FollowUpDeliveryOutcome =
       channelMessageId: string;
       /** The search ran and there was nothing. Still sent, still kept. */
       emptyHanded: boolean;
-      /** A link to the rest of the schedule was appended. */
-      shared: boolean;
       /** The message says Hale is still watching. */
       watch: boolean;
       /** The continuation row behind that sentence: true written, false NOT written (the
@@ -245,6 +238,7 @@ export async function deliverFollowUp(
     picks: input.picks,
     pageEvidence: input.pageEvidence,
     watch,
+    moreRemaining: input.held.length,
   });
   if (composed.status === 'deferred') {
     console.error(
@@ -263,27 +257,13 @@ export async function deliverFollowUp(
     );
   }
 
-  // THE REST OF THE SCHEDULE, on a page. Minted only when more slots were read than two
-  // segments of SMS can hold — a follow-up that already said everything it found needs no
-  // link, and a link to a page repeating the text is noise.
-  //
-  // The link is appended by CODE, after the composer's gates have passed on the sentence.
-  // That is deliberate: `followUpViolations` refuses any message containing a URL, and
-  // that gate is right — a model that may write links will eventually write a wrong one.
-  // So the model never sees a URL, and the one link Hale sends is built from a token this
-  // process just minted (share-page.ts `withSharePage`, the same shape as `withOptOut`).
-  let message = composed.message;
-  let shared = false;
-  if (input.rest.length > SLOTS_IN_TEXT) {
-    const page = await deps.sharePage(database, {
-      familyId: input.familyId,
-      slots: input.rest,
-    });
-    if (page.status === 'minted') {
-      message = withSharePage(message, page.url);
-      shared = true;
-    }
-  }
+  // THE VENUE'S OWN PAGE, appended by code after the composer's gates. The model is
+  // refused any URL, and that gate stays: a model that may write links will write a
+  // wrong one. Each page here is the address the pick was read off.
+  const message = withVenuePages(
+    composed.message,
+    input.picks.map((pick) => venuePage(pick)).filter((url): url is string => url !== null),
+  );
 
   const body = withOptOut(message, input.optOut);
   // THE GATE, RE-READ ON THE STRING THAT ACTUALLY LEAVES — and it must stay the last
@@ -380,6 +360,17 @@ export async function deliverFollowUp(
     parentUserId: input.recipient.parentUserId,
     body: message,
   });
+  // Options that did not fit, as JSON the coach re-reads when the parent asks. Not a
+  // sentence, and not part of the text that just went out.
+  const heldNote = heldOptionsNote(input.held);
+  if (heldNote) {
+    await deps.threadMessage(database, {
+      familyId: input.familyId,
+      parentUserId: input.recipient.parentUserId,
+      body: heldNote,
+      topic: ACTIVITY_HELD_TOPIC,
+    });
+  }
   // KEPT, against the message that kept it — including when the message was bad news. The
   // promise was to come back.
   await deps.fulfillCommitment(database, {
@@ -393,7 +384,6 @@ export async function deliverFollowUp(
     status: 'sent' as const,
     channelMessageId,
     emptyHanded: input.picks.length === 0,
-    shared,
     watch,
   };
   if (!watch) return { ...sent, watchRecorded: null };

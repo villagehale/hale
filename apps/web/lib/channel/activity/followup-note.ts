@@ -2,7 +2,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
@@ -60,6 +60,14 @@ export const MAX_FOLLOWUP_ATTEMPTS = 3;
 const MAX_TOKENS = 400;
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
+
+/**
+ * Told to the model only when options were held back. It is an instruction, not a
+ * sentence to send: the parent-facing words are the model's, in whatever language the
+ * parent writes in.
+ */
+const MORE_REMAINING_INSTRUCTION =
+  'In your own words, in whatever language this parent writes in, say that more options exist and that they can ask in this chat for the next ones. Do not list any option you were not given. Do not use a stock sentence.';
 
 export type FollowUpFallback =
   | 'client_unavailable'
@@ -123,6 +131,12 @@ export interface FollowUpGrounding {
    * commitment is a row that existed before the sentence claimed it.
    */
   watch: boolean;
+  /**
+   * How many options were found and did not fit in this text. Zero omits the fact from
+   * the payload so an unchanged recording stays a hit. Above zero, the model is told to
+   * say, in its own words, that more exist and that the parent can ask here for them.
+   */
+  moreRemaining: number;
 }
 
 export interface FollowUpComposer {
@@ -154,40 +168,46 @@ const noteJsonSchema = {
  * might fill in, and a `null` is Hale saying it does not have one.
  */
 export function followUpUserMessage(grounding: FollowUpGrounding): string {
-  return JSON.stringify({
+  // Key order is the recording. `more_remaining` is inserted only when it is above zero,
+  // so a follow-up that already fit everything produces the same JSON it did before.
+  const payload: Record<string, unknown> = {
     mode: 'followup_text',
     subject: grounding.subject,
-    // The two facts about the SWEEP rather than about a pick, and both are here for the
-    // reason `registration` is: a projection that does not carry them is a model that
-    // cannot act on them. `page_evidence` is what Hale knows about the pages themselves;
-    // `watch: true` is Hale saying the row is already written.
-    //
-    // It is told rather than merely gated on, because the three states have three
-    // different honest sentences and a model that cannot see which one it is in writes the
-    // negative report, gets refused, and burns its three attempts arriving at silence.
-    //
-    // AND WITH NO PICKS IT IS NOT TOLD AT ALL. There is no find to have a gap in and no
-    // venue whose pages could be at fault, so every honest sentence about a page is one
-    // this message cannot contain. The skill said as much in prose and the prose lost: on
-    // 2026-08-24 an empty search for a programme that does not exist came back "I could
-    // not get into any pages today for toddler underwater basket weaving", which tells a
-    // parent it exists. A model handed no page fact cannot blame a page. What replaces it
-    // is not silence — `picks_empty` is the one fact this message is about, and an omitted
-    // key reads to a model as a field it may fill in (rule #11).
-    ...(grounding.picks.length === 0
-      ? { picks_empty: true }
-      : { page_evidence: grounding.pageEvidence }),
-    watch: grounding.watch,
-    picks: grounding.picks.map((pick) => ({
-      name: pick.name,
-      age_fit: pick.ageFit,
-      when: pick.when,
-      price: pick.price,
-      registration: pick.registration ?? null,
-      source_name: pick.sourceName,
-      source: pick.source,
-    })),
-  });
+  };
+  // The two facts about the SWEEP rather than about a pick, and both are here for the
+  // reason `registration` is: a projection that does not carry them is a model that
+  // cannot act on them. `page_evidence` is what Hale knows about the pages themselves;
+  // `watch: true` is Hale saying the row is already written.
+  //
+  // It is told rather than merely gated on, because the three states have three
+  // different honest sentences and a model that cannot see which one it is in writes the
+  // negative report, gets refused, and burns its three attempts arriving at silence.
+  //
+  // AND WITH NO PICKS IT IS NOT TOLD AT ALL. There is no find to have a gap in and no
+  // venue whose pages could be at fault, so every honest sentence about a page is one
+  // this message cannot contain. The skill said as much in prose and the prose lost: on
+  // 2026-08-24 an empty search for a programme that does not exist came back "I could
+  // not get into any pages today for toddler underwater basket weaving", which tells a
+  // parent it exists. A model handed no page fact cannot blame a page. What replaces it
+  // is not silence — `picks_empty` is the one fact this message is about, and an omitted
+  // key reads to a model as a field it may fill in (rule #11).
+  if (grounding.picks.length === 0) payload.picks_empty = true;
+  else payload.page_evidence = grounding.pageEvidence;
+  payload.watch = grounding.watch;
+  if (grounding.moreRemaining > 0) {
+    payload.more_remaining = grounding.moreRemaining;
+    payload.more_remaining_instruction = MORE_REMAINING_INSTRUCTION;
+  }
+  payload.picks = grounding.picks.map((pick) => ({
+    name: pick.name,
+    age_fit: pick.ageFit,
+    when: pick.when,
+    price: pick.price,
+    registration: pick.registration ?? null,
+    source_name: pick.sourceName,
+    source: pick.source,
+  }));
+  return JSON.stringify(payload);
 }
 
 function message(err: unknown): string {
@@ -447,13 +467,13 @@ export function waitsOnAPageItCouldNotRead(body: string): boolean {
  *
  * ONE READER, TWO STRINGS, and that is the whole point of it being a function. The gate
  * below runs on the sentence the MODEL wrote; the sweep runs it again on the body it is
- * about to hand the transport (sweep.ts), because between those two strings sit the
- * append steps — `withSharePage`, `withOptOut` — and nothing used to read what came out
- * of them. A question appended after the gate reached the parent with the gate green,
- * which is the 2026-08-22 defect surviving its own fix one layer down.
+ * about to hand the transport (deliver.ts), because a venue page is appended after the
+ * model's gates. A question appended after the gate reached the parent with the gate
+ * green, which is the 2026-08-22 defect. A question mark inside a venue address is not
+ * a question to the parent, so those addresses are set aside before the check.
  */
 export function asksTheParent(body: string): boolean {
-  return plainText(body).includes('?');
+  return plainText(body).replace(/https?:\/\/\S+/gi, '').includes('?');
 }
 
 /**
@@ -491,11 +511,6 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
           ? `Drop the LAST find whole - ${keep}.`
           : `Shorten the wording around the facts, never the facts themselves - ${keep}.`
       }`,
-    );
-  }
-  if (smsEncoding(text) !== 'gsm7') {
-    violations.push(
-      'The message contains a character that doubles the cost to send (a curly quote, a dash, or an emoji). Use plain ASCII.',
     );
   }
   if (LINK_SHAPE.test(text)) {

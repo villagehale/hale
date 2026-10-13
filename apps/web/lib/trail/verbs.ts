@@ -1547,9 +1547,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale came back to you about an activity search',
     family: 'done',
   },
-  // The follow-up read more of a schedule than a text can hold, so the rest went on a
-  // page the parent can open (channel/activity/share-page.ts). 'done' for the reason
-  // above: the row records something Hale finished, not something it is waiting on.
+  // Historical. Follow-ups used to put the rest of a schedule on a public page. The
+  // verb stays so those audit rows still read. 'done' because the row records something
+  // Hale finished, not something it is waiting on.
   activity_followup_shared: {
     sentence: 'Hale put the rest of a schedule on a page for you',
     family: 'done',

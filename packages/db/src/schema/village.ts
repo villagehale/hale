@@ -54,10 +54,9 @@ export const villageCandidates = pgTable(
     lng: doublePrecision('lng'),
     venueName: text('venue_name'),
     venueAddress: text('venue_address'),
-    /** Opaque token for a public, read-only share of THIS single candidate (the
-     * per-activity viral card at /a/:token). Nullable: minted only when a parent
-     * opts to share this one pick. UNIQUE so the token alone resolves the row. It
-     * carries no child or parent identity. */
+    /** Opaque share token. The public activity page that used to resolve it is gone;
+     * the column stays until a later migration drops it. Nullable. UNIQUE so a token
+     * still identifies one row. It carries no child or parent identity. */
     shareToken: text('share_token').unique(),
     /** Calendar date of a one-time (or dated seasonal) event, so the feed can
      * drop events already in the past. Null for ongoing options and anything the
@@ -113,8 +112,8 @@ export const villageCandidates = pgTable(
     searchSeason: text('search_season'),
     /** Stamped when a newer discovery run replaces this family's set: the row is
      * soft-retired (the live feed filters superseded_at IS NULL) rather than
-     * hard-deleted, so an endorsed / shared candidate survives for its public
-     * /a/:token page. Null = still part of the active set. */
+     * hard-deleted, so an endorsed candidate and its share token survive. Null =
+     * still part of the active set. */
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     discoveredAt: timestamp('discovered_at', { withTimezone: true }).notNull().defaultNow(),
   },

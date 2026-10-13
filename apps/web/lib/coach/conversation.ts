@@ -320,12 +320,17 @@ export async function loadTimeline(
     )
     .orderBy(asc(schema.messages.createdAt));
 
-  return rows.map((r) => ({
-    id: r.id,
-    role: r.role,
-    content: r.content,
-    childId: r.childId,
-    topic: r.topic,
-    createdAt: r.createdAt.toISOString(),
-  }));
+  // `activity_held` is the coach-only note of options that did not fit in a follow-up
+  // (channel/activity/venue-pages.ts ACTIVITY_HELD_TOPIC). The coach transcript still
+  // loads it; the receipts timeline does not show the JSON.
+  return rows
+    .filter((r) => r.topic !== 'activity_held')
+    .map((r) => ({
+      id: r.id,
+      role: r.role,
+      content: r.content,
+      childId: r.childId,
+      topic: r.topic,
+      createdAt: r.createdAt.toISOString(),
+    }));
 }

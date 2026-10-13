@@ -40,6 +40,7 @@ function grounding(over: Partial<FollowUpGrounding> = {}): FollowUpGrounding {
     picks: [PICK],
     pageEvidence: 'page_has_no_schedule',
     watch: false,
+    moreRemaining: 0,
     ...over,
   };
 }
@@ -234,8 +235,32 @@ describe('a message may not say Hale could not get at a fact AND that it awaits 
   });
 });
 
+describe('any language, as long as the find leads and the text fits', () => {
+  const zh =
+    'Halton Hills Gymnastics 有亲子课，周六 9:15 起，9 月 13 日开始，一期 142 加元。他们网站上是这么写的。还有更多选择，你在这里问我就发下一档。';
+  const ar =
+    'Halton Hills Gymnastics دروس السبت الساعة 9:15 من 13 سبتمبر، 142 دولارا للفصل. موقعهم يقول ذلك. هناك المزيد، واسأل هنا عن التالية.';
+
+  it.each([
+    ['zh', zh],
+    ['ar', ar],
+  ])('lets a %s follow-up through when the day and the price are already in hand', (label, body) => {
+    expect(label.length).toBeGreaterThan(0);
+    expect(
+      followUpViolations(
+        body,
+        grounding({
+          watch: false,
+          pageEvidence: 'page_has_schedule',
+          picks: [{ ...PICK, when: 'Saturdays 9:15', price: '$142' }],
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
 describe('the mechanical gates', () => {
-  it('refuses a link, an over-long body and a non-GSM7 character', () => {
+  it('refuses a link and an over-long body', () => {
     const withLink = `${PICK.name} runs Saturdays - see haltonhillsgym.ca`;
     expect(followUpViolations(withLink, grounding({ subject: 's' })).join(' ')).toContain(
       'link',
@@ -410,6 +435,27 @@ describe('the payload the composer is handed', () => {
       'watch',
     ]);
     expect(payload.mode).toBe('followup_text');
+    expect(payload).not.toHaveProperty('more_remaining');
+  });
+
+  it('tells the model more options were held back, and says nothing when none were', () => {
+    const held = JSON.parse(followUpUserMessage(grounding({ moreRemaining: 2 })));
+    expect(held.more_remaining).toBe(2);
+    expect(typeof held.more_remaining_instruction).toBe('string');
+    expect(held.more_remaining_instruction.length).toBeGreaterThan(0);
+    expect(Object.keys(held)).toEqual([
+      'mode',
+      'subject',
+      'page_evidence',
+      'watch',
+      'more_remaining',
+      'more_remaining_instruction',
+      'picks',
+    ]);
+
+    const none = JSON.parse(followUpUserMessage(grounding({ moreRemaining: 0 })));
+    expect(none).not.toHaveProperty('more_remaining');
+    expect(none).not.toHaveProperty('more_remaining_instruction');
   });
 });
 

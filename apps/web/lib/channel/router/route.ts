@@ -13,6 +13,7 @@ import {
   type DeepDispatchOutcome,
   dispatchDepthForPromise,
 } from '~/lib/channel/activity/deep-queue';
+import { foldHeldVenuePages } from '~/lib/channel/activity/venue-pages';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
@@ -888,13 +889,17 @@ async function routeChannelMessageInner(
    * is all of them but one.
    */
   const withPassport = async (body: string) => {
-    if (!interestPassportEnabled()) return body;
+    // After the model's text, before anything else is folded in. A venue page named in
+    // the reply is appended here so a later trim cannot cut it, and a read that fails
+    // leaves the reply itself intact.
+    const linked = await foldHeldVenuePages(deps.database, conversationId, body);
+    if (!interestPassportEnabled()) return linked;
     return foldPassportIntoOutbound({
       database: deps.database,
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
       inboundBody: context.body,
-      outboundBody: body,
+      outboundBody: linked,
       now,
     });
   };

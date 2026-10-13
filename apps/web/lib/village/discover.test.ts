@@ -346,7 +346,7 @@ describe('discoverForFamily', () => {
 
     // Exactly one supersede UPDATE runs for the run, and it stamps ONLY
     // superseded_at — never clears shareToken (rule: shared/endorsed rows keep
-    // their public /a/:token page alive) and never touches any other column.
+    // their share token) and never touches any other column.
     expect(capture.supersededUpdates).toHaveLength(1);
     const setPayload = capture.supersededUpdates[0] as Record<string, unknown>;
     expect(Object.keys(setPayload)).toEqual(['supersededAt']);
