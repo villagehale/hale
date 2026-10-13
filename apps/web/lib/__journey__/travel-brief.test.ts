@@ -381,7 +381,7 @@ async function runBrief() {
   const searched = web.requests.filter(
     (request) => request.includes('"town"') && !request.includes('research_notes'),
   );
-  return { result, sent, searched };
+  return { result, sent, searched, misses: web.misses };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -458,7 +458,10 @@ describe('a booking email becomes one text a week before the trip', () => {
     expect(extractionLeg).not.toContain(parentUserId);
 
     // ── T-7d: the hourly nudge leg ───────────────────────────────────────────
-    const { result, sent, searched } = await runBrief();
+    const { result, sent, searched, misses } = await runBrief();
+    // A stale recording is swallowed by the lane as `ground_failed` and surfaces only as
+    // `sent: 0`; say which recording is missing instead.
+    expect(misses, 'travel-brief.json has no recording for these keys; re-record').toEqual([]);
     expect(result.sent).toBe(1);
     expect(result.due).toBe(1);
 

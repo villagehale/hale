@@ -17,6 +17,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
+import { cappedCall, isEstimate } from '../../../web/lib/testing/spend-cap.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const WORKER_ROOT = join(HERE, '..', '..');
@@ -131,6 +132,8 @@ export async function cacheGet(key) {
 }
 
 export async function cachePut(key, value) {
+  // An estimate round answers with stand-ins; none of them may ever become a recording.
+  if (isEstimate()) return;
   await mkdir(CACHE_DIR, { recursive: true });
   await writeFile(join(CACHE_DIR, `${key}.json`), JSON.stringify(value, null, 2));
 }
@@ -187,6 +190,24 @@ if (process.env.EVAL_PRINT_TELEMETRY) {
       );
     }
   });
+}
+
+// --- spend cap at the call site ---------------------------------------------
+
+/** Per-MTok list rates for the spend cap; an unpriced model refuses the call. */
+export function priceRates(model) {
+  const p = PRICE[model];
+  if (!p) throw new Error(`spend-cap: no price for ${model} - add it to PRICE; refusing the call`);
+  return p;
+}
+
+/**
+ * Every live eval call goes through here: `call` is the site's own unchanged SDK call.
+ * With HALE_MAX_USD set the projected cost (counted input + max_tokens) is checked BEFORE
+ * the call and the returned message's real usage is booked after it (web/lib/testing/spend-cap.mjs).
+ */
+export function capped(getClient, request, call, tag) {
+  return cappedCall({ client: getClient(), request, call, rates: priceRates, tag });
 }
 
 // --- lazy client (never built in --cached-only) -----------------------------
@@ -310,7 +331,12 @@ export async function cachedToolCall(opts) {
   if (cachedOnly) failCachedMiss(tag, key);
 
   const startedAt = Date.now();
-  const response = await getClient().messages.create(request);
+  const response = await capped(
+    getClient,
+    request,
+    () => getClient().messages.create(request),
+    tag,
+  );
   const latencyMs = Date.now() - startedAt;
   // TRUNCATION IS NOT AN ANSWER, and it must never be CACHED as one. A response cut at
   // max_tokens leaves the forced tool call incomplete — usually `input: {}` — which reads
@@ -371,7 +397,12 @@ export async function cachedTextCall(opts) {
   if (cachedOnly) failCachedMiss(tag, key);
 
   const startedAt = Date.now();
-  const response = await getClient().messages.create(request);
+  const response = await capped(
+    getClient,
+    request,
+    () => getClient().messages.create(request),
+    tag,
+  );
   const latencyMs = Date.now() - startedAt;
   const text = response.content
     .filter((b) => b.type === 'text')
@@ -587,7 +618,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     if (cached && isVerdict(cached.parsed)) return cached.parsed;
     if (cachedOnly) failCachedMiss(sampleTag, key);
 
-    const response = await getClient().messages.create({
+    const judgeRequest = {
       model,
       // 1024, not 256. At 256 a judge writing a thorough reason ran out of tokens
       // MID-STRING, and because Anthropic does not hard-enforce a tool's input schema
@@ -613,7 +644,13 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
       tools: [{ name: 'score', description: 'Return the score.', input_schema: JUDGE_SCHEMA }],
       tool_choice: { type: 'tool', name: 'score' },
       messages: [{ role: 'user', content: userMessage }],
-    });
+    };
+    const response = await capped(
+      getClient,
+      judgeRequest,
+      () => getClient().messages.create(judgeRequest),
+      sampleTag,
+    );
     const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'score');
     if (!toolUse) throw new Error(`judge (${tag}) returned no score tool call`);
     if (response.stop_reason === 'max_tokens' || !isVerdict(toolUse.input)) {

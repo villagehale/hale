@@ -41,7 +41,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { ALLOWED_CATEGORIES, LANE_FIXTURES } from './inbound-lane-fixtures.mjs';
-import { cachedToolCall, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
+import { cachedToolCall, capped, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -294,7 +294,12 @@ async function evaluateHaiku({ fixture, skill, agent, runId, cachedOnly, getClie
   const generation = startGeneration(trace, fixture, lane.model, request);
   const startedAt = performance.now();
   try {
-    const response = await getClient().messages.create(request);
+    const response = await capped(
+      getClient,
+      request,
+      () => getClient().messages.create(request),
+      `inbound-lane-comparison:${fixture.id}`,
+    );
     const latencyMs = Math.round(performance.now() - startedAt);
     if (response.stop_reason === 'max_tokens') {
       throw new Error(`Haiku tool call truncated for ${fixture.id}`);

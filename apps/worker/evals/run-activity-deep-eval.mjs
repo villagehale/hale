@@ -56,6 +56,7 @@ import {
   cacheKey,
   cachePut,
   cachedToolCall,
+  capped,
   evalRunTag,
   lazyAnthropic,
   makeCost,
@@ -682,7 +683,7 @@ const JUDGE_SYSTEM = [
   'A 5: every slot is a real thing on the page, with the day, the session dates and the fee',
   'exactly as printed, each cited to the page it was read off, and where the page gave a',
   'REGISTRATION date the slot carries it and so does the message. The message leads with the',
-  'best slot by name, attributes the facts to the venue\'s own page, carries the registration',
+  "best slot by name, attributes the facts to the venue's own page, carries the registration",
   'window, and attributes rather than claiming to have confirmed. It is one or two short',
   'sentences with no link and NO QUESTION AT ALL.',
   'Grade three things. Correctness: every fact in the message is a fact the slots and the',
@@ -872,15 +873,19 @@ async function cachedResearch(opts) {
   // come back: live probe 2026-08-22, `messages.create` on this request timed out at
   // 50s and died at 120s on a 600s ceiling, while the stream returned in 88.8s. An eval
   // that posts the un-streamed request is scoring a call production cannot make (deep.ts).
-  const response = await getClient()
-    .messages.stream({
-      model,
-      max_tokens: RESEARCH_MAX_TOKENS,
-      system,
-      tools: RESEARCH_TOOLS,
-      messages: [{ role: 'user', content: userMessage }],
-    })
-    .finalMessage();
+  const request = {
+    model,
+    max_tokens: RESEARCH_MAX_TOKENS,
+    system,
+    tools: RESEARCH_TOOLS,
+    messages: [{ role: 'user', content: userMessage }],
+  };
+  const response = await capped(
+    getClient,
+    request,
+    () => getClient().messages.stream(request).finalMessage(),
+    tag,
+  );
   noteUsage(cost, model, response.usage);
   const recordedAt = Date.now();
   await cachePut(key, { content: response.content, recordedAt });

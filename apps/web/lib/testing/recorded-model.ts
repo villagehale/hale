@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type Anthropic from '@anthropic-ai/sdk';
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, estimateCostUsd } from '@hale/agent';
+import { cappedCall, isEstimate } from './spend-cap.mjs';
 
 /**
  * REAL CLAUDE, RECORDED ONCE — the apps/worker eval cache, made available to a journey
@@ -80,11 +81,27 @@ function firstText(params: Anthropic.MessageCreateParams): string {
   return typeof message?.content === 'string' ? message.content : JSON.stringify(message?.content);
 }
 
+/** Per-MTok list input/output rates from the runtime's own table (packages/agent cost.ts). */
+function listRates(model: string): { input: number; output: number } {
+  const zero = { inputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, outputTokens: 0 };
+  return {
+    input: estimateCostUsd(model, { ...zero, inputTokens: 1e6 }),
+    output: estimateCostUsd(model, { ...zero, outputTokens: 1e6 }),
+  };
+}
+
 export interface RecordedModel {
   /** Drop-in for any `() => AgentClient` resolver the production code takes. */
   client: () => AgentClient;
   /** Every user message that reached the wire — the real projections, in order. */
   requests: string[];
+  /**
+   * Every key that had no recording. A miss throws, but production code that catches its
+   * model errors (the activity lane turns any ground throw into `ground_failed`, which the
+   * travel sweep counts as `searchFailed`) swallows that throw, and the test then fails on
+   * a count with the real cause gone. Asserting this is empty names the stale recording.
+   */
+  misses: string[];
 }
 
 /**
@@ -96,6 +113,7 @@ export interface RecordedModel {
  */
 export function recordedModel(path: string, live: () => AgentClient): RecordedModel {
   const requests: string[] = [];
+  const misses: string[] = [];
   const recordings = read(path);
 
   async function create(params: Anthropic.MessageCreateParams) {
@@ -107,6 +125,7 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
     if (hit) return hit.response as unknown as Anthropic.Message;
 
     if (process.env.HALE_RECORD !== '1') {
+      misses.push(key);
       throw new Error(
         [
           `recorded-model: no recording for key ${key} in ${path}.`,
@@ -118,7 +137,18 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
       );
     }
 
-    const response = await live().messages.create(params);
+    // The spend cap is checked BEFORE the live call (counted input + max_tokens) and the
+    // returned message's real usage is booked after it; off unless HALE_MAX_USD is set.
+    const client = live();
+    const response = (await cappedCall({
+      client,
+      request: params,
+      call: () => client.messages.create(params),
+      rates: listRates,
+      tag: `journey:${key.slice(0, 12)}`,
+    })) as Anthropic.Message;
+    // An estimate round answers with a stand-in; it must never become a recording.
+    if (isEstimate()) return response;
     recordings[key] = {
       key,
       recordedAt: new Date().toISOString(),
@@ -140,5 +170,5 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
     },
   } as unknown as AgentClient;
 
-  return { client: () => client, requests };
+  return { client: () => client, requests, misses };
 }

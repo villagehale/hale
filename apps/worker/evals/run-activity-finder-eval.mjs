@@ -78,6 +78,7 @@ import {
   cacheKey,
   cachePut,
   cachedToolCall,
+  capped,
   evalRunTag,
   lazyAnthropic,
   makeCost,
@@ -994,13 +995,19 @@ async function cachedGround(opts) {
     );
     process.exit(1);
   }
-  const response = await getClient().messages.create({
+  const request = {
     model,
     max_tokens: 4096,
     system,
     tools,
     messages: [{ role: 'user', content: userMessage }],
-  });
+  };
+  const response = await capped(
+    getClient,
+    request,
+    () => getClient().messages.create(request),
+    tag,
+  );
   noteUsage(cost, model, response.usage);
   const evidence = readEvidence(response.content);
   const value = {
