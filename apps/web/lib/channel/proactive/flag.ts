@@ -1,7 +1,7 @@
 import type { ProactiveSendKind } from '~/lib/channel/outbound-gate';
 
 /**
- * VIL-226 · context-driven cadence. Default off, so today's caps and senders stay
+ * VIL-226 · context-driven cadence. Default off, so today's senders stay
  * exactly as they are until this is armed.
  *
  * `off` — the current send path.
