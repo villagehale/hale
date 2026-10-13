@@ -13,9 +13,9 @@ parent or a model might say.
 ## Shape
 
 A JSON array of 1,437 names in lower case, in the source's order. 151 of them begin with
-`xn--`: those are the encoded forms of names in other scripts, kept so the list is the
-whole of the source. The reader matches only a last part written in the letters a to z,
-so a link under one of those names, in either form, is not recognized by this rule.
+`xn--`: those are the encoded forms of names in other scripts. The reader puts a last
+part into that form before it looks it up, so a link under one of those names is
+recognized however it is written: in its own script or encoded.
 
 ## Source
 
