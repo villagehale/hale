@@ -885,6 +885,7 @@ describe('scrubDirectIdentifiers', () => {
   it.each([
     ['groups after a currency sign', 'is $123-456-789 real', 'is $[redacted] real'],
     ['spaced groups after a currency sign', 'is $123 456 789 mine', 'is $[redacted] mine'],
+    ['ten digits in groups after a currency sign', 'is $1234 567 890 mine', 'is $[redacted] mine'],
     ['a run straight after "No."', 'is card No.123456789 good', 'is card No.[redacted] good'],
     ['groups separated by dots', 'is 123.456.789 a real number', 'is [redacted] a real number'],
     ['groups separated by slashes', 'is 123/456/789 a real number', 'is [redacted] a real number'],
@@ -918,6 +919,89 @@ describe('scrubDirectIdentifiers', () => {
     ],
   ])('takes out %s', (_label, text, scrubbed) => {
     expect(scrubDirectIdentifiers(text)).toBe(scrubbed);
+  });
+
+  /**
+   * A digit of any script is a digit (security stage, 2026-10-13). The compatibility form
+   * turns a full-width digit into the ordinary one and leaves every other script's digits
+   * alone, and a pattern's digit class is the ordinary ten, so a number typed in
+   * Arabic-Indic or Devanagari digits, or with one character nobody sees inside it, read
+   * as no number at all. All invented.
+   */
+  it.each([
+    [
+      'a phone number in Arabic-Indic digits',
+      'text me at ٤١٦-٥٥٥-٠١٤٢ about it',
+      'text me at [redacted] about it',
+    ],
+    [
+      'nine digits in three groups, in Arabic-Indic digits',
+      'is ١٢٣-٤٥٦-٧٨٩ a real number',
+      'is [redacted] a real number',
+    ],
+    [
+      'a phone number in Devanagari digits',
+      'text me at ४१६-५५५-०१४२ about it',
+      'text me at [redacted] about it',
+    ],
+    [
+      'nine digits in three groups, in Devanagari digits',
+      'is १२३-४५६-७८९ a real number',
+      'is [redacted] a real number',
+    ],
+    [
+      'a phone number that mixes two kinds of digit',
+      'text me at 416-٥٥٥-0142 about it',
+      'text me at [redacted] about it',
+    ],
+    [
+      'a run that mixes three kinds of digit',
+      'what is 123٤٥٦७८९ for',
+      'what is [redacted] for',
+    ],
+    [
+      'a phone number with a zero-width space inside it',
+      'text me at 416-555-01​42 about it',
+      'text me at [redacted] about it',
+    ],
+    [
+      'a run of digits with a zero-width space inside it',
+      'what is 1234​56789 for',
+      'what is [redacted] for',
+    ],
+    // The value is read too, not only that it is a digit: the leading one of a North
+    // American number goes with the number.
+    [
+      'a phone number with its leading one, in Arabic-Indic digits',
+      'its ١-٤١٦-٥٥٥-٠١٤٢',
+      'its [redacted]',
+    ],
+    // Around the number, the text is handed on as it was typed.
+    [
+      'the number and nothing else, in a sentence in Arabic script',
+      'رقمي ٤١٦-٥٥٥-٠١٤٢ صح؟',
+      'رقمي [redacted] صح؟',
+    ],
+  ])('takes out %s', (_label, text, scrubbed) => {
+    expect(scrubDirectIdentifiers(text)).toBe(scrubbed);
+  });
+
+  /** Every script's ten digits, not a list of scripts: nine of any decimal digit in a row
+   * are nine digits in a row. */
+  it('reads every decimal digit Unicode has as a digit', () => {
+    const digits: string[] = [];
+    for (let point = 0; point <= 0x10ffff; point += 1) {
+      if (point >= 0xd800 && point <= 0xdfff) continue;
+      const char = String.fromCodePoint(point);
+      if (/^\p{Nd}$/u.test(char)) digits.push(char);
+    }
+    // Positive control: the scan found the scripts, the ordinary ten among them.
+    expect(digits.length).toBeGreaterThanOrEqual(650);
+    expect(digits.slice(0, 10).join('')).toBe('0123456789');
+
+    expect(digits.filter((digit) => scrubDirectIdentifiers(digit.repeat(9)) !== '[redacted]')).toEqual(
+      [],
+    );
   });
 
   /** Only the identifier goes. Every other character is handed on as it was typed, the
@@ -956,7 +1040,28 @@ describe('scrubDirectIdentifiers', () => {
     // Nothing is taken out here, so not one character changes: full-width digits and a
     // full-width question mark are handed on as typed.
     '\u6bd4\u5206\u662f\uff13\u6bd4\uff11\u5417\uff1f',
+    // The same in Persian: two digits of its own script and a zero-width non-joiner inside
+    // a word, neither of them part of anything taken out.
+    '\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645 \u0628\u062f\u0627\u0646\u0645 \u0633\u0627\u0639\u062a \u06f7 \u0627\u0633\u062a \u06cc\u0627 \u06f8',
+    // Eight digits is still a count, whatever script it is typed in.
+    'what is \u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668 times 2',
+    // A character nobody sees beside a number, not inside it, stays where it was typed.
+    'did the raptors win 112-104\u200b last night',
   ])('leaves %j as it was', (text) => {
+    expect(scrubDirectIdentifiers(text)).toBe(text);
+  });
+
+  /**
+   * Where a grouped shape begins and ends. A figure grouped some other way is not one of
+   * the shapes, and no pattern takes nine or ten of its digits and leaves the rest of it
+   * standing. Whether such a figure should go whole is the open question about adding
+   * shapes; what is pinned here is that it is never cut in two.
+   */
+  it.each([
+    ['three, three and five', 'is 123 456 78901 a real number'],
+    ['four, three and five', 'is 1234 567 89012 a real number'],
+    ['five, three and three', 'is 12345 678 901 a real number'],
+  ])('does not take part of a figure grouped %s', (_label, text) => {
     expect(scrubDirectIdentifiers(text)).toBe(text);
   });
 
