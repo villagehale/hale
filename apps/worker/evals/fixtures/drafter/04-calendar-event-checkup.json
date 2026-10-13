@@ -16,6 +16,7 @@
   },
   "expect": {
     "requiredPayloadFields": ["title", "startsAt"],
-    "maxBodyChars": 600
+    "maxBodyChars": 600,
+    "commitsParent": false
   }
 }

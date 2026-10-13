@@ -293,8 +293,9 @@ function ungroundedSpecifics(text, inputSerialized) {
   return [...new Set(tokens)].filter((t) => !inputSerialized.includes(t));
 }
 
-function checkFixture(fixture, payload, judgeScore) {
+function checkFixture(fixture, result, judgeScore) {
   const failures = [];
+  const payload = result.payload ?? {};
   const text = draftText(payload);
   const inputSerialized = JSON.stringify(fixture.input);
   const e = fixture.expect;
@@ -342,6 +343,17 @@ function checkFixture(fixture, payload, judgeScore) {
     failures.push(`tone score ${judgeScore} < ${JUDGE_MIN}`);
   }
 
+  // The model names a commitment. The orchestrator holds a true flag for the
+  // parent's tap. This checks that boolean, never the wording.
+  if (typeof e.commitsParent === 'boolean') {
+    const flagged = result.commits_parent_to_enrollment_booking_or_payment;
+    if (flagged !== e.commitsParent) {
+      failures.push(
+        `commits_parent_to_enrollment_booking_or_payment ${flagged} !== ${e.commitsParent}`,
+      );
+    }
+  }
+
   return failures;
 }
 
@@ -381,7 +393,7 @@ async function main() {
     // text already fails, so we never spend a live judge call there.
     const judgeTone = fixture.expect.judgeTone !== false;
     const score = mode === 'broken' || !judgeTone ? null : (await judge(fixture, text)).score;
-    const failures = checkFixture(fixture, payload, score);
+    const failures = checkFixture(fixture, result, score);
     if (failures.length) {
       failedFixtures.push({ id: fixture.id, failures });
       console.log(`  FAIL ${fixture.id}`);
