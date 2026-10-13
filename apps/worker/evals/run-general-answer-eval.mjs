@@ -27,7 +27,7 @@
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-general-answer-eval.mjs            # live, then caches
 //   node evals/run-general-answer-eval.mjs --cached-only                    # CI: replay only
-//   node evals/run-general-answer-eval.mjs --estimate                       # no API: price a full 3-draw and the drafter recording
+//   node evals/run-general-answer-eval.mjs --estimate                       # no API: price a full 3-draw, the drafter recording, and the uncached leftover (memory + general-answer)
 //   node evals/run-general-answer-eval.mjs --broken --cached-only           # calibration
 //   ... --min-samples=50                                                    # expanded synthetic corpus
 //
@@ -95,7 +95,9 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { leftoverGeneralAnswerCalls } from './lib/leftover-estimate.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
+import { priceRecordedCalls } from './lib/recording-price.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -343,10 +345,16 @@ function percentile(values, q) {
  * thinking off, so those calls add none. A character-per-token ratio is the median over
  * this cache's non-thinking outputs. Web search requests per turn are the mean of the
  * committed search cache. The drafter recording is one draft per fixture and one judge
- * where the fixture asks for tone. `--cached-only` is unchanged: a miss there still
- * exits 1. The autonomy-notice suite is priced in its own pull request.
+ * where the fixture asks for tone. The same run also prices one leftover recording:
+ * memory-inferencer calls whose key is absent, plus general-answer calls the cache
+ * does not already hold. A cached call is skipped. A sanitize miss is priced with
+ * the predicted downstream, and those keys are not looked up, because the reading
+ * that would name them has not been recorded. `--cached-only` is unchanged: a miss
+ * there still exits 1. The autonomy-notice suite is priced in its own pull request.
  */
 async function printRecordingEstimate() {
+  const { register } = await import('node:module');
+  await register(new URL('./lib/json-module-hook.mjs', import.meta.url), import.meta.url);
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const request = await tsImport(ANSWER_REQUEST_SRC, import.meta.url);
   const places = await tsImport(PLACE_SRC, import.meta.url);
@@ -356,6 +364,7 @@ async function printRecordingEstimate() {
   const sanitizeLane = agent.pickLane(sanitizeSkill.meta.task);
   const searchModel = agent.pickModel(searchSkill.meta.task);
   const model = agent.pickModel(skill.meta.task);
+  const subjectLane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel('sonnet');
 
   const ratios = [];
@@ -369,6 +378,7 @@ async function printRecordingEstimate() {
   const draftJsonChars = [];
   const drafterJudgeChars = [];
   const draftTexts = [];
+  const memoryValueChars = [];
   let searchRequestSum = 0;
   for (const name of await readdir(CACHE_DIR)) {
     if (!name.endsWith('.json')) continue;
@@ -413,6 +423,15 @@ async function printRecordingEstimate() {
       if (keys.length === 2 && keys[0] === 'reason' && keys[1] === 'score') {
         drafterJudgeChars.push(JSON.stringify(parsed).length);
       }
+    }
+    if (
+      Array.isArray(cached.value?.fact_updates) &&
+      cached.value.fact_updates.length > 0 &&
+      Array.isArray(cached.value.episode_summaries) &&
+      Array.isArray(cached.value.pattern_detections) &&
+      Array.isArray(cached.value.retire_facts)
+    ) {
+      memoryValueChars.push(JSON.stringify(cached.value).length);
     }
     if (typeof cached.searchRequests === 'number') {
       searchRequestSum += cached.searchRequests;
@@ -645,41 +664,11 @@ async function printRecordingEstimate() {
   // A cached prefix is written once at 1.25× and read later at 0.1×. The user
   // message, and a prefix with no breakpoint, stay at the input price.
   function priceCalls(recorded) {
-    const wrote = new Set();
-    const byModel = {};
-    let usd = 0;
-    for (const call of recorded) {
-      const price = PRICE[call.model];
-      if (!price) throw new Error(`estimate: no price for ${call.model}`);
-      const userTokens = tokens(call.user.length);
-      const prefixTokens = tokens(call.prefix.length);
-      const bucket = byModel[call.model] ?? {
-        fresh: 0,
-        cacheWrite: 0,
-        cacheRead: 0,
-        output: 0,
-      };
-      byModel[call.model] = bucket;
-      let billedInput = userTokens;
-      bucket.fresh += userTokens;
-      if (call.promptCache) {
-        if (wrote.has(call.prefixId)) {
-          bucket.cacheRead += prefixTokens;
-          billedInput += prefixTokens * 0.1;
-        } else {
-          wrote.add(call.prefixId);
-          bucket.cacheWrite += prefixTokens;
-          billedInput += prefixTokens * 1.25;
-        }
-      } else {
-        bucket.fresh += prefixTokens;
-        billedInput += prefixTokens;
-      }
-      const outputTokens = tokens(call.outputChars) + (call.thinkingTokens ?? thinkingTokens);
-      bucket.output += outputTokens;
-      usd += (billedInput / 1e6) * price.input + (outputTokens / 1e6) * price.output;
-    }
-    return { usd, byModel };
+    return priceRecordedCalls(recorded, {
+      priceFor: (name) => PRICE[name],
+      tokens,
+      thinkingTokens,
+    });
   }
 
   const requestsPerTurn = searchRequestSum / noteChars.length;
@@ -692,6 +681,52 @@ async function printRecordingEstimate() {
   const byRole = (id) => calls.filter((call) => call.prefixId === id).length;
   const drafterDrafts = drafterCalls.filter((call) => call.prefixId === 'drafter-draft').length;
   const drafterJudges = drafterCalls.filter((call) => call.prefixId === 'drafter-judge').length;
+
+  if (memoryValueChars.length === 0) {
+    throw new Error(
+      'memory estimate: the cache has no non-empty inference to price an output from',
+    );
+  }
+  const leftover = await leftoverGeneralAnswerCalls({
+    request,
+    fixtures: ANSWER_FIXTURES,
+    sanitizeLane,
+    subjectLane,
+    searchModel,
+    composeModel: model,
+    judgeModel,
+    sanitizeSkill,
+    searchSkill,
+    skill,
+    draws: DRAWS,
+    today: EVAL_TODAY,
+    maxSearches: MAX_SEARCHES,
+    judgeSystem: JUDGE_SYSTEM,
+    verdictSchema: VERDICT_SCHEMA,
+    brokenAnswer: BROKEN_ANSWER,
+    nearMissTail: NEAR_MISS_TAIL,
+    calibrationId: CALIBRATION_FIXTURE,
+    drawTag,
+    flatten,
+    priorReading,
+    homePlace,
+    notesBlob,
+    typicalAnswer,
+    sanitizeChars: mid(sanitizeChars),
+    answerChars,
+    judgeChars: mid(judgeChars),
+    noteChars: mid(noteChars),
+    normalizeLanguage,
+  });
+  const memory = await import('./run-memory-eval.mjs');
+  const memoryLeft = await memory.uncachedMemoryCalls(mid(memoryValueChars));
+  const leftoverPriced = priceCalls(leftover.calls);
+  const memoryPriced = priceCalls(memoryLeft.calls);
+  const leftoverSearchRequests = leftover.searchTurns * requestsPerTurn;
+  const leftoverFeeUsd = leftoverSearchRequests * USD_PER_WEB_SEARCH;
+  const leftoverGeneralUsd = leftoverPriced.usd + leftoverFeeUsd;
+  const leftoverCombinedUsd = leftoverGeneralUsd + memoryPriced.usd;
+  const leftoverRole = (id) => leftover.calls.filter((call) => call.prefixId === id).length;
 
   console.log(
     `general-answer eval | mode=estimate (no API calls) | sanitize=${sanitizeLane.model} search=${searchModel} compose=${model} judge=${judgeModel}`,
@@ -720,6 +755,28 @@ async function printRecordingEstimate() {
   console.log(
     `drafter calls: ${drafterCalls.length} | draft ${drafterDrafts}, judge ${drafterJudges}`,
   );
+  console.log(`leftover general-answer recording estimate: $${leftoverGeneralUsd.toFixed(4)} USD`);
+  console.log(`memory inferencer recording estimate: $${memoryPriced.usd.toFixed(4)} USD`);
+  console.log(`leftover combined recording estimate: $${leftoverCombinedUsd.toFixed(4)} USD`);
+  console.log(
+    `leftover general-answer tokens (cache writes at 1.25× input, cache reads at 0.1× input): $${leftoverPriced.usd.toFixed(4)} USD`,
+  );
+  console.log(
+    `leftover web search requests: ${leftoverSearchRequests} | fee, billed apart from tokens: $${leftoverFeeUsd.toFixed(4)} USD`,
+  );
+  console.log(
+    `memory tokens (cache writes at 1.25× input, cache reads at 0.1× input; thinking off): $${memoryPriced.usd.toFixed(4)} USD`,
+  );
+  console.log(
+    `leftover general-answer calls: ${leftover.calls.length} | sanitize ${leftoverRole('sanitize')}, search ${leftoverRole('search')}, compose ${leftoverRole('compose')}, judge ${leftoverRole('judge')}`,
+  );
+  console.log(`memory calls: ${memoryLeft.calls.length}`);
+  console.log(
+    `general-answer fixtures still short: ${leftover.shortIds.length === 0 ? 'none' : leftover.shortIds.join(', ')}`,
+  );
+  console.log(
+    `memory fixtures still short: ${memoryLeft.shortIds.length === 0 ? 'none' : memoryLeft.shortIds.join(', ')}`,
+  );
   const printTokens = (label, byModel) => {
     for (const [name, bucket] of Object.entries(byModel)) {
       console.log(
@@ -729,8 +786,13 @@ async function printRecordingEstimate() {
   };
   printTokens('general-answer', general.byModel);
   printTokens('drafter', drafted.byModel);
+  printTokens('leftover general-answer', leftoverPriced.byModel);
+  printTokens('memory', memoryPriced.byModel);
   console.log(
     `method: ${charsPerToken.toFixed(4)} characters per token (median of ${ratios.length} non-thinking Sonnet 5.5 outputs in the cache); ${thinkingTokens} thinking tokens added to every general-answer call (median of ${thinking.length} Sonnet 5.5 outputs that thought) and none to a drafter call; a cached prefix is priced at 1.25× input on its first write and 0.1× input on each later read; output characters are the median visible sanitize/compose/judge JSON, search notes, drafter drafts, and drafter tone scores already committed; web searches per turn are the mean of ${noteChars.length} committed search records (${searchRequestSum} requests).`,
+  );
+  console.log(
+    `leftover method: cached general-answer and memory calls are omitted; a sanitize miss, and a search miss, price the downstream from the predicted reading without looking those keys up; memory output characters are the median JSON length of ${memoryValueChars.length} cached inference${memoryValueChars.length === 1 ? '' : 's'} that recorded at least one fact, and memory adds no thinking tokens because the infer lane is between_tools; the drafter recording is already cached and is not in the leftover combined total.`,
   );
   await exitWhenPrinted(0);
 }
