@@ -172,9 +172,10 @@ export async function selectOpenAutonomyNotices(
 }
 
 /**
- * Live grants, one per parent per kind. Newest consent row first. A switch-off
- * ends every grant before it. No age limit: a text that was never delivered is
- * still owed, including one written while the lane was off.
+ * Live grants, one per parent per kind. Each parent's own newest consent row
+ * decides for that parent. One parent's decline does not close the others'
+ * texts. No age limit: a text that was never delivered is still owed, including
+ * one written while the lane was off.
  */
 async function selectLiveArmed(database: Database, familyId?: string): Promise<OpenArmed[]> {
   const rows = await database
@@ -212,11 +213,10 @@ async function selectLiveArmed(database: Database, familyId?: string): Promise<O
   for (const list of groups.values()) {
     const decided = new Set<string>();
     for (const row of list) {
-      if (!row.granted) break;
       if (!row.familyId || !row.scope) continue;
       if (decided.has(row.userId)) continue;
       decided.add(row.userId);
-      if (row.revokedAt !== null) continue;
+      if (!row.granted || row.revokedAt !== null) continue;
       armed.push({
         kind: 'armed',
         familyId: row.familyId,

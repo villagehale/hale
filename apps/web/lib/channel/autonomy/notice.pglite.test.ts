@@ -96,6 +96,47 @@ async function seedParent() {
   return { familyId, parentUserId, phone };
 }
 
+async function seedCoParent(familyId: string, name: string) {
+  households += 1;
+  const phone = `+1416555${7000 + households}`;
+  const [parent] = await db.database
+    .insert(schema.users)
+    .values({
+      externalAuthId: `sms:arm-${households}`,
+      name,
+      timezone: 'America/Toronto',
+      locale: 'en',
+    })
+    .returning({ id: schema.users.id });
+  const parentUserId = parent?.id as string;
+  await db.database.insert(schema.familyMembers).values({
+    familyId,
+    userId: parentUserId,
+    role: 'co_parent',
+  });
+  await db.database.insert(schema.parentChannels).values({
+    userId: parentUserId,
+    familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    verifiedAt: MORNING,
+  });
+  await recordWatchConsent(
+    db.database,
+    {
+      familyId,
+      userId: parentUserId,
+      granted: true,
+      verbatimReply: 'yes',
+      interpretation: 'the parent said yes to being watched',
+      channelMessageId: null,
+    },
+    MORNING,
+  );
+  return { parentUserId, phone };
+}
+
 async function grant(familyId: string, parentUserId: string, actionType: string, grantedAt?: Date) {
   const [row] = await db.database
     .insert(schema.consentRecords)
@@ -473,5 +514,50 @@ describe('telling a parent a kind turned on', () => {
     expect(dispatched.agedOut).toBe(1);
     expect(seen.map((row) => row.occasion)).toEqual(['armed']);
     expect(dispatched.sent).toBe(1);
+  });
+
+  it('still texts the other parent when one parent declines', async () => {
+    const parent = await seedParent();
+    const other = await seedCoParent(parent.familyId, 'Sam');
+    const kept = await grant(
+      parent.familyId,
+      parent.parentUserId,
+      'send_email',
+      new Date('2026-09-01T12:00:00.000Z'),
+    );
+    await grant(
+      parent.familyId,
+      other.parentUserId,
+      'send_email',
+      new Date('2026-09-02T12:00:00.000Z'),
+    );
+    await db.database.insert(schema.consentRecords).values({
+      familyId: parent.familyId,
+      userId: other.parentUserId,
+      consentType: 'autonomous_action_class',
+      consentScope: 'send_email',
+      granted: false,
+      grantedAt: new Date('2026-09-03T12:00:00.000Z'),
+      policyVersion: 'test-policy',
+    });
+    const { sendPorts } = ports(async () => ({ message: `model arm ${households}` }));
+
+    const dispatched = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(dispatched.sent).toBe(1);
+    const rows = await db.database
+      .select({
+        parentUserId: schema.channelMessages.parentUserId,
+        dedupeKey: schema.channelMessages.dedupeKey,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, parent.familyId));
+    expect(rows).toEqual([
+      { parentUserId: parent.parentUserId, dedupeKey: `autonomy_armed:${kept}` },
+    ]);
   });
 });
