@@ -103,6 +103,7 @@ describe('requestErasure — one door, two answers', () => {
         mcpGrantsRevoked: 0,
         connectorsRevoked: 0,
         teenGrantsRevoked: 0,
+        openQuestionsDeleted: 'search_dark',
         membershipRemoved: true,
         consentWithdrawn: 0,
         threadRetained: 0,

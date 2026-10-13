@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { type PendingAsksForgotten, forgetPendingAsks } from '~/lib/channel/off-domain/lane';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
 import { appendMcpGrantWithdrawals } from '~/lib/mcp/oauth-store';
@@ -59,6 +60,10 @@ export interface CoParentDeparted {
   connectorsRevoked: number;
   /** Teen raw-content windows closed — rule #1's named exception, held by THEM. */
   teenGrantsRevoked: number;
+  /** Questions a general answer had left open for THEM here, deleted: each was put to a
+   * phone that is no longer in this household. A count, or the named reason none was
+   * read (the search is dark, or the table has not reached this database). */
+  openQuestionsDeleted: PendingAsksForgotten;
   membershipRemoved: true;
   /** `granted=false` rows appended — one per messaging scope that was still standing. */
   consentWithdrawn: number;
@@ -250,6 +255,12 @@ export async function departCoParent(
       now,
     });
 
+    // The table's own module deletes them, as the two doors above are closed by theirs.
+    const openQuestionsDeleted = await forgetPendingAsks(tx, {
+      familyId,
+      parentUserId: actorUserId,
+    });
+
     // ── what is KEPT, counted so the answer can say it out loud ──────────────
     const retainedChannels = await tx
       .select({
@@ -336,7 +347,11 @@ export async function departCoParent(
         actionTaken: 'co_parent_departed',
         targetTable: 'family_members',
         targetId: actorUserId,
-        after: { role: 'co_parent', threadRetained: retainedThreads.length },
+        after: {
+          role: 'co_parent',
+          threadRetained: retainedThreads.length,
+          openQuestionsDeleted,
+        },
       },
     ]);
 
@@ -346,6 +361,7 @@ export async function departCoParent(
       mcpGrantsRevoked: revokedGrants.length,
       connectorsRevoked: revokedConnectors.length,
       teenGrantsRevoked,
+      openQuestionsDeleted,
       membershipRemoved: true,
       consentWithdrawn: withdrawals.length,
       threadRetained: retainedThreads.length,

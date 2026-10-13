@@ -27,9 +27,11 @@ export const PENDING_ASK_MISSING_MAX_CHARS = 200;
  * few words. Never the parent's own words, and never what Hale said.
  *
  * IT LIVES ONLY WHILE IT IS OPEN. A question stands while its reply is Hale's last word
- * to that parent, and the next reply Hale sends them deletes it (lane.ts). The hourly
+ * to that parent, and the next answer Hale sends them deletes it (lane.ts). The hourly
  * retention sweep deletes one that any other newer word from Hale has closed, and one a
- * year old. Both cascades are the erasure path: the family's, and the reply row's.
+ * year old. A co-parent who leaves the household takes theirs with them, in the
+ * departure's own transaction. Both cascades are the erasure path: the family's, and the
+ * reply row's.
  */
 export const channelPendingAsks = pgTable(
   'channel_pending_asks',
