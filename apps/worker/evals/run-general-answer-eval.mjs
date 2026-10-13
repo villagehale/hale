@@ -20,8 +20,9 @@
 // What is NOT tested here: the lane routing (run-inbound-lane-eval.mjs); the flag, the
 // named fallbacks, the link and health-line gates, and where the family's row and a
 // pending ask are read from (apps/web/lib/channel/off-domain/*.test.ts). The place a
-// search is sent IS production's: a fixture gives the family's row, and production's own
-// `placeOf` reads the place off it.
+// search is sent IS production's: a fixture gives the family's row, production's own
+// `placeOf` reads the place off it, and `coarsenPlace` replaces an official village when
+// the sanitizer read the question as sensitive.
 //
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-general-answer-eval.mjs            # live, then caches
@@ -375,17 +376,18 @@ async function main() {
    * sends for that row. Null with no row, or when production could not name a place.
    */
   let places;
-  async function homePlace(fixture) {
+  async function homePlace(fixture, sensitive) {
     if (fixture.family === undefined) return null;
     // Loaded when a turn first needs a place: it brings the database package with it.
     places ??= await tsImport(PLACE_SRC, import.meta.url);
     const read = await places.placeOf({ ...NO_ROW, ...fixture.family });
     if (read.status !== 'known') return null;
-    return {
+    const home = {
       city: read.city,
       ...(read.provinceOrState ? { provinceOrState: read.provinceOrState } : {}),
       country: read.country,
     };
+    return sensitive ? places.coarsenPlace(home, true) : home;
   }
 
   /**
@@ -428,7 +430,7 @@ async function main() {
     const searching = request.needsSearch(sanitize.value.needs_search);
     const place =
       lit && searching && request.turnsOnTheirPlace(sanitize.value.their_place)
-        ? await homePlace(fixture)
+        ? await homePlace(fixture, request.questionIsSensitive(sanitize.value.sensitive))
         : null;
 
     let search = 'not_needed';

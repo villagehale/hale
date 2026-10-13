@@ -616,6 +616,106 @@ describe('sweepMessageRetention', () => {
     );
   });
 
+  /**
+   * The question is what the retention promise covers, and it lives on its own row. A
+   * reply that is already a year old takes the question with it even when that row was
+   * written later. A reply that is not yet a year old keeps its question.
+   */
+  it('deletes a question whose reply is a year old, even when the question row is newer', async () => {
+    const openBeside = async (repliedAt: Date) => {
+      const { familyId, parentUserId } = await seedFamily();
+      const [row] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          familyId,
+          parentUserId,
+          channel: 'sms',
+          direction: 'out',
+          category: 'reply',
+          status: 'delivered',
+          body: null,
+          createdAt: repliedAt,
+        })
+        .returning({ id: schema.channelMessages.id });
+      await db.database.insert(schema.channelPendingAsks).values({
+        channelMessageId: row?.id as string,
+        familyId,
+        question: 'hows the weather tomorrow',
+        missing: 'which city',
+        createdAt: ago(1),
+      });
+      return row?.id as string;
+    };
+    await openBeside(ago(366));
+    const keptId = await openBeside(ago(364));
+
+    const summary = await sweepMessageRetention(db.database, NOW, {
+      removeObject: async () => {},
+    });
+
+    expect(summary).toEqual({ ...ZEROS, pendingAsksDeleted: 1 });
+    expect(
+      await db.database
+        .select({ id: schema.channelPendingAsks.channelMessageId })
+        .from(schema.channelPendingAsks),
+    ).toEqual([{ id: keptId }]);
+  });
+
+  /**
+   * A holding line is not an answer, so the router leaves the question open when it
+   * sends one. It is still a later word to that parent, and the reader no longer treats
+   * the question as the last thing Hale sent. The hourly sweep deletes the row.
+   */
+  it('deletes a question once a holding line is the later word to that parent', async () => {
+    const MINUTE_MS = 60 * 1000;
+    const minutesAgo = (minutes: number) => new Date(NOW.getTime() - minutes * MINUTE_MS);
+    const asked = async () => {
+      const to = await seedFamily();
+      const [row] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          ...to,
+          channel: 'sms',
+          direction: 'out',
+          category: 'reply',
+          status: 'sent',
+          createdAt: minutesAgo(30),
+        })
+        .returning({ id: schema.channelMessages.id });
+      await db.database.insert(schema.channelPendingAsks).values({
+        channelMessageId: row?.id as string,
+        familyId: to.familyId,
+        question: 'hows the weather tomorrow',
+        missing: 'which city',
+      });
+      return { ...to, channelMessageId: row?.id as string };
+    };
+
+    const closed = await asked();
+    await db.database.insert(schema.channelMessages).values({
+      familyId: closed.familyId,
+      parentUserId: closed.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      status: 'sent',
+      templateKey: 'holding_line',
+      createdAt: minutesAgo(10),
+    });
+    const stillOpen = await asked();
+
+    const summary = await sweepMessageRetention(db.database, NOW, {
+      removeObject: async () => {},
+    });
+
+    expect(summary).toEqual({ ...ZEROS, pendingAsksDeleted: 1 });
+    expect(
+      await db.database
+        .select({ id: schema.channelPendingAsks.channelMessageId })
+        .from(schema.channelPendingAsks),
+    ).toEqual([{ id: stillOpen.channelMessageId }]);
+  });
+
   /** Erasure is the family cascade (runDeletionSweep deletes the family row). The
    * question's row hangs off the family and off the reply, and both go. */
   it('does not leave a pending question behind when the family is erased', async () => {

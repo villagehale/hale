@@ -40,9 +40,11 @@ export interface PendingAsk {
 /** The family's own city and country: what leaves for a search about where a family is
  * (founder, 2026-10-12), never the postal code, never anything finer than the city. The
  * province or state goes with them only when the city's name alone is more than one
- * place (Sloane, 2026-10-12; place.ts). */
+ * place (Sloane, 2026-10-12; place.ts). On a sensitive question an official village is
+ * not sent: `city` is the nearest city, or absent when the place is the province or
+ * state alone (place.ts coarsenPlace). */
 export interface HomePlace {
-  city: string;
+  city?: string;
   provinceOrState?: string;
   country: string;
 }
@@ -74,6 +76,7 @@ export const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
     question: { type: 'string' },
     missing_detail: { type: 'string' },
     their_place: { type: 'string', enum: ['needed', 'not_needed'] },
+    sensitive: { type: 'string', enum: ['yes', 'no'] },
     current_fact: { type: 'string' },
     needs_search: { type: 'string', enum: [...SEARCH_READINGS] },
   },
@@ -83,6 +86,7 @@ export const sanitizeJsonSchema: Anthropic.Tool.InputSchema = {
     'question',
     'missing_detail',
     'their_place',
+    'sensitive',
     'current_fact',
     'needs_search',
   ],
@@ -104,7 +108,16 @@ export const ANSWER_ENDS_ON_THE_ANSWER =
  * says the same under `unavailable`.
  */
 export const ANSWER_WITH_NOTHING_CHECKED =
-  'With `live` unavailable, no running count, record or title tally appears as a number.';
+  'With `live` unavailable, no running count, record or title tally is stated, neither as a digit nor as a word that names how many.';
+
+/**
+ * A forecast figure stays on the day or night the notes gave it, said on the `answer`
+ * field itself (Sloane, 2026-10-13). Two replies moved a Tuesday-night low onto tonight
+ * after the same clause on `grounding` had already been written, so what is said on
+ * that list never reached them. general-answer.md says the same under `searched`.
+ */
+export const ANSWER_KEEPS_THE_NOTES_DAY =
+  'A forecast figure keeps the day or night the notes give it for, and is not stated as a nearer day or night.';
 
 /**
  * What belongs in each field of a `grounding` entry, said on the field itself, where the
@@ -163,7 +176,7 @@ export const answerJsonSchema = {
     },
     answer: {
       type: 'string',
-      description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED}`,
+      description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY}`,
     },
   },
   required: ['hurt_ill_or_danger', 'grounding', 'answer'],
@@ -195,7 +208,7 @@ export function searchUserMessage(input: {
     ...(place
       ? {
           place: {
-            city: place.city,
+            ...(place.city ? { city: place.city } : {}),
             ...(place.provinceOrState ? { province_or_state: place.provinceOrState } : {}),
             country: place.country,
           },
@@ -253,6 +266,13 @@ export function needsSearch(raw: unknown): boolean {
  * `needed`. */
 export function turnsOnTheirPlace(raw: unknown): boolean {
   return raw === 'needed';
+}
+
+/** ONLY AN EXPLICIT `yes` COARSENS THE PLACE. The weather stays the town, including when
+ * the reading is missing: a village is replaced only when the sanitizer read the
+ * question as sensitive. */
+export function questionIsSensitive(raw: unknown): boolean {
+  return raw === 'yes';
 }
 
 /** FAIL TOWARD A NEW QUESTION: a text is read as the reply to a pending ask only on an

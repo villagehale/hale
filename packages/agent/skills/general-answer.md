@@ -114,7 +114,8 @@ out. An answer that states nothing specific has an empty list.
   like at this time of year is still a forecast from memory. Whatever in the question
   does not turn on today still gets its answer: an opinion still gets your pick.
   When the pick would rest on a running count, a record or a title tally, give the
-  pick and its reason in words that name no figure: no digit that is that tally.
+  pick and its reason without stating that tally, neither as a digit nor as a word
+  that names how many.
   Settled history, such as a named tournament year, may stay. Asking them for a
   detail you would need in order to look it up promises a lookup you cannot make,
   so the reply does not ask for one. Nor does it offer something else in place of

@@ -17,6 +17,7 @@ import {
 } from './answer';
 import {
   ANSWER_ENDS_ON_THE_ANSWER,
+  ANSWER_KEEPS_THE_NOTES_DAY,
   ANSWER_MAX_TOKENS,
   ANSWER_WITH_NOTHING_CHECKED,
   SAFETY_KINDS,
@@ -224,6 +225,18 @@ describe('the three payloads', () => {
   });
 
   /** Only when the lane says the city's name is more than one place (place.ts). */
+  it('hands the search the province or state and the country, and no city, when the place is a region', () => {
+    expect(
+      searchUserMessage({
+        question: 'hows the weather tomorrow',
+        today: TODAY,
+        place: { provinceOrState: 'Quebec', country: 'Canada' },
+      }),
+    ).toBe(
+      '{"question":"hows the weather tomorrow","today":"monday, oct 12, 2026","place":{"province_or_state":"Quebec","country":"Canada"}}',
+    );
+  });
+
   it('hands the search the province or state between the city and the country, when the place has one', () => {
     expect(
       searchUserMessage({
@@ -414,7 +427,7 @@ describe('createGeneralAnswer', () => {
         },
         answer: {
           type: 'string',
-          description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED}`,
+          description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY}`,
         },
       },
       required: ['hurt_ill_or_danger', 'grounding', 'answer'],
@@ -444,12 +457,15 @@ describe('createGeneralAnswer', () => {
    * `grounding` list, so nothing said on that list could reach them. The words are hers,
    * said on the field the tally was written in.
    */
-  it('tells the model, on the answer field itself, that a tally is not a number when nothing was checked', () => {
+  it('tells the model, on the answer field itself, that a tally is not stated when nothing was checked', () => {
     expect(ANSWER_WITH_NOTHING_CHECKED).toBe(
-      'With `live` unavailable, no running count, record or title tally appears as a number.',
+      'With `live` unavailable, no running count, record or title tally is stated, neither as a digit nor as a word that names how many.',
+    );
+    expect(ANSWER_KEEPS_THE_NOTES_DAY).toBe(
+      'A forecast figure keeps the day or night the notes give it for, and is not stated as a nearer day or night.',
     );
     expect(answerJsonSchema.properties.answer.description).toBe(
-      `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED}`,
+      `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY}`,
     );
   });
 
@@ -885,11 +901,7 @@ describe('scrubDirectIdentifiers', () => {
     ],
     ['an @handle', 'is @fernhollow_mum a real account', 'is [redacted] a real account'],
     // The shapes a government or a health number is written in. All invented.
-    [
-      'nine digits in three groups',
-      'is 123-456-789 a real number',
-      'is [redacted] a real number',
-    ],
+    ['nine digits in three groups', 'is 123-456-789 a real number', 'is [redacted] a real number'],
     [
       'nine digits grouped by spaces',
       'is 123 456 789 a real number',
@@ -1029,9 +1041,9 @@ describe('scrubDirectIdentifiers', () => {
     expect(digits.length).toBeGreaterThanOrEqual(650);
     expect(digits.slice(0, 10).join('')).toBe('0123456789');
 
-    expect(digits.filter((digit) => scrubDirectIdentifiers(digit.repeat(9)) !== '[redacted]')).toEqual(
-      [],
-    );
+    expect(
+      digits.filter((digit) => scrubDirectIdentifiers(digit.repeat(9)) !== '[redacted]'),
+    ).toEqual([]);
   });
 
   /** Only the identifier goes. Every other character is handed on as it was typed, the
@@ -1516,6 +1528,60 @@ describe("the family's city and country", () => {
     expect(searchMessage(seen).place).toEqual({ city: 'Toronto', country: 'Canada' });
   });
 
+  /**
+   * A sensitive question is not searched for a village. The place the lane read is a
+   * real village postal area (postal-cities/coarsen.json); what the search is handed is
+   * the nearest city, or the province when there is none. The same place on a question
+   * that is not sensitive, the weather included, is sent as read.
+   */
+  it('sends a sensitive search the nearest city for a village, and the village itself otherwise', async () => {
+    lit();
+    quietInfo();
+    const village = familyAt({ status: 'known', city: 'Albanel', country: 'Canada' });
+    const sensitive = seenNothing();
+
+    await createGeneralAnswer(
+      scripted(
+        {
+          sanitize: reading({
+            question: 'hows the weather tomorrow',
+            their_place: 'needed',
+            sensitive: 'yes',
+            needs_search: 'yes',
+          }),
+          search: searchFound(),
+          answer: { answer: 'Sunny.' },
+        },
+        sensitive,
+      ),
+    ).compose('hows the weather tomorrow', village);
+
+    expect(searchMessage(sensitive).place).toEqual({ city: 'Normandin', country: 'Canada' });
+    expect(JSON.stringify(sensitive.search)).not.toContain('Albanel');
+
+    const weather = seenNothing();
+    await createGeneralAnswer(
+      scripted(
+        {
+          sanitize: reading({
+            question: 'hows the weather tomorrow',
+            their_place: 'needed',
+            sensitive: 'no',
+            needs_search: 'yes',
+          }),
+          search: searchFound(),
+          answer: { answer: 'Sunny.' },
+        },
+        weather,
+      ),
+    ).compose(
+      'hows the weather tomorrow',
+      familyAt({ status: 'known', city: 'Albanel', country: 'Canada' }),
+    );
+
+    expect(searchMessage(weather).place).toEqual({ city: 'Albanel', country: 'Canada' });
+  });
+
   /** The province goes where the city goes and nowhere else: to the search. */
   it('sends the search the province the lane read with a shared city name, and nobody else', async () => {
     lit();
@@ -1630,33 +1696,30 @@ describe("the family's city and country", () => {
     'ambiguous',
     'group_thread',
     'thread_unknown',
-  ] as const)(
-    'asks for the city when the place is unknown (%s), and names why',
-    async (reason) => {
-      lit();
-      const info = quietInfo();
-      const seen = seenNothing();
+  ] as const)('asks for the city when the place is unknown (%s), and names why', async (reason) => {
+    lit();
+    const info = quietInfo();
+    const seen = seenNothing();
 
-      expect(
-        await createGeneralAnswer(
-          scripted({ sanitize: WEATHER(), answer: { answer: 'Which city?' } }, seen),
-        ).compose('hows the weather tomorrow', familyAt({ status: 'unknown', reason })),
-      ).toMatchObject({ status: 'composed', reply: 'Which city?', search: 'missing_detail' });
+    expect(
+      await createGeneralAnswer(
+        scripted({ sanitize: WEATHER(), answer: { answer: 'Which city?' } }, seen),
+      ).compose('hows the weather tomorrow', familyAt({ status: 'unknown', reason })),
+    ).toMatchObject({ status: 'composed', reply: 'Which city?', search: 'missing_detail' });
 
-      expect(seen.search).toHaveLength(0);
-      expect(composeMessage(seen)).toEqual({
-        question: 'hows the weather tomorrow',
-        language: 'en',
-        today: TODAY,
-        live: 'missing_detail',
-        missing: 'which city',
-      });
-      expect(info.mock.calls).toEqual([
-        [{ place: 'unknown', reason }, 'off-domain answer: no place for this family'],
-        [{ search: 'missing_detail' }, 'off-domain answer: no live search this turn'],
-      ]);
-    },
-  );
+    expect(seen.search).toHaveLength(0);
+    expect(composeMessage(seen)).toEqual({
+      question: 'hows the weather tomorrow',
+      language: 'en',
+      today: TODAY,
+      live: 'missing_detail',
+      missing: 'which city',
+    });
+    expect(info.mock.calls).toEqual([
+      [{ place: 'unknown', reason }, 'off-domain answer: no place for this family'],
+      [{ search: 'missing_detail' }, 'off-domain answer: no live search this turn'],
+    ]);
+  });
 
   it('searches without a place when the place is unknown and the question is still searchable', async () => {
     lit();
@@ -2140,9 +2203,9 @@ describe('links', () => {
 
   /**
    * A link needs no `https://` and no `www.` to be one: a phone makes `name.tld` tappable
-   * as it stands. So a token that ends in a top-level domain (top-level-domains/tlds.json,
-   * the public list) is a link, held to the same rule: its host is one this turn's search
-   * returned, or the reply is not sent.
+   * as it stands. So a token a public-suffix rule covers (public-suffix/README.md) is a
+   * link, held to the same rule: its host is one this turn's search returned, or the
+   * reply is not sent.
    */
   it.each([
     ['a bare host with a page under it', 'Confirm your number at free-prizes.com/claim first.'],
@@ -2352,17 +2415,20 @@ describe('links', () => {
       ['failed', { search: new Error('upstream 529') }, 'search_failed'],
       ['returned nothing', { search: [] }, 'nothing_usable'],
     ];
-    it.each(UNSEARCHED)('sends it as written when the search %s', async (_label, script, search) => {
-      lit();
-      quietWarn();
-      const body = 'Booking.com is the usual one for that.';
+    it.each(UNSEARCHED)(
+      'sends it as written when the search %s',
+      async (_label, script, search) => {
+        lit();
+        quietWarn();
+        const body = 'Booking.com is the usual one for that.';
 
-      expect(
-        await createGeneralAnswer(
-          scripted({ sanitize: NEEDED, answer: { answer: body }, ...script }),
-        ).compose(ASK, family),
-      ).toMatchObject({ status: 'composed', reply: body, search });
-    });
+        expect(
+          await createGeneralAnswer(
+            scripted({ sanitize: NEEDED, answer: { answer: body }, ...script }),
+          ).compose(ASK, family),
+        ).toMatchObject({ status: 'composed', reply: body, search });
+      },
+    );
 
     it('sends it as written when the question was missing a detail', async () => {
       lit();
@@ -2511,7 +2577,7 @@ describe('the compose reads someone hurt, ill or in danger', () => {
    * The reading names its kind in the lane screen's own safety categories, and no others:
    * the lane picks the door from the kind as it does from the screen's reading.
    */
-  it('reads the kind in the screen\'s own safety categories', () => {
+  it("reads the kind in the screen's own safety categories", () => {
     expect(SAFETY_KINDS).toEqual(['medical-symptom', 'mental-health', 'child-safety', 'emergency']);
     expect(SAFETY_KINDS.filter((kind) => !UNMET_INTENT_CATEGORIES.includes(kind))).toEqual([]);
     expect(SAFETY_KINDS.map((kind) => hurtIllOrDanger(kind))).toEqual([...SAFETY_KINDS]);
@@ -2605,9 +2671,10 @@ describe('the compose reads someone hurt, ill or in danger', () => {
     'sends the reply when the reading is %j',
     async (hurt_ill_or_danger) => {
       expect(
-        await createGeneralAnswer(
-          clientReturning({ hurt_ill_or_danger, answer: 'Lima.' }),
-        ).compose(ASK, family),
+        await createGeneralAnswer(clientReturning({ hurt_ill_or_danger, answer: 'Lima.' })).compose(
+          ASK,
+          family,
+        ),
       ).toEqual({ status: 'composed', reply: 'Lima.', search: 'not_needed' });
     },
   );

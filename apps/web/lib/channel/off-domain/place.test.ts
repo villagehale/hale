@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isOnboardingRegionSupported } from '~/lib/family/location-input';
-import { placeOf } from './place';
+import { coarsenPlace, placeOf } from './place';
 import ca from './postal-cities/ca.json';
 import us from './postal-cities/us.json';
 
@@ -57,14 +57,17 @@ describe('placeOf', () => {
     ['a ZIP code', '80202', '802', 'Denver', 'Colorado'],
     ['a ZIP+4', '60601-1234', '606', 'Chicago', undefined],
     ['a ZIP in a third state', '98101', '981', 'Seattle', undefined],
-  ])('derives the city for a US family: %s', async (_label, postalCode, areaCoarse, city, state) => {
-    expect(await placeOf({ ...ROW, country: 'United States', postalCode, areaCoarse })).toEqual({
-      status: 'known',
-      city,
-      ...(state ? { provinceOrState: state } : {}),
-      country: 'United States',
-    });
-  });
+  ])(
+    'derives the city for a US family: %s',
+    async (_label, postalCode, areaCoarse, city, state) => {
+      expect(await placeOf({ ...ROW, country: 'United States', postalCode, areaCoarse })).toEqual({
+        status: 'known',
+        city,
+        ...(state ? { provinceOrState: state } : {}),
+        country: 'United States',
+      });
+    },
+  );
 
   /** The table is the one for the country ON THE ROW. A code shaped like the other
    * country's is not looked up there. */
@@ -210,11 +213,14 @@ describe('a city name more than one province or state has', () => {
     ['its name', 'Ontario', 'Ontario'],
     ['its postal abbreviation, in lower case', 'on', 'Ontario'],
     ['its name in capitals with an accent', ' QUÉBEC ', 'Quebec'],
-  ])('reads a stored province by %s, and sends the table spelling of it', async (_label, province, sent) => {
-    expect(
-      await placeOf({ ...ROW, country: 'Canada', province, city: 'windsor' }),
-    ).toStrictEqual({ status: 'known', city: 'Windsor', provinceOrState: sent, country: 'Canada' });
-  });
+  ])(
+    'reads a stored province by %s, and sends the table spelling of it',
+    async (_label, province, sent) => {
+      expect(await placeOf({ ...ROW, country: 'Canada', province, city: 'windsor' })).toStrictEqual(
+        { status: 'known', city: 'Windsor', provinceOrState: sent, country: 'Canada' },
+      );
+    },
+  );
 
   it('leaves a shared name to the postal area when the stored province does not say which', async () => {
     // Not a province at all, so the area decides: N8P is in Ontario.
@@ -373,7 +379,9 @@ describe('the postal tables', () => {
     }
     // Every Canadian area has a province. A US area with none is one with no city either.
     expect(ca.regionOf.filter((region) => region < 0)).toEqual([]);
-    expect(us.codes.filter((_, at) => (us.regionOf[at] ?? -1) < 0 && (us.cityOf[at] ?? -1) >= 0)).toEqual([]);
+    expect(
+      us.codes.filter((_, at) => (us.regionOf[at] ?? -1) < 0 && (us.cityOf[at] ?? -1) >= 0),
+    ).toEqual([]);
     const sharedIn = (table: typeof ca, city: string) =>
       (table.sharedRegions[table.sharedCities.indexOf(table.cities.indexOf(city))] ?? []).map(
         (region) => table.regions[region],
@@ -439,5 +447,78 @@ describe('the postal tables', () => {
     ['V1Z', AMBIGUOUS, 'Kelowna West is mostly outside Kelowna'],
   ])('leave %s without a city (%i): %s', (code, reason) => {
     expect(ca.cityOf[ca.codes.indexOf(code)]).toBe(reason);
+  });
+});
+
+/**
+ * A sensitive search is not told a village. The postal areas below are real, and each
+ * resolves to an official village (postal-cities/coarsen.json). What is sent instead is
+ * the nearest city in that province or state, or the province when no city is close
+ * enough. The same area on a question that is not sensitive is the village, and a town
+ * or a city is never replaced.
+ */
+describe('a sensitive search is not told a village', () => {
+  async function readPlace(row: {
+    country: string;
+    postalCode?: string;
+    areaCoarse?: string;
+    city?: string;
+  }) {
+    const read = await placeOf({ ...ROW, ...row });
+    if (read.status !== 'known') throw new Error(read.reason);
+    return read;
+  }
+
+  it('sends the nearest city for a Canadian village postal area, and the village when the question is not sensitive', async () => {
+    const read = await readPlace({ country: 'Canada', postalCode: 'G8M 1A1' });
+    expect(read).toEqual({ status: 'known', city: 'Albanel', country: 'Canada' });
+    expect(await coarsenPlace(read, true)).toEqual({ city: 'Normandin', country: 'Canada' });
+    expect(await coarsenPlace(read, false)).toEqual(read);
+  });
+
+  it('sends the province alone when no city is within reach of the village', async () => {
+    const read = await readPlace({ country: 'Canada', city: 'Aguanish' });
+    expect(read).toEqual({ status: 'known', city: 'Aguanish', country: 'Canada' });
+    expect(await coarsenPlace(read, true)).toEqual({
+      provinceOrState: 'Quebec',
+      country: 'Canada',
+    });
+    expect(await coarsenPlace(read, false)).toEqual(read);
+  });
+
+  it('sends the nearest city for a US village ZIP, and the village for the weather', async () => {
+    const read = await readPlace({ country: 'United States', postalCode: '60101' });
+    expect(read).toEqual({
+      status: 'known',
+      city: 'Addison',
+      provinceOrState: 'Illinois',
+      country: 'United States',
+    });
+    expect(await coarsenPlace(read, true)).toEqual({ city: 'Wood Dale', country: 'United States' });
+    expect(await coarsenPlace(read, false)).toEqual(read);
+  });
+
+  it('does not guess which village a shared name is', async () => {
+    expect(await coarsenPlace({ city: 'Addison', country: 'United States' }, true)).toEqual({
+      country: 'United States',
+    });
+  });
+
+  it.each([
+    [
+      'a town',
+      { country: 'Canada', postalCode: 'L6H 1A1' },
+      { city: 'Oakville', country: 'Canada' },
+    ],
+    ['a city', { country: 'Canada', areaCoarse: 'M4K' }, { city: 'Toronto', country: 'Canada' }],
+    [
+      'a US city that shares its name with a village in another state',
+      { country: 'United States', postalCode: '80202' },
+      { city: 'Denver', provinceOrState: 'Colorado', country: 'United States' },
+    ],
+  ])('still sends %s', async (_label, row, place) => {
+    const read = await readPlace(row);
+    expect(read).toEqual({ status: 'known', ...place });
+    expect(await coarsenPlace(read, true)).toEqual(read);
   });
 });

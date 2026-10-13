@@ -113,6 +113,32 @@ All three licences allow copying, adapting and redistributing with this credit. 
 is adapted from all three sources and `us.json` from GeoNames, and they carry the same
 credit.
 
+## Villages, for a sensitive search
+
+`coarsen.json` says which of those place names are official villages, and the nearest
+city to send instead when a search is about a sensitive question (`../place.ts`,
+`coarsenPlace`). A question that is not sensitive is sent the place as read, village
+included. A town is never in this file.
+
+A name is a village only when that is its best class in that province or state. In
+Canada a city, a town or a municipal district (`CITY`, `TOWN`, `MUN1`, `MUN2`) beats
+`VILG`. In the United States a city, a borough or a town (Census LSAD 25, 21, 43) beats
+a village (LSAD 47). A census designated place (LSAD 57) is not a village and is not
+read. The nearest city is the nearest `CITY` or LSAD 25 in the same province or state,
+within 150 km. Farther than that, the file names no city and the search is sent the
+province or state alone.
+
+Built by `node coarsen.mjs <cgn_canada_csv_eng.csv> <2024_Gaz_place_national.txt>`. The
+Canadian file is the same download as above. The United States file is the 2024 Census
+Gazetteer national places file, retrieved 2026-10-13:
+
+| File | From | SHA-256 |
+|---|---|---|
+| `2024_Gaz_place_national.txt` | https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip | `ba197a3c0cef828d47981ed7435d820d040d3199bf39a719cd9b11412c59afa6` |
+
+The gazetteer is a work of the United States government. SHA-256 of `coarsen.json`:
+`66660d512618afc9279b0a27b77d42981b6ef4063e9c6a8b005231cffacc7696`.
+
 ## Rebuilding
 
 Unpack each GeoNames and names data base download into an empty directory of its own,
