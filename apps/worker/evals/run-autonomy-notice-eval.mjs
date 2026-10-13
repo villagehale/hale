@@ -292,7 +292,12 @@ async function main() {
   const cost = makeCost();
   const gated = spendGate(lazyAnthropic(), cost, maxUsd);
   const judgeModel = await readJudgeModel();
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'autonomy-notice', cachedOnly, gated, cost);
+  // 4096 Haiku output tokens price above $0.02 before the first call. 440 is the
+  // ceiling at which six calls, billed at that ceiling, stay under $0.02.
+  // Replies are about 280 tokens. The cache key does not include max_tokens.
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'autonomy-notice', cachedOnly, gated, cost, {
+    maxTokens: 440,
+  });
 
   console.info(
     `autonomy-notice | ${cachedOnly ? 'cached-only' : 'live'} | model=${lane.model} judge=${judgeModel} | fixtures=${AUTONOMY_NOTICE_FIXTURES.length}`,

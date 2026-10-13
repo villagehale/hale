@@ -608,7 +608,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
       // argument rather than the average one. The key does not include max_tokens, so
       // raising it leaves every committed verdict valid and only touches calls actually
       // made — and `isVerdict` above means a draw that still runs out is loud, not a zero.
-      max_tokens: 4096,
+      max_tokens: options?.maxTokens ?? 4096,
       system: judgeSystem,
       tools: [{ name: 'score', description: 'Return the score.', input_schema: JUDGE_SCHEMA }],
       tool_choice: { type: 'tool', name: 'score' },
