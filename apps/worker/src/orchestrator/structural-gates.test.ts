@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
-import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ClassifierSuggestion, FamilyStage } from '@hale/types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentRunMetrics } from '../agents/run-metrics.js';
 
 /**
  * Fix-wave B structural gates wired into the orchestrator: rule #4 (7-day
@@ -37,6 +37,7 @@ vi.mock('../agents/classifier.js', () => ({ runClassifier: () => runClassifier()
 vi.mock('../agents/dedup.js', () => ({ dedupHashFor: () => 'fixed-hash' }));
 
 let draftActionType = 'send_email';
+let commitsParent = false;
 const runDrafter = vi.fn(async () => ({
   draft: {
     id: 'action-1',
@@ -48,6 +49,7 @@ const runDrafter = vi.fn(async () => ({
     rationale: 'draft',
     recipientVisibility: 'public' as const,
     draftedAt: '2026-06-12T10:00:00.000Z',
+    commitsParentToEnrollmentBookingOrPayment: commitsParent,
   },
   runMetrics: { ...metrics, agentName: 'drafter' as const },
 }));
@@ -63,6 +65,12 @@ const COVERAGE: Record<string, { tool: string; ok: boolean; result: unknown }[]>
   share_photos_with_family: [
     { tool: 'check_pii_leak', ok: true, result: {} },
     { tool: 'check_recipient_allowlist', ok: true, result: {} },
+    { tool: 'check_action_idempotency', ok: true, result: {} },
+  ],
+  reply_to_email: [
+    { tool: 'check_pii_leak', ok: true, result: {} },
+    { tool: 'check_recipient_allowlist', ok: true, result: {} },
+    { tool: 'check_sender_allowlist', ok: true, result: {} },
     { tool: 'check_action_idempotency', ok: true, result: {} },
   ],
 };
@@ -135,6 +143,7 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
     suggestion = { kind: 'autonomous_action', actionType: 'send_email' };
     teenContent = false;
     draftActionType = 'send_email';
+    commitsParent = false;
     familyCreatedAt = new Date('2020-01-01T00:00:00.000Z');
     standing = [{ parentUserId: 'parent-1', streakReached: true, optedIn: true }];
     turnOnDelivered = true;
@@ -239,6 +248,34 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
       { parentUserId: 'parent-1', streakReached: false, optedIn: false },
       { parentUserId: 'parent-2', streakReached: true, optedIn: true },
     ];
+    await runOrchestrator(job);
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+    expect(recordActionGate).not.toHaveBeenCalled();
+  });
+
+  it('a reply that commits the parent to a spot stays held after the email autonomy grant', async () => {
+    suggestion = { kind: 'autonomous_action', actionType: 'reply_to_email' };
+    draftActionType = 'reply_to_email';
+    commitsParent = true;
+    approvalHistory = Array.from({ length: 5 }, () => ({
+      actionType: 'reply_to_email',
+      humanApproved: true,
+    }));
+    await runOrchestrator(job);
+    expect(runExecutor).not.toHaveBeenCalled();
+    expect(recordActionGate).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'parent_commitment', actionType: 'reply_to_email' }),
+    );
+  });
+
+  it('a reschedule reply that commits the parent to none of those still sends once autonomy is earned', async () => {
+    suggestion = { kind: 'autonomous_action', actionType: 'reply_to_email' };
+    draftActionType = 'reply_to_email';
+    commitsParent = false;
+    approvalHistory = Array.from({ length: 5 }, () => ({
+      actionType: 'reply_to_email',
+      humanApproved: true,
+    }));
     await runOrchestrator(job);
     expect(runExecutor).toHaveBeenCalledTimes(1);
     expect(recordActionGate).not.toHaveBeenCalled();

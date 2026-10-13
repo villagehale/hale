@@ -22,20 +22,20 @@
 //   node apps/worker/evals/run-drafter-eval.mjs --cached-only                   # CI: replay only, never calls the API
 
 import { createHash } from 'node:crypto';
-import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { existsSync, realpathSync } from 'node:fs';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
 import { PRICE as LIST_PRICE, judgeLaneFor, liveStructuredCall } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
-const PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'drafter.md');
+export const PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'drafter.md');
 const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');
 const MODEL_TS_PATH = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'model.ts');
-const FIXTURE_DIR = join(HERE, 'fixtures', 'drafter');
+export const FIXTURE_DIR = join(HERE, 'fixtures', 'drafter');
 const CACHE_DIR = join(HERE, 'cache');
 
 // List prices (USD per 1M tokens), read from the harness table so a re-tier cannot
@@ -60,7 +60,7 @@ const PLACEHOLDER_PATTERNS = [
 
 // --- read the single sources of truth from worker source -------------------
 
-async function readModelIds() {
+export async function readModelIds() {
   const { pickLane } = await tsImport(AGENT_SRC, import.meta.url);
   const src = await readFile(MODEL_TS_PATH, 'utf8');
   const haiku = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
@@ -71,20 +71,27 @@ async function readModelIds() {
 // The tool-forced JSON schema MUST mirror drafterOutputJsonSchema in
 // src/agents/drafter.ts.
 const DRAFTER_TOOL = 'draft_action';
-const DRAFTER_JSON_SCHEMA = {
+export const DRAFTER_JSON_SCHEMA = {
   type: 'object',
   properties: {
     payload: { type: 'object', additionalProperties: true },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     rationale: { type: 'string' },
     recipient_visibility: { type: 'string', enum: ['public', 'internal_only'] },
+    commits_parent_to_enrollment_booking_or_payment: { type: 'boolean' },
   },
-  required: ['payload', 'confidence', 'rationale', 'recipient_visibility'],
+  required: [
+    'payload',
+    'confidence',
+    'rationale',
+    'recipient_visibility',
+    'commits_parent_to_enrollment_booking_or_payment',
+  ],
 };
 
 // --- fixtures ---------------------------------------------------------------
 
-async function loadFixtures(dir) {
+export async function loadFixtures(dir) {
   const names = (await readdir(dir)).filter((n) => n.endsWith('.json')).sort();
   const out = [];
   for (const name of names) {
@@ -95,7 +102,7 @@ async function loadFixtures(dir) {
 
 // Must match runDrafter's exact serialization:
 // { action_type, event, memory_slice, voice_profile, action_template_hint }.
-function userMessageFor(fixture) {
+export function userMessageFor(fixture) {
   return JSON.stringify({
     action_type: fixture.input.actionType,
     event: fixture.input.event,
@@ -111,9 +118,7 @@ function userMessageFor(fixture) {
 // stale answer is never silently reused. `tag` separates draft vs judge calls.
 
 function cacheKey(model, prompt, userMessage, tag) {
-  return createHash('sha256')
-    .update(`${model}\n${prompt}\n${userMessage}\n${tag}`)
-    .digest('hex');
+  return createHash('sha256').update(`${model}\n${prompt}\n${userMessage}\n${tag}`).digest('hex');
 }
 
 async function cacheGet(key) {
@@ -188,9 +193,9 @@ function makeBrokenDrafter() {
 
 // --- LLM-as-judge (cached, real haiku) --------------------------------------
 
-const JUDGE_SYSTEM = [
+export const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring a single drafted message a parent-assistant',
-  'product would send on a parent\'s behalf to a clinic, daycare, family member, or',
+  "product would send on a parent's behalf to a clinic, daycare, family member, or",
   'an internal daily digest. Score TONE & APPROPRIATENESS on a 1–5 integer scale:',
   '5 = warm, natural, first-person from the parent, appropriate to the recipient;',
   '1 = robotic, corporate, performs emotion, refers to itself as an AI, or is wrong',
@@ -198,7 +203,7 @@ const JUDGE_SYSTEM = [
 ].join(' ');
 
 const JUDGE_TOOL = 'score';
-const JUDGE_JSON_SCHEMA = {
+export const JUDGE_JSON_SCHEMA = {
   type: 'object',
   // Reason BEFORE score: a score emitted first is a score reasoned backwards from.
   properties: {
@@ -258,7 +263,8 @@ function makeJudge(model, cachedOnly, cost) {
 function collectStrings(value, out) {
   if (typeof value === 'string') out.push(value);
   else if (Array.isArray(value)) for (const v of value) collectStrings(v, out);
-  else if (value && typeof value === 'object') for (const v of Object.values(value)) collectStrings(v, out);
+  else if (value && typeof value === 'object')
+    for (const v of Object.values(value)) collectStrings(v, out);
 }
 
 function draftText(payload) {
@@ -353,7 +359,9 @@ async function main() {
 
   const cost = { liveCalls: 0, sonnetIn: 0, sonnetOut: 0, haikuIn: 0, haikuOut: 0 };
   const draft =
-    mode === 'broken' ? makeBrokenDrafter() : makeRealDrafter(drafterLane, prompt, cachedOnly, cost);
+    mode === 'broken'
+      ? makeBrokenDrafter()
+      : makeRealDrafter(drafterLane, prompt, cachedOnly, cost);
   const judge = makeJudge(judgeModel, cachedOnly, cost);
 
   console.log(
@@ -419,7 +427,20 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('drafter eval harness error:', err);
-  process.exit(2);
-});
+// Imported by the no-spend estimate. A direct `node` run is the eval.
+function runningAsScript() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (runningAsScript()) {
+  main().catch((err) => {
+    console.error('drafter eval harness error:', err);
+    process.exit(2);
+  });
+}

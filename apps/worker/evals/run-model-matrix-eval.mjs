@@ -122,8 +122,15 @@ const DRAFT_SCHEMA = {
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     rationale: { type: 'string' },
     recipient_visibility: { type: 'string', enum: ['public', 'internal_only'] },
+    commits_parent_to_enrollment_booking_or_payment: { type: 'boolean' },
   },
-  required: ['payload', 'confidence', 'rationale', 'recipient_visibility'],
+  required: [
+    'payload',
+    'confidence',
+    'rationale',
+    'recipient_visibility',
+    'commits_parent_to_enrollment_booking_or_payment',
+  ],
 };
 
 // Mirrors the reviewer's submit_verdict tool (src/agents/reviewer.ts).

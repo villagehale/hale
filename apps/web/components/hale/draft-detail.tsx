@@ -25,6 +25,7 @@ const HIDDEN_FIELDS = new Set([
   'sourceRef',
   'reversalHandle',
   'privacySensitive',
+  'commits_parent_to_enrollment_booking_or_payment',
 ]);
 
 /** The payload keys that still deserve a labeled line: string-valued, not already
@@ -144,9 +145,7 @@ function CalendarBody({ payload }: { payload: Record<string, unknown> }) {
   ]);
   return (
     <>
-      {title ? (
-        <p className="font-display text-[1.0625rem] text-spruce">{title}</p>
-      ) : null}
+      {title ? <p className="font-display text-[1.0625rem] text-spruce">{title}</p> : null}
       {when ? <Line label="when">{when}</Line> : null}
       {where ? <Line label="where">{where}</Line> : null}
       <ExtraLines payload={payload} shown={shown} />
@@ -161,9 +160,7 @@ function SupplyBody({ payload }: { payload: Record<string, unknown> }) {
   const shown = new Set(['item', 'amountUsd', 'quantity']);
   return (
     <>
-      {item ? (
-        <p className="font-display text-[1.0625rem] text-spruce">{item}</p>
-      ) : null}
+      {item ? <p className="font-display text-[1.0625rem] text-spruce">{item}</p> : null}
       {quantity !== null ? <Line label="quantity">{quantity}</Line> : null}
       {amount !== null ? (
         <Line label="amount">
@@ -184,9 +181,7 @@ function ActivityBody({ payload }: { payload: Record<string, unknown> }) {
   const shown = new Set(['title', 'summary', 'source_url', 'coverage_note']);
   return (
     <>
-      {title ? (
-        <p className="font-display text-[1.0625rem] text-spruce">{title}</p>
-      ) : null}
+      {title ? <p className="font-display text-[1.0625rem] text-spruce">{title}</p> : null}
       {summary ? <p className="text-spruce leading-relaxed">{summary}</p> : null}
       <ExtraLines payload={payload} shown={shown} />
     </>
