@@ -29,6 +29,7 @@ export async function discoverForFamily(
     finder: deps.finder,
     subject: options.subject,
     window: options.searchSeason ? `this coming ${options.searchSeason}` : 'this year',
+    excludePreviouslyOffered: true,
   });
   if (found.reason === 'no_area' || found.reason === 'no_non_teen_children')
     return { status: found.reason };

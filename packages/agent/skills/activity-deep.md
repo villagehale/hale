@@ -111,6 +111,19 @@ still a registration fact.
 
 ## Step 2 — EXTRACT (the `activity_deep` tool)
 
+`as_of` is today's date. Respect the requested window, not a prior year's search
+result. Every row needs `location_quote`, a verbatim source span establishing
+the requested town AND region/country. Same-named cities elsewhere are not matches.
+Classify `relevance` as `current`, `unknown`, `past`, `wrong_location`, or
+`outside_window`. `current` needs a verbatim `relevance_quote` proving the term,
+upcoming occurrence or explicitly ongoing program. A copyright year is not a
+term year; a weekly schedule in an archived event is not an ongoing recurrence.
+Unknown programs may stay, with no claimed schedule. Names and age fits are
+literal source spans, not composites. Each `when` and `price` must be a literal
+span inside its own `when_quote` / `price_quote` on `source_url`, belonging to
+THIS program. No published price does not mean free; preserve currency and units.
+`registration` is also a literal source span, never an inferred opening or paraphrase.
+
 Return what you READ, as structured rows. Never a paragraph, never a guess.
 
 ```json

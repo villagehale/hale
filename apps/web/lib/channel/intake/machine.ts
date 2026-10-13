@@ -63,6 +63,7 @@ import { reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { recordActivityOffers } from '~/lib/village/live';
 import { groupsFromFindBody } from './activity-map';
 import type { IntakeAnswerComposer } from './answer';
 import {
@@ -2753,11 +2754,19 @@ async function provision(
       ),
     ]);
     if (map && map.source !== 'unsent') {
+      let delivered = false;
       for (const bubble of map.bubbles) {
         if (bubble.trim().length === 0) continue;
-        await sendAndRecord(database, ctx, bubble, deps, []);
+        const sentMap = await sendAndRecord(database, ctx, bubble, deps, []);
+        if (!sentMap.channelMessageId) {
+          delivered = false;
+          break;
+        }
+        delivered = true;
         deps.keepTyping?.();
       }
+      const offered = radar.groups?.flatMap((group) => group.picks ?? []) ?? [];
+      if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
     outboundBody = friendOutbound(spoken) ?? '';
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {

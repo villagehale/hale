@@ -75,7 +75,7 @@ describe('find_activities', () => {
     expect(seen[0]).toEqual({
       subject: 'toddler gymnastics',
       window: 'this fall',
-      town: 'Halton Hills',
+      town: 'Halton Hills, Ontario, Canada',
       stage: 'toddler',
     });
   });

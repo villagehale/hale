@@ -19,12 +19,15 @@ import type { WeekendPick } from './radar-decide';
  */
 
 const FAMILY = 'family-1';
+const NOW = new Date('2026-10-13T14:00:00Z');
 
 function pick(name: string, overrides: Partial<ActivityPick> = {}): ActivityPick {
   return {
     name,
     ageFit: 'ages 3-5',
     when: 'Saturdays 10am',
+    eventDate: '2026-10-17',
+    sourceUrl: 'https://example.org/program',
     price: '$12',
     sourceName: 'City of Toronto',
     source: 'web',
@@ -36,11 +39,12 @@ function civic(title: string, venueName: string | null = 'Main Library'): Weeken
   return {
     candidateRef: { id: `civic-${title}`, title, venueName },
     day: 'saturday',
+    eventDate: '2026-10-17',
     kidNames: [],
     whyFacts: [],
     access: 'drop_in',
     when: null,
-    verifiedUrl: null,
+    verifiedUrl: 'https://example.org/program',
   };
 }
 
@@ -126,7 +130,56 @@ describe('categoriesForAges', () => {
 });
 
 describe('collectActivityMap', () => {
+  it('does not show the same occurrence twice across categories', async () => {
+    const { finder } = finderWith({
+      learning_sports_arts: [pick('Workshop')],
+      swimming: [pick('Workshop')],
+    });
+    const map = await collectActivityMap({
+      finder,
+      children: [{ name: null, ageMonths: 50 }],
+      areaCoarse: 'M5V',
+      civic: [],
+      familyId: FAMILY,
+      now: NOW,
+    });
+    expect(map.titles).toEqual(['Workshop']);
+  });
   const kids = [{ name: 'Maya', ageMonths: 50 }];
+  it('asks for this week in a qualified town and rejects past, undated, invalid-date and source-less results', async () => {
+    const seen: unknown[] = [];
+    const finder: ActivityFinder = {
+      find: async (query) => {
+        seen.push(query);
+        return {
+          found: true,
+          picks: [
+            pick('Old term', { eventDate: '2025-11-20' }),
+            pick('Today', { eventDate: '2026-10-13' }),
+            pick('Undated', { eventDate: undefined }),
+            pick('Impossible date', { eventDate: '2027-02-30' }),
+            pick('Next week', { eventDate: '2026-10-19' }),
+            pick('No source', { sourceUrl: undefined }),
+            pick('Upcoming workshop'),
+          ],
+        };
+      },
+    };
+    const map = await collectActivityMap({
+      finder,
+      children: kids,
+      areaCoarse: 'L7R',
+      civic: [
+        { ...civic('Old session'), eventDate: '2025-10-20' },
+        { ...civic('Undated session'), eventDate: null },
+      ],
+      familyId: FAMILY,
+      now: NOW,
+    });
+    expect(seen[0]).toMatchObject({ window: 'this week', town: 'Burlington, Ontario, Canada' });
+    expect(JSON.stringify(seen)).not.toMatch(/Maya|L7R/);
+    expect(new Set(map.titles)).toEqual(new Set(['Upcoming workshop']));
+  });
 
   it('runs one real search per fitting category and keeps two or three results each', async () => {
     const { finder, subjects } = finderWith({
@@ -145,6 +198,7 @@ describe('collectActivityMap', () => {
       areaCoarse: 'M5V',
       civic: [],
       familyId: FAMILY,
+      now: NOW,
     });
     expect(map.finder).toBe('used');
     expect(subjects).toHaveLength(MAX_MAP_GROUPS);
@@ -156,7 +210,7 @@ describe('collectActivityMap', () => {
     expect(map.groups[0]?.lines).toHaveLength(MAX_MAP_ITEMS_PER_GROUP);
     expect(map.groups[0]?.lines).not.toContain(expect.stringContaining('Gymnastics'));
     expect(map.groups[1]?.lines).toEqual(['Parent and tot swim (ages 3-5) - Saturdays 10am']);
-    expect(map.groups[2]?.lines).toEqual(['Music together (ages 3-5) - $12']);
+    expect(map.groups[2]?.lines).toEqual(['Music together (ages 3-5) - 2026-10-17 - $12']);
     expect(map.lines).toHaveLength(5);
     expect(map.titles).toEqual([
       'Swim',
@@ -175,6 +229,7 @@ describe('collectActivityMap', () => {
       areaCoarse: 'M5V',
       civic: [],
       familyId: FAMILY,
+      now: NOW,
     });
     expect(map.groups.map((group) => group.category)).toEqual(['learning_sports_arts']);
     expect(map.lines).toEqual(['Swim (ages 3-5) - Saturdays 10am - $12']);
@@ -191,6 +246,7 @@ describe('collectActivityMap', () => {
       areaCoarse: 'M5V',
       civic: [civic('Story time'), civic('Baby rhyme time'), civic('Lego club')],
       familyId: FAMILY,
+      now: NOW,
     });
     const free = map.groups.find((group) => group.category === 'free_public');
     expect(free?.lines).toHaveLength(MAX_MAP_ITEMS_PER_GROUP);
@@ -205,6 +261,7 @@ describe('collectActivityMap', () => {
       areaCoarse: 'M5V',
       civic: [civic('Story time')],
       familyId: FAMILY,
+      now: NOW,
     });
     expect(map.finder).toBe('not_configured');
     expect(map.groups).toEqual([
@@ -230,6 +287,7 @@ describe('collectActivityMap', () => {
       areaCoarse: 'M5V',
       civic: [],
       familyId: FAMILY,
+      now: NOW,
     });
     expect(map.finder).toBe('used');
     expect(map.lines).toEqual(['Swim (ages 3-5) - Saturdays 10am - $12']);
@@ -245,6 +303,7 @@ describe('collectActivityMap', () => {
       areaCoarse: 'M5V',
       civic: [],
       familyId: FAMILY,
+      now: NOW,
     });
     expect(none.finder).toBe('failed');
     expect(none.lines).toEqual([]);
@@ -258,6 +317,7 @@ describe('collectActivityMap', () => {
       areaCoarse: 'M5V',
       civic: [],
       familyId: FAMILY,
+      now: NOW,
     });
     expect(map.finder).toBe('empty');
     expect(map.groups).toEqual([]);
@@ -277,6 +337,7 @@ describe('collectActivityMap', () => {
       areaCoarse: 'M5V',
       civic: [],
       familyId: FAMILY,
+      now: NOW,
     });
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.join(' ')).not.toMatch(/maya/i);

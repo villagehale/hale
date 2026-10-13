@@ -7,6 +7,7 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ActivityQuery } from './deidentify';
 import { type PageVerdict, readEvidence, readPageVerdict } from './evidence';
 import type { ActivityPick } from './lane';
+import { guardActivityPick } from './pick-evidence';
 
 /**
  * THE DEEP PASS — what the follow-up sweep does instead of re-running the same shallow
@@ -148,6 +149,11 @@ const slotSchema = z.object({
   registration: z.string().nullish(),
   source_name: z.string().nullish(),
   source_url: z.string().nullish(),
+  when_quote: z.string().nullish(),
+  price_quote: z.string().nullish(),
+  location_quote: z.string().nullish(),
+  relevance: z.enum(['current', 'unknown', 'past', 'wrong_location', 'outside_window']).nullish(),
+  relevance_quote: z.string().nullish(),
 });
 
 /**
@@ -231,11 +237,19 @@ const extractJsonSchema: Anthropic.Tool.InputSchema = {
           registration: { type: 'string' },
           source_name: { type: 'string' },
           source_url: { type: 'string' },
+          when_quote: { type: 'string' },
+          price_quote: { type: 'string' },
+          location_quote: { type: 'string' },
+          relevance: {
+            type: 'string',
+            enum: ['current', 'unknown', 'past', 'wrong_location', 'outside_window'],
+          },
+          relevance_quote: { type: 'string' },
         },
         // `when`, `price` and `registration` are omitted for the reason ActivityPick
         // states: a required field a page never published is one the model can only
         // satisfy by inventing or by dropping the whole find, and it chooses dropping.
-        required: ['name', 'age_fit', 'source_name', 'source_url'],
+        required: ['name', 'age_fit', 'source_name', 'source_url', 'location_quote', 'relevance'],
       },
     },
   },
@@ -244,19 +258,20 @@ const extractJsonSchema: Anthropic.Tool.InputSchema = {
 
 /** The research payload — the de-identified query and nothing that could identify a
  * child. Shared with the eval, which replicates this shape. */
-export function deepUserMessage(query: ActivityQuery): string {
+export function deepUserMessage(query: ActivityQuery, asOf?: string): string {
   return JSON.stringify({
     mode: 'deep_research',
     subject: query.subject,
     ...(query.town ? { town: query.town } : {}),
     ...(query.stage ? { stage: query.stage } : {}),
     ...(query.window ? { window: query.window } : {}),
+    ...(asOf ? { as_of: asOf } : {}),
   });
 }
 
 /** The extract payload: the same query plus what the pages said. Blind to the parent. */
-export function deepExtractMessage(query: ActivityQuery, notes: string): string {
-  return JSON.stringify({ ...JSON.parse(deepUserMessage(query)), research_notes: notes });
+export function deepExtractMessage(query: ActivityQuery, notes: string, asOf?: string): string {
+  return JSON.stringify({ ...JSON.parse(deepUserMessage(query, asOf)), research_notes: notes });
 }
 
 function field(value: unknown): string {
@@ -346,6 +361,7 @@ export function createDeepResearcher(
 ): DeepResearcher {
   return {
     async research(query) {
+      const asOf = now().toISOString().slice(0, 10);
       let resolved: AgentClient;
       try {
         resolved = client();
@@ -397,7 +413,7 @@ export function createDeepResearcher(
                 max_uses: MAX_DEEP_FETCHES,
               } as unknown as Anthropic.ToolUnion,
             ],
-            messages: [{ role: 'user', content: deepUserMessage(query) }],
+            messages: [{ role: 'user', content: deepUserMessage(query, asOf) }],
           })
           .finalMessage();
       } catch (err) {
@@ -419,7 +435,7 @@ export function createDeepResearcher(
           client: resolved,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
-          userMessage: deepExtractMessage(query, evidence.notes),
+          userMessage: deepExtractMessage(query, evidence.notes, asOf),
           toolName: 'activity_deep',
           toolDescription: 'Return the concrete slots the pages actually printed.',
           inputJsonSchema: extractJsonSchema,
@@ -430,7 +446,11 @@ export function createDeepResearcher(
         return unavailable('extract_failed', reason(err));
       }
 
-      const slots = toDeepSlots(extracted.slots);
+      const guarded = extracted.slots.flatMap((row) => {
+        const pick = guardActivityPick(row, evidence.pages, { ...query, asOf });
+        return pick ? [pick] : [];
+      });
+      const slots = toDeepSlots(guarded);
       if (evidence.pagesRead === 0) {
         // THE BENCHMARK DEFECT, refused in code. Every fetch was turned away, so this turn
         // knows nothing about what those pages carry. Slots scraped out of snippets are
@@ -446,6 +466,8 @@ export function createDeepResearcher(
           pagesRefused: evidence.pagesRefused,
         };
       }
+      if (extracted.slots.length && !slots.length)
+        return unavailable('extract_failed', 'unverified_picks');
       return {
         status: 'read',
         slots,

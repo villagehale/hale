@@ -25,7 +25,7 @@ const QUERY: ActivityQuery = {
 
 const VENUE_URL = 'https://cartwheelsgymcentre.example/programs';
 const VENUE_TEXT =
-  'Tiny Gym Sundays 9:30-10:15, Sept 14 to Oct 26. $124 per term. Registration has been open since July 22.';
+  'Tiny Gym, Cartwheels Gym Centre. Kinderfun, Cartwheels Gym Centre. Halton Hills, Ontario, Canada. walking to 3.5 years. Ongoing program. Tiny Gym Sundays 9:30-10:15, Sept 14 to Oct 26. $124 per term. Registration has been open since July 22.';
 
 function leg(angle: DeepAngle, overrides: Partial<AngleLeg> = {}): AngleLeg {
   return {
@@ -55,6 +55,9 @@ function backedRow(overrides: Partial<SynthesisRow> = {}): SynthesisRow {
     registration_quote: 'Registration has been open since July 22',
     source_name: 'Cartwheels Gym Centre',
     source_url: VENUE_URL,
+    location_quote: 'Halton Hills, Ontario, Canada',
+    relevance: 'current',
+    relevance_quote: 'Ongoing program',
     ...overrides,
   };
 }

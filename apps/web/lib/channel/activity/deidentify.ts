@@ -112,12 +112,14 @@ export type ActivityDeidResult =
 
 /**
  * `halton_hills` → `Halton Hills`, and `whitchurch_stouffville` → `Stouffville`. Taken
- * from {@link townLabel} rather than derived here, so a town has exactly one spelling:
+ * from {@link townLabel} rather than derived here, with the closed GTA union's known
+ * province and country appended so Burlington never becomes Burlington, Vermont.
+ * A town has exactly one spelling:
  * a second title-caser could disagree with the one the parent is shown, and this string
  * is the town a web search is run against on that parent's behalf.
  */
 export function townFor(municipality: Municipality): string {
-  return townLabel(municipality);
+  return `${townLabel(municipality)}, Ontario, Canada`;
 }
 
 /** True when `text` names any member of this household, as a whole word in any alphabet

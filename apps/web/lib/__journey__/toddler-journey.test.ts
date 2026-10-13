@@ -528,6 +528,7 @@ async function runToddlerJourney(): Promise<Journey> {
       );
 
   const nudgeDeps: NudgeRunDeps = {
+    recordActivityOffers,
     selectFamilies: async () => nudgeFamilies(),
     /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
      * (channel/family-recipients.ts). This household has one parent. */

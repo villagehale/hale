@@ -186,7 +186,15 @@ export async function addArea(
       targetId: row.id,
       after: { city, province, postalCode, note },
     });
-    return toSavedArea({ id: row.id, city, province, note, postalCode, isActive: false, createdAt: row.createdAt });
+    return toSavedArea({
+      id: row.id,
+      city,
+      province,
+      note,
+      postalCode,
+      isActive: false,
+      createdAt: row.createdAt,
+    });
   });
 
   return { status: 'added', area };
@@ -208,10 +216,7 @@ export async function setActiveArea(
       .select({ id: schema.familyAreas.id })
       .from(schema.familyAreas)
       .where(
-        and(
-          eq(schema.familyAreas.id, args.areaId),
-          eq(schema.familyAreas.familyId, args.familyId),
-        ),
+        and(eq(schema.familyAreas.id, args.areaId), eq(schema.familyAreas.familyId, args.familyId)),
       )
       .limit(1);
     if (!rows[0]) {
@@ -222,10 +227,7 @@ export async function setActiveArea(
       .update(schema.familyAreas)
       .set({ isActive: false })
       .where(
-        and(
-          eq(schema.familyAreas.familyId, args.familyId),
-          eq(schema.familyAreas.isActive, true),
-        ),
+        and(eq(schema.familyAreas.familyId, args.familyId), eq(schema.familyAreas.isActive, true)),
       );
     await tx
       .update(schema.familyAreas)
@@ -264,10 +266,7 @@ export async function removeArea(
       .select({ id: schema.familyAreas.id, isActive: schema.familyAreas.isActive })
       .from(schema.familyAreas)
       .where(
-        and(
-          eq(schema.familyAreas.id, args.areaId),
-          eq(schema.familyAreas.familyId, args.familyId),
-        ),
+        and(eq(schema.familyAreas.id, args.areaId), eq(schema.familyAreas.familyId, args.familyId)),
       )
       .limit(1);
     const row = rows[0];
@@ -341,10 +340,16 @@ export async function readActiveArea(
     return { city: active.city, province: active.province };
   }
   const rows = await database
-    .select({ city: schema.families.city, province: schema.families.province })
+    .select({
+      city: schema.families.city,
+      province: schema.families.province,
+      provinceOrState: schema.families.provinceOrState,
+    })
     .from(schema.families)
     .where(eq(schema.families.id, familyId))
     .limit(1);
   const family = rows[0];
-  return family?.city ? { city: family.city, province: family.province } : null;
+  return family?.city
+    ? { city: family.city, province: family.province ?? family.provinceOrState ?? null }
+    : null;
 }

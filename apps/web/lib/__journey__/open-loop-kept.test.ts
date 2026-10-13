@@ -25,6 +25,7 @@ import {
 } from '~/lib/commitments/ledger';
 import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -232,6 +233,7 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     },
     transport,
     client: null,
+    recordActivityOffers,
     // The REAL ledger writer over the same store.
     fulfillCommitment,
     // The REAL offer writer over the same store: a health nudge whose task is booking

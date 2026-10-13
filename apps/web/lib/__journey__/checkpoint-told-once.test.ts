@@ -23,6 +23,7 @@ import { matchHealthCheckpoints } from '~/lib/health/match';
 import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { checkpointToldKey, checkpointToldKeyPrefix } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -242,6 +243,7 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     },
     transport,
     client: null,
+    recordActivityOffers,
     // MEM-10 · the REAL writer over the same store (this family was promised nothing,
     // so the honest outcome here is the ledger's `none_open`).
     fulfillCommitment,

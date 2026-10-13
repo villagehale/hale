@@ -8,7 +8,11 @@ import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { activityClient } from '~/lib/pipeline/client';
-import { findFamilyActivities } from '~/lib/village/live';
+import {
+  activityRecommendationKey,
+  findFamilyActivities,
+  unofferedActivityPicks,
+} from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type ActivityMapGroup, collectActivityMap, renderActivityMapBody } from './activity-map';
 import type { ExtractedChild } from './extract';
@@ -302,11 +306,14 @@ export async function readCandidates(
   familyId: string,
   options: { window?: string; now?: Date; finder?: ActivityFinder } = {},
 ): Promise<RadarCandidate[]> {
-  const found = await findFamilyActivities(database, familyId, options);
+  const found = await findFamilyActivities(database, familyId, {
+    ...options,
+    excludePreviouslyOffered: true,
+  });
   return found.picks
     .filter((pick) => !!pick.eventDate && !!pick.sourceUrl)
     .map((pick) => ({
-      id: pick.sourceUrl!,
+      id: activityRecommendationKey(pick)!,
       title: pick.name,
       venueName: pick.sourceName,
       ageRange: pick.ageFit,
@@ -363,7 +370,25 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       });
       if (input.activityMap) {
         const map = await collectActivityMap({
-          finder: deps.yearFinder ?? null,
+          now,
+          timeZone,
+          finder: deps.yearFinder
+            ? {
+                async find(query) {
+                  const found = await deps.yearFinder!.find(query);
+                  return found.found
+                    ? {
+                        found: true,
+                        picks: await unofferedActivityPicks(
+                          deps.database,
+                          input.familyId,
+                          found.picks,
+                        ),
+                      }
+                    : found;
+                },
+              }
+            : null,
           children,
           areaCoarse: area,
           civic,

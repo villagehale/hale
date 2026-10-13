@@ -273,6 +273,11 @@ function harness(
       offers.push({ ref: input.ref, channelMessageId: input.channelMessageId });
       return { status: 'not_an_offer' };
     },
+    recordActivityOffers: async (_db, familyId, picks) => {
+      for (const pick of picks)
+        writes.push({ table: schema.familyActivityHistory, payload: { familyId, ...pick } });
+      return [];
+    },
     threadMessage: async (_db, input) => {
       threaded.push(input);
       return 'conv-1';
@@ -1048,7 +1053,11 @@ describe('runNudgeCron — the weekday drop-in', () => {
     const h = harness({
       families: NO_REGION,
       children: SIX_MONTH_OLD,
-      candidates: CIVIC,
+      candidates: CIVIC.map((pick) => ({
+        ...pick,
+        source: 'web',
+        sourceUrl: 'https://venue.example/dropin',
+      })),
       weekdayCare: AT_HOME,
     });
 
@@ -1062,6 +1071,29 @@ describe('runNudgeCron — the weekday drop-in', () => {
     // family's find would have been deduped against a swap and vanished.
     expect(String(write?.payload.dedupeKey)).toContain(':weekday_dropin:');
     expect(String(write?.payload.dedupeKey)).not.toContain('weather_swap');
+    expect(h.writes.filter((w) => w.table === schema.familyActivityHistory)).toHaveLength(1);
+  });
+
+  it('does not consume the live recommendation when delivery fails', async () => {
+    armed();
+    const h = harness({
+      families: NO_REGION,
+      children: SIX_MONTH_OLD,
+      candidates: CIVIC.map((pick) => ({
+        ...pick,
+        source: 'web',
+        sourceUrl: 'https://venue.example/dropin',
+      })),
+      weekdayCare: AT_HOME,
+    });
+    h.deps.transport = {
+      send: async () => {
+        throw new Error('delivery failed');
+      },
+    };
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result.sent).toBe(0);
+    expect(h.writes.filter((w) => w.table === schema.familyActivityHistory)).toHaveLength(0);
   });
 
   it('a second fire in the same week sends nothing a second time', async () => {

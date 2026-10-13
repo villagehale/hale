@@ -385,7 +385,9 @@ async function runBrief() {
   const requests: string[] = [];
   const urls = picks.map((_, index) => `https://sources.example/fixture/${index}`);
   liveSourceText.clear();
-  picks.forEach((pick, index) => liveSourceText.set(urls[index]!, JSON.stringify(pick)));
+  picks.forEach((pick, index) =>
+    liveSourceText.set(urls[index]!, `New York, NY. Ongoing program. ${JSON.stringify(pick)}`),
+  );
   // The new page-read contract is exercised against public fixture facts from the
   // recording. Booking extraction still uses the content-addressed model recording.
   const client = () => {
@@ -407,6 +409,11 @@ async function runBrief() {
                       price: pick.price,
                       source_name: pick.sourceName,
                       source_url: urls[index],
+                      location_quote: 'New York, NY',
+                      relevance: 'current',
+                      relevance_quote: 'Ongoing program',
+                      when_quote: pick.when,
+                      price_quote: pick.price,
                     })),
                   },
                 },

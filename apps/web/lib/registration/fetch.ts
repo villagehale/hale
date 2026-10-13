@@ -10,6 +10,9 @@ export function stripHtml(html: string): string {
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
+    .replace(/&pound;/g, '£')
+    .replace(/&euro;/g, '€')
+    .replace(/&yen;/g, '¥')
     .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
     .replace(/\s+/g, ' ')
     .trim();

@@ -59,6 +59,19 @@ the other.
 
 ## Step 3 — QUOTE EVERY FACT (the `activity_synthesis` tool)
 
+`as_of` is today's date. Respect the requested window; never promote an archived
+event to a recurrence today or roll its year forward. Each row needs a verbatim
+`location_quote` on `source_url` proving the town AND region/country. Same-named
+cities in other regions are not matches. Return `relevance` (`current`,
+`unknown`, `past`, `wrong_location`, `outside_window`), and for `current` a
+verbatim `relevance_quote` on `source_url` proving the requested occurrence,
+current term, or explicitly ongoing program. Do not use a copyright year.
+Only current/undated real programs belong in the handover; unknown dates stay
+unknown. `name` and `age_fit` are literal spans from `source_url`, not composites.
+`when` and `price` must be literal spans inside their own quotes. A quote for a
+time cannot prove a fee; no published fee does not mean free. Preserve currency
+and fee units, and never borrow a rental/other program's fee.
+
 Each of `when`, `price` and `registration` comes with two companions:
 
 - a `_quote` — the span from the page, copied out **character for character**,

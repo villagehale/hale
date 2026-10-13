@@ -56,7 +56,7 @@ const SLOT: DeepSlot = {
 
 /** The page every backed fixture quotes off. Real refutation, real quotes. */
 const PAGE_TEXT =
-  'Tiny Gym Sundays 9:30-10:15, Sept 14 to Oct 26. $124 per term. Registration has been open since July 22.';
+  'Tiny Gym, Cartwheels Gym Centre. Halton Hills, Ontario, Canada. walking to 3.5 years. Ongoing program. Tiny Gym Sundays 9:30-10:15, Sept 14 to Oct 26. $124 per term. Registration has been open since July 22.';
 
 const READ: DeepResult = {
   status: 'read',
@@ -113,6 +113,9 @@ function scriptedLane(result: DeepResult): DeepJobDeps['lane'] {
             age_fit: slot.ageFit,
             when: slot.when,
             when_quote: 'Tiny Gym Sundays 9:30-10:15, Sept 14 to Oct 26',
+            location_quote: 'Halton Hills, Ontario, Canada',
+            relevance: 'current',
+            relevance_quote: 'Ongoing program',
             price: slot.price,
             price_quote: '$124 per term',
             registration: slot.registration,

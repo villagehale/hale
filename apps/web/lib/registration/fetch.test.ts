@@ -1,7 +1,19 @@
 import { type Server, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MAX_PAGE_BYTES, MAX_PAGE_TEXT_CHARS, createFetchBody, createFetchPage } from './fetch';
+import {
+  MAX_PAGE_BYTES,
+  MAX_PAGE_TEXT_CHARS,
+  createFetchBody,
+  createFetchPage,
+  stripHtml,
+} from './fetch';
+
+it('preserves published non-dollar currencies in page text', () => {
+  expect(stripHtml('<td>&pound;31 per Month</td><td>&euro;12</td><td>&yen;500</td>')).toBe(
+    '£31 per Month €12 ¥500',
+  );
+});
 // ── createFetchBody / createFetchPage ────────────────────────────────────────
 
 /**

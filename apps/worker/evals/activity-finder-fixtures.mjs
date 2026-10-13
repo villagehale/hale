@@ -33,13 +33,40 @@
 // a careless model might have written instead, and it exists so the de-identification
 // gate has something real to refuse.
 
+// Frozen recording clock: CI replays evidence from this day, not a new query every day.
+export const ACTIVITY_AS_OF = '2026-10-13';
+
 export const ACTIVITY_FIXTURES = [
+  {
+    id: 'burlington-ontario-not-washington',
+    subject: 'Burlington Public Library storytime for preschoolers',
+    window: 'October 2026',
+    town: 'Burlington, Ontario, Canada',
+    stage: 'preschool',
+    rawSubject: 'Burlington library storytime',
+    dropsFromQuery: [],
+    expectPicks: null,
+    watchFor:
+      'Regression from a real failed source check: Burlington, Washington or New Jersey is NOT Ontario. A completed October 2024 storytime cannot be relabelled ongoing in October 2026. An empty result is safer than an unverified match. Never infer Free just because a library page does not print a price.',
+  },
+  {
+    id: 'greenwich-london-published-swimming',
+    subject: 'Royal Greenwich leisure centre swimming lessons for kids',
+    window: 'October 2026',
+    town: 'Greenwich, London, UK',
+    stage: 'child',
+    rawSubject: 'Greenwich swimming lessons',
+    dropsFromQuery: [],
+    expectPicks: true,
+    watchFor:
+      'Positive international source control: Greenwich in London, not a US same-named town. Read the leisure operator’s own program page. Preserve the currency and fee unit actually published for each stream, not a different class’s fee. Do not invent a dated occurrence or registration opening from an undated recurring lesson timetable.',
+  },
   // ── must find something: the incident's own question ──────────────────────
   {
     id: 'toddler-fall-programs-halton-hills',
     subject: 'toddler gymnastics and parent-and-tot classes',
     window: 'September to December',
-    town: 'Halton Hills',
+    town: 'Halton Hills, Ontario, Canada',
     stage: 'toddler',
     rawSubject: 'something for Noah, 18 months, from September to December',
     dropsFromQuery: ['noah', '18 months'],
@@ -51,7 +78,7 @@ export const ACTIVITY_FIXTURES = [
     id: 'preschool-swim-oakville',
     subject: 'preschool swim lessons',
     window: 'this fall',
-    town: 'Oakville',
+    town: 'Oakville, Ontario, Canada',
     stage: 'preschool',
     rawSubject: 'swim lessons for a 4 year old at 121 Maple Ave',
     dropsFromQuery: ['121 maple', '4 year'],
@@ -63,7 +90,7 @@ export const ACTIVITY_FIXTURES = [
     id: 'free-drop-in-georgetown',
     subject: 'free drop-in play group',
     window: null,
-    town: 'Halton Hills',
+    town: 'Halton Hills, Ontario, Canada',
     stage: 'toddler',
     rawSubject: 'free drop in near L7G 4S6',
     dropsFromQuery: ['l7g'],
@@ -77,14 +104,14 @@ export const ACTIVITY_FIXTURES = [
     id: 'named-venue-cartwheel',
     subject: 'Cartwheel Gym parent and tot classes',
     window: 'fall term',
-    town: 'Halton Hills',
+    town: 'Halton Hills, Ontario, Canada',
     stage: 'toddler',
     rawSubject: 'did you find anything at cartwheel gym for Noah',
     dropsFromQuery: ['noah'],
     expectPicks: null,
     mustMentionInNotes: 'cartwheel',
     watchFor:
-      "The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.",
+      'The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.',
   },
 
   // ── a VISIT, not a term: the travel brief's own query shape ───────────────
@@ -192,7 +219,7 @@ export const ACTIVITY_FIXTURES = [
     id: 'nothing-running-underwater-basket-weaving',
     subject: 'toddler underwater basket weaving lessons',
     window: 'this fall',
-    town: 'Halton Hills',
+    town: 'Halton Hills, Ontario, Canada',
     stage: 'toddler',
     rawSubject: 'toddler underwater basket weaving',
     dropsFromQuery: [],

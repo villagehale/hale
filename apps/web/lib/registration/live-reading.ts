@@ -61,7 +61,7 @@ function validPublishedDate({ date, time }: PublishedDate): boolean {
 }
 
 /** A real quote containing a real year is not proof of the model's month/day/hour. */
-function publishedValueIsQuoted(value: PublishedDate, evidence: string): boolean {
+export function publishedValueIsQuoted(value: PublishedDate, evidence: string): boolean {
   const [year, month, day] = value.date.split('-').map(Number);
   const months = [
     'jan(?:uary)?',

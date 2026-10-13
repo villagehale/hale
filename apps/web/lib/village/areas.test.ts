@@ -45,7 +45,12 @@ interface Capture {
 function fakeDb(store: {
   areaRows?: AreaRow[];
   limitRows?: AreaRow[];
-  family?: { areaCoarse?: string | null; city?: string | null; province?: string | null };
+  family?: {
+    areaCoarse?: string | null;
+    city?: string | null;
+    province?: string | null;
+    provinceOrState?: string | null;
+  };
   inserted?: Array<Record<string, unknown>>;
 }) {
   const capture: Capture = { inserts: [], updates: [], deletes: [] };
@@ -363,6 +368,10 @@ describe('resolveActiveAreaCoarse — active area drives village content, legacy
 });
 
 describe('readActiveArea — the header label', () => {
+  it('uses the existing province/state field when the newer province field is empty', async () => {
+    const { db } = fakeDb({ family: { city: 'Toronto', province: null, provinceOrState: 'ON' } });
+    expect(await readActiveArea(db, FAMILY_ID)).toEqual({ city: 'Toronto', province: 'ON' });
+  });
   it('returns the ACTIVE row city/province', async () => {
     const active: AreaRow = {
       id: AREA_ID,

@@ -29,7 +29,10 @@ const pick: ActivityPick = {
 
 async function household(teen = false, city: string | null = 'New York') {
   const { familyId } = await seedFamily(db.database);
-  await db.database.update(schema.families).set({ city }).where(eq(schema.families.id, familyId));
+  await db.database
+    .update(schema.families)
+    .set({ city, province: 'NY' })
+    .where(eq(schema.families.id, familyId));
   await seedChild(db.database, familyId, 'Private child name', teen ? 180 : 36);
   return familyId;
 }

@@ -173,7 +173,10 @@ export async function runDeepLane(deps: DeepLaneDeps, query: ActivityQuery): Pro
   // published facts (fanout.ts `MAX_PAGE_NOTE_CHARS`, and the 2026-08-24 run where it
   // refused fifty-three of them).
   const pages = fanOut.legs.flatMap((leg) => [...leg.pages]);
-  const refutation = refuteSlots(merged.rows, pages);
+  const refutation = refuteSlots(merged.rows, pages, {
+    ...query,
+    asOf: new Date().toISOString().slice(0, 10),
+  });
 
   return {
     result: {

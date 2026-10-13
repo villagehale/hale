@@ -144,7 +144,7 @@ describe('a street-level location never crosses the border', () => {
       query: {
         subject: 'Cartwheel Gym parent and tot classes',
         window: 'fall term',
-        town: 'Halton Hills',
+        town: 'Halton Hills, Ontario, Canada',
         stage: 'toddler',
       },
     });
@@ -214,10 +214,11 @@ describe('the shape of what may be sent', () => {
   });
 
   it('turns a municipality id into the words a search engine reads', () => {
-    expect(townFor('halton_hills')).toBe('Halton Hills');
-    expect(townFor('richmond_hill')).toBe('Richmond Hill');
-    expect(townFor('toronto')).toBe('Toronto');
+    expect(townFor('halton_hills')).toBe('Halton Hills, Ontario, Canada');
+    expect(townFor('richmond_hill')).toBe('Richmond Hill, Ontario, Canada');
+    expect(townFor('toronto')).toBe('Toronto, Ontario, Canada');
     // The search query must not name a town by a spelling the radar never uses.
-    expect(townFor('whitchurch_stouffville')).toBe('Stouffville');
+    expect(townFor('whitchurch_stouffville')).toBe('Stouffville, Ontario, Canada');
+    expect(townFor('burlington')).toBe('Burlington, Ontario, Canada');
   });
 });
