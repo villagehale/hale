@@ -335,7 +335,9 @@ describe('the general-answer runner', () => {
       ['pending-city-reply', true],
       ['pending-unrelated', false],
     ]);
-  });
+    // Loading production's place module and both postal tables takes a CI runner longer
+    // than the default five seconds.
+  }, 60_000);
 
   /**
    * The one check that is not the judge's, on its own: a marked name still in what the
