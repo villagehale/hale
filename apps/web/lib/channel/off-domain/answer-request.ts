@@ -97,6 +97,18 @@ export const ANSWER_ENDS_ON_THE_ANSWER =
   'The text message, and nothing but it. Its last words are the answer itself, or with missing_detail the question. Nothing is offered after it, and nothing after it points them somewhere else.';
 
 /**
+ * What belongs in each field of a `grounding` entry, said on the field itself, where the
+ * model reads it as it writes the entry (Sloane, 2026-10-13; the words are hers). A
+ * figure the notes gave for one kind of mortgage went out as the figure for another, and
+ * a count that can still grow was written down as settled. general-answer.md says both
+ * once, where it describes `grounding`.
+ */
+const GROUNDING_STATES =
+  'the specific as the notes qualify it, with the class, group or date they attach to it.';
+const GROUNDING_FROM =
+  'the words in research_notes it comes from, or `settled` only for what can no longer change. A running count, a record or who holds a title today is never `settled`.';
+
+/**
  * The model writes its fields in this order. First its READING of the text:
  * `hurt_ill_or_danger`, `yes` when the question turns out to describe someone hurt, ill
  * or in danger, which hands the turn to the safety door and sends nothing it wrote
@@ -114,7 +126,10 @@ export const answerJsonSchema = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { states: { type: 'string' }, from: { type: 'string' } },
+        properties: {
+          states: { type: 'string', description: GROUNDING_STATES },
+          from: { type: 'string', description: GROUNDING_FROM },
+        },
         required: ['states', 'from'],
       },
     },
