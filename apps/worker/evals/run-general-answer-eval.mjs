@@ -67,11 +67,9 @@
 // prints those two verdicts alone. What the judge says of each apart from the score (a
 // wrong fact, a safety miss) is printed beside it and is not part of this gate.
 
-import { execFileSync } from 'node:child_process';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import {
   ANSWER_FIXTURES,
@@ -346,8 +344,7 @@ function percentile(values, q) {
  * this cache's non-thinking outputs. Web search requests per turn are the mean of the
  * committed search cache. The drafter recording is one draft per fixture and one judge
  * where the fixture asks for tone. `--cached-only` is unchanged: a miss there still
- * exits 1. The autonomy-notice recording is #856's suite: four notices and four
- * judges. Its writer sends no cache breakpoint, so that prefix is 1× every call.
+ * exits 1. The autonomy-notice suite is priced in its own pull request.
  */
 async function printRecordingEstimate() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
@@ -372,7 +369,6 @@ async function printRecordingEstimate() {
   const draftJsonChars = [];
   const drafterJudgeChars = [];
   const draftTexts = [];
-  const noticeMessages = [];
   let searchRequestSum = 0;
   for (const name of await readdir(CACHE_DIR)) {
     if (!name.endsWith('.json')) continue;
@@ -417,14 +413,6 @@ async function printRecordingEstimate() {
       if (keys.length === 2 && keys[0] === 'reason' && keys[1] === 'score') {
         drafterJudgeChars.push(JSON.stringify(parsed).length);
       }
-    }
-    if (
-      cached.value &&
-      typeof cached.value === 'object' &&
-      typeof cached.value.message === 'string' &&
-      Object.keys(cached.value).length === 1
-    ) {
-      noticeMessages.push(cached.value.message);
     }
     if (typeof cached.searchRequests === 'number') {
       searchRequestSum += cached.searchRequests;
@@ -654,85 +642,6 @@ async function printRecordingEstimate() {
     });
   }
 
-  if (noticeMessages.length === 0) {
-    throw new Error('autonomy-notice estimate: the cache has no one-text message to price from');
-  }
-  const typicalNotice = [...noticeMessages].sort((a, b) => a.length - b.length)[
-    Math.ceil(noticeMessages.length / 2) - 1
-  ];
-  const noticeRef = 'origin/fix/vil-131-free-for-everyone';
-  const shown = (spec) =>
-    execFileSync('git', ['show', `${noticeRef}:${spec}`], { encoding: 'utf8', cwd: REPO_ROOT });
-  const noticeSkill = agent.parseSkill(shown('packages/agent/skills/autonomy-notice.md'));
-  const noticeLane = agent.pickLane(noticeSkill.meta.task);
-  const noticeJudgeModel = await readJudgeModel();
-  const noticeFixturePath = join(tmpdir(), 'hale-autonomy-notice-fixtures.mjs');
-  await writeFile(noticeFixturePath, shown('apps/worker/evals/autonomy-notice-fixtures.mjs'));
-  const noticeFixtures = (await import(pathToFileURL(noticeFixturePath).href))
-    .AUTONOMY_NOTICE_FIXTURES;
-  const noticeSchema = {
-    type: 'object',
-    additionalProperties: false,
-    properties: { message: { type: 'string', description: 'The one text Hale sends.' } },
-    required: ['message'],
-  };
-  const noticeJudgeSystem = [
-    'You are a strict reviewer scoring ONE text message Hale, a family planner that lives in',
-    "the parent's messages, sends. You are given `context` — the occasion (`armed`, `rearmed`,",
-    'or `acted`), the `actionType` token, `recentInbound` (the parent’s own texts), and',
-    '`localeHint` — and the `text`. Score 1-5.',
-    'Write your argument first, quoting the text, and only then the score.',
-    'A 5 is one text in the language of `recentInbound` when those texts show one, otherwise',
-    'the `localeHint`, and not a language the context never gave. It is in the first person and matches the occasion:',
-    'armed or rearmed says this kind will be handled without asking from now on; acted says',
-    'it was just done without asking. It says the parent can tell Hale to stop anytime. It',
-    'asks for at most one thing. It reads like a friend who is also a parent texting: chill,',
-    'casual, specific. It does not invent a recipient, a time, a price, a place, or a link.',
-    'Do not grade word choice, length or punctuation for their own sake; the writer picks',
-    'the words.',
-    'A 1 or 2 is any of: the wrong occasion; a third-person "Hale" as the subject; more than',
-    'one ask; a word the parent is told to reply with; a numbered list or a template; an',
-    'invented fact.',
-    'A 3 matches the occasion but reads like a notification or an assistant offering a service.',
-    'Reply with ONLY the score tool.',
-  ].join(' ');
-  const noticeJudgeSchema = {
-    type: 'object',
-    properties: {
-      reason: { type: 'string' },
-      score: { type: 'integer', minimum: 1, maximum: 5 },
-    },
-    required: ['reason', 'score'],
-  };
-  const noticeCalls = [];
-  for (const fixture of noticeFixtures) {
-    const context = {
-      occasion: fixture.context.occasion,
-      actionType: fixture.context.actionType,
-      localeHint: fixture.context.localeHint,
-      recentInbound: fixture.context.recentInbound,
-      ...(fixture.context.detail ? { detail: fixture.context.detail } : {}),
-    };
-    noticeCalls.push({
-      model: noticeLane.model,
-      promptCache: false,
-      prefixId: 'autonomy-notice',
-      prefix: `${noticeSkill.instructions}\n${JSON.stringify(noticeSchema)}`,
-      user: JSON.stringify(context),
-      outputChars: JSON.stringify({ message: typicalNotice }).length,
-      thinkingTokens: 0,
-    });
-    noticeCalls.push({
-      model: noticeJudgeModel,
-      promptCache: true,
-      prefixId: 'autonomy-notice-judge',
-      prefix: `${noticeJudgeSystem}\n${JSON.stringify(noticeJudgeSchema)}`,
-      user: JSON.stringify({ context: fixture.context, text: typicalNotice }),
-      outputChars: mid(drafterJudgeChars),
-      thinkingTokens: 0,
-    });
-  }
-
   // A cached prefix is written once at 1.25× and read later at 0.1×. The user
   // message, and a prefix with no breakpoint, stay at the input price.
   function priceCalls(recorded) {
@@ -778,9 +687,8 @@ async function printRecordingEstimate() {
   const feeUsd = webSearchRequests * USD_PER_WEB_SEARCH;
   const general = priceCalls(calls);
   const drafted = priceCalls(drafterCalls);
-  const notice = priceCalls(noticeCalls);
   const generalUsd = general.usd + feeUsd;
-  const combinedUsd = generalUsd + drafted.usd + notice.usd;
+  const combinedUsd = generalUsd + drafted.usd;
   const byRole = (id) => calls.filter((call) => call.prefixId === id).length;
   const drafterDrafts = drafterCalls.filter((call) => call.prefixId === 'drafter-draft').length;
   const drafterJudges = drafterCalls.filter((call) => call.prefixId === 'drafter-judge').length;
@@ -796,7 +704,6 @@ async function printRecordingEstimate() {
   console.log('\n--- cost telemetry ---');
   console.log(`full 3-draw recording estimate: $${generalUsd.toFixed(4)} USD`);
   console.log(`drafter recording estimate: $${drafted.usd.toFixed(4)} USD`);
-  console.log(`autonomy-notice recording estimate: $${notice.usd.toFixed(4)} USD`);
   console.log(`combined recording estimate: $${combinedUsd.toFixed(4)} USD`);
   console.log(
     `general-answer tokens (cache writes at 1.25× input, cache reads at 0.1× input): $${general.usd.toFixed(4)} USD`,
@@ -813,9 +720,6 @@ async function printRecordingEstimate() {
   console.log(
     `drafter calls: ${drafterCalls.length} | draft ${drafterDrafts}, judge ${drafterJudges}`,
   );
-  console.log(
-    `autonomy-notice calls: ${noticeCalls.length} | writer ${noticeCalls.filter((call) => call.prefixId === 'autonomy-notice').length}, judge ${noticeCalls.filter((call) => call.prefixId === 'autonomy-notice-judge').length}`,
-  );
   const printTokens = (label, byModel) => {
     for (const [name, bucket] of Object.entries(byModel)) {
       console.log(
@@ -825,9 +729,8 @@ async function printRecordingEstimate() {
   };
   printTokens('general-answer', general.byModel);
   printTokens('drafter', drafted.byModel);
-  printTokens('autonomy-notice', notice.byModel);
   console.log(
-    `method: ${charsPerToken.toFixed(4)} characters per token (median of ${ratios.length} non-thinking Sonnet 5.5 outputs in the cache); ${thinkingTokens} thinking tokens added to every general-answer call (median of ${thinking.length} Sonnet 5.5 outputs that thought) and none to a drafter or autonomy-notice call; a cached prefix is priced at 1.25× input on its first write and 0.1× input on each later read; the autonomy-notice writer sends no cache breakpoint, so its prefix is 1× every call; output characters are the median visible sanitize/compose/judge JSON, search notes, drafter drafts, drafter tone scores, and one-text messages already committed; the autonomy-notice skill and fixtures are read from ${noticeRef}; web searches per turn are the mean of ${noteChars.length} committed search records (${searchRequestSum} requests).`,
+    `method: ${charsPerToken.toFixed(4)} characters per token (median of ${ratios.length} non-thinking Sonnet 5.5 outputs in the cache); ${thinkingTokens} thinking tokens added to every general-answer call (median of ${thinking.length} Sonnet 5.5 outputs that thought) and none to a drafter call; a cached prefix is priced at 1.25× input on its first write and 0.1× input on each later read; output characters are the median visible sanitize/compose/judge JSON, search notes, drafter drafts, and drafter tone scores already committed; web searches per turn are the mean of ${noteChars.length} committed search records (${searchRequestSum} requests).`,
   );
   await exitWhenPrinted(0);
 }
