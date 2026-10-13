@@ -2068,6 +2068,10 @@ describe('links', () => {
     ['a bare host behind an underscore', 'It is on tsn.ca_free-prizes.com now.'],
     ['a bare host with an underscore after it', 'It is on free-prizes.com_tonight only.'],
     ['a bare host with a dash straight after it', 'Go to free-prizes.com\u2014it is quick.'],
+    [
+      'a bare host with another script on both sides of it, as Chinese is written',
+      '\u8bf7\u5230free-prizes.com\u9886\u53d6\u3002',
+    ],
     ['a numbered address with a page under it', 'Confirm at 192.0.2.7/claim first.'],
   ])('refuses %s, by name', async (_label, body) => {
     lit();
@@ -2128,6 +2132,8 @@ describe('links', () => {
     ['a numbered address with no page under it', 'TSN has it. Build 10.0.0.1 fixed it.'],
     ['a pause written as dots', 'Well...it is on tsn.ca tonight.'],
     ['the searched host with a dash straight after it', 'It is on tsn.ca-tonight only.'],
+    ['the searched host with another script straight before it', '\u53ef\u4ee5\u770btsn.ca\u3002'],
+    ['the searched host with another script on both sides', '\u5728tsn.ca\u4e0a\u770b\u3002'],
   ])('sends %s', async (_label, body) => {
     lit();
 
