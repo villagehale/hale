@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://www.accuweather.com/en/ca/toronto/m5h/weather-forecast/55488",
+    "https://www.accuweather.com/en/ca/toronto/m5h/weather-today/55488",
+    "https://weather.gc.ca/en/location/index.html?coords=43.655%2C-79.383",
+    "https://www.theweathernetwork.com/en/city/ca/ontario/toronto/hourly",
+    "https://www.torontotoday.ca/good-morning/toronto-weather-today-12857952",
+    "https://www.easeweather.com/north-america/canada/ontario/toronto/today",
+    "https://globalnews.ca/news/1202495/toronto-morning-what-you-need-to-know-today-123/",
+    "https://weather.yahoo.com/ca/on/toronto",
+    "https://globalnews.ca/news/1104540/wind-chill-warning-remains-in-effect-for-toronto/",
+    "https://cs-people.bu.edu/cthay/cs-103/labs/lab4/c/weather/lab4c-weather.html"
+  ],
+  "notes": "Toronto should mostly stay dry during the day on Monday, Oct 12, 2026, with showers likely starting overnight into Tuesday.\n\n- **Environment Canada** (7-day forecast issued 11:00 AM EDT Monday Oct 12): Monday is mainly cloudy with a high of 23°C. The daytime forecast mentions no rain. Tonight is mainly cloudy, with a few showers beginning before morning and a risk of a thunderstorm. The low is 16°C.\n- **The Weather Network** hourly page: Monday evening shows a 20% chance of precipitation at 6pm and 7pm, with a mix of sun and cloud, then partly cloudy.\n- **Tuesday, Oct 13**: Environment Canada has showers, a high of 24°C, and a 60% chance of showers Tuesday night.\n\nOther results disagreed or were stale:\n- The AccuWeather pages show showers and a thunderstorm for Tuesday, Oct 13, not Monday.\n- A TorontoToday page showed showers ending in the morning, with a 40% chance of showers late in the afternoon. Its other details (Wednesday high of 16) don't match Environment Canada's Wednesday forecast (19), so it is probably for a different day.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 7698
+}

@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto, Tuesday Oct 13: a few showers end near noon, then mainly cloudy with a 60 percent chance of showers",
+        "from": "A few showers end near noon, then it is mainly cloudy with a 60 percent chance of showers."
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13: risk of thunderstorms in the morning and afternoon",
+        "from": "There is a risk of a thunderstorm in the morning and afternoon"
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13: local rainfall 10 to 20 mm",
+        "from": "with a local rainfall amount of 10 to 20 mm."
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13: wind southwest 20 km/h gusting to 40 near noon",
+        "from": "The wind becomes southwest 20 km/h gusting to 40 near noon."
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13: high 24°C",
+        "from": "The high is 24°C."
+      },
+      {
+        "states": "Toronto, Tuesday night Oct 13: low 12°C",
+        "from": "Tuesday night is cloudy periods with a 60 percent chance of showers, and a low of 12°C."
+      },
+      {
+        "states": "Toronto, Tuesday night Oct 13: 60 percent chance of showers",
+        "from": "Tuesday night is cloudy periods with a 60 percent chance of showers"
+      },
+      {
+        "states": "Forecast issued 11 am today, Monday Oct 12",
+        "from": "issued 11:00 AM EDT Monday 12 October 2026"
+      }
+    ],
+    "answer": "Tomorrow in Toronto looks showery and warm. Showers end around noon, then it's mainly cloudy with a 60% chance of showers, and there could be thunderstorms in the morning and afternoon, with 10 to 20 mm of rain. Wind southwest at 20 km/h, gusting to 40 near noon. High of 24°C, and Tuesday night drops to a low of 12°C with a 60% chance of showers. That's from the forecast issued 11 am today."
+  },
+  "latencyMs": 5973
+}

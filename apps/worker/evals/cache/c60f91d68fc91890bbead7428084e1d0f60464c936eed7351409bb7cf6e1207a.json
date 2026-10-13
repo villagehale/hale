@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Honda Odyssey is my pick for best minivan in the US",
+        "from": "U.S. News ranks the 2026 Honda Odyssey #1"
+      },
+      {
+        "states": "Odyssey has an overall score of 9.3 out of 10 from U.S. News",
+        "from": "It gives the Odyssey an overall score of 9.3 out of 10."
+      },
+      {
+        "states": "Edmunds calls the Odyssey the minivan it most likes driving",
+        "from": "Edmunds calls the Odyssey the minivan it most likes driving, and the best non-hybrid."
+      },
+      {
+        "states": "Toyota Sienna is the strong alternative for gas mileage, with a hybrid standard",
+        "from": "The Sienna gets 36 mpg combined in front-wheel drive."
+      }
+    ],
+    "answer": "Honda Odyssey, I'd say. It's #1 in U.S. News with a 9.3 out of 10, and Edmunds says it's the one they most like driving. If gas mileage matters most, the Toyota Sienna is the one to look at, since its hybrid is standard. The rankings don't agree on a single winner, so this one's my call."
+  },
+  "latencyMs": 6466
+}

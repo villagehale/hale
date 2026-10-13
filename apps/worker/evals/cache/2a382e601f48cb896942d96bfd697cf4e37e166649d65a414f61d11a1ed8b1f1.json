@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live search was unavailable. The answer correctly says it can't check and states no score from memory, so nothing in it is wrong. The tone is a bit stiff and repetitive for a friend's text: it says it can't check, then apologizes for the same thing again. It is not deflecting to an app or offering a service, though.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

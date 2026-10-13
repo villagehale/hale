@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail and the answer correctly asks which country without stating any rate from memory, so it is correct. The tone is mostly casual, though \"I'll look up\" leans slightly toward an assistant offering a service. The explanation is fine and short. Still a good friend-text ask.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The TSX is closed today, Monday Oct 12, for Thanksgiving, so there is no trading today",
+        "from": "The TSX is closed today for Thanksgiving, so there is no trading and no live movement to report."
+      },
+      {
+        "states": "Trading resumes Tuesday Oct 13 at 9:30 a.m. ET",
+        "from": "Toronto trading resumes on October 13 at 9:30 a.m. ET after the Thanksgiving closure."
+      },
+      {
+        "states": "Last close, Friday Oct 9: S&P/TSX Composite at 35,664.62, up 519.24 points (1.477%)",
+        "from": "The S&P/TSX Composite Index closed at 35,664.62, up 519.24 points (1.477%)."
+      },
+      {
+        "states": "Friday's rise was driven by a weak September jobs report (lost 68,300 jobs), which cut expectations of a Bank of Canada rate hike",
+        "from": "Canada's September employment loss of 68,300 jobs, against a forecast gain of 9,200, reduced expectations for a Bank of Canada rate hike, Reuters reported."
+      }
+    ],
+    "answer": "Markets are closed today for Thanksgiving, so no trading on the TSX. Last Friday it closed at 35,664.62, up about 1.5% (519 points), after a surprisingly bad jobs report cut the odds of a Bank of Canada rate hike. Trading picks back up tomorrow at 9:30 a.m. ET."
+  },
+  "latencyMs": 2913
+}

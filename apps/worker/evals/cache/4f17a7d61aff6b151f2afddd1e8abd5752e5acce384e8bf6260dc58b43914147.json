@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail, and the answer just asks for the city in a few casual words. It states no invented forecast and is brief and friendly. It reads fine as a text, though it is slightly plain.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

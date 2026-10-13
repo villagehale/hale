@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "to": "scheduling@maplegrove-peds.ca",
+      "subject": "Re: Reschedule needed",
+      "body": "thanks for letting us know. happy to move noah's checkup since dr. lee is out on thursday, july 3. i'll get back to you with a couple of times that work."
+    },
+    "confidence": 0.8,
+    "rationale": "Agrees to reschedule and leaves times open since none are in the input.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  }
+}
