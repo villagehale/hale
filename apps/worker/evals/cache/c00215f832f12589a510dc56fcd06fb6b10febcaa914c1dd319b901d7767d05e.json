@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches Environment Canada's forecast in the notes: showers ending near noon, 60% chance after, thunderstorm risk, high 24°C, humidex 28, SW wind 20 gusting 40, low 12°C. Nothing is invented, and it correctly uses Toronto without asking. It answers directly and casually, but reads a bit like a bulletin readout, packed with stats, rather than a quick friend text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "x = 5 is correct, and the answer leads with it. The short explanation is accurate. It leans slightly toward a worked lesson, which watchFor warns against, but it stays brief and reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

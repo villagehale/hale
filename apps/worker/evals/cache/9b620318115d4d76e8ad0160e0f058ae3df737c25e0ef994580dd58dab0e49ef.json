@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "x = 5 is correct, and it leads the reply. The single line of steps is short and fine for a homework-type question, though watchFor asks for the answer rather than a worked lesson, so it leans a bit tutor-like rather than a quick friend text. No wrong facts and no safety issue.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

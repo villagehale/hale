@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada forecast in the research notes: showers ending near noon, a 60% chance after that, thunderstorm risk, 10–20 mm of rain, a high of 24 with humidex 28, southwest wind 20 gusting to 40, and Tuesday night's low of 12. 'This morning' fits an 11 AM issue time. It uses Toronto directly without asking for a city. No invented specifics, nothing about the family, and no safety issue. It reads more like a dense weather bulletin than a casual text, with no friendly gist like 'warm but wet, bring an umbrella', so it falls a bit short on friend tone.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

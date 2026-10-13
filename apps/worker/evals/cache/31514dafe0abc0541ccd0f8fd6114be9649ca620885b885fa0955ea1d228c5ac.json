@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correctly asks for the missing city and states no price from memory. It reads as a reasonable text, though slightly wordy and a bit assistant-like with \"so I need that to tell you what it's running\". A friend might just say \"which costco?\". It is still casual enough.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

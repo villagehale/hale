@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correctly says it can't check and states no score from memory. But it then tells the parent to go look it up in the Raptors' app or on a news site, which is a look-it-up pointer. The apologetic, slightly formal phrasing reads more like an assistant than a friend's quick text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}
