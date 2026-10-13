@@ -413,14 +413,18 @@ async function liveSearch(
 const LINK = /(?:https?:\/\/|www\.)\S+/gi;
 
 /**
- * A host as it is written with no scheme: parts in the letters and digits of any script
- * and hyphens, joined by single dots. A phone makes `name.tld` tappable as it stands.
- * Every one in the reply is read, the page under a link included, so no host is passed
- * over for where it stands or what it stands beside. Whether its last part is a
- * top-level domain is the table's to say (top-level-domains/README.md): `Node.js` and
- * `7 a.m.` have the shape and are not links.
+ * A host as it is written with no scheme: parts joined by single dots. A phone makes
+ * `name.tld` tappable as it stands. Every one in the reply is read, the page under a link
+ * included, so no host is passed over for where it stands or what it stands beside.
+ * Whether its last part is a top-level domain is the table's to say
+ * (top-level-domains/README.md): `Node.js` and `7 a.m.` have the shape and are not links.
+ *
+ * A part is either the letters a to z, digits and hyphens, or letters and digits of the
+ * other scripts, never both: a language written without spaces puts its own words
+ * straight against a host on either side, and they are not part of it.
  */
-const HOST_SHAPED = /[\p{L}\p{M}\p{N}-]+(?:\.[\p{L}\p{M}\p{N}-]+)+/gu;
+const HOST_PART = '(?:[a-z0-9-]+|(?:(?![\\x00-\\x7f])[\\p{L}\\p{M}\\p{N}])+)';
+const HOST_SHAPED = new RegExp(`${HOST_PART}(?:\\.${HOST_PART})+`, 'gu');
 const TOP_LEVEL: ReadonlySet<string> = new Set(TOP_LEVEL_DOMAINS);
 /** An address written as four numbers, and what makes one a link: a page under it. */
 const NUMBERED_ADDRESS = /^\d{1,3}(?:\.\d{1,3}){3}$/;
