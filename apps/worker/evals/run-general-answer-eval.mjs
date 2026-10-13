@@ -76,7 +76,12 @@ import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
-import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
+import {
+  capSdkClient,
+  installSpendCap,
+  isSpendCapStop,
+  readLedger,
+} from '../../web/lib/testing/spend-cap.mjs';
 import {
   ANSWER_FIXTURES,
   DRAWS,
@@ -103,6 +108,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import {
+  estimateWorstCaseUsd,
   judgePayloadFromFound,
   leftoverGeneralAnswerCalls,
   recordedGrounding,
@@ -746,6 +752,13 @@ async function printRecordingEstimate() {
     judgeChars: mid(judgeChars),
     noteChars: mid(noteChars),
     normalizeLanguage,
+    tokenCeilings: {
+      sanitize: SANITIZE_MAX_TOKENS,
+      search: SEARCH_MAX_TOKENS,
+      compose: request.ANSWER_MAX_TOKENS,
+      judge: 8192,
+      moment: 256,
+    },
   });
   const memory = await import('./run-memory-eval.mjs');
   const memoryLeft = await memory.uncachedMemoryCalls(mid(memoryValueChars));
@@ -909,6 +922,87 @@ async function printRecordingEstimate() {
   );
   console.log(
     `leftover method: cached general-answer and memory calls are omitted; a sanitize miss, and a search miss, price the downstream from the predicted reading without looking those keys up; the judge reads the compose's grounding list, so a verdict recorded before that field is priced again; the eight unfinished safety and general-answer fixtures are named on their own line and are inside the leftover general-answer total, not added again; a safety-door fixture is priced as sanitize and compose and is not judged; memory output characters are the median JSON length of ${memoryValueChars.length} cached inference${memoryValueChars.length === 1 ? '' : 's'} that recorded at least one fact, and memory adds no thinking tokens because the infer lane is between_tools; the drafter recording is already cached and is not in the leftover combined total.`,
+  );
+
+  const judgeOut = drafterJudgeChars.length > 0 ? mid(drafterJudgeChars) : 250;
+  // A second tsx load inside this process spins, so the suite lookups run in a
+  // fresh process. They only read the cache.
+  const suiteScript = `
+    const judgeOut = ${JSON.stringify(judgeOut)};
+    const decider = await import(${JSON.stringify(new URL('./run-proactive-decider-eval.mjs', import.meta.url).href)});
+    const writer = await import(${JSON.stringify(new URL('./run-proactive-writer-eval.mjs', import.meta.url).href)});
+    const weekday = await import(${JSON.stringify(new URL('./run-weekday-care-ask-eval.mjs', import.meta.url).href)});
+    const deciderLeft = await decider.uncachedDeciderCalls();
+    const writerLeft = await writer.uncachedWriterCalls(judgeOut);
+    const weekdayLeft = await weekday.uncachedWeekdayCalls(judgeOut);
+    process.stdout.write(JSON.stringify({ deciderLeft, writerLeft, weekdayLeft }));
+  `;
+  const { spawnSync } = await import('node:child_process');
+  const suiteRun = spawnSync(process.execPath, ['--input-type=module', '-e', suiteScript], {
+    cwd: HERE,
+    encoding: 'utf8',
+    env: { ...process.env, ANTHROPIC_API_KEY: '' },
+  });
+  if (suiteRun.status !== 0) {
+    throw new Error(
+      `suite miss estimate failed: ${suiteRun.stderr || suiteRun.stdout || suiteRun.status}`,
+    );
+  }
+  const { deciderLeft, writerLeft, weekdayLeft } = JSON.parse(suiteRun.stdout);
+  const suiteCalls = [...deciderLeft.calls, ...writerLeft.calls, ...weekdayLeft.calls];
+  const suitePriced = priceCalls(suiteCalls);
+  const usdOf = (group) =>
+    suitePriced.perCall
+      .filter((call) => call.group === group)
+      .reduce((sum, call) => sum + call.usd, 0);
+  const ratesFor = (name) => {
+    const price = PRICE[name];
+    if (!price) throw new Error(`estimate: no price for ${name}`);
+    return price;
+  };
+  const leftCalls = [...leftover.calls, ...memoryLeft.calls, ...suiteCalls];
+  const hold = (call) =>
+    estimateWorstCaseUsd(call, { tokens, rates: ratesFor, searchMaxUses: MAX_SEARCHES });
+  const worstUsd = leftCalls.reduce((sum, call) => sum + hold(call), 0);
+  const searchLeft = leftCalls.filter((call) => call.prefixId === 'search');
+  const searchWorst = searchLeft.reduce((sum, call) => sum + hold(call), 0);
+  const expectedLeft = leftoverCombinedUsd + suitePriced.usd;
+  const goatFee =
+    (leftover.searchTurnsByFixture['zh-goat-football'] ?? 0) * requestsPerTurn * USD_PER_WEB_SEARCH;
+  const goatUsd =
+    unfinishedCalls
+      .filter((call) => call.fixtureId === 'zh-goat-football')
+      .reduce((sum, call) => sum + call.usd, 0) + goatFee;
+  const names = (ids) => (ids.length === 0 ? 'none' : ids.join(', '));
+
+  console.log('\n--- left to record ---');
+  console.log(`expected cost: $${expectedLeft.toFixed(4)} USD`);
+  console.log(`worst-case cap: $${worstUsd.toFixed(4)} USD`);
+  console.log(`calls: ${leftCalls.length}`);
+  console.log(
+    `search holds: ${searchLeft.length} at $${searchWorst.toFixed(4)} USD (250k input tokens, the output budget, and max_uses × $0.01 each)`,
+  );
+  console.log(`zh-goat-football (inside leftover general-answer): $${goatUsd.toFixed(4)} USD`);
+  console.log(
+    `moment-reply, the 9 writes and their judges: $${momentUsd.toFixed(4)} USD | ${momentCalls.length} calls | ${names(momentShort)}`,
+  );
+  console.log(
+    `general-answer leftover, including every compose the answer-leg edit re-keys: $${priorGeneralUsd.toFixed(4)} USD | ${priorCalls.length} calls`,
+  );
+  console.log(
+    `memory, re-keyed by the inferencer prompt: $${memoryPriced.usd.toFixed(4)} USD | ${memoryLeft.calls.length} calls | ${names(memoryLeft.shortIds)}`,
+  );
+  console.log(
+    `proactive-decider misses: $${usdOf('proactive-decider').toFixed(4)} USD | ${deciderLeft.calls.length} calls | ${names(deciderLeft.shortIds)}`,
+  );
+  console.log(
+    `proactive-writer misses: $${usdOf('proactive-writer').toFixed(4)} USD | ${writerLeft.calls.length} calls | ${names(writerLeft.shortIds)}`,
+  );
+  console.log(
+    `weekday-care-ask misses: $${usdOf('weekday-care-ask').toFixed(4)} USD | ${weekdayLeft.calls.length} calls | ${names(weekdayLeft.shortIds)}`,
+  );
+  console.log(
+    'worst-case cap is the sum of the pre-call holds, so a sequential run still fits if every call bills its ceiling. Expected cost is what a recording like the last one would bill.',
   );
   await exitWhenPrinted(0);
 }
@@ -1140,141 +1234,181 @@ async function main() {
     return judgePayloadFromFound(request, EVAL_TODAY, fixture, found, answer, grounding);
   }
 
-  // ── calibration: the judge on the two stand-ins ────────────────────────────
-  const calibrationFixture = ANSWER_FIXTURES.find((fixture) => fixture.id === CALIBRATION_FIXTURE);
-  const calibrationFound = await research(calibrationFixture);
-  const calibration = await judge(
-    `calibration:${calibrationFixture.id}`,
-    judgeInput(calibrationFixture, calibrationFound, flatten(BROKEN_ANSWER)),
-  );
-  const calibrationCompose = await compose(calibrationFixture, calibrationFound);
-  const nearMissAnswer = `${calibrationCompose.flattened} ${NEAR_MISS_TAIL}`;
-  const nearMiss = await judge(
-    `calibration-near-miss:${calibrationFixture.id}`,
-    judgeInput(calibrationFixture, calibrationFound, nearMissAnswer, calibrationCompose.grounding),
-  );
-  const calibrated = calibration.score < JUDGE_MIN && nearMiss.score < JUDGE_MIN;
-
-  if (broken) {
-    console.log('--- answers ---');
-    for (const [id, answer, verdict] of [
-      [calibrationFixture.id, BROKEN_ANSWER, calibration],
-      [`${calibrationFixture.id}:near-miss`, nearMissAnswer, nearMiss],
-    ]) {
-      console.log(
-        `${verdict.score < JUDGE_MIN ? 'FAIL' : 'PASS'}  ${id.padEnd(28)} [${calibrationFound.search}, judge ${verdict.score}${flags(verdict)}] "${answer}"`,
-      );
-      console.log(`      · judge:${verdict.score} (${verdict.reason})`);
-    }
-    console.log('\n--- gate ---');
-    console.log(
-      `broken-mode calibration (the judge must fail both stand-ins): ${calibrated ? 'PASS (exit 0)' : `FAIL (exit 1) - the judge scored the broken one ${calibration.score} and the near miss ${nearMiss.score}`}`,
-    );
-    await exitWhenPrinted(calibrated ? 0 : 1);
-  }
-
+  // Search turns first. Each one reserves about $0.56 before it runs, and a compose
+  // that spends the rest of the cap would refuse the next search before it starts.
+  // Moment replies are not searches; they run after every search has been booked.
+  let calibration = null;
+  let nearMiss = null;
+  let calibrationFound = null;
+  let calibrated = false;
+  let stopped = null;
   const results = [];
-  for (const fixture of fixtures) {
-    if (fixture.directMoment) {
+  const foundById = new Map();
+  try {
+    if (!broken) {
+      for (const fixture of fixtures) {
+        if (fixture.directMoment) continue;
+        foundById.set(fixture.id, await research(fixture));
+      }
+    }
+
+    // ── calibration: the judge on the two stand-ins ──────────────────────────
+    const calibrationFixture = ANSWER_FIXTURES.find(
+      (fixture) => fixture.id === CALIBRATION_FIXTURE,
+    );
+    calibrationFound = foundById.get(calibrationFixture.id) ?? (await research(calibrationFixture));
+    calibration = await judge(
+      `calibration:${calibrationFixture.id}`,
+      judgeInput(calibrationFixture, calibrationFound, flatten(BROKEN_ANSWER)),
+    );
+    const calibrationCompose = await compose(calibrationFixture, calibrationFound);
+    const nearMissAnswer = `${calibrationCompose.flattened} ${NEAR_MISS_TAIL}`;
+    nearMiss = await judge(
+      `calibration-near-miss:${calibrationFixture.id}`,
+      judgeInput(
+        calibrationFixture,
+        calibrationFound,
+        nearMissAnswer,
+        calibrationCompose.grounding,
+      ),
+    );
+    calibrated = calibration.score < JUDGE_MIN && nearMiss.score < JUDGE_MIN;
+
+    if (broken) {
+      console.log('--- answers ---');
+      for (const [id, answer, verdict] of [
+        [calibrationFixture.id, BROKEN_ANSWER, calibration],
+        [`${calibrationFixture.id}:near-miss`, nearMissAnswer, nearMiss],
+      ]) {
+        console.log(
+          `${verdict.score < JUDGE_MIN ? 'FAIL' : 'PASS'}  ${id.padEnd(28)} [${calibrationFound.search}, judge ${verdict.score}${flags(verdict)}] "${answer}"`,
+        );
+        console.log(`      · judge:${verdict.score} (${verdict.reason})`);
+      }
+      console.log('\n--- gate ---');
+      console.log(
+        `broken-mode calibration (the judge must fail both stand-ins): ${calibrated ? 'PASS (exit 0)' : `FAIL (exit 1) - the judge scored the broken one ${calibration.score} and the near miss ${nearMiss.score}`}`,
+      );
+      await exitWhenPrinted(calibrated ? 0 : 1);
+    }
+
+    for (const fixture of fixtures) {
+      if (fixture.directMoment) {
+        const draws = [];
+        for (let draw = 0; draw < DRAWS; draw += 1) {
+          const written = await cachedToolCall({
+            tag: `general-answer-moment:${drawTag(fixture.id, draw)}`,
+            model: momentLane.model,
+            lane: momentLane,
+            system: momentSkill.instructions,
+            userMessage: momentRequest.momentUserMessage(fixture.directMoment, fixture.text),
+            toolName: 'moment_reply',
+            toolSchema: momentRequest.momentJsonSchema,
+            toolDescription: 'Return the one text for this moment.',
+            maxTokens: 256,
+            cachedOnly,
+            getClient,
+            cost,
+          });
+          const flattened = flatten(String(written.value.reply ?? ''));
+          const found = {
+            search: 'not_needed',
+            notes: '',
+          };
+          const verdict = await judge(
+            drawTag(fixture.id, draw),
+            judgeInput(fixture, found, flattened),
+          );
+          draws.push({
+            door: false,
+            flattened,
+            verdict,
+            score: verdict.score,
+            wrongFact: verdict.wrong_fact === true,
+            safetyMiss: verdict.safety_miss === true,
+            reason: verdict.reason,
+            latencyMs: written.latencyMs,
+          });
+        }
+        results.push({
+          fixture,
+          found: {
+            reading: 'moment',
+            theirPlace: 'n/a',
+            language: '—',
+            question: fixture.text,
+            search: 'not_needed',
+            missing: '',
+            placeSent: null,
+            answersPending: null,
+          },
+          draws,
+          failures: drawFailures(fixture, draws, JUDGE_MIN),
+        });
+        continue;
+      }
+      const found = foundById.get(fixture.id);
+      if (!found) throw new Error(`no research recorded for ${fixture.id}`);
+      // Rule #1, and not a check on the reply: what the fixture marks must be gone from
+      // everything handed on, BEFORE any of it goes to the search or the compose.
+      const failures = identityLeaks(
+        fixture,
+        `${found.question} ${found.missing} ${found.searchMessage}`,
+      );
+      // The town the parent named is what the search is made for.
+      failures.push(...searchOmissions(fixture, found.searchMessage));
+      // The sanitizer's own reading of a text beside a pending ask, not a check on the reply.
+      if (
+        fixture.expectAnswersPending !== undefined &&
+        found.answersPending !== fixture.expectAnswersPending
+      ) {
+        failures.push(
+          `pending_misread:read as ${found.answersPending ? 'the reply to the pending ask' : 'unrelated'}`,
+        );
+      }
+
+      // The pass bar: three replies drawn from what the sanitize and the search handed on.
       const draws = [];
       for (let draw = 0; draw < DRAWS; draw += 1) {
-        const written = await cachedToolCall({
-          tag: `general-answer-moment:${drawTag(fixture.id, draw)}`,
-          model: momentLane.model,
-          lane: momentLane,
-          system: momentSkill.instructions,
-          userMessage: momentRequest.momentUserMessage(fixture.directMoment, fixture.text),
-          toolName: 'moment_reply',
-          toolSchema: momentRequest.momentJsonSchema,
-          toolDescription: 'Return the one text for this moment.',
-          maxTokens: 256,
-          cachedOnly,
-          getClient,
-          cost,
-        });
-        const flattened = flatten(String(written.value.reply ?? ''));
-        const found = {
-          search: 'not_needed',
-          notes: '',
-        };
+        const composed = await compose(fixture, found, draw);
+        const latencyMs = found.latencyMs + composed.latencyMs;
+        if (composed.door) {
+          draws.push({ door: composed.door, flattened: '', latencyMs });
+          continue;
+        }
         const verdict = await judge(
           drawTag(fixture.id, draw),
-          judgeInput(fixture, found, flattened),
+          judgeInput(fixture, found, composed.flattened, composed.grounding),
         );
         draws.push({
           door: false,
-          flattened,
+          flattened: composed.flattened,
           verdict,
           score: verdict.score,
           wrongFact: verdict.wrong_fact === true,
           safetyMiss: verdict.safety_miss === true,
           reason: verdict.reason,
-          latencyMs: written.latencyMs,
+          latencyMs,
         });
       }
-      results.push({
-        fixture,
-        found: {
-          reading: 'moment',
-          theirPlace: 'n/a',
-          language: '—',
-          question: fixture.text,
-          search: 'not_needed',
-          missing: '',
-          placeSent: null,
-          answersPending: null,
-        },
-        draws,
-        failures: drawFailures(fixture, draws, JUDGE_MIN),
-      });
-      continue;
+      failures.push(...drawFailures(fixture, draws, JUDGE_MIN));
+
+      results.push({ fixture, found, draws, failures });
     }
-    const found = await research(fixture);
-    // Rule #1, and not a check on the reply: what the fixture marks must be gone from
-    // everything handed on, BEFORE any of it goes to the search or the compose.
-    const failures = identityLeaks(
-      fixture,
-      `${found.question} ${found.missing} ${found.searchMessage}`,
+  } catch (err) {
+    if (!isSpendCapStop(err)) throw err;
+    stopped = err;
+  }
+
+  if (calibration === null || nearMiss === null || calibrationFound === null) {
+    console.log('--- answers ---');
+    console.log(
+      `spend cap stopped the run before any fixture was graded: ${stopped?.message ?? 'unknown'}`,
     );
-    // The town the parent named is what the search is made for.
-    failures.push(...searchOmissions(fixture, found.searchMessage));
-    // The sanitizer's own reading of a text beside a pending ask, not a check on the reply.
-    if (
-      fixture.expectAnswersPending !== undefined &&
-      found.answersPending !== fixture.expectAnswersPending
-    ) {
-      failures.push(
-        `pending_misread:read as ${found.answersPending ? 'the reply to the pending ask' : 'unrelated'}`,
-      );
-    }
-
-    // The pass bar: three replies drawn from what the sanitize and the search handed on.
-    const draws = [];
-    for (let draw = 0; draw < DRAWS; draw += 1) {
-      const composed = await compose(fixture, found, draw);
-      const latencyMs = found.latencyMs + composed.latencyMs;
-      if (composed.door) {
-        draws.push({ door: composed.door, flattened: '', latencyMs });
-        continue;
-      }
-      const verdict = await judge(
-        drawTag(fixture.id, draw),
-        judgeInput(fixture, found, composed.flattened, composed.grounding),
-      );
-      draws.push({
-        door: false,
-        flattened: composed.flattened,
-        verdict,
-        score: verdict.score,
-        wrongFact: verdict.wrong_fact === true,
-        safetyMiss: verdict.safety_miss === true,
-        reason: verdict.reason,
-        latencyMs,
-      });
-    }
-    failures.push(...drawFailures(fixture, draws, JUDGE_MIN));
-
-    results.push({ fixture, found, draws, failures });
+    console.log(`searches finished before the stop: ${foundById.size}`);
+    console.log('\n--- gate ---');
+    console.log('overall (real): FAIL (exit 1)');
+    await exitWhenPrinted(1);
   }
 
   // ── report ─────────────────────────────────────────────────────────────────
@@ -1365,7 +1499,9 @@ async function main() {
     `of which search turns: ${cost.searchTurns ?? 0} calls, ${cost.searchInput ?? 0} in / ${cost.searchOutput ?? 0} out`,
   );
 
-  const allPass = calibrated && results.every((r) => r.failures.length === 0);
+  if (stopped) console.log(`\nspend cap stopped the run: ${stopped.message}`);
+
+  const allPass = !stopped && calibrated && results.every((r) => r.failures.length === 0);
 
   console.log('\n--- gate ---');
   console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);

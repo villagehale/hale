@@ -19,6 +19,7 @@ import {
   ANSWER_ENDS_ON_THE_ANSWER,
   ANSWER_KEEPS_THE_NOTES_DAY,
   ANSWER_MAX_TOKENS,
+  ANSWER_RECENT_RESULT_FROM_THE_NOTES,
   ANSWER_WITH_NOTHING_CHECKED,
   SAFETY_KINDS,
   answerJsonSchema,
@@ -426,7 +427,7 @@ describe('createGeneralAnswer', () => {
         },
         answer: {
           type: 'string',
-          description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY}`,
+          description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES}`,
         },
       },
       required: ['hurt_ill_or_danger', 'grounding', 'answer'],
@@ -453,18 +454,22 @@ describe('createGeneralAnswer', () => {
   /**
    * Sloane's finding 1a, 2026-10-13, the second of its two levers: two replies stated a
    * trophy tally from memory with the search dark, and both had written an empty
-   * `grounding` list, so nothing said on that list could reach them. The words are hers,
-   * said on the field the tally was written in.
+   * `grounding` list, so nothing said on that list could reach them. The tally sentence
+   * is hers, on the field the tally was written in, plus the hedge that follows it.
+   * The recent-result sentence is the same lever for a score the notes do not carry.
    */
   it('tells the model, on the answer field itself, that a tally is not stated when nothing was checked', () => {
     expect(ANSWER_WITH_NOTHING_CHECKED).toBe(
-      'With `live` unavailable, no running count, record or title tally is stated, neither as a digit nor as a word that names how many.',
+      'With `live` unavailable, no running count, record or title tally is stated, neither as a digit nor as a word that names how many. Say you cannot check that number, then give the pick without it.',
     );
     expect(ANSWER_KEEPS_THE_NOTES_DAY).toBe(
       'A forecast figure keeps the day or night the notes give it for, and is not stated as a nearer day or night.',
     );
+    expect(ANSWER_RECENT_RESULT_FROM_THE_NOTES).toBe(
+      'A recent result, whether they played and how it went, is stated only as the research notes give it. When the notes say they did not play, that is the answer, and a score or a winner the notes do not carry is not added from memory.',
+    );
     expect(answerJsonSchema.properties.answer.description).toBe(
-      `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY}`,
+      `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES}`,
     );
   });
 

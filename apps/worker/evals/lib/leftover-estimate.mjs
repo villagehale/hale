@@ -1,4 +1,33 @@
+import { SEARCH_WORST_INPUT_TOKENS, worstCaseUsd } from '../../../web/lib/testing/spend-cap.mjs';
 import { cacheGet, cacheKey, isVerdict } from './harness.mjs';
+
+/**
+ * The pre-call hold for one uncached call. A search turn is 250k input tokens,
+ * the full output budget, and max_uses × $0.01. Any other turn is the estimated
+ * input (the same character ratio as the expected-cost line) at the cache-write
+ * rate when the request carries a breakpoint, plus that output budget.
+ */
+export function estimateWorstCaseUsd(call, { tokens, rates, searchMaxUses = 2 }) {
+  if (!Number.isFinite(call.maxTokens)) {
+    throw new Error(`estimate: ${call.prefixId ?? 'call'} has no maxTokens for a worst-case cap`);
+  }
+  const search = call.prefixId === 'search';
+  const request = {
+    model: call.model,
+    max_tokens: call.maxTokens,
+    system: call.promptCache
+      ? [{ type: 'text', text: call.prefix, cache_control: { type: 'ephemeral' } }]
+      : call.prefix,
+    messages: [{ role: 'user', content: call.user ?? '' }],
+    ...(search
+      ? { tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: searchMaxUses }] }
+      : {}),
+  };
+  const inputTokens = search
+    ? SEARCH_WORST_INPUT_TOKENS
+    : tokens((call.prefix?.length ?? 0) + (call.user?.length ?? 0));
+  return worstCaseUsd(rates, request, inputTokens);
+}
 
 /**
  * The object the general-answer judge is handed. Field order is part of the cache key,
@@ -88,6 +117,14 @@ export async function leftoverGeneralAnswerCalls(ctx) {
     judgeChars,
     noteChars,
   } = ctx;
+  const ceilings = {
+    sanitize: 512,
+    search: 4096,
+    compose: 4096,
+    judge: 8192,
+    moment: 256,
+    ...ctx.tokenCeilings,
+  };
 
   const calls = [];
   const priced = new Set();
@@ -115,6 +152,7 @@ export async function leftoverGeneralAnswerCalls(ctx) {
       prefix: `${sanitizeSkill.instructions}\n${JSON.stringify(request.sanitizeJsonSchema)}`,
       user,
       outputChars: sanitizeChars,
+      maxTokens: ceilings.sanitize,
     };
   }
 
@@ -130,6 +168,7 @@ export async function leftoverGeneralAnswerCalls(ctx) {
       })}`,
       user,
       outputChars: noteChars,
+      maxTokens: ceilings.search,
     };
   }
 
@@ -141,6 +180,7 @@ export async function leftoverGeneralAnswerCalls(ctx) {
       prefix: `${skill.instructions}\n${JSON.stringify(request.answerJsonSchema)}`,
       user,
       outputChars: answerChars,
+      maxTokens: ceilings.compose,
     };
   }
 
@@ -152,6 +192,7 @@ export async function leftoverGeneralAnswerCalls(ctx) {
       prefix: `${judgeSystem}\n${JSON.stringify(verdictSchema)}`,
       user: JSON.stringify(payload),
       outputChars: judgeChars,
+      maxTokens: ceilings.judge,
     };
   }
 
@@ -335,6 +376,7 @@ export async function leftoverGeneralAnswerCalls(ctx) {
       user,
       outputChars: 220,
       group: 'moment',
+      maxTokens: ceilings.moment,
     };
   }
 

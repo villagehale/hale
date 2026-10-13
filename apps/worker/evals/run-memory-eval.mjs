@@ -404,6 +404,7 @@ export async function uncachedMemoryCalls(outputChars) {
       user: userMessage,
       outputChars,
       thinkingTokens: 0,
+      maxTokens: 2048,
     });
   }
   return { calls, shortIds, model: lane.model };

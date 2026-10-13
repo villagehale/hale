@@ -108,7 +108,15 @@ export const ANSWER_ENDS_ON_THE_ANSWER =
  * says the same under `unavailable`.
  */
 export const ANSWER_WITH_NOTHING_CHECKED =
-  'With `live` unavailable, no running count, record or title tally is stated, neither as a digit nor as a word that names how many.';
+  'With `live` unavailable, no running count, record or title tally is stated, neither as a digit nor as a word that names how many. Say you cannot check that number, then give the pick without it.';
+
+/**
+ * A recent result comes only from the notes, said on the `answer` field itself.
+ * A score the notes do not carry is not added from memory. general-answer.md says
+ * the same under `searched`.
+ */
+export const ANSWER_RECENT_RESULT_FROM_THE_NOTES =
+  'A recent result, whether they played and how it went, is stated only as the research notes give it. When the notes say they did not play, that is the answer, and a score or a winner the notes do not carry is not added from memory.';
 
 /**
  * A forecast figure stays on the day or night the notes gave it, said on the `answer`
@@ -176,7 +184,7 @@ export const answerJsonSchema = {
     },
     answer: {
       type: 'string',
-      description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY}`,
+      description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES}`,
     },
   },
   required: ['hurt_ill_or_danger', 'grounding', 'answer'],

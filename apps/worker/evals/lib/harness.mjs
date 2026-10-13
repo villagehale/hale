@@ -660,7 +660,7 @@ export function cachedGatewayTextCall(opts) {
  * system prompt and the payload — NOT this schema. Editing the shape here does not
  * invalidate existing verdicts, so a re-record has to delete them.
  */
-const JUDGE_SCHEMA = {
+export const JUDGE_SCHEMA = {
   type: 'object',
   properties: {
     reason: { type: 'string' },

@@ -335,6 +335,11 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
  * check the cap, then perform the original call. With the cap off this is the client
  * itself, so a cached-only run never counts tokens.
  */
+/** A spend-cap refusal, halt, or count failure. The runner prints what finished and exits. */
+export function isSpendCapStop(err) {
+  return err instanceof Error && err.message.startsWith('spend-cap:');
+}
+
 export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
   if (!capEnabled()) return client;
   if (!rates) throw new Error('spend-cap: rates are required when the cap is on');
