@@ -16,6 +16,7 @@
   "expect": {
     "requireNonEmptyText": true,
     "judgeTone": false,
-    "maxBodyChars": 400
+    "maxBodyChars": 400,
+    "commitsParent": false
   }
 }

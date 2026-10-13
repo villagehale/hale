@@ -16,6 +16,7 @@
   "expect": {
     "requiredPayloadFields": ["to", "subject", "body"],
     "recipientEchoOf": "from",
-    "maxBodyChars": 600
+    "maxBodyChars": 600,
+    "commitsParent": false
   }
 }

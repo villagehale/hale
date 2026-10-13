@@ -1287,8 +1287,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'held for your approval — you haven’t let Hale do this on its own',
     family: 'awaiting',
   },
+  // The same line as the opt-in hold. The commitment flag stays off the trail.
   'action.gated.parent_commitment': {
-    sentence: 'held an enrollment, booking, or payment for your tap',
+    sentence: 'held for your approval — you haven’t let Hale do this on its own',
     family: 'awaiting',
   },
   // ── the weekly loop + calendar subscription ─────────────────────────────
