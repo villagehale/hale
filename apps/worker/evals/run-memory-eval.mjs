@@ -23,6 +23,8 @@
 //   node apps/worker/evals/run-memory-eval.mjs --broken                     # calibration: gate rejects it → exits NONZERO
 //   node apps/worker/evals/run-memory-eval.mjs --cached-only                # CI: replay only, never calls the API
 //   node apps/worker/evals/run-memory-eval.mjs --estimate                   # no API: price uncached fixtures only
+//   HALE_MAX_USD=2.42 node apps/worker/evals/run-memory-eval.mjs            # stop before a call whose worst case would cross the cap
+//   node apps/worker/evals/run-memory-eval.mjs --max-usd=2.42               # same ceiling; the lower of the two wins
 
 import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
@@ -31,6 +33,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import {
   CACHE_DIR as HARNESS_CACHE_DIR,
   PRICE as LIST_PRICE,
@@ -40,6 +43,7 @@ import {
   cacheGet as harnessCacheGet,
   cacheKey as harnessCacheKey,
   makeCost,
+  priceRates,
   totalUsd,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
@@ -207,7 +211,10 @@ function makeRealInferencer(model, lane, prompt, cachedOnly, cost) {
           lane,
           cachedOnly,
           getClient: () => {
-            client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+            client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+              rates: priceRates,
+              tag: 'memory',
+            });
             return client;
           },
           cost,
@@ -227,7 +234,10 @@ function makeRealInferencer(model, lane, prompt, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'memory',
+    });
     const startedAt = performance.now();
     const response = await client.messages.create({
       model,
@@ -470,6 +480,13 @@ async function main() {
   if (process.argv.includes('--estimate')) {
     await printMemoryEstimate();
     return;
+  }
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.log(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
   }
   const mode = process.argv.includes('--broken') ? 'broken' : 'real';
   const cachedOnly = process.argv.includes('--cached-only');

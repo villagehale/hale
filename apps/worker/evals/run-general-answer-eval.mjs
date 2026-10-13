@@ -29,6 +29,8 @@
 //   node evals/run-general-answer-eval.mjs --cached-only                    # CI: replay only
 //   node evals/run-general-answer-eval.mjs --estimate                       # no API: price a full 3-draw, the drafter recording, and the uncached leftover (memory + general-answer)
 //   node evals/run-general-answer-eval.mjs --broken --cached-only           # calibration
+//   HALE_MAX_USD=2.42 node evals/run-general-answer-eval.mjs                # stop before a call whose worst case would cross the cap
+//   node evals/run-general-answer-eval.mjs --max-usd=2.42                   # same ceiling; the lower of the two wins
 //   ... --min-samples=50                                                    # expanded synthetic corpus
 //
 // THE GRADER IS THE JUDGE (Barton, 2026-10-12: correctness and tone, with no word or
@@ -74,6 +76,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import {
   ANSWER_FIXTURES,
   DRAWS,
@@ -95,6 +98,7 @@ import {
   makeCost,
   makeJudge,
   noteUsage,
+  priceRates,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
@@ -914,6 +918,13 @@ async function main() {
     await printRecordingEstimate();
     return;
   }
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.log(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const minSamplesArg = process.argv.find((arg) => arg.startsWith('--min-samples='))?.split('=')[1];
@@ -921,7 +932,11 @@ async function main() {
   if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
     throw new Error('--min-samples must be a positive integer');
   }
-  const getClient = lazyAnthropic();
+  // Every live messages.create and messages.stream in this suite (sanitize, search,
+  // compose, moment, judge) goes through this client, so the cap is checked before
+  // the call and the returned usage, including web search fees, is booked after it.
+  const rawClient = lazyAnthropic();
+  const getClient = () => capSdkClient(rawClient(), { rates: priceRates, tag: 'general-answer' });
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

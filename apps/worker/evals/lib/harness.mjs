@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
+import { capEnabled, cappedCall, isEstimate } from '../../../web/lib/testing/spend-cap.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const WORKER_ROOT = join(HERE, '..', '..');
@@ -139,6 +140,8 @@ export async function cacheGet(key) {
 }
 
 export async function cachePut(key, value) {
+  // An estimate round answers with stand-ins; none of them may become a recording.
+  if (isEstimate()) return;
   await mkdir(CACHE_DIR, { recursive: true });
   await writeFile(join(CACHE_DIR, `${key}.json`), JSON.stringify(value, null, 2));
 }
@@ -155,6 +158,13 @@ export function noteUsage(cost, model, usage) {
   const bucket = cost.byModel[model];
   bucket.input += usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
   bucket.output += usage.output_tokens;
+}
+
+/** Per-MTok list rates for the spend cap. An unpriced model refuses the call. */
+export function priceRates(model) {
+  const p = PRICE[model];
+  if (!p) throw new Error(`spend-cap: no price for ${model}; refusing the call`);
+  return p;
 }
 
 export function totalUsd(cost) {
@@ -294,7 +304,16 @@ function requireLane(tag, model, opts) {
  * One live structured call through the production seam, for the evals that keep their
  * own cache. Same request shape, strict schema, re-ask and failure guards as runtime.
  */
-export async function liveStructuredCall({ client, lane, system, userMessage, toolName, toolDescription, toolSchema, maxTokens }) {
+export async function liveStructuredCall({
+  client,
+  lane,
+  system,
+  userMessage,
+  toolName,
+  toolDescription,
+  toolSchema,
+  maxTokens,
+}) {
   const agent = await loadAgent();
   return agent.forceToolJson({
     client,
@@ -523,12 +542,53 @@ async function gatewayCall(opts, tool) {
   if (opts.cachedOnly) failCachedMiss(opts.tag, key);
 
   const startedAt = performance.now();
-  const response = await fetch(GATEWAY_ENDPOINT, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${gatewayKey()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-    signal: AbortSignal.timeout(30_000),
-  });
+  const send = () =>
+    fetch(GATEWAY_ENDPOINT, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${gatewayKey()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(30_000),
+    });
+  // No Anthropic countTokens on this endpoint. A character count overstates English,
+  // which is the worst case the pre-check can make without a free count. A search
+  // tool on the request still prices at the 250k-input worst case inside cappedCall.
+  const response = capEnabled()
+    ? await (async () => {
+        let sent;
+        await cappedCall({
+          client: {
+            messages: {
+              countTokens: async () => ({
+                input_tokens: Math.ceil(JSON.stringify(request).length / 3),
+              }),
+            },
+          },
+          request,
+          call: async () => {
+            sent = await send();
+            const peeked = await sent
+              .clone()
+              .json()
+              .catch(() => ({}));
+            return {
+              usage: {
+                input_tokens: peeked.usage?.prompt_tokens ?? peeked.usage?.input_tokens ?? 0,
+                output_tokens: peeked.usage?.completion_tokens ?? peeked.usage?.output_tokens ?? 0,
+                server_tool_use: peeked.usage?.server_tool_use,
+              },
+            };
+          },
+          rates: priceRates,
+          tag: opts.tag ?? 'gateway',
+        });
+        if (!sent) {
+          throw new Error(
+            `${opts.tag}: spend-cap estimate returned no gateway response; use the runner --estimate`,
+          );
+        }
+        return sent;
+      })()
+    : await send();
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`${opts.tag}: Gateway request failed (${response.status})`);
   if (body.choices?.[0]?.finish_reason === 'length') {
