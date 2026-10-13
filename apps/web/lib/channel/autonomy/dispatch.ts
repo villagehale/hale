@@ -213,7 +213,7 @@ async function selectLiveArmed(database: Database, familyId?: string): Promise<O
     const decided = new Set<string>();
     for (const row of list) {
       if (!row.granted) break;
-      if (!row.scope) continue;
+      if (!row.familyId || !row.scope) continue;
       if (decided.has(row.userId)) continue;
       decided.add(row.userId);
       if (row.revokedAt !== null) continue;
