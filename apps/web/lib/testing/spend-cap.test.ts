@@ -17,10 +17,10 @@ const message = (usage: Record<string, number>) => ({
 });
 
 function mockClient(inputTokens = 1000) {
-  const countTokens = vi.fn(async () => ({ input_tokens: inputTokens }));
-  const create = vi.fn(async () => message({ input_tokens: 1000, output_tokens: 200 }));
+  const countTokens = vi.fn(async (_req?: unknown) => ({ input_tokens: inputTokens }));
+  const create = vi.fn(async (_req?: unknown) => message({ input_tokens: 1000, output_tokens: 200 }));
   const finalMessage = vi.fn(async () => message({ input_tokens: 1000, output_tokens: 400 }));
-  const stream = vi.fn(() => ({ finalMessage }));
+  const stream = vi.fn((_req?: unknown) => ({ finalMessage }));
   return {
     client: { messages: { countTokens, create, stream } },
     countTokens,
