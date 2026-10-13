@@ -234,23 +234,34 @@ export function describesHurtIllOrDanger(raw: unknown): boolean {
  *
  * A long or grouped run of digits is taken out whatever it is, because a social insurance
  * or a health card number has no other mark on it. That costs a count in the hundreds of
- * millions written out plain or in spaced groups its figure.
+ * millions its figure, written out plain or in groups of three, and a price that size
+ * written in groups after its sign.
+ *
+ * EVERY PATTERN READS ONE SHAPE OF THE TEXT ({@link oneShape}): a digit is a digit and a
+ * dash is a dash however it was typed, and what may stand between two groups of digits
+ * is one list ({@link BETWEEN_GROUPS}). What is handed on is the text as it was typed,
+ * less what a pattern took out.
  *
  * A name is free-form and stays the sanitizer's job. So does a street written in lower
  * case with its suffix spelled out and more than one word in its name, which no pattern
  * can tell from "a 10 hour road trip".
  */
+const BETWEEN_GROUPS = '[-\\s./_]';
 const DIRECT_IDENTIFIERS: RegExp[] = [
   /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, // email address
   /(?<![\p{L}\p{N}_.%+-])@[a-z_][a-z0-9_.]*[a-z0-9_]/giu, // @handle
-  /\+\d[\d\s().-]{6,}\d/g, // phone number, international form
-  /(?<!\d)(?:1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)/g, // phone number, North American
+  /\+\d[\d\s()./_-]{6,}\d/g, // phone number, international form
+  new RegExp(
+    `(?<!\\d)(?:1${BETWEEN_GROUPS}?)?\\(?\\d{3}\\)?${BETWEEN_GROUPS}?\\d{3}${BETWEEN_GROUPS}?\\d{4}(?!\\d)`,
+    'g',
+  ), // phone number, North American
   // The shapes a government or a health number is written in: ten digits grouped four,
-  // three, three; nine grouped in threes; and nine or more in a row. A figure led by a
-  // currency sign is a price, and digits after a decimal point are a fraction.
-  /(?<![\d$])\d{4}[-\s]\d{3}[-\s]\d{3}(?!\d)/g, // grouped number, four-three-three
-  /(?<![\d$])\d{3}[-\s]\d{3}[-\s]\d{3}(?!\d)/g, // grouped number, three-three-three
-  /(?<![\d$.])\d{9,}(?!\d)/g, // nine or more digits in a row
+  // three, three; nine grouped in threes; and nine or more in a row. Only the last has
+  // exemptions, for what one unbroken figure can be: a price, after its currency sign,
+  // and the digits of a fraction, after a digit and its decimal point.
+  new RegExp(`(?<!\\d)\\d{4}${BETWEEN_GROUPS}\\d{3}${BETWEEN_GROUPS}\\d{3}(?!\\d)`, 'g'), // grouped number, four-three-three
+  new RegExp(`(?<!\\d)\\d{3}${BETWEEN_GROUPS}\\d{3}${BETWEEN_GROUPS}\\d{3}(?!\\d)`, 'g'), // grouped number, three-three-three
+  /(?<![\d$])(?<!\d\.)\d{9,}(?!\d)/g, // nine or more digits in a row
   /\b[a-z]\d[a-z][ -]?\d[a-z]\d\b/gi, // Canadian postal code
   /\b\d{5}-\d{4}\b/g, // US ZIP+4
   // A bare five digits is a ZIP only where an address puts one: after a state code, or
@@ -266,6 +277,41 @@ const DIRECT_IDENTIFIERS: RegExp[] = [
 ];
 const REDACTED = '[redacted]';
 
+const ANY_DASH = /[\p{Dash_Punctuation}\u2212]/gu;
+
+/**
+ * One character as every pattern reads it: its compatibility form (Unicode NFKC, so a
+ * full-width digit is the digit and a no-break space is a space), with any dash or minus
+ * sign as a hyphen.
+ */
+function oneShape(char: string): string {
+  return char.normalize('NFKC').replace(ANY_DASH, '-');
+}
+
+/** What one pattern takes out of `text`. The pattern is matched against the one shape,
+ * and each character of the text any part of a match was read from goes with it. */
+function redact(text: string, pattern: RegExp): string {
+  const chars = Array.from(text, (char) => ({ char, shape: oneShape(char) }));
+  const matches = Array.from(
+    chars
+      .map(({ shape }) => shape)
+      .join('')
+      .matchAll(pattern),
+    (match) => ({ start: match.index, end: match.index + match[0].length }),
+  );
+  let scrubbed = '';
+  let at = 0;
+  let inside: (typeof matches)[number] | undefined;
+  for (const { char, shape } of chars) {
+    const match = matches.find(({ start, end }) => start < at + shape.length && at < end);
+    if (match === undefined) scrubbed += char;
+    else if (match !== inside) scrubbed += REDACTED;
+    inside = match;
+    at += shape.length;
+  }
+  return scrubbed;
+}
+
 export function scrubDirectIdentifiers(text: string): string {
-  return DIRECT_IDENTIFIERS.reduce((acc, pattern) => acc.replace(pattern, REDACTED), text);
+  return DIRECT_IDENTIFIERS.reduce(redact, text);
 }

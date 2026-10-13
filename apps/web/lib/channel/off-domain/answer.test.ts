@@ -860,6 +860,60 @@ describe('scrubDirectIdentifiers', () => {
     expect(scrubDirectIdentifiers(text)).toBe(scrubbed);
   });
 
+  /**
+   * The same numbers written another way (security stage, 2026-10-12). A pattern used to
+   * read the text as it was typed, so a separator, a digit form or a sign in front that
+   * it had not listed got past it. Now every pattern reads one shape of the text. All
+   * invented.
+   */
+  it.each([
+    ['groups after a currency sign', 'is $123-456-789 real', 'is $[redacted] real'],
+    ['spaced groups after a currency sign', 'is $123 456 789 mine', 'is $[redacted] mine'],
+    ['a run straight after "No."', 'is card No.123456789 good', 'is card No.[redacted] good'],
+    ['groups separated by dots', 'is 123.456.789 a real number', 'is [redacted] a real number'],
+    ['groups separated by slashes', 'is 123/456/789 a real number', 'is [redacted] a real number'],
+    ['groups separated by en dashes', 'is 123\u2013456\u2013789 real', 'is [redacted] real'],
+    ['groups separated by underscores', 'is 123_456_789 real', 'is [redacted] real'],
+    ['ten digits grouped by dots', 'does 1234.567.890 look right', 'does [redacted] look right'],
+    [
+      'groups in full-width digits',
+      'is \uff11\uff12\uff13-\uff14\uff15\uff16-\uff17\uff18\uff19 real',
+      'is [redacted] real',
+    ],
+    [
+      'a run of full-width digits',
+      'what is \uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19 for',
+      'what is [redacted] for',
+    ],
+    [
+      'a phone number in full-width digits',
+      'text me at \uff14\uff11\uff16-\uff15\uff15\uff15-\uff10\uff11\uff14\uff12',
+      'text me at [redacted]',
+    ],
+    [
+      'a phone number typed with en dashes',
+      'text me at 416\u2013555\u20130142',
+      'text me at [redacted]',
+    ],
+    [
+      'a postal code typed with a no-break space',
+      'will it rain near A1A\u00a01A1',
+      'will it rain near [redacted]',
+    ],
+  ])('takes out %s', (_label, text, scrubbed) => {
+    expect(scrubDirectIdentifiers(text)).toBe(scrubbed);
+  });
+
+  /** Only the identifier goes. Every other character is handed on as it was typed, the
+   * full-width comma and question mark here included. */
+  it('takes out the identifier and changes nothing else', () => {
+    expect(
+      scrubDirectIdentifiers(
+        '\u6211\u7684\u53f7\u7801\u662f\uff11\uff12\uff13-\uff14\uff15\uff16-\uff17\uff18\uff19\uff0c\u5bf9\u5417\uff1f',
+      ),
+    ).toBe('\u6211\u7684\u53f7\u7801\u662f[redacted]\uff0c\u5bf9\u5417\uff1f');
+  });
+
   /** Positive controls for the other direction: a duration, a year count, an age with no
    * name beside it, a price and a score are parts of an ordinary question. */
   it.each([
@@ -879,17 +933,25 @@ describe('scrubDirectIdentifiers', () => {
     'what is 12345678 times 2',
     'what is pi to 12 places, 3.141592653589',
     'how old is someone born 1987 10 11',
+    'what is 0.123456789 as a fraction',
+    'what happened on 2026/10/11',
+    'what happened on 11.10.2026',
+    'did the raptors win 112\u2013104 last night',
+    // Nothing is taken out here, so not one character changes: full-width digits and a
+    // full-width question mark are handed on as typed.
+    '\u6bd4\u5206\u662f\uff13\u6bd4\uff11\u5417\uff1f',
   ])('leaves %j as it was', (text) => {
     expect(scrubDirectIdentifiers(text)).toBe(text);
   });
 
-  it.each([
-    'is $450 too much for a stroller',
-    'was the jackpot really $125 000 000',
-    'was the jackpot really $125000000',
-  ])('leaves a price written with its sign as it was: %j', (text) => {
-    expect(scrubDirectIdentifiers(text)).toBe(text);
-  });
+  /** A price is one unbroken figure after its sign. Written in groups it is read as any
+   * other grouped number is (above). */
+  it.each(['is $450 too much for a stroller', 'was the jackpot really $125000000'])(
+    'leaves a price written with its sign as it was: %j',
+    (text) => {
+      expect(scrubDirectIdentifiers(text)).toBe(text);
+    },
+  );
 });
 
 /**
