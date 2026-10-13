@@ -1,0 +1,127 @@
+{
+  "75bac4b77448041e261a271a0dd4889da64fb647176c4791580f5e3e1174af44": {
+    "key": "75bac4b77448041e261a271a0dd4889da64fb647176c4791580f5e3e1174af44",
+    "recordedAt": "2026-10-12T04:18:27.659Z",
+    "request": {
+      "model": "claude-haiku-4-5",
+      "userMessage": "."
+    },
+    "response": {
+      "model": "claude-haiku-4-5-20251001",
+      "id": "msg_011CfwhVJeuRDYZQE66UNaw7",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "#"
+        }
+      ],
+      "container": null,
+      "stop_reason": "max_tokens",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 1,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "diagnostics": null
+    }
+  },
+  "2748a95632dce59e2bd6db75fda283ae56c61453ab1c33e4d3bcc7d45d5b92a3": {
+    "key": "2748a95632dce59e2bd6db75fda283ae56c61453ab1c33e4d3bcc7d45d5b92a3",
+    "recordedAt": "2026-10-12T17:41:16.771Z",
+    "request": {
+      "model": "claude-sonnet-4-6",
+      "userMessage": "{\"prompt\":\"weekend_fallback\",\"language\":\"en\"}"
+    },
+    "response": {
+      "model": "claude-sonnet-4-6",
+      "id": "msg_011CfxkhyJ3kZv5shjkT5syU",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_011ZG8dW92mojjoERDxwCKDH",
+          "name": "weekday_ask",
+          "input": {
+            "message": "Hey, just realized everything I've been sending you has been weekend stuff — want me to look at weekdays too?"
+          },
+          "caller": {
+            "type": "direct"
+          }
+        }
+      ],
+      "container": null,
+      "stop_reason": "tool_use",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1271,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 56,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
+  },
+  "ed3a2a46690bd13f5d786f6340255ec939bb0627f8a0670472bef6a20beb82ef": {
+    "key": "ed3a2a46690bd13f5d786f6340255ec939bb0627f8a0670472bef6a20beb82ef",
+    "recordedAt": "2026-10-12T17:41:19.102Z",
+    "request": {
+      "model": "claude-sonnet-4-6",
+      "userMessage": "{\"prompt\":\"weekend_fallback\",\"language\":\"fr\"}"
+    },
+    "response": {
+      "model": "claude-sonnet-4-6",
+      "id": "msg_011Cfxki7AomdkXkgda683zx",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_01GK2ntyrdt1szr63gEutRYK",
+          "name": "weekday_ask",
+          "input": {
+            "message": "Je me suis rendu compte que tout ce qu'on avait regardé jusqu'ici c'était pour le week-end — tu veux que je jette un œil du côté des jours de semaine aussi ?"
+          },
+          "caller": {
+            "type": "direct"
+          }
+        }
+      ],
+      "container": null,
+      "stop_reason": "tool_use",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1271,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 83,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
+  }
+}

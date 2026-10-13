@@ -15,9 +15,13 @@ import type { ChannelRouterDeps } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
 import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
 import { checkpointById, checkpointRef } from '~/lib/health/checkpoints';
-import { HEALTH_CLOSE_BOOKING } from '~/lib/health/copy';
-import { checkpointToldKey } from '~/lib/health/told';
-import { CHECKUP_OFFER_TTL_HOURS } from '~/lib/health/offer';
+import { matchHealthCheckpoints } from '~/lib/health/match';
+import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
+import {
+  CHECKUP_OFFER_TTL_HOURS,
+  defaultCheckupOfferPorts,
+  recordCheckupOffer,
+} from '~/lib/health/offer';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -37,16 +41,22 @@ import { fakeWeather } from '~/lib/weather/open-meteo';
  * those rows; this one existed only as a sentence inside a sent SMS. So the acceptance
  * was read against everything EXCEPT the thing it answered.
  *
- * WHAT THIS PINS. The nudge writes the offer down at send time, the acceptance resolves
- * to it, and the draft the offer promised is a real row held for approval — through the
- * REAL sweep, the REAL open-question reader, the REAL handler chain and the REAL ledger,
- * over real Postgres. The two seams that are Fakes are the two that leave the building:
- * the SMS transport, and the model's words (rule #8 — the resolver's PICK is proven on
- * cached Claude in apps/worker/evals/reply-resolver-fixtures.mjs, and what runs here is
- * the real `toReading` over the raw shape that eval records).
+ * WHAT THIS PINS. An offer written down at send time is what the acceptance resolves to,
+ * and the draft the offer promised is a real row held for approval — through the REAL
+ * offer writer, the REAL open-question reader, the REAL handler chain and the REAL
+ * ledger, over real Postgres. The two seams that are Fakes are the two that leave the
+ * building: the SMS transport, and the model's words (rule #8 — the resolver's PICK is
+ * proven on cached Claude in apps/worker/evals/reply-resolver-fixtures.mjs, and what runs
+ * here is the real `toReading` over the raw shape that eval records).
  *
- * The mutation at the bottom is the point of the whole file: delete the send-time
- * registration and the parent's acceptance finds nothing again.
+ * 2026-10-12 (Barton): Hale sends no health checkpoint reminder, so the sweep no longer
+ * makes this offer (the first case below). A family asked before that can still answer
+ * inside the offer's week, so the rest replays the reply against the rows that sweep
+ * left: the ledger row under the checkpoint's told-marker and the offer registered
+ * against it.
+ *
+ * The mutation at the bottom is the point of the whole file: without the registration
+ * the parent's acceptance finds nothing again.
  */
 
 const TZ = 'America/Toronto';
@@ -146,7 +156,7 @@ describe('the offer is a proposal', () => {
     parentTimeZone: async () => TZ,
   };
 
-  function nudgeDeps(transport: FakeTransport, overrides: Partial<NudgeRunDeps> = {}) {
+  function nudgeDeps(transport: FakeTransport) {
     return {
       ...defaultNudgeRunDeps(),
       // SEAM: prod selects families ⋈ family_members ⋈ users. Which families are DUE is
@@ -165,16 +175,42 @@ describe('the offer is a proposal', () => {
       weather: fakeWeather([]),
       transport,
       client: null,
-      ...overrides,
     } satisfies NudgeRunDeps;
   }
 
-  /** The nudge that makes the offer, sent for real over a fake wire. */
-  async function sendTheNudge(overrides: Partial<NudgeRunDeps> = {}): Promise<FakeTransport> {
-    const transport = new FakeTransport();
-    const result = await runNudgeCron(database, nudgeDeps(transport, overrides), NUDGE_AT);
-    expect(result.sent).toBe(1);
-    return transport;
+  function wellBabyRef(): string {
+    const wellBaby = checkpointById('well_baby_18_months');
+    if (!wellBaby) throw new Error('fixture drift: no well_baby_18_months');
+    return checkpointRef(wellBaby, childId, 0);
+  }
+
+  /** The rows the sweep left when it sent this checkpoint: the ledger row that carried
+   * the offer and, unless `registered` is false, the offer registered against it. */
+  async function seedTheSentOffer(registered = true): Promise<string> {
+    const [carrier] = await database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'nudge',
+        templateKey: 'proactive_nudge:health_checkpoint',
+        dedupeKey: `${checkpointToldKey(familyId, wellBabyRef())}${TOLD_RECIPIENT_SEPARATOR}${parentUserId}`,
+        status: 'delivered',
+        sentAt: NUDGE_AT,
+      })
+      .returning({ id: schema.channelMessages.id });
+    const carrierId = (carrier as { id: string }).id;
+    if (registered) {
+      const outcome = await recordCheckupOffer(
+        database,
+        { familyId, ref: wellBabyRef(), channelMessageId: carrierId, now: NUDGE_AT },
+        defaultCheckupOfferPorts(),
+      );
+      expect(outcome.status).toBe('recorded');
+    }
+    return carrierId;
   }
 
   /**
@@ -355,10 +391,41 @@ describe('the offer is a proposal', () => {
       );
   }
 
-  it('registers the offer against the message that made it', async () => {
-    const transport = await sendTheNudge();
+  it('the sweep makes no such offer any more: no text, no ledger row, no offer', async () => {
+    // The well-baby row is still what the matcher finds for this family, so the silence
+    // below is the sweep's choice and not an empty table.
+    const vaccineRow = checkpointById('immunization_18_months');
+    if (!vaccineRow) throw new Error('fixture drift: no immunization_18_months');
+    const [match] = matchHealthCheckpoints({
+      children: [
+        { id: childId, name: 'Ines', ageMonths: 19, dobPrecision: 'exact', isTeen: false },
+      ],
+      areaCoarse: AREA,
+      suppressedRefs: new Set([checkpointRef(vaccineRow, childId, 0)]),
+      now: NUDGE_AT,
+    });
+    expect(match?.ref).toBe(wellBabyRef());
 
-    expect(transport.bodies()[0]).toContain(HEALTH_CLOSE_BOOKING);
+    const transport = new FakeTransport();
+    const result = await runNudgeCron(database, nudgeDeps(transport), NUDGE_AT);
+
+    expect(result).toMatchObject({ evaluated: 1, sent: 0, quiet: 1, failed: 0 });
+    expect(transport.sent).toEqual([]);
+    expect(await offerRows()).toEqual([]);
+    const sentAtTheSweep = await database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.familyId, familyId),
+          eq(schema.channelMessages.sentAt, NUDGE_AT),
+        ),
+      );
+    expect(sentAtTheSweep).toEqual([]);
+  });
+
+  it('registers the offer against the message that made it', async () => {
+    const carrierId = await seedTheSentOffer();
 
     const [offer] = await offerRows();
     expect(offer).toMatchObject({
@@ -368,17 +435,13 @@ describe('the offer is a proposal', () => {
     });
     // Minted against the outbound row that CARRIED it — an offer nobody received is not
     // an offer (the MEM-10 send-time discipline).
-    const [carrier] = await database
-      .select({ id: schema.channelMessages.id, templateKey: schema.channelMessages.templateKey })
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.id, offer?.createdFrom as string));
-    expect(carrier?.templateKey).toBe('proactive_nudge:health_checkpoint');
+    expect(offer?.createdFrom).toBe(carrierId);
     // One week — the nudge's own relevance window, not a number invented here.
     expect(offer?.dueAt.getTime()).toBe(NUDGE_AT.getTime() + CHECKUP_OFFER_TTL_HOURS * 3_600_000);
   });
 
   it('replays the transcript: the acceptance binds, and no jargon reaches the parent', async () => {
-    await sendTheNudge();
+    await seedTheSentOffer();
     const flaggedActionId = await seedTheOtherQuestions();
 
     const standing = await openQuestions(REPLY_AT);
@@ -484,9 +547,9 @@ describe('the offer is a proposal', () => {
   it('MUTATION - with the send-time registration removed, the acceptance finds nothing', async () => {
     // The whole file in one assertion. `recordCheckupOffer` is the only thing standing
     // between "Hale asked a question" and "Hale can hear the answer": take it out and the
-    // sweep still sends a perfect message, the parent still accepts it, and nothing at all
-    // happens — which is exactly what production did.
-    await sendTheNudge({ recordCheckupOffer: async () => ({ status: 'not_an_offer' }) });
+    // message still went, the parent still accepts it, and nothing at all happens —
+    // which is exactly what production did.
+    await seedTheSentOffer(false);
     await seedTheOtherQuestions();
 
     expect(await offerRows()).toHaveLength(0);
@@ -515,7 +578,7 @@ describe('the offer is a proposal', () => {
   });
 
   it('an offer past its week is not a question, and cannot be accepted', async () => {
-    await sendTheNudge();
+    await seedTheSentOffer();
     await seedTheOtherQuestions();
 
     const lapsed = new Date(NUDGE_AT.getTime() + (CHECKUP_OFFER_TTL_HOURS + 1) * 3_600_000);

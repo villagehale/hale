@@ -8,6 +8,7 @@ import {
   formatDayHeading,
   formatDurationMinutes,
   formatLongDate,
+  formatSnapshotLocalNow,
   formatTime,
   formatWhenPhrase,
   foundStamp,
@@ -25,6 +26,19 @@ import {
 // → 07:05; UTC → 14:05. One instant, three zones, three answers.
 const SUMMER_INSTANT = '2026-06-11T14:05:00Z';
 const NOW_SAME_YEAR = new Date('2026-06-12T00:00:00Z');
+
+describe('formatSnapshotLocalNow', () => {
+  it('names the weekday and the 12-hour wall clock in the given zone, with the zone', () => {
+    // 22:00Z on Thursday 2026-10-08 is 18:00 EDT (UTC-4) and 15:00 PDT (UTC-7).
+    const instant = new Date('2026-10-08T22:00:00.000Z');
+    expect(formatSnapshotLocalNow(instant, 'America/New_York')).toBe(
+      'Thursday 6:00 PM America/New_York',
+    );
+    expect(formatSnapshotLocalNow(instant, 'America/Los_Angeles')).toBe(
+      'Thursday 3:00 PM America/Los_Angeles',
+    );
+  });
+});
 
 describe('formatTime', () => {
   it('renders HH:MM 24h in the given zone', () => {

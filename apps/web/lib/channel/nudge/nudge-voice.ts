@@ -1,13 +1,14 @@
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import { loadNudgeVoiceSkill } from '~/lib/cron/skill';
+import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
-import { renderEmptySaturdayAsk } from './empty-saturday-copy';
+import { forceToolJson } from '~/lib/pipeline/structured';
 import type {
   EmptySaturdayNudge,
   HealthCheckpointNudge,
@@ -15,7 +16,13 @@ import type {
   WeekdayCareAsk,
 } from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
-import { renderWeekdayFinderAsk } from './weekday-care-copy';
+import {
+  WEEKDAY_ASK_MAX_TOKENS,
+  WEEKDAY_ASK_TOOL,
+  WEEKDAY_ASK_TOOL_SCHEMA,
+  readWeekdayAsk,
+  weekdayAskContext,
+} from './weekday-ask-tools';
 
 /**
  * VIL-239 · M4 — COMPOSE: the decision object, said out loud in Hale's voice.
@@ -210,14 +217,11 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
   // message, not a fallback for one.
   if (nudge.kind === 'health_checkpoint') return renderHealthNudge(nudge);
 
-  // VIL-360's ask, for the same reason: the sentence IS the message. It is measured to
-  // the character, it carries the one question mark the grammar answers, and no model
-  // sees it (nudge/weekday-care-copy.ts).
-  if (nudge.kind === 'weekday_care') return renderWeekdayFinderAsk(nudge.ask);
-
-  // VIL-365. The sentence is the message. The model must not see it: the nudge
-  // voice skill forbids questions, and this ask is byte-locked.
-  if (nudge.kind === 'empty_saturday') return renderEmptySaturdayAsk(nudge.kidName);
+  // Weekday care and empty Saturday have no canned sentence. The writer speaks,
+  // or the send does not happen.
+  if (nudge.kind === 'weekday_care' || nudge.kind === 'empty_saturday') {
+    throw new Error(`renderNudgeDeterministically: ${nudge.kind} has no template`);
+  }
 
   if (nudge.kind === 'registration') {
     const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
@@ -288,16 +292,65 @@ async function composeEmptySaturday(
   return linked;
 }
 
+export const WEEKDAY_ASK_SKILL = 'weekday-care-ask';
+
+/**
+ * The weekday-care offer, written by the model in the family's language and checked
+ * against the offer that was chosen (weekday-ask-tools.ts). No canned sentence: a missing
+ * client, a failed call or a text that fails the check is silence, named `unvoiced` by
+ * the caller.
+ */
+async function composeWeekdayCareAsk(
+  nudge: WeekdayCareAsk,
+  deps: { familyId: string; database: Database; client: AgentClient | null },
+): Promise<string | null> {
+  if (!deps.client) return null;
+  const language = await familySpeechLanguage(deps.database, deps.familyId);
+  const skill = await loadCronSkill(WEEKDAY_ASK_SKILL);
+  let value: unknown;
+  try {
+    const result = await forceToolJson({
+      client: deps.client,
+      lane: pickLane(skill.meta.task),
+      system: skill.instructions,
+      userMessage: weekdayAskContext(nudge.ask, language),
+      toolName: WEEKDAY_ASK_TOOL,
+      toolDescription: 'The one text Hale sends.',
+      inputJsonSchema: WEEKDAY_ASK_TOOL_SCHEMA,
+      schema: z.unknown(),
+      maxTokens: WEEKDAY_ASK_MAX_TOKENS,
+    });
+    value = result.value;
+  } catch (err) {
+    // Never the message: a provider 400 can quote the request, parent words and all.
+    console.error(
+      { err: err instanceof Error ? err.constructor.name : 'unknown', familyId: deps.familyId },
+      'nudge: weekday ask model call failed - unvoiced',
+    );
+    return null;
+  }
+  const read = readWeekdayAsk(value, nudge.ask);
+  if ('skipped' in read) {
+    console.error(
+      { familyId: deps.familyId, reason: read.skipped, prompt: nudge.ask.prompt },
+      'nudge: weekday ask refused - unvoiced',
+    );
+    return null;
+  }
+  return read.message;
+}
+
 export async function composeNudgeMessage(
   nudge: Nudge,
   deps: { familyId: string; database: Database; client: AgentClient | null },
 ): Promise<string | null> {
   if (nudge.kind === 'empty_saturday') return composeEmptySaturday(nudge, deps);
+  if (nudge.kind === 'weekday_care') return composeWeekdayCareAsk(nudge, deps);
   const deterministic = renderNudgeDeterministically(nudge);
   // A health checkpoint never reaches the model (VIL-243 · M8): deterministic copy is
   // REVIEWABLE copy, and this is the one message class where a warmer sentence is not
   // worth the chance of a sentence nobody approved.
-  if (nudge.kind === 'health_checkpoint' || nudge.kind === 'weekday_care' || !deps.client) {
+  if (nudge.kind === 'health_checkpoint' || !deps.client) {
     return deterministic;
   }
 

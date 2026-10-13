@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "It is Thursday 6:00 PM local (the last good pre-weekend evening), the Saturday find fits the free window on Saturday (10:00–20:00 on 2026-10-10), the worthless-after deadline is still ahead, the unanswered streak is 0, and no prior hold exists — so this is the right moment to send.",
+    "action": "send_now",
+    "item_ids": [
+      "sat-find"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

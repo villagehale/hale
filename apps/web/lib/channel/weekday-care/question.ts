@@ -6,7 +6,7 @@ import {
   WEEKDAY_CARE_ASK_TEMPLATE_KEY,
 } from '~/lib/care/weekday';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import type { WeekdaySearchPrompt } from '~/lib/channel/nudge/weekday-care-copy';
+import type { WeekdaySearchPrompt } from '~/lib/channel/nudge/weekday-care-ask';
 import { parseWeekdayAskKey } from './key';
 
 /**

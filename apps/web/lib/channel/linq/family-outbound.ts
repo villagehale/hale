@@ -491,21 +491,27 @@ export async function familySpeech(
   userId: string,
 ): Promise<{ name: string | null; language: ReplyLanguage }> {
   if (typeof database.select !== 'function') return { name: null, language: 'en' };
-  const [family] = await database
-    .select({ primaryLanguage: schema.families.primaryLanguage })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId))
-    .limit(1);
+  const language = await familySpeechLanguage(database, familyId);
   const [user] = await database
     .select({ name: schema.users.name })
     .from(schema.users)
     .where(eq(schema.users.id, userId))
     .limit(1);
-  const language: ReplyLanguage = family?.primaryLanguage?.toLowerCase().startsWith('fr')
-    ? 'fr'
-    : 'en';
   const name = user?.name?.trim() || null;
   return { name, language };
+}
+
+/** The language half of {@link familySpeech}, for a household line that names no speaker. */
+export async function familySpeechLanguage(
+  database: Database,
+  familyId: string,
+): Promise<ReplyLanguage> {
+  const [family] = await database
+    .select({ primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }
 
 /** The names of this family's 13+ children as of `now`: never said in a group line (rule #1). */
