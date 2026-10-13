@@ -80,8 +80,9 @@ export type ReplySource = 'fixed' | 'composed' | 'web_grounded' | GeneralAnswerF
 
 export type OffDomainVerdict =
   /** Hale's job. The turn continues to the coach exactly as it did before this stage
-   * existed — carrying WHY, when the screen could not run (rule #11). */
-  | { status: 'in_domain'; fallback: LaneScreenFallback | null }
+   * existed — carrying WHY, when the screen could not run (rule #11).
+   * `language` is present only when the screen read a tag. */
+  | { status: 'in_domain'; fallback: LaneScreenFallback | null; language?: string }
   /** The lane finished the turn itself. See the module note on why this kept its name
    * now that one of the three branches is an answer rather than a refusal. */
   | {
@@ -90,6 +91,8 @@ export type OffDomainVerdict =
       category: UnmetIntentCategory;
       reply: string;
       replySource: ReplySource;
+      /** The BCP-47 tag the screen read, when it read one. Omitted otherwise. */
+      language?: string;
       /**
        * The medical lane's own outcome, for the router to stamp on the reply it sends —
        * and null on every other branch, which is what MARKS a sent row as a medical
@@ -158,7 +161,10 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
 
       const reading = await ports.screen.read(input.text);
       if (reading.lane === 'in_domain' || reading.category === null) {
-        return { status: 'in_domain', fallback: reading.fallback };
+        return withSeenLanguage(
+          { status: 'in_domain', fallback: reading.fallback },
+          reading.language,
+        );
       }
       const lane = reading.lane;
 
@@ -171,15 +177,18 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // (rule #11). Every OTHER safety_critical category still gets SAFETY_REPLY below.
       if (lane === 'safety_critical' && reading.category === 'medical-symptom') {
         const { reply, replySource } = await ports.medical.answer(input.text);
-        return {
-          status: 'deflected',
-          lane,
-          category: reading.category,
-          reply,
-          replySource,
-          medicalSource: replySource,
-          signal: 'not_applicable',
-        };
+        return withSeenLanguage(
+          {
+            status: 'deflected',
+            lane,
+            category: reading.category,
+            reply,
+            replySource,
+            medicalSource: replySource,
+            signal: 'not_applicable',
+          },
+          reading.language,
+        );
       }
 
       // The two doors are fixed sentences and the composer is never woken for them. Not
@@ -216,20 +225,34 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         category: reading.category,
       });
 
-      return {
-        status: 'deflected',
-        lane,
-        category: reading.category,
-        reply,
-        replySource,
-        // Every branch below the medical one is a door Hale chose or an answer about the
-        // world; none of them is a medical answer, and stamping one would put a
-        // deliberate door in the safety row's fallback count.
-        medicalSource: null,
-        signal,
-      };
+      return withSeenLanguage(
+        {
+          status: 'deflected',
+          lane,
+          category: reading.category,
+          reply,
+          replySource,
+          // Every branch below the medical one is a door Hale chose or an answer about the
+          // world; none of them is a medical answer, and stamping one would put a
+          // deliberate door in the safety row's fallback count.
+          medicalSource: null,
+          signal,
+        },
+        reading.language,
+      );
     },
   };
+}
+
+/**
+ * Put the screen's tag on the verdict only when there is one.
+ *
+ * Absent means the router writes nothing. A fail-open, a timeout, and the emergency
+ * short-circuit never invent a language (rule #11).
+ */
+function withSeenLanguage(verdict: OffDomainVerdict, language: string | null): OffDomainVerdict {
+  if (language === null || language.trim() === '') return verdict;
+  return { ...verdict, language: language.trim() };
 }
 
 /**

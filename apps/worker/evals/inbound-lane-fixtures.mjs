@@ -71,6 +71,10 @@ export const LANE_FIXTURES = [
   { id: 'storytime', text: 'any toddler storytime near us this week', expect: 'in_domain' },
   { id: 'indoors-saturday', text: 'anything indoors saturday', expect: 'in_domain' },
   { id: 'swim-french', text: 'on cherche des cours de natation', expect: 'in_domain' },
+  // Family-week asks in the languages a follow-up must be able to answer. The
+  // screen returns a language tag; this eval does not grade which tag.
+  { id: 'inbound-language-zh', text: '这周末有亲子活动吗', expect: 'in_domain' },
+  { id: 'inbound-language-ar', text: 'هل يوجد نشاط للأطفال هذا الأسبوع', expect: 'in_domain' },
 
   // ── in_domain · the hardest trap in the corpus ────────────────────────────
   // Weather words, but the ASK is the weekend arranged. Answering this with "not my

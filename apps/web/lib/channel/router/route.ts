@@ -54,6 +54,7 @@ import { considerLinqReply } from '~/lib/channel/linq/moments';
 import { LINQ_TYPING_REFRESH_MS, signalImessageTyping } from '~/lib/channel/linq/presence';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
+import { rememberParentLanguage } from '~/lib/channel/off-domain/locale';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
@@ -1206,6 +1207,25 @@ async function routeChannelMessageInner(
       );
       await noteUnanswered(deps, job, OFF_DOMAIN_TIMEOUT);
       verdict = { status: 'in_domain', fallback: null };
+    }
+    // The screen already read the parent's words. Store the tag it returned, on
+    // this parent, when it differs. Both doors: an in-domain ask is the one a
+    // later follow-up has to answer in that language, and a deflection was still
+    // written in it. A timeout verdict has no tag, and a blank one writes nothing.
+    if (typeof verdict.language === 'string') {
+      const wrote = await rememberParentLanguage(
+        deps.database,
+        turn.parentUserId,
+        verdict.language,
+      );
+      deps.log.info(
+        {
+          familyId: job.family_id,
+          outcome: wrote.status,
+          ...(wrote.status === 'not_written' ? { reason: wrote.reason } : {}),
+        },
+        'channel router: parent language',
+      );
     }
     if (verdict.status === 'deflected') {
       await answer(verdict.reply, verdict.medicalSource, verdict.replySource);

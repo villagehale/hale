@@ -58,8 +58,9 @@ const LANE_TOOL_SCHEMA = {
     },
     category: { type: 'string', enum: ALLOWED_CATEGORIES },
     reason: { type: 'string' },
+    language: { type: 'string' },
   },
-  required: ['lane', 'category', 'reason'],
+  required: ['lane', 'category', 'reason', 'language'],
 };
 
 /** Mirrors `laneUserMessage` in screen.ts — the model sees the text and nothing else. */

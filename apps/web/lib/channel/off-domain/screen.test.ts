@@ -59,6 +59,7 @@ describe('toReading', () => {
       lane: 'safety_critical',
       category: 'medical-symptom',
       fallback: null,
+      language: null,
     });
   });
 
@@ -67,6 +68,7 @@ describe('toReading', () => {
       lane: 'in_domain',
       category: null,
       fallback: null,
+      language: null,
     });
   });
 
@@ -82,6 +84,7 @@ describe('toReading', () => {
       lane: 'in_domain',
       category: null,
       fallback: 'unreadable',
+      language: null,
     });
     log.mockRestore();
   });
@@ -91,6 +94,7 @@ describe('toReading', () => {
       lane: 'off_domain_general',
       category: 'other',
       fallback: null,
+      language: null,
     });
   });
 
@@ -102,6 +106,27 @@ describe('toReading', () => {
       category: 'mia has a rash on her arm',
     });
     expect(reading.category).toBe('other');
+  });
+
+  it('passes a language tag through unchanged, including one this code has never listed', () => {
+    expect(
+      toReading({ lane: 'in_domain', category: 'none', language: ' zh-Hant ' }).language,
+    ).toBe('zh-Hant');
+    expect(
+      toReading({ lane: 'off_domain_general', category: 'weather', language: 'ZH' }).language,
+    ).toBe('ZH');
+  });
+
+  it('treats a blank tag as no language, and drops a tag on a lane it cannot read', () => {
+    const log = quiet();
+    expect(toReading({ lane: 'in_domain', category: 'none', language: '   ' }).language).toBeNull();
+    expect(toReading({ lane: 'sort_of_ours', category: 'weather', language: 'zh' })).toEqual({
+      lane: 'in_domain',
+      category: null,
+      fallback: 'unreadable',
+      language: null,
+    });
+    log.mockRestore();
   });
 });
 
@@ -120,6 +145,7 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
       lane: 'off_domain_general',
       category: 'weather',
       fallback: null,
+      language: null,
     });
   });
 
@@ -158,6 +184,7 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
       lane: 'off_domain_general',
       category: 'weather',
       fallback: null,
+      language: null,
     });
   });
 
@@ -184,6 +211,7 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
       lane: 'in_domain',
       category: null,
       fallback: 'client_unavailable',
+      language: null,
     });
     log.mockRestore();
   });
@@ -194,6 +222,7 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
       lane: 'in_domain',
       category: null,
       fallback: 'model_failed',
+      language: null,
     });
     log.mockRestore();
   });
@@ -215,6 +244,7 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
       lane: 'in_domain',
       category: null,
       fallback: 'model_failed',
+      language: null,
     });
     log.mockRestore();
   });
@@ -248,6 +278,7 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
       lane: 'off_domain_general',
       category: 'weather',
       fallback: null,
+      language: null,
     });
     expect(JSON.stringify(log.mock.calls)).not.toContain('Mia');
     log.mockRestore();
@@ -257,6 +288,22 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
    * The error object from a provider can echo the request back, so the log keeps the
    * message string only. A parent's words must not reach a log aggregator (rule #1).
    */
+  it.each([
+    ['zh', '这周末有亲子活动吗'],
+    ['ar', 'هل يوجد نشاط للأطفال هذا الأسبوع'],
+  ])('returns the %s tag the model read on that inbound', async (tag, text) => {
+    const screen = createInboundLaneScreen(
+      clientReturning({ lane: 'in_domain', category: 'none', reason: 'family week', language: tag }),
+    );
+
+    expect(await screen.read(text)).toEqual({
+      lane: 'in_domain',
+      category: null,
+      fallback: null,
+      language: tag,
+    });
+  });
+
   it('never logs the message, on any path', async () => {
     const secret = 'is Mia contagious with hand foot and mouth';
     const log = quiet();
