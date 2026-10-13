@@ -72,8 +72,7 @@ function RowMarks({ entry }: { entry: TrailView }) {
   return (
     <>
       {/* Rule #1 made visible rather than merely obeyed: the row already
-        * carries the placeholder instead of the sentence, and this says
-        * WHY in the same calm wash Approvals uses for the same fact. */}
+        * carries the placeholder instead of the sentence. */}
       {entry.teenRedacted ? (
         <span className="pill pill-berry inline-flex items-center gap-1.5">
           <Shield size={13} strokeWidth={1.8} aria-hidden="true" />

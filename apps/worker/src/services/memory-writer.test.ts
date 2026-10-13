@@ -162,7 +162,10 @@ describe('recordTransition single-writer — exactly one audit row per transitio
 
   it('recordExecution pairs the domain update with one audit row atomically', async () => {
     const s = stubDb();
-    await recordExecution({ actionId, result: { ok: true }, ok: true }, s.database);
+    await recordExecution(
+      { actionId, result: { ok: true }, ok: true, decision: { source: 'autonomous', reason: 'ok' } },
+      s.database,
+    );
 
     expect((s.database.transaction as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
     expect(s.auditInserts()).toBe(1);
@@ -171,7 +174,10 @@ describe('recordTransition single-writer — exactly one audit row per transitio
   it('throws (rolls back) when the action row is missing — no partial write', async () => {
     const s = stubDb([]); // familyId lookup returns nothing
     await expect(
-      recordExecution({ actionId, result: {}, ok: false }, s.database),
+      recordExecution(
+        { actionId, result: {}, ok: false, decision: { source: 'autonomous', reason: 'ok' } },
+        s.database,
+      ),
     ).rejects.toThrow(/not found/);
     expect(s.auditInserts()).toBe(0);
   });

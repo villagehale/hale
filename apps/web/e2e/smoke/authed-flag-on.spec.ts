@@ -123,13 +123,23 @@ test('/settings renders the reveal rows — the #577 page', async ({ browser }) 
   await assertHealthy(page, errors, '04-settings');
 });
 
-test('/approvals renders the queue', async ({ browser }) => {
-  const { page, errors } = await openPage(browser, 'member');
-  const response = await page.goto('/approvals');
-  expect(response?.status()).toBe(200);
-  // Fresh seed ⇒ nothing pending ⇒ the caught-up state is the honest marker.
-  await expect(page.getByText('All caught up')).toBeVisible();
-  await assertHealthy(page, errors, '05-approvals');
+test('/approvals is gone: a plain portal 404, and the address does not move', async ({ browser }) => {
+  const paths = ['/approvals', '/approvals/8f2c'];
+  for (const viewer of ['anonymous', 'member'] as const) {
+    for (const path of paths) {
+      const { page, errors } = await openPage(browser, viewer);
+      const response = await page.goto(path);
+      expect(response?.status(), `${viewer} ${path}`).toBe(404);
+      await expect(page, `${viewer} ${path}`).toHaveURL(new RegExp(`${path}$`));
+      await expect(page, `${viewer} ${path}`).toHaveTitle('Page not found · Hale');
+      await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+      const unexpected = errors.filter(
+        (line) => !/Failed to load resource: the server responded with a status of 404/.test(line),
+      );
+      expect(unexpected, `page/console errors on ${page.url()}`).toEqual([]);
+      await page.context().close();
+    }
+  }
 });
 
 test('/trail renders the audit tally', async ({ browser }) => {
@@ -138,6 +148,20 @@ test('/trail renders the audit tally', async ({ browser }) => {
   expect(response?.status()).toBe(200);
   await expect(page.getByText('actions recorded')).toBeVisible();
   await assertHealthy(page, errors, '06-trail');
+});
+
+test('/trail shows a kind turning on, what Hale then did on its own, and the switch-off', async ({ browser }) => {
+  const { page, errors } = await openPage(browser, 'member');
+  const response = await page.goto('/trail');
+  expect(response?.status()).toBe(200);
+  // The seed's rows (scripts/fixtures/smoke-autonomy-trail.ts), each on its own day.
+  await expect(
+    page.getByText("You've approved this 5 times, so Hale will handle it on its own from now on"),
+  ).toBeVisible();
+  await expect(page.getByText('Hale did this for you on its own')).toBeVisible();
+  await expect(page.getByText('you stopped Hale doing this on its own')).toBeVisible();
+  await expect(page.getByText('brought a draft to you')).toBeVisible();
+  await assertHealthy(page, errors, '06b-trail-autonomy');
 });
 
 test('/admin is gone: a plain portal 404, and the address does not move', async ({ browser }) => {
@@ -158,6 +182,17 @@ test('/admin is gone: a plain portal 404, and the address does not move', async 
       await page.context().close();
     }
   }
+});
+
+test('/api/billing/checkout is gone: a signed-in parent gets 404', async ({ browser }) => {
+  const { page } = await openPage(browser, 'member');
+  // Positive control: the same signed-in context reaches a live API route.
+  expect((await page.request.get('/api/health')).status()).toBe(200);
+  const response = await page.request.post('/api/billing/checkout', {
+    data: { tier: 'plus', period: 'monthly' },
+  });
+  expect(response.status()).toBe(404);
+  await page.context().close();
 });
 
 test('/family redirects a cookie-less visitor to /sign-in (auth-gate positive control)', async ({

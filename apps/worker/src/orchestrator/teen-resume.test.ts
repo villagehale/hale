@@ -104,7 +104,6 @@ vi.mock('../services/memory-writer.js', () => ({
   recordReviewerVerdict: vi.fn(async () => {}),
   recordReviewerRejection: vi.fn(async () => {}),
   recordExecution: vi.fn(async () => {}),
-  recordEntitlementGate: vi.fn(async () => {}),
   recordDrop: vi.fn(async () => {}),
   markEventStage: vi.fn(async (_fam: string, _evt: string, stage: string) => {
     const ev = store.get('fixed-hash');
@@ -115,6 +114,7 @@ vi.mock('../services/memory-writer.js', () => ({
     actionType: 'send_email',
     payload: { to: 'a@b.com', subject: 'hi', body: 'hello' },
   })),
+  loadHumanApprover: vi.fn(async () => null),
   loadApprovedVerdictForAction: vi.fn(async () => ({
     kind: 'approve' as const,
     toolResults: [
@@ -124,16 +124,15 @@ vi.mock('../services/memory-writer.js', () => ({
     ],
     rationale: 'all green',
   })),
-  loadFamilyPlanTier: vi.fn(async () => 'family' as const),
-  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
   recordActionGate: () => recordActionGate(),
   // Every non-teen brake cleared so the ONLY thing that can cap the resume is
   // the teen-redaction cap: old family, full streak, single-parent, AND a
   // teenager in the stages (so teen_content × teenager fires the cap).
   loadFamilyCreatedAt: vi.fn(async () => new Date('2020-01-01T00:00:00.000Z')),
-  loadActionApprovalHistory: vi.fn(async () =>
-    Array.from({ length: 5 }, () => ({ actionType: 'send_email', humanApproved: true })),
-  ),
+  autonomyTurnOnDelivered: vi.fn(async () => true),
+  loadAutonomyStanding: vi.fn(async () => [
+    { parentUserId: 'parent-1', streakReached: true, optedIn: true },
+  ]),
   loadCrossParentConsent: vi.fn(async () => ({
     hasCoParent: false,
     coParentConsentGranted: false,

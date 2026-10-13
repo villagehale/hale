@@ -107,14 +107,6 @@ describe('a phone-claimed session (email NULL) can write its settings', () => {
     assertGotThroughTheDoor(result);
   });
 
-  it('can change the family plan tier', async () => {
-    const { setPlanAction } = await import('~/lib/family/children-actions');
-
-    const result = await setPlanAction('free');
-
-    assertGotThroughTheDoor(result);
-  });
-
   it('can delete one of its own plans', async () => {
     const { deletePlan } = await import('~/lib/plan/plan-actions');
 

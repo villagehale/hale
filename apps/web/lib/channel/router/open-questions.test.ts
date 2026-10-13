@@ -116,7 +116,6 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       emptySaturday: async () => null,
       daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
-      yearRetention: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -198,7 +197,6 @@ describe('the registration-readiness question on the open list', () => {
       emptySaturday: async () => null,
       daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
-      yearRetention: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -238,7 +236,6 @@ describe('the registration-readiness question on the open list', () => {
       emptySaturday: async () => null,
       daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
-      yearRetention: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -313,7 +310,6 @@ describe('the forwarding-address revoke confirm on the open list', () => {
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
       forwardAddressRevoke: async () => ({ id: 'ask-1', askedAt: T1 }),
-      yearRetention: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -355,7 +351,6 @@ describe('a stalled reader (VIL-400)', () => {
       emptySaturday: async () => null,
       daycareFollowup: async () => null,
       forwardAddressRevoke: async () => null,
-      yearRetention: async () => null,
       ...overrides,
     };
   }

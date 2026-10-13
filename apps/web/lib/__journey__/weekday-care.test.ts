@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,13 +18,16 @@ import {
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
 import { readCandidates } from '~/lib/channel/intake/radar';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { replyLanguage } from '~/lib/channel/language';
 import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { channelRouterDeps } from '~/lib/channel/router/wiring';
 import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { loadAgentContext } from '~/lib/coach/context';
+import { pipelineClient } from '~/lib/pipeline/client';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordedModel } from '~/lib/testing/recorded-model';
 
 /**
  * THE WEEKDAY-CARE ARC, end to end, over real Postgres and the real readers.
@@ -48,16 +53,17 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
  */
 
 const TZ = 'America/Toronto';
-/** NO FSA on purpose. Ontario's health checkpoints are region-gated and outrank both
- * weekday legs, so a family with an area would spend every tick of this journey on a
- * vaccine-record reminder. The checkpoint ladder has its own journey test; this one is
- * about the two rungs below it. */
+/** NO FSA on purpose. With no area the registration and weather legs read nothing, so
+ * every tick of this journey is decided by the two weekday rungs it is about. */
 const AREA = null;
 /** 10:00 Toronto on Friday 2026-08-07 — inside the nudge's local send hour. */
 const FRIDAY = new Date('2026-08-07T14:00:00.000Z');
 /** The Tuesday after it, in the family's own zone. */
 const TUESDAY_KEY = '2026-08-11';
 const PHONE = '+15551230000';
+/** The weekday-care ask, written by real Claude once and replayed (hard rule #8). */
+const ASK_RECORDINGS = join(import.meta.dirname, '__recordings__', 'weekday-care-ask.json');
+const askWriter = (): AgentClient => recordedModel(ASK_RECORDINGS, pipelineClient).client();
 
 let db: TestDb;
 let familyId: string;
@@ -144,7 +150,7 @@ const openGate = (): OutboundGatePorts => ({
  * `selectFamilies` and `loadRecipients` are overridden because both join
  * `parent_channels`, which needs an encryption key this journey has no use for.
  */
-function nudgeDeps(transport: FakeTransport): NudgeRunDeps {
+function nudgeDeps(transport: FakeTransport, client: AgentClient | null = null): NudgeRunDeps {
   return {
     ...defaultNudgeRunDeps(),
     selectFamilies: async () => [
@@ -161,9 +167,9 @@ function nudgeDeps(transport: FakeTransport): NudgeRunDeps {
     weather: { getDailyOutlook: async () => [] },
     buildGate: openGate,
     transport,
-    // No model: the deterministic render IS the message for the ask, and for the find it
-    // is the grounded floor. Either way the words below are Hale's own.
-    client: null,
+    // The ask runs pass the recorded writer. The find runs pass none, so its words are
+    // the grounded floor and the assertions below can name them.
+    client,
   };
 }
 
@@ -268,17 +274,17 @@ describe('the weekday-care arc', () => {
 
     // ── the ask ───────────────────────────────────────────────────────────────
     const askTransport = new FakeTransport();
-    const asked = await runNudgeCron(db.database, nudgeDeps(askTransport), FRIDAY);
+    const writer = recordedModel(ASK_RECORDINGS, pipelineClient);
+    const asked = await runNudgeCron(db.database, nudgeDeps(askTransport, writer.client()), FRIDAY);
 
+    expect(writer.requests).toContain(
+      JSON.stringify({ prompt: 'weekend_fallback', language: 'en' }),
+    );
     expect(asked.sent).toBe(1);
     const askBody = askTransport.sent[0]?.body ?? '';
-    expect(askBody).toContain(
-      'Those are weekend options. Want me to find something for weekdays too?',
-    );
     expect(askBody).not.toContain('Mia');
     expect(askBody).not.toContain('Ava');
     expect(askBody.toLowerCase()).not.toContain('pa day');
-    expect(askBody.toLowerCase()).not.toContain('weekends are covered');
     const [askRow] = await outbound('proactive_nudge:weekday_care');
     expect(askRow?.dedupeKey).toBe(`nudge:${familyId}:weekday_care:household:${parentUserId}`);
 
@@ -341,22 +347,56 @@ describe('the weekday-care arc', () => {
     expect(await outbound('proactive_nudge:weekday_dropin')).toHaveLength(1);
   });
 
+  it('asks a French family in French', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, familyId));
+    await seedWeekendFind();
+    const transport = new FakeTransport();
+    const writer = recordedModel(ASK_RECORDINGS, pipelineClient);
+
+    const asked = await runNudgeCron(db.database, nudgeDeps(transport, writer.client()), FRIDAY);
+
+    expect(writer.requests).toContain(
+      JSON.stringify({ prompt: 'weekend_fallback', language: 'fr' }),
+    );
+    expect(asked.sent).toBe(1);
+    const askBody = transport.sent[0]?.body ?? '';
+    expect(replyLanguage(askBody)).toBe('fr');
+    expect(askBody).not.toContain('Mia');
+    expect(askBody).not.toContain('Ava');
+  });
+
   it('never asks the same household twice', async () => {
     await seedWeekendFind();
     const transport = new FakeTransport();
 
-    await runNudgeCron(db.database, nudgeDeps(transport), FRIDAY);
+    const first = await runNudgeCron(db.database, nudgeDeps(transport, askWriter()), FRIDAY);
+    expect(first.sent).toBe(1);
     // A week later, with the question unanswered: the ledger row is the permanent
     // answer to "have we asked?", so the reason is `already_asked` rather than a
     // dedupe collision.
     const again = await runNudgeCron(
       db.database,
-      nudgeDeps(transport),
+      nudgeDeps(transport, askWriter()),
       new Date('2026-08-14T14:00:00.000Z'),
     );
 
     expect(again.sent).toBe(0);
     expect(again.skips.already_asked).toBe(1);
+    expect(transport.sent).toHaveLength(1);
+  });
+
+  it('asks nothing and records nothing when there is no writer', async () => {
+    await seedWeekendFind();
+    const transport = new FakeTransport();
+
+    const result = await runNudgeCron(db.database, nudgeDeps(transport), FRIDAY);
+
+    expect(result).toMatchObject({ sent: 0, quiet: 1 });
+    expect(transport.sent).toEqual([]);
+    expect(await outbound('proactive_nudge:weekday_care')).toEqual([]);
   });
 
   it('asks nobody it has not sent a weekend find to (D23)', async () => {
@@ -372,7 +412,7 @@ describe('the weekday-care arc', () => {
 
   it('files a daycare answer and comes back once, days later, to ask how it is going', async () => {
     await seedWeekendFind();
-    await runNudgeCron(db.database, nudgeDeps(new FakeTransport()), FRIDAY);
+    await runNudgeCron(db.database, nudgeDeps(new FakeTransport(), askWriter()), FRIDAY);
 
     const answeredAt = new Date(FRIDAY.getTime() + 20 * 60_000);
     await recordWeekdayCare(db.database, {

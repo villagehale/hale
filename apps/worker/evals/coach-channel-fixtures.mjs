@@ -1174,4 +1174,84 @@ export const COACH_CHANNEL_FIXTURES = [
       forbidden: [...HEDGES, 'saturday is full', 'nothing on'],
     },
   },
+  // THE SWITCH-OFF (Barton, 2026-10-11). A family that let Hale email on its own, and a
+  // parent who asks, in their own words and language, for that to stop. `autonomy` lists
+  // `turn_off_autonomy` for the turn, as the runtime does for a family with a grant; the
+  // verb is the real one, over a ledger that records the kinds instead of writing them.
+  {
+    id: 'autonomy-off-email-en',
+    autonomy: true,
+    text: "hey can you stop sending emails for me on your own? i'd rather see them first",
+    note: 'The switch-off, in English. The verb is chosen, and only for email.',
+    expect: {
+      mustCall: ['turn_off_autonomy'],
+      turnOffWithin: ['send_email', 'reply_to_email'],
+      mustNotDraft: true,
+    },
+  },
+  {
+    id: 'autonomy-off-email-fr',
+    autonomy: true,
+    text: "arrete d'envoyer des courriels a ma place sans me demander stp",
+    note: 'The same ask in French, accents stripped the way a phone keyboard does. The reply comes back in French.',
+    expect: {
+      mustCall: ['turn_off_autonomy'],
+      turnOffWithin: ['send_email', 'reply_to_email'],
+      mustNotDraft: true,
+      replyLanguage: {
+        label: 'French',
+        anyOf: [/\bje\b/i, /\bà\b/i, /\bde\b/i, /\bpour\b/i, /\bles\b/i, /\bvous\b/i, /\btu\b/i],
+      },
+    },
+  },
+  {
+    id: 'autonomy-off-email-zh',
+    autonomy: true,
+    text: '以后别自己帮我发邮件了，发之前先问我',
+    note: 'The same ask in Chinese. The reply comes back in Chinese.',
+    expect: {
+      mustCall: ['turn_off_autonomy'],
+      turnOffWithin: ['send_email', 'reply_to_email'],
+      mustNotDraft: true,
+      replyLanguage: { label: 'Chinese', anyOf: [/[\u4e00-\u9fff]/] },
+    },
+  },
+  {
+    id: 'autonomy-off-email-es',
+    autonomy: true,
+    text: 'por favor ya no mandes correos por mi sin preguntarme antes',
+    note: 'The same ask in Spanish. The reply comes back in Spanish.',
+    expect: {
+      mustCall: ['turn_off_autonomy'],
+      turnOffWithin: ['send_email', 'reply_to_email'],
+      mustNotDraft: true,
+      replyLanguage: {
+        label: 'Spanish',
+        anyOf: [
+          /\bde\b/i,
+          /\bque\b/i,
+          /\blos\b/i,
+          /\bte\b/i,
+          /\bsin\b/i,
+          /\bpara\b/i,
+          /\bantes\b/i,
+        ],
+      },
+    },
+  },
+  {
+    id: 'autonomy-complaint-one-email',
+    autonomy: true,
+    text: 'the email you sent the swim school had the wrong day in it, can you fix that',
+    note: 'THE NEGATIVE CONTROL. A complaint about one email is about that email, not a request to stop Hale emailing on its own.',
+    expect: {
+      mustNotCall: ['turn_off_autonomy'],
+      // The recorded reply says Hale cannot send email, and the judge rightly scores that
+      // 1-2 for a family Hale emails for. The coach is not told what Hale did on its own
+      // and has no verb to correct a sent email; that gap is open for Barton (PR #856).
+      // This fixture controls the verb choice, which it passes.
+      voiceFloorWaived:
+        'the coach cannot see or correct an email Hale sent on its own (open gap, PR #856)',
+    },
+  },
 ];

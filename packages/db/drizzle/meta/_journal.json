@@ -1121,6 +1121,20 @@
       "when": 1781556202000,
       "tag": "0163_drop_retired_auth_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1781556204000,
+      "tag": "0165_proactive_cadence",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1781556207000,
+      "tag": "0168_autonomy_notice_category",
+      "breakpoints": true
     }
   ]
 }

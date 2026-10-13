@@ -6,7 +6,6 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
 import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
-import { openYearRetentionQuestion } from '~/lib/billing/upgrade-ask';
 import { recordWeekdayCare } from '~/lib/care/weekday';
 import {
   defaultActivityPromisePorts,
@@ -93,7 +92,6 @@ import {
   sequenceReplyHandler,
   villageIntroHandler,
   weekdayCareHandler,
-  yearRetentionHandler,
 } from './handlers';
 import {
   type OpenQuestionReader,
@@ -430,9 +428,6 @@ export function defaultHandlers(): DeterministicHandler[] {
     healthReplyHandler(defaultHealthReplyDeps()),
     emailAlertAddHandler(),
     planReplyHandler(defaultPlanReplyDeps()),
-    // ENG-1. Claims a bare yes only while the year-retention ask is the open
-    // question. Flag off, the handler returns before it reads anything.
-    yearRetentionHandler(),
     // Explicit "sign us up" only. A bare yes is not a signup. Placed before the
     // registration reader, which also claims messages it cannot read.
     authorizedSignupHandler(),
@@ -911,7 +906,6 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       // used to close the question it was asking about (round 7). The last-word rule lives
       // on the bare-word door in handlers.ts, which is the only reader it protects.
       forwardAddressRevoke: (database, input) => forwardRevokeAsk(database, input),
-      yearRetention: (database, input) => openYearRetentionQuestion(database, input),
     },
     options,
   );

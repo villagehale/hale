@@ -2,7 +2,7 @@ import type { ActionType, FamilyStage } from '@hale/types';
 
 /**
  * Rule #4 autonomy gates, as pure functions. The orchestrator gates autonomous
- * EXECUTION on confidence + plan tier (fix-wave A / B18); these add the two
+ * EXECUTION on confidence (fix-wave A); these add the two
  * missing structural gates the hard rule names: the 7-day observe window and the
  * per-action-type 5-streak. Data (families.createdAt, action history) is supplied
  * by injected db lookups in memory-writer — these functions do no I/O.
@@ -55,6 +55,41 @@ export function streakSatisfiesAutonomy(
   }
   return false;
 }
+
+/**
+ * Whether Hale may EVER do an action kind on its own (Barton, 2026-10-11). Booking,
+ * registration and paying are denied in code, not merely unwired, so wiring one of
+ * their executors later can never make it autonomous; a human approval still executes
+ * a denied kind. `satisfies Record<ActionType, …>` makes a new ActionType a compile
+ * error until it is classified here.
+ */
+const AUTONOMY_BY_KIND = {
+  send_email: 'allowed',
+  reply_to_email: 'allowed',
+  create_calendar_event: 'allowed',
+  update_calendar_event: 'allowed',
+  place_supply_order: 'denied',
+  cancel_supply_order: 'denied',
+  fill_pdf_form: 'denied',
+  submit_government_form: 'denied',
+  book_clinic_portal: 'denied',
+  cancel_clinic_appointment: 'denied',
+  share_photos_with_family: 'allowed',
+  add_to_digest_only: 'allowed',
+  add_to_routine: 'allowed',
+  calendar_add: 'allowed',
+  calendar_move: 'allowed',
+  calendar_cancel: 'allowed',
+} as const satisfies Record<ActionType, 'allowed' | 'denied'>;
+
+export function autonomyDeniedForKind(actionType: ActionType): boolean {
+  return AUTONOMY_BY_KIND[actionType] === 'denied';
+}
+
+/** The kinds Hale may do on its own once a parent opts in: the ones a parent can switch off. */
+export const AUTONOMY_ALLOWED_KINDS = (Object.keys(AUTONOMY_BY_KIND) as ActionType[]).filter(
+  (kind) => AUTONOMY_BY_KIND[kind] === 'allowed',
+);
 
 /**
  * True iff the teen-redaction structural cap must fire: the family has at least

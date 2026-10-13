@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('~/lib/channel/linq/family-outbound', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/linq/family-outbound')>()),
+  familySpeechLanguage: async () => 'en',
+}));
 import { smsSegments } from '~/lib/channel/sms-segments';
 import type { Nudge } from './nudge-decide.js';
 import {
@@ -277,6 +282,41 @@ describe('renderNudgeDeterministically', () => {
 describe('nudgeVoiceStrings', () => {
   it('exposes the one user-facing string for the lint', () => {
     expect(nudgeVoiceStrings({ message: 'hello' })).toEqual(['hello']);
+  });
+});
+
+describe('composeNudgeMessage — weekday care', () => {
+  it('does not send a template when there is no model', async () => {
+    const message = await composeNudgeMessage(
+      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+      { familyId: 'fam-1', database: {} as never, client: null },
+    );
+    expect(message).toBeNull();
+  });
+
+  it('logs a failed model call by its error class, never the message', async () => {
+    class ProviderError extends Error {
+      status = 400;
+    }
+    const fail = () => {
+      throw new ProviderError('400 invalid request: "prompt":"QUOTED-REQUEST"');
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const message = await composeNudgeMessage(
+      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+      {
+        familyId: 'fam-1',
+        database: {} as never,
+        client: { messages: { create: fail, stream: fail } } as never,
+      },
+    );
+    expect(message).toBeNull();
+    const logged = errors.mock.calls.find(
+      ([, line]) => line === 'nudge: weekday ask model call failed - unvoiced',
+    );
+    expect(logged?.[0]).toEqual({ err: 'ProviderError', familyId: 'fam-1' });
+    expect(JSON.stringify(errors.mock.calls)).not.toContain('QUOTED-REQUEST');
+    errors.mockRestore();
   });
 });
 

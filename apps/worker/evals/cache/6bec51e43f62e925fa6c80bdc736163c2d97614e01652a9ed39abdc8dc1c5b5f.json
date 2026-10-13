@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in Mandarin Chinese as required. First, checking the asks: the text asks one question about whether the parent wants Hale to look for an after-school activity for Nell—that is one ask, which is the offer itself put straight to the parent.\n\nSecond, checking the offer framing: \"要不要我帮你找一个适合她的课后活动？\" (literally \"Do you want me to help you find an after-school activity suitable for her?\") presents the offer as a direct, plain question without hedging. There is no conditional language about whether it would be helpful or useful, no framing of it as what Hale \"could\" or \"is able to\" do—just a straightforward question.\n\nThe text correctly identifies the child as Nell and offers to find an after-school activity, matching the prompt (after_school_named). The tone is conversational and casual (\"想到Nell了\"), reading like a friend who noticed the family has this need and is offering to help in a natural, texting way. The language is natural Mandarin with proper accents and spelling. The text avoids naming any specific activity, place, time, price or link, and does not claim to have already looked for anything. It reads as a friend texting about the family's week, not as an assistant describing its own service.",
+    "score": 5
+  }
+}

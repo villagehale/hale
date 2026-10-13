@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { type AgentUsage, agentRunCostUsd } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, DraftedAction, ReviewerVerdict } from '@hale/types';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
 
 /**
@@ -285,61 +285,6 @@ export async function recordVerdict(
     targetId: input.actionId,
     after: { verdict: input.verdict.kind, rationale: input.verdict.rationale },
   });
-}
-
-/**
- * Audit-only record of the HARD monthly LLM-cost ceiling short-circuit when
- * SPEND_CEILING_ENFORCED is on: the pipeline returned BEFORE the classifier ran
- * because the family is far past its budget. No event row exists — the
- * classifier never fired — so the audit is family-scoped (targets `families`),
- * mirroring the worker's event.dropped.spend_ceiling. Immutable audit row per
- * rule #6. While enforcement is off the caller uses {@link writeSpendCeilingWarn}.
- */
-export async function writeSpendCeilingDrop(
-  database: Database,
-  input: { familyId: string; detail: Record<string, unknown> },
-): Promise<void> {
-  await writeAudit(database, {
-    familyId: input.familyId,
-    actor: 'system',
-    actionTaken: 'event.dropped.spend_ceiling',
-    targetTable: 'families',
-    targetId: input.familyId,
-    after: input.detail,
-  });
-}
-
-/**
- * Non-blocking note that the family is over the hard ceiling while enforcement
- * is off. One row per family per UTC day. Twin of the worker's
- * recordSpendCeilingExceeded — the dedupe query is the same shape.
- */
-export async function writeSpendCeilingWarn(
-  database: Database,
-  input: { familyId: string; day: string; detail: Record<string, unknown> },
-): Promise<{ recorded: boolean }> {
-  const existing = await database
-    .select({ id: schema.auditLog.id })
-    .from(schema.auditLog)
-    .where(
-      and(
-        eq(schema.auditLog.familyId, input.familyId),
-        eq(schema.auditLog.actionTaken, 'spend_ceiling_exceeded_warn'),
-        sql`${schema.auditLog.after}->>'day' = ${input.day}`,
-      ),
-    )
-    .limit(1);
-  if (existing.length > 0) return { recorded: false };
-
-  await writeAudit(database, {
-    familyId: input.familyId,
-    actor: 'system',
-    actionTaken: 'spend_ceiling_exceeded_warn',
-    targetTable: 'families',
-    targetId: input.familyId,
-    after: { ...input.detail, day: input.day },
-  });
-  return { recorded: true };
 }
 
 /**

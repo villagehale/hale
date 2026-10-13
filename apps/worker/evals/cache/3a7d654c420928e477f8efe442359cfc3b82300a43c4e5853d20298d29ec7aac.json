@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply says Hale \"can't send or edit emails to the swim school.\" This is flatly wrong. `knows.autonomySwitchOff.fact` states explicitly that this family has granted Hale autonomy to send and reply to email on its own, and `turnedOffThisTurn` is empty — meaning that autonomy is still active. Hale has already sent an email to the swim school (the parent is asking to fix it), so denying the capability is an invention of a limit that does not exist. This is a clear factual error — claiming it cannot do something it demonstrably can — which makes it a 1.",
+    "score": 1
+  }
+}

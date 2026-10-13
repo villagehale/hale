@@ -570,7 +570,7 @@
 .rd .hs-memory-cap { margin-bottom: var(--s3); display: flex; align-items: center; gap: 8px; }
 .rd .hs-memory-cap img { width: 22px; height: 22px; border-radius: 50%; }
 
-/* ── 4. Pricing: production numbered glass cards, a price on every tier (Free live; Plus, Max coming soon) ── */
+/* ── 4. Pricing: production numbered glass cards ── */
 .rd .hs-tiers { margin-top: var(--s7); list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); }
 .rd .hs-tier {
   position: relative; backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); display: flex; flex-direction: column; padding: 34.56px;   /* clamp(1.5rem, 2.4vw, 2.25rem) @1440 */

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is clean and direct. It confirms exactly what the autonomy switch-off does — Hale will ask before sending any email on Sam's behalf — which is precisely what `autonomySwitchOff.turnedOffThisTurn` records. No greeting, no sign-off, no extra questions, no app referral, no invented detail. The reply is in Spanish matching the parent's language. Completely correct handling in one sentence.",
+    "score": 5
+  }
+}

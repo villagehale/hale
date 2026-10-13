@@ -1,10 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
+import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
+import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
+import { capDefersToDecider, proactiveCadence } from './proactive/flag';
+import { quietStartForPhone } from './proactive/quiet';
 
 /**
  * F14 · THE OUTBOUND CHOKEPOINT (VIL-239 · M4 opens it).
@@ -126,7 +128,20 @@ export type ProactiveSendKind =
    * discretionary rail, one a day and three a week, is that group's bubble kind,
    * not a second number here.
    */
-  | 'duty_ask';
+  | 'duty_ask'
+  /**
+   * VIL-131 · a kind just turned on, or turned back on after a switch-off.
+   *
+   * The bound is the grant, not a counter: one text per consent row, held by the
+   * dedupe key. A counter could only drop the text that is what makes acting on
+   * that kind allowed.
+   */
+  | 'autonomy_armed'
+  /**
+   * VIL-131 · Hale just did a kind without asking. One text per execution, same
+   * reason the turn-on text is not a counter.
+   */
+  | 'autonomy_acted';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -293,6 +308,10 @@ export const PROACTIVE_CAP: Record<ProactiveSendKind, { max: number; windowHours
     // The tighter discretionary rail (one a day, three a week) is the group bubble
     // kind, counted in family-outbound, not a second number here.
     duty_ask: { max: 2, windowHours: 24 },
+    // THE BOUND IS THE GRANT, and the execution. A counter could only drop the text
+    // a parent is owed before Hale does the kind, or the notice that it just did.
+    autonomy_armed: null,
+    autonomy_acted: null,
   };
 
 /**
@@ -355,6 +374,10 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // is worth a 23:00 text, and the night-before window already ends when quiet
   // hours start.
   duty_ask: false,
+  // A kind turning on keeps until morning. Waking a house to say so is the opposite
+  // of what the text is for, and execution waits until the text has gone out.
+  autonomy_armed: false,
+  autonomy_acted: false,
 };
 
 /**
@@ -405,6 +428,8 @@ export const PROACTIVE_CATEGORY: Record<
   | 'co_parent_departed'
   | 'travel_brief'
   | 'duty_ask'
+  | 'autonomy_armed'
+  | 'autonomy_acted'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -420,6 +445,8 @@ export const PROACTIVE_CATEGORY: Record<
   co_parent_departed: 'co_parent_departed',
   travel_brief: 'travel_brief',
   duty_ask: 'duty_ask',
+  autonomy_armed: 'autonomy_armed',
+  autonomy_acted: 'autonomy_acted',
 };
 
 export interface OutboundGatePorts {
@@ -441,6 +468,12 @@ export interface OutboundGatePorts {
    */
   proactiveSentSince(parentUserId: string, since: Date): Promise<boolean>;
   parentTimeZone(parentUserId: string): Promise<string>;
+  /**
+   * VIL-226 · the parent's sendable number, read only while PROACTIVE_CADENCE is armed,
+   * to start quiet hours at 20:00 for a Florida or Oklahoma line. Absent means the
+   * 21:00 floor.
+   */
+  parentPhone?(parentUserId: string): Promise<string | null>;
 }
 
 export interface ProactiveSendRequest {
@@ -473,7 +506,12 @@ export async function assertProactiveSendAllowed(
     return { allowed: false, reason: 'no_watch_consent' };
   }
 
-  const cap = PROACTIVE_CAP[request.kind];
+  // VIL-226 · for a class the decider sees, live cadence reads the counter as context,
+  // not a hold. The Record stays so every class still names its budget; off and shadow
+  // keep it, and so does every class that still sends on its own.
+  const cap = capDefersToDecider(request.kind, proactiveCadence())
+    ? null
+    : PROACTIVE_CAP[request.kind];
   if (cap !== null) {
     const since = new Date(request.now.getTime() - cap.windowHours * 3_600_000);
     if ((await ports.countProactiveSends(request.familyId, request.kind, since)) >= cap.max) {
@@ -489,14 +527,11 @@ export async function assertProactiveSendAllowed(
   }
 
   const timeZone = await ports.parentTimeZone(request.parentUserId);
-  if (
-    isWithinQuietHours(
-      request.now,
-      timeZone,
-      PROACTIVE_QUIET_HOURS.start,
-      PROACTIVE_QUIET_HOURS.end,
-    )
-  ) {
+  const quietStart =
+    proactiveCadence() !== 'off' && ports.parentPhone
+      ? quietStartForPhone(await ports.parentPhone(request.parentUserId))
+      : PROACTIVE_QUIET_HOURS.start;
+  if (isWithinQuietHours(request.now, timeZone, quietStart, PROACTIVE_QUIET_HOURS.end)) {
     return { allowed: false, reason: 'quiet_hours' };
   }
 
@@ -690,6 +725,7 @@ async function countFamilyProactiveSends(
         eq(schema.channelMessages.direction, 'out'),
         gte(schema.channelMessages.createdAt, since),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        isRealSendRow(),
       ),
     );
   return rows.length;
@@ -715,6 +751,7 @@ async function parentProactiveSentSince(
         eq(schema.channelMessages.direction, 'out'),
         gte(schema.channelMessages.createdAt, since),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        isRealSendRow(),
       ),
     )
     .limit(1);
@@ -743,5 +780,6 @@ export function buildOutboundGatePorts(database: Database): OutboundGatePorts {
       if (!row) throw new Error(`buildOutboundGatePorts: no users row for ${parentUserId}`);
       return row.timezone;
     },
+    parentPhone: (parentUserId) => resolveSendablePhone(database, parentUserId),
   };
 }

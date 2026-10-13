@@ -41,16 +41,16 @@ describe('resolveHero', () => {
 });
 
 describe('resolveHero promotes the receipts-room roots', () => {
-  it('promotes approvals, family, week, and trail to roots with their own hero copy', () => {
-    for (const path of ['/approvals', '/family', '/plan', '/trail']) {
+  it('promotes family, week, and trail to roots with their own hero copy', () => {
+    for (const path of ['/family', '/plan', '/trail']) {
       const res = resolveHero(path, roots);
       expect(res?.kind).toBe('root');
       expect((res?.hero as RootHero).subtitle.length).toBeGreaterThan(0);
     }
     expect((resolveHero('/plan', roots)?.hero as RootHero).title).toBe('Week');
     expect((resolveHero('/trail', roots)?.hero as RootHero).title).toBe('Trail');
-    expect((resolveHero('/approvals', roots)?.hero as RootHero).title).toBe('Approvals');
     expect((resolveHero('/family', roots)?.hero as RootHero).title).toBe('Family');
+    expect(resolveHero('/approvals', roots)).toBeNull();
   });
 });
 

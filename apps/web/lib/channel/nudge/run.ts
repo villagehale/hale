@@ -25,9 +25,13 @@ import {
   readWindows as readRegistrationWindows,
   readCandidates as readVillageCandidates,
 } from '~/lib/channel/intake/radar';
-import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
+import {
+  type RadarCandidate,
+  type RadarChild,
+  upcomingWeekend,
+} from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
   deliverFamilyOutbound,
@@ -48,6 +52,19 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import {
+  type ProactiveLedgerWrite,
+  finalizeProactiveSend,
+  recordProactiveSend,
+  writeProactiveAudit,
+} from '~/lib/channel/proactive/finalize';
+import {
+  type CadenceLane,
+  errorLabel,
+  handOffProactive,
+  isQueuedForDecider,
+  stackFrames,
+} from '~/lib/channel/proactive/queue';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -63,7 +80,7 @@ import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
-import { weekWindow } from '~/lib/plan/spine';
+import { addDaysToKey, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
@@ -163,18 +180,8 @@ export interface GroupHowItWentLine {
   parentUserId: string;
 }
 
-export interface NudgeLedgerWrite {
-  familyId: string;
-  parentUserId: string;
-  channel: 'sms' | 'imessage';
-  category: 'nudge';
-  templateKey: string;
-  dedupeKey: string;
-  status: AcceptedStatus;
-  providerMessageId: string;
-  providerChatId?: string | null;
-  sentAt: Date;
-}
+/** The ledger row a send writes, via the finalizer it shares with the hourly decider. */
+export type NudgeLedgerWrite = ProactiveLedgerWrite;
 
 export interface NudgeAuditRow {
   familyId: string;
@@ -341,6 +348,17 @@ export interface NudgeRunResult {
    * is a signal or a habit. */
   quiet: number;
   deduped: number;
+  /**
+   * VIL-226 · copies handed to the family's proactive queue instead of sent, because
+   * PROACTIVE_CADENCE is live. The hourly decider sends them or holds them by name.
+   */
+  queued: number;
+  /**
+   * VIL-226 · copies whose candidate row could not be stored while PROACTIVE_CADENCE is
+   * shadow. The sweep went on with them as it would have unset; the decider's shadow record
+   * is what misses them.
+   */
+  shadowUnqueued: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
   /**
@@ -365,6 +383,8 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     sent: 0,
     quiet: 0,
     deduped: 0,
+    queued: 0,
+    shadowUnqueued: 0,
     failed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     skips: {},
@@ -432,6 +452,41 @@ export function dedupeKeyFor(
     default:
       return assertNever(nudge);
   }
+}
+
+/**
+ * When a queued nudge stops being worth a text: the end of the local day it is about,
+ * so the decider can drop it then. The weekday-care ask is about no day.
+ */
+export function nudgeWorthlessAfter(nudge: Nudge, now: Date, timeZone: string): Date | null {
+  const day = nudgeDay(nudge, now, timeZone);
+  return day === null ? null : zonedLocalInstant(addDaysToKey(day, 1), '00:00', timeZone);
+}
+
+function nudgeDay(nudge: Nudge, now: Date, timeZone: string): string | null {
+  switch (nudge.kind) {
+    case 'weekday_dropin':
+      return nudge.eventDate;
+    case 'empty_saturday':
+      return nudge.saturday;
+    case 'weather_swap': {
+      // The decide chose this day from the same weekend, so it is always there.
+      const slot = upcomingWeekend(now, timeZone).find((weekend) => weekend.day === nudge.day);
+      if (!slot) throw new Error(`nudgeWorthlessAfter: no ${nudge.day} in the coming weekend`);
+      return slot.date;
+    }
+    case 'registration':
+    case 'health_checkpoint':
+    case 'weekday_care':
+      return null;
+    default:
+      return assertNever(nudge);
+  }
+}
+
+/** A registration nudge is timed to a municipal clock, so it never waits for the decider. */
+export function nudgeLane(kind: Nudge['kind']): CadenceLane {
+  return kind === 'registration' ? 'immediate' : 'candidate';
 }
 
 /** The compiler's own proof that a union was handled. Throws only if a caller reached
@@ -585,6 +640,8 @@ type FamilyTally = {
   quiet: boolean;
   sent: number;
   deduped: number;
+  queued: number;
+  shadowUnqueued: number;
   held: ProactiveHoldReason[];
   /** The decide's own reasons for this family. A property of the DECISION, so it is
    * the household's like `quiet` is, not the recipient's. */
@@ -592,7 +649,16 @@ type FamilyTally = {
 };
 
 function emptyTally(overrides: Partial<FamilyTally> = {}): FamilyTally {
-  return { quiet: false, sent: 0, deduped: 0, held: [], skips: {}, ...overrides };
+  return {
+    quiet: false,
+    sent: 0,
+    deduped: 0,
+    queued: 0,
+    shadowUnqueued: 0,
+    held: [],
+    skips: {},
+    ...overrides,
+  };
 }
 
 async function runForFamily(
@@ -666,8 +732,14 @@ async function runForFamily(
       now,
       family.timeZone,
     );
-    if (await deps.dedupeActive(database, dedupeKey)) deduped += 1;
-    else pending.push({ recipient, optOut, dedupeKey });
+    if (
+      (await deps.dedupeActive(database, dedupeKey)) ||
+      (await isQueuedForDecider(database, family.familyId, dedupeKey))
+    ) {
+      deduped += 1;
+    } else {
+      pending.push({ recipient, optOut, dedupeKey });
+    }
   }
   if (pending.length === 0) return emptyTally({ deduped, held });
 
@@ -686,10 +758,49 @@ async function runForFamily(
       actionTaken: 'proactive_nudge_skipped',
       targetTable: 'families',
       targetId: family.familyId,
-      after: { reason: 'saturday_unvoiced', kind: nudge.kind },
+      after: {
+        reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
+        kind: nudge.kind,
+      },
     });
     return emptyTally({ quiet: true });
   }
+
+  // VIL-226 · the family queue. Unset sends as before and writes nothing; shadow queues
+  // and still sends; live queues and the hourly decider sends.
+  const templateKey =
+    nudge.kind === 'weekday_care'
+      ? weekdayFinderTemplateKey(nudge.ask)
+      : proactiveNudgeTemplateKey(nudge.kind);
+  const handedOff = await handOffProactive(
+    database,
+    pending.map(({ recipient, dedupeKey }) => ({
+      familyId: family.familyId,
+      parentUserId: recipient.parentUserId,
+      kind: 'nudge' as const,
+      category: 'nudge' as const,
+      templateKey,
+      what: message,
+      why: nudge.kind,
+      sourceUrl: nudge.kind === 'empty_saturday' ? nudge.url : null,
+      worthlessAfter: nudgeWorthlessAfter(nudge, now, family.timeZone),
+      parentRequested: false,
+      dedupeKey,
+    })),
+    nudgeLane(nudge.kind),
+  );
+  if (handedOff === 'queued') {
+    await deps.audit(database, {
+      familyId: family.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_nudge_queued',
+      targetTable: 'families',
+      targetId: family.familyId,
+      after: { kind: nudge.kind, cohort, copies: pending.length },
+    });
+    return emptyTally({ deduped, held, queued: pending.length });
+  }
+  const shadowUnqueued = handedOff === 'send_shadow_unqueued' ? pending.length : 0;
 
   let sent = 0;
   /** The row a family-scoped ledger write points at — the first copy that actually
@@ -765,7 +876,7 @@ async function runForFamily(
         targetId: family.familyId,
         after: { reason: delivered.reason, cohort },
       });
-      return emptyTally({ held });
+      return emptyTally({ held, shadowUnqueued });
     }
     if (delivered.status === 'skipped') {
       console.warn(
@@ -790,20 +901,44 @@ async function runForFamily(
     }
     const { providerMessageId } = delivered;
 
-    const messageId = await deps.recordSend(database, {
+    // THE LEDGER ROW, THE TRAIL AND THE THREAD (proactive/finalize.ts), shared with the
+    // hourly decider so a send from either path leaves the same rows. The thread is
+    // where THIS parent's answer will be read — their own, one per recipient — and it
+    // gets the COMPOSED sentence, never the wire body: the CASL line belongs on the wire
+    // and nowhere else.
+    const messageId = await finalizeProactiveSend(database, deps, {
       familyId: family.familyId,
-      parentUserId: recipient.parentUserId,
+      recipientUserId: recipient.parentUserId,
       channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
-      category: 'nudge',
-      templateKey:
-        nudge.kind === 'weekday_care'
-          ? weekdayFinderTemplateKey(nudge.ask)
-          : proactiveNudgeTemplateKey(nudge.kind),
-      dedupeKey,
-      status: acceptedStatus(delivered.channel === 'imessage' ? 'imessage' : 'sms'),
       providerMessageId,
       providerChatId: delivered.chatId,
       sentAt: now,
+      items: [
+        {
+          parentUserId: recipient.parentUserId,
+          category: 'nudge',
+          templateKey:
+            nudge.kind === 'weekday_care'
+              ? weekdayFinderTemplateKey(nudge.ask)
+              : proactiveNudgeTemplateKey(nudge.kind),
+          dedupeKey,
+        },
+      ],
+      composed: message,
+      audit: {
+        actionTaken: 'proactive_nudge_sent',
+        // Enum-shaped provenance only — never the rendered body (rule #1). A health nudge
+        // also names its checkpoint (a reviewed table constant, never PII), so the trail
+        // says WHICH errand was raised without a join back to the ledger row's dedupe key.
+        after: {
+          kind: nudge.kind,
+          cohort,
+          // Which SEAT this copy went to. The row already names the parent; this names
+          // the relationship, which is what a founder reading the trail is asking.
+          role: recipient.role,
+          ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
+        },
+      },
     });
     if (dutyFold) {
       try {
@@ -840,34 +975,6 @@ async function runForFamily(
       }
       absorbed = [];
     }
-    await deps.audit(database, {
-      familyId: family.familyId,
-      actor: 'system',
-      actionTaken: 'proactive_nudge_sent',
-      targetTable: 'channel_messages',
-      targetId: messageId,
-      // Enum-shaped provenance only — never the rendered body (rule #1). A health nudge
-      // also names its checkpoint (a reviewed table constant, never PII), so the trail
-      // says WHICH errand was raised without a join back to the ledger row's dedupe key.
-      after: {
-        kind: nudge.kind,
-        cohort,
-        // Which SEAT this copy went to. The row already names the parent; this names
-        // the relationship, which is what a founder reading the trail is asking.
-        role: recipient.role,
-        ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
-      },
-    });
-
-    // THE THREAD, which is where THIS parent's answer will be read — their own, one per
-    // recipient. Unconditional and AFTER the send: a compose that never reached a
-    // transport is not something Hale said. The COMPOSED sentence, never the wire body —
-    // the CASL line belongs on the wire and nowhere else.
-    await deps.threadMessage(database, {
-      familyId: family.familyId,
-      parentUserId: recipient.parentUserId,
-      body: message,
-    });
     if (firstMessageId === null) firstMessageId = messageId;
     sent += 1;
 
@@ -920,7 +1027,7 @@ async function runForFamily(
   if (firstMessageId !== null) {
     await recordFamilyLedgers(database, { family, nudge, messageId: firstMessageId, now }, deps);
   }
-  return { quiet: false, sent, deduped, held, skips: decision.skips };
+  return { quiet: false, sent, deduped, queued: 0, shadowUnqueued, held, skips: decision.skips };
 }
 
 /**
@@ -997,15 +1104,22 @@ export async function runNudgeCron(
       if (outcome.quiet) result.quiet += 1;
       result.sent += outcome.sent;
       result.deduped += outcome.deduped;
+      result.queued += outcome.queued;
+      result.shadowUnqueued += outcome.shadowUnqueued;
       for (const reason of outcome.held) result.held[reason] += 1;
       for (const [reason, count] of Object.entries(outcome.skips)) {
         const key = reason as keyof NudgeSkipCounts;
         result.skips[key] = (result.skips[key] ?? 0) + count;
       }
     } catch (err) {
-      // One family's bad data must not silence every family after it.
+      // One family's bad data must not silence every family after it. Never the error
+      // itself: a refused candidate insert reports the row, composed text and all. Its
+      // class and where it was thrown still find a bug.
       result.failed += 1;
-      console.error({ err, familyId: family.familyId }, 'nudge: family sweep failed');
+      console.error(
+        { err: errorLabel(err), at: stackFrames(err), familyId: family.familyId },
+        'nudge: family sweep failed',
+      );
     }
   }
   return result;
@@ -1080,17 +1194,8 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
     resolveSendablePhone,
-    recordSend: async (database, write) => {
-      const [row] = await database
-        .insert(schema.channelMessages)
-        .values({ ...write, direction: 'out' })
-        .returning({ id: schema.channelMessages.id });
-      if (!row) throw new Error('runNudgeCron: channel_messages insert returned no row');
-      return row.id;
-    },
-    audit: async (database, row) => {
-      await database.insert(schema.auditLog).values(row);
-    },
+    recordSend: recordProactiveSend,
+    audit: writeProactiveAudit,
     transport: createOutboundTransport(),
     outboundTarget: familyOutboundTarget,
     client: voiceClient(),

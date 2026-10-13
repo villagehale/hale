@@ -244,6 +244,14 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
     'lib/channel/coparent/duty/metrics.ts',
     'duty metrics — start time and owner columns only, never a title or a location',
   ],
+  [
+    'lib/channel/proactive/snapshot.ts',
+    'the proactive decider snapshot — titles go to the decider only, never to a recipient; a household with a 13+ child and every sensitive row read as "busy"',
+  ],
+  [
+    'lib/channel/proactive/review.ts',
+    'the proactive review — reads an event id only, as a sign that something changed since a hold',
+  ],
 ];
 
 /** Any reference to the table by any Drizzle API, including a bare destructured one. */

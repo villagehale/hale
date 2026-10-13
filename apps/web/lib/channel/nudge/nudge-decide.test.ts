@@ -2,7 +2,7 @@ import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { WeekdayCareFact } from '~/lib/care/weekday';
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
-import type { HealthChild } from '~/lib/health/match';
+import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
@@ -12,7 +12,6 @@ import {
   decideWeekdayCareAsk,
   decideWeekdayDropIn,
 } from './nudge-decide.js';
-import { renderWeekdayFinderAsk } from './weekday-care-copy';
 
 /**
  * VIL-239 · M4 — DECIDE: the ONE thing worth texting a family unprompted, or nothing.
@@ -423,81 +422,45 @@ describe('decideNudge — silence', () => {
 });
 
 /**
- * VIL-243 · M8 — where the health checkpoint sits in the ranking, and why.
- *
- * A registration date is a HARD deadline measured in minutes; a health-admin window is
- * measured in months; a weekend suggestion expires but costs nothing to skip. So the
- * order is deadline, obligation, offer — and the middle one is new.
+ * Hale sends no health checkpoint, vaccine or checkup reminder (Barton, 2026-10-12): it is
+ * not a homepage promise. The matcher still finds the window in every case below (the
+ * positive control), so each absence is the ladder's choice and not an empty table.
  */
-describe('decideNudge — health checkpoints', () => {
+describe('decideNudge — no health checkpoint', () => {
   const health = { healthChildren: [healthChild()], areaCoarse: 'M4C' };
+  const inWindow = (children: readonly HealthChild[], areaCoarse: string) =>
+    matchHealthCheckpoints({ children, areaCoarse, suppressedRefs: new Set(), now: FRIDAY }).map(
+      (found) => found.checkpoint.id,
+    );
 
-  it('yields to a registration window a family can still act on', () => {
-    const nudge = decide({ ...health, windows: [match()] });
-    expect(nudge?.kind).toBe('registration');
+  it('says nothing for a family whose only news is a checkpoint window they are inside', () => {
+    expect(inWindow(health.healthChildren, health.areaCoarse)).toContain(
+      'immunization_4_to_6_years',
+    );
+    expect(decideAll(health)).toEqual({ nudge: null, skips: {} });
   });
 
-  it('outranks a weekend swap, which is an offer rather than an obligation', () => {
-    const nudge = decide({
-      ...health,
-      candidates: [candidate()],
-      weather: [outlook(SATURDAY, WET), outlook(SUNDAY, WET)],
-    });
-    expect(nudge?.kind).toBe('health_checkpoint');
+  it('says nothing about the 18-month window either', () => {
+    const toddler = [healthChild({ ageMonths: 18 })];
+    expect(inWindow(toddler, 'L7G')).toContain('immunization_18_months');
+    expect(decide({ healthChildren: toddler, areaCoarse: 'L7G' })).toBeNull();
   });
 
-  it('still raises the 18-month window here — the POST-consent surface (ads-week audit positive control)', () => {
-    // The pre-consent first find no longer carries checkpoints (lib/channel/intake/radar.ts),
-    // and this sweep — gated on watch consent in run.ts — is where the same reviewed row
-    // now reaches the family. If this ever goes quiet too, the checkpoint is nowhere.
-    const nudge = decide({
-      healthChildren: [healthChild({ ageMonths: 18 })],
-      areaCoarse: 'L7G',
-    });
-    expect(nudge?.kind).toBe('health_checkpoint');
-    if (nudge?.kind !== 'health_checkpoint') throw new Error('expected a health nudge');
-    expect(nudge.checkpointRef.id).toBe('immunization_18_months');
+  it('says nothing to a household whose only child is 13 or older', () => {
+    const teen = [healthChild({ id: 'teen-1', name: null, ageMonths: 180, isTeen: true })];
+    expect(inWindow(teen, 'M4C')).toContain('immunization_14_to_16_years');
+    expect(decide({ healthChildren: teen, areaCoarse: 'M4C' })).toBeNull();
   });
 
-  it('carries the checkpoint by reference and never names a 13+ child', () => {
-    const nudge = decide({
-      healthChildren: [healthChild({ id: 'teen-1', name: null, ageMonths: 180, isTeen: true })],
-      areaCoarse: 'M4C',
-    });
-    expect(nudge).toMatchObject({
-      kind: 'health_checkpoint',
-      kidNames: [],
-      teenOnly: true,
-      teenCount: 1,
-    });
-  });
-
-  it('moves on to the next checkpoint once one is marked done, then goes quiet', () => {
-    const done = new Set<string>();
-    const seen: string[] = [];
-
-    // Every checkpoint this child is inside, one "done" at a time. The point is that a
-    // done suppresses exactly ONE checkpoint — not the family, and not the feature.
-    for (let round = 0; round < 5; round += 1) {
-      const nudge = decide({
-        healthChildren: [healthChild()],
-        areaCoarse: 'L4C',
-        suppressedCheckpointRefs: done,
-      });
-      if (nudge === null) break;
-      if (nudge.kind !== 'health_checkpoint') throw new Error('expected a health nudge');
-      seen.push(nudge.checkpointRef.id);
-      done.add(nudge.ref);
-    }
-
-    expect(seen).toEqual(['immunization_4_to_6_years', 'dental_school_screening']);
+  it('leaves the registration window and the weekend swap to decide the week', () => {
+    expect(decide({ ...health, windows: [match()] })?.kind).toBe('registration');
     expect(
       decide({
-        healthChildren: [healthChild()],
-        areaCoarse: 'L4C',
-        suppressedCheckpointRefs: done,
-      }),
-    ).toBeNull();
+        ...health,
+        candidates: [candidate()],
+        weather: [outlook(SATURDAY, WET), outlook(SUNDAY, WET)],
+      })?.kind,
+    ).toBe('weather_swap');
   });
 });
 
@@ -772,11 +735,8 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
     const nudge = decide(READY);
     if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
     expect(nudge.ask).toEqual({ prompt: 'weekend_fallback' });
-    expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-      'Those are weekend options. Want me to find something for weekdays too?',
-    );
-    expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Mia');
-    expect(renderWeekdayFinderAsk(nudge.ask).toLowerCase()).not.toContain('daycare');
+    expect(JSON.stringify(nudge.ask)).not.toContain('Mia');
+    expect(JSON.stringify(nudge.ask).toLowerCase()).not.toContain('daycare');
   });
 
   it('R1.1 — never twice: a family already asked is skipped by name', () => {
@@ -830,7 +790,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
       expect(nudge.ask.prompt).toBe('weekend_fallback');
-      const body = renderWeekdayFinderAsk(nudge.ask);
+      const body = JSON.stringify(nudge.ask);
       expect(body).not.toContain('Ada');
       expect(body.toLowerCase()).not.toContain('daycare');
       expect(body.toLowerCase()).not.toContain('after-school');
@@ -846,21 +806,16 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
         ],
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-      expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-        'Those are weekend options. Want me to find something for weekdays too?',
-      );
-      expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Sam');
-      expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Leo');
-      expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('Mia');
+      expect(nudge.ask).toEqual({ prompt: 'weekend_fallback' });
+      expect(JSON.stringify(nudge.ask)).not.toContain('Sam');
+      expect(JSON.stringify(nudge.ask)).not.toContain('Leo');
+      expect(JSON.stringify(nudge.ask)).not.toContain('Mia');
     });
 
     it('one school-age child gets the locked after-school sentence', () => {
       const nudge = decide({ ...READY, healthChildren: [FEI], candidates: [] });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
       expect(nudge.ask).toEqual({ prompt: 'after_school_named', childId: 'fei', name: 'Maya' });
-      expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-        'Want me to find one good after-school option for Maya too?',
-      );
     });
 
     it('a school-age child with a daycare fact is still asked about after school', () => {
@@ -894,9 +849,6 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
       expect(nudge.ask).toEqual({ prompt: 'after_school_household' });
-      expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-        'Want me to find one good after-school option nearby too?',
-      );
     });
 
     it('a toddler beside a teenager gets the fallback and neither name', () => {
@@ -909,7 +861,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
         teenChildIds: ['teen-1'],
       });
       if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-      const body = renderWeekdayFinderAsk(nudge.ask);
+      const body = JSON.stringify(nudge.ask);
       expect(nudge.ask.prompt).toBe('weekend_fallback');
       expect(body).not.toContain('Mia');
       expect(body).not.toContain('Ava');
@@ -924,7 +876,7 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       if (decision.nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
       expect(decision.nudge.ask.prompt).toBe('after_school_household');
       expect(decision.skips.name_not_printable).toBe(1);
-      expect(renderWeekdayFinderAsk(decision.nudge.ask)).not.toContain('Zoë');
+      expect(JSON.stringify(decision.nudge.ask)).not.toContain('Zoë');
     });
   });
 
@@ -948,12 +900,16 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       }),
     );
     if (outcome.nudge === null) throw new Error('expected the ask');
-    const body = renderWeekdayFinderAsk(outcome.nudge.ask);
-    expect(body).toBe('Want me to find one good after-school option for Maya too?');
-    expect(body.toLowerCase()).not.toContain('pa day');
-    expect(body.toLowerCase()).not.toContain('coming up');
-    expect(body.toLowerCase()).not.toContain('weekends are covered');
-    expect(body.toLowerCase()).not.toContain("how's school");
+    expect(outcome.nudge.ask).toEqual({
+      prompt: 'after_school_named',
+      childId: 'fei',
+      name: 'Maya',
+    });
+    const body = JSON.stringify(outcome.nudge.ask).toLowerCase();
+    expect(body).not.toContain('pa day');
+    expect(body).not.toContain('coming up');
+    expect(body).not.toContain('weekends are covered');
+    expect(body).not.toContain("how's school");
   });
 
   it('a verified PA day is the only ask, and it does not need a weekend send', () => {
@@ -974,10 +930,12 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       healthChildren: [{ ...TODDLER, id: 'fei', name: 'Maya', ageMonths: 102 }],
     });
     if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-    expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-      "There's a PA day coming up. Want me to find something nearby?",
-    );
-    expect(renderWeekdayFinderAsk(nudge.ask)).not.toContain('after-school');
+    expect(nudge.ask).toEqual({
+      prompt: 'verified_break',
+      eventKey: 'pa-day-2026-10-09',
+      label: 'PA day',
+    });
+    expect(JSON.stringify(nudge.ask)).not.toContain('after-school');
   });
 
   it('a verified named break uses that name and not a fabricated PA day', () => {
@@ -995,9 +953,11 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       },
     });
     if (nudge?.kind !== 'weekday_care') throw new Error('expected the ask');
-    expect(renderWeekdayFinderAsk(nudge.ask)).toBe(
-      "There's a March break coming up. Want me to find something nearby?",
-    );
+    expect(nudge.ask).toEqual({
+      prompt: 'verified_break',
+      eventKey: 'march-break-2027-03-15',
+      label: 'March break',
+    });
   });
 
   /**

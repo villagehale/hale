@@ -261,6 +261,9 @@ describe('ci.yml wiring', () => {
       'eval:nudge',
       'eval:rsvp',
       'eval:coach-channel',
+      'eval:proactive-decider',
+      'eval:proactive-writer',
+      'eval:weekday-care-ask',
       'eval:coach-plan',
       'eval:civic-hours',
       'eval:registration-verify',
@@ -268,6 +271,7 @@ describe('ci.yml wiring', () => {
       'eval:activity-finder',
       'eval:activity-deep',
       'eval:travel-extract',
+      'eval:autonomy-notice',
     ];
     for (const command of commands) {
       expect(evals, command).toContain(command);

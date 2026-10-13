@@ -236,6 +236,15 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Proactive decider eval (cached-only)
+        run: pnpm --filter @hale/worker eval:proactive-decider
+
+      - name: Proactive writer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:proactive-writer
+
+      - name: Weekday-care ask eval (cached-only)
+        run: pnpm --filter @hale/worker eval:weekday-care-ask
+
       - name: Coaching plan composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-plan
 
@@ -265,6 +274,9 @@ jobs:
       # here BEFORE the pass that calls it ships.
       - name: Travel-booking extraction eval (cached-only)
         run: pnpm --filter @hale/worker eval:travel-extract
+
+      - name: Autonomy notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:autonomy-notice
 
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a

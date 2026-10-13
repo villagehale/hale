@@ -552,7 +552,7 @@ describe('checkpointSurvivedCompose — the told-marker is earned by the text (r
 /**
  * VIL-360 · THE D23 ANCHOR IS EARNED BY THE TEXT.
  *
- * The weekday fallback says "Those are weekend options" and points at this message.
+ * The weekday fallback is the prompt `weekend_fallback`. It points at this message.
  * That is a DEICTIC claim about what the parent read, and the register rule's whole
  * corollary is that an anchor Hale cannot check is the same defect as an inference Hale
  * should not make. The composer samples at temperature 1 and the launch-day P0 above
