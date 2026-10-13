@@ -180,6 +180,107 @@ export async function placeOf(family: {
 }
 
 /**
+ * A place name the search may be told, and the nearest city to send instead when that
+ * name is an official village. `city` is null when no city in the same province or
+ * state is within the cap: the province or state is sent on its own. `cityProvince`
+ * is set only when the nearest city's name is more than one place.
+ */
+interface VillageInstead {
+  region: string;
+  city: string | null;
+  cityProvince: string | null;
+}
+
+type CoarsenRow = [string, string, string | null, string | null];
+
+interface CoarsenIndex {
+  byNameRegion: Map<string, VillageInstead>;
+  byName: Map<string, VillageInstead[]>;
+}
+
+/** Opened only when a search is about to be told a place the sanitizer read as
+ * sensitive. One file for both countries; the module system keeps it. */
+let coarsenLoaded: Promise<Record<PostalCountry, CoarsenIndex>> | null = null;
+
+function indexCoarsen(rows: readonly CoarsenRow[]): CoarsenIndex {
+  const byNameRegion = new Map<string, VillageInstead>();
+  const byName = new Map<string, VillageInstead[]>();
+  for (const [name, region, city, cityProvince] of rows) {
+    const entry: VillageInstead = { region, city, cityProvince };
+    byNameRegion.set(`${folded(name)}\t${folded(region)}`, entry);
+    const key = folded(name);
+    const list = byName.get(key);
+    if (list === undefined) byName.set(key, [entry]);
+    else list.push(entry);
+  }
+  return { byNameRegion, byName };
+}
+
+function loadCoarsen(): Promise<Record<PostalCountry, CoarsenIndex>> {
+  coarsenLoaded ??= import('./postal-cities/coarsen.json').then((file) => {
+    const data = file.default as unknown as { CA: CoarsenRow[]; US: CoarsenRow[] };
+    return { CA: indexCoarsen(data.CA), US: indexCoarsen(data.US) };
+  });
+  return coarsenLoaded;
+}
+
+/**
+ * The place a sensitive search may be told. {@link placeOf} names the municipality the
+ * family's area belongs to, and this is the step in front of the search (answer.ts):
+ * an official village is not that place.
+ *
+ * WHICH NAMES ARE VILLAGES is coarsen.json, built by postal-cities/coarsen.mjs. Canada's
+ * are Geographical Names Data Base concise code VILG, and only where that name's best
+ * class in that province is a village: a city, a town or a municipal district of the
+ * same name wins, and is sent as itself. The United States' are Census places whose
+ * legal status is a village, and not a city, a town, a borough or a census designated
+ * place. A town is still sent.
+ *
+ * WHAT IS SENT INSTEAD is the nearest city in that same province or state, within the
+ * cap the file records, or the province or state alone when there is none. The city's
+ * own province or state goes with it only when its name is more than one place, the
+ * same rule as {@link placeOf}. A village name that belongs to more than one province
+ * or state, on a place that does not say which, is sent as the country alone.
+ *
+ * ONLY WHEN ASKED. A question the sanitizer did not read as sensitive is returned as
+ * {@link placeOf} read it, village included, and the file stays unopened.
+ */
+export async function coarsenPlace(
+  place: { city?: string; provinceOrState?: string; country: string },
+  sensitive: boolean,
+): Promise<{ city?: string; provinceOrState?: string; country: string }> {
+  if (!sensitive) return place;
+  const city = place.city;
+  if (city === undefined) return place;
+  const country = TABLE_FOR_COUNTRY.get(place.country.toLowerCase());
+  if (country === undefined) return place;
+  const index = (await loadCoarsen())[country];
+  const name = folded(city);
+  const region = place.provinceOrState === undefined ? null : folded(place.provinceOrState);
+  let chosen: VillageInstead | null | undefined;
+  if (region !== null) {
+    // Not a village in the province this place is in: send the place as read.
+    chosen = index.byNameRegion.get(`${name}\t${region}`);
+    if (chosen === undefined) return place;
+  } else {
+    const matches = index.byName.get(name) ?? [];
+    if (matches.length === 0) return place;
+    // A village in more than one province or state, and this place does not say which.
+    if (matches.length > 1) return { country: place.country };
+    chosen = matches[0] ?? null;
+  }
+  if (chosen === null) return { country: place.country };
+  if (chosen.city !== null) {
+    return {
+      city: chosen.city,
+      ...(chosen.cityProvince !== null ? { provinceOrState: chosen.cityProvince } : {}),
+      country: place.country,
+    };
+  }
+  return { provinceOrState: chosen.region, country: place.country };
+}
+
+/**
  * Reads what {@link placeOf} needs and no other column: the family's country, and the
  * city, province and postal code of its active saved area, or of its home row when it has
  * no active area.

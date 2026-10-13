@@ -35,6 +35,7 @@ You receive:
   "question": "their question with the family taken out, in the language they wrote it",
   "missing_detail": "what a correct answer depends on that the message leaves out, in a few plain words, or 'none'",
   "their_place": "needed or not_needed",
+  "sensitive": "yes or no",
   "current_fact": "what in the question could have changed recently, in a few plain words, or 'none'",
   "needs_search": "yes, no, unsure or missing_detail"
 }
@@ -118,6 +119,12 @@ write one of your own into `question`. Write `not_needed` for everything else: t
 message names the place it is about (that place stays in `question`, and it is the
 one that is looked up, wherever the family lives), the answer is the same
 everywhere, what is missing is something other than a place, or you are not sure.
+
+Then `sensitive`. Write `yes` when the question is about someone's health or mind, a
+therapist or a clinic, money, the law, or safety. The place a search is given for
+those is never a village. Write `no` for the weather, a score, a price, trivia, and
+for anything you are not sure is one of those. Judge the meaning, in whatever
+language they wrote. There is no list of words that makes a question sensitive.
 
 Then `current_fact`: the thing in the question that could have changed recently,
 named in a few plain words and de-identified like the question, or `none`.

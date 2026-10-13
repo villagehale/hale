@@ -17,6 +17,7 @@ import {
   generalAnswerUserMessage,
   hurtIllOrDanger,
   needsSearch,
+  questionIsSensitive,
   questionSanitizeUserMessage,
   sanitizeJsonSchema,
   scrubDirectIdentifiers,
@@ -25,7 +26,8 @@ import {
 } from './answer-request';
 import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, namesAMentalCrisis, namesAnEmergency } from './copy';
 import { normalizeLanguage } from './medical';
-import TOP_LEVEL_DOMAINS from './top-level-domains/tlds.json';
+import { coarsenPlace } from './place';
+import SUFFIXES from './public-suffix/suffixes.json';
 
 export {
   generalAnswerUserMessage,
@@ -231,6 +233,7 @@ const sanitizeSchema = z.object({
   question: z.string(),
   missing_detail: z.string().nullish(),
   their_place: z.string().nullish(),
+  sensitive: z.string().nullish(),
   current_fact: z.string().nullish(),
   needs_search: z.string().nullish(),
 });
@@ -419,8 +422,8 @@ const LINK = /(?:https?:\/\/|www\.)\S+/gi;
  * A host as it is written with no scheme: parts joined by single dots. A phone makes
  * `name.tld` tappable as it stands. Every one in the reply is read, the page under a link
  * included, so no host is passed over for where it stands or what it stands beside.
- * Whether its last part is a top-level domain is the table's to say
- * (top-level-domains/README.md): `Node.js` and `7 a.m.` have the shape and are not links.
+ * Whether a public-suffix rule covers it is the list's to say
+ * (public-suffix/README.md): `Node.js` and `7 a.m.` have the shape and are not links.
  *
  * A part is either the letters a to z, digits and hyphens, or letters and digits of the
  * other scripts, never both: a language written without spaces puts its own words
@@ -428,7 +431,10 @@ const LINK = /(?:https?:\/\/|www\.)\S+/gi;
  */
 const HOST_PART = '(?:[a-z0-9-]+|(?:(?![\\x00-\\x7f])[\\p{L}\\p{M}\\p{N}])+)';
 const HOST_SHAPED = new RegExp(`${HOST_PART}(?:\\.${HOST_PART})+`, 'gu');
-const TOP_LEVEL: ReadonlySet<string> = new Set(TOP_LEVEL_DOMAINS);
+/** Explicit Public Suffix List rules (public-suffix/README.md). The list's default
+ * `*` is not here: a dotted word is a link only when a rule names its suffix. */
+const PUBLIC_SUFFIX: ReadonlySet<string> = new Set(SUFFIXES.exact);
+const PUBLIC_SUFFIX_WILD: ReadonlySet<string> = new Set(SUFFIXES.wild);
 /** An address written as four numbers, and what makes one a link: a page under it. */
 const NUMBERED_ADDRESS = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const PAGE_UNDER_IT = /^(?::\d+)?\//;
@@ -442,10 +448,26 @@ function oneForm(text: string): string {
   return text.normalize('NFKC').toLowerCase();
 }
 
-/** Whether a host's last part is on the table, which lists a name in another script by
- * its encoded form. A part that has no such form is on no list. */
-function endsInATopLevelDomain(host: string): boolean {
-  return TOP_LEVEL.has(domainToASCII(host.slice(host.lastIndexOf('.') + 1)));
+/** A label in the form the list uses: an encoded name (`xn--`) for one in another
+ * script, and the label itself when it has no such form. */
+function asciiLabel(label: string): string {
+  const ascii = domainToASCII(label);
+  return ascii === '' ? label : ascii;
+}
+
+/** Whether an explicit public-suffix rule covers this host. A rule matches a trailing
+ * run of labels (`co.uk`, `com`). A wildcard rule (`*.ck`, stored without the star)
+ * matches when at least one label stands in front of it. */
+function underAPublicSuffix(host: string): boolean {
+  const labels = host.split('.').map(asciiLabel);
+  if (labels.length < 2) return false;
+  for (let start = 0; start < labels.length; start++) {
+    if (PUBLIC_SUFFIX.has(labels.slice(start).join('.'))) return true;
+  }
+  for (let start = 1; start < labels.length; start++) {
+    if (PUBLIC_SUFFIX_WILD.has(labels.slice(start).join('.'))) return true;
+  }
+  return false;
 }
 
 /**
@@ -468,9 +490,8 @@ function bareHosts(reply: string): string[] {
   for (const match of reply.matchAll(HOST_SHAPED)) {
     const host = hostNamed(match[0]);
     const numbered =
-      NUMBERED_ADDRESS.test(host) &&
-      PAGE_UNDER_IT.test(reply.slice(match.index + match[0].length));
-    if (numbered || endsInATopLevelDomain(host)) hosts.push(host);
+      NUMBERED_ADDRESS.test(host) && PAGE_UNDER_IT.test(reply.slice(match.index + match[0].length));
+    if (numbered || underAPublicSuffix(host)) hosts.push(host);
   }
   return hosts;
 }
@@ -634,8 +655,15 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
     // the answer could be used for.
     const lit = generalAnswerSearchEnabled();
     const searching = needsSearch(sanitized.needs_search);
-    const place =
+    const located =
       lit && searching && turnsOnTheirPlace(sanitized.their_place) ? await homePlace(family) : null;
+    // A village is not sent on a question the sanitizer read as sensitive. The reading
+    // is the model's; the replacement is this code (place.ts). Anything else, including
+    // a missing reading, is the place as read: the weather stays the town.
+    const place =
+      located === null || !questionIsSensitive(sanitized.sensitive)
+        ? located
+        : await coarsenPlace(located, true);
     const { search, findings } = !searching
       ? { search: 'not_needed' as const, findings: NO_FINDINGS }
       : lit && sanitized.needs_search === 'missing_detail' && place === null

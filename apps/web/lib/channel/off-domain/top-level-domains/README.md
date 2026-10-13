@@ -1,11 +1,12 @@
 # Top-level domains
 
-`tlds.json` is the list of top-level domains, for one reader: `../answer.ts`, which uses
-it to tell when a word in a composed reply is a link written without `https://` or
-`www.`. A token whose last dotted part is on this list (`free-prizes.com/claim`) is a
-link, and is held to the rule every link in a reply is held to: its host is one this
-turn's search returned, or the reply is not sent. A phone makes such a token tappable as
-it stands, which is why the scheme cannot be what decides it.
+`answer.ts` does not read this file. The link check reads the Public Suffix List in
+`../public-suffix/`. This file is the root-zone list that check used before that, kept
+so the source and the checksum stay next to the note that recorded them.
+
+`tlds.json` is the list of top-level domains. A token whose last dotted part is on this
+list (`free-prizes.com/claim`) has the shape of a link. A phone makes such a token
+tappable as it stands, which is why the scheme cannot be what decides it.
 
 It is a table of how the domain name system is laid out. It is not a list of things a
 parent or a model might say.
