@@ -46,6 +46,7 @@ interface Seen {
   toolChoice?: string;
   tools?: Array<{ type?: string; name?: string }>;
   userMessage?: string;
+  maxTokens?: number;
 }
 
 function systemText(system: Seen['system']): string {
@@ -143,6 +144,7 @@ function makeClient(
                   : undefined,
             tools: req.tools,
             userMessage: req.messages?.[0]?.content,
+            maxTokens: req.max_tokens,
           });
           const pick = isSanitize
             ? script.sanitize
@@ -625,6 +627,29 @@ describe('the happy path', () => {
     // The body is the answer AND the triage, assembled — not one or the other.
     expect(out.reply).toContain('viral illness');
     expect(out.reply).toContain('trouble breathing');
+  });
+
+  /**
+   * The compose's ceiling is this lane's own 1,024. The general answer took a higher one
+   * for itself (answer-request.ts) and this call did not move with it. Read off the
+   * request: the constant could stay where it is while the call stopped carrying it.
+   */
+  it('sends the compose its own token ceiling, not the general answer’s', async () => {
+    const seen: Seen[] = [];
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult(OK_SANITIZE),
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        },
+        seen,
+      ),
+    ).answer('raw message');
+
+    expect(
+      seen.filter((call) => call.toolChoice === 'medical_answer').map((call) => call.maxTokens),
+    ).toEqual([1024]);
   });
 });
 

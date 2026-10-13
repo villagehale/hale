@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tsImport } from 'tsx/esm/api';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   ANSWER_FIXTURES,
@@ -13,6 +14,7 @@ import {
   identityLeaks,
   searchOmissions,
 } from './general-answer-fixtures.mjs';
+import { JUDGE_MIN } from './lib/harness.mjs';
 
 /**
  * What grades a reply in this suite, taken off the runner's own report.
@@ -23,6 +25,10 @@ import {
  */
 const RUNNER = fileURLToPath(new URL('./run-general-answer-eval.mjs', import.meta.url));
 const FIXTURES_URL = new URL('./general-answer-fixtures.mjs', import.meta.url).href;
+/** Production's own request module, the file the runner loads its rules from. */
+const ANSWER_REQUEST_SRC = fileURLToPath(
+  new URL('../../web/lib/channel/off-domain/answer-request.ts', import.meta.url),
+);
 
 /** `{ id: [failure, ...] }` from the report's answers block. */
 function failuresById(report) {
@@ -52,14 +58,27 @@ function failuresById(report) {
  * verdict not named. `doors` are the compose recordings, by the order they are read,
  * that replay as the compose having read someone hurt, ill or in danger. `sanitizedQuestion`
  * is appended to the question in the first sanitize recording read.
+ *
+ * `readings` are compose recordings, by the same order, that replay with the given
+ * hurt-or-ill reading, or with none at all for `null`. `sanitizedMissing` is appended to
+ * what the sanitize stage said was missing, in every recording where it said the
+ * question could not be searched without it.
  */
-function replayedAs({ verdicts = {}, doors = [], sanitizedQuestion = '' }) {
+function replayedAs({
+  verdicts = {},
+  doors = [],
+  readings = {},
+  sanitizedQuestion = '',
+  sanitizedMissing = '',
+}) {
   return `data:text/javascript,${encodeURIComponent(
     `import fs from 'node:fs/promises';
      import { syncBuiltinESMExports } from 'node:module';
      const verdicts = ${JSON.stringify(verdicts)};
      const doors = ${JSON.stringify(doors)};
+     const readings = ${JSON.stringify(readings)};
      const appended = ${JSON.stringify(sanitizedQuestion)};
+     const appendedToMissing = ${JSON.stringify(sanitizedMissing)};
      const read = fs.readFile;
      const seen = { verdicts: 0, composes: 0, sanitized: 0 };
      fs.readFile = async (path, ...rest) => {
@@ -75,9 +94,21 @@ function replayedAs({ verdicts = {}, doors = [], sanitizedQuestion = '' }) {
        }
        if (typeof recorded?.value?.answer === 'string') {
          seen.composes += 1;
+         if (seen.composes in readings) {
+           const { hurt_ill_or_danger: _recorded, ...value } = recorded.value;
+           const reading = readings[seen.composes];
+           return JSON.stringify({
+             ...recorded,
+             value: reading === null ? value : { ...value, hurt_ill_or_danger: reading },
+           });
+         }
          return doors.includes(seen.composes)
            ? JSON.stringify({ ...recorded, value: { ...recorded.value, hurt_ill_or_danger: 'yes' } })
            : text;
+       }
+       if (appendedToMissing !== '' && recorded?.value?.needs_search === 'missing_detail') {
+         const missing_detail = recorded.value.missing_detail + appendedToMissing;
+         return JSON.stringify({ ...recorded, value: { ...recorded.value, missing_detail } });
        }
        if (appended !== '' && typeof recorded?.value?.question === 'string') {
          seen.sanitized += 1;
@@ -98,6 +129,19 @@ function onlyFixtures(ids) {
     `import { ANSWER_FIXTURES } from ${JSON.stringify(FIXTURES_URL)};
      const keep = ${JSON.stringify(ids)};
      ANSWER_FIXTURES.splice(0, ANSWER_FIXTURES.length, ...ANSWER_FIXTURES.filter((fixture) => keep.includes(fixture.id)));`,
+  )}`;
+}
+
+/**
+ * A module loaded ahead of the runner that changes one fixture, on the list the runner
+ * then imports. `change` is the body of a function of that fixture. The fixture file on
+ * disk is not touched, and what a fixture expects is no part of any request, so every
+ * recording still replays.
+ */
+function withFixture(id, change) {
+  return `data:text/javascript,${encodeURIComponent(
+    `import { ANSWER_FIXTURES } from ${JSON.stringify(FIXTURES_URL)};
+     ((fixture) => { ${change} })(ANSWER_FIXTURES.find((fixture) => fixture.id === ${JSON.stringify(id)}));`,
   )}`;
 }
 
@@ -505,6 +549,34 @@ describe('the general-answer runner', () => {
       expect(run.status).toBe(1);
     });
 
+    /**
+     * Where the calibration's line is. A stand-in has to score BELOW the mark, so one the
+     * judge scores exactly the mark has passed, and the gate is red; one point under it
+     * and the gate holds. The recorded near miss scores one under the mark, which is the
+     * side of the line nothing else here stands on.
+     */
+    it.each([
+      ['the broken stand-in', 1],
+      ['the near miss', 2],
+    ])('exits 1 when %s scores exactly the mark, and 0 one point under it', (_label, verdict) => {
+      const scoring = (score) =>
+        runRunner(
+          ['--broken'],
+          [replayedAs({ verdicts: { ...HOLDS, [verdict]: { ...FAILS, score } } })],
+        );
+
+      const atTheMark = scoring(JUDGE_MIN);
+      const oneUnder = scoring(JUDGE_MIN - 1);
+
+      expect(atTheMark.report).not.toContain('cache miss');
+      expect(atTheMark.report).toMatch(/broken-mode calibration .*: FAIL \(exit 1\)/);
+      expect(atTheMark.status).toBe(1);
+      expect(oneUnder.report).toContain(
+        'broken-mode calibration (the judge must fail both stand-ins): PASS (exit 0)',
+      );
+      expect(oneUnder.status).toBe(0);
+    });
+
     it('exits 0 in the real mode when the calibration holds and every reply passes', () => {
       const run = runRunner([], [CORPUS, replayedAs({ verdicts: HOLDS })]);
 
@@ -627,5 +699,125 @@ describe('the general-answer runner', () => {
     expect(withNumber).toBe(alreadyScrubbed);
     expect(otherWords).not.toBe(alreadyScrubbed);
   }, 60_000);
+
+  /**
+   * The same call on the other thing the sanitize stage writes: what the question left
+   * out. It is handed to the compose on a turn that could not be searched without it, so
+   * it is read off the compose's cache key on such a turn, the way the question is read
+   * off the search's above.
+   */
+  it('scrubs what the sanitize stage said was missing before it is handed to the compose', () => {
+    const composeKey = (sanitizedMissing) => {
+      const run = runRunner(
+        [],
+        [onlyFixtures(['leafs-last-night', 'weather-tomorrow']), replayedAs({ sanitizedMissing })],
+      );
+      const miss = run.report.match(
+        /cache miss in --cached-only mode \(general-answer:weather-tomorrow, key ([0-9a-f]{64})\)/,
+      );
+      expect(miss, run.report.slice(-1500)).not.toBeNull();
+      return miss[1];
+    };
+
+    const withNumber = composeKey(', text me at 416-555-0142');
+    const alreadyScrubbed = composeKey(', text me at [redacted]');
+    // Positive control: the key does follow what was missing.
+    const otherWords = composeKey(', text me back');
+
+    expect(withNumber).toBe(alreadyScrubbed);
+    expect(otherWords).not.toBe(alreadyScrubbed);
+  }, 60_000);
+
+  /**
+   * Rule #1 where the runner checks it. `identityLeaks` can be right (above) and the
+   * runner still never call it: no recorded question has a marked name left in it, so
+   * the call finds nothing on the corpus and could be deleted unseen. Here one more name
+   * is marked on a fixture whose handed-on question does carry it, the town the search
+   * is made for, and the run has to fail that fixture for it and for nothing else.
+   */
+  it('fails the fixture in a real run when a marked name is still in what was handed on', () => {
+    const stillThere = 'oakville';
+    const run = runRunner(
+      [],
+      [
+        onlyFixtures(['leafs-last-night', 'street-address-costco', 'named-child-game']),
+        withFixture(
+          'street-address-costco',
+          `fixture.mustNotReachSearch.push(${JSON.stringify(stillThere)});`,
+        ),
+      ],
+    );
+    const realFailures = failuresById(run.report);
+
+    expect(run.report, run.report.slice(-1500)).toMatch(/^overall \(real\): /m);
+    expect(realFailures['street-address-costco']).toContain(`identity_leak:${stillThere}`);
+    // The names that were taken out are still not found: the street on this fixture, and
+    // the child on the other.
+    expect(realFailures['street-address-costco']).not.toContain('identity_leak:maplewick');
+    expect(realFailures['named-child-game'].filter((f) => f.startsWith('identity_leak:'))).toEqual(
+      [],
+    );
+    expect(run.report).toMatch(/^identity reached the search: +1 {2}\(0 required/m);
+    expect(run.status).toBe(1);
+  }, 60_000);
+
+  /**
+   * The sanitizer's reading of a text beside a pending ask, where the runner checks it.
+   * Both recordings read their text the way their fixture expects, so the check finds
+   * nothing on the corpus. Here one fixture is told to expect the other reading: the run
+   * has to fail that fixture by name, and leave the one whose reading still matches.
+   */
+  it('fails the fixture in a real run when a text beside a pending ask is read the other way', () => {
+    const run = runRunner(
+      [],
+      [
+        onlyFixtures(['leafs-last-night', 'pending-city-reply', 'pending-unrelated']),
+        withFixture('pending-unrelated', 'fixture.expectAnswersPending = true;'),
+      ],
+    );
+    const realFailures = failuresById(run.report);
+
+    expect(run.report, run.report.slice(-1500)).toMatch(/^overall \(real\): /m);
+    expect(realFailures['pending-unrelated']).toContain('pending_misread:read as unrelated');
+    expect(
+      realFailures['pending-city-reply'].filter((f) => f.startsWith('pending_misread:')),
+    ).toEqual([]);
+    expect(run.report).toMatch(/^pending ask misread: +1 {2}\(0 required/m);
+    expect(run.status).toBe(1);
+  }, 60_000);
+
+  /**
+   * Which reading of the compose's is the safety door is production's rule
+   * (`describesHurtIllOrDanger`, answer-request.ts), and the runner has to ask it, not
+   * keep a copy: a copy would go on grading by the old rule when the rule moved. So each
+   * reading is replayed on one reply, and whether the runner took that reply to the door
+   * is compared with what production's own function says of the same reading.
+   */
+  it.each([
+    ['yes', 'yes'],
+    ['no', 'no'],
+    ['a value off the list', 'unsure'],
+    ['no reading at all', null],
+  ])(
+    'takes a reply to the safety door exactly when production reads %s as someone hurt',
+    async (_label, reading) => {
+      const { describesHurtIllOrDanger } = await tsImport(ANSWER_REQUEST_SRC, import.meta.url);
+      // The fifth compose read is the second fixture's first reply (see the gate block).
+      const run = runRunner(
+        [],
+        [
+          onlyFixtures(['leafs-last-night', 'capital-peru']),
+          replayedAs({ readings: { 5: reading } }),
+        ],
+      );
+
+      expect(run.report).not.toContain('cache miss');
+      const atTheDoor = Number(
+        run.report.match(/^replies at the safety door: +(\d+) of 6 /m)?.[1],
+      );
+      expect(atTheDoor).toBe(describesHurtIllOrDanger(reading ?? undefined) ? 1 : 0);
+    },
+    60_000,
+  );
 });
 
