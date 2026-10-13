@@ -557,24 +557,7 @@ export async function settlePendingAsks(
   },
 ): Promise<void> {
   if (!generalAnswerSearchEnabled()) return;
-  await database.delete(schema.channelPendingAsks).where(
-    and(
-      eq(schema.channelPendingAsks.familyId, input.familyId),
-      inArray(
-        schema.channelPendingAsks.channelMessageId,
-        database
-          .select({ id: schema.channelMessages.id })
-          .from(schema.channelMessages)
-          .where(
-            and(
-              eq(schema.channelMessages.familyId, input.familyId),
-              eq(schema.channelMessages.parentUserId, input.parentUserId),
-              eq(schema.channelMessages.direction, 'out'),
-            ),
-          ),
-      ),
-    ),
-  );
+  await deletePendingAsksOf(database, input);
   if (input.ask === null) return;
   if (
     input.ask.question.length > schema.PENDING_ASK_QUESTION_MAX_CHARS ||
@@ -589,6 +572,69 @@ export async function settlePendingAsks(
     question: input.ask.question,
     missing: input.ask.missing,
   });
+}
+
+/** Every question Hale has left open for one parent in one family, deleted. How many. */
+async function deletePendingAsksOf(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<number> {
+  const deleted = await database
+    .delete(schema.channelPendingAsks)
+    .where(
+      and(
+        eq(schema.channelPendingAsks.familyId, input.familyId),
+        inArray(
+          schema.channelPendingAsks.channelMessageId,
+          database
+            .select({ id: schema.channelMessages.id })
+            .from(schema.channelMessages)
+            .where(
+              and(
+                eq(schema.channelMessages.familyId, input.familyId),
+                eq(schema.channelMessages.parentUserId, input.parentUserId),
+                eq(schema.channelMessages.direction, 'out'),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: schema.channelPendingAsks.channelMessageId });
+  return deleted.length;
+}
+
+/**
+ * What a departure did with the questions Hale had left open for the parent who left: how
+ * many it deleted, or why it read none. `search_dark` is the lane's own rule (a dark lane
+ * keeps no question, and nothing reads the table), and `not_migrated` a database the
+ * table has not reached (migration 0167).
+ */
+export type PendingAsksForgotten = number | 'search_dark' | 'not_migrated';
+
+/**
+ * A parent has left a household (coparent/depart.ts), and the questions Hale had left
+ * open for them in it go with the seat. Each was put to a phone that is no longer in
+ * this family; nothing Hale says to them now would close it, so it would stand until the
+ * yearly sweep.
+ *
+ * It runs INSIDE the departure's transaction, where a statement that fails ends the
+ * whole transaction, so it is a savepoint of its own: on a database without the table
+ * the delete is rolled back to the savepoint and named, and the departure still commits.
+ */
+export async function forgetPendingAsks(
+  tx: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<PendingAsksForgotten> {
+  if (!generalAnswerSearchEnabled()) return 'search_dark';
+  try {
+    return await tx.transaction((savepoint) =>
+      deletePendingAsksOf(savepoint as unknown as Database, input),
+    );
+  } catch (err) {
+    if (!isUndefinedTable(err)) throw err;
+    console.warn({ pendingAsk: 'not_migrated' }, 'co-parent departure: pending-ask table missing');
+    return 'not_migrated';
+  }
 }
 
 /**
