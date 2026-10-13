@@ -17,6 +17,7 @@ import {
 } from '~/lib/channel/router/wiring';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { familyForForwardToken, mintForwardToken } from './forward-address';
@@ -165,6 +166,7 @@ function deps(
       commitmentId: '77777777-7777-4777-8777-777777777777',
     }),
     replyResolver,
+    calendarOffers: calendarOffersIdle,
     disambiguation: createDisambiguationStore(),
     reconcileView: loadReconcileView,
     recordStatedState: async () => ({ status: 'nothing_stated' }),

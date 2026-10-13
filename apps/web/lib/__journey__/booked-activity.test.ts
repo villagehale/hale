@@ -18,10 +18,7 @@ import { createFollowupVoice } from '~/lib/channel/followup/voice';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import {
-  type EmailAlertPorts,
-  alertParentForGmailSweep,
-} from '~/lib/integrations/email-alert';
+import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
@@ -247,10 +244,19 @@ async function yesFromCoParent(at: Date): Promise<HandlerContext> {
     body: 'YES',
     send: async () => ({ providerMessageId: 'prov-yes', channel: 'sms' as const }),
     now: at,
-    // The BARE-WORD path: with exactly one offer standing the word is unambiguous by
-    // construction, which is the property `email-alert-offer.pglite.test.ts` pins. No
-    // resolver reading is needed and none is faked.
-    resolved: null,
+    // The model named this offer. The handler does not read the word. The open question
+    // id is the offer row id, which is what a calendar-offer reading carries.
+    resolved: (() => {
+      const offer = open.find((question) => question.kind === 'email_alert_add');
+      return offer
+        ? {
+            kind: 'email_alert_add' as const,
+            questionId: offer.id,
+            polarity: 'yes' as const,
+            confidence: 'high' as const,
+          }
+        : null;
+    })(),
     openQuestions: async () => open,
     inboundChannelMessageId: inbound?.id as string,
   };
@@ -299,7 +305,9 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     const text = transport.sent[0]?.body ?? '';
     // The provider is the subject, the first session is named, and the one question is
     // the CTA. The model chose the title; the frame is Hale's.
-    expect(text).toContain("City of Brookfield Recreation says you're in for Preschool Swim Level 2");
+    expect(text).toContain(
+      "City of Brookfield Recreation says you're in for Preschool Swim Level 2",
+    );
     expect(text).toContain('first one Saturday, Aug 1 at 9:00 a.m.');
     expect(text).toContain('Want it on your calendar?');
     // The receipt's own details have no column and never reach the wire.
@@ -340,10 +348,9 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     expect(offer).toMatchObject({ kind: 'booking_confirmation', parentUserId: coParentUserId });
 
     // ── 2. THE PARENT SAYS YES ───────────────────────────────────────────────
-    const verdict = await emailAlertAddHandler().handle(
-      db.database,
-      await yesFromCoParent(new Date(RECEIPT_AT.getTime() + 60_000)),
-    );
+    const verdict = await emailAlertAddHandler({
+      writeReceipt: { write: async () => 'receipt' },
+    }).handle(db.database, await yesFromCoParent(new Date(RECEIPT_AT.getTime() + 60_000)));
     expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
 
     const [placed] = await db.database

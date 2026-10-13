@@ -35,6 +35,8 @@ import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
+import { createCalendarOfferReader } from '~/lib/integrations/calendar-offer-read';
+import { createOfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
@@ -426,7 +428,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     // owns the daycare check-in's kind and claims nothing.
     daycareFollowupHandler(),
     healthReplyHandler(defaultHealthReplyDeps()),
-    emailAlertAddHandler(),
+    emailAlertAddHandler({ writeReceipt: createOfferReceiptWriter(screenClient) }),
     planReplyHandler(defaultPlanReplyDeps()),
     // Explicit "sign us up" only. A bare yes is not a signup. Placed before the
     // registration reader, which also claims messages it cannot read.
@@ -691,6 +693,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       },
     }),
     replyResolver: createReplyResolver(screenClient),
+    calendarOffers: createCalendarOfferReader(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
     // spent by the next inbound. No model and no client: picking one of a handful of
     // options Hale itself printed is a string comparison.

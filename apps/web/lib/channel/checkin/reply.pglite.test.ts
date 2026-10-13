@@ -17,6 +17,7 @@ import {
 import { nightlyOccasion } from '~/lib/channel/variant';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
@@ -852,6 +853,7 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
         commitmentId: '77777777-7777-4777-8777-777777777777',
       }),
       replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
+      calendarOffers: calendarOffersIdle,
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       recordStatedState: async () => ({ status: 'nothing_stated' }),

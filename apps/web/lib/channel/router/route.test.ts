@@ -14,6 +14,7 @@ import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import {
@@ -482,6 +483,7 @@ function harness(
       questions: options.questions ?? fakeQuestions([]),
       replyResolver:
         options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+      calendarOffers: calendarOffersIdle,
       disambiguation: fakeDisambiguation(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),

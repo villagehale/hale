@@ -97,6 +97,11 @@ import {
   readsAsOrdinal,
 } from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
+import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
+import {
+  parentTimeZoneForOffer,
+  recordCoachCalendarOffer,
+} from '~/lib/integrations/email-alert-offer';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
@@ -346,6 +351,13 @@ export interface ChannelRouterDeps {
    */
   questions: OpenQuestionReader;
   replyResolver: ReplyResolver;
+  /**
+   * Reads a parent's reply to a calendar offer, and a coach sentence that might be one.
+   * Non-nullable (rule #11): without it a calendar reply falls through to a keyword, which
+   * is the reading this path does not have. An idle reader returns unresolved and calls
+   * no model.
+   */
+  calendarOffers: CalendarOfferPorts;
   /**
    * The menu Hale last put in front of this parent, and its memory (disambiguation.ts).
    * Non-nullable (rule #11) for the reason the two readers above it are: a router with no
@@ -1490,10 +1502,17 @@ async function resolveNaturalReply(
   // every inbound text.
   if (questions.length === 0) return { status: 'carry_on', questions };
 
-  const reading = await deps.replyResolver.read({ text: turn.body, questions });
+  // Calendar offers are read by the calendar model, including when the reply is not
+  // English. Mixed questions stay on the general resolver: it already sees every kind.
+  const emailOnly =
+    questions.length > 0 && questions.every((question) => question.kind === 'email_alert_add');
+  const reading = emailOnly
+    ? await deps.calendarOffers.readParent({ text: turn.body, questions, now: turn.now })
+    : await deps.replyResolver.read({ text: turn.body, questions });
   if (reading.status === 'unresolved') {
     if (questions.length > 1 && warrantsClarifying(reading.reason)) {
-      const word = readAffirmative(turn.body);
+      // A calendar-only ambiguity is not a keyword. The coach asks which one.
+      const word = emailOnly ? 'unclear' : readAffirmative(turn.body);
       return {
         status: 'unplaced',
         questions,
@@ -1587,6 +1606,49 @@ function isOutsiderWeMayAnswer(role: FamilyRole | null): boolean {
  * The real fix for a slow turn is upstream anyway: the pickup delay (cron/kick-drain.ts)
  * and the unbounded model call, not a message about waiting.
  */
+/**
+ * After the coach's sentence has gone out, ask the model whether it offered to add
+ * one occasion, and write that row only when the calendar still allows it.
+ *
+ * Never throws: the parent already has the text, and an exception here would buy a
+ * carrier retry and a duplicate reply. The outcome is named (rule #11).
+ */
+async function recordCoachOfferFromReply(
+  deps: ChannelRouterDeps,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    reply: string;
+    channelMessageId: string;
+    now: Date;
+  },
+): Promise<void> {
+  try {
+    const timeZone = await parentTimeZoneForOffer(deps.database, input.parentUserId);
+    const extracted = await deps.calendarOffers.readCoach({
+      text: input.reply,
+      now: input.now,
+      timeZone,
+    });
+    if (extracted.status !== 'offer') return;
+    const outcome = await recordCoachCalendarOffer(deps.database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channelMessageId: input.channelMessageId,
+      title: extracted.title,
+      startsAt: extracted.startsAt,
+      location: extracted.location,
+      now: input.now,
+    });
+    deps.log.info({ outcome }, 'channel router: coach calendar offer');
+  } catch (err) {
+    deps.log.error(
+      { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+      'channel router: coach calendar offer failed',
+    );
+  }
+}
+
 async function runAgentTurn(
   deps: ChannelRouterDeps,
   args: {
@@ -1636,6 +1698,13 @@ async function runAgentTurn(
       view,
     );
     const channelMessageId = await args.answer(reply);
+    await recordCoachOfferFromReply(deps, {
+      familyId: args.turn.familyId,
+      parentUserId: args.turn.parentUserId,
+      reply,
+      channelMessageId,
+      now: args.turn.now,
+    });
     // THE MENU THE COACH JUST OFFERED (VIL-304). This turn was an answer Hale could not
     // place, so the coach was handed the candidates and asked which — in its own words,
     // which is why nothing here claims a number was printed. Written down against the

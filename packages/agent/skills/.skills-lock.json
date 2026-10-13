@@ -27,6 +27,10 @@
     "file": "calendar-invite-note.md",
     "sha256": "c6506cf2c2843859d080ad490726448896c10b6f9592e3d11b47b12cd1b6b38d"
   },
+  "calendar-offer-read.md": {
+    "file": "calendar-offer-read.md",
+    "sha256": "f319624bc3f4b0b341ac3c64b0d09e46f824297bae05f3565859a58c357a5666"
+  },
   "capability-table.md": {
     "file": "capability-table.md",
     "sha256": "cddbfec3d736e5e46e2fcf4a97167ce2f6d3b22e4a3e92328b859e10cfcc9a6d"
@@ -162,6 +166,10 @@
   "nudge-voice.md": {
     "file": "nudge-voice.md",
     "sha256": "0058da39817bb85138bf334ab1b2e4f17cea042fb2de46cba4a82af95471a11c"
+  },
+  "offer-receipt.md": {
+    "file": "offer-receipt.md",
+    "sha256": "d37d130c73cfce347b741fa8b924471f2c159c37db3e2e7ccc0fc26cda597328"
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",

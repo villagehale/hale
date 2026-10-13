@@ -65,6 +65,7 @@ import {
   handleEmailAlertOfferReply,
   resolveEmailAlertOffer,
 } from '~/lib/integrations/email-alert-offer';
+import type { OfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import {
   type PrepareReplyDeps,
@@ -959,63 +960,55 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
  * the flag went off between the text and the reply. With the flag off no row is ever
  * written, so the gate is the row.
  *
- * THE SECOND YES. Once the first one resolves the offer it stops being listed, so a
- * repeat reaches this handler on the keyword pass with NO open question — where
- * `soleOpenKind` is vacuously true and would let it claim any bare affirmative at all.
- * That is why the repeat branch has to find something of its own to act on, why its
- * window is minutes rather than the offer's own day, and why inside that window it still
- * requires the receipt to be Hale's LAST WORD to this parent (email-alert-offer.ts).
+ * THE MODEL NAMES THE OFFER. This handler does not read the parent's words. A bare
+ * "yes", a correction, or the same idea in another language is a reading from
+ * `calendar-offer-read`, carried in on `ctx.resolved`. With no reading there is nothing
+ * to do, and the turn continues. The receipt is written from the facts by `writeReceipt`.
+ * A writer that returns nothing is `receipt_unsent`: the event is already placed (or the
+ * decline is already decided) and no template is sent in its place.
  *
  * `ctx.inboundChannelMessageId` is not read. Nothing here files a fact against the
  * parent's own words — the offer row already carries its provenance — so a spoken turn,
  * which has no inbound row, would cost this handler nothing even if the kind were ever
  * added to SPOKEN_QUESTION_KINDS (it is not).
  */
-export function emailAlertAddHandler(): DeterministicHandler {
+export function emailAlertAddHandler(deps: {
+  writeReceipt: OfferReceiptWriter;
+}): DeterministicHandler {
   return {
     name: 'email_alert_add',
     resolves: new Set<OpenQuestionKind>(['email_alert_add']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const answer = ctx.resolved?.kind === 'email_alert_add' ? ctx.resolved : null;
-      const word = readAffirmative(ctx.body);
-      const polarity = answer?.polarity ?? (word === 'unclear' ? null : word);
-      if (polarity === null) return { claimed: false };
-      // THE BARE WORD, and the two things that make it unambiguous. `soleOpenKind` rules
-      // out every OTHER kind; the count rules out the second offer of this one, which that
-      // function is vacuously happy with — a family may hold three alerts a day, and "yes"
-      // next to two of them names neither. Declining sends the turn to the resolver and,
-      // failing that, to the one-sentence "Which one?" the subjects are written for.
-      if (answer === null) {
-        const questions = await ctx.openQuestions();
-        const mine = questions.filter((question) => question.kind === 'email_alert_add');
-        if (mine.length > 1 || !soleOpenKind(questions, 'email_alert_add')) {
-          return { claimed: false };
-        }
-      }
+      if (!answer) return { claimed: false };
 
       const outcome = await handleEmailAlertOfferReply(database, {
         familyId: ctx.familyId,
         parentUserId: ctx.parentUserId,
-        // The row the answer NAMES, never a position (route.ts `ResolvedAnswer`). Null is
-        // the bare word, which the guard above has just established is unambiguous.
-        offerId: answer?.questionId ?? null,
-        polarity,
-        language: replyLanguage(ctx.body),
+        offerId: answer.questionId,
+        polarity: answer.polarity,
+        parentReply: ctx.body,
         now: ctx.now,
       });
       if (outcome.status === 'no_open_offer') return { claimed: false };
-      if (outcome.status === 'already_added') {
-        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
-      }
       const resolution = outcome.status;
+      const reply = await deps.writeReceipt.write(outcome.facts);
+      if (reply === null) {
+        console.info(
+          { status: 'receipt_unsent', outcome: resolution },
+          'email alert offer: the receipt was not sent',
+        );
+      }
       return {
         claimed: true,
         outcome: resolution,
-        reply: outcome.reply,
+        reply,
         // Closed by the message that told the parent, never before it. A turn that placed
         // the event and then failed to answer must leave the offer standing so the redrive
         // finds it — the event insert is claimed against the offer, so the redrive places
         // nothing twice (the MEM-10 send-time discipline every other offer here keeps).
+        // A null reply never reaches afterSend (deliver returns first), so the offer
+        // stays open until a receipt actually goes out.
         afterSend: (channelMessageId) =>
           resolveEmailAlertOffer(database, {
             offerId: outcome.offerId,
