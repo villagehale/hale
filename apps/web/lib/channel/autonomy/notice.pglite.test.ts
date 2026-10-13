@@ -162,6 +162,28 @@ async function grant(familyId: string, parentUserId: string, actionType: string,
   return row.id;
 }
 
+async function switchOff(familyId: string, parentUserId: string, grantedAt: Date) {
+  await db.database.insert(schema.consentRecords).values({
+    familyId,
+    userId: parentUserId,
+    consentType: 'autonomous_action_class',
+    consentScope: 'send_email',
+    granted: false,
+    grantedAt,
+    policyVersion: 'test-policy',
+  });
+}
+
+async function channelRows(familyId: string) {
+  return db.database
+    .select({
+      parentUserId: schema.channelMessages.parentUserId,
+      dedupeKey: schema.channelMessages.dedupeKey,
+    })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.familyId, familyId));
+}
+
 function ports(compose: (input: AutonomyNoticeContext) => Promise<AutonomyNoticeText>) {
   const seen: AutonomyNoticeContext[] = [];
   const transport = new FakeTransport();
@@ -516,10 +538,10 @@ describe('telling a parent a kind turned on', () => {
     expect(dispatched.sent).toBe(1);
   });
 
-  it('still texts the other parent when one parent declines', async () => {
+  it('a switch-off cancels owed texts', async () => {
     const parent = await seedParent();
     const other = await seedCoParent(parent.familyId, 'Sam');
-    const kept = await grant(
+    await grant(
       parent.familyId,
       parent.parentUserId,
       'send_email',
@@ -531,15 +553,42 @@ describe('telling a parent a kind turned on', () => {
       'send_email',
       new Date('2026-09-02T12:00:00.000Z'),
     );
-    await db.database.insert(schema.consentRecords).values({
-      familyId: parent.familyId,
-      userId: other.parentUserId,
-      consentType: 'autonomous_action_class',
-      consentScope: 'send_email',
-      granted: false,
-      grantedAt: new Date('2026-09-03T12:00:00.000Z'),
-      policyVersion: 'test-policy',
-    });
+    await switchOff(parent.familyId, other.parentUserId, new Date('2026-09-03T12:00:00.000Z'));
+    const { sendPorts } = ports(async () => ({ message: `model arm ${households}` }));
+
+    const dispatched = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(dispatched.sent).toBe(0);
+    const rows = await channelRows(parent.familyId);
+    expect(rows).toEqual([]);
+  });
+
+  it('a fresh grant after a switch-off is owed', async () => {
+    const parent = await seedParent();
+    const other = await seedCoParent(parent.familyId, 'Sam');
+    await grant(
+      parent.familyId,
+      parent.parentUserId,
+      'send_email',
+      new Date('2026-09-01T12:00:00.000Z'),
+    );
+    await grant(
+      parent.familyId,
+      other.parentUserId,
+      'send_email',
+      new Date('2026-09-02T12:00:00.000Z'),
+    );
+    await switchOff(parent.familyId, other.parentUserId, new Date('2026-09-03T12:00:00.000Z'));
+    const fresh = await grant(
+      parent.familyId,
+      parent.parentUserId,
+      'send_email',
+      new Date('2026-09-04T12:00:00.000Z'),
+    );
     const { sendPorts } = ports(async () => ({ message: `model arm ${households}` }));
 
     const dispatched = await dispatchAutonomyNotices(
@@ -549,15 +598,8 @@ describe('telling a parent a kind turned on', () => {
     );
 
     expect(dispatched.sent).toBe(1);
-    const rows = await db.database
-      .select({
-        parentUserId: schema.channelMessages.parentUserId,
-        dedupeKey: schema.channelMessages.dedupeKey,
-      })
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.familyId, parent.familyId));
-    expect(rows).toEqual([
-      { parentUserId: parent.parentUserId, dedupeKey: `autonomy_armed:${kept}` },
+    expect(await channelRows(parent.familyId)).toEqual([
+      { parentUserId: parent.parentUserId, dedupeKey: `autonomy_armed:${fresh}` },
     ]);
   });
 });
