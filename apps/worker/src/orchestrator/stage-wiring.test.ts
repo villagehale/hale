@@ -85,6 +85,7 @@ vi.mock('../services/memory-writer.js', () => ({
   loadActionForApproval: vi.fn(async () => null),
   loadApprovedVerdictForAction: vi.fn(async () => null),
   loadFamilyCreatedAt: vi.fn(async () => new Date('2020-01-01')),
+  autonomyTurnOnDelivered: vi.fn(async () => true),
   loadAutonomyStanding: vi.fn(async () => []),
   loadCrossParentConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
   loadChildStages: vi.fn(async () => []),

@@ -17,6 +17,7 @@ const runNudgeCronMock = vi.fn();
 const runSittingReminderCronMock = vi.fn();
 const runWelcomeCardRedriveMock = vi.fn();
 const runDepartureNoticeRedriveMock = vi.fn();
+const runAutonomyNoticeRedriveMock = vi.fn();
 const sweepDutyAsksMock = vi.fn();
 const runProactiveReviewMock = vi.fn();
 const dbMock = vi.fn();
@@ -70,6 +71,9 @@ vi.mock('~/lib/channel/intake/welcome-card-redrive', () => ({
 vi.mock('~/lib/channel/coparent/departure-redrive', () => ({
   runDepartureNoticeRedrive: (...a: unknown[]) => runDepartureNoticeRedriveMock(...a),
 }));
+vi.mock('~/lib/channel/autonomy/dispatch', () => ({
+  runAutonomyNoticeRedrive: (...a: unknown[]) => runAutonomyNoticeRedriveMock(...a),
+}));
 // Duty asks have their own flag and return before a read when it is off. Mock
 // the module anyway: the real graph is heavy enough to blow the gate test's
 // import budget, and an unwired sweep must not stay green.
@@ -122,6 +126,7 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     runNudgeCronMock.mockReset().mockResolvedValue({ enabled: false, evaluated: 0 });
     runWelcomeCardRedriveMock.mockReset().mockResolvedValue({ held: 0, due: 0, sent: 0 });
     runDepartureNoticeRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
+    runAutonomyNoticeRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
     runProactiveReviewMock.mockReset().mockResolvedValue({
       mode: 'off',
       families: 0,
@@ -209,11 +214,17 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
         {},
         expect.objectContaining({ ports: expect.anything() }),
       );
+      expect(runAutonomyNoticeRedriveMock).toHaveBeenCalledTimes(1);
+      expect(runAutonomyNoticeRedriveMock).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ ports: expect.anything() }),
+      );
       expect(sweepDutyAsksMock).toHaveBeenCalledTimes(1);
       expect(sweepDutyAsksMock).toHaveBeenCalledWith({});
     } else {
       expect(runWelcomeCardRedriveMock).not.toHaveBeenCalled();
       expect(runDepartureNoticeRedriveMock).not.toHaveBeenCalled();
+      expect(runAutonomyNoticeRedriveMock).not.toHaveBeenCalled();
       expect(sweepDutyAsksMock).not.toHaveBeenCalled();
     }
   });

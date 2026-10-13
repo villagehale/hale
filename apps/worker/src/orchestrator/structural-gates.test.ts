@@ -82,6 +82,7 @@ let familyCreatedAt = new Date('2020-01-01T00:00:00.000Z');
 let standing: { parentUserId: string; streakReached: boolean; optedIn: boolean }[] = [
   { parentUserId: 'parent-1', streakReached: true, optedIn: true },
 ];
+let turnOnDelivered = true;
 let crossParent = { hasCoParent: false, coParentConsentGranted: false };
 let childStages: FamilyStage[] = ['newborn'];
 
@@ -101,6 +102,7 @@ vi.mock('../services/memory-writer.js', () => ({
   loadActionForEvent: vi.fn(async () => null),
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
   loadAutonomyStanding: vi.fn(async () => standing),
+  autonomyTurnOnDelivered: vi.fn(async () => turnOnDelivered),
   loadCrossParentConsent: vi.fn(async () => crossParent),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
@@ -135,8 +137,18 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
     draftActionType = 'send_email';
     familyCreatedAt = new Date('2020-01-01T00:00:00.000Z');
     standing = [{ parentUserId: 'parent-1', streakReached: true, optedIn: true }];
+    turnOnDelivered = true;
     crossParent = { hasCoParent: false, coParentConsentGranted: false };
     childStages = ['newborn'];
+  });
+
+  it('holds an armed kind until the turn-on text has been delivered', async () => {
+    turnOnDelivered = false;
+    await runOrchestrator(job);
+    expect(runExecutor).not.toHaveBeenCalled();
+    expect(recordActionGate).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'autonomy_notice_pending', actionType: 'send_email' }),
+    );
   });
 
   it('baseline (old family, full streak, single-parent, newborn) → executes autonomously', async () => {

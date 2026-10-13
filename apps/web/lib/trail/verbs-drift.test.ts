@@ -118,6 +118,11 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // `action.reviewer.${verdictColumn}`, the executed/failed ternary,
   // `action.gated.${ActionGateReason}`, `event.stage.${StageCheckpoint}`,
   // `event.dropped.${reason}` (written as shorthand from recordDrop).
+  // The turn-on and on-its-own texts share one insert; the verb is the occasion.
+  'apps/web/lib/channel/autonomy/notice.ts': [
+    'autonomy_armed_notice_sent',
+    'autonomy_acted_notice_sent',
+  ],
   'apps/worker/src/services/memory-writer.ts': [
     'event.dropped.low_confidence',
     'event.dropped.unknown_action_type',
@@ -134,6 +139,7 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'action.gated.autonomy_not_opted_in',
     'action.gated.lane_off',
     'action.gated.autonomy_denied_kind',
+    'action.gated.autonomy_notice_pending',
     'event.stage.classified',
     'event.stage.drafted',
     'event.stage.reviewed',

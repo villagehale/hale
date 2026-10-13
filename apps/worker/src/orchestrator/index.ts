@@ -28,6 +28,7 @@ import {
 } from '../services/executor.js';
 import type { GoogleCalendarPlacement } from '../services/google-calendar-placement.js';
 import {
+  autonomyTurnOnDelivered,
   getMemorySlice,
   loadActionForApproval,
   loadActionForEvent,
@@ -683,6 +684,24 @@ export async function runOrchestrator(
     return;
   }
 
+  // The turn-on text has to have been delivered before Hale does the kind, including
+  // when quiet hours held it overnight. The lane being on is not that text.
+  if (!(await autonomyTurnOnDelivered(familyId, draft.actionType))) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, actionType: draft.actionType },
+      'orchestrator: turn-on text not delivered — drafted for approval',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      reason: 'autonomy_notice_pending',
+      detail: { consentType: 'autonomous_action_class', consentScope: draft.actionType },
+    });
+    return;
+  }
+
   // Mint BEFORE the checkpoint: minting can throw (coverage/result gate, hard
   // rules #3 + #7), and a throw here must NOT leave a phantom
   // 'approved_pending_execute' that resume would re-drive.
@@ -797,6 +816,22 @@ async function resumeIntoExecutor(
       actionId: existing.actionId,
       actionType: existing.actionType,
       reason: 'autonomy_denied_kind',
+      detail: { resumed: true },
+    });
+    return;
+  }
+
+  if (humanApprover === null && !(await autonomyTurnOnDelivered(familyId, existing.actionType))) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, eventId, actionId: existing.actionId, actionType: existing.actionType },
+      'orchestrator: turn-on text not delivered — re-gated on resume (executor not reached)',
+    );
+    await recordActionGate({
+      familyId,
+      actionId: existing.actionId,
+      actionType: existing.actionType,
+      reason: 'autonomy_notice_pending',
       detail: { resumed: true },
     });
     return;

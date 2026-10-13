@@ -351,6 +351,10 @@ export const AUDIT_VERBS = [
   'action.gated.lane_off',
   // Booking, registration and paying are never autonomous. Same reused sentence.
   'action.gated.autonomy_denied_kind',
+  // Held because the turn-on text has not been delivered yet.
+  'action.gated.autonomy_notice_pending',
+  'autonomy_armed_notice_sent',
+  'autonomy_acted_notice_sent',
   // A parent turned Hale's autonomy off for one kind of action.
   'autonomous_action_class.revoked',
   // A parent's own approval that completed their streak turned it on for them.
@@ -1289,6 +1293,18 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   'action.gated.lane_off': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.gated.autonomy_denied_kind': { sentence: 'brought a draft to you', family: 'awaiting' },
+  'action.gated.autonomy_notice_pending': {
+    sentence: 'held until Hale had told you it would handle this on its own',
+    family: 'awaiting',
+  },
+  autonomy_armed_notice_sent: {
+    sentence: 'texted you that Hale will handle this on its own',
+    family: 'done',
+  },
+  autonomy_acted_notice_sent: {
+    sentence: 'texted you about something Hale did on its own',
+    family: 'done',
+  },
   'autonomous_action_class.revoked': {
     sentence: 'you stopped Hale doing this on its own',
     family: 'done',

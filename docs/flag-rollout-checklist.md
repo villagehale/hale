@@ -27,7 +27,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `BOOKED_DETECTION_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `F14_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
-| `AUTONOMOUS_EXECUTE_ENABLED` | `true` (exact, untrimmed) | off: stays unset until Hale texts a parent when a kind turns on | unset | Barton |
+| `AUTONOMOUS_EXECUTE_ENABLED` | `true` (exact, untrimmed) | off: stays unset until Barton sets it. A kind still does not run until its turn-on text has been delivered | unset | Barton |
 | `LINQ_GROUP_COPARENT` | unset (anything except `off`) | on | `off` | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | unset (anything except `false`) | on | `false` | Noah |
 | `VOICE_DISABLED` | unset | unset (voice runs) | `true` | Sloane |
@@ -120,7 +120,7 @@ These are the flags the brief says are on. Confirm the Vercel value before treat
 | `BOOKED_DETECTION_ENABLED` | A booking confirmation is stored as a held spot. | `activity_booking_recorded` rows, and parent alerts that fire for mail the backfill should have stayed quiet on. | `false` | Noah |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | One capped page of booking-shaped mail from the last 90 days is recorded, and the parent is not alerted. | Log line `gmail sweep: envelope outcome`. Backfill must not insert a `channel_messages` row. | `false` | Noah |
 | `F14_ENABLED` | Hale may start a conversation (nudges, evening check-in, and the other proactive sweeps that read this flag). | Any outbound with no inbound from that parent the same day. A comment in `apps/web/lib/village/intros/run.ts` says this flag is on for real families. The capability registry still says the default is off. | `false` | Noah |
-| `AUTONOMOUS_EXECUTE_ENABLED` | Hale acts on its own on an action type the parent opted into and approved five times in a row (rule #4). Off, each such action is held for approval as `action.gated.lane_off`; a parent's own approval still executes. It stays unset until Hale texts a parent when a kind turns on: unset, Hale never acts on its own, so no kind turns on without the parent being told. Before it is ever set, the count of parents already at five approvals of a kind goes in the VIL-131 pull request. | `action.executed` against `action.gated.*` per action type, and any `action.gated.lane_off` row while the value is `true`. | unset | Barton |
+| `AUTONOMOUS_EXECUTE_ENABLED` | Hale acts on its own on an action type the parent opted into and approved five times in a row (rule #4), and only after the turn-on text for that grant has been delivered. Off, each such action is held for approval as `action.gated.lane_off`; a parent's own approval still executes. It stays unset until Barton sets it. On, a kind whose text has not been delivered is held as `action.gated.autonomy_notice_pending`, including overnight. The count of parents already at five approvals of a kind, run before it is ever set, is in the VIL-131 pull request: 0. | `action.executed` against `action.gated.*` per action type, and any `action.gated.lane_off` row while the value is `true`. | unset | Barton |
 
 ### On when unset
 

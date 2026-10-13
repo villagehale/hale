@@ -184,6 +184,7 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
       channelSendDead: vi.fn(async () => undefined),
       channelMessage: vi.fn(async () => undefined),
       deepResearch: vi.fn(async () => undefined),
+      autonomyNotices: vi.fn(async () => undefined),
       ...overrides,
     },
     log: { info: vi.fn(), error: vi.fn() },

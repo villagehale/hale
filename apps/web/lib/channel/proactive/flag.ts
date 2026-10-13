@@ -45,6 +45,9 @@ export const PROACTIVE_ROUTING = {
   co_parent_departed: 'not_routed',
   travel_brief: 'not_routed',
   duty_ask: 'not_routed',
+  // Event-driven, on their own clock: the grant and the execution, not the decider's batch.
+  autonomy_armed: 'immediate',
+  autonomy_acted: 'immediate',
 } as const satisfies Record<ProactiveSendKind, 'decider' | 'immediate' | 'not_routed'>;
 
 /** The classes whose sweeps still send on their own, in table order. */

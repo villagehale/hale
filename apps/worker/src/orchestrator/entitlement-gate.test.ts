@@ -110,6 +110,7 @@ vi.mock('../services/memory-writer.js', () => ({
   // The human-approve path's own seams are passed explicitly in the test that uses it.
   loadActionForApproval: vi.fn(async () => null),
   recordHumanApproval: vi.fn(async () => ({ claimed: false, eventStatus: null })),
+  autonomyTurnOnDelivered: vi.fn(async () => true),
   loadAutonomyStanding: vi.fn(async () => [
     { parentUserId: 'parent-1', streakReached: true, optedIn: true },
   ]),

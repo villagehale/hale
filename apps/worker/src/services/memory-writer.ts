@@ -1,13 +1,13 @@
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import { schema, type Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import type {
-  EventType,
   ActionType,
-  ReviewerVerdict,
   ClassifierSuggestion,
+  EventType,
   FamilyStage,
+  ReviewerVerdict,
 } from '@hale/types';
 import { ageInMonths, deriveStage } from '@hale/types';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
@@ -213,7 +213,10 @@ export async function recordEvent(
     if (!existingId) {
       throw new Error('event conflict but no existing row found — investigate');
     }
-    logger.debug({ familyId: input.familyId, eventId: existingId }, 'memory: duplicate event ignored');
+    logger.debug(
+      { familyId: input.familyId, eventId: existingId },
+      'memory: duplicate event ignored',
+    );
     // The classifier still ran (and was billed) even though the event is a
     // re-delivery; record its standalone run so cost accounting stays honest.
     await recordAgentRun(
@@ -230,26 +233,23 @@ export async function recordEvent(
   const eventId = insertedRow.id;
   logger.debug({ familyId: input.familyId, eventId }, 'memory: event recorded');
 
-  await recordTransition(
-    async (tx) => {
-      await recordAgentRun(
-        { familyId: input.familyId, eventId, metrics: input.classifierMetrics },
-        tx,
-      );
-      return {
-        value: undefined,
-        audit: {
-          familyId: input.familyId,
-          actor: 'system',
-          actionTaken: 'event.classified',
-          targetTable: 'events',
-          targetId: eventId,
-          after: { eventType: input.eventType, confidence: input.classifierConfidence },
-        },
-      };
-    },
-    database,
-  );
+  await recordTransition(async (tx) => {
+    await recordAgentRun(
+      { familyId: input.familyId, eventId, metrics: input.classifierMetrics },
+      tx,
+    );
+    return {
+      value: undefined,
+      audit: {
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'event.classified',
+        targetTable: 'events',
+        targetId: eventId,
+        after: { eventType: input.eventType, confidence: input.classifierConfidence },
+      },
+    };
+  }, database);
 
   return { eventId, duplicate: false };
 }
@@ -387,8 +387,7 @@ export async function recordReviewerVerdict(
           ok: r.ok,
           result: r.result,
         })),
-        userVisibleState:
-          input.verdict.kind === 'approve' ? 'drafted_for_approval' : 'needs_human',
+        userVisibleState: input.verdict.kind === 'approve' ? 'drafted_for_approval' : 'needs_human',
       })
       .where(eq(schema.actions.id, input.actionId));
 
@@ -453,10 +452,7 @@ export async function recordExecution(
  * previously returned silently. Updates the event's status and writes the audit
  * row so PIPEDA right-to-access shows why nothing happened (hard rule #6).
  */
-export async function recordDrop(
-  input: RecordDropInput,
-  database: Database = db(),
-): Promise<void> {
+export async function recordDrop(input: RecordDropInput, database: Database = db()): Promise<void> {
   const actionTaken = `event.dropped.${input.reason}` as const;
   // unknown_action_type is an automated-handling failure; low_confidence and
   // needs_human are routed onward to the human queue. Both are existing
@@ -524,7 +520,8 @@ export type ActionGateReason =
   | 'teen_redaction'
   | 'autonomy_not_opted_in'
   | 'lane_off'
-  | 'autonomy_denied_kind';
+  | 'autonomy_denied_kind'
+  | 'autonomy_notice_pending';
 
 interface RecordActionGateInput {
   familyId: string;
@@ -1019,12 +1016,95 @@ export async function loadAutonomyStanding(
       parentUserId: parent.userId,
       streakReached: streakSatisfiesAutonomy(
         actionType,
-        await loadActionApprovalHistory(familyId, actionType, parent.userId, database),
+        await loadActionApprovalHistory(
+          familyId,
+          actionType,
+          parent.userId,
+          database,
+          live.has(parent.userId),
+        ),
       ),
       optedIn: live.has(parent.userId),
     });
   }
   return standing;
+}
+
+/** One text per grant. The web sender and this delivery check share the key. */
+export function autonomyArmedDedupeKey(consentRecordId: string): string {
+  return `autonomy_armed:${consentRecordId}`;
+}
+
+/** One text per autonomous execution. */
+export function autonomyActedDedupeKey(actionId: string): string {
+  return `autonomy_acted:${actionId}`;
+}
+
+/** Statuses that mean the turn-on text has left, matching the channel ledger's sent set. */
+const TURN_ON_DELIVERED_STATUSES = ['queued', 'sent', 'delivered'] as const;
+
+/**
+ * Whether every parent who currently holds both the streak and a live grant for
+ * this kind has had their turn-on text delivered. A quiet-hours hold does not
+ * count: its row carries no dedupe key. Hale does not do the kind until this is
+ * true, including overnight.
+ */
+export async function autonomyTurnOnDelivered(
+  familyId: string,
+  actionType: ActionType,
+  database: Reader = db(),
+): Promise<boolean> {
+  const standing = await loadAutonomyStanding(familyId, actionType, database);
+  const holders = standing.filter((parent) => parent.streakReached && parent.optedIn);
+  if (holders.length === 0) return false;
+
+  const rows = await database
+    .select({
+      id: schema.consentRecords.id,
+      userId: schema.consentRecords.userId,
+      granted: schema.consentRecords.granted,
+      revokedAt: schema.consentRecords.revokedAt,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.familyId, familyId),
+        eq(schema.consentRecords.consentType, 'autonomous_action_class'),
+        eq(schema.consentRecords.consentScope, actionType),
+      ),
+    )
+    .orderBy(
+      desc(schema.consentRecords.grantedAt),
+      asc(schema.consentRecords.granted),
+      desc(schema.consentRecords.id),
+    );
+
+  const grantByParent = new Map<string, string>();
+  const decided = new Set<string>();
+  for (const row of rows) {
+    if (!row.granted) break;
+    if (decided.has(row.userId)) continue;
+    decided.add(row.userId);
+    if (row.revokedAt === null) grantByParent.set(row.userId, row.id);
+  }
+
+  const keys = holders.flatMap((parent) => {
+    const grantId = grantByParent.get(parent.parentUserId);
+    return grantId ? [autonomyArmedDedupeKey(grantId)] : [];
+  });
+  if (keys.length !== holders.length) return false;
+
+  const delivered = await database
+    .select({ dedupeKey: schema.channelMessages.dedupeKey })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        inArray(schema.channelMessages.dedupeKey, keys),
+        inArray(schema.channelMessages.status, [...TURN_ON_DELIVERED_STATUSES]),
+      ),
+    );
+  const deliveredKeys = new Set(delivered.map((row) => row.dedupeKey));
+  return keys.every((key) => deliveredKeys.has(key));
 }
 
 async function familyParents(
@@ -1167,8 +1247,10 @@ const AUTONOMY_REVOKED_VERB = 'autonomous_action_class.revoked';
  * row), and each switch-off of the kind by either parent (revokeAutonomyForKind's
  * `autonomous_action_class.revoked` row). An approval is `humanApproved`; a dismissal,
  * an undo and a switch-off are not, so each ends the run and the streak restarts from
- * it. The other parent's approvals, dismissals and undos are theirs and are not in
- * this history.
+ * it. The other parent's approvals, dismissals, and undos of a parent-approved run
+ * are theirs and are not in this history. An undo of a run Hale made on its own is
+ * in it when this parent holds a live grant: that undo restarts every granted
+ * parent's streak and writes no revoked consent row.
  * An action Hale ran on its own has no approval row and is not in it either: it
  * neither counts toward the streak nor breaks it, so autonomy can never bootstrap
  * itself and never disarms itself.
@@ -1181,33 +1263,51 @@ async function loadActionApprovalHistory(
   actionType: ActionType,
   parentUserId: string,
   database: Reader,
+  autonomousUndoBreaksGrantedParent: boolean,
 ): Promise<{ actionType: string; humanApproved: boolean }[]> {
   const actionsOfKind = database
     .select({ id: sql<string>`${schema.actions.id}::text` })
     .from(schema.actions)
     .where(and(eq(schema.actions.familyId, familyId), eq(schema.actions.actionType, actionType)));
+  const ownDecisions = and(
+    inArray(schema.auditLog.actionTaken, [
+      HUMAN_APPROVAL_VERB,
+      HUMAN_DISMISSAL_VERB,
+      HUMAN_UNDO_VERB,
+    ]),
+    eq(schema.auditLog.actor, parentUserId),
+    eq(schema.auditLog.targetTable, 'actions'),
+    inArray(schema.auditLog.targetId, actionsOfKind),
+  );
+  const switchOff = and(
+    eq(schema.auditLog.actionTaken, AUTONOMY_REVOKED_VERB),
+    sql`${schema.auditLog.after}->>'consentScope' = ${actionType}`,
+  );
+  // An undo of a run Hale made on its own restarts every granted parent's streak,
+  // whoever pressed undo. It does not revoke the grant. An undo of a run a parent
+  // approved stays in `ownDecisions` and breaks only that parent's streak.
+  const autonomousUndo = and(
+    eq(schema.auditLog.actionTaken, HUMAN_UNDO_VERB),
+    eq(schema.auditLog.targetTable, 'actions'),
+    inArray(schema.auditLog.targetId, actionsOfKind),
+    sql`exists (
+      select 1 from audit_log executed
+      where executed.family_id = ${schema.auditLog.familyId}
+        and executed.action_taken = 'action.executed'
+        and executed.target_table = 'actions'
+        and executed.target_id = ${schema.auditLog.targetId}
+        and executed.after -> 'decision' ->> 'source' = 'autonomous'
+    )`,
+  );
   const rows = await database
     .select({ actionTaken: schema.auditLog.actionTaken })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
-        or(
-          and(
-            inArray(schema.auditLog.actionTaken, [
-              HUMAN_APPROVAL_VERB,
-              HUMAN_DISMISSAL_VERB,
-              HUMAN_UNDO_VERB,
-            ]),
-            eq(schema.auditLog.actor, parentUserId),
-            eq(schema.auditLog.targetTable, 'actions'),
-            inArray(schema.auditLog.targetId, actionsOfKind),
-          ),
-          and(
-            eq(schema.auditLog.actionTaken, AUTONOMY_REVOKED_VERB),
-            sql`${schema.auditLog.after}->>'consentScope' = ${actionType}`,
-          ),
-        ),
+        autonomousUndoBreaksGrantedParent
+          ? or(ownDecisions, switchOff, autonomousUndo)
+          : or(ownDecisions, switchOff),
       ),
     )
     .orderBy(desc(schema.auditLog.occurredAt))
@@ -1533,4 +1633,3 @@ export async function recordDiscovery(
     };
   }, database);
 }
-

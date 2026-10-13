@@ -5,6 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AUTONOMY_STREAK_REQUIRED } from '../orchestrator/autonomy-gate.js';
 import { createTestDb, seedFamily, type SeededFamily, type TestDb } from '../testing/pglite.js';
 import {
+  autonomyArmedDedupeKey,
+  autonomyTurnOnDelivered,
   loadAutonomyStanding,
   loadCrossParentConsent,
   loadHumanApprover,
@@ -494,7 +496,52 @@ describe('undoing something Hale did breaks the streak, the same as a dismissal'
     await undo(fam, 'calendar_add');
     expect(await armed(fam.familyId, 'calendar_add')).toBe(false);
   });
+
+  it('an undo of a run Hale made on its own restarts every granted parent, and the grant stays', async () => {
+    const fam = await seedFamily(db.database);
+    const coParentId = await addMember(fam.familyId, 'co_parent');
+    await approveTimes(fam, 'calendar_add', AUTONOMY_STREAK_REQUIRED);
+    await approveTimes(fam, 'calendar_add', AUTONOMY_STREAK_REQUIRED, coParentId);
+    expect(await armed(fam.familyId, 'calendar_add')).toBe(true);
+
+    await undoAutonomous(fam, 'calendar_add', coParentId);
+
+    const after = await standing(fam.familyId, 'calendar_add');
+    expect(after.get(fam.parentUserId)).toEqual({ streakReached: false, optedIn: true });
+    expect(after.get(coParentId)).toEqual({ streakReached: false, optedIn: true });
+    const revoked = await db.database
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, fam.familyId),
+          eq(schema.auditLog.actionTaken, 'autonomous_action_class.revoked'),
+        ),
+      );
+    expect(revoked).toEqual([]);
+  });
 });
+
+async function undoAutonomous(fam: SeededFamily, kind: ActionType, revertedBy: string) {
+  sequence += 1;
+  const { actionId } = await seedAction(fam.familyId, `autonomous-undone-${sequence}`, kind);
+  await recordExecution(
+    {
+      actionId,
+      result: { kind: 'test' },
+      ok: true,
+      decision: { source: 'autonomous', reason: 'the kind was on' },
+    },
+    db.database,
+  );
+  await db.database.insert(schema.auditLog).values({
+    familyId: fam.familyId,
+    actor: revertedBy,
+    actionTaken: 'action.reverted_by_human',
+    targetTable: 'actions',
+    targetId: actionId,
+  });
+}
 
 describe('the fifth approval of a kind writes its grant', () => {
   it('four approvals write nothing; the fifth writes one grant for that kind and logs it', async () => {
@@ -785,6 +832,42 @@ describe('a switch-off restarts the streak', () => {
     });
 
     expect(await optedIn(fam.familyId, 'send_email')).toBe(false);
+  });
+
+  it('the turn-on text is delivered only when that grant’s send has left', async () => {
+    const fam = await seedFamily(db.database);
+    expect(await autonomyTurnOnDelivered(fam.familyId, 'send_email', db.database)).toBe(false);
+
+    await approveTimes(fam, 'send_email', AUTONOMY_STREAK_REQUIRED - 1);
+    const fifth = await approve(fam, 'send_email');
+    if (!fifth.claimed || fifth.autonomy.outcome !== 'granted') {
+      throw new Error('expected the fifth approval to grant');
+    }
+    expect(await autonomyTurnOnDelivered(fam.familyId, 'send_email', db.database)).toBe(false);
+
+    await db.database.insert(schema.channelMessages).values({
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'autonomy_armed',
+      templateKey: 'autonomy:armed',
+      dedupeKey: null,
+      status: 'suppressed_quiet_hours',
+    });
+    expect(await autonomyTurnOnDelivered(fam.familyId, 'send_email', db.database)).toBe(false);
+
+    await db.database.insert(schema.channelMessages).values({
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'autonomy_armed',
+      templateKey: 'autonomy:armed',
+      dedupeKey: autonomyArmedDedupeKey(fifth.autonomy.consentRecordId),
+      status: 'queued',
+    });
+    expect(await autonomyTurnOnDelivered(fam.familyId, 'send_email', db.database)).toBe(true);
   });
 
   it('a grant withdrawn by its revoked_at stamp reads as off', async () => {

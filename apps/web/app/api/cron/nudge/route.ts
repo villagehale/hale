@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
+import { runAutonomyNoticeRedrive } from '~/lib/channel/autonomy/dispatch';
+import { autonomyNoticePorts } from '~/lib/channel/autonomy/ports';
 import { runEveningCheckInSweep } from '~/lib/channel/checkin/sweep';
 import { runDepartureNoticeRedrive } from '~/lib/channel/coparent/departure-redrive';
 import { sweepDutyAsks } from '~/lib/channel/coparent/duty/asks';
@@ -121,6 +123,9 @@ export const GET = cronRoute('nudge', async () => {
     const departureNotices = await runDepartureNoticeRedrive(db(), {
       ports: departureNoticePorts(db()),
     });
+    const autonomyNotices = await runAutonomyNoticeRedrive(db(), {
+      ports: autonomyNoticePorts(db()),
+    });
     const reviewCapture = await runReviewCapture(db(), {
       askOpen: activityFollowupAskOpen,
       verdict: createVerdictReader(reviewVerdictClient),
@@ -149,6 +154,7 @@ export const GET = cronRoute('nudge', async () => {
         activityFollowUps,
         welcomeCards,
         departureNotices,
+        autonomyNotices,
         reviewCapture,
         midActivityAsks,
         midActivityAnswers,

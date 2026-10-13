@@ -103,6 +103,7 @@ vi.mock('../services/memory-writer.js', () => ({
   loadFamilyCreatedAt: vi.fn(async () => new Date('2020-01-01T00:00:00.000Z')),
   loadActionForApproval: vi.fn(async () => null),
   recordHumanApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
+  autonomyTurnOnDelivered: vi.fn(async () => true),
   loadAutonomyStanding: vi.fn(async () => [
     { parentUserId: 'parent-1', streakReached: true, optedIn: true },
   ]),
