@@ -40,6 +40,8 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/channel/nudge/saturday-plans.ts': 'household',
   'apps/web/lib/channel/coparent/duty/calendar.ts': 'household',
   'apps/web/lib/channel/coparent/duty/metrics.ts': 'household',
+  'apps/web/lib/channel/proactive/snapshot.ts': 'household',
+  'apps/web/lib/channel/proactive/review.ts': 'household',
   'apps/web/lib/channel/reconcile/view.ts': 'household',
   'apps/web/lib/memory/workstream-extract.ts': 'household',
   'apps/web/lib/sentinel/candidates.ts': 'household',

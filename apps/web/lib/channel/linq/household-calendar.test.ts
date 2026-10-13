@@ -14,7 +14,6 @@ import {
   groupAddressedLine,
   groupBothReaderFrench,
   groupDepartureNotice,
-  groupEmptySaturdayLine,
   groupPostEventText,
 } from './group-coparent-copy';
 import {
@@ -134,7 +133,7 @@ describe('group ask strings', () => {
 });
 
 describe('two-reader group lines', () => {
-  it('names a known parent on how-it-went and empty Saturday', () => {
+  it('names a known parent on how-it-went', () => {
     expect(groupActivityHowItWent('en', 'Sam', 'swim')).toBe(
       'Sam, how did swim go? One line is plenty.',
     );
@@ -143,18 +142,6 @@ describe('two-reader group lines', () => {
     );
     expect(groupActivityHowItWent('fr', null, 'swim')).toBe(
       "Comment ca s'est passe pour swim ? Une ligne suffit.",
-    );
-    expect(groupEmptySaturdayLine('en', 'Sam', 'Maya')).toBe(
-      "Sam, this Saturday looks open for Maya. Want one nearby find that's actually running?",
-    );
-    expect(groupEmptySaturdayLine('fr', 'Sam', 'Maya')).toBe(
-      "Sam, ce samedi a l'air libre pour Maya. Tu veux une seule idee a cote qui tourne vraiment ?",
-    );
-    expect(groupEmptySaturdayLine('en', null, 'Maya')).toBe(
-      "This Saturday looks open for Maya. Want one nearby find that's actually running?",
-    );
-    expect(groupEmptySaturdayLine('fr', null, 'Maya')).toBe(
-      "Ce samedi a l'air libre pour Maya. Vous voulez une seule idee a cote qui tourne vraiment ?",
     );
   });
 

@@ -144,7 +144,9 @@ export type InboundRouteOutcome =
   /** No open place-ask for this number. No text. */
   | 'location_not_waiting'
   /** The share started but Linq had no city locality yet. No nudge. */
-  | 'location_unread';
+  | 'location_unread'
+  /** VIL-226 · Linq said a sending line is flagged or throttled, or that it recovered. */
+  | 'line_health';
 
 /**
  * Route one authenticated inbound text. Exported so the routing decisions are testable

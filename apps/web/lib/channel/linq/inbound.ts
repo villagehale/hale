@@ -13,8 +13,15 @@ import {
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { loadOpenSession } from '~/lib/channel/intake/session';
+import {
+  lineStatusKnown,
+  lineStatusPauses,
+  lineStatusToken,
+  sendingLineE164,
+} from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
@@ -230,6 +237,7 @@ export async function handleLinqInboundRequest(
     return json({ outcome });
   }
   if (parsed.kind === 'signal') return handleLinqSignal(deps, parsed.signal);
+  if (parsed.kind === 'line_health') return handleLinqLineHealth(deps, parsed.line);
   if (parsed.kind === 'location') return handleLinqLocation(deps, parsed.location);
   if (parsed.kind === 'group') return handleLinqGroup(deps, parsed.message);
 
@@ -1284,6 +1292,58 @@ async function familyIdForClaimedChat(
     .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
     .from(schema.families);
   return rows.find((row) => row.linqGroupChatId === chatId)?.id ?? null;
+}
+
+/**
+ * VIL-226 · Linq's status for Hale's sending line (`LINQ_FROM_E164`). Flagged or
+ * throttled is stored as paused, which the hourly decider reads before it sends anything
+ * nobody asked for, and #ops is paged. A healthy status lifts the pause. A status for any
+ * other number on the account (a test or secondary line) is stored nowhere and named
+ * `other_line`, so it cannot pause the sending line's texts. With no sending line
+ * configured there is nothing to pause, named `no_sending_line`. The number stays out of
+ * the log and the page.
+ */
+async function handleLinqLineHealth(
+  deps: LinqDoorDeps,
+  line: { phoneNumber: string; status: string },
+): Promise<Response> {
+  const sendingLine = sendingLineE164();
+  if (sendingLine === null) {
+    deps.log.info({ outcome: 'no_sending_line' }, 'linq line health: no sending line, ignored');
+    await deps.countOutcome('ignored');
+    return json({ outcome: 'no_sending_line' });
+  }
+  if (line.phoneNumber !== sendingLine) {
+    deps.log.info({ outcome: 'other_line' }, 'linq line health: not the sending line, ignored');
+    await deps.countOutcome('ignored');
+    return json({ outcome: 'other_line' });
+  }
+  const paused = lineStatusPauses(line.status);
+  if (!lineStatusKnown(line.status)) {
+    // Fail closed: a status word Hale cannot read pauses sends until a known one arrives.
+    console.warn(
+      { status: lineStatusToken(line.status) ?? 'invalid', outcome: 'line_status_unknown' },
+      'linq line health: unknown status word, unrequested sends held',
+    );
+  }
+  const updatedAt = deps.now?.() ?? new Date();
+  await deps.database
+    .insert(schema.linqLineHealth)
+    .values({ phoneNumber: line.phoneNumber, status: line.status, paused, updatedAt })
+    .onConflictDoUpdate({
+      target: schema.linqLineHealth.phoneNumber,
+      set: { status: line.status, paused, updatedAt },
+    });
+  if (paused) {
+    const page = await postOpsSlack(
+      `Linq reports a Hale sending line as ${line.status}. Unrequested proactive sends are held until it clears.`,
+    );
+    deps.log.error({ status: line.status, page }, 'linq line health: unrequested sends paused');
+  } else {
+    deps.log.info({ status: line.status }, 'linq line health: line is clear');
+  }
+  await deps.countOutcome('line_health');
+  return json({ outcome: 'line_health', paused });
 }
 
 /** What the HTTP response and the log line call each decline. Finer than the

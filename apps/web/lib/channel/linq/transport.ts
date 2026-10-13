@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { linqApiKey, linqFromE164 } from './config';
 
 /**
@@ -37,14 +39,51 @@ export class LinqSendError extends Error {
   readonly code: string;
   readonly httpStatus: number;
   readonly permanent: boolean;
+  /** Retry-After on a rate limit, when Linq sent one (VIL-226, cadence armed only). */
+  readonly retryAfterMs: number | null;
 
-  constructor(code: string, httpStatus: number, permanent: boolean) {
+  constructor(
+    code: string,
+    httpStatus: number,
+    permanent: boolean,
+    retryAfterMs: number | null = null,
+  ) {
     super(`linq send failed: ${code}`);
     this.name = 'LinqSendError';
     this.code = code;
     this.httpStatus = httpStatus;
     this.permanent = permanent;
+    this.retryAfterMs = retryAfterMs;
   }
+}
+
+/**
+ * VIL-226 · the rate-limit and idempotency rules ride PROACTIVE_CADENCE, so an unset
+ * flag sends exactly today's request and reads exactly today's refusal.
+ */
+function cadenceArmed(): boolean {
+  return proactiveCadence() !== 'off';
+}
+
+/** Linq's rate limit: HTTP 429, or its own error 1007. */
+const LINQ_RATE_LIMIT_CODE = '1007';
+/** The longest Retry-After a send waits out in-call; a longer one is handed back. */
+const IN_CALL_RETRY_MAX_MS = 1_000;
+
+/** Stable key for one chat and one wire message, so a retry is the same send. */
+export function linqMessageKey(chatId: string, message: unknown): string {
+  return createHash('sha256')
+    .update(`${chatId}\n${JSON.stringify(message)}`)
+    .digest('hex');
+}
+
+function retryAfterMsOf(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds) * 1000;
+  const at = Date.parse(header);
+  if (Number.isNaN(at)) return null;
+  return Math.max(0, at - Date.now());
 }
 
 /** Standard iMessage tapbacks. `custom` carries the emoji in `customEmoji`. */
@@ -99,6 +138,7 @@ type LinqHttpResult = {
   code: string;
   permanent: boolean;
   ok: boolean;
+  retryAfterMs: number | null;
 };
 
 async function linqRequest(input: {
@@ -106,6 +146,7 @@ async function linqRequest(input: {
   path: string;
   body?: unknown;
   fetch?: typeof fetch;
+  idempotencyKey?: string;
 }): Promise<LinqHttpResult> {
   const apiKey = linqApiKey();
   if (!apiKey) throw new LinqSendError('not_configured', 0, true);
@@ -120,6 +161,7 @@ async function linqRequest(input: {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         ...(input.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(input.idempotencyKey ? { 'Idempotency-Key': input.idempotencyKey } : {}),
       },
       body: input.body !== undefined ? JSON.stringify(input.body) : undefined,
       signal: controller.signal,
@@ -132,13 +174,17 @@ async function linqRequest(input: {
   }
 
   const payload: unknown = response.status === 204 ? null : await response.json().catch(() => null);
-  const permanent = response.status >= 400 && response.status < 500 && response.status !== 429;
+  const code = linqErrorCode(payload) ?? `http_${response.status}`;
+  const rateLimited = response.status === 429 || (cadenceArmed() && code === LINQ_RATE_LIMIT_CODE);
+  const permanent = response.status >= 400 && response.status < 500 && !rateLimited;
   return {
     ok: response.ok,
     status: response.status,
     payload,
-    code: linqErrorCode(payload) ?? `http_${response.status}`,
+    code,
     permanent,
+    retryAfterMs:
+      rateLimited && cadenceArmed() ? retryAfterMsOf(response.headers.get('retry-after')) : null,
   };
 }
 
@@ -253,13 +299,30 @@ export async function sendLinqParts(input: {
       ...(input.replyTo.partIndex !== undefined ? { part_index: input.replyTo.partIndex } : {}),
     };
   }
-  const result = await linqRequest({
-    method: 'POST',
-    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
-    body: { message },
-    fetch: input.fetch,
-  });
-  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  const armed = cadenceArmed();
+  const send = () =>
+    linqRequest({
+      method: 'POST',
+      path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
+      body: { message },
+      fetch: input.fetch,
+      ...(armed ? { idempotencyKey: linqMessageKey(input.chatId, message) } : {}),
+    });
+  let result = await send();
+  // One in-call retry of a rate limit, with the same key, when Linq's wait is short.
+  // A longer wait is handed back on the error for the caller's own retry.
+  if (
+    armed &&
+    !result.ok &&
+    result.retryAfterMs !== null &&
+    result.retryAfterMs <= IN_CALL_RETRY_MAX_MS
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, result.retryAfterMs ?? 0));
+    result = await send();
+  }
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
   const providerMessageId = readLinqMessageId(result.payload);
   if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
   return { providerMessageId };

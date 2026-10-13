@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "It is Thursday 6 PM local (pre-weekend evening, outside quiet hours), the free window Saturday 13:00–20:00 fits the Saturday find, the swim registration deadline closes Friday (worthless-after Friday 6 PM ET, still ahead), the unanswered streak is 0, and both items belong in one batched send.",
+    "action": "send_now",
+    "item_ids": [
+      "sat-find",
+      "reg-deadline"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

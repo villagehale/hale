@@ -245,6 +245,12 @@ export const AUDIT_VERBS = [
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
+  // VIL-226 · the per-family proactive queue and its hourly decider.
+  'proactive_nudge_queued',
+  'proactive_cadence_decision',
+  'proactive_cadence_held',
+  'proactive_cadence_sent',
+  'proactive_cadence_skipped',
   'weekday_care_recorded',
   'followup_daycare_asked',
   'email_alert_sent',
@@ -895,6 +901,23 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   // ── proactive nudges + the watch offer ──────────────────────────────────
   proactive_nudge_sent: { sentence: 'Hale texted you something worth knowing', family: 'done' },
+  proactive_nudge_queued: {
+    sentence: 'Hale set something aside to decide when to text you',
+    family: 'note',
+  },
+  proactive_cadence_decision: {
+    sentence: 'Hale decided whether now was a good time to text you',
+    family: 'note',
+  },
+  proactive_cadence_held: {
+    sentence: 'Hale held a text for a better moment',
+    family: 'note',
+  },
+  proactive_cadence_sent: { sentence: 'Hale texted you what it had set aside', family: 'done' },
+  proactive_cadence_skipped: {
+    sentence: 'Hale looked at what it had set aside and did not text you',
+    family: 'note',
+  },
   weekday_care_recorded: {
     sentence: 'you told Hale how your weeks are covered',
     family: 'done',
@@ -1679,6 +1702,27 @@ const NEUTRAL: Verb = { sentence: 'recorded an update', family: 'neutral' };
  */
 export function trailVerb(actionTaken: string): Verb {
   return VERBS[actionTaken as AuditVerb] ?? NEUTRAL;
+}
+
+/**
+ * VIL-226 · while PROACTIVE_CADENCE is `shadow` the decider governs nothing that reaches
+ * the phone (the old path still texts), so the rows it writes there are not on the
+ * receipts at all: the trail query drops them, and the audit rows themselves stay. The
+ * row's `after.mode` says which mode wrote it.
+ */
+export const SHADOW_ONLY_VERBS = [
+  'proactive_cadence_decision',
+  'proactive_cadence_held',
+  'proactive_cadence_skipped',
+] as const satisfies readonly AuditVerb[];
+
+export function isShadowOnlyRow(actionTaken: string, after: unknown): boolean {
+  return (
+    (SHADOW_ONLY_VERBS as readonly string[]).includes(actionTaken) &&
+    typeof after === 'object' &&
+    after !== null &&
+    (after as { mode?: unknown }).mode === 'shadow'
+  );
 }
 
 /**

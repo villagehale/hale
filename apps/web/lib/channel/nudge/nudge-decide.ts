@@ -13,20 +13,14 @@ import {
 } from '~/lib/channel/intake/radar-decide';
 import type { SaturdayPlans } from '~/lib/channel/nudge/saturday-plans';
 import { childCanAttend, parseClockLabel } from '~/lib/channel/nudge/saturday-window';
-import {
-  type WeekdayFinderAsk,
-  printableWeekdayName,
-  renderWeekdayFinderAsk,
-  weekdayVerifiedBreakAsk,
-} from '~/lib/channel/nudge/weekday-care-copy';
-import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
+import { type WeekdayFinderAsk, printableWeekdayName } from '~/lib/channel/nudge/weekday-care-ask';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { priceBandLabel } from '~/lib/format/labels';
 import type { HealthRegion } from '~/lib/health/checkpoints';
-import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
+import type { HealthChild } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import {
   type HouseholdFindBias,
@@ -49,11 +43,10 @@ import { type DailyOutlook, isOutdoorFriendly, outdoorBlocker } from '~/lib/weat
  *      unconditionally because it is the only thing here with a HARD deadline — a swim
  *      class that fills in nine minutes is the difference between Hale being useful
  *      and Hale being a newsletter.
- *   2. A HEALTH-ADMIN CHECKPOINT (VIL-243 · M8): an Ontario paperwork window this
- *      family is inside. Below registration because a cadence tolerates a week's wait
- *      and a nine-minute swim class does not — but above the weekend, because a
- *      registration deadline and a school records check are both things a parent
- *      cannot reconstruct later, and a weekend suggestion is an offer they can.
+ *   2. (Nothing. A health-admin checkpoint used to sit here. Hale sends no health
+ *      checkpoint, vaccine or checkup reminder, so no leg decides one; the
+ *      `HealthCheckpointNudge` type and its inputs are unreachable from this file and
+ *      go when lib/health does.)
  *   3. A WEATHER-FIT WEEKEND SWAP: the forecast rules the weekend out and there is a
  *      real indoor option, or a day is genuinely good and there is a real FREE outdoor
  *      one. Both halves must be true. A forecast with no candidate is a weather app;
@@ -167,8 +160,8 @@ export interface WeekdayDropInNudge {
 }
 
 /**
- * The weekday finder ask. Age and stage choose the sentence. They do not decide
- * whether the family is asked.
+ * The weekday finder ask. Age and stage choose the prompt. They do not decide
+ * whether the family is asked. The writer speaks; a missing model sends nothing.
  *
  * A verified break is its own anchor (the date on the event). Every other prompt
  * still rests on a weekend-options send Hale actually delivered. Neither path
@@ -182,9 +175,9 @@ export interface WeekdayCareAsk {
 /**
  * VIL-365 · one grounded nearby option, asked rather than listed.
  *
- * The SMS is the locked sentence. `candidateId` is the civic session that made
- * the ask honest ("actually running") and is never rendered or audited. A yes
- * does not deliver that candidate; the coach's next search does.
+ * The writer names `title` and the sender appends `url`. There is no locked
+ * sentence. `candidateId` is the civic session that made the day worth a text
+ * and is never rendered. A yes does not deliver that candidate.
  */
 export interface EmptySaturdayNudge {
   kind: 'empty_saturday';
@@ -298,32 +291,6 @@ function decideRegistration(input: DecideNudgeInput): RegistrationNudge | null {
         ? 'residents can register first'
         : null,
     ageApproximate: match.ageApproximate,
-  };
-}
-
-// ── priority 2: a health-admin checkpoint ────────────────────────────────────
-
-/**
- * The ONE administrative window worth a text, or nothing. The matcher already ordered
- * by which window closes first and already dropped anything the family marked done, so
- * the head of its list is the whole decision.
- */
-function decideHealthCheckpoint(input: DecideNudgeInput): HealthCheckpointNudge | null {
-  const [match] = matchHealthCheckpoints({
-    children: input.healthChildren,
-    areaCoarse: input.areaCoarse,
-    suppressedRefs: input.suppressedCheckpointRefs,
-    now: input.now,
-  });
-  if (!match) return null;
-
-  return {
-    kind: 'health_checkpoint',
-    checkpointRef: { id: match.checkpoint.id, region: match.checkpoint.region },
-    ref: match.ref,
-    kidNames: match.kidNames,
-    teenOnly: match.teenOnly,
-    teenCount: match.teenCount,
   };
 }
 
@@ -670,8 +637,7 @@ function breakAskFits(label: string): boolean {
   if (label.length === 0 || label.length > 40 || label.includes('?') || label.includes('\n')) {
     return false;
   }
-  const sentence = weekdayVerifiedBreakAsk(label);
-  return smsSegments(`${sentence}\n\n${OPT_OUT_LINE}`) === 1;
+  return true;
 }
 
 /**
@@ -776,12 +742,6 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
     childId: roster.child.id,
     name,
   };
-  if (smsSegments(`${renderWeekdayFinderAsk(ask)}\n\n${OPT_OUT_LINE}`) > 1) {
-    return {
-      nudge: { kind: 'weekday_care', ask: { prompt: 'after_school_household' } },
-      skips: [...skips, 'name_not_printable'],
-    };
-  }
   return { nudge: { kind: 'weekday_care', ask }, skips };
 }
 
@@ -909,9 +869,6 @@ export function decideNudge(input: DecideNudgeInput): NudgeDecision {
 
   const registration = decideRegistration(input);
   if (registration) return { nudge: registration, skips };
-
-  const health = decideHealthCheckpoint(input);
-  if (health) return { nudge: health, skips };
 
   const swap = decideWeatherSwap(input);
   if (swap) return { nudge: swap, skips };
