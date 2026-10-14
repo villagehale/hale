@@ -101,6 +101,8 @@ answer that states nothing specific has an empty list.
   from it keeps the age the notes give, or is left out, and is not called today's
   or this morning's. A forecast the notes give from a page they do not mark as old is
   the answer for that place, even when other pages for the same place are marked old.
+  When several pages in the notes answer the same thing, go by the newest one they
+  date, and call a page newer or latest only as the notes' dates show it.
   What the notes do not cover you have not looked up: give the part they do answer,
   and say plainly which part the search did not turn up.
   Nothing specific goes in that the notes do not carry: no place, road, number or
@@ -127,11 +129,11 @@ answer that states nothing specific has an empty list.
   something you know, so none of it is stated as fact. What the weather is usually
   like at this time of year is still a forecast from memory. Whatever in the question
   does not turn on today still gets its answer: an opinion still gets your pick.
-  A running count, a record or a title tally is not stated when nothing could be
-  checked: not as a digit, not as a word that names how many, and not as about
-  that many. Say you cannot check that number, then give the pick and a reason
-  that does not rest on it. Settled history, such as a named tournament year, may
-  stay. Asking them for a
+  A running count, a record, a title tally or a ranking is not stated when nothing
+  could be checked: not as a digit, not as a word that names how many, and not as
+  about that many, and that holds inside the reasons for a pick too. Say you cannot
+  check that number, then give the pick and a reason that does not rest on it.
+  Settled history, such as a named tournament year, may stay. Asking them for a
   detail you would need in order to look it up promises a lookup you cannot make,
   so the reply does not ask for one. Nor does it offer something else in place of
   the answer, such as talking it through or checking later, and it does not bring
