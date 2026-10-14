@@ -3,6 +3,7 @@ import { and, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { laneEnabled } from '~/lib/channel/lanes';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -145,6 +146,10 @@ export const CALENDAR_ALERT_OUTCOMES = [
    * household notice. This SMS path stays quiet so a non-kid title never
    * reaches the group and nothing is retried as a 1:1. */
   'group_home',
+  /** CALENDAR_ALERT_ENABLED is not `true`. The shape is remembered and a text already
+   * owed is left as it was and re-offered once the lane is back on; one older than
+   * {@link CALENDAR_ALERT_PENDING_MAX_DAYS} is aged out by the lane-off sweep itself. */
+  'lane_off',
 ] as const;
 
 export type CalendarAlertOutcome = (typeof CALENDAR_ALERT_OUTCOMES)[number];
@@ -167,6 +172,9 @@ export interface CalendarAlertSweep {
   changes: readonly CalendarAlertOutcome[];
   /** One per pending snapshot this sweep picked back up, oldest debt first. */
   reoffers: readonly CalendarAlertOutcome[];
+  /** Set when the calendar_alert lane is off: no passport stamp was inferred from these
+   * changes, whatever INTEREST_PASSPORT_ENABLED says. Calendar stamps follow this lane. */
+  passport?: 'lane_off';
 }
 
 /** How far ahead an event has to start to be worth interrupting for. A cancellation is
@@ -305,9 +313,19 @@ export async function alertParentForCalendarChanges(
 ): Promise<CalendarAlertSweep> {
   const { familyId, parentUserId, integrationId, changes, now } = input;
   if (parentUserId === null) return { changes: changes.map(() => 'no_parent_user'), reoffers: [] };
+  const laneOn = laneEnabled('calendar_alert');
   if (input.seeding) {
-    await rememberOnly(database, input, parentUserId, ports);
-    return { changes: changes.map(() => 'seeding_run'), reoffers: [] };
+    await rememberOnly(database, input, parentUserId, ports, { passport: laneOn });
+    const seeded = changes.map((): CalendarAlertOutcome => 'seeding_run');
+    if (laneOn) return { changes: seeded, reoffers: [] };
+    logPassportLaneOff(input);
+    return { changes: seeded, reoffers: [], passport: 'lane_off' };
+  }
+  if (!laneOn) {
+    const reoffers = await expireStaleDebts(database, input, parentUserId, ports);
+    await rememberOnly(database, input, parentUserId, ports, { passport: false });
+    logPassportLaneOff(input);
+    return { changes: changes.map(() => 'lane_off'), reoffers, passport: 'lane_off' };
   }
   // The flag is a pure function of the family id, so nothing above it costs a query and a
   // dark sweep of an empty page is the cheapest thing this module does. A dark sweep with
@@ -426,6 +444,19 @@ export async function alertParentForCalendarChanges(
   return { changes: changeOutcomes, reoffers: reofferOutcomes };
 }
 
+function logPassportLaneOff(input: CalendarAlertInput): void {
+  console.info(
+    {
+      familyId: input.familyId,
+      integrationId: input.integrationId,
+      changes: input.changes.length,
+      seeding: input.seeding,
+      passport: 'lane_off',
+    },
+    'calendar alert: lane off, no passport stamps from these changes',
+  );
+}
+
 /**
  * The whole job of a sweep that may alert nobody: write down the SHAPE of a calendar no
  * text is going out about.
@@ -449,6 +480,7 @@ async function rememberOnly(
   input: CalendarAlertInput,
   parentUserId: string,
   ports: CalendarAlertPorts,
+  opts: { passport: boolean } = { passport: true },
 ): Promise<void> {
   const { integrationId, changes, now } = input;
   if (changes.length === 0) return;
@@ -465,6 +497,7 @@ async function rememberOnly(
     if (span !== null) remember(writes, { change, span }, null);
   }
   await writeSnapshots(database, integrationId, writes, now);
+  if (!opts.passport) return;
   const { syncPassportFromCalendarChanges } = await import('~/lib/passport/ingest');
   await syncPassportFromCalendarChanges(database, {
     familyId: input.familyId,
@@ -473,6 +506,35 @@ async function rememberOnly(
     changes,
     now,
   });
+}
+
+/**
+ * The retention bound with the lane off. Nothing is re-offered while it is off, so the
+ * only place a hold's age is read would otherwise be the first sweep after it is back on —
+ * and the parent's own words would sit in the memory for the whole of the lane-off period
+ * instead of {@link CALENDAR_ALERT_PENDING_MAX_DAYS}. Same ending, same name, as a debt the
+ * live sweep finds too old.
+ */
+async function expireStaleDebts(
+  database: Database,
+  input: CalendarAlertInput,
+  parentUserId: string,
+  ports: CalendarAlertPorts,
+): Promise<CalendarAlertOutcome[]> {
+  const { integrationId, now } = input;
+  const stale = (await readSnapshots(database, integrationId, [])).filter(
+    (row): row is PendingSnapshot =>
+      isPending(row) &&
+      now.getTime() - row.pendingSince.getTime() > CALENDAR_ALERT_PENDING_MAX_DAYS * 86_400_000,
+  );
+  if (stale.length === 0) return [];
+  const timeZone = await ports.timeZone(parentUserId);
+  const writes = new Map<string, SnapshotWrite>();
+  // The outcome is the return value below, so a revived change has nowhere to write it.
+  const returned = () => {};
+  for (const row of stale) remember(writes, revive(row, timeZone, returned), null);
+  await writeSnapshots(database, integrationId, writes, now);
+  return stale.map(() => 'pending_expired');
 }
 
 async function sendOffer(

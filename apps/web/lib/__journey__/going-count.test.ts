@@ -136,6 +136,7 @@ afterAll(async () => {
 beforeEach(async () => {
   process.env.APP_ENCRYPTION_KEY = APP_KEY;
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
   vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
   vi.stubEnv(GOING_COUNT_ENABLED_ENV, 'true');
   vi.spyOn(console, 'warn').mockImplementation(() => {});

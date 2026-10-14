@@ -11,7 +11,7 @@ import {
   alertParentForGmailSweep,
   gmailAlertSweepInput,
 } from './email-alert';
-import type { GmailAlertBatch } from './sync';
+import { type GmailAlertBatch, type GoogleFetch, backfillBookedMail } from './sync';
 
 /**
  * Historical mail, recorded once, with the parent left alone.
@@ -46,6 +46,7 @@ beforeEach(async () => {
   family = await seedFamily(db.database);
   integrationId = crypto.randomUUID();
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
   vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -327,5 +328,101 @@ describe('gmailAlertSweepInput', () => {
       seeding: false,
       integrationId,
     });
+  });
+});
+
+describe('the email_alert lane holds the backfill', () => {
+  const RECEIPT = {
+    id: 'held-receipt',
+    snippet: "You're registered for Swim Level 2.",
+    internalDate: String(Date.parse('2026-09-17T14:00:00.000Z')),
+    payload: {
+      headers: [
+        { name: 'Subject', value: 'Registration Confirmation - Swim Level 2' },
+        { name: 'From', value: 'Brookfield Recreation <noreply@recreation.brookfield.example.ca>' },
+      ],
+    },
+  };
+
+  const mailbox: GoogleFetch = async (url) => {
+    if (url.includes('/messages?')) {
+      return { ok: true, status: 200, json: async () => ({ messages: [{ id: RECEIPT.id }] }) };
+    }
+    if (url.includes(`/messages/${RECEIPT.id}`)) {
+      return { ok: true, status: 200, json: async () => RECEIPT };
+    }
+    throw new Error(`no route for ${url}`);
+  };
+
+  /** The production order: the backfill run, then the real sweep against the real DDL.
+   * Only the classifier is a literal port (rule #8). */
+  function run(h: ReturnType<typeof harness>) {
+    const alerted: GmailAlertBatch[] = [];
+    const saved: Record<string, unknown>[] = [];
+    const connection = {
+      id: integrationId,
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      provider: 'gmail' as const,
+      providerMetadata: { historyId: '9100' },
+      tokens: { accessToken: 'ya29' },
+    };
+    const result = backfillBookedMail(
+      connection,
+      'ya29',
+      {
+        googleFetch: mailbox,
+        alertGmailEnvelopes: (batch) => {
+          alerted.push(batch);
+          return alertParentForGmailSweep(db.database, gmailAlertSweepInput(batch, NOW), h.ports);
+        },
+        saveCursor: async (_id, meta) => {
+          saved.push(meta);
+        },
+      },
+      connection.providerMetadata,
+    );
+    return { result, alerted, saved };
+  }
+
+  it('lane off: no booking row, the sweep is never handed the mail, the page is not stamped, lane_off is named', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness();
+
+    const { result, alerted, saved } = run(h);
+
+    await expect(result).resolves.toEqual({ status: 'lane_off' });
+    expect(alerted).toEqual([]);
+    expect(h.classifyCalls.n).toBe(0);
+    expect(saved).toEqual([]);
+    expect(await bookingRows()).toEqual([]);
+    expect(logged).toHaveBeenCalledWith(
+      { integrationId, lane: 'email_alert' },
+      'booked detection backfill: email lane off, page not started',
+    );
+  });
+
+  it('lane exactly true with the backfill flag on: the row is written as before', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness();
+
+    const { result, alerted, saved } = run(h);
+
+    await expect(result).resolves.toEqual({
+      status: 'saved',
+      alerts: [{ alert: 'backfill_suppressed', booking: 'recorded', going: null }],
+      complete: true,
+    });
+    expect(alerted.map((batch) => batch.pass)).toEqual(['backfill']);
+    expect(saved).toEqual([
+      { historyId: '9100', bookedBackfill: { backfilledAt: expect.any(String) } },
+    ]);
+    const rows = await bookingRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.channelMessageId).toBeNull();
   });
 });

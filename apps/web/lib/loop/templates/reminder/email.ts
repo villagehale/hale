@@ -1,7 +1,7 @@
 import type { RenderedContent } from '~/lib/channel/types';
 import { BUSINESS_ADDRESS, SENDER_NAME } from '~/lib/cron/email-compliance';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
-import { eventDescriptor, eventLine, whenLead } from './core';
+import { eventDescriptor, eventLine, reminderLead } from './core';
 import type { ReminderChild, ReminderEventView, ReminderPayload } from './payload';
 
 /**
@@ -10,7 +10,7 @@ import type { ReminderChild, ReminderEventView, ReminderPayload } from './payloa
  * #300/#312 palette, same serif signature discipline), but a reminder's whole message
  * is WHAT + WHEN, so the hierarchy is inverted from the digest: the TIME is the anchor
  * (big serif, its own amber underline), the event is the serif line beneath it, a small
- * uppercase kicker carries the "tomorrow / in an hour" context, and everything else is
+ * uppercase kicker carries the event's local day, and everything else is
  * cut — no branded header panel, no boxes-in-boxes, no filler. A batch (a shared
  * evening) becomes a tabular time→event list instead of the single big anchor.
  *
@@ -122,7 +122,7 @@ export function renderReminderEmail(
   }
   const unsubscribeUrl = payload.unsubscribeUrl;
 
-  const lead = whenLead(payload.offset);
+  const lead = reminderLead(payload.events, payload.timeZone);
   const lines = payload.events.map((event) =>
     eventLine(event, payload.children, level, now, payload.timeZone),
   );

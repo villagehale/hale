@@ -199,6 +199,7 @@ beforeEach(async () => {
   family = await seedFamily(db.database);
   INTEGRATION = randomUUID();
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -435,6 +436,24 @@ describe('alertParentForGmailSweep', () => {
     expect(h.classifyCalls).toBe(0);
   });
 
+  it('reads every dated envelope, newest first, and drops none for a count', async () => {
+    const h = harness();
+    // 12 messages, m1 oldest .. m12 newest. All of them are told.
+    const envelopes = Array.from({ length: 12 }, (_, i) =>
+      envelope(i + 1, `2026-09-17T${String(i + 1).padStart(2, '0')}:00:00.000Z`),
+    );
+
+    const outcomes = await sweep(h, { envelopes });
+
+    expect(outcomes.filter((o) => o === 'sent')).toHaveLength(12);
+    expect(h.classifyCalls).toBe(12);
+    const rows = await ledgerRows();
+    const alerted = new Set(rows.map((r) => r.dedupeKey));
+    expect(alerted.has(emailAlertDedupeKey(INTEGRATION, 'm12'))).toBe(true);
+    expect(alerted.has(emailAlertDedupeKey(INTEGRATION, 'm1'))).toBe(true);
+    expect(alerted.has(emailAlertDedupeKey(INTEGRATION, 'm2'))).toBe(true);
+  });
+
   it('skips a message Gmail gave no internalDate for, and still reads the rest', async () => {
     const h = harness();
     const outcomes = await sweep(h, {
@@ -463,6 +482,112 @@ describe('alertParentForGmailSweep', () => {
  * here; the tests that are about the count read the second half directly.
  */
 const sentence = (input: EmailAlertRenderInput): string => renderEmailAlert(input).body;
+
+describe('the email_alert lane', () => {
+  const offerable = () =>
+    classified({
+      kind: 'new_event',
+      title: 'Picture day',
+      originalTime: null,
+      newTime: '2026-10-02T13:00:00.000Z',
+    });
+
+  function offerRows() {
+    return db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.familyId, family.familyId));
+  }
+
+  function sweepInput(
+    over: Partial<Parameters<typeof alertParentForGmailSweep>[1]> = {},
+  ): Parameters<typeof alertParentForGmailSweep>[1] {
+    return {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      seeding: false,
+      envelopes: [
+        { messageId: 'm1', ...ENVELOPE },
+        { messageId: 'm2', subject: ENVELOPE.subject, from: ENVELOPE.from, snippet: '' },
+      ],
+      now: NOW,
+      ...over,
+    };
+  }
+
+  it('alertParentForEmail: lane off sends nothing, writes no row and names lane_off', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    const h = harness({ classification: offerable() });
+
+    await expect(alertPair(h)).resolves.toEqual({ alert: 'lane_off', booking: null, going: null });
+
+    expect(h.classifyCalls).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.threaded).toEqual([]);
+    await expect(ledgerRows()).resolves.toEqual([]);
+    await expect(offerRows()).resolves.toEqual([]);
+    await expect(auditRows()).resolves.toEqual([]);
+  });
+
+  it('alertParentForEmail: lane exactly true sends the text and writes its offer', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    const h = harness({ classification: offerable() });
+
+    await expect(alert(h)).resolves.toBe('sent');
+
+    expect(h.transport.sent).toHaveLength(1);
+    await expect(offerRows()).resolves.toHaveLength(1);
+  });
+
+  it('alertParentForGmailSweep: lane off names EVERY envelope lane_off before reading the clock', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'false');
+    const h = harness({ classification: offerable() });
+    const timeZone = vi.spyOn(h.ports, 'timeZone');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const outcomes = await alertParentForGmailSweep(db.database, sweepInput(), h.ports);
+
+    expect(outcomes).toEqual([
+      { alert: 'lane_off', booking: null, going: null },
+      { alert: 'lane_off', booking: null, going: null },
+    ]);
+    expect(timeZone).not.toHaveBeenCalled();
+    expect(h.classifyCalls).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+    await expect(ledgerRows()).resolves.toEqual([]);
+    await expect(offerRows()).resolves.toEqual([]);
+  });
+
+  it('alertParentForGmailSweep: the backfill pass is held by its caller (backfillBookedMail), not per envelope here', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'false');
+    const h = harness({ classification: offerable() });
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const outcomes = await alertParentForGmailSweep(
+      db.database,
+      sweepInput({ backfill: true, envelopes: [{ messageId: 'm1', ...ENVELOPE }] }),
+      h.ports,
+    );
+
+    expect(outcomes).toEqual([
+      { alert: 'backfill_suppressed', booking: 'booked_dark', going: null },
+    ]);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('alertParentForGmailSweep: lane exactly true reaches the send', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    const h = harness({ classification: offerable() });
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const outcomes = await alertParentForGmailSweep(db.database, sweepInput(), h.ports);
+
+    expect(outcomes.map((o) => o.alert)).toEqual(['no_received_at', 'sent']);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+});
 
 describe('the text itself', () => {
   const RENDER = {

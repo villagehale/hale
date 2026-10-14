@@ -54,12 +54,17 @@ describe('travelBriefEnabledFor', () => {
    * family F14 admits, so a live probe that flipped it would read other households'
    * mailboxes to prove one household's feature works.
    */
-  it('arms one household without arming any other', () => {
-    vi.stubEnv('TRAVEL_BRIEF_ENABLED', '');
+  it('admits no household while the lane is off, allowlisted or not', () => {
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', undefined);
+    vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', 'fam-probe');
+    expect(travelBriefEnabledFor('fam-probe')).toBe(false);
+    expect(travelBriefEnabledFor('fam-other')).toBe(false);
+  });
+
+  it('narrows to the listed household while the lane is on', () => {
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', 'true');
     vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', 'fam-probe');
     expect(travelBriefEnabledFor('fam-probe')).toBe(true);
-    // The positive control's other half: a family NOT on the list is still dark, which is
-    // what makes the line above a claim about scoping rather than about the flag.
     expect(travelBriefEnabledFor('fam-other')).toBe(false);
   });
 

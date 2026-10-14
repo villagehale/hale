@@ -42,8 +42,8 @@ import { quietStartForPhone } from './proactive/quiet';
  *      there is no bypass here at all.
  *
  * First failure wins and the rest are never evaluated. That is not an optimization:
- * a family that pressed STOP must not have their message volume counted or their
- * timezone read, because after STOP none of it is ours to look at.
+ * a family that pressed STOP must not have their timezone read, because after STOP
+ * none of it is ours to look at.
  */
 
 /**

@@ -11,7 +11,7 @@ import type { NoteComposeOutcome } from './note';
  *
  * What is pinned: it is dark until armed, it goes through the outbound gate rather than
  * around it, a held family keeps their promise open, and a sent one closes it exactly
- * once. The gate's OWN four checks are proved in outbound-gate.test.ts — what matters
+ * once. The gate's own checks are proved in outbound-gate.test.ts — what matters
  * here is that this sweep cannot reach a transport without passing them.
  */
 
@@ -40,6 +40,7 @@ function harness(
   overrides: {
     due?: (typeof DUE)[];
     hold?: ProactiveHoldReason;
+    recentSends?: number;
     alreadySent?: boolean;
     recipient?: { parentUserId: string; conversationId: string | null } | null;
     note?: NoteComposeOutcome;

@@ -112,6 +112,7 @@ function harness(
     pairedBefore?: Set<string>;
     synthetic?: Set<string>;
     hold?: ProactiveHoldReason | null;
+    recentSends?: number;
     anchor?: { id: string; title: string; startsAt: Date } | null;
     emailResult?: IntroEmailResult;
     nameLevel?: 'first_name' | 'relation' | 'generic';

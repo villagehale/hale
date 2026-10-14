@@ -245,6 +245,13 @@ describe('the registration-sequence class', () => {
       ),
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
+
+  it('does not hold a nudge that has already been sent this week', async () => {
+    await expect(callGate(MIDDAY, { recentSends: 1 }).verdict).resolves.toEqual({
+      allowed: true,
+      optOut: 'short',
+    });
+  });
 });
 
 describe('gate ordering', () => {
@@ -266,6 +273,12 @@ describe('gate ordering', () => {
     const { calls, verdict } = callGate(MIDDAY, { consented: false });
     await verdict;
     expect(calls).toEqual(['enrolled', 'consent']);
+  });
+
+  it('still reads the clock when earlier sends already went out', async () => {
+    const { calls, verdict } = callGate(MIDDAY, { recentSends: 1 });
+    await verdict;
+    expect(calls).toEqual(['enrolled', 'consent', 'tz', 'opt_out']);
   });
 });
 
@@ -439,6 +452,15 @@ describe('the watched-spot proactive classes', () => {
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
 
+  it('does not hold an email alert because earlier ones were already sent', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'email_alert', now: MIDDAY },
+        ports({ recentSends: 3 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+  });
+
   it('never lets a calendar alert claim urgency — a moved Thursday keeps until 08:00', async () => {
     // Kills URGENCY_ALLOWED.calendar_alert = true: a connector sweep runs every fifteen
     // minutes, so an exemption here would let a 02:00 edit wake the household.
@@ -454,6 +476,15 @@ describe('the watched-spot proactive classes', () => {
         ports().ports,
       ),
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('does not hold a calendar alert because earlier ones were already sent', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'calendar_alert', now: MIDDAY },
+        ports({ recentSends: 3 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
 
   it('counts the calendar apart from the inbox', () => {
@@ -511,6 +542,15 @@ describe('the travel brief class', () => {
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
 
+  it('does not hold a second trip because one was already sent this week', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'travel_brief', now: MIDDAY },
+        ports({ recentSends: 1 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+  });
+
   it('counts apart from the inbox it was detected in', () => {
     // Kills PROACTIVE_CATEGORY.travel_brief = 'email_alert', which would make three school
     // emails silence a family's one travel text — and then read the inbox cap as spent by
@@ -536,6 +576,15 @@ describe('the duty ask class', () => {
         ports().ports,
       ),
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('does not hold a duty ask because earlier ones were already sent', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'duty_ask', now: MIDDAY },
+        ports({ recentSends: 2 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
 
   it('counts apart from the weekly nudge and the calendar', () => {
@@ -582,7 +631,7 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
 
   it('is imported by every file that records a hold — the control for the scan above', () => {
     // Absence proves nothing on its own: the scan would also pass if no file used the
-    // mapping at all. These three take it from the one copy.
+    // mapping at all. These still record a hold, and they take the status from the one copy.
     const web = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
     for (const file of [
       'lib/integrations/email-alert.ts',

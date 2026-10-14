@@ -117,8 +117,8 @@ describe('workstream follow-up sweep', () => {
       parentFor: async () => 'user-1',
       dedupeActive: async () => false,
       buildGate: () => gate('America/Toronto', 1),
-      compose,
       pendingDeferral: async () => null,
+      compose,
       stamp: async () => undefined,
     });
     expect(compose).toHaveBeenCalled();

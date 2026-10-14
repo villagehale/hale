@@ -131,6 +131,13 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
     expect(emailChannel.calls).toHaveLength(1);
     expect(ledger[0]?.status).toBe('sent');
   });
+
+  it('sends a reminder with no per-category count in the way', async () => {
+    const { ports, ledger } = makePorts();
+    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
+    expect(ledger[0]?.status).toBe('sent');
+  });
 });
 
 describe('per-channel dedupe idempotency — a re-drain never double-sends', () => {

@@ -29,11 +29,11 @@ describe('the caregiver reminder', () => {
       }),
     ).toEqual({
       kind: 'sms',
-      text: 'In an hour - Swim class at 4:15, Stouffville Public School',
+      text: 'Sat, Jul 25 - Swim class at 4:15, Stouffville Public School',
     });
   });
 
-  it('leads with "tomorrow" on the evening-before batch and lists both events', () => {
+  it("leads with the events' own day on the evening-before batch and lists both events", () => {
     const text = (
       renderCaregiverReminderSms({
         offset: '-P1D',
@@ -44,7 +44,7 @@ describe('the caregiver reminder', () => {
         ],
       }) as { text: string }
     ).text;
-    expect(text).toBe('Tomorrow - Swim class at 4:15, Soccer at 6:00, Memorial Park');
+    expect(text).toBe('Sat, Jul 25 - Swim class at 4:15, Soccer at 6:00, Memorial Park');
     expect(text).not.toMatch(/https?:\/\//);
   });
 

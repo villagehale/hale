@@ -231,13 +231,22 @@ describe('the flags gate collection, not just the send', () => {
     expect(spy.bodyFetches).toEqual([]);
   });
 
-  /** The allowlist arms exactly this family — the live probe's own mechanism. */
-  it('the allowlist arms one household while the global flag stays off', async () => {
-    vi.stubEnv('TRAVEL_BRIEF_ENABLED', '');
+  /** The allowlist narrows the brief to exactly this family while the lane is on — the
+   *  live probe's own mechanism. The lane itself is the kill. */
+  it('the allowlist narrows to one household while the lane is on', async () => {
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', 'true');
     vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', familyId);
     const spy = ports();
     expect(await run(spy)).toEqual(['trip_written']);
     expect(spy.bodyFetches).toEqual(['msg-1']);
+  });
+
+  it('an allowlisted household reads nothing while the lane is off', async () => {
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', '');
+    vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', familyId);
+    const spy = ports();
+    expect(await run(spy)).not.toEqual(['trip_written']);
+    expect(spy.bodyFetches).toEqual([]);
   });
 
   it('a seeding run reads the mailbox history and writes nothing', async () => {
@@ -266,6 +275,18 @@ describe('the pre-filter spends nothing on a mailbox', () => {
     expect([...outcomes].sort()).toEqual(['not_booking_shaped', 'trip_written']);
     // Only the booking-shaped one was paid for.
     expect(spy.bodyFetches).toEqual(['m2']);
+  });
+
+  it('reads every booking-shaped envelope in the sweep, newest first', async () => {
+    const spy = ports();
+    const envelopes = [1, 2, 3, 4].map((n) => ({
+      ...envelope({ messageId: `m${n}` }),
+      receivedAt: `2026-09-0${n}T12:00:00.000Z`,
+    }));
+    const outcomes = await run(spy, { envelopes });
+    expect(outcomes.filter((o) => o === 'trip_written')).toHaveLength(4);
+    expect(spy.extractions).toBe(4);
+    expect(spy.bodyFetches).toEqual(['m4', 'm3', 'm2', 'm1']);
   });
 });
 

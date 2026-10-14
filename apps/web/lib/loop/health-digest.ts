@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import {
+  type SQL,
   and,
   count,
   countDistinct,
@@ -11,15 +12,12 @@ import {
   isNotNull,
   lt,
   notInArray,
-  type SQL,
   sql,
 } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
-import type { Resend } from 'resend';
-import { founderAddress } from '~/lib/auth/founder-signal';
-import { createResendTransport } from '~/lib/channel/resend-transport';
 import { type CommitmentDebt, aggregateCommitmentDebt } from '~/lib/commitments/ledger';
 import { LOOP_EMAIL_TYPES } from '~/lib/cron/email-compliance';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import {
   PROVIDER_INCIDENT_ROUTE,
   escalateDigestSendFailure,
@@ -27,9 +25,9 @@ import {
 } from '~/lib/monitoring/provider-health';
 import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import {
-  aggregateFunnelScoreboard,
   DELIVERED_STATUSES,
   type FunnelScoreboard,
+  aggregateFunnelScoreboard,
   formatFunnelScoreboard,
 } from './funnel-scoreboard';
 import { resolveMetricsExclusions } from './metrics-scope';
@@ -209,7 +207,12 @@ export async function aggregateLoopHealth(
   const [plansRow] = await database
     .select({ count: count() })
     .from(schema.weekPlans)
-    .where(and(gte(schema.weekPlans.composedAt, windowStart), lt(schema.weekPlans.composedAt, windowEnd)));
+    .where(
+      and(
+        gte(schema.weekPlans.composedAt, windowStart),
+        lt(schema.weekPlans.composedAt, windowEnd),
+      ),
+    );
 
   // VIL-255: the provider incidents already claimed in this window. Read back from the
   // dedupe claims themselves, so the weekly line costs no extra probe and can only ever
@@ -398,28 +401,30 @@ export async function aggregateW4Retention(
     lt(schema.channelMessages.createdAt, afterWeeks(sql`${weekN} + 1`)),
   )})`;
 
-  return database
-    .select({
-      signupWeek,
-      weekN: sql<number>`w.n`,
-      cohortSize: sql<number>`count(*)::int`,
-      retained: sql<number>`count(*) filter (where ${cameBack})::int`,
-    })
-    .from(
-      sql`${schema.families} cross join generate_series(1, ${RETENTION_CURVE_WEEKS}::int) as w(n)`,
-    )
-    .where(
-      and(
-        notInArray(schema.families.id, [...excluded]),
-        sql`${afterWeeks(sql`${weekN} + 1`)} <= ${asOf.toISOString()}::timestamptz`,
-      ),
-    )
-    // Grouped by OUTPUT POSITION rather than by repeating the expression. Postgres
-    // matches a GROUP BY expression to the select list structurally, and Drizzle binds
-    // the timezone as a placeholder — so the repeated form is two different `$n` and
-    // Postgres rejects `families.created_at` as ungrouped.
-    .groupBy(sql`1`, sql`2`)
-    .orderBy(sql`1`, sql`2`);
+  return (
+    database
+      .select({
+        signupWeek,
+        weekN: sql<number>`w.n`,
+        cohortSize: sql<number>`count(*)::int`,
+        retained: sql<number>`count(*) filter (where ${cameBack})::int`,
+      })
+      .from(
+        sql`${schema.families} cross join generate_series(1, ${RETENTION_CURVE_WEEKS}::int) as w(n)`,
+      )
+      .where(
+        and(
+          notInArray(schema.families.id, [...excluded]),
+          sql`${afterWeeks(sql`${weekN} + 1`)} <= ${asOf.toISOString()}::timestamptz`,
+        ),
+      )
+      // Grouped by OUTPUT POSITION rather than by repeating the expression. Postgres
+      // matches a GROUP BY expression to the select list structurally, and Drizzle binds
+      // the timezone as a placeholder — so the repeated form is two different `$n` and
+      // Postgres rejects `families.created_at` as ungrouped.
+      .groupBy(sql`1`, sql`2`)
+      .orderBy(sql`1`, sql`2`)
+  );
 }
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -643,7 +648,8 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
     lines.push('  (none - no text was deflected this week)');
   } else {
     const ranked = [...summary.unmetIntents].sort(
-      (a, b) => b.count - a.count || `${a.lane}${a.category}`.localeCompare(`${b.lane}${b.category}`),
+      (a, b) =>
+        b.count - a.count || `${a.lane}${a.category}`.localeCompare(`${b.lane}${b.category}`),
     );
     for (const row of ranked) {
       lines.push(`  ${row.lane} · ${row.category}: ${row.count}`);
@@ -662,8 +668,6 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
   return lines.join('\n');
 }
 
-const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
-
 /** Whether the provider took the send — and when it did not, WHY, by name (rule #11,
  * the papercut sender's exact shape): a digest with nowhere to go is a different fact
  * from a provider that refused one, and only the refusal is worth escalating. */
@@ -675,23 +679,13 @@ export interface LoopHealthDigestSender {
   send(body: string): Promise<LoopHealthSendOutcome>;
 }
 
-export function createLoopHealthDigestSender(client?: Resend): LoopHealthDigestSender {
+export function createLoopHealthDigestSender(): LoopHealthDigestSender {
   return {
     async send(body) {
-      const to = founderAddress();
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!to || (!apiKey && !client)) {
-        return { sent: false, reason: 'not_configured' };
-      }
-      const transport = createResendTransport({ apiKey, client });
-      const from = process.env.WELCOME_FROM ?? DEFAULT_FROM;
-      const { error } = await transport.send({
-        from,
-        to,
-        subject: 'Hale · weekly loop health',
-        text: body,
-      });
-      return error ? { sent: false, reason: 'provider_error' } : { sent: true };
+      const outcome = await postOpsSlack(`Hale · weekly loop health\n${body}`);
+      if (outcome === 'sent') return { sent: true };
+      if (outcome === 'skipped_not_configured') return { sent: false, reason: 'not_configured' };
+      return { sent: false, reason: 'provider_error' };
     },
   };
 }
@@ -746,7 +740,7 @@ export async function runLoopHealthDigestCron(
   const send = await deps.sender.send(formatLoopHealthDigest(summary));
   if (send.sent) return { outcome: 'sent', summary };
   if (send.reason === 'not_configured') {
-    console.error('loop health digest: no founder address/Resend key - digest composed, not sent');
+    console.error('loop health digest: #ops is not configured - digest composed, not sent');
     return { outcome: 'send_skipped_not_configured', summary };
   }
   console.error('loop health digest: provider refused the send');

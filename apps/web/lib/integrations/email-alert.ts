@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { laneEnabled } from '~/lib/channel/lanes';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -128,6 +129,8 @@ export const EMAIL_ALERT_OUTCOMES = [
   /** A claimed Linq group. Mailbox subjects, senders, and bodies stay off the
    * group and off SMS. Kid dates, when they exist, use the kid-event notice. */
   'group_privacy',
+  /** EMAIL_ALERT_ENABLED is not `true`: no classifier call, no text, no offer. */
+  'lane_off',
 ] as const;
 
 export type EmailAlertOutcome = (typeof EMAIL_ALERT_OUTCOMES)[number];
@@ -258,6 +261,7 @@ export async function alertParentForEmail(
 ): Promise<EmailAlertResult> {
   const { familyId, parentUserId, integrationId, messageId, now } = input;
   if (!f14EnabledFor(familyId)) return { alert: 'dark', booking: null, going: null };
+  if (!laneEnabled('email_alert')) return { alert: 'lane_off', booking: null, going: null };
 
   const dedupeKey = emailAlertDedupeKey(integrationId, messageId);
   // Read BEFORE the classifier, not only via the claim below: a re-fired sweep over a
@@ -843,9 +847,8 @@ export function gmailAlertSweepInput(
 /**
  * One sweep's worth of Gmail envelopes for one connection → one outcome per envelope.
  *
- * Newest first and bounded, because the interesting failure is not a quiet mailbox: it is
- * a mailbox that just received sixty messages, where the ones worth a text are the ones
- * that arrived last and the cost of reading all of them is sixty model calls.
+ * Newest first. Every dated envelope in the sweep is read. A count is not a reason
+ * to leave one unsaid.
  */
 const BOOKING_WROTE = new Set<BookingOutcome>(['recorded', 'already_recorded', 'refreshed']);
 
@@ -1061,6 +1064,16 @@ export async function alertParentForGmailSweep(
         );
       }
     }
+    logSweepOutcomes(input, outcomes);
+    return outcomes;
+  }
+
+  // Below the backfill pass on purpose: that pass never texts, and it is held under this
+  // lane by backfillBookedMail (sync.ts), where its page cursor lives.
+  if (!laneEnabled('email_alert')) {
+    const outcomes = envelopes.map(
+      (): EmailAlertResult => ({ alert: 'lane_off', booking: null, going: null }),
+    );
     logSweepOutcomes(input, outcomes);
     return outcomes;
   }

@@ -40,6 +40,7 @@ interface Overrides {
   state?: Partial<CheckInState>;
   timeZone?: string;
   hold?: ProactiveHoldReason;
+  recentSends?: number;
   alreadySent?: boolean;
   registrationStanding?: boolean;
   children?: string[];

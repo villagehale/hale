@@ -1511,18 +1511,21 @@ export async function familyHasTwoCalendars(
   return context.bothCalendars;
 }
 
-/** Used by the connector sweep. Failures stay inside the caller. */
-export async function rememberAndNarrateCalendar(
+interface HouseholdCalendarSweepInput {
+  integrationId: string;
+  familyId: string;
+  userId: string | null;
+  changes: readonly CalendarChange[];
+  seeding: boolean;
+  now: Date;
+  fetch?: typeof fetch;
+}
+
+/** The remember half alone, for a sweep that may not speak. Blocks left unannounced
+ * are picked up by the next narrate. */
+export async function rememberHouseholdCalendar(
   database: Database,
-  input: {
-    integrationId: string;
-    familyId: string;
-    userId: string | null;
-    changes: readonly CalendarChange[];
-    seeding: boolean;
-    now: Date;
-    fetch?: typeof fetch;
-  },
+  input: HouseholdCalendarSweepInput,
 ): Promise<void> {
   if (!linqGroupCoparentEnabled() || !input.userId) return;
   const context = await loadFamilyCalendarContext(database, input.familyId);
@@ -1536,6 +1539,15 @@ export async function rememberAndNarrateCalendar(
     bothCalendars: context.chatId !== null || context.bothCalendars,
     now: input.now,
   });
+}
+
+/** Used by the connector sweep. Failures stay inside the caller. */
+export async function rememberAndNarrateCalendar(
+  database: Database,
+  input: HouseholdCalendarSweepInput,
+): Promise<void> {
+  if (!linqGroupCoparentEnabled() || !input.userId) return;
+  await rememberHouseholdCalendar(database, input);
   await narrateHouseholdCalendar(database, {
     familyId: input.familyId,
     now: input.now,

@@ -1,9 +1,7 @@
 import { type AgentClient, HAIKU_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, lt } from 'drizzle-orm';
-import type { Resend } from 'resend';
-import { founderAddress } from '~/lib/auth/founder-signal';
-import { createResendTransport } from '~/lib/channel/resend-transport';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 
 /**
  * VIL-255 · the LLM-provider health pre-flight, after the 2026-08-01 incident: the
@@ -299,8 +297,7 @@ export function formatProviderAlert(
   at: Date,
 ): { subject: string; text: string } {
   if (incident.kind === 'digest_send_failed') {
-    const remedy =
-      'check RESEND_API_KEY / FOUNDER_ALERT_EMAIL and the Resend dashboard, then re-run the digest cron.';
+    const remedy = 'the digest send failed. Re-run the digest cron and read the worker log.';
     return {
       subject: `Hale ops: the ${DIGEST_LABEL[incident.digest]} digest failed to send`,
       text: [
@@ -313,7 +310,7 @@ export function formatProviderAlert(
         'what to do',
         `  ${remedy}`,
         '',
-        `raised ${at.toISOString()}. one email per digest per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
+        `raised ${at.toISOString()}. one #ops post per digest per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
       ].join('\n'),
     };
   }
@@ -336,7 +333,7 @@ export function formatProviderAlert(
         '  read the failed runs in agent_runs for this window and the Langfuse traces',
         '  they carry.',
         '',
-        `raised ${at.toISOString()}. one email per incident per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
+        `raised ${at.toISOString()}. one #ops post per incident per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
       ].join('\n'),
     };
   }
@@ -358,37 +355,23 @@ export function formatProviderAlert(
       'what to do',
       `  ${FAILURE_REMEDY[incident.failure]}`,
       '',
-      `one email per incident per ${PROVIDER_INCIDENT_WINDOW_HOURS}h — every other cron that`,
+      `one #ops post per incident per ${PROVIDER_INCIDENT_WINDOW_HOURS}h — every other cron that`,
       'hits the same wall in that time stays quiet.',
     ].join('\n'),
   };
 }
 
-const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
-
 export interface ProviderAlertSender {
-  /** True when the provider accepted the alert; false when skipped (no founder address
-   * configured, or no Resend key and no injected client). */
+  /** True when Slack #ops accepted the page. */
   send(subject: string, text: string): Promise<boolean>;
 }
 
-/** Mirrors the X1 stop-alert / loop-health-digest sender exactly: same aloha@ identity,
- * same injectable client, same best-effort contract. */
-export function createProviderAlertSender(client?: Resend): ProviderAlertSender {
+/** The provider incident goes to Slack #ops. No founder email. */
+export function createProviderAlertSender(): ProviderAlertSender {
   return {
     async send(subject, text) {
-      const to = founderAddress();
-      if (!to) {
-        return false;
-      }
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!apiKey && !client) {
-        return false;
-      }
-      const transport = createResendTransport({ apiKey, client });
-      const from = process.env.WELCOME_FROM ?? DEFAULT_FROM;
-      const { error } = await transport.send({ from, to, subject, text });
-      return !error;
+      const outcome = await postOpsSlack(`${subject}\n${text}`);
+      return outcome === 'sent';
     },
   };
 }
