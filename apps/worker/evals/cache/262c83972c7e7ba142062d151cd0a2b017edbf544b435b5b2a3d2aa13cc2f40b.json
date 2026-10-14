@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The slot is accurate and fits a toddler. Tiny Gym serves walking to 3.5 years with a parent. The day, time, fall block dates (Sept 14 to Oct 26, 2026), $124 fee, $25 membership and registration fact (opened July 22, runs until full, online or by phone) are all copied as printed and cited to the programs page. Kinderfun (3 to 5, drop off) was rightly left out. The message leads with Tiny Gym by name and attributes the facts with 'their site says'. It carries the registration window and claims nothing as verified. It is two plain-ASCII sentences with no link and no question, and with watch false it correctly makes no coming-back promise. It also makes no negative claim, so the page_has_schedule state raises no issue. The only minor point is that the $25 membership is left out of the SMS, which is reasonable trimming within the two-sentence limit.",
-    "score": 5
-  }
-}

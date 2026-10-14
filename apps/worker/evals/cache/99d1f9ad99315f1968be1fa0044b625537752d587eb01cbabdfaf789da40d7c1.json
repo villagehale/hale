@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and read off the programme page. The age band, days, times and session dates match the page exactly, and it is cited to the preschool-play URL. Price is correctly null: Hale did not borrow the $185 or $95 room-rental figures. Registration is null because the page gives no registration date. The message leads with the slot by name and attributes the facts with 'their site says'. It makes no negative claim about what the page carries, and the price gap is put in the first person ('I could not pin down the price'), which suits page_has_schedule. With watch TRUE, the first-person promise to keep watching is backed by a row that exists. It is two plain-ASCII sentences with no link and no question.",
+    "score": 5
+  }
+}

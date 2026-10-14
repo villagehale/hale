@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The slots are mostly faithful to the pages. Tiny Gym's age band (1 and walking to 3, with a parent, 45 min) is right off programs.php, and Term 1 (Sept 14 to Nov 1, 2026) is right off the PDF. The times are honestly flagged as un-mappable to weekdays, and the price is correctly left null. The message is good in form: - It leads with Tiny Gym by name. - It attributes ('their site says') and makes no question. - Its first-person gap ('I could not pin down the day... or the price') is the right framing under page_has_schedule. - 'I'll keep watching and text you' is correct because watch is true. Two problems. First, the home page printed a registration date (Term 1/Fall registration Wednesday July 22, 2026, 8:00am online for general programming), and Hale extracted it into a slot. The message drops it entirely, which is an explicit low-score condition. The Tiny Gym slots themselves also leave registration null even though the site gave one. Second, the slots are padded with duplicates (Tiny Gym and Rock n' Roll each listed twice). The 'already passed' assertion about the registration date is an unsourced inference.",
-    "score": 2
-  }
-}

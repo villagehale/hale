@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both slots are real and quoted exactly as the page prints them: Saturdays, the times and Sept 12 to Nov 28. Price is correctly null because the page only points to the Recreation Guide. Registration is carried on both slots and cited to the operator's page. The message leads with Preschool A by name and attributes the facts ('their site says'). It carries the not-yet-open registration date (Tue Aug 11, 7am). Under page_has_schedule it correctly uses first person for the price gap and does not say 'not posted'. Since watch is true, it properly commits in first person to keep watching. It has no link, no question and is plain ASCII. Deductions: it runs three sentences rather than one or two short ones, and the attribution is wedged awkwardly mid-sentence. It also drops the Aug 4 browse date, though that is minor.",
-    "score": 4
-  }
-}

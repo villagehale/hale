@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "No message was composed, so I scored the slots alone. The one slot is grounded in the search snippet: Parent & Tot swimming at Gellert, ages 4 months to 3 years, run by the Town of Halton Hills. That age band fits a toddler. The when, price and registration fields are correctly null because no page was opened and no snippet carried a figure. No schedule is invented and there is no claim that it is unposted. One weakness: sourceUrl cites a page whose fetch was refused, so it can read as though the fact came off a page Hale opened. The ageFit field does mark the source as a search snippet, which softens this. Otherwise this is the correct snippet-grounded answer.",
-    "score": 4
-  }
-}

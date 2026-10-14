@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are on the page with the day, times and session dates exactly as printed, and both cite the page. Price is correctly null because the page prints no fee, and the registration date is carried. There are two levels and no invented third. The message leads with the named program, says 'their site says', and carries 'Registration opens Tues Aug 11 at 7am'. It is two plain-ASCII sentences with no link and no question. The price gap is first person ('I could not pin down the price'), which fits page_has_schedule. Since watch is true, 'I'll keep watching and text you' is correct. A minor omission is the residents-only qualifier on registration.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: two Saturday preschool times, Sept 12 to Nov 28, ages 3-5, no parent in the water. Price is null because the page prints no fee, there is no invented third slot, and each slot carries the registration date and cites the page it came from. The message leads with Preschool A by name and adds B compactly. It attributes the facts ('their site says') and carries the not-yet-open registration date (Tues Aug 11 at 7am). It handles the missing price in the first person rather than as 'not posted', which suits page_has_schedule. With watch true, 'I'll keep watching and text you' is the correct first-person commitment. It is two plain-ASCII sentences with no link and no question. Minor nits: the sentences are a bit dense, and 'for Oakville residents' is dropped.",
+    "score": 5
+  }
+}

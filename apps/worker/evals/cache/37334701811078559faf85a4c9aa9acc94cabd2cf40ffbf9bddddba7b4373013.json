@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The single slot is correct: day, times and session dates are exactly as printed and cited to the programme page. Price is correctly null; neither rental figure was borrowed. Registration is null because the page gives no registration date, so nothing was dropped. The message leads with the programme by name, attributes the facts with 'their site says' and is two plain-ASCII sentences with no link and no question. With watch=true, the first-person 'I'll keep watching and text you' is a real commitment. With page_has_schedule, 'I could not pin down the price' correctly owns the gap rather than claiming nothing is posted.",
-    "score": 5
-  }
-}

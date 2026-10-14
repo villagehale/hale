@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and cited to the programme page. The day, time and session dates are exactly as printed. Price is correctly null: the slot avoided the $185 party and $95 meeting-room figures on the rentals page. The page shows no registration date, so a null registration is right. The message leads with the programme by name, attributes the facts ('their site says') and does not claim confirmation. It is two short plain-ASCII sentences with no link and no question. With pageEvidence=page_has_schedule, the gap is correctly put in the first person ('I could not pin down the price') rather than 'not posted'. With watch=true, the first-person keep-watching commitment is backed by an existing row.",
+    "score": 5
+  }
+}

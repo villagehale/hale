@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot is traceable to a page Hale actually read. The Tiny Gym term dates (Sept 14-Nov 1 and Nov 2-Dec 20, 2026) come off the schedule PDF, the July 22 8am registration date comes off the home page, and the age bands come off the programs page. Price is correctly left null because the site says pricing is login-only. The message leads with Tiny Gym by name, attributes the facts with \"their site says\" and carries the registration date. With pageEvidence page_has_schedule, it correctly frames the missing day and price as first-person \"I could not pin down\" rather than \"not posted\". With watch true, the first-person follow-up is legitimate. It has no question and no link. Deduction: it runs to three sentences, over the one-or-two-sentence limit. Also, the registration date sits in its own slot rather than on the Tiny Gym slot.",
+    "score": 4
+  }
+}

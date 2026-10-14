@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The single slot matches the programme page exactly: name, age band (12 months to 4 years), Tue/Thu 9:30-11:00 a.m. and Sept 8 to Dec 11, cited to /preschool-play. Price is correctly null. Neither rental figure ($185 party, $95 room) was borrowed, which was the trap. The page gives no registration date, so a null registration is correct and none was needed in the message. The message leads with the programme by name and attributes it ('their site says'). Under page_has_schedule it uses the first-person 'I could not pin down the price' rather than 'not posted'. With watch=true, the first-person keep-watching commitment is correct. It is two plain-ASCII sentences with no link and no question.",
-    "score": 5
-  }
-}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful to what the pages printed. Term 1 (Sept 14-Nov 1, 2026) and Term 2 (Nov 2-Dec 20, 2026) match the schedule PDF. Price is correctly null, since the site says pricing sits behind the registration login, and no fee was borrowed from elsewhere. The registration date (Wed July 22, 2026, 8:00am online) is exact and cited to the homepage. Tiny Gym (1 and walking to 3 years) and Rock n' Roll (0+) both fit a toddler. The message leads with Tiny Gym by name and attributes with 'their site says'. Under page_has_schedule it uses the correct first-person gap ('I could not pin down the day or the price') rather than 'not posted'. It carries the registration date. With watch TRUE, it correctly makes the first-person keep-watching commitment. It is plain ASCII with no link and no question. Minor deductions: it runs three sentences instead of one or two, though it stays within two segments. The first slot's age band comes from the programs page but is cited to the PDF. The weekday is left unresolved even though the PDF grid carries one, which is defensible given how garbled the extraction was.",
+    "score": 4
+  }
+}

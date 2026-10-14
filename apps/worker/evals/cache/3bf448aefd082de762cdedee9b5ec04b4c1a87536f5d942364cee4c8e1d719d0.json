@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The slots are faithful to the pages and correctly cited. Tiny Gym's age band and parent-attended 45-minute format come off programs.php. Term 1 (Sept 14 to Nov 1, 2026) and the Tiny Gym times come off the schedule PDF. Price is correctly left null, since the site says pricing is only shown after logging in. The July 22, 2026 8:00am registration comes off the home page. The message does several things right. It leads with Tiny Gym by name and attributes the facts with 'their site says'. It asks no question and uses no link. Under page_has_schedule it puts the gap in the first person ('I could not pin down'), and with watch true its 'I'll keep watching and text you' is a real commitment. However, the slots carried a registration date (Term 1/Fall registration Wednesday July 22, 2026, 8am online) and the message drops it entirely. That is an explicit low-score condition. It matters here: registration has already opened, so the parent needs to know spots are being taken now.",
-    "score": 2
-  }
-}
