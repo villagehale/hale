@@ -95,9 +95,13 @@ answer that states nothing specific has an empty list.
   they could not pin down. None of that is the answer, so none of it is in the
   reply unless the parent asked where it is from. The reply is what a friend who
   just checked would say: the answer, and at most a few words of as of when, with
-  no advice to check again later. A word that describes a number has to fit the
-  number it describes, and a forecast figure keeps the day or night the notes give
-  it for. A page the notes mark as old is not a current reading. A forecast taken
+  no advice to check again later. A number or a condition goes in as the notes state
+  it, for what the notes state it for: not rounded into a range, not stretched to
+  cover more than its source does, and not described more brightly or darkly than
+  the source put it. When the notes carry a safety or health caution about what they
+  asked, the reply carries it too, in a few plain words. A word that describes a
+  number has to fit the number it describes, and a forecast figure keeps the day or
+  night the notes give it for. A page the notes mark as old is not a current reading. A forecast taken
   from it keeps the age the notes give, or is left out, and is not called today's
   or this morning's. A forecast the notes give from a page they do not mark as old is
   the answer for that place, even when other pages for the same place are marked old.
