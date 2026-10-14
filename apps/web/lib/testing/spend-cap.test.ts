@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cappedCall, readLedger } from './spend-cap.mjs';
+import { cappedCall, projectUsd, readLedger, usageUsd } from './spend-cap.mjs';
 
 const rates = () => ({ input: 1, output: 5 }); // $ per MTok
 const request = {
@@ -18,7 +18,9 @@ const message = (usage: Record<string, number>) => ({
 
 function mockClient(inputTokens = 1000) {
   const countTokens = vi.fn(async (_req?: unknown) => ({ input_tokens: inputTokens }));
-  const create = vi.fn(async (_req?: unknown) => message({ input_tokens: 1000, output_tokens: 200 }));
+  const create = vi.fn(async (_req?: unknown) =>
+    message({ input_tokens: 1000, output_tokens: 200 }),
+  );
   const finalMessage = vi.fn(async () => message({ input_tokens: 1000, output_tokens: 400 }));
   const stream = vi.fn((_req?: unknown) => ({ finalMessage }));
   return {
@@ -209,6 +211,89 @@ describe('spend cap when tokens cannot be counted', () => {
         rates,
       }),
     ).rejects.toThrow(/could not count tokens/);
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  // The Oct 13 #864 round: activity-ground calls carried web_search (and web_fetch for a
+  // named venue). Their first turn counted ~7.5k-11.8k input tokens; the bill was
+  // 60k-232k input plus a fee per search. Each row: counted input, tools, real usage.
+  const sonnet = () => ({ input: 3, output: 15 });
+  const search = { name: 'web_search', type: 'web_search_20250305', max_uses: 3 };
+  const fetch = { name: 'web_fetch', type: 'web_fetch_20260209', max_uses: 3 };
+  const ground = [
+    [
+      7520,
+      [search],
+      { input_tokens: 95073, output_tokens: 1784, server_tool_use: { web_search_requests: 3 } },
+    ],
+    [
+      7520,
+      [search],
+      { input_tokens: 98813, output_tokens: 5199, server_tool_use: { web_search_requests: 3 } },
+    ],
+    [
+      7520,
+      [search],
+      { input_tokens: 62778, output_tokens: 5019, server_tool_use: { web_search_requests: 3 } },
+    ],
+    [
+      11787,
+      [search, fetch],
+      {
+        input_tokens: 232232,
+        output_tokens: 3077,
+        server_tool_use: { web_search_requests: 3, web_fetch_requests: 6 },
+      },
+    ],
+  ] as const;
+
+  it('projects a server-tool call above what the Oct 13 calls really cost', () => {
+    for (const [counted, tools, usage] of ground) {
+      const req = { ...request, model: 'claude-sonnet-5', max_tokens: 4096, tools: [...tools] };
+      expect(projectUsd(sonnet, req, counted)).toBeGreaterThanOrEqual(
+        usageUsd(sonnet, req.model, usage),
+      );
+    }
+  });
+
+  it('books web search fees', () => {
+    expect(
+      usageUsd(sonnet, 'claude-sonnet-5', {
+        input_tokens: 0,
+        output_tokens: 0,
+        server_tool_use: { web_search_requests: 21 },
+      } as never),
+    ).toBeCloseTo(0.21, 6);
+  });
+
+  it('refuses a search call the first turn alone would have let through', async () => {
+    vi.stubEnv('HALE_MAX_USD', '0.30');
+    const m = mockClient(7520);
+    const req = { ...request, model: 'claude-sonnet-5', max_tokens: 4096, tools: [search] };
+    // First turn only: 7520 in + 4096 out = $0.084, under the cap; the real call was $0.34.
+    await expect(
+      cappedCall({
+        client: m.client,
+        request: req,
+        call: () => m.client.messages.create(req),
+        rates: sonnet,
+      }),
+    ).rejects.toThrow(/refusing/);
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a server tool with no max_uses', async () => {
+    vi.stubEnv('HALE_MAX_USD', '100');
+    const m = mockClient();
+    const req = { ...request, tools: [{ name: 'web_search', type: 'web_search_20250305' }] };
+    await expect(
+      cappedCall({
+        client: m.client,
+        request: req,
+        call: () => m.client.messages.create(req),
+        rates,
+      }),
+    ).rejects.toThrow(/max_uses/);
     expect(m.create).not.toHaveBeenCalled();
   });
 });

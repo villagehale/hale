@@ -138,7 +138,13 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
     }
 
     // The spend cap is checked BEFORE the live call (counted input + max_tokens) and the
-    // returned message's real usage is booked after it; off unless HALE_MAX_USD is set.
+    // returned message's real usage is booked after it. A recording spends real money, so
+    // with no ceiling set record mode refuses rather than call uncapped.
+    if (!process.env.HALE_MAX_USD) {
+      throw new Error(
+        'recorded-model: HALE_RECORD=1 needs HALE_MAX_USD (and HALE_SPEND_LEDGER); refusing an uncapped recording',
+      );
+    }
     const client = live();
     const response = (await cappedCall({
       client,

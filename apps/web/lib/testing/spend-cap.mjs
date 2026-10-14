@@ -6,7 +6,8 @@
 // the request and a thunk that makes the call; this module
 //   1. counts the request's input tokens with the free `messages.countTokens` endpoint,
 //   2. projects input (at the cache-write rate when the request carries cache_control)
-//      plus max_tokens of output, at list price,
+//      plus max_tokens of output, at list price; a request with server tools is projected
+//      for every turn of its tool loop plus search fees (see serverToolUses),
 //   3. refuses the call if spent + in-flight + projected would cross the cap,
 //   4. after the call, books the REAL `usage` from the returned message.
 //
@@ -21,6 +22,30 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const CACHE_WRITE = 1.25;
 const CACHE_READ = 0.1;
+// Server tools (web_search / web_fetch) run a loop INSIDE one request: every use re-reads
+// the prompt plus every result so far, writes up to max_tokens again, and each search is
+// billed a fee on top of tokens. Counting the first turn only let the Oct 13 #864 round
+// book $3.99 against a $4 cap while the bill was ~$4.20: activity-ground projected
+// $0.08/call and cost $0.22-$0.74 (60k-232k input tokens), and 21 searches ($0.21) were
+// never booked. Worst seen: ~11.4k tokens of results per use; RESULT_TOKENS_PER_USE sits
+// above that.
+const SEARCH_USD_PER_USE = 10 / 1000;
+const RESULT_TOKENS_PER_USE = 16_000;
+const SERVER_TOOL = /^(web_search|web_fetch)_/;
+
+/** Server tools on a request; one without max_uses has no worst case, so it is refused. */
+export function serverToolUses(request) {
+  let uses = 0;
+  let searches = 0;
+  for (const t of request.tools ?? []) {
+    if (typeof t?.type !== 'string' || !SERVER_TOOL.test(t.type)) continue;
+    if (!Number.isInteger(t.max_uses) || t.max_uses < 1)
+      throw new Error(`spend-cap: server tool ${t.type} has no max_uses; refusing the call`);
+    uses += t.max_uses;
+    if (t.type.startsWith('web_search_')) searches += t.max_uses;
+  }
+  return { uses, searches };
+}
 
 export function isEstimate() {
   return process.env.HALE_ESTIMATE === '1';
@@ -65,7 +90,14 @@ export function projectUsd(rates, request, inputTokens) {
     JSON.stringify(request.messages ?? '').includes('cache_control') ||
     JSON.stringify(request.tools ?? '').includes('cache_control');
   const inRate = r.input * (cached ? CACHE_WRITE : 1);
-  return (inputTokens * inRate + (request.max_tokens ?? 0) * r.output) / 1e6;
+  const { uses, searches } = serverToolUses(request);
+  // n sampling turns: turn i re-reads the prompt plus i results and writes up to max_tokens.
+  const n = uses + 1;
+  const input = n * inputTokens + ((n * (n - 1)) / 2) * RESULT_TOKENS_PER_USE;
+  return (
+    (input * inRate + n * (request.max_tokens ?? 0) * r.output) / 1e6 +
+    searches * SEARCH_USD_PER_USE
+  );
 }
 
 /** Real USD from a returned message's `usage`. */
@@ -76,7 +108,8 @@ export function usageUsd(rates, model, usage) {
       (usage?.cache_creation_input_tokens ?? 0) * r.input * CACHE_WRITE +
       (usage?.cache_read_input_tokens ?? 0) * r.input * CACHE_READ +
       (usage?.output_tokens ?? 0) * r.output) /
-    1e6
+      1e6 +
+    (usage?.server_tool_use?.web_search_requests ?? 0) * SEARCH_USD_PER_USE
   );
 }
 
