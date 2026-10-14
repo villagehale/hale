@@ -40,8 +40,14 @@ export interface OptOutReading {
   confirmation: string;
 }
 
+export interface OptOutReadInput {
+  text: string;
+  language: ReplyLanguage | null;
+}
+
 export interface OptOutReader {
-  read(input: { text: string; language: ReplyLanguage | null }): Promise<OptOutReading | null>;
+  /** Null: the read failed (after its retry). */
+  read(input: OptOutReadInput): Promise<OptOutReading | null>;
 }
 
 const outputSchema = z.object({
@@ -83,33 +89,44 @@ export function acceptOptOutReading(
 export function createOptOutReader(
   clientOrResolver: AgentClient | (() => AgentClient),
 ): OptOutReader {
+  const once = async (input: OptOutReadInput): Promise<OptOutReading | null> => {
+    const client = typeof clientOrResolver === 'function' ? clientOrResolver() : clientOrResolver;
+    const skill = await loadCronSkill('opt-out-read');
+    const { value } = await forceToolJson({
+      client,
+      lane: pickLane(skill.meta.task),
+      system: skill.instructions,
+      userMessage: optOutUserMessage(input),
+      toolName: 'opt_out',
+      toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
+      inputJsonSchema: outputJsonSchema,
+      schema: outputSchema,
+      maxTokens: MAX_TOKENS,
+    });
+    return acceptOptOutReading(value, input.text);
+  };
   return {
     async read(input) {
-      try {
-        const client =
-          typeof clientOrResolver === 'function' ? clientOrResolver() : clientOrResolver;
-        const skill = await loadCronSkill('opt-out-read');
-        const { value } = await forceToolJson({
-          client,
-          lane: pickLane(skill.meta.task),
-          system: skill.instructions,
-          userMessage: optOutUserMessage(input),
-          toolName: 'opt_out',
-          toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
-          inputJsonSchema: outputJsonSchema,
-          schema: outputSchema,
-          maxTokens: MAX_TOKENS,
-        });
-        return acceptOptOutReading(value, input.text);
-      } catch (err) {
-        // With no keyword list behind it, a failed read is a stop nobody saw. Urgent,
-        // so a person reads the turn (#868); the text itself is never logged.
-        console.error(
-          { urgent: true, err: err instanceof Error ? err.name : 'unknown' },
-          'URGENT: opt-out reader failed - a stop may be unread, page #ops now',
-        );
-        return null;
+      // #868: one retry. Two failures return null; the intake machine then holds the
+      // sender (opt-out-hold.ts) and the urgent log below pages #ops.
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          const reading = await once(input);
+          if (reading) return reading;
+        } catch (err) {
+          console.error(
+            { attempt, err: err instanceof Error ? err.name : 'unknown' },
+            'opt-out reader: read failed',
+          );
+        }
       }
+      // With no keyword list behind it, a failed read is a stop nobody saw. Urgent,
+      // so a person reads the turn; the text itself is never logged.
+      console.error(
+        { urgent: true },
+        'URGENT: opt-out reader failed twice - a stop may be unread, page #ops now',
+      );
+      return null;
     },
   };
 }
@@ -157,6 +174,10 @@ export function readTextOnce(
   if (hit) return hit.read;
   const read = reader.read(input);
   textReads.set(key, { at: now, read });
+  // A failed read is not remembered: the next ask reads again.
+  void read.then((reading) => {
+    if (reading === null && textReads.get(key)?.read === read) textReads.delete(key);
+  });
   return read;
 }
 

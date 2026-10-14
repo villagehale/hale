@@ -1246,29 +1246,52 @@ describe('friend voice onboarding', () => {
   });
 });
 
-describe('reader-only opt-out gate (#868, off by default)', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
+describe('#868 opt-out reader decides every turn, and a failed read holds the sender', () => {
   const reader = (intent: 'stop' | 'start' | 'none', confirmation: string) => ({
     read: async () => ({ intent, confirmation }),
   });
+  const recorder = () => {
+    const calls: string[] = [];
+    return {
+      calls,
+      port: {
+        hold: async (hash: string) => void calls.push(`hold:${hash.length > 0}`),
+        release: async (hash: string) => void calls.push(`release:${hash.length > 0}`),
+      },
+    };
+  };
 
-  it('with the gate on, the word list is not consulted: the reader decides', async () => {
-    vi.stubEnv('OPT_OUT_READER_ONLY', 'on');
+  it('a STOP the reader reads as none is ordinary conversation: no word list', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     deps.optOutReader = reader('none', '');
     const result = await handleInboundSms(fake.db, inbound(transport, 'STOP'), deps);
     expect(result.status).not.toBe('stopped');
   });
 
-  it('with the gate on, any wording of stop revokes and sends the model confirmation', async () => {
-    vi.stubEnv('OPT_OUT_READER_ONLY', 'on');
+  it('any wording of stop revokes and sends the model confirmation', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     deps.optOutReader = reader('stop', 'Stop confirmation (test fixture).');
     const result = await handleInboundSms(fake.db, inbound(transport, 'pls leave me alone'), deps);
     expect(result.status).toBe('stopped');
     expect(transport.bodies()).toEqual(['Stop confirmation (test fixture).']);
+  });
+
+  it('a read that fails (after its retry) holds the sender', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const held = recorder();
+    deps.optOutReader = { read: async () => null };
+    deps.optOutHold = held.port;
+    await handleInboundSms(fake.db, inbound(transport, 'unreadable for now'), deps);
+    expect(held.calls).toContain('hold:true');
+    expect(held.calls).not.toContain('release:true');
+  });
+
+  it('a read that succeeds releases the hold', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const held = recorder();
+    deps.optOutReader = reader('none', '');
+    deps.optOutHold = held.port;
+    await handleInboundSms(fake.db, inbound(transport, 'hello again'), deps);
+    expect(held.calls).toEqual(['release:true']);
   });
 });

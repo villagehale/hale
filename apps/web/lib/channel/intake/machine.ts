@@ -116,8 +116,10 @@ import {
   onboardingMissing,
   storedFromCapture,
 } from './onboarding-turn';
+import { holdSender, releaseSender } from './opt-out-hold';
 import {
   type OptOutReader,
+  type OptOutReading,
   isCrisisReading,
   isIdentityReading,
   readTextOnce,
@@ -212,6 +214,8 @@ export interface IntakeDeps {
   optOutReader?: OptOutReader;
   /** #868: writes the lines that used to be fixed (identity, a crisis the answer model flagged). */
   saidLine?: SaidLineWriter;
+  /** #868 · failed-read hold store; defaults to opt_out_read_holds. */
+  optOutHold?: OptOutHoldPort;
   /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
    * Required, never nullable (rule #11): withholding it would restore the exact bug it
    * closed — an off-script question silently becoming a re-ask — and its own "there was
@@ -446,6 +450,7 @@ export async function handleInboundSms(
         text: inbound.body,
         language: null,
       });
+      await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
       if (reading?.intent === 'stop') {
         return handleStop(
           database,
@@ -489,6 +494,7 @@ export async function handleInboundSms(
       text: inbound.body,
       language: session?.ladderLanguage ?? null,
     });
+    await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
     if (reading?.intent === 'stop') {
       return handleStop(
         database,
@@ -3403,14 +3409,39 @@ async function helpBody(
   return friendOutbound(spoken);
 }
 
+/** #868 · where a failed read's hold is written (tests pass a recorder). */
+export interface OptOutHoldPort {
+  hold(phoneHash: string, now: Date): Promise<void>;
+  release(phoneHash: string): Promise<void>;
+}
+
 /**
- * #868 · OPT_OUT_READER_ONLY, kept as it was ('on' or off by default). keywords.ts and the
- * fixed STOP/START replies are gone, so the reader decides stop and start on every turn
- * whichever way this is set; nothing reads it any more. Left in place on purpose until
- * Barton decides whether to delete the variable.
+ * #868 · after the turn's read: a failed read (null after the reader's retry) holds the
+ * sender from proactive and queued sends; a successful read releases any hold.
  */
-export function optOutReaderOnlyEnabled(): boolean {
-  return process.env.OPT_OUT_READER_ONLY === 'on';
+async function settleOptOutHold(
+  database: Database,
+  phoneHash: string,
+  body: string,
+  reading: OptOutReading | null,
+  now: Date,
+  hold?: OptOutHoldPort,
+): Promise<void> {
+  if (body.trim().length === 0) return;
+  const port = hold ?? {
+    hold: (hash: string, at: Date) => holdSender(database, hash, at),
+    release: (hash: string) => releaseSender(database, hash),
+  };
+  try {
+    if (reading === null) await port.hold(phoneHash, now);
+    else await port.release(phoneHash);
+  } catch (err) {
+    // The hold is a guard, never a reason to drop the turn: logged, and the turn goes on.
+    console.error(
+      { urgent: reading === null, err: err instanceof Error ? err.name : 'unknown' },
+      'opt-out hold: write failed',
+    );
+  }
 }
 
 /** What the provider says it already answered (always null on today's transports). */
