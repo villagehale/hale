@@ -11,7 +11,6 @@ import type {
   IdentityAskRequest,
   IdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
-import type { MomentWrite } from '~/lib/channel/off-domain/moment-reply';
 import type { IntroAskRequest, IntroVoice, IntroVoiceOutcome } from '~/lib/village/intros/voice';
 import type { IntakeAnswerComposer, IntakeAnswerInput, IntakeAnswerOutcome } from './answer';
 import type { IntakeCollected, IntakeExtractor } from './extract';
@@ -87,9 +86,6 @@ export const fakeSilentAnswerComposer: IntakeAnswerComposer = {
   async compose(): Promise<IntakeAnswerOutcome> {
     return { status: 'nothing_to_answer' };
   },
-  async writeMoment(_text, moment) {
-    return { status: 'written', reply: `moment:${moment}` };
-  },
 };
 
 /**
@@ -104,13 +100,6 @@ export class FakeAnswerComposer implements IntakeAnswerComposer {
   async compose(input: IntakeAnswerInput): Promise<IntakeAnswerOutcome> {
     this.calls.push(input);
     return this.outcome;
-  }
-
-  async writeMoment(
-    _text: string,
-    moment: Parameters<IntakeAnswerComposer['writeMoment']>[1],
-  ): Promise<MomentWrite> {
-    return { status: 'written', reply: `moment:${moment}` };
   }
 }
 
