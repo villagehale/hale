@@ -107,14 +107,14 @@ describe('the numeric cap under the cadence flag', () => {
     });
   });
 
-  it('keeps the cap when live for a kind the decider does not see yet', async () => {
+  it('keeps the cap for an unrouted kind, and lets a routed evening check-in past it when live', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     await expect(
       assertProactiveSendAllowed({ ...nudge(MIDDAY), kind: 'email_alert' }, ports()),
     ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
     await expect(
       assertProactiveSendAllowed({ ...nudge(MIDDAY), kind: 'evening_check_in' }, ports()),
-    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
 });
 

@@ -41,7 +41,7 @@ export const PROACTIVE_ROUTING = {
   spot_open_instant: 'immediate',
   email_alert: 'not_routed',
   calendar_alert: 'not_routed',
-  evening_check_in: 'not_routed',
+  evening_check_in: 'decider',
   co_parent_departed: 'not_routed',
   travel_brief: 'not_routed',
   duty_ask: 'not_routed',

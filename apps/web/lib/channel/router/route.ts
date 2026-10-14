@@ -280,10 +280,9 @@ export type HandlerVerdict =
        * `channel_messages` row exactly as a proactive send's is.
        *
        * Most receipts need none: nothing ever reads them back. A lane needs one when its
-       * own reader has to recognise its own voice later. The evening check-in is the
-       * case: whether LESS, NO and DAILY still mean what that lane taught them turns on
-       * whether the last thing this parent heard from Hale was ITS message, and a reply
-       * row with no name on it is indistinguishable from the coach's.
+       * own reader has to recognise its own voice later. The evening check-in still
+       * names `checkin:ask` on the send, so a later text is an answer only while that
+       * ask is Hale's last word. Pace is not a keyword on the reply.
        */
       templateKey?: string;
       /**

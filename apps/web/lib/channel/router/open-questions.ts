@@ -288,10 +288,9 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   email_alert_add: { yes: true, no: true },
   // NEITHER POLARITY, the `activity_followup` reading for a different reason: the answer
   // to "how did today go" is a sentence, and a yes-or-no resolver could only ever
-  // mis-read one. The keywords that DO move something (LESS, NO, DAILY) are read by the
-  // handler as exact words, which needs no model. It is LISTED anyway, because the list
-  // is what `soleOpenKind` reads: a question Hale is holding makes a bare affirmative
-  // ambiguous whether or not it is the thing being answered.
+  // mis-read one. Pace is not a keyword. It is LISTED anyway, because the list is what
+  // `soleOpenKind` reads: a question Hale is holding makes a bare affirmative ambiguous
+  // whether or not it is the thing being answered.
   evening_check_in: { yes: false, no: false },
   // NEITHER POLARITY, the `activity_followup` reading for the third time and the
   // strictest of the three: the answer to "how did it go" is a sentence about a morning,
@@ -412,12 +411,9 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // covers sure/ok/sounds good/oui. The comment is the evidence for the value, so it has
   // to name both endings rather than only the one it was written for.
   email_alert_add: true,
-  // FALSE, and the entry matters more here than anywhere else on this list. The FIRST ask
-  // a family ever gets prints LESS and NO, but every ask after it prints nothing at all —
-  // and this flag is per CLASS. Marking it solicited would hand `newestSolicitedKind` the
-  // newest question in the product on most evenings, so a bare YES meant for an approval
-  // draft would be claimed by a diary entry. None of the words this lane reads is an
-  // affirmative anyway.
+  // FALSE. The evening check-in prints no keyword. Marking it solicited would hand
+  // `newestSolicitedKind` the newest question in the product on most evenings, so a bare
+  // YES meant for an approval draft would be claimed by a diary entry.
   evening_check_in: false,
   // FALSE, for the evening check-in's reason exactly: the composed ask prints no keyword
   // (`not_one_question` is a refusal and the voice writes a question, not a menu), and

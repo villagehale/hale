@@ -7,28 +7,17 @@ import {
   channelScheduleReader,
 } from '~/lib/channel/coach/tools';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import {
-  deliverFamilyOutbound,
-  familyOutboundTarget,
-  familySpeech,
-  notePermanentSkip,
-} from '~/lib/channel/linq/family-outbound';
-import { groupAddressedLine } from '~/lib/channel/linq/group-coparent-copy';
-import { withOptOut } from '~/lib/channel/opt-out';
+import { dedupeActive } from '~/lib/channel/ledger';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { type CandidateDraft, queueCheckInForDecider } from '~/lib/channel/proactive/queue';
+import { LINE_CHARS } from '~/lib/channel/proactive/tools';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
-import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
-import { nightlyOccasion } from '~/lib/channel/variant';
-import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { dayKeyIn } from '~/lib/plan/spine';
+import { addDaysToKey, dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import { readinessQuestion } from '~/lib/registration/sequence/prepare-reply';
 import {
   type CheckInDecision,
@@ -38,15 +27,8 @@ import {
   isEveningCheckInSlot,
   localDateKey,
   readCheckInState,
-  recordCheckInAsk,
-  recordCheckInCadence,
 } from './cadence';
-import {
-  CHECK_IN_ASK_TEMPLATE_KEY,
-  CHECK_IN_STEP_DOWN,
-  CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
-  composeCheckInAsk,
-} from './copy';
+import { CHECK_IN_ASK_TEMPLATE_KEY } from './copy';
 
 /**
  * VIL-353 · THE EVENING CHECK-IN — the one question Hale asks every day.
@@ -76,21 +58,18 @@ import {
  * damaged by a message: an approval or an intro card outlives any number of them, and a
  * bare affirmative near two open questions is already handled by `soleOpenKind`.
  *
- * THE STATE MACHINE IS THE PREFS ROW, and the ladder inside it (cadence.ts) is a pure
- * function: the sweep decides nothing about silence, it only carries out the decision and
- * writes down what happened.
+ * THE STATE MACHINE IS THE PREFS ROW. A stored stop is the only cadence the clock
+ * still honours. Silence does not change it. The sweep queues a candidate; the
+ * proactive decider chooses whether and when, and the writer speaks.
  */
 
 /** Filter first, then cap — a cap-then-filter would starve every family past the oldest N
  * of their slot forever. Most hours select nobody at all.
  *
- * THE LADDER IS PART OF THE FILTER, and it has to be: the selection is ordered least
- * recently asked first, and the households the ladder has nothing to send are exactly the
- * ones that sit at the head of that order forever — a family who replied NO is never asked
- * again, so their `last_asked_at` never moves. Capping before the decision would spend the
- * bound on them every evening and leave a household that is actually due behind the same
- * wall each night. So every family in the slot is decided, and only the ones with something
- * to send are counted against this bound.
+ * A stored stop is part of the filter. The selection is ordered least recently asked
+ * first, and a household who asked for no check-ins never moves `last_asked_at`.
+ * Capping before the decision would spend the bound on them every evening. So every
+ * family in the slot is decided, and only an offer is counted against this bound.
  *
  * WHICH N, when there are still more, is the selection's ORDER BY, so a household that
  * overflowed tonight is at the front of tomorrow's queue. `overflow` says how many were
@@ -129,9 +108,6 @@ export function checkInAnchorEnabled(): boolean {
 export type AnchorOutcome =
   /** Named. */
   | 'anchored'
-  /** This household's first evening question ever — it prints the keywords and is never
-   * anchored, so the anchor lane did not run rather than finding nothing. */
-  | 'first_ask'
   /** CHECK_IN_ANCHOR_ENABLED is not 'true'. */
   | 'flag_off'
   /** Nothing of this family's started today before now. */
@@ -179,12 +155,9 @@ export interface EveningCheckInResult {
    * something to send than one run may carry. Counted rather than dropped silently: a
    * standing overflow is the signal that the bound needs raising or the hour spreading. */
   overflow: number;
-  asked: number;
-  /** Three lapsed asks: the parent was told Hale will ask weekly instead. */
-  steppedDownToWeekly: number;
-  /** Three more: Hale stopped, and said nothing about stopping. */
-  dormant: number;
-  /** In the slot, but the ladder had nothing to send tonight. */
+  /** Candidates handed to the proactive decider. The sweep does not text. */
+  queued: number;
+  /** In the slot, but not offered tonight. */
   skipped: Record<CheckInSkipReason, number>;
   /** In the slot and due, but a registration readiness question was standing. */
   heldForRegistration: number;
@@ -193,8 +166,7 @@ export interface EveningCheckInResult {
   /** Already sent this evening — a second cron tick inside the same local hour. */
   duplicate: number;
   failed: number;
-  /** One entry per household this run actually ASKED (the step-down notice asks nothing,
-   * so it is not counted here). Same shape as `skipped` and `held`, for the same reason. */
+  /** One entry per household this run queued. Same shape as `skipped` and `held`. */
   anchor: Record<AnchorOutcome, number>;
 }
 
@@ -203,17 +175,14 @@ function emptyResult(enabled: boolean): EveningCheckInResult {
     enabled,
     inSlot: 0,
     overflow: 0,
-    asked: 0,
-    steppedDownToWeekly: 0,
-    dormant: 0,
-    skipped: { cadence_off: 0, asked_today: 0, not_due: 0 },
+    queued: 0,
+    skipped: { cadence_off: 0, asked_today: 0 },
     heldForRegistration: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     duplicate: 0,
     failed: 0,
     anchor: {
       anchored: 0,
-      first_ask: 0,
       flag_off: 0,
       no_event_today: 0,
       private_event: 0,
@@ -261,31 +230,10 @@ export interface EveningCheckInDeps {
    * question would close it every evening without ever knowing. */
   readinessStanding: typeof readinessQuestion;
   dedupeActive: typeof dedupeActive;
-  resolveSendablePhone: typeof resolveSendablePhone;
-  /** REQUIRED (rule #11). A sweep that decides to ask and quietly sends nothing is the
-   * worst version of this: the prefs row records an ask, the ladder counts the silence
-   * that follows, and the family is stepped down for never answering a question nobody
-   * put to them. */
-  transport: ChannelTransport;
-  recordSend(
-    database: Database,
-    write: {
-      familyId: string;
-      parentUserId: string;
-      templateKey: string;
-      dedupeKey: string;
-      providerMessageId: string;
-      sentAt: Date;
-      channel?: 'sms' | 'imessage';
-      providerChatId?: string | null;
-    },
-  ): Promise<string>;
+  /** Writes the candidate the decider reads. A duplicate dedupe key is named, not a
+   * second offer. */
+  queueCandidate(database: Database, draft: CandidateDraft): Promise<'queued' | 'duplicate'>;
   audit(database: Database, row: Record<string, unknown>): Promise<void>;
-  /** The parent's own text thread — REQUIRED and resolve-or-create, so the coach can see
-   * the question it is about to be handed an answer to. */
-  threadMessage: typeof threadProactiveMessage;
-  recordAsk: typeof recordCheckInAsk;
-  recordCadence: typeof recordCheckInCadence;
 }
 
 export async function runEveningCheckInSweep(
@@ -353,27 +301,7 @@ async function runForFamily(
   result: EveningCheckInResult,
   now: Date,
 ): Promise<void> {
-  const { family, state, decision } = due;
-
-  if (decision.kind === 'dormant') {
-    // Nothing is sent, so nothing is gated: going quiet is not a message.
-    await deps.recordCadence(database, {
-      familyId: family.familyId,
-      cadence: 'off',
-      silentStreak: decision.silentStreak,
-      now,
-    });
-    result.dormant += 1;
-    await deps.audit(database, {
-      familyId: family.familyId,
-      actor: 'system',
-      actionTaken: 'evening_check_in_stopped',
-      targetTable: 'family_check_in_prefs',
-      targetId: family.familyId,
-      after: { cadence: 'off' },
-    });
-    return;
-  }
+  const { family } = due;
 
   const verdict = await assertProactiveSendAllowed(
     { familyId: family.familyId, parentUserId: family.parentUserId, kind: 'evening_check_in', now },
@@ -381,8 +309,7 @@ async function runForFamily(
   );
   if (!verdict.allowed) {
     // Held, not failed, and nothing is written: quiet hours end, and a household over its
-    // budget tonight is under it tomorrow. The ladder must not count a silence for an
-    // evening Hale never spoke.
+    // budget tonight is under it tomorrow. An evening Hale did not offer is not an ask.
     result.held[verdict.reason] += 1;
     return;
   }
@@ -394,164 +321,82 @@ async function runForFamily(
     return;
   }
 
-  const dedupeKey =
-    decision.kind === 'step_down'
-      ? `evening_check_in:weekly:${family.familyId}:${(state.lastAskedAt ?? now).toISOString()}`
-      : `evening_check_in:${family.familyId}:${localDateKey(now, family.timeZone)}`;
+  const dedupeKey = `evening_check_in:${family.familyId}:${localDateKey(now, family.timeZone)}`;
   if (await deps.dedupeActive(dedupeKey, database)) {
     result.duplicate += 1;
     return;
   }
 
-  // Composed only AFTER the gate and the dedupe: a family already asked, or over budget,
-  // must not cost a read of their children's names — nor, now, a read of their calendar.
-  let message: string;
-  // Whether tonight's question named an activity — the one thing the audit row learns from
-  // the anchor. The step-down notice names nothing and asks nothing, so it is false there
-  // by construction rather than by omission.
-  let anchored = false;
-  if (decision.kind === 'step_down') {
-    message = CHECK_IN_STEP_DOWN;
-  } else {
-    const found = await readAnchor(database, deps, family, decision.first, now);
-    const ask = composeCheckInAsk({
-      first: decision.first,
-      childNames: await deps.loadNamableChildren(database, family.familyId, now),
-      todayActivity: found.anchor,
-      // Which of the five ways of asking this household reads tonight. The rotation
-      // steps once per family-local day, so no family reads the same sentence two
-      // evenings running (variant.ts).
-      familyId: family.familyId,
-      occasion: nightlyOccasion(now, family.timeZone),
-    });
-    message = ask.body;
-    anchored = ask.anchored;
-    // A title that was offered and not used was refused by the BUDGET, and that is a
-    // different fact from having nothing to name.
-    result.anchor[found.anchor !== null && !ask.anchored ? 'over_segment' : found.outcome] += 1;
+  // Facts only, and only after the gate: a family already asked, or over budget, must
+  // not cost a read of their children's names or their calendar. Nothing here is a
+  // sentence a parent will read. The writer speaks.
+  const found = await readAnchor(database, deps, family, now);
+  const names = (await deps.loadNamableChildren(database, family.familyId, now)).filter((name) =>
+    isPrintableGsm7Basic(name),
+  );
+  let anchor = found.anchor;
+  let outcome = found.outcome;
+  if (anchor !== null && anchor.length > LINE_CHARS) {
+    anchor = null;
+    outcome = 'over_segment';
   }
-
-  const to = await deps.resolveSendablePhone(database, family.parentUserId);
-  if (!to) {
-    // The gate just said this parent has a live channel, so there IS one — a missing
-    // number here is a contradiction, not a state to paper over.
-    throw new Error(`evening check-in: no send target for parent ${family.parentUserId}`);
-  }
-
-  // In a claimed group the evening is about one parent. Name them when known.
-  // An unknown parent keeps the pool line, which already reads to both.
-  // The step-down notice has no "you" and stays as written.
-  let spoken = message;
-  if (decision.kind !== 'step_down') {
-    const target = await familyOutboundTarget(database, family.familyId);
-    if (target.channel === 'group') {
-      const speech = await familySpeech(database, family.familyId, family.parentUserId);
-      if (speech.name) spoken = groupAddressedLine(speech.name, message);
-    }
-  }
-
-  const delivered = await deliverFamilyOutbound(database, {
-    familyId: family.familyId,
-    body: withOptOut(spoken, verdict.optOut),
-    to,
-    legacy: deps.transport,
-    // The sweep already picked this evening. Quiet hours follow that clock,
-    // not the wall clock of a worker that catches up in the morning.
-    now,
-  });
-  if (delivered.status === 'held') {
-    console.warn({ familyId: family.familyId }, 'evening check-in: group cap reached');
-    return;
-  }
-  if (delivered.status === 'skipped') {
-    console.warn(
-      { familyId: family.familyId, code: delivered.reason },
-      'evening check-in: outbound skipped',
-    );
-    if (delivered.reason !== 'not_configured') {
-      await notePermanentSkip(database, {
-        familyId: family.familyId,
-        parentUserId: family.parentUserId,
-        category: 'evening_check_in',
-        templateKey: templateKeyFor(decision),
-        dedupeKey,
-        reason: delivered.reason,
-        now,
-      });
-    }
-    return;
-  }
-  const channel = delivered.channel === 'imessage' ? 'imessage' : 'sms';
-  const channelMessageId = await deps.recordSend(database, {
+  result.anchor[outcome] += 1;
+  const what = checkInFacts(anchor, names);
+  const queued = await deps.queueCandidate(database, {
     familyId: family.familyId,
     parentUserId: family.parentUserId,
-    templateKey: templateKeyFor(decision),
+    kind: 'evening_check_in',
+    category: 'evening_check_in',
+    templateKey: CHECK_IN_ASK_TEMPLATE_KEY,
+    what,
+    why: 'evening check-in',
+    sourceUrl: null,
+    worthlessAfter: checkInWorthlessAfter(now, family.timeZone),
+    parentRequested: false,
     dedupeKey,
-    providerMessageId: delivered.providerMessageId,
-    sentAt: now,
-    channel,
-    providerChatId: delivered.chatId,
   });
-  const steppingDown = decision.kind === 'step_down';
-  const actionTaken = steppingDown ? 'evening_check_in_stepped_down' : 'evening_check_in_sent';
+  if (queued === 'duplicate') {
+    result.duplicate += 1;
+    return;
+  }
   await deps.audit(database, {
     familyId: family.familyId,
     actor: 'system',
-    actionTaken,
-    targetTable: 'channel_messages',
-    targetId: channelMessageId,
-    // `anchored` and NEVER the activity: audit_log is immutable and PIPEDA-exportable and
-    // carries none of the teen redaction a memory read has, so the trail gets the count and
-    // the calendar content stays on the row that already holds it (rule #1).
-    after: { cadence: steppingDown ? 'weekly' : 'daily', anchored },
+    actionTaken: 'evening_check_in_queued',
+    targetTable: 'families',
+    targetId: family.familyId,
+    // `anchored` and NEVER the activity: audit_log is immutable and PIPEDA-exportable.
+    after: { anchored: outcome === 'anchored' },
   });
-  // The composed sentence, never the wire body: the CASL line belongs on the wire and
-  // nowhere else, and this thread is what the parent reads back and what the coach
-  // re-reads on their next turn.
-  await deps.threadMessage(database, {
-    familyId: family.familyId,
-    parentUserId: family.parentUserId,
-    body: spoken,
-  });
+  result.queued += 1;
+}
 
-  if (decision.kind === 'step_down') {
-    // `lastAskedAt` is deliberately NOT moved — see decideCheckIn — so the weekly rhythm
-    // keeps measuring from the last real ask. `silentStreakSince` is what stops the lapse
-    // this rung just answered being counted again by the first weekly question.
-    await deps.recordCadence(database, {
-      familyId: family.familyId,
-      cadence: 'weekly',
-      silentStreak: 0,
-      silentStreakSince: now,
-      now,
-    });
-    result.steppedDownToWeekly += 1;
-    return;
-  }
-  await deps.recordAsk(database, {
-    familyId: family.familyId,
-    silentStreak: decision.silentStreak,
-    now,
-  });
-  result.asked += 1;
+/** Facts the writer may name. Not a script, and not a word the parent must send back. */
+function checkInFacts(anchor: string | null, names: readonly string[]): string {
+  const parts = [anchor, ...names].filter(
+    (part): part is string => part !== null && part.length > 0,
+  );
+  const fact = parts.length === 0 ? 'how the day went' : parts.join(', ');
+  return fact.slice(0, LINE_CHARS);
+}
+
+/** The question lapses at 08:00 the next local morning. A later review must not send it. */
+function checkInWorthlessAfter(now: Date, timeZone: string): Date {
+  return zonedLocalInstant(addDaysToKey(localDateKey(now, timeZone), 1), '08:00', timeZone);
 }
 
 /**
  * Tonight's anchor, and the one reason there is not one.
  *
- * The flag and the first-ask carve-out are decided HERE rather than inside the reader, so
- * a household that is not asking a pooled question never costs a calendar read at all.
+ * The flag is decided HERE rather than inside the reader, so a household whose anchor
+ * flag is off never costs a calendar read at all.
  */
 async function readAnchor(
   database: Database,
   deps: EveningCheckInDeps,
   family: CheckInFamily,
-  first: boolean,
   now: Date,
 ): Promise<{ anchor: string | null; outcome: AnchorOutcome }> {
-  // The first question a household is ever asked prints the keywords and is one pinned
-  // sentence. It is not anchored, and saying so is not the same as finding nothing.
-  if (first) return { anchor: null, outcome: 'first_ask' };
   if (!checkInAnchorEnabled()) return { anchor: null, outcome: 'flag_off' };
   try {
     const found = await deps.readTodayActivity(database, family.familyId, family.timeZone, now);
@@ -559,17 +404,10 @@ async function readAnchor(
       ? { anchor: null, outcome: found.reason }
       : { anchor: found.anchor, outcome: 'anchored' };
   } catch (err) {
-    // Ids and enums only, never a title and never the answer (rule #1) — the shape the
-    // family sweep's own catch already uses.
+    // Ids and enums only, never a title and never the answer (rule #1).
     console.error({ err, familyId: family.familyId }, 'evening check-in: activity read failed');
     return { anchor: null, outcome: 'read_failed' };
   }
-}
-
-function templateKeyFor(decision: CheckInDecision): string {
-  return decision.kind === 'step_down'
-    ? CHECK_IN_STEP_DOWN_TEMPLATE_KEY
-    : CHECK_IN_ASK_TEMPLATE_KEY;
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
@@ -724,33 +562,9 @@ export function defaultEveningCheckInDeps(): EveningCheckInDeps {
     buildGate: buildOutboundGatePorts,
     readinessStanding: readinessQuestion,
     dedupeActive: (dedupeKey, database) => dedupeActive(dedupeKey, database),
-    resolveSendablePhone,
-    transport: createOutboundTransport(),
-    recordSend: async (database, write) => {
-      const [row] = await database
-        .insert(schema.channelMessages)
-        .values({
-          familyId: write.familyId,
-          parentUserId: write.parentUserId,
-          channel: write.channel ?? 'sms',
-          direction: 'out',
-          category: 'evening_check_in',
-          templateKey: write.templateKey,
-          dedupeKey: write.dedupeKey,
-          providerMessageId: write.providerMessageId,
-          providerChatId: write.providerChatId ?? null,
-          status: acceptedStatus(write.channel ?? 'sms'),
-          sentAt: write.sentAt,
-        })
-        .returning({ id: schema.channelMessages.id });
-      if (!row) throw new Error('evening check-in: channel_messages insert returned no row');
-      return row.id;
-    },
+    queueCandidate: queueCheckInForDecider,
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row as never);
     },
-    threadMessage: threadProactiveMessage,
-    recordAsk: recordCheckInAsk,
-    recordCadence: recordCheckInCadence,
   };
 }
