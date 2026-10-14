@@ -22,7 +22,7 @@
  * merging makes `booking_confirmation` reachable for every F14 family regardless. What
  * the flag stops is everything after. The observable delta with it off is bounded: at
  * most ten extra Sonnet extractions per connection per 15-minute sweep, because
- * EMAIL_ALERT_MAX_PER_SWEEP is applied before any model call.
+ * The connector sweep hands this pass the envelopes it already fetched.
  */
 
 export const BOOKED_DETECTION_ENABLED_ENV = 'BOOKED_DETECTION_ENABLED';

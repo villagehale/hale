@@ -11,7 +11,6 @@ import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
-  EMAIL_ALERT_MAX_PER_SWEEP,
   EMAIL_ALERT_TEMPLATE_KEY,
   type EmailAlertOutcome,
   type EmailAlertPorts,
@@ -434,25 +433,6 @@ describe('alertParentForGmailSweep', () => {
       sweep(h, { parentUserId: null, envelopes: [envelope(1, '2026-09-17T10:00:00.000Z')] }),
     ).resolves.toEqual(['no_parent_user']);
     expect(h.classifyCalls).toBe(0);
-  });
-
-  it('reads at most EMAIL_ALERT_MAX_PER_SWEEP, NEWEST first, and names the rest', async () => {
-    const h = harness();
-    // 12 messages, m1 oldest .. m12 newest. The cap must drop the two OLDEST.
-    const envelopes = Array.from({ length: 12 }, (_, i) =>
-      envelope(i + 1, `2026-09-17T${String(i + 1).padStart(2, '0')}:00:00.000Z`),
-    );
-
-    const outcomes = await sweep(h, { envelopes });
-
-    expect(outcomes.filter((o) => o === 'over_sweep_cap')).toHaveLength(2);
-    expect(outcomes.filter((o) => o === 'sent')).toHaveLength(EMAIL_ALERT_MAX_PER_SWEEP);
-    expect(h.classifyCalls).toBe(EMAIL_ALERT_MAX_PER_SWEEP);
-    const rows = await ledgerRows();
-    const alerted = new Set(rows.map((r) => r.dedupeKey));
-    expect(alerted.has(emailAlertDedupeKey(INTEGRATION, 'm12'))).toBe(true);
-    expect(alerted.has(emailAlertDedupeKey(INTEGRATION, 'm1'))).toBe(false);
-    expect(alerted.has(emailAlertDedupeKey(INTEGRATION, 'm2'))).toBe(false);
   });
 
   it('skips a message Gmail gave no internalDate for, and still reads the rest', async () => {

@@ -36,8 +36,7 @@ import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
  * from one change in isolation could not be answered at all. Three follow-ups off #650
  * were all that one gap:
  *   - a moved event read "is on your calendar for <new time>" — nothing held the OLD time;
- *   - one edit to a weekly class arrived as one change per instance and spent the whole
- *     per-sweep budget on itself — nothing grouped them;
+ *   - one edit to a weekly class arrived as one change per instance — nothing grouped them;
  *   - a change refused by quiet hours was never offered again — nothing remembered that
  *     Hale still owed the text.
  *
@@ -122,7 +121,6 @@ export const CALENDAR_ALERT_OUTCOMES = [
   'already_sent',
   'dark',
   'seeding_run',
-  'over_sweep_cap',
   'outside_window',
   'no_start',
   'no_parent_user',
@@ -171,13 +169,6 @@ export interface CalendarAlertSweep {
   reoffers: readonly CalendarAlertOutcome[];
 }
 
-/** At most this many ALERTABLE texts per connection per sweep, oldest debt first and then
- * soonest first. A household that rebuilds its September in one sitting produces thirty
- * edits in one 15-minute window; the ones worth a text are the ones happening next. A
- * series collapsed into one text spends ONE of these, and a re-offer spends one too —
- * which is what keeps the budget a budget rather than two of them. */
-export const CALENDAR_ALERT_MAX_PER_SWEEP = 5;
-
 /** How far ahead an event has to start to be worth interrupting for. A cancellation is
  * exempt from the ceiling (see {@link withinAlertWindow}) — a March camp that just went
  * away is news in September. */
@@ -189,9 +180,9 @@ export const CALENDAR_ALERT_WINDOW_DAYS = 14;
 export const CALENDAR_ALERT_PENDING_MAX_DAYS = 3;
 
 /** A group of this many instances of one series, in one sweep, is one text: two changes
- * about the same class are the same news said twice, and they spend one of the five slots
- * rather than two. Below it — a lone instance, which is what a single cancelled session
- * inside a live term reduces to — the change is an ordinary single. */
+ * about the same class are the same news said twice. Below it — a lone instance, which is
+ * what a single cancelled session inside a live term reduces to — the change is an ordinary
+ * single. */
 const SERIES_MIN_INSTANCES = 2;
 
 export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
@@ -199,12 +190,12 @@ export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
 /**
  * The endings that mean "not yet", as opposed to "no".
  *
- * These three are the whole of the pending mechanism: the text was worth sending, Hale
+ * Quiet hours are the hold this sweep re-offers. The text was worth sending, Hale
  * declined to send it THIS minute, and the syncToken has already moved past the change —
  * so unless the sweep writes down that it still owes one, the news is gone for good. A
  * consent refusal is deliberately not here: `not_enrolled` is not a wait, it is an answer.
  */
-const HELD_OUTCOMES = new Set<CalendarAlertOutcome>(['gate_refused:quiet_hours', 'over_sweep_cap']);
+const HELD_OUTCOMES = new Set<CalendarAlertOutcome>(['gate_refused:quiet_hours']);
 
 /**
  * Keyed on the CONNECTION, the event and Google's `updated` stamp.
@@ -418,11 +409,8 @@ export async function alertParentForCalendarChanges(
       (a, b) => a.startMs - b.startMs,
     ),
   ];
-  for (const [rank, offer] of offers.entries()) {
-    const outcome =
-      rank < CALENDAR_ALERT_MAX_PER_SWEEP
-        ? await sendOffer(database, input, parentUserId, offer, ports)
-        : 'over_sweep_cap';
+  for (const offer of offers) {
+    const outcome = await sendOffer(database, input, parentUserId, offer, ports);
     settle(offer, outcome, writes, now);
   }
 
@@ -505,13 +493,6 @@ async function sendOffer(
     // refused — and, for a hold that is a "not yet", half of a promise: the caller writes
     // the other half into the memory, so the syncToken moving past this change no longer
     // means nobody will ever offer it again.
-    //
-    // Not one per text OWED: a change the per-sweep cap held before the gate ever saw it
-    // is already owed by the time it is offered, and its refusal writes no row at all. The
-    // ledger is the surface a parent reads, and the sweep's own answer is where every
-    // ending is named and counted (rule #11) — a receipt that says "we did not text you"
-    // for a text the cap deferred is noise on the first surface and adds nothing to the
-    // second.
     //
     // A re-offer the gate refuses again is the SAME suppressed text, and a row per attempt
     // would be forty-odd of them per held text per quiet-hours night on the surface a
@@ -1190,8 +1171,7 @@ function previousWhen(previous: PriorStart, span: EventSpan, timeZone: string): 
  * `Swim lessons moved: 6 sessions now Tuesdays 5:00-5:45 p.m. starting Sep 22.`
  *
  * With `singleEvents=true` one edit to a weekly class is one change per instance, so the
- * only alternative to this sentence is six texts — or, once the per-sweep cap bites, five
- * texts and a silently dropped Tuesday. The count is the instances still AHEAD in this
+ * only alternative to this sentence is six texts. The count is the instances still AHEAD in this
  * batch, because the ones already behind are not sessions anybody is going to.
  *
  * The weekday-and-clock shape is claimed only when every instance really does share one.

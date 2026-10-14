@@ -8,7 +8,6 @@ import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
-  CALENDAR_ALERT_MAX_PER_SWEEP,
   CALENDAR_ALERT_PENDING_MAX_DAYS,
   CALENDAR_ALERT_TEMPLATE_KEY,
   type CalendarAlertOutcome,
@@ -546,39 +545,11 @@ describe('alertParentForCalendarChanges', () => {
     expect(rows[0]).toMatchObject({ status: 'failed', errorCode: 'no_send_target' });
   });
 
-  it('reads at most CALENDAR_ALERT_MAX_PER_SWEEP, SOONEST first, and names the rest', async () => {
+  it('does not let events already over take the place of one still ahead', async () => {
+    // With singleEvents=true, renaming a weekly class returns every instance, the past
+    // ones included. Those are outside the window. Tomorrow's class is still said.
     const h = harness();
-    // Seven events on seven consecutive days; the two LATEST must be the ones dropped.
-    const changes = Array.from({ length: 7 }, (_, i) => ({
-      ...TIMED,
-      eventId: `ev-${i}`,
-      start: { dateTime: `2026-09-${String(18 + i).padStart(2, '0')}T20:15:00.000Z` },
-      end: { dateTime: `2026-09-${String(18 + i).padStart(2, '0')}T21:00:00.000Z` },
-    }));
-
-    const outcomes = await sweep(h, { changes });
-
-    // One outcome per change, positionally — the two dropped are the two LAST, which is
-    // only visible because the answer is in input order.
-    expect(outcomes).toEqual([
-      ...Array.from({ length: CALENDAR_ALERT_MAX_PER_SWEEP }, () => 'sent'),
-      'over_sweep_cap',
-      'over_sweep_cap',
-    ]);
-    const keys = new Set((await ledgerRows()).map((r) => r.dedupeKey));
-    expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-0', TIMED.updated))).toBe(true);
-    expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-6', TIMED.updated))).toBe(false);
-  });
-
-  it('never lets stale edits to events already OVER spend the sweep', async () => {
-    // The shape that made this real: with singleEvents=true, renaming a weekly class
-    // returns every instance of the series with a fresh `updated`, the past ones
-    // included. Capped before the window is judged — and sorted soonest-first, which puts
-    // the finished ones at the front — five September Tuesdays that already happened take
-    // all five slots, and tomorrow's class is never offered again, because syncCalendar
-    // advanced the syncToken the moment it read the page.
-    const h = harness();
-    const stale = Array.from({ length: CALENDAR_ALERT_MAX_PER_SWEEP }, (_, i) => ({
+    const stale = Array.from({ length: 5 }, (_, i) => ({
       ...TIMED,
       eventId: `ev-past-${i}`,
       start: { dateTime: `2026-09-0${i + 1}T20:15:00.000Z` },
@@ -1015,9 +986,8 @@ describe('one edit to a series is one text', () => {
 
   it('collapses TWO instances of one series into one text, and leaves ONE alone', async () => {
     // The floor is SERIES_MIN_INSTANCES = 2: a second change about the same class in one
-    // sweep is the same news said twice, and one text costs one of the five slots instead
-    // of two. A lone instance is below the floor and stays an ordinary single — which is
-    // what a cancelled Tuesday inside a live term reduces to.
+    // sweep is the same news said twice. A lone instance is below the floor and stays an
+    // ordinary single — which is what a cancelled Tuesday inside a live term reduces to.
     const h = harness();
     const pair = instances().slice(0, 2);
     await expect(sweep(h, { changes: pair })).resolves.toEqual(['sent', 'collapsed_into_series']);
@@ -1032,9 +1002,7 @@ describe('one edit to a series is one text', () => {
     );
   });
 
-  it('spends ONE of the five per-sweep slots on a whole series', async () => {
-    // Before the collapse, one edit to a weekly class spent the entire budget on itself
-    // and everything else that sweep went unsaid for good.
+  it('sends one text for a series and still sends the other changes', async () => {
     const h = harness();
     const others = Array.from({ length: 4 }, (_, i) => ({
       ...TIMED,
@@ -1045,7 +1013,6 @@ describe('one edit to a series is one text', () => {
     }));
     const outcomes = await sweep(h, { changes: [...instances(), ...others] });
     expect(outcomes.filter((one) => one === 'sent')).toHaveLength(5);
-    expect(outcomes.filter((one) => one === 'over_sweep_cap')).toEqual([]);
     expect(h.transport.sent).toHaveLength(5);
   });
 });
@@ -1271,9 +1238,7 @@ describe('a change the gate held is offered again', () => {
     expect(afterwards.transport.sent).toEqual([]);
   });
 
-  it('puts the oldest debt first, and spends the SAME five slots on debts and new news', async () => {
-    // Four debts, four fresh changes, five slots: the debts go first and one fresh change
-    // is held over. A cap that counted them separately would send eight.
+  it('puts the oldest debt first, then the new changes', async () => {
     for (let i = 0; i < 4; i += 1) {
       await sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
         now: new Date(NOW.getTime() + i * 1000),
@@ -1299,14 +1264,11 @@ describe('a change the gate held is offered again', () => {
     });
 
     expect(both.reoffers).toEqual(['sent', 'sent', 'sent', 'sent']);
-    expect(both.changes).toEqual(['sent', 'over_sweep_cap', 'over_sweep_cap', 'over_sweep_cap']);
-    expect(h.transport.sent).toHaveLength(5);
+    expect(both.changes).toEqual(['sent', 'sent', 'sent', 'sent']);
+    expect(h.transport.sent).toHaveLength(8);
     // The debts were paid in the order they were owed, not soonest-event-first: owed-0 is
     // the LATEST event and still went first.
     expect(h.transport.sent[0]?.body).toContain('Friday, Sep 25');
-    // ...and the three that lost the cap are owed now, so nothing was dropped.
-    const carried = (await snapshotRows()).filter((row) => row.pendingSince !== null);
-    expect(carried.map((row) => row.eventId).sort()).toEqual(['new-1', 'new-2', 'new-3']);
   });
 });
 

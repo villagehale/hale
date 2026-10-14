@@ -2388,9 +2388,9 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
     askKey: 'names',
   });
   if (!gate.allow) {
-    // The day is already spent. A note here used to stay the reply on every
-    // later text ("ok", a Chinese message). Close instead and hand this text
-    // to the coach. Do not record it here: the handoff inserts that row.
+    // Declined, paused, already asked, or stop-asking. A note here used to stay
+    // the reply on every later text ("ok", a Chinese message). Close instead
+    // and hand this text to the coach. Do not record it here: the handoff inserts that row.
     console.info({ reason: gate.reason, ask: 'names' }, 'cold-start names: held');
     await closeColdStartForCoach(database, session, inbound, now);
     return { status: 'ignored', reason: 'no_open_conversation' };
@@ -2930,7 +2930,6 @@ async function friendColdTurn(
       now,
       sendClass: ask,
       askKey: ask,
-      onboardingSequence: true,
     });
     let carried = false;
     if (gate.allow) {

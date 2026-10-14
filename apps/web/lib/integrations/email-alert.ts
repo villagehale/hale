@@ -27,7 +27,7 @@ import type {
   SentinelClassification,
 } from '~/lib/sentinel';
 import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
-import { BOOKED_BACKFILL_MAX_PER_SWEEP, bookedDetectionEnabledFor } from './booked';
+import { bookedDetectionEnabledFor } from './booked';
 import {
   type BookingDraftResult,
   bookingCancellationKey,
@@ -117,7 +117,6 @@ export const EMAIL_ALERT_OUTCOMES = [
   'seeding_run',
   /** Historical mail recorded by the booked-detection backfill. No text was sent. */
   'backfill_suppressed',
-  'over_sweep_cap',
   'no_received_at',
   'gate_refused:not_enrolled',
   'gate_refused:no_watch_consent',
@@ -207,12 +206,6 @@ export interface EmailAlertResult {
    */
   going: GoingOutcome | null;
 }
-
-/** At most this many messages per connection per sweep reach the classifier, newest
- * first. A 15-minute cron over a mailbox that just received a hundred messages is the
- * shape this bounds: the cap on what may be SENT is the outbound gate's, and this is the
- * cap on what may be SPENT — ten model calls, not a hundred. */
-export const EMAIL_ALERT_MAX_PER_SWEEP = 10;
 
 export const EMAIL_ALERT_TEMPLATE_KEY = 'connector:email_alert';
 
@@ -900,13 +893,9 @@ function logSweepOutcomes(
   }
 }
 
-function datedEnvelopes(
-  envelopes: readonly GmailAlertEnvelope[],
-  limit = EMAIL_ALERT_MAX_PER_SWEEP,
-): {
+function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {
   skipped: EmailAlertResult[];
   considered: Array<GmailAlertEnvelope & { receivedAt: string }>;
-  capped: EmailAlertResult[];
 } {
   const skipped: EmailAlertResult[] = [];
   const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
@@ -916,11 +905,7 @@ function datedEnvelopes(
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  const capped: EmailAlertResult[] = [];
-  for (let i = limit; i < dated.length; i += 1) {
-    capped.push({ alert: 'over_sweep_cap', booking: null, going: null });
-  }
-  return { skipped, considered: dated.slice(0, limit), capped };
+  return { skipped, considered: dated };
 }
 
 /**
@@ -1052,14 +1037,9 @@ export async function alertParentForGmailSweep(
   }
 
   if (input.backfill === true) {
-    // The live sweep's cap is ten texts. A backfill is not a text: the sync
-    // already stopped at its time budget, and applying the text cap here would
-    // mark the rest over_sweep_cap and never record them.
-    const { skipped, considered, capped } = datedEnvelopes(
-      envelopes,
-      BOOKED_BACKFILL_MAX_PER_SWEEP,
-    );
-    const outcomes: EmailAlertResult[] = [...skipped, ...capped];
+    // A backfill is not a text. Every dated envelope this pass was handed is recorded.
+    const { skipped, considered } = datedEnvelopes(envelopes);
+    const outcomes: EmailAlertResult[] = [...skipped];
     if (considered.length > 0) {
       const timeZone = await ports.timeZone(parentUserId);
       const cancelledThisSweep = new Set<string>();
@@ -1100,8 +1080,8 @@ export async function alertParentForGmailSweep(
     return outcomes;
   }
 
-  const { skipped, considered, capped } = datedEnvelopes(envelopes);
-  const outcomes: EmailAlertResult[] = [...skipped, ...capped];
+  const { skipped, considered } = datedEnvelopes(envelopes);
+  const outcomes: EmailAlertResult[] = [...skipped];
   if (considered.length === 0) {
     logSweepOutcomes(input, outcomes);
     return outcomes;
