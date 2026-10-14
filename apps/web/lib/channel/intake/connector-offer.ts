@@ -11,9 +11,7 @@ import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import {
   INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
   INTAKE_GMAIL_CARD_TEMPLATE_KEY,
-  intakeCalendarCard,
   intakeConnectorOffer,
-  intakeGmailCard,
 } from './copy';
 import type { ChannelTransport } from './transport';
 
@@ -79,6 +77,8 @@ export type ConnectorOfferOutcome =
   | { status: 'not_sent'; reason: 'not_enrolled' }
   /** The token or its audit row did not land, so there is no link to send. */
   | { status: 'not_sent'; reason: 'mint_failed' }
+  /** The model wrote no card prose. There is no fixed fallback, so nothing is sent. */
+  | { status: 'not_sent'; reason: 'voice_unsent' }
   /** The message did not reach the parent. `code` is the provider's when the provider
    * refused it, and `unexpected` when something else on this path threw. */
   | { status: 'not_sent'; reason: 'send_failed'; code: string };
@@ -302,15 +302,13 @@ export async function sendYearConnectorCards(
     provider: 'gcal',
     templateKey: INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
     dedupeKey: calendarCardDedupeKey(args.familyId),
-    render: (url) =>
-      voiceCardBody(args.voice?.gcal, url, intakeCalendarCard(args.language, url), args.language),
+    render: (url) => voiceCardBody(args.voice?.gcal, url),
   };
   const gmailSpec: ConnectorCard = {
     provider: 'gmail',
     templateKey: INTAKE_GMAIL_CARD_TEMPLATE_KEY,
     dedupeKey: gmailCardDedupeKey(args.familyId),
-    render: (url) =>
-      voiceCardBody(args.voice?.gmail, url, intakeGmailCard(args.language, url), args.language),
+    render: (url) => voiceCardBody(args.voice?.gmail, url),
   };
   const calendarClaim =
     args.only === 'gmail' ? null : await claimConnectorCard(database, args, calendarSpec);
@@ -373,14 +371,10 @@ export async function sendYearConnectorCards(
 }
 
 /** Prose plus the minted URL. A model-written URL is dropped before the real one is attached. */
-function voiceCardBody(
-  prose: string | undefined,
-  url: string,
-  locked: string,
-  _language: ReplyLanguage,
-): string {
+function voiceCardBody(prose: string | undefined, url: string): string | null {
   const clean = prose?.replace(/https?:\/\/\S+/g, '').trim();
-  if (!clean) return locked;
+  // No model prose, no card: there is no fixed fallback line.
+  if (!clean) return null;
   // The model writes the trust line and the unverified-app heads-up.
   // Code appends only the minted URL.
   return `${clean}\n${url}`;
@@ -390,7 +384,7 @@ interface ConnectorCard {
   provider: 'gcal' | 'gmail';
   templateKey: string;
   dedupeKey: string;
-  render: (url: string) => string;
+  render: (url: string) => string | null;
 }
 
 async function claimConnectorCard(
@@ -442,8 +436,12 @@ async function deliverConnectorCard(
     await failClaim(database, claimId, 'mint_failed');
     return { status: 'not_sent', reason: 'mint_failed' };
   }
+  const body = card.render(url);
+  if (body == null) {
+    await failClaim(database, claimId, 'voice_unsent');
+    return { status: 'not_sent', reason: 'voice_unsent' };
+  }
   try {
-    const body = card.render(url);
     let sent: {
       providerMessageId: string;
       transport?: 'sms' | 'whatsapp' | 'imessage';
