@@ -645,7 +645,8 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     step: input.step,
     // A hint only when certain; the parent's words decide the reply's language (#868).
     languageHint: certainLanguageHint(input.language),
-    address: input.address,
+    // tu/vous is French-only; sent bare it pulled English and Chinese hellos into French.
+    ...(certainLanguageHint(input.language) === 'fr' ? { address: input.address } : {}),
     introduce: input.introduce,
     parentWords: input.parentWords,
     // A message Hale sends on its own (after a connect, a card) answers nothing.
