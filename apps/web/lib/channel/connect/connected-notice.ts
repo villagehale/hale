@@ -10,7 +10,6 @@ import {
   pageOncePerDay,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
-import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import {
   type OnboardingChecklist,
   agesAreComplete,
@@ -43,7 +42,7 @@ import {
   loadKidContext,
 } from './aha-kids';
 import { type AhaSnapshot, failedAha } from './aha-read';
-import { type TextConnectProvider, connectorConnectedText } from './text-connect';
+import type { TextConnectProvider } from './text-connect';
 
 /**
  * The text back that ends the texted connect: the parent tapped a link in a thread,
@@ -85,7 +84,7 @@ export interface ConnectedNoticePorts {
   imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
   threadMessage: typeof threadProactiveMessage;
   /**
-   * Friend voice for the 1:1 receipt when ONBOARDING_FRIEND_VOICE_ENABLED is on.
+   * Friend voice for the 1:1 receipt.
    * Absent, or a compose that fails, sends nothing canned. The next callback
    * can retry.
    */
@@ -138,8 +137,7 @@ export function connectedNoticeLabel(outcome: ConnectedNoticeOutcome): Connected
  * still leaves one path that proves the real transport is reachable. */
 export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const client =
-    onboardingFriendVoiceEnabled() && apiKey ? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS) : null;
+  const client = apiKey ? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS) : null;
   return {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
@@ -149,7 +147,7 @@ export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
   };
 }
 
-/** The 1:1 receipt. Flag off keeps the locked sentence. Flag on asks the model.
+/** The 1:1 receipt, written by the model.
  * A failed compose returns an empty string and the caller does not send it. */
 export async function connectedReceiptBody(
   language: ReplyLanguage,
@@ -164,7 +162,6 @@ export async function connectedReceiptBody(
     nameStored?: boolean;
   },
 ): Promise<string> {
-  if (!onboardingFriendVoiceEnabled()) return connectorConnectedText(language, provider);
   const spoken = await speakFriend(
     composer,
     {
@@ -288,7 +285,7 @@ async function sendReceipt(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
 
-  if (onboardingFriendVoiceEnabled() && args.aha == null) {
+  if (args.aha == null) {
     console.error(
       { familyId, provider },
       'connector connected: aha not supplied - the receipt will not name an event',
@@ -297,11 +294,10 @@ async function sendReceipt(
   // HARD RULE: the one useful line is about the kids only. Items the
   // classifier does not read as about a child or a kid activity never reach
   // the model. A mailbox or calendar with nothing kid-related yields no mention.
-  const session = onboardingFriendVoiceEnabled() ? await openOnboarding(database, familyId) : null;
-  const aha =
-    onboardingFriendVoiceEnabled() && args.aha
-      ? await kidRelatedAha(args.aha, await loadKidContext(database, familyId, now), ports.kidItems)
-      : args.aha;
+  const session = await openOnboarding(database, familyId);
+  const aha = args.aha
+    ? await kidRelatedAha(args.aha, await loadKidContext(database, familyId, now), ports.kidItems)
+    : args.aha;
   if (aha && aha.read === 'none_for_kids') {
     console.info({ familyId, provider }, 'connector connected: nothing kid-related to mention');
   }
@@ -409,10 +405,6 @@ async function continueAfterReceipt(
   },
   ports: ConnectedNoticePorts,
 ): Promise<void> {
-  if (!onboardingFriendVoiceEnabled()) {
-    if (args.provider === 'gcal') await sendGmailCardAfterCalendarReceipt(database, args, ports);
-    return;
-  }
   if (args.provider === 'gmail') {
     await sendCalendarCardAfterGmailReceipt(database, args, ports);
     return;
@@ -450,58 +442,6 @@ function receiptTransport(
       return ports.transport.send(input);
     },
   };
-}
-
-/**
- * The Gmail card follows a calendar receipt in the same turn (flag off). The
- * year ladder used to wait for the parent's next text ("Ok") before sending it.
- * A card already sent stays `already_sent`. A failure here does not un-send
- * the receipt.
- */
-async function sendGmailCardAfterCalendarReceipt(
-  database: Database,
-  args: {
-    familyId: string;
-    parentUserId: string;
-    now: Date;
-    chatId: string | null;
-    phone: string;
-  },
-  ports: ConnectedNoticePorts,
-): Promise<void> {
-  try {
-    const phone = args.phone || (await resolveSendablePhone(database, args.parentUserId)) || '';
-    if (!phone && !args.chatId) {
-      console.info(
-        { familyId: args.familyId },
-        'connector connected: gmail card not sent - no phone and no chat',
-      );
-      return;
-    }
-    const language = await familyReceiptLanguage(database, args.familyId);
-    const cards = await sendYearConnectorCards(
-      database,
-      {
-        familyId: args.familyId,
-        parentUserId: args.parentUserId,
-        phoneE164: phone || 'unaddressed',
-        language,
-        now: args.now,
-        ridesReply: true,
-        only: 'gmail',
-      },
-      { transport: receiptTransport(args, ports), threadMessage: ports.threadMessage },
-    );
-    console.info(
-      { familyId: args.familyId, gmail: cards.gmail },
-      'connector connected: gmail card after the calendar receipt',
-    );
-  } catch (err) {
-    console.error(
-      { familyId: args.familyId, err: err instanceof Error ? err.name : 'unknown' },
-      'connector connected: gmail card after the calendar receipt failed',
-    );
-  }
 }
 
 /**

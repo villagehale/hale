@@ -21,7 +21,6 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { createIntakeAnswerComposer } from '~/lib/channel/intake/answer';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
-import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
@@ -99,9 +98,7 @@ export function buildIntakeDeps(
     answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
     limiter: new PostgresRateLimiter(database),
-    // The week search stays unwired until friend voice is on. Off, the ladder
-    // still sends the locked empty line (the current production behaviour).
-    ...(onboardingFriendVoiceEnabled() ? { weekFinder: createActivityFinder(activityClient) } : {}),
+    weekFinder: createActivityFinder(activityClient),
   };
 }
 

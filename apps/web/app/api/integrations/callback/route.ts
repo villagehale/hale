@@ -16,7 +16,6 @@ import {
   asTextConnectProvider,
 } from '~/lib/channel/connect/text-connect';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
-import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
@@ -397,7 +396,6 @@ async function ahaForTextConnect(
     now: Date;
   },
 ): Promise<AhaSnapshot | undefined> {
-  if (!onboardingFriendVoiceEnabled()) return undefined;
   let hasTeen = true;
   try {
     hasTeen = await familyHasTeen(database, input.familyId, input.now);
