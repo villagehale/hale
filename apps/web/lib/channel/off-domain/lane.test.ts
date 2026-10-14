@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   type GeneralAnswerFallback,
@@ -29,6 +29,12 @@ import {
 } from './lane';
 import type { MedicalReply } from './medical';
 import { type LaneReading, type LaneScreenFallback, createInboundLaneScreen } from './screen';
+
+// The live search is on by default in production. These tests describe the kill switch
+// (dark) unless a test lights it, so each starts dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * VIL-273 / boundary v3 — the lane's decisions, with no model and no database.

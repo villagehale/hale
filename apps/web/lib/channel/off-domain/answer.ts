@@ -119,12 +119,12 @@ export type { HomePlace, LiveSearch, PendingAsk };
 export const GENERAL_ANSWER_SEARCH_ENABLED_ENV = 'GENERAL_ANSWER_SEARCH_ENABLED';
 
 /**
- * The live search is a new outbound data flow with a per-request fee, so it is dark until
- * lit. STRICT equality on the literal 'true': a piped `vercel env add` stores 'true\n',
- * which must stay off.
+ * A question of fact is answered from a search, never from memory, so the live search is
+ * ON by default. The variable is only a kill switch: STRICT equality on the literal
+ * 'false' turns it off, and anything else (unset, 'true', a piped 'false\n') leaves it on.
  */
 export function generalAnswerSearchEnabled(): boolean {
-  return process.env[GENERAL_ANSWER_SEARCH_ENABLED_ENV] === 'true';
+  return process.env[GENERAL_ANSWER_SEARCH_ENABLED_ENV] !== 'false';
 }
 
 /** Bounded because the provider bills per search. The same bound intake/live-lookup.ts

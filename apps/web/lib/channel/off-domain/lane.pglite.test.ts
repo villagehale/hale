@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { GENERAL_ANSWER_SEARCH_ENABLED_ENV } from './answer';
 import {
@@ -10,6 +10,12 @@ import {
   readPendingAsk,
   settlePendingAsks,
 } from './lane';
+
+// The live search is on by default in production. These tests describe the kill switch
+// (dark) unless a test lights it, so each starts dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * The lane's reads of the family through its PRODUCTION wiring, against the real DDL.
@@ -276,25 +282,31 @@ describe("the family's city and country, through the production wiring", () => {
       { city: 'Denver', province_or_state: 'Colorado', country: 'United States' },
       ['80202', '802', '"CO"'],
     ],
-  ])('sends the search the city of %s, worked out from the postal code', async (_label, stored, place, never) => {
-    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-    const { familyId, parentUserId, channelMessageId } = await seedFamily({ city: null, ...stored });
-    const { client, seen } = scripted();
+  ])(
+    'sends the search the city of %s, worked out from the postal code',
+    async (_label, stored, place, never) => {
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const { familyId, parentUserId, channelMessageId } = await seedFamily({
+        city: null,
+        ...stored,
+      });
+      const { client, seen } = scripted();
 
-    await productionOffDomainLane(db.database, client).consider({
-      familyId,
-      parentUserId,
-      channelMessageId,
-      text: 'hows the weather tomorrow',
-      now: NOW,
-      thread: DIRECT,
-    });
+      await productionOffDomainLane(db.database, client).consider({
+        familyId,
+        parentUserId,
+        channelMessageId,
+        text: 'hows the weather tomorrow',
+        now: NOW,
+        thread: DIRECT,
+      });
 
-    expect(seen.search.map((content) => JSON.parse(content).place)).toEqual([place]);
-    const sent = JSON.stringify(seen);
-    for (const finer of never) expect(sent).not.toContain(finer);
-  });
+      expect(seen.search.map((content) => JSON.parse(content).place)).toEqual([place]);
+      const sent = JSON.stringify(seen);
+      for (const finer of never) expect(sent).not.toContain(finer);
+    },
+  );
 
   /** A stored city is free text, and none of it leaves. One that is not a place name is
    * ignored, and the city is the one the family's postal area belongs to. */
@@ -333,7 +345,7 @@ describe("the family's city and country, through the production wiring", () => {
   it.each([
     ['a group thread', { ...GROUP_CHAT }, 'group_thread'],
     ['a thread the job does not describe', { ...OWN_CHAT, inGroup: undefined }, 'thread_unknown'],
-  ])("reads no family row and sends no place in %s", async (_label, thread, reason) => {
+  ])('reads no family row and sends no place in %s', async (_label, thread, reason) => {
     vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const stored = {
@@ -794,7 +806,7 @@ describe('readPendingAsk', () => {
    * Sloane's finding 2. A question is open to a text in the thread it was asked in and
    * nowhere else: the answer goes to whoever is in the chat the next text came from.
    */
-  it('does not read a question asked in the parent\'s own chat for a text in a group, or the reverse', async () => {
+  it("does not read a question asked in the parent's own chat for a text in a group, or the reverse", async () => {
     const OTHER = { status: 'other_thread' };
     const inOwnChat = await seedFamily(NO_PLACE);
     await sentReply({
@@ -808,7 +820,12 @@ describe('readPendingAsk', () => {
     expect(await read(inOwnChat, NOW, OWN_CHAT)).toEqual(OPEN);
 
     const inGroup = await seedFamily(NO_PLACE);
-    await sentReply({ ...inGroup, createdAt: minutesBefore(2), pending: ASKED, thread: GROUP_CHAT });
+    await sentReply({
+      ...inGroup,
+      createdAt: minutesBefore(2),
+      pending: ASKED,
+      thread: GROUP_CHAT,
+    });
     expect(await read(inGroup, NOW, OWN_CHAT)).toEqual(OTHER);
     expect(await read(inGroup, NOW, GROUP_CHAT)).toEqual(OPEN);
   });

@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickModel } from '@hale/agent';
 import { UNMET_INTENT_CATEGORIES } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type FamilyFacts,
   type FamilyPlace,
@@ -31,6 +31,12 @@ import {
   safetyDoorFor,
 } from './answer-request';
 import { COMPOSE_MAX_TOKENS } from './medical';
+
+// The live search is on by default in production. These tests describe the kill switch
+// (dark) unless a test lights it, so each starts dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * The general answer's MECHANICS. Not its judgement.
@@ -318,19 +324,21 @@ describe('localDate', () => {
 });
 
 describe('GENERAL_ANSWER_SEARCH_ENABLED', () => {
-  it('is dark by default', () => {
-    expect(generalAnswerSearchEnabled()).toBe(false);
-  });
-
-  it('is lit by exactly true', () => {
-    lit();
+  it('is on by default', () => {
+    vi.unstubAllEnvs();
+    delete process.env[GENERAL_ANSWER_SEARCH_ENABLED_ENV];
     expect(generalAnswerSearchEnabled()).toBe(true);
   });
 
-  /** A piped `vercel env add` stores 'true\n'. No trim, so that stays dark. */
-  it.each(['True', 'true\n', ' true', '1', 'on', ''])('stays dark for %j', (value) => {
-    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, value);
+  it('is turned off by exactly false', () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
     expect(generalAnswerSearchEnabled()).toBe(false);
+  });
+
+  /** Only the exact kill switch turns it off: a piped 'false\n' leaves it on. */
+  it.each(['true', 'True', 'false\n', ' false', '0', 'off', ''])('stays on for %j', (value) => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, value);
+    expect(generalAnswerSearchEnabled()).toBe(true);
   });
 });
 
