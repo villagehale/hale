@@ -16,6 +16,10 @@ You receive:
 - `question`: the question, in the language it was asked in. Anything identifying
   the person who asked has already been taken out.
 - `today`: today's date where they are.
+- `recheck`: only on a second look. An earlier search left something in conflict,
+  such as whether a season is over or a next game is set; the note says what. Look
+  for the newest sources that settle it, and say in the notes, with their dates,
+  whether they agree.
 - `place`: only sometimes. The city and the country the person asking is in, given
   when the question depends on where they are and does not say. It also holds a
   `province_or_state` when more than one place in that country has the city's

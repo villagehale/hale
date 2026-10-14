@@ -241,11 +241,14 @@ export function searchUserMessage(input: {
   question: string;
   today: string;
   place?: HomePlace | null;
+  /** On a second look: what the pre-send reader found the first notes left in conflict. */
+  recheck?: string;
 }): string {
   const place = input.place;
   return JSON.stringify({
     question: input.question,
     today: input.today,
+    ...(input.recheck ? { recheck: input.recheck } : {}),
     ...(place
       ? {
           place: {
@@ -302,8 +305,9 @@ export const checkJsonSchema = {
   properties: {
     verdict: { type: 'string', enum: ['send', 'redraft'] },
     reason: { type: 'string' },
+    search_again: { type: 'boolean' },
   },
-  required: ['verdict', 'reason'],
+  required: ['verdict', 'reason', 'search_again'],
   additionalProperties: false,
 } as const;
 
@@ -326,8 +330,21 @@ export function generalAnswerCheckUserMessage(input: {
 /** Which drafts the pre-send read sees: one written from notes, and one written when
  * nothing could be checked (where a count from memory is the risk). */
 export function preSendReadApplies(search: LiveSearch, notes: string): boolean {
+  // Every draft is read: one from notes against them, one with nothing checked for what
+  // it states from memory, and any of them for whether it sounds like a friend.
   if (search === 'searched') return notes !== '';
-  return liveAsTold(search) === 'unavailable';
+  return true;
+}
+
+/** FAIL TOWARD NOT SEARCHING AGAIN: only an explicit `true` on a redraft of a searched
+ * draft looks again. */
+export function wantsSearchAgain(raw: { search_again?: unknown }, search: LiveSearch): boolean {
+  return search === 'searched' && raw.search_again === true;
+}
+
+/** The notes the redraft writes from: the first look, then the second beside it. */
+export function notesWithRecheck(first: string, second: string): string {
+  return second === '' ? first : `${first}\n\n[second look]\n${second}`;
 }
 
 /** FAIL TOWARD SENDING THE FIRST DRAFT: only an explicit `redraft` with a reason sends it

@@ -1220,6 +1220,7 @@ async function main() {
       notes,
       missing,
       searchMessage,
+      place,
       latencyMs: sanitize.latencyMs + searchLatencyMs,
     };
   }
@@ -1283,17 +1284,52 @@ async function main() {
       const reason = request.wantsRedraft(read.value ?? {});
       if (reason !== null) {
         const first = composed;
+        // Production's second look (answer.ts): a status the notes left in conflict is
+        // searched once more before the redraft. A fixture with canned notes has no live
+        // search to repeat, so its redraft writes from the notes it has.
+        let redraftRequest = composeRequest;
+        let againMs = 0;
+        if (
+          request.wantsSearchAgain(read.value ?? {}, found.search) &&
+          found.searchMessage !== ''
+        ) {
+          const again = await cachedSearch({
+            tag: `general-answer-search-again:${drawTag(fixture.id, draw)}`,
+            model: searchModel,
+            system: searchSkill.instructions,
+            userMessage: request.searchUserMessage({
+              question: found.question,
+              today: EVAL_TODAY,
+              place: found.place ?? null,
+              recheck: reason,
+            }),
+            cachedOnly,
+            getClient,
+            cost,
+          });
+          againMs = again.latencyMs;
+          const usable =
+            again.stopReason === 'end_turn' && again.urls.length > 0 && again.notes !== '';
+          redraftRequest = request.generalAnswerUserMessage({
+            question: found.question,
+            language: found.language,
+            today: EVAL_TODAY,
+            search: found.search,
+            notes: request.notesWithRecheck(found.notes ?? '', usable ? again.notes : ''),
+            missing: found.missing,
+          });
+        }
         composed = await draftOnce(
           `general-answer-redraft:${drawTag(fixture.id, draw)}`,
           request.generalAnswerRedraftUserMessage(
-            composeRequest,
+            redraftRequest,
             String(first.value.answer ?? ''),
             reason,
           ),
         );
         composed = {
           ...composed,
-          latencyMs: first.latencyMs + read.latencyMs + composed.latencyMs,
+          latencyMs: first.latencyMs + read.latencyMs + againMs + composed.latencyMs,
         };
       }
     }

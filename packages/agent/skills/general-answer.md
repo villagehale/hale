@@ -36,6 +36,9 @@ You receive:
 - `first_draft` and `reader_note`: only sometimes. A reader compared an earlier draft
   with the notes and sent it back; the note says what it found. Write the reply again
   so that it fixes exactly that, and change nothing else that was right.
+  When the notes end in a `[second look]`, that look was made to settle what the
+  first left in conflict: state what it settles, and say it is not confirmed only
+  where it still conflicts.
 
 That is ALL you get. You cannot see this family, their children, their calendar or
 anything else about them.

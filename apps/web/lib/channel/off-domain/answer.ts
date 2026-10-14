@@ -28,7 +28,9 @@ import {
   scrubDirectIdentifiers,
   searchUserMessage,
   turnsOnTheirPlace,
+  notesWithRecheck,
   wantsRedraft,
+  wantsSearchAgain,
 } from './answer-request';
 import { normalizeLanguage } from './medical';
 import type { Moment } from './moment-reply';
@@ -251,7 +253,11 @@ const sanitizeSchema = z.object({
 const answerSchema = z.object({ hurt_ill_or_danger: z.unknown(), answer: z.string() });
 
 /** The pre-send reader's verdict, taken loosely: anything but a reasoned `redraft` sends. */
-const checkSchema = z.object({ verdict: z.unknown(), reason: z.unknown() });
+const checkSchema = z.object({
+  verdict: z.unknown(),
+  reason: z.unknown(),
+  search_again: z.unknown().optional(),
+});
 
 /**
  * Today's date as the search and the compose are told it: the weekday and the full date
@@ -388,6 +394,7 @@ async function liveSearch(
   question: string,
   today: string,
   place: HomePlace | null,
+  recheck?: string,
 ): Promise<{ search: LiveSearch; findings: SearchFindings }> {
   if (!generalAnswerSearchEnabled()) {
     return { search: wentWithout('search_off'), findings: NO_FINDINGS };
@@ -400,7 +407,9 @@ async function liveSearch(
         max_tokens: SEARCH_MAX_TOKENS,
         system: skill.instructions,
         tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
-        messages: [{ role: 'user', content: searchUserMessage({ question, today, place }) }],
+        messages: [
+          { role: 'user', content: searchUserMessage({ question, today, place, recheck }) },
+        ],
       })
       .finalMessage();
   } catch (err) {
@@ -710,6 +719,7 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
       ).value;
     try {
       let value = await draftOnce(composeRequest);
+      let urls = findings.urls;
       // Phase 3 — READ IT AGAINST THE NOTES. A reply written from notes is read against them,
       // and one written when nothing could be checked is read for counts from memory; a
       // safety door is not a draft. The reader's verdict is the
@@ -720,6 +730,7 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
         hurtIllOrDanger(value.hurt_ill_or_danger) === null
       ) {
         let reason: string | null = null;
+        let again = false;
         try {
           const { value: verdict } = await forceToolJson({
             client: stage.client,
@@ -739,6 +750,7 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
             maxTokens: CHECK_MAX_TOKENS,
           });
           reason = wantsRedraft(verdict);
+          again = reason !== null && wantsSearchAgain(verdict, search);
         } catch (err) {
           console.warn(
             { reason: failureName(err) },
@@ -750,12 +762,35 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
             { check: 'redraft' },
             'off-domain answer: the pre-send read asked for one more draft',
           );
-          value = await draftOnce(
-            generalAnswerRedraftUserMessage(composeRequest, value.answer, reason),
-          );
+          // A status the notes left in conflict is looked up once more before the
+          // redraft; the redraft hedges it only if the second look still conflicts.
+          let request = composeRequest;
+          if (again) {
+            const second = await liveSearch(
+              stage.client,
+              stage.search,
+              question,
+              today,
+              place,
+              reason,
+            );
+            if (second.search === 'searched') urls = [...urls, ...second.findings.urls];
+            request = generalAnswerUserMessage({
+              question,
+              language,
+              today,
+              search,
+              notes: notesWithRecheck(
+                findings.notes,
+                second.search === 'searched' ? second.findings.notes : '',
+              ),
+              missing,
+            });
+          }
+          value = await draftOnce(generalAnswerRedraftUserMessage(request, value.answer, reason));
         }
       }
-      return sendable(value, search, findings.urls, leftOpen(search, question, missing));
+      return sendable(value, search, urls, leftOpen(search, question, missing));
     } catch (err) {
       return unavailable('model_failed', failureName(err));
     }
