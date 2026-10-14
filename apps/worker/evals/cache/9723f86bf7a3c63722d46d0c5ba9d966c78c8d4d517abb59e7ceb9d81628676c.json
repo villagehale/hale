@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by the research notes: the NIH line, the UC Davis and GoodRx time limits, the conflicting doses, and the November 2025 AHA abstract with its caveats. It opens with a real answer and handles safety well. It points to a doctor or pharmacist for dosing, and flags other medication, older age and ongoing sleep trouble. It quotes the dose ranges only to show they conflict, not as a regimen. The register is the weak spot. It strings source after source together like a research brief rather than a friend texting back, which keeps it from a top score.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

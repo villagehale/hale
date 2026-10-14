@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by the research notes: no Oakville Costco yet, fall 2027 on Wyecroft near Burloak, and open warehouses at 1225 Brant St in Burlington and 3180 Laird Rd in Mississauga. Nothing is invented. But the parent already gave a full address, and the reply still asks \"which part of Oakville are you in?\" That reads as not listening. It could simply have said it can only go by the town. It also misses a useful heads-up from the notes: the Burlington store looked closed today for Thanksgiving. The tone is casual enough, but it ends on an unnecessary question instead of a clean answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

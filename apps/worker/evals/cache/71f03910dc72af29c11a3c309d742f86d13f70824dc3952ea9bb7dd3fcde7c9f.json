@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The one pick is a real, specific venue in Ottawa: the Canada Science and Technology Museum, with its ZOOOM Children's Innovation Zone, which suits a preschooler. It is sourced from Ingenium, the museum's own operator, and is something the family can turn up to. It is not a session or registration item, which matters on the Labour Day weekend. A null price is acceptable. One pick is within the limit, though a thin result. The fault is the `when` field. It cites 'Tuesday to Sunday' hours but lists the open days as Aug 30, Sept 1 and Sept 2. That doesn't map correctly in either plausible year: it drops Aug 31 (a Sunday) and includes Sept 1 (Labour Day Monday), so the dates look mis-derived from the stated hours. It is a solid find, marked down for that inaccuracy.",
+    "score": 4
+  }
+}

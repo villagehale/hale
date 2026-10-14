@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The picks are real and local Halton Hills programs that fit a toddler, each with a session start. The message leads with the gymnastics centre by name and attributes it ('their site says', 'the town's'). With no_page_read, the gap is correctly phrased as 'I could not get into their page today', no price is invented, and the watch=true first-person promise is present. Dropping Tiny Dancers whole is fine. Problems: the message is three sentences at roughly 335 characters, which breaks the two-segment hard ceiling and the one-or-two-short-sentences rule. 'Their site says' sits awkwardly beside 'could not get into their page'. 'When I can confirm the rest' edges toward implying verification.",
+    "score": 3
+  }
+}

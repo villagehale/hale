@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are faithful to the page: two real preschool levels with the day, times and session dates exactly as printed. Price is correctly null, since fees sit in the Recreation Guide rather than on the page. Both carry the full registration text and the source URL, and no third level was invented. The message leads with Preschool A by name, adds B compactly, and attributes the facts with 'their site says'. It carries the registration opening (Tues Aug 11, 7am, residents), which matters because registration has not opened yet. Under page_has_schedule it uses the correct first-person gap ('I could not pin down the price') rather than 'not posted'. With watch=true, the first-person commitment to keep watching is legitimate. It is two plain-ASCII sentences with no link and no question.",
+    "score": 5
+  }
+}

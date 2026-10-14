@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The Vancouver, BC part matches the Environment Canada forecast in the notes: mix of sun and cloud, high 15°C, showers Tuesday night, low 11°C. It is stated plainly and briefly. However, the reply says it couldn't get a forecast for Vancouver, WA. The notes carry one: the NWS gives mostly sunny, high near 64, and other sources agree on a dry day in the mid-60s with possible early frost. That claim misrepresents what was found, and since the question didn't say which Vancouver, it drops half a usable answer. It's a process statement, not a world fact, so it isn't counted as a wrong fact. The phrasing is also a bit stiff for a friend texting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

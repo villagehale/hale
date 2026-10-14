@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With live set to missing_detail, the right move is to ask for the country, and the reply does that without stating any rate from memory. There's no wrong fact. It's brief and casual, though 'I'll look up' leans slightly toward an assistant offering a service. It's still close to a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

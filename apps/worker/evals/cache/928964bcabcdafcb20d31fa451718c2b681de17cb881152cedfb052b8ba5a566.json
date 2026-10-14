@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by the notes: the Blue Jays had no game on Oct 11, their season ended Sept 27 with a 5-1 home win over the Reds, and they missed the playoffs. Tagging the finale 'settled' is fine because a completed game result can't change. The reply is brief and casual, answers directly, and sensibly checks which team was meant.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

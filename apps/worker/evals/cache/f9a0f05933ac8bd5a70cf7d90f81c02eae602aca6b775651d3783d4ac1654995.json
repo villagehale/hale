@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lowest 5-year fixed insured (under 20% down) rate is 4.34%, as of Oct 12, 2026",
+        "from": "Ratehub, dated October 12, 2026: the best high-ratio 5-year fixed rate in Canada is 4.34%"
+      },
+      {
+        "states": "Lowest 5-year fixed uninsured (20% or more down) rate is 4.44%, as of Oct 9, 2026",
+        "from": "WOWA, dated October 9, 2026: The lowest 5-year fixed conventional (uninsured) rate is 4.44%"
+      },
+      {
+        "states": "Big bank average 5-year fixed is 5.14%, as of Oct 8, 2026",
+        "from": "Nesto, October 8: the Big 6 banks average 5.14% on a 5-year fixed"
+      },
+      {
+        "states": "BMO standard 5-year fixed is 5.14%, raised 20 bps on Oct 7",
+        "from": "A news report dated October 9 says BMO raised its standard 5-year fixed rate by 20 basis points to 5.14% on October 7"
+      },
+      {
+        "states": "Canadian mortgage rates are climbing in October 2026",
+        "from": "Canadian mortgage rates are climbing in October 2026, after all 6 of the largest banks raised select fixed rates since early September"
+      }
+    ],
+    "answer": "Lowest I can find today is about 4.34% for a 5-year fixed if your mortgage is insured (under 20% down). If you put 20% or more down, the lowest is around 4.44%. The big banks are higher, averaging about 5.14%, and BMO just moved its standard 5-year fixed up to 5.14%. Rates have been creeping up this month."
+  },
+  "latencyMs": 5897
+}

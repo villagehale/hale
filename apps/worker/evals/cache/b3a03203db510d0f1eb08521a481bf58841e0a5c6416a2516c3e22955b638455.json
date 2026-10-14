@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by research_notes: 4.34% for the lowest insured rate (Ratehub, today), 4.44% for the lowest uninsured rate (WOWA), a 5.14% big-bank average, BMO's rise to 5.14%, and the upward trend. It splits insured from uninsured as the notes do and reads like a casual, informed text. A minor nit: the 4.44% figure is from Oct 9, not today.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

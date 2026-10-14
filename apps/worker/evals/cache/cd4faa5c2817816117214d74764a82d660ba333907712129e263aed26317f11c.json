@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Covers both Vancouvers, sensibly, since the question didn't say which. The BC forecast matches Environment Canada exactly: mix of sun and cloud, high 15°C, showers Tuesday night, low 11. The WA high of 64–65°F and the dry day are supported. The 'low-to-mid 40s' low is backed by Weather Underground, AccuWeather and timeanddate, but it sits loosely against the NWS low of about 48, the source the notes rank most reliable. Leaving out the frost advisory is an omission, not a wrong fact. The tone is casual and it answers directly, like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

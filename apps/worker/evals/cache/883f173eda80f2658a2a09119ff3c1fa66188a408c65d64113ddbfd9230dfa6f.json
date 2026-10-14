@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Both forecasts are supported by the research notes. For BC: a mix of sun and cloud, high 15°C, showers Tuesday night, low 11°C. For WA: dry, high 64–65°F, low 41–45°F, which matches Weather Underground and Timeanddate. It sensibly covers both Vancouvers since the question left it open. The tone is brief and casual and it states the answer directly. It leaves out the WA frost advisory, but that isn't a wrong fact.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

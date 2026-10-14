@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Spanish, that Hale stop sending emails without asking first. The switch was turned off this turn, so the reply is a true confirmation. It is written in the parent's language, uses Sam's name from `knows.parent`, and is one plain sentence that stops. It does not explain machinery, ask a question or add a sign-off.",
+    "score": 5
+  }
+}

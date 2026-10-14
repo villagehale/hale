@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The detail is missing and the reply correctly asks which city, with no invented forecast. 'I'll check tomorrow's weather for you' reads a bit like an assistant offering a service, but it is brief and casual enough. A friend would more likely just say 'Which city?' The service-offer phrasing nudges it down slightly.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

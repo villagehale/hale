@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It rightly says it can't check tomorrow's forecast, but then guesses anyway: 'Mid-October is usually mild with a bit of rain around' is weather stated from memory, for an unknown location where it may not hold. watchFor says any forecast from memory is wrong. Pointing to a forecast app adds a look-it-up flavour, and the apologetic opening reads a little assistant-like rather than a casual friend line.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 2
+  }
+}

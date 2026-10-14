@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by research_notes: the closure for Thanksgiving, Friday's close of 35,664.62, the +519.24 point gain (1.48% is a correct rounding of 1.477%), the weak jobs report easing rate-hike worries, and trading resuming Oct 13 at 9:30 a.m. ET. It's brief, answers directly, and has no service-offer tone. It reads slightly newsy for a friend's text, which is a minor tone point.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

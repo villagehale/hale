@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Denver, Colorado, the city the forecast is for",
+        "from": "Research notes: Denver, Colorado, forecast for Tuesday, October 13, 2026"
+      },
+      {
+        "states": "Tuesday, October 13: partly sunny, with rain and showers possibly moving in Tuesday evening",
+        "from": "The Denver Gazette (NWS Boulder forecast) says partly sunny skies Tuesday, with rain and showers possibly moving in Tuesday evening."
+      },
+      {
+        "states": "Tuesday high of 65°F (NWS forecast)",
+        "from": "The NWS forecast high is 65°F."
+      },
+      {
+        "states": "Monday's high was 80",
+        "from": "Monday's high of 80."
+      },
+      {
+        "states": "Tuesday rain chance of 30% after 3 p.m. (NWS), rising into the evening",
+        "from": "NWS gives a 30% chance of rain after 3 p.m. The chances increase into the evening."
+      },
+      {
+        "states": "Tuesday night lows in the low 40s and 30s",
+        "from": "Lows are expected in the low 40s and 30s Tuesday night (NWS via Denver Gazette)."
+      },
+      {
+        "states": "North-northeast winds of 6 to 10 mph, turning east to northeast in the afternoon, gusts up to 17 mph",
+        "from": "North-northeast winds of 6 to 10 mph, turning east to northeast in the afternoon with gusts up to 17 mph."
+      }
+    ],
+    "answer": "Tomorrow in Denver looks a lot cooler than today. Expect partly sunny skies and a high around 65°F, about 15 degrees below Monday's 80. Clouds build through the day with a 30% chance of rain after 3 p.m., and showers could move in Tuesday evening. Lows drop into the 30s to low 40s overnight. Breezy from the northeast, with gusts up to 17 mph."
+  },
+  "latencyMs": 4959
+}

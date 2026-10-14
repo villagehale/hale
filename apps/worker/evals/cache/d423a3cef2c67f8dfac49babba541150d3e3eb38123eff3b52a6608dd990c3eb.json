@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada forecast in research_notes: mainly cloudy, 30% showers, thunderstorm risk early, clearing in the morning, high 29, humidex 35, and the wind details. It is for Windsor, Ontario, for the right day, and calling the 4:09 PM issue time 'Monday afternoon' is accurate. It answers directly without asking which city, and there is no offer or deflect. The tone is more weather bulletin than friend texting, though: the full wind breakdown and the source citation read like a recited report, not a casual text back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

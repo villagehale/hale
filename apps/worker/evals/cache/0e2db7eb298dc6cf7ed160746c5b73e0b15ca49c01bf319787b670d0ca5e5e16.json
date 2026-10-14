@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the notes: Environment Canada's mainly cloudy day with a high of 23 and no daytime rain, the Weather Network's 20% chance at 6-7pm, and showers with a thunderstorm risk starting overnight. It opens with a direct answer and stays clear of the family's school. It reads a bit like a recited forecast, though. It never ties back to the 3pm pickup ('should be dry for pickup'), and the 20% figure sits in a sentence led by Environment Canada when it actually came from the Weather Network. Correct, but slightly less friend-like than ideal.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

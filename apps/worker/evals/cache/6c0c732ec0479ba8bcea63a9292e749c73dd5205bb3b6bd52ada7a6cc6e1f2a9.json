@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are real and on the page. Tiny Gym's age band, 45-minute length and Term 1/2 dates match the schedule PDF exactly. Price is correctly null, since the page says pricing is only behind the registration login. The July 22, 2026 8:00am registration is carried and labelled as coming from the homepage. Rock n' Roll (0+) and Tumble & Learn (2y11m+) fit the toddler band, though Rock n' Roll leaves registration null even though the homepage covers all general programming. Registration is cited in text to the homepage while the sourceUrl points to the PDF, a small citation mismatch. The message is mostly good: it leads with Tiny Gym by name, attributes with 'their site says', carries the term dates and registration time, and uses the correct first-person 'I could not pin down the day or the price' for page_has_schedule. The watch=true first-person keep-watching commitment is correct, and there is no question or link. Deductions: it runs to three sentences rather than one or two short ones, and the registration fact sits outside the attribution.",
+    "score": 4
+  }
+}

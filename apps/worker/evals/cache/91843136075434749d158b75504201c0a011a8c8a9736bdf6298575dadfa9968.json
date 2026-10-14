@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Windsor, Ontario, forecast for Tuesday, October 13, 2026",
+        "from": "forecast for Windsor, Ontario, Canada, for Tuesday, October 13, 2026"
+      },
+      {
+        "states": "Tuesday daytime high 29 C, humidex 35",
+        "from": "High 29, humidex 35"
+      },
+      {
+        "states": "Tuesday early morning 30 percent chance of showers, risk of a thunderstorm, clearing in the morning, mainly cloudy",
+        "from": "Mainly cloudy with a 30 percent chance of showers early in the morning and a risk of a thunderstorm. Clearing in the morning."
+      },
+      {
+        "states": "Tuesday wind southwest 20 km/h gusting to 50, increasing to 40 km/h gusting to 60 late in the morning",
+        "from": "Wind is southwest 20 km/h gusting to 50, increasing to 40 gusting to 60 late in the morning."
+      },
+      {
+        "states": "Tuesday night 40 percent chance of showers before morning, risk of a thunderstorm, low 15 C",
+        "from": "Tuesday night: increasing cloudiness early in the evening, 40 percent chance of showers before morning with a risk of a thunderstorm, low 15."
+      }
+    ],
+    "answer": "Tuesday in Windsor looks hot and a bit stormy early on. High of 29, humidex around 35. Mainly cloudy with a 30% chance of showers and a risk of thunder early in the morning, clearing by late morning. It gets windy later in the morning, southwest at 40 km/h gusting to 60. Tuesday night drops to a low of 15 with a 40% chance of showers before morning."
+  },
+  "latencyMs": 5577
+}

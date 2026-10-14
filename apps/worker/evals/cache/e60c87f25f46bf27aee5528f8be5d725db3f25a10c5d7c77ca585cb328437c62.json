@@ -1,0 +1,27 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Parent and Tot 18 months - 3.11 yrs, Halton Hills Gymnastics Centre",
+        "age_fit": "18 months - 3.11 yrs",
+        "when": "Fall 2026 session Sept 12 - Dec 18, 30-minute classes",
+        "source_name": "Halton Hills Gymnastics Centre"
+      },
+      {
+        "name": "Parent & Tot swimming lessons (Parent and Tot 1/2/3), Acton fall schedule, Town of Halton Hills",
+        "age_fit": "4 months to 3 years (Parent and Tot 2: 12 to 24 months; Parent and Tot 3: 2 to 3 years)",
+        "when": "Saturday October 3 to Thursday December 3, 2026, 30-minute lessons",
+        "price": "$86.22 for 9 lessons",
+        "source_name": "Town of Halton Hills"
+      },
+      {
+        "name": "Tiny Dancers, Gellert Community Centre, Georgetown",
+        "age_fit": "2-3 yrs, one adult participates with the child",
+        "when": "Saturdays 8:30 AM - 9:00 AM, Sep 26 - Dec 12",
+        "price": "$117.00 for 12 classes",
+        "source_name": "Town of Halton Hills"
+      }
+    ]
+  },
+  "latencyMs": 7215
+}

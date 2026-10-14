@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada notes: showers ending near noon, then a 60% chance, thunderstorm risk, 10–20 mm, a high of 24°C, SW gusts to 40 near noon, and a low of 12°C. 'Gusty southwest wind up to 40 km/h' is a fair compression of 20 km/h gusting to 40. It answers directly for Toronto, as watchFor expects. It's a bit list-like and dense for a text, but casual enough, with no service offer and no deflect.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

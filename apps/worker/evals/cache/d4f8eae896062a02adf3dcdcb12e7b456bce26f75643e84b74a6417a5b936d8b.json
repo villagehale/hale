@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Honda Odyssey is rated 9.3 out of 10 by U.S. News, its top spot",
+        "from": "U.S. News ranks the 2026 Honda Odyssey #1. It gives the Odyssey an overall score of 9.3 out of 10."
+      },
+      {
+        "states": "Edmunds says the Odyssey is the minivan it most likes driving",
+        "from": "Edmunds calls the Odyssey the minivan it most likes driving, and the best non-hybrid."
+      },
+      {
+        "states": "Car Talk's staff pick is the Odyssey",
+        "from": "Car Talk is split. Its staff pick is the Odyssey."
+      },
+      {
+        "states": "Toyota Sienna gets 36 mpg combined with hybrid standard",
+        "from": "The Sienna gets 36 mpg combined in front-wheel drive."
+      },
+      {
+        "states": "the rankings do not agree on one best minivan, and these are U.S. results",
+        "from": "No single \"best.\" The major rankings pick different winners. The results are all U.S. market, so these notes cover the U.S. only."
+      }
+    ],
+    "answer": "Honda Odyssey, for me. U.S. News has the 2026 Odyssey at 9.3 out of 10, the top spot there, Edmunds says it's the one it most likes driving, and Car Talk's staff picks it too. The rankings don't agree on one winner, though. If fuel economy matters most, get the Toyota Sienna: the hybrid is standard and it gets about 36 mpg combined. That's for the US market."
+  },
+  "latencyMs": 6662
+}

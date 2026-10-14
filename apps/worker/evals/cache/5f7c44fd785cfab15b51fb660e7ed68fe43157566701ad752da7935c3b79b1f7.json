@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The picks are real, named Oakville providers: the Town of Oakville, the YMCA of Oakville and Goldfish Swim School. They fit preschool, there are no more than three, and no aggregator is used. The message leads with the Town program by name and attributes its dates (\"their site says\"). It invents no price or time and has no link or question. Under no_page_read it correctly uses \"I could not get into their pages today\", and because watch is true, the first-person \"I'll keep watching and text you\" is earned. Dropping Goldfish whole is fine. Minor faults: it runs to three sentences rather than one or two, and the YMCA facts (3-5 yrs, 12-week sessions) are stated without attribution, as though confirmed.",
+    "score": 4
+  }
+}

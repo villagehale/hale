@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: Paris is settled knowledge. The reply is brief and casual, and it is the answer itself, which is exactly how a friend would text back. It contains no words beyond the place name, so it doesn't break the language rule.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

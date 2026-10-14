@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and read off the preschool-play page. Day, time and session dates match the page exactly. The price is correctly null: the page refers to the front desk and prints no fee, and the $185 and $95 room-rental figures were not borrowed. Registration is null because the page gives no registration date. The message leads with the program by name, attributes the facts with 'their site says' and claims no confirmation. It is two plain-ASCII sentences with no link and no question. The gap is phrased in the first person ('I could not pin down the price') rather than as an unearned 'not posted' claim, which fits page_has_schedule. Since watch is true, the first-person 'I'll keep watching and text you' reflects a commitment that already exists. The phrasing is slightly clunky with the attribution tacked on at the end, but that is not a substantive fault.",
+    "score": 5
+  }
+}

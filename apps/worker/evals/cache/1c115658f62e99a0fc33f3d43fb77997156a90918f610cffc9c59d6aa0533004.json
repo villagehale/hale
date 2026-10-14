@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are real programs on the page and fit the toddler age band. Term dates (Sept 14-Nov 1, Nov 2-Dec 20, 2026) are exact, and price is correctly left null because the site says pricing is login-only. The July 22, 8am registration date is carried in both the slots and the message. Weekday uncertainty is flagged honestly rather than guessed. The message leads with Tiny Gym by name and attributes the facts to their site. It uses the correct first-person 'I could not pin down' wording for page_has_schedule, has no question and no link, and its watch line is legitimate because watch is true. Deductions: it runs three sentences instead of one or two short ones. Each slot's registration text is read off the homepage but cited to the schedule PDF URL. Rock n' Roll leaves registration null even though the homepage's general-programming date applies.",
+    "score": 4
+  }
+}

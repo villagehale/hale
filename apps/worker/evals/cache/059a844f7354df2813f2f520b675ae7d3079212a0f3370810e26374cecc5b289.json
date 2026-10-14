@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by the notes: a mainly cloudy, rain-free daytime on Monday, about a 20% chance around 6-7pm, and showers with a thunderstorm risk starting before morning. One small blur: the sentence reads as if Environment Canada gave the 20% figure, which actually came from The Weather Network. The reply answers the 3pm pickup question directly, invents nothing and says nothing about the family's school or plans. It reads like a friend texting, if a little report-like with the 11am forecast detail.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

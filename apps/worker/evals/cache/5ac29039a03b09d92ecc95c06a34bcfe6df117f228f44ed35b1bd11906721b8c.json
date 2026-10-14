@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "NIH: short-term melatonin use appears safe for most people; long-term safety information is lacking",
+        "from": "The NIH says short-term melatonin use appears safe for most people, but information on long-term safety is lacking."
+      },
+      {
+        "states": "UC Davis: typically safe and well tolerated at low doses, taken appropriately for the shortest time",
+        "from": "UC Davis Health (Feb 2025) says melatonin is typically safe and well tolerated at low doses, taken appropriately for the shortest time."
+      },
+      {
+        "states": "Sources give different time limits for use, and the dose advice differs between sources",
+        "from": "The two sources give different time limits. Sources disagree on the right dose."
+      },
+      {
+        "states": "AHA abstract (Nov 2025) linked a year or more of use in chronic insomnia to higher heart failure rates, but is preliminary, cannot prove cause and effect, and is an abstract that is not peer-reviewed",
+        "from": "An American Heart Association abstract was presented in November 2025. The AHA says the study cannot prove cause and effect. The AHA also says the findings are preliminary because abstracts at its meetings are not peer-reviewed."
+      },
+      {
+        "states": "Some experts think the heart failure link may reflect poor sleep rather than melatonin",
+        "from": "Scientific American reports that some experts think the results may reflect the effects of poor sleep rather than melatonin."
+      },
+      {
+        "states": "Check with a healthcare team before starting; side effects and drug interactions exist",
+        "from": "GoodRx says melatonin has side effects and drug interactions. It suggests checking with a healthcare team before starting."
+      }
+    ],
+    "answer": "For short-term use most people seem fine with it. The NIH says it appears safe for most people, and UC Davis says it's typically well tolerated at low doses when taken for the shortest time. Long-term is less clear. A heart failure link showed up in a preliminary AHA conference abstract from November 2025, but it can't prove cause and effect, and some experts think poor sleep may be behind it. Sources also disagree on dose and how long to use it, so if you're thinking of taking it regularly, check with a doctor or pharmacist first, especially if you take other medicines."
+  },
+  "latencyMs": 7140
+}

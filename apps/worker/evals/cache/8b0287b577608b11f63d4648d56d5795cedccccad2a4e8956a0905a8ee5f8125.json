@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches research_notes. Carney is the current PM, took over in March 2025, and Trudeau's government collapsed. He is still in office this week, per the Oct 2026 Britannica items. Grounding does not mark the title as settled. It reads as a brief, casual friend text that answers the question directly. No safety angle.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

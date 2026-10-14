@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto is where they are",
+        "from": "Research notes for Toronto, Canada"
+      },
+      {
+        "states": "Ontario Structured Psychotherapy program offers free short-term CBT for adults with depression and anxiety",
+        "from": "The Ontario Structured Psychotherapy program offers free, short-term cognitive behavioural therapy for adults with depression and anxiety."
+      },
+      {
+        "states": "Family Service Toronto has sliding-scale fees based on income",
+        "from": "It has sliding-scale fees based on income and several locations."
+      },
+      {
+        "states": "Psychotherapy Referral Service connects people to registered psychotherapists in Toronto",
+        "from": "Psychotherapy Referral Service is a not-for-profit that has connected people to registered psychotherapists in Toronto"
+      },
+      {
+        "states": "First Session offers free consultations",
+        "from": "First Session offers free consultations."
+      },
+      {
+        "states": "Employee Assistance Program may include some free sessions per year; extended health plans often cover private therapists",
+        "from": "An employer's Employee Assistance Program may include some free sessions per year. Private therapists often are covered by extended health plans through an employer."
+      },
+      {
+        "states": "ConnexOntario is open 24 hours at 1-866-531-2600",
+        "from": "It's reachable 24 hours a day by phone at 1-866-531-2600 or by web chat."
+      }
+    ],
+    "answer": "Finding a therapist can take a while, so it's good you're starting. If you're in Toronto, the Ontario Structured Psychotherapy program offers free short-term therapy for depression and anxiety. Family Service Toronto charges on a sliding scale based on income. Psychotherapy Referral Service can match you with a registered psychotherapist, and First Session offers free consultations to help you find a private one. If you have a workplace benefits plan or an Employee Assistance Program, it may cover sessions too. If things get urgent, ConnexOntario is open 24 hours at 1-866-531-2600 and can point you to the right help."
+  },
+  "latencyMs": 7601
+}

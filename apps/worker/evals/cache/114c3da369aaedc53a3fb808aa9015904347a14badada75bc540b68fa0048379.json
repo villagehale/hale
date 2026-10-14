@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: x = 5 is settled arithmetic, and the steps are right. It leads with the answer, but the added walkthrough leans slightly toward a worked lesson rather than a casual text back, which watchFor cautions against. Still brief and fine overall.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick (Messi) with a reason, which is what an opinion ask needs. The 2022 World Cup win is settled and correctly marked. 'Close to two decades at the top' is a loose characterisation, not a running tally of goals or trophies stated from memory. It reads like a casual friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "about 10 minutes in boiling water for a hard-boiled egg",
+        "from": "settled"
+      }
+    ],
+    "answer": "About 10 minutes in boiling water for a fully hard yolk. Go 12 if you like it firmer. Then straight into cold water so they peel easier."
+  },
+  "latencyMs": 4232
+}

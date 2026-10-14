@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slots are scored. Both fetches failed, and the single slot is grounded in the search snippet: Parent & Tot, 4 months to 3 years, Town of Halton Hills. That age band fits a toddler. The slot leaves when, price and registration null instead of inventing them, and its ageFit openly says it came from a snippet and the page could not be opened. It makes no claim that the schedule is not posted. The sourceUrl points at the Gellert page that could not be opened, but this is citing where the snippet's facts belong, not claiming the page was read. No pages_read list is shown that would carry the URL. This is the correct snippet-grounded answer the fixture calls for.",
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes for Denver, Colorado, on Tuesday, Oct 13: the 65°F high, cooler than today, partly sunny, a 30% shower chance after 3 p.m. that rises into the evening, lows in the 30s to low 40s, and NNE gusts to 17 mph. It answers directly without asking which city, as it should. Two small nits: 'breezy' stretches 6-10 mph winds a little, and it skips the afternoon shift to east-northeast. It also reads more like a forecast readout than a quick text from a friend, though it is still casual enough.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}
