@@ -1,21 +1,18 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { CHECK_IN_ASK_TEMPLATE_KEY } from '~/lib/channel/checkin/copy';
+import { eveningCheckInQuestion, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
 import {
   CHECK_IN_ANCHOR_ENABLED_ENV,
   type EveningCheckInDeps,
   defaultEveningCheckInDeps,
   runEveningCheckInSweep,
 } from '~/lib/channel/checkin/sweep';
-import { CHECK_IN_ASK_TEMPLATE_KEY } from '~/lib/channel/checkin/copy';
-import { eveningCheckInQuestion, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
 import { PRIVATE_EVENT_WHAT } from '~/lib/channel/coach/tools';
 import { F14_ENABLED_ENV } from '~/lib/channel/f14';
-import { OPT_OUT_LINE, withOptOut } from '~/lib/channel/opt-out';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
-import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { bareYesNoQuestions } from '~/lib/testing/pool-copy';
 
 /**
  * TWO EVENINGS IN A ROW, IN THE VOICE — the whole of V5 on the one message a household
@@ -29,22 +26,10 @@ import { bareYesNoQuestions } from '~/lib/testing/pool-copy';
  *
  * So the pins here are the ones that only exist across two nights and one reply:
  *
- *   · the anchored ask on the wire is the VIL-366 sentence, both nights. The day pool
- *     still rotates when there is no activity to name. This fixture names swim, so both
- *     evenings are that one locked sentence on purpose.
- *   · rule 11 holds on the WIRE BODY, opt-out and all — not on a pool member in
- *     isolation. A parent answering "no" to a question a bare no answers turns the
- *     evening off for good, and what they answer is what arrived on the phone.
- *   · the teen is absent on BOTH evenings, with the under-13's own activity named in the
- *     same breath as the positive control. An absence assertion fails open; a silent lane
- *     would satisfy it twice over.
- *   · the second evening's answer is filed against the SECOND evening. The anchored form
- *     keeps template key checkin:ask precisely so this holds, and nothing else in the
- *     suite reads two asks from one household.
- *
- * VIL-366 replaced the anchored rotation with one sentence. A composer that paraphrased
- * it, or that fell through to the day pool while swim was nameable, fails the equality
- * against that sentence. The unanchored rotation stays in copy.test.ts.
+ *   · both evenings queue swim as a fact, and never the teenager. The writer speaks.
+ *     There is no locked sentence and no keyword.
+ *   · the second evening's answer is filed against the SECOND evening, once a sent
+ *     checkin:ask row exists. The sweep itself does not open the question.
  */
 
 /** 20:17 Toronto on Sunday 2026-07-05 — inside the evening slot. */
@@ -82,18 +67,7 @@ afterAll(async () => {
  * production the two clocks are the same instant. This puts them back together, and it is
  * what makes "filed against the SECOND evening" a real question rather than a coin flip.
  */
-async function alignLedgerToSendClock(): Promise<void> {
-  await db.exec('update channel_messages set created_at = sent_at where sent_at is not null');
-}
-
-/**
- * The real deps, minus only what a test cannot have: the phone network, and the consent
- * and enrolment state the gate reads from tables this journey does not seed. Selection,
- * the children read, the ACTIVITY read, the composer, the dedupe key, the ledger write,
- * the audit row and the prefs write are all production code — including the frequency cap,
- * whose twenty-hour window two consecutive evenings have to clear.
- */
-function prodDeps(sent: Array<{ to: string; body: string }>): EveningCheckInDeps {
+function prodDeps(): EveningCheckInDeps {
   return {
     ...defaultEveningCheckInDeps(),
     buildGate: (database) => ({
@@ -101,20 +75,14 @@ function prodDeps(sent: Array<{ to: string; body: string }>): EveningCheckInDeps
       channelEnrolled: async () => true,
       watchConsentGranted: async () => true,
       proactiveSentSince: async () => false,
+      countProactiveSends: async () => 0,
     }),
     readinessStanding: async () => null,
-    resolveSendablePhone: async () => '+14165550100',
-    transport: {
-      send: async (input) => {
-        sent.push(input);
-        return { providerMessageId: `prov-${sent.length}` };
-      },
-    },
   };
 }
 
 describe('two evenings in the voice', () => {
-  it('names her swim both nights with the locked sentence, and never the teenager', async () => {
+  it('queues her swim both nights as a fact, and never the teenager', async () => {
     const [family] = await db.database
       .insert(schema.families)
       .values({ displayName: 'Ana + kids', provinceOrState: 'ON', onboardingStage: 'sms_active' })
@@ -163,61 +131,48 @@ describe('two evenings in the voice', () => {
       lastAskedAt: new Date(EVENING_ONE.getTime() - 24 * 3_600_000),
     });
 
-    const sent: Array<{ to: string; body: string }> = [];
-    const first = await runEveningCheckInSweep(db.database, prodDeps(sent), EVENING_ONE);
-    expect({ asked: first.asked, anchored: first.anchor.anchored }).toEqual({
-      asked: 1,
+    const first = await runEveningCheckInSweep(db.database, prodDeps(), EVENING_ONE);
+    expect({ queued: first.queued, anchored: first.anchor.anchored }).toEqual({
+      queued: 1,
       anchored: 1,
     });
-    await alignLedgerToSendClock();
 
-    const second = await runEveningCheckInSweep(db.database, prodDeps(sent), EVENING_TWO);
-    expect({ asked: second.asked, anchored: second.anchor.anchored }).toEqual({
-      asked: 1,
+    const second = await runEveningCheckInSweep(db.database, prodDeps(), EVENING_TWO);
+    expect({ queued: second.queued, anchored: second.anchor.anchored }).toEqual({
+      queued: 1,
       anchored: 1,
     });
-    await alignLedgerToSendClock();
 
-    expect(sent).toHaveLength(2);
-    const [nightOne, nightTwo] = sent.map((message) => message.body);
-
-    // VIL-366. Same class both nights, so the same locked sentence both nights. Neither
-    // night ends with an opt-out line.
-    const locked = withOptOut('How did swim go? One line is plenty.', 'full');
-    expect(nightOne).toBe(locked);
-    expect(nightTwo).toBe(locked);
-
-    for (const body of [nightOne, nightTwo] as string[]) {
-      // One GSM-7 segment, measured on what went out. The opt-out line is not part of it.
-      expect(body, body).not.toContain(OPT_OUT_LINE);
-      expect(body, body).not.toContain('STOP to opt out.');
-      expect(isGsm7(body), body).toBe(true);
-      expect(smsSegments(body), body).toBe(1);
-      // Her own class, named. The positive control for every absence below: a lane that
-      // anchored nothing would satisfy all of them.
-      expect(body, body).toContain('swim');
-      // The fourteen-year-old, on both evenings: not her brother's name, not his
-      // appointment, and no trace that a private row existed at all.
-      expect(body, body).not.toContain('Noah');
-      expect(body, body).not.toContain('orthodontist');
-      expect(body, body).not.toContain(PRIVATE_EVENT_WHAT);
-      // RULE 11 on the wire. "no" is a whole-string cadence keyword read before anything
-      // else looks at the reply, so a question a bare no answers is a question that
-      // unsubscribes the household when it is answered honestly.
-      expect(bareYesNoQuestions(body), body).toEqual([]);
+    const offers = await db.database
+      .select()
+      .from(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, familyId));
+    expect(offers).toHaveLength(2);
+    for (const offer of offers) {
+      expect(offer.what).toContain('swim');
+      expect(offer.what).toContain('Mia');
+      expect(offer.what).not.toContain('Noah');
+      expect(offer.what).not.toContain('orthodontist');
+      expect(offer.what).not.toContain(PRIVATE_EVENT_WHAT);
+      expect(offer.what).not.toMatch(/\b(?:reply|text|send)\s+[A-Z]{2,}\b/);
+      expect(offer.templateKey).toBe(CHECK_IN_ASK_TEMPLATE_KEY);
     }
 
-    const rows = await db.database
-      .select()
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.familyId, familyId));
-    expect(rows).toHaveLength(2);
-    for (const row of rows) expect(row.templateKey).toBe(CHECK_IN_ASK_TEMPLATE_KEY);
-
-    // THE ANSWER LANDS ON THE RIGHT EVENING. The anchored form keeps template key
-    // checkin:ask for exactly this: a second key would leave the newest ask unfindable,
-    // and the ladder would count a silence for a question the parent had answered.
+    // The sweep does not open a question. A sent row does, and the answer files
+    // against the evening that row names.
     const answeredAt = new Date(EVENING_TWO.getTime() + 80 * 60_000);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'evening_check_in',
+      templateKey: CHECK_IN_ASK_TEMPLATE_KEY,
+      status: 'sent',
+      dedupeKey: `evening_check_in:${familyId}:2026-07-06`,
+      createdAt: EVENING_TWO,
+      sentAt: EVENING_TWO,
+    });
     const standing = await eveningCheckInQuestion(db.database, {
       familyId,
       parentUserId,

@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 
 /**
- * VIL-353 · THE CLOCK AND THE LADDER behind the evening check-in.
+ * VIL-353 · THE CLOCK behind the evening check-in.
  *
  * Everything in this file is either a pure function of the family's stored state or a
  * single-row read/write of it. The sweep that sends and the handler that reads a reply
@@ -36,12 +36,6 @@ export const EVENING_CHECK_IN_HOUR_LOCAL = 20;
  */
 export const CHECK_IN_LAPSE_HOUR_LOCAL = 8;
 
-/** Consecutive unanswered asks before Hale says less, and then says nothing. */
-export const SILENT_ASKS_BEFORE_STEP_DOWN = 3;
-
-/** Local days between one weekly question and the next. */
-export const WEEKLY_INTERVAL_DAYS = 7;
-
 const DAY_MS = 24 * 3_600_000;
 
 export type CheckInCadence = schema.FamilyCheckInPrefs['cadence'];
@@ -53,12 +47,8 @@ export interface CheckInState {
   lastAskedAt: Date | null;
   lastAnsweredAt: Date | null;
   /**
-   * The instant the ladder last ACTED on this family's silence.
-   *
-   * An ask older than it has already been counted — by the step-down that answered it —
-   * and counting it again is how "three more" quietly became two. Written only by a rung
-   * of the ladder, never by an ask or an answer, so it is a floor under the counter and
-   * not a second copy of it.
+   * Left on the row for households the old silence ladder already stamped. Nothing in
+   * this file writes it anymore. Old audit rows still parse; this column is not a clock.
    */
   silentStreakSince: Date | null;
 }
@@ -71,19 +61,16 @@ export const DEFAULT_CHECK_IN_STATE: CheckInState = {
   silentStreakSince: null,
 };
 
-/** Why a family in the slot hears nothing tonight. Enum, never free text: it is counted
- * in the cron summary and logged, so it has to be safe to emit and stable to aggregate. */
-export type CheckInSkipReason = 'cadence_off' | 'asked_today' | 'not_due';
+/** Why a family in the slot is not offered to the decider tonight. Enum, never free
+ * text: it is counted in the cron summary and logged, so it has to be safe to emit
+ * and stable to aggregate. */
+export type CheckInSkipReason = 'cadence_off' | 'asked_today';
 
 export type CheckInDecision =
   | { kind: 'skip'; reason: CheckInSkipReason }
-  /** Ask. `first` picks the copy that explains the keywords; `silentStreak` is what the
-   * row carries forward once the question has gone out. */
-  | { kind: 'ask'; first: boolean; silentStreak: number }
-  /** Three lapsed asks on daily: say so, once, and move to weekly. */
-  | { kind: 'step_down' }
-  /** Three lapsed asks on weekly: stop, and say nothing about stopping. */
-  | { kind: 'dormant'; silentStreak: number };
+  /** Offer an evening check-in to the proactive decider. The model chooses whether
+   * and when, and writes the text. Silence does not change the cadence. */
+  | { kind: 'ask' };
 
 /** The family's local calendar day as 'YYYY-MM-DD'. */
 export function localDateKey(now: Date, timeZone: string): string {
@@ -142,56 +129,21 @@ export function askStillStanding(askedAt: Date, now: Date, timeZone: string): bo
 }
 
 /**
- * WHAT HAPPENS IN THIS FAMILY'S EVENING SLOT — the whole ladder, as one pure function of
- * the stored row.
+ * WHAT HAPPENS IN THIS FAMILY'S EVENING SLOT.
  *
- * THE LAPSE IS COUNTED AT THE NEXT ASK, never on a timer. The hourly cron reaches this
- * function several times a night and a weekly household skips it six evenings out of
- * seven, so a counter advanced whenever silence was OBSERVED would count one unanswered
- * evening once, or six times, depending on the cron — which is the same defect as no
- * counter at all. Deriving it from the two timestamps at the moment Hale is about to
- * speak again makes "consecutive unanswered asks" exactly what the name says.
- *
- * THE STEP-DOWN DOES NOT MOVE `lastAskedAt`: the weekly rhythm keeps measuring from the
- * last real ASK, so the first weekly question lands a week after the last daily one
- * rather than a week after an announcement.
- *
- * WHAT MAKES "THREE MORE" MEAN THREE MORE IS `silentStreakSince`. The evening that
- * stepped a family down has already counted the lapse that triggered it; without a
- * baseline the first weekly question would re-read that same unanswered ask off the
- * timestamps and go out carrying a streak of one, and the family would fall dormant after
- * two weekly asks instead of three. The counter needed a floor, and a floor is a fact
- * about when the ladder last acted — not something the two timestamps can say.
+ * A stored `off` is a stop this household already asked for, and it is the one cadence
+ * the clock still honours: the decider is not offered a check-in to a household that
+ * asked for none. Anything else — daily, weekly, a long silence — is an offer. Whether
+ * it goes out, and when, is the proactive decider's call. There is no silence ladder
+ * and no fixed interval.
  */
-export function decideCheckIn(
-  state: CheckInState,
-  now: Date,
-  timeZone: string,
-): CheckInDecision {
+export function decideCheckIn(state: CheckInState, now: Date, timeZone: string): CheckInDecision {
   if (state.cadence === 'off') return { kind: 'skip', reason: 'cadence_off' };
-
-  const { lastAskedAt, lastAnsweredAt } = state;
+  const { lastAskedAt } = state;
   if (lastAskedAt !== null && localDateKey(lastAskedAt, timeZone) === localDateKey(now, timeZone)) {
     return { kind: 'skip', reason: 'asked_today' };
   }
-  if (
-    state.cadence === 'weekly' &&
-    lastAskedAt !== null &&
-    localDaysBetween(lastAskedAt, now, timeZone) < WEEKLY_INTERVAL_DAYS
-  ) {
-    return { kind: 'skip', reason: 'not_due' };
-  }
-
-  const lapsed =
-    lastAskedAt !== null &&
-    (lastAnsweredAt === null || lastAnsweredAt.getTime() < lastAskedAt.getTime()) &&
-    (state.silentStreakSince === null ||
-      lastAskedAt.getTime() >= state.silentStreakSince.getTime());
-  const silentStreak = lapsed ? state.silentStreak + 1 : 0;
-  if (silentStreak >= SILENT_ASKS_BEFORE_STEP_DOWN) {
-    return state.cadence === 'daily' ? { kind: 'step_down' } : { kind: 'dormant', silentStreak };
-  }
-  return { kind: 'ask', first: lastAskedAt === null, silentStreak };
+  return { kind: 'ask' };
 }
 
 // ── the stored row ───────────────────────────────────────────────────────────
@@ -237,7 +189,7 @@ export async function recordCheckInAsk(
     });
 }
 
-/** The cadence moved, by Hale's own ladder or by the parent's word. */
+/** The cadence moved. The silence ladder no longer calls this; a stored stop still can. */
 export async function recordCheckInCadence(
   writer: CheckInWriter,
   input: {

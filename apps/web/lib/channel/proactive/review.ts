@@ -21,6 +21,7 @@ import {
   type WeekdayCareContext,
   loadWeekdayCareContext,
 } from '~/lib/care/weekday';
+import { recordCheckInAsk } from '~/lib/channel/checkin/cadence';
 import {
   type FamilyTextRecipient,
   TEXTABLE_ROLES,
@@ -81,11 +82,13 @@ import { type ToolCandidate, boundedLine } from './tools';
 import { volumeIsUnusual } from './volume';
 
 /**
- * VIL-226 · the hourly review. Off does nothing and reads nothing. Shadow decides and
- * records. Live composes and sends what the decider chose, through the same red lines
- * every proactive send crosses: the gate (consent, opt-out, quiet hours), the sending
- * line's health, and a sendable number. Every hold and drop is a named reason on the
- * row and an audit row (rules #6 and #11).
+ * VIL-226 · the hourly review. Off reads nothing except evening check-ins, which have
+ * no fixed text left to send on their own: that one kind is decided and sent here.
+ * Shadow decides and records, and still sends an evening check-in. Live composes and
+ * sends what the decider chose, through the same red lines every proactive send
+ * crosses: the gate (consent, opt-out, quiet hours), the sending line's health, and a
+ * sendable number. Every hold and drop is a named reason on the row and an audit row
+ * (rules #6 and #11).
  */
 
 export interface ProactiveReviewSummary {
@@ -243,7 +246,10 @@ export async function runProactiveReview(
     skipped: 0,
     failed: 0,
   };
-  if (mode === 'off') return summary;
+  if (mode === 'off') {
+    await reviewEveningCheckIns(database, deps, now, summary);
+    return summary;
+  }
 
   const families = await database
     .selectDistinct({ familyId: schema.proactiveCandidates.familyId })
@@ -254,7 +260,14 @@ export async function runProactiveReview(
       const items = await loadOpenItems(database, familyId, now, mode, summary);
       if (items.length === 0) continue;
       summary.families += 1;
-      await reviewFamily(database, deps, { familyId, items, now, mode, summary });
+      // An evening check-in has no sweep left to send it. A household whose open rows
+      // are only that kind is decided as live, so the model can keep a pace it heard.
+      // A nudge sitting beside it stays on the shadow path.
+      const familyMode: 'shadow' | 'live' =
+        mode === 'shadow' && items.every((item) => item.kind === 'evening_check_in')
+          ? 'live'
+          : mode;
+      await reviewFamily(database, deps, { familyId, items, now, mode: familyMode, summary });
     } catch (err) {
       summary.failed += 1;
       // Never the message: a postgres-js message can carry a constraint's key values.
@@ -265,8 +278,53 @@ export async function runProactiveReview(
 }
 
 /**
+ * Evening check-ins while the cadence flag is off.
+ *
+ * Every other kind stays on the row. A nudge queued under `off` is not decided here,
+ * which is what "the flag is unset" means for that sweep. A check-in has nothing else
+ * that can speak, so this pass reviews only that kind, with live semantics.
+ */
+async function reviewEveningCheckIns(
+  database: Database,
+  deps: ProactiveReviewDeps,
+  now: Date,
+  summary: ProactiveReviewSummary,
+): Promise<void> {
+  const families = await database
+    .selectDistinct({ familyId: schema.proactiveCandidates.familyId })
+    .from(schema.proactiveCandidates)
+    .where(
+      and(
+        inArray(schema.proactiveCandidates.status, ['queued', 'held']),
+        eq(schema.proactiveCandidates.kind, 'evening_check_in'),
+      ),
+    );
+  for (const { familyId } of families) {
+    try {
+      const items = await loadOpenItems(
+        database,
+        familyId,
+        now,
+        'live',
+        summary,
+        'evening_check_in',
+      );
+      if (items.length === 0) continue;
+      summary.families += 1;
+      await reviewFamily(database, deps, { familyId, items, now, mode: 'live', summary });
+    } catch (err) {
+      summary.failed += 1;
+      console.error({ err: errorLabel(err), familyId }, 'proactive review: family failed');
+    }
+  }
+}
+
+/**
  * This family's actionable rows, oldest first and at most `FAMILY_ROWS` of them, then its
  * holds still on their clock, newest first and at most `WAITING_ROWS` of them.
+ *
+ * `onlyKind` limits both reads. The off-flag pass uses it so a nudge is neither offered
+ * nor settled.
  */
 async function loadOpenItems(
   database: Database,
@@ -274,13 +332,16 @@ async function loadOpenItems(
   now: Date,
   mode: 'shadow' | 'live',
   summary: ProactiveReviewSummary,
+  onlyKind?: ProactiveSendKind,
 ): Promise<QueuedItem[]> {
+  const kindIs = onlyKind === undefined ? undefined : eq(schema.proactiveCandidates.kind, onlyKind);
   const actionable = await database
     .select()
     .from(schema.proactiveCandidates)
     .where(
       and(
         eq(schema.proactiveCandidates.familyId, familyId),
+        kindIs,
         or(
           eq(schema.proactiveCandidates.status, 'queued'),
           and(
@@ -305,6 +366,7 @@ async function loadOpenItems(
     .where(
       and(
         eq(schema.proactiveCandidates.familyId, familyId),
+        kindIs,
         eq(schema.proactiveCandidates.status, 'held'),
         gt(schema.proactiveCandidates.holdUntil, now),
       ),
@@ -862,14 +924,28 @@ async function reviewFamily(
     return;
   }
   if (mode === 'shadow') {
-    await mark(database, familyId, ids, {
-      status: 'shadowed',
-      reason: null,
-      decision: 'send_now',
-      holdUntil: null,
-      now,
-    });
-    summary.shadowed += 1;
+    // A check-in in a mixed batch has no old path left. The rest of the batch is
+    // still shadowed: lighting shadow must not start sending nudges.
+    const checkIns = chosen.filter((item) => item.kind === 'evening_check_in');
+    const rest = chosen.filter((item) => item.kind !== 'evening_check_in');
+    if (rest.length > 0) {
+      await mark(
+        database,
+        familyId,
+        rest.map((item) => item.id),
+        {
+          status: 'shadowed',
+          reason: null,
+          decision: 'send_now',
+          holdUntil: null,
+          now,
+        },
+      );
+      summary.shadowed += 1;
+    }
+    if (checkIns.length > 0) {
+      await sendChosen(database, deps, { familyId, chosen: checkIns, now, summary });
+    }
     return;
   }
   await sendChosen(database, deps, { familyId, chosen, now, summary });
@@ -896,6 +972,13 @@ function keptCadence(
   const [author] = textAuthors;
   if (author === undefined) return 'not_written_no_new_text';
   return cadencePreference(author, heard.direction);
+}
+
+/** The trail verb for one sent batch. A mixed batch stays the generic cadence send. */
+function sendAuditVerb(items: readonly QueuedItem[]): string {
+  if (items.every((item) => item.kind === 'nudge')) return 'proactive_nudge_sent';
+  if (items.every((item) => item.kind === 'evening_check_in')) return 'evening_check_in_sent';
+  return 'proactive_cadence_sent';
 }
 
 async function sendChosen(
@@ -1045,9 +1128,7 @@ async function sendChosen(
       items: covered,
       composed: copy.message,
       audit: {
-        actionTaken: covered.every((item) => item.kind === 'nudge')
-          ? 'proactive_nudge_sent'
-          : 'proactive_cadence_sent',
+        actionTaken: sendAuditVerb(covered),
         after: {
           ...(labels.length === 1 ? { kind: labels[0] } : {}),
           kinds: labels,
@@ -1057,6 +1138,11 @@ async function sendChosen(
       },
     });
     if (firstMessageId === null) firstMessageId = messageId;
+    if (covered.some((item) => item.kind === 'evening_check_in')) {
+      // The ask clock starts when the text leaves, not when it was queued. A review
+      // that holds tonight does not count as an ask.
+      await recordCheckInAsk(database, { familyId, silentStreak: 0, now });
+    }
     await mark(database, familyId, coveredIds, {
       status: 'sent',
       reason: null,

@@ -208,6 +208,46 @@ describe('runProactiveReview', () => {
     expect(h.snapshots).toEqual([]);
   });
 
+  it('decides and sends an evening check-in while the flag is unset', async () => {
+    const id = await enqueue('evening_check_in:fam:2026-10-08', {
+      kind: 'evening_check_in',
+      category: 'evening_check_in',
+      templateKey: 'checkin:ask',
+      what: 'swim, Mia',
+      why: 'evening check-in',
+      sourceUrl: null,
+    });
+    const h = harness(sendAll);
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(summary).toMatchObject({ mode: 'off', families: 1, decided: 1, sent: 1, shadowed: 0 });
+    expect(h.transport.bodies()).toEqual([MESSAGE]);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [sent] = await audits('evening_check_in_sent');
+    expect(sent?.after).toMatchObject({ mode: 'live' });
+    const [prefs] = await db.database
+      .select({ lastAskedAt: schema.familyCheckInPrefs.lastAskedAt })
+      .from(schema.familyCheckInPrefs)
+      .where(eq(schema.familyCheckInPrefs.familyId, familyId));
+    expect(prefs?.lastAskedAt).toEqual(THURSDAY_EVENING);
+  });
+
+  it('sends an evening check-in in shadow, and still shadows a nudge', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const id = await enqueue('evening_check_in:fam:2026-10-08', {
+      kind: 'evening_check_in',
+      category: 'evening_check_in',
+      templateKey: 'checkin:ask',
+      what: 'swim',
+      why: 'evening check-in',
+      sourceUrl: null,
+    });
+    const h = harness(sendAll);
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(summary).toMatchObject({ mode: 'shadow', sent: 1, shadowed: 0 });
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    expect(h.transport.bodies()).toEqual([MESSAGE]);
+  });
+
   it('in shadow, records the decision and marks the item shadowed without sending', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     const id = await enqueue();

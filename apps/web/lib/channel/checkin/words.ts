@@ -27,7 +27,7 @@ export function containsPhrase(folded: string, phrase: string): boolean {
   return folded.includes(` ${phrase} `);
 }
 
-/** Whether the folded text OPENS with this word. */
+/** Whether the folded text starts with this word. */
 export function opensWith(folded: string, word: string): boolean {
   return folded.startsWith(` ${word} `);
 }
