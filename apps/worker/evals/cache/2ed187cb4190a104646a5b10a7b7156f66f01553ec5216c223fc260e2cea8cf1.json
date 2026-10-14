@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Names Mark Carney, supported by the notes. 'Since March 2025' matches 14 March 2025. 'Still in the job as of this week' matches the Britannica items dated Oct 6 and 8. Grounding marks nothing as settled. It's brief and casual, and it states the fact like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

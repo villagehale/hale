@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi won the 2022 World Cup with Argentina",
+        "from": "settled"
+      }
+    ],
+    "answer": "Messi, for me. He won the 2022 World Cup with Argentina and was the best player on the pitch for most of his career at the top. Pelé is the other name people bring up, and that's a fair argument, but I'd still go with Messi."
+  },
+  "latencyMs": 4447
+}

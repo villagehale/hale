@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It delivers a short, casual Monday poem with real imagery and no invented facts. It reads like a friend texting a quick poem back, not an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

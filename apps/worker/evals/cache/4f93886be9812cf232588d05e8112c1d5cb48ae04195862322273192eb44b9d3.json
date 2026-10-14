@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With live set to missing_detail, the right move is to ask for the city. The answer does that and states no price, so it is correct. It is brief and casual, but slightly more explanatory than a friend's quick 'where are you?'. It is still fine.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

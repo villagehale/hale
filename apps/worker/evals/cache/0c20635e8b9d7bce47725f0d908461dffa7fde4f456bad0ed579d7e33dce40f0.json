@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The live status is missing_detail, and the answer correctly asks which country without stating any rate from memory. That makes it correct, with no wrong fact. The tone is mostly fine. \"I'll look up the 5 year fixed rate there\" leans a little toward an assistant offering a service, but it reads as natural follow-through. The explanation of why the country matters is a bit wordy for a friend's text, though still casual enough.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

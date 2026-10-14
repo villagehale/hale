@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail, and the answer correctly asks which country without stating any rate from memory. It reads casually overall, but 'tell me and I'll look up the 5-year fixed rate there' leans slightly toward an assistant offering a service, and explaining that rates depend on location is a touch over-explained for a text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "the 2006 World Series: St. Louis Cardinals beat Detroit Tigers, 4 games to 1",
+        "from": "settled"
+      }
+    ],
+    "answer": "That'd be 2006: the St. Louis Cardinals beat the Detroit Tigers, 4 games to 1."
+  },
+  "latencyMs": 2453
+}

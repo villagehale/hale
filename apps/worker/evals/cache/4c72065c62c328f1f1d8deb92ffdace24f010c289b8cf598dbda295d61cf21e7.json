@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct (x = 5), settled arithmetic. It states the answer up front with a one-line method. That's brief and casual enough, not a lesson. It reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

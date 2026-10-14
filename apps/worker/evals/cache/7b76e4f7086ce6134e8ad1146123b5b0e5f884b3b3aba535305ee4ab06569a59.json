@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi is the soccer GOAT pick, as recent coverage leans",
+        "from": "Most recent coverage leans toward Lionel Messi as the GOAT."
+      },
+      {
+        "states": "Messi's 2026 World Cup performances strengthened the view that he has edged ahead",
+        "from": "The Korea Times (July 13, 2026) said Messi's performances in Qatar and at the 2026 World Cup have strengthened the view that he has edged ahead in the GOAT debate."
+      },
+      {
+        "states": "Tom Brady is still treated as the NFL GOAT",
+        "from": "Tom Brady is still widely treated as the NFL GOAT."
+      },
+      {
+        "states": "Mahomes matched Brady's 115-35 record through their first 150 career starts",
+        "from": "PFSN (Sept 28, 2026) says he matched Brady's 115-35 record through their first 150 career starts."
+      }
+    ],
+    "answer": "Soccer: I'd go with Messi. Most recent coverage leans his way, and his 2026 World Cup run pushed a lot of people further toward him. If you mean the NFL, Tom Brady still gets the nod, though Mahomes is right behind him and fans are split. It's an argument with no final answer, so you're allowed to pick your own."
+  },
+  "latencyMs": 5916
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live was unavailable, and the answer says plainly that it can't check and states no result from memory, so it is correct. It is brief and casual, in English, and has no assistant-style offer. 'Sorry' is slightly stiff for a friend's text, but acceptable.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

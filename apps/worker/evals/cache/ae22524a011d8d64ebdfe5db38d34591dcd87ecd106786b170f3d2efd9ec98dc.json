@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact in the answer is backed by the research notes: no game tonight, next is Tuesday preseason vs the Knicks at Scotiabank Arena, 7pm ET. It is brief and casual, reads like a friend texting, and says nothing about Theo beyond the question. The grounding marks nothing as settled. It does not mention that Raptors here means the NBA team, but that reading is the obvious one.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

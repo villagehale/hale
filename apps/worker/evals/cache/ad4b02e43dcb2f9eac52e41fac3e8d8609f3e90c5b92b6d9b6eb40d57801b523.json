@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live search was unavailable, and the answer says plainly that it can't check the weather right now. It states no forecast from memory and doesn't ask for a city, which is what watchFor calls for. It is casual and brief, like a friend texting back, not an assistant offering a service. No facts are stated, and there is no safety element.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

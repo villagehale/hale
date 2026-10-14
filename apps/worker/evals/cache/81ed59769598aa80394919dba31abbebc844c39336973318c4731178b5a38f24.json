@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by the research notes: the TSX is closed for Thanksgiving, trading resumes Tuesday at 9:30 a.m. ET, and Friday closed at 35,664.62, up 519.24 (1.48%) after the surprise jobs drop. It answers directly and briefly. It reads a little like a news wrap but is still a natural text back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

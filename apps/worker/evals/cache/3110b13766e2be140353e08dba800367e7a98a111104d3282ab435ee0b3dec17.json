@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: the market is closed for Thanksgiving, Friday's close was 35,664.62, up 519.24 points (1.477%), and trading resumes tomorrow at 9:30 a.m. ET. It is brief and states the answer directly in the same language as the question. It reads a little like a data readout rather than a casual friend's text, but it does not offer a service or deflect.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No Raptors game tonight, Monday Oct 12",
+        "from": "No Raptors game tonight, Monday Oct 12."
+      },
+      {
+        "states": "Next game is Tuesday Oct 13, a preseason game against the New York Knicks",
+        "from": "The next game is a preseason game against the New York Knicks on Tuesday, Oct 13."
+      },
+      {
+        "states": "Tip-off 7:00 PM ET at Scotiabank Arena in Toronto",
+        "from": "It is at Scotiabank Arena in Toronto, with tip-off at 7:00 PM ET."
+      }
+    ],
+    "answer": "Nope, not tonight. Next one is Tuesday vs the Knicks, a preseason game at Scotiabank Arena, tip-off 7pm ET."
+  },
+  "latencyMs": 4126
+}

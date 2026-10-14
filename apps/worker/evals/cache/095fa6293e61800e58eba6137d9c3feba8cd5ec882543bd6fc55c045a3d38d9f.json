@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific matches the Environment Canada notes: high 29, humidex 35, a 30% chance of a shower or thunderstorm early in the morning, clearing in the morning, and gusts to 60 late in the morning. The place, Windsor, Ontario, is right and the answer doesn't ask for the city. The one soft spot is calling it \"hot\". That is a reasonable reading of a 29 high with humidex 35 in October, and CTV calls it late-season heat. It reads as a brief, direct text with no service-offer framing. It is a bit report-like, but still friendly and to the point.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

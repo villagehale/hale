@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes. Vancouver BC: mix of sun and cloud, high 15°C, showers Tuesday night, low 11. Vancouver WA: dry, highs 64–65°F, lows 41–45°F. Covering both Vancouvers suits the ambiguous question, and the reply is casual and in English. It asks which city twice, though, which is redundant after already answering both and reads a little clunky for a friend's text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

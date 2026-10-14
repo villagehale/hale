@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday in Denver: partly sunny skies",
+        "from": "The Denver Gazette (NWS Boulder forecast) says partly sunny skies Tuesday"
+      },
+      {
+        "states": "Tuesday high of about 65°F, cooler than Monday's 80",
+        "from": "The NWS forecast high is 65°F. That is roughly 15 degrees cooler than Monday's high of 80."
+      },
+      {
+        "states": "Rain and showers possibly moving in Tuesday evening",
+        "from": "with rain and showers possibly moving in Tuesday evening"
+      },
+      {
+        "states": "30% chance of rain after 3 p.m. Tuesday",
+        "from": "NWS gives a 30% chance of rain after 3 p.m. The chances increase into the evening."
+      },
+      {
+        "states": "Tuesday night lows in the low 40s and 30s",
+        "from": "Lows are expected in the low 40s and 30s Tuesday night (NWS via Denver Gazette)."
+      }
+    ],
+    "answer": "Tomorrow in Denver looks cooler. Expect partly sunny skies and a high around 65°F, about 15 degrees cooler than today. Rain or showers could roll in Tuesday evening, with about a 30% chance after 3 p.m. Overnight it drops into the low 40s and 30s. Bring a jacket."
+  },
+  "latencyMs": 5019
+}

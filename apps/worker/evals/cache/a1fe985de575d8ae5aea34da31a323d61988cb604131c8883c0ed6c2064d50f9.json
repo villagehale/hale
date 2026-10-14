@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The detail really is missing, and the answer correctly asks which country without stating any rate from memory. It's brief and in the right language. The 'so tell me and I'll look up…' phrasing reads a little like an assistant offering a service rather than a friend's quick 'which country?'.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

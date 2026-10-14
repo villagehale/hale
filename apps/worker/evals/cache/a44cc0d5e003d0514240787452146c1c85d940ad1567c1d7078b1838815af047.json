@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Short-term melatonin use appears safe for most people",
+        "from": "short-term melatonin use appears safe for most people"
+      },
+      {
+        "states": "Typically safe and well tolerated at low doses when taken for the shortest time (UC Davis, Feb 2025)",
+        "from": "typically safe and well tolerated at low doses, taken appropriately for the shortest time"
+      },
+      {
+        "states": "Long-term use linked to heart failure in preliminary AHA abstract (Nov 2025)",
+        "from": "linked melatonin use of a year or more in people with chronic insomnia to higher rates of heart failure diagnosis"
+      },
+      {
+        "states": "130,828 adults reviewed",
+        "from": "reviewed records of 130,828 adults"
+      },
+      {
+        "states": "Heart failure 4.6% of long-term users vs 2.7% of non-users over five years",
+        "from": "found heart failure in 4.6% of long-term melatonin users versus 2.7% of non-users over five years"
+      },
+      {
+        "states": "Study cannot prove cause and effect",
+        "from": "the study cannot prove cause and effect"
+      },
+      {
+        "states": "Findings preliminary, abstract not peer-reviewed",
+        "from": "the findings are preliminary because abstracts at its meetings are not peer-reviewed"
+      },
+      {
+        "states": "Sources disagree on the right dose",
+        "from": "Sources disagree on the right dose."
+      },
+      {
+        "states": "Side effects and drug interactions; check with a healthcare team",
+        "from": "GoodRx says melatonin has side effects and drug interactions. It suggests checking with a healthcare team before starting."
+      }
+    ],
+    "answer": "For most adults, short-term use looks safe. The NIH says that, though its page is from 2022, and UC Davis (Feb 2025) says it's typically safe and well tolerated at low doses when taken for the shortest time. Long term is the open question. A new American Heart Association abstract from November 2025 linked a year or more of use in people with chronic insomnia to more heart failure: 4.6% of long-term users vs 2.7% of non-users over five years, across 130,828 adults. It's preliminary and not peer-reviewed, and it can't prove cause, since poor sleep itself may be the driver. Sources also disagree on dose, so check with a doctor or pharmacist on how much and how long, especially if you take other meds."
+  },
+  "latencyMs": 7437
+}

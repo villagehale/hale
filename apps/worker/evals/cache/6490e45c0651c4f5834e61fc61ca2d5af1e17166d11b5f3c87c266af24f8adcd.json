@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact checks out against research_notes. The Leafs didn't play Sunday, they beat Colorado 6-3 on Saturday, and they're at Utah on Tuesday. The opening reads like a friend texting back. The closing 'Want me to check anything else for you?' is an assistant offering a service, though, which the rubric says scores below 4 however right the facts are.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

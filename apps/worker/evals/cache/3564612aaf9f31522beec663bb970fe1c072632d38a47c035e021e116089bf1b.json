@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer handles the ambiguity well by covering both Vancouvers. BC's mix of sun and cloud, high of 15°C, Tuesday-night showers and low of 11°C match Environment Canada. WA's dry day, 64–65°F high and 41–45°F night are backed by Weather Underground, Timeanddate and AccuWeather. Calling WA's day 'mostly cloudy' leans on Timeanddate's 'overcast' over the NWS 'mostly sunny', which the notes name as the more reliable source. That is a small slant, not an unsupported fact. The tone is brief and reads like a text, though it is slightly stiff and forecast-like.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

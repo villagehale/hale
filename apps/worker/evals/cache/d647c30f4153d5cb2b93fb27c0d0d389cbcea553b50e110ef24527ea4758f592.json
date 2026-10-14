@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick (the Odyssey), gives a reason, and offers a clear runner-up, the Sienna for fuel economy. The tone is casual, like a friend texting. Most facts match research_notes: U.S. News #1 at 9.3, Car Talk's staff pick, Edmunds ranking the Sienna #1, and 36 mpg combined. One claim is misstated. The notes say Edmunds itself most likes driving the Odyssey. The answer says 'Edmunds says drivers like it most of all,' which turns a reviewer's driving impression into a claim about what drivers prefer. The notes don't support that.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 3
+  }
+}

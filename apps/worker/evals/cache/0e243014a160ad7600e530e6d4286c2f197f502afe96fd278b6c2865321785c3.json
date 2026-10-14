@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Both forecasts match research_notes: BC is a mix of sun and cloud, high 15°C, showers Tuesday night, low 11°C (Environment Canada), and WA is dry with highs of 64–65°F. It covers both Vancouvers briefly and casually, and the closing question is natural. Leaving out the WA frost advisory is a minor omission, not a danger the question raised.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes: insured 4.34% (Ratehub Oct 12, WOWA Oct 9), uninsured 4.44% (WOWA), Big 6 average about 5.14% (Nesto), and rates rising this month. It correctly splits insured from uninsured and dates each source. Nothing is invented and nothing is marked settled. The tone is brief and casual, like a friend texting back, with no deflecting and no service-style offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

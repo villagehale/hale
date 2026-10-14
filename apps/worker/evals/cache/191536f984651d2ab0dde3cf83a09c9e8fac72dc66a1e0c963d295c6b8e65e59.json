@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by the research notes: the 4.34% lowest insured rate, the 4.44% lowest uninsured rate, the 5.14% Big 6 average, the upward trend, and that 4.34% is available in Ontario. It correctly notes the insured/uninsured split. The tone is mostly casual and it answers directly. It is a bit clunky, though: 'climbing this month, so they're moving up' is redundant, and the Toronto-figure aside reads slightly like a research report. It also doesn't name the lender or the as-of dates the notes give.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

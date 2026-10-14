@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "short-term melatonin use appears safe for most people",
+        "from": "The NIH says short-term melatonin use appears safe for most people"
+      },
+      {
+        "states": "typically safe and well tolerated at low doses, taken for the shortest time",
+        "from": "UC Davis Health (Feb 2025) says melatonin is typically safe and well tolerated at low doses, taken appropriately for the shortest time."
+      },
+      {
+        "states": "a preliminary AHA abstract linked a year or more of use in chronic insomnia to higher heart failure diagnosis and death, not peer-reviewed, cannot prove cause",
+        "from": "An American Heart Association abstract was presented in November 2025. The AHA says the study cannot prove cause and effect. The AHA also says the findings are preliminary because abstracts at its meetings are not peer-reviewed."
+      },
+      {
+        "states": "doses differ between sources",
+        "from": "Sources disagree on the right dose."
+      },
+      {
+        "states": "side effects and drug interactions, so check with a healthcare team before starting",
+        "from": "GoodRx says melatonin has side effects and drug interactions. It suggests checking with a healthcare team before starting."
+      },
+      {
+        "states": "caution in older adults because of possible fracture risk",
+        "from": "The PMC review says the possible fracture risk is a reason to use melatonin with caution in older adults and in people with previous low-impact fractures."
+      }
+    ],
+    "answer": "For a short stretch, mostly yes. Most people handle it fine, and low doses are usually well tolerated. The catch is long-term use. A preliminary American Heart Association study from November 2025 linked a year or more of use in people with chronic insomnia to more heart failure diagnoses and deaths. It was a conference abstract, not peer-reviewed, and it can't prove melatonin caused anything, since poor sleep may be the real driver. Doses also vary a lot from source to source, and it can interact with other meds, so check with a doctor or pharmacist before starting, especially if you're older or already take something else."
+  },
+  "latencyMs": 7820
+}
