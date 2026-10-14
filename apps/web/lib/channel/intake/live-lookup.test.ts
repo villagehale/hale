@@ -25,8 +25,6 @@ import {
 const COLD_START_ASK = 'cold start ask (test fixture)';
 /** #868: the fixed ask is gone; any pending-ask text is a fixture. */
 const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
-/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
-const OFFICIAL_PAGE_RETURN_ASK = 'official page return ask (test fixture)';
 
 describe('live-lookup · which inbound needs a current source', () => {
   it('matches raising-kids questions mid-signup', () => {
@@ -81,7 +79,7 @@ describe('live-lookup · which inbound needs a current source', () => {
 describe('live-lookup · return ask is never COLD_START_ASK', () => {
   it('asks for names, ages, and postal in different words', () => {
     const line = liveLookupReturnLine(COLD_START_ASK);
-    expect(line).toBe(OFFICIAL_PAGE_RETURN_ASK);
+    expect(line.trim().endsWith('?')).toBe(true);
     expect(line).not.toBe(COLD_START_ASK);
     expect(line.endsWith('?')).toBe(true);
   });
@@ -97,7 +95,7 @@ describe('live-lookup · no current source when search cannot ground', () => {
   it('is the locked fallback, GSM-7, under 300, no URL, no I do not do that', () => {
     const body = liveLookupFallbackReply(COLD_START_ASK);
     expect(body.startsWith(NO_CURRENT_SOURCE_YET)).toBe(true);
-    expect(body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(body.trim().endsWith('?')).toBe(true);
     expect(body).not.toContain(COLD_START_ASK);
     expect(body).not.toContain("I don't do that");
     expect(body).not.toMatch(/https?:\/\//);
@@ -131,7 +129,7 @@ describe('live-lookup · no current source when search cannot ground', () => {
       COLD_START_ASK,
     );
     expect(grounded).toContain('United States president');
-    expect(grounded).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(grounded.trim().endsWith('?')).toBe(true);
     expect(grounded).not.toContain(COLD_START_ASK);
 
     const empty = liveLookupReplyFromNotes('NO CURRENT SOURCE', COLD_START_ASK);
@@ -152,7 +150,7 @@ describe('live-lookup · cheer-up is warm and not clinical', () => {
     expect(CHEER_UP_REPLY).toBe("That's a lot to carry. You're doing the hard part.");
     expect(CHEER_UP_REPLY).not.toContain('by showing up');
     expect(intake.startsWith(CHEER_UP_REPLY)).toBe(true);
-    expect(intake).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(intake.trim().endsWith('?')).toBe(true);
     expect(intake).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
     expect(intake).not.toContain(COLD_START_ASK);
     expect(smsEncoding(intake)).toBe('gsm7');

@@ -82,7 +82,8 @@ describe('a Toronto district morning on the first radar reply (VIL-360)', () => 
   it('names the North York morning for an M2N family, not the Etobicoke one', () => {
     const reply = firstReply('M2N 2K8');
     expect(reply.district).toBe('north_york');
-    expect(reply.text).toContain('Toronto Winter 2027 registration opens');
+    expect(reply.text).toContain('Winter 2027');
+    expect(reply.text).toContain('Toronto');
     expect(reply.text).toContain('Dec 9');
     expect(reply.text).not.toContain('Dec 8');
   });

@@ -154,7 +154,8 @@ describe('createRadarComposer', () => {
     expect(payload.findWon).toBe(false);
     expect(payload.itemCount).toBe(0);
     expect(payload.followUpNeeded).toBe(true);
-    expect(payload.firstFindPromised).toBe(true);
+    // #868: the fixed empty-radar promise is gone; recording the model's promise is the follow-up.
+    expect(payload.firstFindPromised).toBe(false);
   });
 
   it('does not answer a Halton Hills family with the registration date', async () => {
@@ -283,7 +284,8 @@ describe('createRadarComposer', () => {
     expect(payload.message).not.toContain('Sept 9');
     // #868: no fixed empty-radar line; an empty search hands the voice nothing.
     expect(payload.message).toBe('');
-    expect(payload.firstFindPromised).toBe(true);
+    // #868: the fixed empty-radar promise is gone; recording the model's promise is the follow-up.
+    expect(payload.firstFindPromised).toBe(false);
     expect(payload.followUpNeeded).toBe(true);
   });
 
@@ -347,7 +349,8 @@ describe('createRadarComposer', () => {
     expect(payload.message).toBe('');
     expect(payload.itemCount).toBe(0);
     expect(payload.checkpointTold).toBeNull();
-    expect(payload.firstFindPromised).toBe(true);
+    // #868: the fixed empty-radar promise is gone; recording the model's promise is the follow-up.
+    expect(payload.firstFindPromised).toBe(false);
   });
 
   it('tells no checkpoint when the two leads already fill the message', async () => {
