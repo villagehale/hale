@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { MAX_LISTED_APPROVALS, matchFastPath } from './fast-path';
 
 /**
@@ -209,14 +208,13 @@ describe('matchFastPath — what it must NOT claim', () => {
       'help',
       'info',
       'start',
-      // The French half the carriers mandate. Same rule, same reason: the keyword is
-      // claimed upstream, so a second reading here could only disagree with the first.
+      // The French half the carriers mandate. Same rule, same reason: the opt-out
+      // reader reads it upstream, so a second reading here could only disagree.
       'ARRET',
       'arrêt',
       'AIDE',
       'DEBUT',
     ]) {
-      expect(matchKeyword(word), word).not.toBeNull();
       expect(matchFastPath(word), word).toBeNull();
     }
   });
@@ -345,7 +343,7 @@ describe('matchFastPath — French and Chinese', () => {
    * AND an unsubscribe, and reading it as an approval decline would answer a parent asking
    * to be left alone with a calendar message. "annuler", "arrête" and 取消 are that same
    * word, and the reasoning does not weaken for being written in French or Chinese — it
-   * gets stronger, because `matchKeyword` claims ARRET and ARRÊTE but not annuler or 取消,
+   * gets stronger, because the old keyword list claimed ARRET and ARRÊTE but not annuler or 取消,
    * so nothing upstream would catch the mistake on those.
    *
    * They stay unread, which is not silence: an unmatched body goes to the coach, which

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "je n'en peux plus, j'ai envie de mourir",
+    "confirmation": "Je suis content que tu m'aies dit ça. Appelle ou envoie un SMS au 3114 (gratuit, 24h/24). Si tu es en danger maintenant, appelle le 15 ou le 112."
+  },
+  "latencyMs": 1620
+}

@@ -9,9 +9,6 @@ import { type GroupTurnDecision, decideGroupTurn } from './group-turn-policy';
 const KIDS = ['Maya', 'Léo'];
 
 const CASES: ReadonlyArray<[string, GroupTurnDecision]> = [
-  ['STOP', { route: 'keyword', keyword: 'stop' }],
-  ['arret', { route: 'keyword', keyword: 'stop' }],
-  ['HELP', { route: 'keyword', keyword: 'help' }],
   ['Hale, is swim still on tomorrow', { route: 'coach', reason: 'addressed' }],
   ['@Hale can you check saturday', { route: 'coach', reason: 'addressed' }],
   ['thanks hale!', { route: 'coach', reason: 'addressed' }],
@@ -58,5 +55,19 @@ describe('decideGroupTurn', () => {
       route: 'ignore',
       outcome: 'group_chatter_ignored',
     });
+  });
+});
+
+describe('#868 stop/start routes from the reader, not a word list', () => {
+  it("routes the reader's stop or start, whatever the words", () => {
+    expect(decideGroupTurn({ text: 'please leave us be', kidNames: KIDS, optOut: 'stop' })).toEqual(
+      {
+        route: 'keyword',
+        keyword: 'stop',
+      },
+    );
+    expect(decideGroupTurn({ text: 'STOP', kidNames: KIDS, optOut: null }).route).not.toBe(
+      'keyword',
+    );
   });
 });

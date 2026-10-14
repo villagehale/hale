@@ -858,6 +858,7 @@ export interface WorkstreamFollowupResult {
 function emptyHeld(): WorkstreamFollowupResult['held'] {
   return {
     not_enrolled: 0,
+    opt_out_unread: 0,
     no_watch_consent: 0,
     quiet_hours: 0,
     coparent_ask: 0,

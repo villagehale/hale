@@ -244,7 +244,6 @@ describe('ci.yml wiring', () => {
       'eval:village-search',
       'eval:sentinel',
       'eval:intake',
-      'eval:intake-voice',
       'eval:intake-answer',
       'eval:inbound-lane',
       'eval:general-answer',

@@ -231,7 +231,11 @@ export function installEvalSpendCap() {
 export function lazyAnthropic(tag = 'eval') {
   let client;
   return () => {
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client ??= new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
+      fetch: globalThis.fetch,
+    });
     return capSdkClient(client, { rates: priceRates, tag });
   };
 }

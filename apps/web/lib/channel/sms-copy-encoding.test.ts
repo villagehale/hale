@@ -3,12 +3,9 @@ import { fileURLToPath } from 'node:url';
 import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
-import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
-import {
-  matchConnectorDisconnectRequest,
-  matchConnectorRequest,
-} from '~/lib/channel/connect/detect';
-import { CONNECTOR_CONNECTED_TEXT, CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
+import { connectorRevokeReply } from '~/lib/channel/connect/copy';
+import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
+import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
 import {
   forwardAddressReply,
   forwardRevokeDeclinedReply,
@@ -16,40 +13,6 @@ import {
   matchForwardAddressRequest,
 } from '~/lib/channel/email/forward-request';
 import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
-import {
-  AMBIGUOUS_CLARIFY,
-  AMBIGUOUS_CLARIFY_BY_LANGUAGE,
-  ASSENT_ACK,
-  ASSENT_ACK_BY_LANGUAGE,
-  COLD_START_ASK_BY_LANGUAGE,
-  CO_PARENT_ASK,
-  DECLINE_ACK,
-  DECLINE_ACK_BY_LANGUAGE,
-  HALE_GREETING_EN,
-  HELP_REPLY,
-  HELP_REPLY_BY_LANGUAGE,
-  IDENTITY_ACCOUNTABILITY_LINE,
-  IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
-  REGION_UNAVAILABLE_REPLY,
-  REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
-  SITTING_SESSION_REMINDER,
-  SOURCE_VENUES,
-  START_ACK,
-  START_ACK_BY_LANGUAGE,
-  STOP_ACK,
-  STOP_ACK_BY_LANGUAGE,
-  UNREADABLE_INTAKE_REPLY,
-  UNREADABLE_INTAKE_REPLY_BY_LANGUAGE,
-  WATCH_OFFER,
-  WATCH_OFFER_BY_LANGUAGE,
-  detailsBlocked,
-  followUp,
-  greeting,
-  greetingWithArea,
-  intakeCalendarCard,
-  intakeConnectorOffer,
-  intakeGmailCard,
-} from '~/lib/channel/intake/copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { replyLanguage } from '~/lib/channel/language';
 import {
@@ -65,8 +28,6 @@ import {
   failureReply,
   whichOneReply,
 } from '~/lib/channel/router/copy';
-import { emailAlertOfferReplies } from '~/lib/integrations/email-alert-offer';
-import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
 
 /**
@@ -219,113 +180,6 @@ describe('outbound SMS copy stays in the GSM-7 alphabet', () => {
 });
 
 /**
- * The other composition the file scan cannot see: intake's strings are built from a
- * constant (the privacy URL) and from runtime arguments (the venue name, the child
- * summary), so a clean copy.ts does not by itself prove a clean SENT message. Every
- * intake turn is rendered and judged by the same encoder the segment counter bills on.
- *
- * The whole onboarding script v2 is exercised, because the v2 revision rewrote all of
- * it at once and a re-keyed string is exactly when a curly quote gets pasted in.
- */
-describe('the intake script stays GSM-7 once rendered', () => {
-  const RENDERED: Record<string, string> = {
-    'greeting (venue)': greeting('family centre', 'en'),
-    WATCH_OFFER,
-    ASSENT_ACK,
-    DECLINE_ACK,
-    AMBIGUOUS_CLARIFY,
-    STOP_ACK,
-    HELP_REPLY,
-    UNREADABLE_INTAKE_REPLY,
-    IDENTITY_ACCOUNTABILITY_LINE,
-    START_ACK,
-    REGION_UNAVAILABLE_REPLY,
-    SITTING_SESSION_REMINDER,
-    'followUp (ages)': followUp('Maya (4) and Leo', ['ages']),
-    'followUp (both)': followUp('Nora and Ben', ['ages', 'location']),
-    'detailsBlocked (both)': detailsBlocked(['ages', 'location']),
-  };
-
-  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
-    expect(smsEncoding(body)).toBe('gsm7');
-  });
-
-  // The consent ask is the one intake string carrying a link, and a link is the easiest
-  // thing to paste a curly character into. It must also stay ONE segment: it is appended
-  // to the radar payload, where every septet is charged against the same budget.
-  it('keeps the consent ask, privacy link and all, inside one GSM-7 segment', () => {
-    expect(WATCH_OFFER).toContain(PRIVACY_URL);
-    expect(smsSegments(WATCH_OFFER)).toBe(1);
-  });
-
-  /**
-   * The greeting is the one intake body whose budget is spent BEFORE anyone chose to
-   * hear from Hale, and the 2026-09-17 rewrite spent the second segment to say what the
-   * product is. Two is the ceiling, and the variant that reaches it first is not the one
-   * a developer reads: the venue tail interpolates a name out of {@link SOURCE_VENUES},
-   * and the postering run keeps adding longer ones ("Roncesvalles & Howard Park poster"
-   * is 33 characters against "library"'s 7). So the ceiling is measured against the
-   * LONGEST name actually registered, which makes the next poster that would cost every
-   * scanner a third segment a red test rather than a line on an invoice.
-   */
-  it('keeps every greeting variant inside two segments, longest registered venue included', () => {
-    const longestVenue = Object.values(SOURCE_VENUES)
-      .map((venue) => venue.name)
-      .reduce((longest, name) => (name.length > longest.length ? name : longest));
-    // Positive control: a registry that stopped being read would make the sweep below
-    // pass on an empty-ish string.
-    expect(longestVenue.length).toBeGreaterThan(20);
-    expect(greeting(null, 'en')).toBe(HALE_GREETING_EN);
-    expect(smsEncoding(CO_PARENT_ASK)).toBe('ucs2');
-    expect(smsSegments(CO_PARENT_ASK)).toBe(2);
-
-    const variants = {
-      'no venue': greeting(null, 'en'),
-      'no venue (fr)': greeting(null, 'fr'),
-      'venue (shortest)': greeting('library', 'en'),
-      'venue (longest registered)': greeting(longestVenue, 'en'),
-      'postal-first': greetingWithArea('M5V'),
-    };
-    expect(
-      Object.fromEntries(
-        Object.entries(variants).map(([name, body]) => [
-          name,
-          { encoding: smsEncoding(body), segments: smsSegments(body) },
-        ]),
-      ),
-    ).toEqual({
-      'no venue': { encoding: 'ucs2', segments: 3 },
-      'no venue (fr)': { encoding: 'gsm7', segments: 2 },
-      'venue (shortest)': { encoding: 'gsm7', segments: 2 },
-      'venue (longest registered)': { encoding: 'gsm7', segments: 2 },
-      'postal-first': { encoding: 'gsm7', segments: 2 },
-    });
-  });
-});
-
-/**
- * The email alert's receipts, rendered in both twins.
- *
- * The file scan cannot see these: the occasion's title comes from a school's subject line
- * (already folded by the alert's own `gsm7`, and pinned here as the assertion that it
- * stays folded), and the French twin carries the accents GSM-7 does have. One segment,
- * because these are replies to a text the parent just answered and nothing about an
- * acknowledgement is worth two.
- */
-describe('the email-alert offer receipts stay GSM-7 and inside one segment', () => {
-  const RENDERED = (['en', 'fr'] as const).flatMap((language) =>
-    emailAlertOfferReplies(language).map((body, index) => [`${language}[${index}]`, body] as const),
-  );
-
-  it.each(RENDERED)('%s', (_name, body) => {
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 1,
-    });
-  });
-});
-
-/**
  * The co-parent join link, rendered — the composition the file scan cannot see.
  *
  * The mint message is the longest deterministic body Hale sends, because 72 of its
@@ -372,182 +226,6 @@ describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
    * a trimmed or split URL fails here rather than in a stranger's inbox. */
   it('carries the whole link inside the budget', () => {
     expect(joinInviteForward(CODE)).toContain(`https://www.villagehale.com/text?s=${CODE}`);
-  });
-});
-
-/**
- * The connector offer, rendered — the other deterministic body that carries a URL Hale
- * did not write. The link is the payload (a single-use, 15-minute sign-in token), so the
- * gates are GSM-7 once rendered and the WHOLE link present. The unverified-app line
- * sits in front of the link, which is why the ceiling is two segments rather than one.
- */
-describe('the connector offer stays GSM-7 and inside two segments, twins in lockstep', () => {
-  // Representative of the real mint: 16 bytes base64url is 22 characters, plus the
-  // `&to=` deep link the redeem page needs to skip Settings.
-  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gmail';
-  const PROVIDERS = ['gcal', 'gmail', 'gdrive'] as const;
-  const LANGUAGES = ['en', 'fr'] as const;
-
-  it.each(
-    LANGUAGES.flatMap((language) => PROVIDERS.map((provider) => [language, provider] as const)),
-  )('%s / %s', (language, provider) => {
-    const body = connectorOfferReply(language, provider, URL);
-    expect({
-      encoding: smsEncoding(body),
-      overBudget: smsSegments(body) > 2,
-      carriesWholeLink: body.includes(URL),
-    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true });
-  });
-
-  /** The twins are twins: same link, same window, different words — so a copy edit that
-   * touches one language and forgets the other fails here rather than in a thread. */
-  it('keeps the EN and FR twins in lockstep on the facts', () => {
-    for (const provider of PROVIDERS) {
-      const en = connectorOfferReply('en', provider, URL);
-      const fr = connectorOfferReply('fr', provider, URL);
-      expect(en).not.toBe(fr);
-      expect(en).toContain('15');
-      expect(fr).toContain('15');
-    }
-  });
-});
-
-/**
- * The day-one connector offer intake sends behind the consent acknowledgment — two
- * links, a longer sentence, and therefore a different ceiling.
- *
- * TWO SEGMENTS, not one, and the number is the point of the test rather than an
- * allowance: 137 of these characters are sign-in URLs Hale did not write, and the copy
- * spends the rest saying what they are for and that ignoring them is a complete answer.
- * A third segment is a 50% bill increase on a message every new family gets, and an
- * amputated link is an offer nobody can accept — so both twins are measured with
- * realistic links inside them, and the FR twin is held to the same alphabet as the rest
- * of the French script.
- */
-describe('the year-open connector cards stay GSM-7 and inside two segments', () => {
-  const CALENDAR_URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gcal';
-  const GMAIL_URL = 'https://app.villagehale.com/connect?t=RkFDRUZFRURGQUNFRkVFRA&to=gmail';
-
-  it.each(['en', 'fr'] as const)('calendar %s', (language) => {
-    const body = intakeCalendarCard(language, CALENDAR_URL);
-    expect({
-      encoding: smsEncoding(body),
-      overBudget: smsSegments(body) > 2,
-      carriesWholeLink: body.includes(CALENDAR_URL),
-      oneLink: (body.match(/https:\/\/\S+/g) ?? []).length === 1,
-    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true, oneLink: true });
-  });
-
-  it.each(['en', 'fr'] as const)('gmail %s', (language) => {
-    const body = intakeGmailCard(language, GMAIL_URL);
-    expect({
-      encoding: smsEncoding(body),
-      overBudget: smsSegments(body) > 2,
-      carriesWholeLink: body.includes(GMAIL_URL),
-      oneLink: (body.match(/https:\/\/\S+/g) ?? []).length === 1,
-    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true, oneLink: true });
-  });
-});
-
-/**
- * Three segments. Two sign-in URLs already filled two, and the unverified-app
- * line in front of them is the third. The links stay whole.
- */
-describe('the intake connector offer stays GSM-7 and inside three segments', () => {
-  /** The real shapes, measured rather than approximated: appBaseUrl() in production is
-   * `https://app.villagehale.com`, and a channel sign-in token is 16 random bytes in
-   * base64url — 22 characters. 137 of this message is therefore URL Hale did not write. */
-  const CALENDAR_URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gcal';
-  const GMAIL_URL = 'https://app.villagehale.com/connect?t=RkFDRUZFRURGQUNFRkVFRA&to=gmail';
-
-  it.each(['en', 'fr'] as const)('%s', (language) => {
-    const body = intakeConnectorOffer(language, CALENDAR_URL, GMAIL_URL);
-    expect({
-      encoding: smsEncoding(body),
-      overBudget: smsSegments(body) > 3,
-      carriesWholeLinks: body.includes(CALENDAR_URL) && body.includes(GMAIL_URL),
-    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLinks: true });
-  });
-
-  /** The twins carry the same three facts in different words: what is being asked for,
-   * how long the links live, and that doing nothing is the answer. */
-  it('keeps the EN and FR twins in lockstep on the facts', () => {
-    const en = intakeConnectorOffer('en', CALENDAR_URL, GMAIL_URL);
-    const fr = intakeConnectorOffer('fr', CALENDAR_URL, GMAIL_URL);
-
-    expect(en).not.toBe(fr);
-    for (const body of [en, fr]) {
-      expect(body).toContain('Gmail');
-      expect(body).toContain('15');
-      expect(body).toContain(CALENDAR_URL);
-      expect(body).toContain(GMAIL_URL);
-    }
-    expect(en).toContain('Google Calendar');
-    expect(fr).toContain('Google Agenda');
-    // The skip, in both — the offer has no NO to reply to, so the message has to say
-    // that ignoring it is a whole answer or it is not optional at all.
-    expect(en).toMatch(/ignore this to skip/);
-    expect(fr).toMatch(/ignorez pour passer/);
-  });
-
-  /**
-   * ONE LINK PER CONNECTOR, each landing on its own Google consent — the whole founder
-   * ask is that neither tap passes through the portal, and a single link would leave
-   * Gmail behind a round trip. The links are also the reason the ceiling above is the
-   * real gate: two of them is 137 characters of the budget before a word is written.
-   */
-  it('carries a live link for each connector it names', () => {
-    for (const language of ['en', 'fr'] as const) {
-      const body = intakeConnectorOffer(language, CALENDAR_URL, GMAIL_URL);
-      expect(body.match(/https:\/\//g)).toHaveLength(2);
-      expect(body).toMatch(/&to=gcal\b/);
-      expect(body).toMatch(/&to=gmail\b/);
-    }
-    // The words still work for a parent who ignored the message and asks later.
-    expect(matchConnectorRequest('connect my gmail')).toBe('gmail');
-    expect(matchConnectorRequest('connecter mon Gmail')).toBe('gmail');
-  });
-
-  /** The characters the French twin may not use, named — the same refusals the rest of
-   * the French script is held to, with the same positive control under them. */
-  it('names the characters the French twin may not use', () => {
-    const fr = intakeConnectorOffer('fr', CALENDAR_URL, GMAIL_URL);
-
-    expect([...'âêîôûçœ«»’—'].filter((char) => fr.includes(char))).toEqual([]);
-    expect(smsEncoding('é è à ù')).toBe('gsm7');
-    expect(smsEncoding('â ê î ô û ç')).toBe('ucs2');
-  });
-});
-
-/**
- * The receipt Hale texts the second a connector is live — the last message in the texted
- * connect, and the only one the parent gets while standing in a browser tab.
- *
- * ONE SEGMENT EACH, and that is the whole budget question: it carries no link (the work
- * is already done), so anything over one segment is ceremony on a message whose only job
- * is to confirm what landed and name one kids-year payoff. The way out is the trust
- * line on the card that asked for the tap.
- */
-describe('the connector receipt stays one GSM-7 segment and says how to undo it', () => {
-  it.each(Object.entries(CONNECTOR_CONNECTED_TEXT))('%s', (_provider, body) => {
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 1,
-    });
-    // The receipt is a text, so it never hands the parent back to a screen.
-    expect(body).not.toMatch(/https?:/i);
-    expect(body).not.toMatch(/\bthe app\b/i);
-  });
-
-  it('confirms what landed and names one kids-year payoff', () => {
-    expect(CONNECTOR_CONNECTED_TEXT.gcal).toBe(
-      "Calendar's connected. I'll catch class invites and trip dates.",
-    );
-    expect(CONNECTOR_CONNECTED_TEXT.gmail).toBe(
-      "Gmail's connected. I'll flag daycare and school notices.",
-    );
-    expect(CONNECTOR_CONNECTED_TEXT.gcal).not.toContain('something new lands');
-    expect(CONNECTOR_CONNECTED_TEXT.gmail).not.toContain('needs you');
   });
 });
 
@@ -717,23 +395,8 @@ describe('the forwarding address reply stays GSM-7 and carries the whole address
  */
 describe('the French script stays GSM-7 and inside the English budgets', () => {
   const RENDERED: Record<string, { body: string; maxSegments: number }> = {
-    'greeting (no venue)': { body: greeting(null, 'fr'), maxSegments: 2 },
-    COLD_START_ASK: { body: COLD_START_ASK_BY_LANGUAGE.fr, maxSegments: 1 },
     // One segment, for the same reason the English consent ask is: it rides on the end
     // of the radar payload, where every septet comes out of the same budget.
-    WATCH_OFFER: { body: WATCH_OFFER_BY_LANGUAGE.fr, maxSegments: 1 },
-    ASSENT_ACK: { body: ASSENT_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
-    DECLINE_ACK: { body: DECLINE_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
-    AMBIGUOUS_CLARIFY: { body: AMBIGUOUS_CLARIFY_BY_LANGUAGE.fr, maxSegments: 1 },
-    HELP_REPLY: { body: HELP_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
-    UNREADABLE_INTAKE_REPLY: { body: UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
-    IDENTITY_ACCOUNTABILITY_LINE: {
-      body: IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr,
-      maxSegments: 2,
-    },
-    START_ACK: { body: START_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
-    STOP_ACK: { body: STOP_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
-    REGION_UNAVAILABLE_REPLY: { body: REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
     PROVIDER_ACCESS_REPLY: { body: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
     UNPLACEABLE_PROVIDER_REPLY: {
       body: UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE.fr,

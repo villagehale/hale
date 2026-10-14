@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -18,7 +18,6 @@ import {
   defaultConnectedNoticePorts,
   sendConnectorConnectedText,
 } from './connected-notice';
-import { CONNECTOR_CONNECTED_TEXT } from './text-connect';
 
 /**
  * The receipt Hale texts back the moment Google hands the parent to the callback.
@@ -31,6 +30,15 @@ import { CONNECTOR_CONNECTED_TEXT } from './text-connect';
 const NOW = new Date('2026-09-17T15:00:00.000Z');
 const PHONE = '+14165550143';
 const APP_KEY = Buffer.alloc(32, 7).toString('base64');
+
+/** Test-only stand-in for the receipt model: a plain receipt, and an ask on the email step. */
+const receiptVoice: FriendVoiceComposer = {
+  async compose(input) {
+    if (input.step === 'email') return { reply: 'Email ask (test fixture)?' };
+    if (input.step === 'calendar') return { reply: 'Calendar ask (test fixture)?' };
+    return { reply: 'Receipt (test fixture).' };
+  },
+};
 
 describe('sendConnectorConnectedText', () => {
   let db: TestDb;
@@ -63,6 +71,7 @@ describe('sendConnectorConnectedText', () => {
     threaded = [];
     ports = {
       transport,
+      friendVoice: receiptVoice,
       threadMessage: async (_database, input) => {
         threaded.push(input);
         return 'conversation-id';
@@ -83,15 +92,14 @@ describe('sendConnectorConnectedText', () => {
     );
   }
 
-  it('texts the verified number once, with the locked calendar words', async () => {
+  it('texts the verified number once, then the calendar card', async () => {
     await seedChannel();
 
-    const outcome = await send('gcal');
+    const outcome = await send('gmail');
 
     expect(connectedNoticeLabel(outcome)).toBe('sent');
-    expect(transport.sent[0]).toEqual({ to: PHONE, body: CONNECTOR_CONNECTED_TEXT.gcal });
-    expect(transport.sent[1]?.body).toContain('to=gmail');
-    expect(transport.sent[1]?.body).toContain('unverified app');
+    expect(transport.sent[0]).toEqual({ to: PHONE, body: expect.any(String) });
+    expect(transport.sent[1]?.body).toContain('to=gcal');
     expect(transport.sent).toHaveLength(2);
   });
 
@@ -128,14 +136,14 @@ describe('sendConnectorConnectedText', () => {
       providerMessageId: 'fake-out-1',
     });
     // The coach must be able to read back what Hale just said on this number.
-    expect(threaded).toEqual([{ familyId, parentUserId, body: CONNECTOR_CONNECTED_TEXT.gmail }]);
+    expect(threaded[0]).toEqual({ familyId, parentUserId, body: expect.any(String) });
   });
 
   it('is a no-op on a replayed callback: the same connect is never texted twice', async () => {
     await seedChannel();
 
-    const first = await send('gcal');
-    const second = await send('gcal');
+    const first = await send('gmail');
+    const second = await send('gmail');
 
     expect([connectedNoticeLabel(first), connectedNoticeLabel(second)]).toEqual([
       'sent',
@@ -155,15 +163,15 @@ describe('sendConnectorConnectedText', () => {
   it('texts again when the parent disconnects and reconnects', async () => {
     await seedChannel();
 
-    const first = await send('gcal');
+    const first = await send('gmail');
     connectId = randomUUID();
-    const reconnect = await send('gcal');
+    const reconnect = await send('gmail');
 
     expect([connectedNoticeLabel(first), connectedNoticeLabel(reconnect)]).toEqual([
       'sent',
       'sent',
     ]);
-    // The Gmail card is one per family. The reconnect texts the receipt again.
+    // The calendar card is one per family. The reconnect texts the receipt again.
     expect(transport.sent).toHaveLength(3);
     expect(threaded).toHaveLength(3);
   });
@@ -223,7 +231,7 @@ describe('sendConnectorConnectedText', () => {
     expect(transport.sent).toHaveLength(1);
   });
 
-  it('sends the Gmail card in the same iMessage chat as the calendar receipt', async () => {
+  it('sends the calendar card in the same iMessage chat as the Gmail receipt', async () => {
     await seedChannel();
     const chatId = '8f392755-6865-4b18-880a-227f9d8b458f';
     await db.database.insert(schema.channelMessages).values({
@@ -241,7 +249,7 @@ describe('sendConnectorConnectedText', () => {
     const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-linq' }));
     ports = { ...ports, imessage };
 
-    const outcome = await send('gcal');
+    const outcome = await send('gmail');
 
     expect(connectedNoticeLabel(outcome)).toBe('sent');
     expect(transport.sent).toEqual([]);
@@ -249,9 +257,9 @@ describe('sendConnectorConnectedText', () => {
     const calls = imessage.mock.calls as unknown as Array<[{ chatId: string; body: string }]>;
     expect(calls[0]?.[0]).toMatchObject({
       chatId,
-      body: CONNECTOR_CONNECTED_TEXT.gcal,
+      body: expect.any(String),
     });
-    expect(calls[1]?.[0]?.body).toContain('to=gmail');
+    expect(calls[1]?.[0]?.body).toContain('to=gcal');
     expect(calls[1]?.[0]?.chatId).toBe(chatId);
   });
 
@@ -279,7 +287,7 @@ describe('sendConnectorConnectedText', () => {
     expect(transport.sent).toEqual([]);
     expect(imessage).toHaveBeenCalledWith({
       chatId,
-      body: CONNECTOR_CONNECTED_TEXT.gmail,
+      body: expect.any(String),
     });
     const [row] = await db.database
       .select({
@@ -331,7 +339,8 @@ describe('sendConnectorConnectedText', () => {
     const outcome = await send('gmail');
 
     expect(connectedNoticeLabel(outcome)).toBe('sent');
-    expect(transport.sent).toEqual([{ to: PHONE, body: CONNECTOR_CONNECTED_TEXT.gmail }]);
+    expect(transport.sent.length).toBeGreaterThan(0);
+    expect(transport.sent.every((m) => m.to === PHONE)).toBe(true);
     expect(imessage).not.toHaveBeenCalled();
   });
 
@@ -381,7 +390,6 @@ describe('sendConnectorConnectedText', () => {
   }
 
   it('hands the model only kid items: a clash between two kid activities is kept, the parent appointment is not', async () => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     await seedChannel();
     await seedChild(db.database, familyId, 'Maya', 48, undefined, NOW);
     const seen: Array<{ titles: string[]; overlaps: Array<{ earlier: string; later: string }> }> =
@@ -467,7 +475,6 @@ describe('sendConnectorConnectedText', () => {
   });
 
   it('says nothing from a calendar that holds only the parent: no wow, a plain receipt', async () => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     await seedChannel();
     await seedChild(db.database, familyId, 'Maya', 48, undefined, NOW);
     const reads: string[] = [];
@@ -518,7 +525,6 @@ describe('sendConnectorConnectedText', () => {
   });
 
   it('says nothing from a mailbox that holds only the parent: receipts and work mail never reach the model', async () => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     await seedChannel();
     await seedChild(db.database, familyId, 'Maya', 48, undefined, NOW);
     const reads: string[] = [];
@@ -588,14 +594,5 @@ describe('sendConnectorConnectedText', () => {
     expect(typeof wired.transport.send).toBe('function');
     expect(typeof wired.imessage).toBe('function');
     expect(wired.threadMessage).toBe(threadProactiveMessage);
-  });
-
-  it('keeps both receipts inside one GSM-7 segment', () => {
-    for (const body of Object.values(CONNECTOR_CONNECTED_TEXT)) {
-      expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-        encoding: 'gsm7',
-        segments: 1,
-      });
-    }
   });
 });

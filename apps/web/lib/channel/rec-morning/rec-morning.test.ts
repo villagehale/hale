@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { COLD_START_ASK, WATCH_OFFER_ASK } from '~/lib/channel/intake/copy';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { townLabel } from '~/lib/channel/town-label';
 import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
@@ -19,6 +18,11 @@ import {
   recMorningReply,
   resolveHelloCity,
 } from './index';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
 
 /** Same ceiling as intake/answer.ts MAX_REPLY_CHARS — kept local so this spec does not
  * pull the model composer (and @hale/agent) into a copy test. */
@@ -169,12 +173,14 @@ describe('rec-morning SMS · the Toronto line, derived', () => {
     expect(TORONTO_LINE).toContain(TORONTO_REC_PORTAL);
     firstAnswerIsClean(TORONTO_LINE);
     expect(TORONTO_LINE.toLowerCase()).not.toContain('efun');
-    expect(intake('When does Toronto swim registration open?')).toBe(
-      `${TORONTO_LINE} Still want me watching?`,
-    );
-    expect(intake('when is Toronto fall recreation registration?', COLD_START_ASK)).toBe(
-      `${TORONTO_LINE} ${COLD_START_ASK}`,
-    );
+    expect(
+      String(intake('When does Toronto swim registration open?')).startsWith(TORONTO_LINE),
+    ).toBe(true);
+    expect(
+      String(intake('when is Toronto fall recreation registration?', COLD_START_ASK)).startsWith(
+        TORONTO_LINE,
+      ),
+    ).toBe(true);
   });
 
   it('says "opened" about a morning that has gone, and never offers it as upcoming', () => {
@@ -291,7 +297,7 @@ describe('rec-morning SMS · a city line is derived, never locked', () => {
     expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L3R' })).toBe(CITY_LINES.markham);
     expect(reply('when is fall rec?', THIS_MORNING, { city: 'Markham' })).toBe(CITY_LINES.markham);
     expect(reply('L3R rec dates?')).toBe(CITY_LINES.markham);
-    expect(intake('Markham fall rec dates?')).toBe(`${CITY_LINES.markham} Still want me watching?`);
+    expect(String(intake('Markham fall rec dates?')).startsWith(CITY_LINES.markham)).toBe(true);
   });
 
   it('names the cycle Hale is waiting on where there is one, and "the next" where there is not', () => {
@@ -559,9 +565,7 @@ describe('rec-morning SMS · what a derived line may never do', () => {
     const seeded = new Set(REGISTRATION_WINDOWS.map((seed) => seed.municipality));
     // Aurora is the one seeded town resolveHelloCity refuses (its line is not written).
     seeded.delete('aurora');
-    const missing = [...seeded].filter(
-      (town) => !ALL_HELLO_CITIES.includes(town as RecHelloCity),
-    );
+    const missing = [...seeded].filter((town) => !ALL_HELLO_CITIES.includes(town as RecHelloCity));
     expect(missing).toEqual([]);
   });
 
@@ -656,11 +660,11 @@ describe('rec-morning SMS · budgets and the intake return', () => {
       expect(smsEncoding(body), text).toBe('gsm7');
     }
 
-    expect(intake('When does Toronto swim registration open?')).toBe(
-      `${TORONTO_LINE} Still want me watching?`,
-    );
-    expect(intake('when does YMCA swim open?', COLD_START_ASK)).toBe(
-      `${YMCA_FIRST} ${COLD_START_ASK}`,
+    expect(
+      String(intake('When does Toronto swim registration open?')).startsWith(TORONTO_LINE),
+    ).toBe(true);
+    expect(String(intake('when does YMCA swim open?', COLD_START_ASK)).startsWith(YMCA_FIRST)).toBe(
+      true,
     );
   });
 });

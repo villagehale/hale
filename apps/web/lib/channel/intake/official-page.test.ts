@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
-import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
 import {
-  NOT_POSTED_YET,
-  OFFICIAL_PAGE_RETURN_ASK,
   deidentifyOfficialQuery,
   extractOfficialAnswer,
   isOfficialPageAsk,
   notesGroundADate,
-  officialPageFallbackReply,
   officialPageReplyFromNotes,
   officialPageReturnLine,
 } from './official-page';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
 
 describe('official-page · which inbound is a real rec/camp clock question', () => {
   it('matches a first-text rec/camp ask that misses the city pins', () => {
@@ -34,37 +34,15 @@ describe('official-page · which inbound is a real rec/camp clock question', () 
 });
 
 describe('official-page · the return ask is never COLD_START_ASK', () => {
-  it('asks for names, ages, and postal in different words', () => {
-    const line = officialPageReturnLine(COLD_START_ASK);
-    expect(line).toBe(OFFICIAL_PAGE_RETURN_ASK);
-    expect(line).not.toBe(COLD_START_ASK);
-    expect(line.endsWith('?')).toBe(true);
-    expect(line.toLowerCase()).toContain('names');
-    expect(line.toLowerCase()).toContain('ages');
-    expect(line.toLowerCase()).toContain('postal');
-  });
-
   it('paraphrases the watch offer without copying it', () => {
     const line = officialPageReturnLine(WATCH_OFFER_ASK);
     expect(line).not.toBe(WATCH_OFFER_ASK);
-    expect(line.endsWith('?')).toBe(true);
+    // #868: no fixed return line at all; the friend voice asks next turn.
+    expect(line).toBe('');
   });
 });
 
 describe('official-page · not posted yet when search cannot ground a date', () => {
-  it('is the locked fallback, GSM-7, under 300, no URL, no I do not do that', () => {
-    const body = officialPageFallbackReply(COLD_START_ASK);
-    expect(body.startsWith(NOT_POSTED_YET)).toBe(true);
-    expect(body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(body).not.toBe(COLD_START_ASK);
-    expect(body).not.toContain(COLD_START_ASK);
-    expect(body).not.toContain("I don't do that");
-    expect(body).not.toMatch(/https?:\/\//);
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(smsSegments(body)).toBeLessThanOrEqual(2);
-    expect(body.length).toBeLessThanOrEqual(300);
-  });
-
   it('extracts a posted date from official notes and refuses a clock that is not there', () => {
     const notes =
       'The City of Hamilton posted swim registration for residents on September 8 at 7:00 a.m.';
@@ -81,11 +59,11 @@ describe('official-page · not posted yet when search cannot ground a date', () 
       COLD_START_ASK,
     );
     expect(grounded).toContain('September 8');
-    expect(grounded).toContain(OFFICIAL_PAGE_RETURN_ASK);
     expect(grounded).not.toContain(COLD_START_ASK);
 
     const empty = officialPageReplyFromNotes('Nothing on the municipal page.', COLD_START_ASK);
-    expect(empty).toBe(officialPageFallbackReply(COLD_START_ASK));
+    // #868: no fixed fallback; null hands the turn to the model's not_posted line.
+    expect(empty).toBeNull();
   });
 });
 

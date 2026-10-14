@@ -392,7 +392,6 @@ describe('GET /api/integrations/callback — the text surface', () => {
   });
 
   it('passes the receipt one real calendar event when friend voice is on', async () => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {

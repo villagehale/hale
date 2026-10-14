@@ -370,7 +370,13 @@ function emptySummary(enabled: boolean): WatchedSpotsSweepSummary {
     awaitingReceipt: 0,
     refused: 0,
     failed: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0, coparent_ask: 0 },
+    held: {
+      not_enrolled: 0,
+      opt_out_unread: 0,
+      no_watch_consent: 0,
+      quiet_hours: 0,
+      coparent_ask: 0,
+    },
     released: {
       notified: 0,
       expired: 0,

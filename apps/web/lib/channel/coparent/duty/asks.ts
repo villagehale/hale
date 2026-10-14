@@ -112,7 +112,7 @@ export type DutyDelivery =
     }
   | {
       status: 'held';
-      reason: 'quiet_hours' | 'not_enrolled' | 'no_watch_consent' | 'ask_budget';
+      reason: 'quiet_hours' | 'not_enrolled' | 'opt_out_unread' | 'no_watch_consent' | 'ask_budget';
     }
   | { status: 'not_sent'; reason: string };
 

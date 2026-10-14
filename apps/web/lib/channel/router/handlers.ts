@@ -3,7 +3,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { answeredOnTheSameChannel, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
 import type { EveningRequestReader } from '~/lib/channel/checkin/request';
-import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
+import { connectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
   type ConnectOfferTarget,
   connectOfferTarget,
@@ -11,7 +11,7 @@ import {
   matchConnectorRequest,
   matchFreshConnectorFollowUp,
 } from '~/lib/channel/connect/detect';
-import { textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
+import { defaultFreshLinkPorts, textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
@@ -46,7 +46,6 @@ import {
   type ParentCallNameVoice,
   handleParentCallNameReply,
 } from '~/lib/channel/identity/parent-call-name';
-import { intakeConnectorOffer } from '~/lib/channel/intake/copy';
 import { replyLanguage } from '~/lib/channel/language';
 import {
   type CoParentNumberDeps,
@@ -55,12 +54,20 @@ import {
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
+import {
+  type SaidLineWriter,
+  createSaidLineWriter,
+  writeConnectorLink,
+  writeConnectorLinks,
+} from '~/lib/channel/voice/said-line';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import {
   handleEmailAlertOfferReply,
   resolveEmailAlertOffer,
 } from '~/lib/integrations/email-alert-offer';
+import type { OfferReceiptWriter } from '~/lib/integrations/offer-receipt';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import {
   type PrepareReplyDeps,
@@ -345,7 +352,10 @@ async function familyGroupTurn(database: Database, ctx: HandlerContext): Promise
   return message?.providerChatId === family.linqGroupChatId;
 }
 
-export function connectorLinkHandler(log: Pick<Console, 'error'> = console): DeterministicHandler {
+export function connectorLinkHandler(
+  log: Pick<Console, 'error'> = console,
+  saidLine: SaidLineWriter = createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+): DeterministicHandler {
   return {
     name: 'connector_link',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
@@ -374,12 +384,12 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
         if (!provider) {
           return { claimed: true, outcome: 'group_link_withheld', reply: null };
         }
-        const outcome = await textFreshConnectorLink(database, {
-          familyId: ctx.familyId,
-          parentUserId: ctx.parentUserId,
-          provider,
-          now: ctx.now,
-        });
+        const outcome = await textFreshConnectorLink(
+          database,
+          { familyId: ctx.familyId, parentUserId: ctx.parentUserId, provider, now: ctx.now },
+          // The handler's own writer, so the 1:1 text is written the same way.
+          { ...defaultFreshLinkPorts(), saidLine },
+        );
         if (outcome !== 'sent') {
           log.error(
             { familyId: ctx.familyId, provider: target, outcome },
@@ -400,12 +410,22 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
           now: ctx.now,
         });
         switch (outcome.status) {
-          case 'minted':
-            return {
-              claimed: true,
-              outcome: 'sent',
-              reply: intakeConnectorOffer(language, outcome.urls[0], outcome.urls[1]),
-            };
+          case 'minted': {
+            // #868: the model writes the text around the two links.
+            const reply = await writeConnectorLinks(saidLine, {
+              language,
+              calendarUrl: outcome.urls[0],
+              gmailUrl: outcome.urls[1],
+            });
+            if (!reply) {
+              log.error(
+                { familyId: ctx.familyId, provider: target, outcome: 'links_unwritten' },
+                'connector link: both-links text could not be written - nothing sent',
+              );
+              return { claimed: true, outcome: 'links_unwritten', reply: null };
+            }
+            return { claimed: true, outcome: 'sent', reply };
+          }
           case 'not_enrolled':
             log.error(
               { familyId: ctx.familyId, provider: target, outcome: 'not_enrolled' },
@@ -428,12 +448,22 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
         now: ctx.now,
       });
       switch (outcome.status) {
-        case 'minted':
-          return {
-            claimed: true,
-            outcome: 'sent',
-            reply: connectorOfferReply(language, target, outcome.url),
-          };
+        case 'minted': {
+          // #868: the model writes the text around the one link.
+          const reply = await writeConnectorLink(saidLine, {
+            language,
+            provider: target,
+            url: outcome.url,
+          });
+          if (!reply) {
+            log.error(
+              { familyId: ctx.familyId, provider: target, outcome: 'links_unwritten' },
+              'connector link: link text could not be written - nothing sent',
+            );
+            return { claimed: true, outcome: 'links_unwritten', reply: null };
+          }
+          return { claimed: true, outcome: 'sent', reply };
+        }
         case 'not_enrolled':
           // Ids and the named outcome only, never the body (rule #1). The coach takes
           // the turn, and its skill knows this branch exists.
@@ -956,63 +986,55 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
  * the flag went off between the text and the reply. With the flag off no row is ever
  * written, so the gate is the row.
  *
- * THE SECOND YES. Once the first one resolves the offer it stops being listed, so a
- * repeat reaches this handler on the keyword pass with NO open question — where
- * `soleOpenKind` is vacuously true and would let it claim any bare affirmative at all.
- * That is why the repeat branch has to find something of its own to act on, why its
- * window is minutes rather than the offer's own day, and why inside that window it still
- * requires the receipt to be Hale's LAST WORD to this parent (email-alert-offer.ts).
+ * THE MODEL NAMES THE OFFER. This handler does not read the parent's words. A bare
+ * "yes", a correction, or the same idea in another language is a reading from
+ * `calendar-offer-read`, carried in on `ctx.resolved`. With no reading there is nothing
+ * to do, and the turn continues. The receipt is written from the facts by `writeReceipt`.
+ * A writer that returns nothing is `receipt_unsent`: the event is already placed (or the
+ * decline is already decided) and no template is sent in its place.
  *
  * `ctx.inboundChannelMessageId` is not read. Nothing here files a fact against the
  * parent's own words — the offer row already carries its provenance — so a spoken turn,
  * which has no inbound row, would cost this handler nothing even if the kind were ever
  * added to SPOKEN_QUESTION_KINDS (it is not).
  */
-export function emailAlertAddHandler(): DeterministicHandler {
+export function emailAlertAddHandler(deps: {
+  writeReceipt: OfferReceiptWriter;
+}): DeterministicHandler {
   return {
     name: 'email_alert_add',
     resolves: new Set<OpenQuestionKind>(['email_alert_add']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const answer = ctx.resolved?.kind === 'email_alert_add' ? ctx.resolved : null;
-      const word = readAffirmative(ctx.body);
-      const polarity = answer?.polarity ?? (word === 'unclear' ? null : word);
-      if (polarity === null) return { claimed: false };
-      // THE BARE WORD, and the two things that make it unambiguous. `soleOpenKind` rules
-      // out every OTHER kind; the count rules out the second offer of this one, which that
-      // function is vacuously happy with — a family may hold three alerts a day, and "yes"
-      // next to two of them names neither. Declining sends the turn to the resolver and,
-      // failing that, to the one-sentence "Which one?" the subjects are written for.
-      if (answer === null) {
-        const questions = await ctx.openQuestions();
-        const mine = questions.filter((question) => question.kind === 'email_alert_add');
-        if (mine.length > 1 || !soleOpenKind(questions, 'email_alert_add')) {
-          return { claimed: false };
-        }
-      }
+      if (!answer) return { claimed: false };
 
       const outcome = await handleEmailAlertOfferReply(database, {
         familyId: ctx.familyId,
         parentUserId: ctx.parentUserId,
-        // The row the answer NAMES, never a position (route.ts `ResolvedAnswer`). Null is
-        // the bare word, which the guard above has just established is unambiguous.
-        offerId: answer?.questionId ?? null,
-        polarity,
-        language: replyLanguage(ctx.body),
+        offerId: answer.questionId,
+        polarity: answer.polarity,
+        parentReply: ctx.body,
         now: ctx.now,
       });
       if (outcome.status === 'no_open_offer') return { claimed: false };
-      if (outcome.status === 'already_added') {
-        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
-      }
       const resolution = outcome.status;
+      const reply = await deps.writeReceipt.write(outcome.facts);
+      if (reply === null) {
+        console.info(
+          { status: 'receipt_unsent', outcome: resolution },
+          'email alert offer: the receipt was not sent',
+        );
+      }
       return {
         claimed: true,
         outcome: resolution,
-        reply: outcome.reply,
+        reply,
         // Closed by the message that told the parent, never before it. A turn that placed
         // the event and then failed to answer must leave the offer standing so the redrive
         // finds it — the event insert is claimed against the offer, so the redrive places
         // nothing twice (the MEM-10 send-time discipline every other offer here keeps).
+        // A null reply never reaches afterSend (deliver returns first), so the offer
+        // stays open until a receipt actually goes out.
         afterSend: (channelMessageId) =>
           resolveEmailAlertOffer(database, {
             offerId: outcome.offerId,

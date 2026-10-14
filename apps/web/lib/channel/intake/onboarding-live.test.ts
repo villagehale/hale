@@ -30,7 +30,6 @@ describe.skipIf(!LIVE)('live onboarding replay (real model)', () => {
     db = await createTestDb();
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_FROM_E164', LIVE_FROM);

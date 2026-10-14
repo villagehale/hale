@@ -111,37 +111,3 @@ export function connectorLinkCard(provider: TextConnectProvider | null): Connect
 export function textConnectButtonLabel(provider: TextConnectProvider): string {
   return `Connect ${PROVIDER_NOUN[provider]}`;
 }
-
-/**
- * The one text Hale sends once the tokens are stored — confirm what landed, then
- * one kids-year payoff. The trust line (password, disconnect) lives on the card
- * that asked for the tap, not again here.
- */
-/**
- * Design locked (Sloane, 2026-09-24). The receipt is its own turn: no ask rides
- * with it. English is the default. French is the family's primary language.
- */
-export const CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE: Record<
-  ReplyLanguage,
-  Record<TextConnectProvider, string>
-> = {
-  en: {
-    gcal: "Calendar's connected. I'll catch class invites and trip dates.",
-    gmail: "Gmail's connected. I'll flag daycare and school notices.",
-  },
-  fr: {
-    gcal: 'Calendrier connecte. Je note les invitations de cours et les dates de voyage.',
-    gmail: "Gmail connecte. Je flaggue les avis de garderie et d'ecole.",
-  },
-};
-
-/** English receipts. Callers that already hold a language use the map above. */
-export const CONNECTOR_CONNECTED_TEXT: Record<TextConnectProvider, string> =
-  CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE.en;
-
-export function connectorConnectedText(
-  language: ReplyLanguage,
-  provider: TextConnectProvider,
-): string {
-  return CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE[language][provider];
-}

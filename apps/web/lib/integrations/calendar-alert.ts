@@ -126,6 +126,7 @@ export const CALENDAR_ALERT_OUTCOMES = [
   'no_start',
   'no_parent_user',
   'gate_refused:not_enrolled',
+  'gate_refused:opt_out_unread',
   'gate_refused:no_watch_consent',
   'gate_refused:quiet_hours',
   'no_send_target',

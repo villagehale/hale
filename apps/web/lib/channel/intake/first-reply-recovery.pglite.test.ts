@@ -41,7 +41,6 @@ afterAll(async () => {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
-  vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
 });
 
 afterEach(async () => {

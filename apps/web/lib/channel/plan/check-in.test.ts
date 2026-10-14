@@ -288,7 +288,7 @@ describe('when it must not send', () => {
     const result = await h.run();
 
     expect(result).toMatchObject({ unsendable: 1, sent: 0 });
-    expect(Object.values(result.held)).toEqual([0, 0, 0]);
+    expect(Object.values(result.held)).toEqual([0, 0, 0, 0]);
     logged.mockRestore();
   });
 

@@ -1,16 +1,14 @@
-import { type IntakeKeyword, matchKeyword } from '~/lib/channel/intake/keywords';
-
 /**
  * Group onboarding v2, §4 — whether a message in the family group is Hale's to answer.
  *
  * Decided in code, before the coach runs. In a group Hale is one voice among the family:
  * it answers when someone speaks to it by name, or asks a question about a kid or the
  * day's logistics. A parent talking to the other parent is not a turn, so it costs no
- * model call, no ledger row and no budget. A CASL keyword always routes.
+ * model call, no ledger row and no budget. A stop or start, read by the model in any wording, always routes.
  */
 
 export type GroupTurnDecision =
-  | { route: 'keyword'; keyword: IntakeKeyword }
+  | { route: 'keyword'; keyword: 'stop' | 'start' }
   | { route: 'coach'; reason: 'addressed' | 'question' }
   | { route: 'duty' }
   | { route: 'ignore'; outcome: 'group_chatter_ignored' };
@@ -72,9 +70,10 @@ function namesKid(text: string, kidNames: readonly string[]): boolean {
 export function decideGroupTurn(input: {
   text: string;
   kidNames: readonly string[];
+  /** The opt-out reader's stop/start for this text, read by the caller (#868). */
+  optOut?: 'stop' | 'start' | null;
 }): GroupTurnDecision {
-  const keyword = matchKeyword(input.text);
-  if (keyword) return { route: 'keyword', keyword: keyword.keyword };
+  if (input.optOut) return { route: 'keyword', keyword: input.optOut };
 
   const text = input.text.replace(/[‘’]/g, "'");
   if (ADDRESSED.test(text)) return { route: 'coach', reason: 'addressed' };

@@ -50,13 +50,14 @@ vi.mock('~/lib/channel/intake/sitting-reminder', () => ({
   runSittingReminderCron: (...a: unknown[]) => runSittingReminderCronMock(...a),
   defaultSittingReminderDeps: () => ({ transport: {} }),
 }));
-// The sitting-reminder route imports these to build friend-voice deps when the
-// flag is on. Stub them so the gate never loads the model client.
+// The sitting-reminder route builds friend-voice deps. Stub them so the gate never
+// loads the model client.
 vi.mock('~/lib/channel/intake/friend-voice', () => ({
   createFriendVoiceComposer: () => ({}),
 }));
-vi.mock('~/lib/channel/intake/friend-voice-flag', () => ({
-  onboardingFriendVoiceEnabled: () => false,
+vi.mock('~/lib/pipeline/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/pipeline/client')>()),
+  budgetedAnthropic: () => ({}),
 }));
 // The nudge route's other riders each read a dark-launch flag and return before they
 // touch a handle; the two 08:00 re-drives deliberately have none (each finishes a send

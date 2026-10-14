@@ -120,6 +120,7 @@ export const EMAIL_ALERT_OUTCOMES = [
   'backfill_suppressed',
   'no_received_at',
   'gate_refused:not_enrolled',
+  'gate_refused:opt_out_unread',
   'gate_refused:no_watch_consent',
   'gate_refused:quiet_hours',
   'classifier_failed',

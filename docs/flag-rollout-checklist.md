@@ -23,7 +23,6 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `COPARENT_DUTY_COPY_LOCKED` | `true` | unconfirmed, verify in Vercel env | `false` | Sloane |
 | `SAME_ACTIVITY_MEET_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `MID_ACTIVITY_ASK_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
-| `ONBOARDING_FRIEND_VOICE_ENABLED` | `on` | unconfirmed, verify in Vercel env | empty, or `off` | Sloane |
 | `BOOKED_DETECTION_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `F14_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
@@ -132,7 +131,6 @@ These are the flags the brief says are on. Confirm the Vercel value before treat
 | `COPARENT_DUTY_COPY_LOCKED` | Duty sentences are allowed to leave. | `audit_log` action `reply_copy_fallback` (the fixed line went out instead of the model line). | `false` | Sloane |
 | `SAME_ACTIVITY_MEET_ENABLED` | When a caller reaches this code, a meet reply is prepared only after both households opt in. `deliverSameActivityReply` returns `skipped: 'not_configured'`, so the line stays in process. Nothing in the inbound router calls this path today. | A `channel_messages` row that carries a meet line, or an audit row `same_activity_opt_in_recorded`. | `false` | Noah |
 | `MID_ACTIVITY_ASK_ENABLED` | The nudge cron runs the sweep. A due ask is counted and not texted. The log line is `mid-activity ask: copy may leave but no sender is wired`. | That log line, and any `channel_messages` row with template key `mid-activity:ask`. | `false` | Noah |
-| `ONBOARDING_FRIEND_VOICE_ENABLED` | The model writes each onboarding step. Off this flag, the locked ladder copy stays. | Onboarding replies that ask two questions, and compose fallbacks in the web logs (`model_failed`, `unusable`). | empty, or `off` | Sloane |
 | `BOOKED_DETECTION_ENABLED` | A booking confirmation is stored as a held spot. | `activity_booking_recorded` rows, and parent alerts that fire for mail the backfill should have stayed quiet on. | `false` | Noah |
 | `BOOKED_DETECTION_BACKFILL_ENABLED` | One capped page of booking-shaped mail from the last 90 days is recorded, and the parent is not alerted. | Log line `gmail sweep: envelope outcome`. Backfill must not insert a `channel_messages` row. | `false` | Noah |
 | `F14_ENABLED` | Hale may start a conversation (nudges, evening check-in, and the other proactive sweeps that read this flag). | Any outbound with no inbound from that parent the same day. A comment in `apps/web/lib/village/intros/run.ts` says this flag is on for real families. The capability registry still says the default is off. | `false` | Noah |

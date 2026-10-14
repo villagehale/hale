@@ -137,7 +137,7 @@ const RETURN_VERB =
  *
  * Nothing shipped says these words. Checked against every deterministic template on the
  * wire — the caregiver welcome's "the week's schedule", the intros' "at the next good
- * match", the ladder's "your plan the evening before", START_ACK — and none of them
+ * match", the ladder's "your plan the evening before" — and none of them
  * names a deliverable. "guide" and "plan" are deliberately absent: "guidance" is what
  * the tool-ack line says out loud, and "plan" is the registration ladder's own promise,
  * which is a different ledger kind. */

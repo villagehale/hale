@@ -1,19 +1,18 @@
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
-import { greeting } from '~/lib/channel/intake/copy';
 import {
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeRadar,
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -90,8 +89,8 @@ function harness(): Harness {
         { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
       ]),
       radar: fakeRadar,
-      ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      friendVoice: scriptedFriendVoice,
       openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
@@ -422,8 +421,8 @@ describe('a link that is no longer good · never an error to the person holding 
 
     const second = await text(h, BYSTANDER_PHONE, arrival(code));
 
-    expect(second).toEqual({ status: 'greeted' });
-    expect(h.transport.sent.slice(before).map((s) => s.body)).toEqual([greeting(null, 'en')]);
+    expect(second).toMatchObject({ status: 'first_touch' });
+    expect(h.transport.sent.slice(before)).toHaveLength(1); // one model-written reply; no fixed copy
     // Exactly one co-parent was ever created.
     expect(
       inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent'),
@@ -444,8 +443,8 @@ describe('a link that is no longer good · never an error to the person holding 
 
     const late = await text(h, PARTNER_PHONE, arrival(code), eightDaysOn);
 
-    expect(late).toEqual({ status: 'greeted' });
-    expect(h.transport.sent.at(-1)?.body).toBe(greeting(null, 'en'));
+    expect(late).toMatchObject({ status: 'first_touch' });
+    expect(h.transport.sent.at(-1)?.body).toEqual(expect.any(String)); // model-written; no fixed copy
     expect(
       inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent'),
     ).toHaveLength(0);
@@ -485,7 +484,6 @@ describe('a link that is no longer good · never an error to the person holding 
     expect(h.transport.sent.at(-1)?.to).toBe(PARTNER_PHONE);
     // Not greeted, and no intake session opened on their number: the greeting is what
     // asks them for their children's names.
-    expect(h.transport.bodies()).not.toContain(greeting(null, 'en'));
     expect(inserts(h.fake, schema.smsIntakeSessions)).toHaveLength(0);
     // And nothing was seated or burned — the link stays good if the seat frees. The one
     // co-parent is the one the test seeded; this redeemer got no row of any kind.
@@ -504,8 +502,8 @@ describe('a link that is no longer good · never an error to the person holding 
 
     const stranger = await text(h, PARTNER_PHONE, arrival('join-deadbeefdeadbeefdeadbeefdeadbeef'));
 
-    expect(stranger).toEqual({ status: 'greeted' });
-    expect(h.transport.sent.at(-1)?.body).toBe(greeting(null, 'en'));
+    expect(stranger).toMatchObject({ status: 'first_touch' });
+    expect(h.transport.sent.at(-1)?.body).toEqual(expect.any(String)); // model-written; no fixed copy
     // The tag is dropped, not recorded: a source code rides on into the consent
     // evidence and the provisioning audit row, and a live-looking capability token has
     // no business in either.
@@ -520,7 +518,7 @@ describe('a live link outranks whatever conversation is already open', () => {
     const code = mintedCode(h.transport);
     // The partner texts before they tap the link — or taps a link that was already
     // spent — and an intake session opens on their number.
-    expect(await text(h, PARTNER_PHONE, 'Hello')).toEqual({ status: 'greeted' });
+    expect(await text(h, PARTNER_PHONE, 'Hello')).toMatchObject({ status: 'first_touch' });
     const session = h.fake.rows(schema.smsIntakeSessions).at(-1);
 
     const joined = await text(h, PARTNER_PHONE, arrival(code));
@@ -609,7 +607,7 @@ describe('two people redeem the same link at once', () => {
     ]);
 
     const statuses = [first?.status, second?.status].sort();
-    expect(statuses).toEqual(['greeted', 'join_link_accepted']);
+    expect(statuses).toEqual(['first_touch', 'join_link_accepted']);
     expect(
       inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent'),
     ).toHaveLength(1);

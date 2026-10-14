@@ -24,6 +24,7 @@ import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
@@ -521,6 +522,7 @@ function harness(
       questions: options.questions ?? fakeQuestions([]),
       replyResolver:
         options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+      calendarOffers: calendarOffersIdle,
       disambiguation: fakeDisambiguation(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
@@ -799,7 +801,7 @@ describe('routing order', () => {
  *   AHEAD of the coach, which is the entire point.
  */
 describe('VIL-333 identity challenge', () => {
-  it('sends the locked disclosure and does not wake the coach or the off-domain screen', async () => {
+  it('sends the model-written disclosure and does not wake the coach or the off-domain screen', async () => {
     const lane = fakeLane({ status: 'in_domain', fallback: null });
     const coach = fakeCoach();
     const h = harness({
@@ -807,6 +809,14 @@ describe('VIL-333 identity challenge', () => {
       offDomain: lane,
       coach,
     });
+    const asked: unknown[] = [];
+    h.deps.turnReader = { read: async () => ({ intent: 'identity', confirmation: '' }) };
+    h.deps.saidLine = {
+      async write(input) {
+        asked.push(input);
+        return 'Disclosure (test fixture) villagehale.com aloha@villagehale.com';
+      },
+    };
 
     const result = await routeChannelMessage(h.deps, job());
 
@@ -814,8 +824,22 @@ describe('VIL-333 identity challenge', () => {
     expect(coach.calls).toBe(0);
     expect(lane.calls).toBe(0);
     expect(h.transport.bodies()).toEqual([
-      'This is Hale from Village Hale Technologies Inc. (villagehale.com). Barton Dong runs it (aloha@villagehale.com). Reply STOP anytime and we stop.',
+      'Disclosure (test fixture) villagehale.com aloha@villagehale.com',
     ]);
+    expect(asked).toMatchObject([
+      { purpose: 'identity', mustInclude: ['villagehale.com', 'aloha@villagehale.com'] },
+    ]);
+  });
+
+  it('sends nothing when the disclosure cannot be written (no canned fallback)', async () => {
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'who is this??' }, coach });
+    h.deps.turnReader = { read: async () => ({ intent: 'identity', confirmation: '' }) };
+    h.deps.saidLine = { write: async () => null };
+    const result = await routeChannelMessage(h.deps, job());
+    expect(result).toMatchObject({ status: 'handled', handler: 'identity_challenge' });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(coach.calls).toBe(0);
   });
 });
 
@@ -2160,45 +2184,48 @@ describe('the outage smoke alarm', () => {
     };
   }
 
-  it('defers an emergency during an outage and sends nothing preset', async () => {
+  it('sends no fixed line during an outage crisis; it pages #ops urgently instead', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    const result = await routeChannelMessage(h.deps, job());
 
-    expect(h.transport.sent).toEqual([]);
-    expect(h.transport.bodies()).not.toContain(failureReply());
+    expect(result.status).toBe('smoke_alarm_fired');
+    expect(h.transport.bodies()).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, where: 'model_outage' }),
+      expect.stringContaining('URGENT'),
+    );
+    log.mockRestore();
   });
 
-  /** It is a reply like any other: ledgered, audited (rule #6), and in the thread the
-   * parent can read back. A siren that skipped the books would be the one message Hale
-   * sent that nothing recorded. */
-  it('ledgers nothing outbound when the moment reply cannot be written', async () => {
+  it('writes no outbound row for it: nothing was sent', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    await routeChannelMessage(h.deps, job());
 
-    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
-    expect(out).toHaveLength(0);
-    expect(auditRows(h.fake).map((r) => r.actionTaken)).not.toContain('sms_reply_sent');
-    const assistant = messageRows(h.fake).filter((r) => r.role === 'assistant');
-    expect(assistant).toEqual([]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toHaveLength(0);
   });
 
   it('records the alarm against the inbound message so a queue retry cannot re-ring it', async () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
-    expect(claim.fired).toEqual([]);
+    const first = await routeChannelMessage(h.deps, job());
+    expect(first.status).toBe('smoke_alarm_fired');
+    expect(claim.fired).toEqual([job().channel_message_id]);
 
     // The SAME message, re-driven: at-least-once delivery means the drain can hand this
     // job back after a mid-turn crash (lib/cron/drain.ts), and the defer arc means it
     // does so routinely. The alarm's own claim is now the SECOND line of defence — the
     // turn ledger stops the re-drive before the coach is ever woken, because the safety
     // line was this text's answer.
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
-    expect(h.transport.sent).toEqual([]);
-    expect(claim.fired).toEqual([]);
+    // Nothing answered the first time, so the re-drive meets the outage again and is
+    // deferred (it may throw for the drain to retry); the claim keeps it to one page.
+    const retry = await routeChannelMessage(h.deps, job()).catch(() => null);
+    expect(retry?.status).not.toBe('smoke_alarm_fired');
+    expect(h.transport.bodies()).toEqual([]);
+    expect(claim.fired).toHaveLength(1);
   });
 
   /** A different text during the same outage is a different emergency. The claim is
@@ -2207,14 +2234,15 @@ describe('the outage smoke alarm', () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
-    await expect(
-      routeChannelMessage(
-        h.deps,
-        job({ channel_message_id: '44444444-4444-4444-8444-444444444444' }),
-      ),
-    ).rejects.toBeInstanceOf(TurnDeferred);
-    expect(h.transport.sent).toEqual([]);
+    await routeChannelMessage(h.deps, job());
+    const second = await routeChannelMessage(
+      h.deps,
+      job({ channel_message_id: '44444444-4444-4444-8444-444444444444' }),
+    );
+
+    expect(second.status).toBe('smoke_alarm_fired');
+    expect(h.transport.bodies()).toEqual([]);
+    expect(claim.fired).toHaveLength(2);
   });
 
   // ── the non-triggers ───────────────────────────────────────────────────────
@@ -2345,10 +2373,10 @@ describe('the outage smoke alarm', () => {
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    await routeChannelMessage(h.deps, job());
 
     const dump = JSON.stringify(h.logs);
-    expect(dump).toContain('moment_unwritten');
+    expect(dump).toContain('smoke_alarm_fired');
     expect(dump).not.toContain('not breathing');
   });
 });

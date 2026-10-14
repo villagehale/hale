@@ -1,9 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
-import { POLICY_VERSION } from '~/lib/consent';
-import { f14EnabledFor } from '~/lib/channel/f14';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { f14EnabledFor } from '~/lib/channel/f14';
+import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
+import { POLICY_VERSION } from '~/lib/consent';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type ParsedAddress, domainOf } from './address';
@@ -296,9 +296,7 @@ async function answerableParent(
 
   const owner = await resolveEmailSender(database, sender.address);
   const forwarder =
-    owner && owner.familyId === familyId && PARENT_ROLES.includes(owner.role)
-      ? owner.userId
-      : null;
+    owner && owner.familyId === familyId && PARENT_ROLES.includes(owner.role) ? owner.userId : null;
 
   const ordered = [
     ...(forwarder ? [forwarder] : []),
@@ -470,7 +468,11 @@ async function document(
     await deps.database
       .delete(schema.familyForwardSenders)
       .where(eq(schema.familyForwardSenders.id, sender.id));
-    return refuse(deps, { familyId: input.familyId, actor: input.parent.userId }, 'forward_ask_failed');
+    return refuse(
+      deps,
+      { familyId: input.familyId, actor: input.parent.userId },
+      'forward_ask_failed',
+    );
   }
 
   await deps.database.transaction(async (tx) => {
@@ -558,7 +560,7 @@ async function answer(
   // a DOCUMENT is not an instruction. The word in a forwarded body belongs to the school
   // that wrote it, and reading a third party's "cancel" as a parent's unsubscribe would
   // silence a household nobody asked.
-  if (matchKeyword(body)?.keyword === 'stop') {
+  if ((await optOutIntentOf(body)) === 'stop') {
     return honourEmailUnsubscribe(deps.database, owner);
   }
 
@@ -586,7 +588,11 @@ async function answer(
       body: forwardUnknownRef(locale),
       inReplyTo: input.event.messageId,
     });
-    return refuse(deps, { familyId: input.familyId, actor: owner.userId }, 'forward_answer_unknown');
+    return refuse(
+      deps,
+      { familyId: input.familyId, actor: owner.userId },
+      'forward_answer_unknown',
+    );
   }
 
   const verdict = readAffirmative(body);
@@ -680,9 +686,13 @@ async function answer(
       after: { senderDomain: domain },
     };
     if (allowed) {
-      await tx.insert(schema.auditLog).values({ ...row, actionTaken: 'email_forward_sender_allowed' });
+      await tx
+        .insert(schema.auditLog)
+        .values({ ...row, actionTaken: 'email_forward_sender_allowed' });
     } else {
-      await tx.insert(schema.auditLog).values({ ...row, actionTaken: 'email_forward_sender_blocked' });
+      await tx
+        .insert(schema.auditLog)
+        .values({ ...row, actionTaken: 'email_forward_sender_blocked' });
     }
     if (purged.length > 0) {
       await tx.insert(schema.auditLog).values({
@@ -711,11 +721,7 @@ async function answer(
  * already IS the state — and a bound that reads the same rows a parent can read is a
  * bound nobody has to keep in sync.
  */
-async function timesAsked(
-  database: Database,
-  familyId: string,
-  senderId: string,
-): Promise<number> {
+async function timesAsked(database: Database, familyId: string, senderId: string): Promise<number> {
   const rows = await database
     .select({ id: schema.auditLog.id })
     .from(schema.auditLog)
@@ -764,9 +770,6 @@ async function hold(
     .insert(schema.emailForwardsPending)
     .values(values)
     .onConflictDoNothing({
-      target: [
-        schema.emailForwardsPending.familyId,
-        schema.emailForwardsPending.providerMessageId,
-      ],
+      target: [schema.emailForwardsPending.familyId, schema.emailForwardsPending.providerMessageId],
     });
 }

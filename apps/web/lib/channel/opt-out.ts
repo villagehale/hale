@@ -8,8 +8,8 @@
  * electronic message. That footer is no longer appended, including on calendar
  * reminders.
  *
- * Inbound STOP is unchanged. A parent who texts STOP is still opted out
- * (lib/channel/intake/keywords.ts, answered at the webhook above the router). The
+ * A parent who asks to stop, in any wording, is opted out by the opt-out
+ * reader (#868) in the intake machine, above the router. The
  * two strings stay exported because composers still refuse a message that writes
  * one, and several segment budgets were sized against the longer line.
  *

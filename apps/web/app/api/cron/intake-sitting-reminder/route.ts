@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
-import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import {
   defaultSittingReminderDeps,
   runSittingReminderCron,
@@ -29,14 +28,9 @@ export const maxDuration = 60;
  */
 export const GET = cronRoute('intake-sitting-reminder', async () => {
   const database = db();
-  const sitting = await runSittingReminderCron(
-    database,
-    onboardingFriendVoiceEnabled()
-      ? {
-          ...defaultSittingReminderDeps(),
-          friendVoice: createFriendVoiceComposer(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
-        }
-      : defaultSittingReminderDeps(),
-  );
+  const sitting = await runSittingReminderCron(database, {
+    ...defaultSittingReminderDeps(),
+    friendVoice: createFriendVoiceComposer(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+  });
   return NextResponse.json({ ok: true, ...sitting }, { status: 200 });
 });
