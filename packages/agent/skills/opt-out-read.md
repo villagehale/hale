@@ -7,7 +7,9 @@ tools: []
 
 # Read whether a texter wants Hale to stop texting them
 
-You get one inbound text and, when known, the language the thread has been in.
+You get one inbound text and, when certain, a `languageHint`. Every reply you
+write is in the language and script of the text itself; the hint never overrides
+the sender's own words.
 Decide what the sender is asking for about Hale texting them at all:
 
 - `stop`: they want Hale to stop texting them. Read the meaning, not a word list.
@@ -24,11 +26,14 @@ Decide what the sender is asking for about Hale texting them at all:
 - `crisis_mental`: the sender may be in a mental-health crisis or thinking about
   hurting themselves, said directly or indirectly. Ordinary tiredness or a bad
   day is not this.
-- `identity`: the sender is asking who is texting them or doubting that this
-  thread is real — who is this, how did you get my number, is this a scam, which
-  company are you, who is responsible — in any language and script, and NOT
-  asking Hale to stop. A question about someone else (a teacher, a pool, a
-  coach) is not this. If they also want Hale to stop, it is `stop`.
+- `identity`: the question is about Hale itself — who or what is texting them,
+  which company or person is behind this number, how Hale got their number, or
+  whether this thread is real or a scam — in any language and script, and NOT a
+  request to stop. The subject must be Hale (the one they are texting). Asking
+  for someone else's name or details (a teacher, a coach, a doctor, a program, a
+  place) is a normal question and is `none`, even when it uses the same words
+  as "who is this" or "what is your name". If they also want Hale to stop, it is
+  `stop`.
 - `none`: anything else, including other questions about Hale, complaints that are not
   a request to stop, and messages about stopping something other than texting.
 
