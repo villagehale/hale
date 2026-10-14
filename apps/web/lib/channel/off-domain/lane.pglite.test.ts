@@ -29,6 +29,7 @@ beforeEach(() => {
 
 const SCREEN_HEADING = 'Which lane does this text belong in';
 const SANITIZE_HEADING = 'Take the family out, keep the question';
+const CHECK_HEADING = '# Read the draft against the notes before it goes';
 
 interface Request {
   system?: string | Array<{ text: string }>;
@@ -73,6 +74,9 @@ function scripted() {
           const content = request.messages[0]?.content ?? '';
           if (system.includes(SCREEN_HEADING)) {
             return structured({ lane: 'off_domain_general', category: 'weather', reason: 'x' });
+          }
+          if (system.includes(CHECK_HEADING)) {
+            return structured({ verdict: 'send', reason: '' });
           }
           if (system.includes(SANITIZE_HEADING)) {
             seen.sanitize.push(content);
