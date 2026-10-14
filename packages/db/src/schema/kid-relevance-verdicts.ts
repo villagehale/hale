@@ -16,7 +16,7 @@ import { integrations } from './integrations.js';
  * `inputHash` is the cache key: a model verdict is reused while the hash matches. A
  * `parent` row is the parent's own word and a model upsert never overwrites it.
  *
- * NOT DECLARED HERE, deliberately: `kid_relevance_verdicts_item_uniq` (migration 0164)
+ * NOT DECLARED HERE, deliberately: `kid_relevance_verdicts_item_uniq` (migration 0169)
  * is a UNIQUE index on (family_id, source, integration_id, item_key) with NULLS NOT
  * DISTINCT, so a group item with no integration is covered too. Drizzle's index builder
  * cannot express NULLS NOT DISTINCT, and a plain uniqueIndex would misdescribe it. Upserts

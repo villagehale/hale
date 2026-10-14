@@ -9,7 +9,7 @@ import {
   seedIntegration,
 } from '~/lib/testing/pglite';
 
-const MIGRATION = '0164_kid_relevance_verdicts.sql';
+const MIGRATION = '0169_kid_relevance_verdicts.sql';
 
 let db: TestDb;
 
@@ -33,7 +33,7 @@ function verdictRow(familyId: string, integrationId: string | null, itemKey: str
   };
 }
 
-describe('0164 kid_relevance_verdicts', () => {
+describe('0169 kid_relevance_verdicts', () => {
   it('is in the migration chain', () => {
     expect(migrationFiles()).toContain(MIGRATION);
   });
