@@ -126,6 +126,9 @@ export async function recordEvent(
     // measurement. A real call records the hit (or the known miss) the spend
     // view divides by.
     promptCacheHit: input.model === 'deterministic' ? undefined : input.usage.cacheReadTokens > 0,
+    cacheReadTokens: input.model === 'deterministic' ? undefined : input.usage.cacheReadTokens,
+    cacheWriteTokens:
+      input.model === 'deterministic' ? undefined : input.usage.cacheCreationTokens,
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });
@@ -170,6 +173,8 @@ export async function recordDraft(
     completionTokens: input.usage.completionTokens,
     costUsd: agentRunCostUsd(input.model, input.usage),
     promptCacheHit: input.usage.cacheReadTokens > 0,
+    cacheReadTokens: input.usage.cacheReadTokens,
+    cacheWriteTokens: input.usage.cacheCreationTokens,
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });

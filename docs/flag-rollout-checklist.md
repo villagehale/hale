@@ -101,7 +101,7 @@ Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns t
 | `TRAVEL_BRIEF_FAMILY_ALLOWLIST` | `TRAVEL_BRIEF_ENABLED` |
 | `GOOGLE_WRITE_SCOPES_ALLOWLIST` | `GOOGLE_WRITE_SCOPES_ENABLED` (Hale user ids, not family ids; a listed user is armed while the flag is unset) |
 | `VILLAGE_INTROS_FAMILY_ALLOWLIST` | `VILLAGE_INTROS_ENABLED` |
-| `METRICS_EXCLUDED_FAMILY_IDS` | none (drops those families from digest metrics) |
+| `METRICS_EXCLUDED_FAMILY_IDS` | none (required before the first daily #ops post; drops those families from the post and the Monday digest) |
 
 `SIGNUP_BROWSER_RUNTIME` (`local`, `vercel_sandbox`, or `browserbase`) is read only after `SIGNUP_SANDBOX_RUNTIME_ENABLED` is `true`. Unset. Owner: Noah.
 
