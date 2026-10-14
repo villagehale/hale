@@ -62,6 +62,7 @@ import {
 } from '~/lib/registration/sequence/run';
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
+import { askWriter } from '~/lib/testing/consent-double';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -477,6 +478,19 @@ async function runToddlerJourney(): Promise<Journey> {
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
+    consent: {
+      read: async ({ text }) => {
+        const folded = text.trim().toLowerCase();
+        if (['yes', 'oui', 'yes please', 'sounds good', 'yeah'].includes(folded)) {
+          return { verdict: 'yes' as const, target: 'none' as const };
+        }
+        if (['no', 'non', 'nope', 'no thanks'].includes(folded)) {
+          return { verdict: 'no' as const, target: 'none' as const };
+        }
+        return { verdict: 'neither' as const, target: 'none' as const };
+      },
+    },
+    consentAsk: askWriter(),
     now: INTAKE_AT,
   };
 
