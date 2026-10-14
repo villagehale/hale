@@ -108,15 +108,21 @@ interface Script {
   /** How the search turn stopped. A finished turn unless a test says otherwise. */
   searchStop?: string;
   answer?: unknown;
+  /** The pre-send read's verdict. A plain send unless a test says otherwise. */
+  check?: unknown;
 }
 
 interface Seen {
   sanitize: Captured[];
   search: Captured[];
   compose: Captured[];
+  check: Captured[];
 }
 
-const seenNothing = (): Seen => ({ sanitize: [], search: [], compose: [] });
+const seenNothing = (): Seen => ({ sanitize: [], search: [], compose: [], check: [] });
+
+/** The pre-send read is told apart by its skill, like the sanitizer. */
+const CHECK_HEADING = '# Read the draft against the notes before it goes';
 
 const reading = (overrides: Record<string, unknown> = {}) => ({
   language: 'en',
@@ -142,8 +148,13 @@ function scripted(script: Script, seen: Seen = seenNothing()): () => AgentClient
       messages: {
         async create(request: Captured) {
           const sanitizing = systemText(request.system).includes(SANITIZE_HEADING);
-          (sanitizing ? seen.sanitize : seen.compose).push(request);
-          const payload = sanitizing ? (script.sanitize ?? reading()) : script.answer;
+          const checking = systemText(request.system).includes(CHECK_HEADING);
+          (sanitizing ? seen.sanitize : checking ? seen.check : seen.compose).push(request);
+          const payload = sanitizing
+            ? (script.sanitize ?? reading())
+            : checking
+              ? (script.check ?? { verdict: 'send', reason: '' })
+              : script.answer;
           if (payload instanceof Error) throw payload;
           return structured(payload);
         },

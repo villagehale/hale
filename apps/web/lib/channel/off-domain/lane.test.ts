@@ -1157,6 +1157,10 @@ describe('the screen reads a reply to an open question first', () => {
                 needs_search: 'yes',
               });
             }
+            if (system.includes('# Read the draft against the notes before it goes')) {
+              calls.push('check');
+              return structured({ verdict: 'send', reason: '' });
+            }
             calls.push('compose');
             return structured(script.composed ?? { answer: 'Sunny in Toronto, high of 14.' });
           },
@@ -1539,7 +1543,7 @@ describe('the screen reads a reply to an open question first', () => {
 
     const verdict = await run('Toronto');
 
-    expect(turn.calls).toEqual(['screen', 'sanitize', 'search', 'compose']);
+    expect(turn.calls).toEqual(['screen', 'sanitize', 'search', 'compose', 'check']);
     expect(turn.searched.map((content) => JSON.parse(content).question)).toEqual([
       'hows the weather tomorrow in Toronto',
     ]);
