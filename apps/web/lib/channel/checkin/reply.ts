@@ -4,7 +4,7 @@ import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { askStillStanding, localDateKey, recordCheckInAnswer } from './cadence';
 import { CHECK_IN_ASK_TEMPLATE_KEY } from './copy';
 import { isNotKept, storeCheckInNote } from './notes';
-import { asksHaleForSomething } from './request';
+import { type EveningRequestReader, eveningReplyIsRequest } from './request';
 
 /**
  * VIL-353 · WHAT THE PARENT SAYS BACK.
@@ -18,7 +18,7 @@ export type CheckInReplyStatus = 'note_stored' | 'not_stored_sensitive';
 
 export type CheckInReplyOutcome =
   | { status: CheckInReplyStatus; reply: null }
-  /** Not an answer to this question — the coach takes the turn (see the '?' rule). */
+  /** Not an answer to this question — the coach takes the turn. */
   | { status: 'declined_to_claim' };
 
 export interface CheckInReplyInput {
@@ -38,21 +38,28 @@ export interface CheckInReplyInput {
 /**
  * Read the parent's reply, move what it moves, and say one sentence back.
  *
- * A MESSAGE ADDRESSED TO HALE IS NEVER CLAIMED (request.ts). "Fine, and can you find a
- * swim class on Saturdays?" is a parent asking Hale for something, and filing it as a
- * diary entry would answer the wrong half of their message — badly, since the coach never
- * sees it. The evening note is the cheap half of this exchange and the request is the
- * expensive one, so the ambiguity resolves toward the coach every time, and the standing
- * question simply lapses at 08:00.
+ * A MESSAGE ADDRESSED TO HALE IS NEVER CLAIMED (request.ts). A model reads whether
+ * the sentence asks Hale for something. Filing a request as a diary entry would
+ * answer the wrong half of their message, since the coach never sees it. A failed
+ * read is a request too. The standing question simply lapses at 08:00.
+ *
+ * No reader is named `not_configured` and handed to the coach. Production always
+ * passes one.
  */
 export async function handleEveningCheckInReply(
   database: Database,
   input: CheckInReplyInput,
+  reader?: EveningRequestReader,
 ): Promise<CheckInReplyOutcome> {
   const body = input.body.trim();
   if (body === '') return { status: 'declined_to_claim' };
 
-  if (asksHaleForSomething(body)) return { status: 'declined_to_claim' };
+  if (!reader) {
+    console.info({ reason: 'not_configured' }, 'evening request: unreadable');
+    return { status: 'declined_to_claim' };
+  }
+  const reading = await reader.read({ text: body });
+  if (eveningReplyIsRequest(reading)) return { status: 'declined_to_claim' };
 
   // A sentence about the day. Screened first, because the whole point of the screen is
   // that the words never land in a store at all.

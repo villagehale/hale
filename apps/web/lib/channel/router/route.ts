@@ -25,6 +25,8 @@ import {
   TURN_TIMEOUT,
   TURN_UNREACHABLE,
 } from '~/lib/channel/config';
+import { writeConsentAsk } from '~/lib/channel/consent-ask';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -81,7 +83,7 @@ import {
   type ChannelTurnResult,
   draftsFromFailure,
 } from './coach-runtime';
-import { FLOOD_REPLY, clarifyWhichQuestion, partialFailureReply } from './copy';
+import { FLOOD_REPLY, clarifyWhichQuestion } from './copy';
 import {
   assertTurnLive,
   isCallTimeout,
@@ -453,6 +455,11 @@ export interface ChannelRouterDeps {
    * ordinary coach turn. No client is `nothing_stated`, named in the reader's log.
    */
   weekdayCareReader: WeekdayCareReader;
+  /**
+   * Writes the drafts receipt when a turn breaks after drafting. Absence is
+   * named and the parent is not handed a keyword sentence. The drafts remain.
+   */
+  consentAsk?: ConsentAskWriter;
   weekdayCareAnswerTarget(
     database: Database,
     input: {
@@ -2015,10 +2022,9 @@ async function composeReconciledReply(
  * A composer that cannot produce a sendable sentence defers too: there is no preset left
  * underneath it, and the re-drive may not need an apology at all.
  *
- * The ONE templated line still reachable from here is the drafts receipt, and it is not
- * an apology — it carries a count and the YES/NO grammar that resolves against real rows
- * (copy.ts partialFailureReply), the same reason every other receipt in this router is a
- * template the model never touches.
+ * The drafts receipt is written per send. It names the count. There is no keyword
+ * sentence underneath it. A writer that cannot produce one sends nothing, and the
+ * drafts stay in the queue.
  */
 type FailedTurnDisposition =
   | {
@@ -2128,11 +2134,15 @@ async function disposeOfFailedTurn(
   }
 
   if (drafted.length > 0) {
+    const receipt = await writeConsentAsk(deps.consentAsk, {
+      kind: 'partial_failure',
+      draftCount: drafted.length,
+    });
     return {
       outcome: 'agent_failed',
-      reply: partialFailureReply(drafted.length),
+      reply: receipt,
       reason: 'drafts_receipt',
-      log: {},
+      log: { consentAsk: receipt ? 'written' : 'unwritten' },
     };
   }
 

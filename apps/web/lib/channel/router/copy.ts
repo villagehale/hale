@@ -64,7 +64,8 @@ const CONFLICT_REPLIES: Record<SpineRefusal, string> = {
    * and it will come back to them. No timeframe is promised, because a flagged draft waits
    * on a person and "in a minute" would be a clock Hale does not own.
    */
-  not_reviewer_approved: "I'm still double-checking that one myself - nothing for you to do yet, I'll come back to you on it.",
+  not_reviewer_approved:
+    "I'm still double-checking that one myself - nothing for you to do yet, I'll come back to you on it.",
   undo_window_expired: "That one's past its undo window.",
   not_reversible: "That one isn't something I can take back.",
   // The genuine breakage: the row vanished mid-turn or came back belonging to another
@@ -97,11 +98,11 @@ export function conflictReply(reason: SpineRefusal): string {
  * already pending, is not the change it just drafted. A bare YES round-trips through the
  * numbered list instead: one extra message, and the right row.
  */
-export function partialFailureReply(draftCount: number): string {
-  const noun = draftCount === 1 ? '1 change' : `${draftCount} changes`;
-  const them = draftCount === 1 ? 'it' : 'them';
-  return `I couldn't finish that, but I drafted ${noun} waiting for your OK. Reply YES to confirm, or NO to drop ${them}.`;
-}
+/**
+ * The drafts receipt is written per send (consent-ask, kind partial_failure).
+ * It names the count and asks whether to keep the drafts. There is no fixed
+ * sentence and no token to recite.
+ */
 
 /**
  * There was an ACK_REPLY here — "On it - one sec.", raced against a five-second timer.
@@ -138,9 +139,11 @@ export function healthDoneReply(): string {
  * promises the week, never the appointment (doctrine: approvals happen in-thread,
  * and Hale does not claim a booking it cannot make; the clinic call is the
  * parent's). */
-export function checkupDraftedReply(): string {
-  return 'Drafted - reply YES and it goes on your week. Nothing\'s booked until you call the clinic.';
-}
+/**
+ * The checkup receipt is written per send (consent-ask, kind checkup_drafted).
+ * A visit is drafted, nothing is booked, and the clinic call stays the parent's.
+ * There is no fixed sentence and no token to recite.
+ */
 
 /**
  * The two approval receipts, and the one reason they take {@link spokenActionLabel}
@@ -333,11 +336,13 @@ export function clarifyWhichQuestion<T extends { kind: string; subject: string }
   const ordered = [...firstOfEachKind, ...questions.filter((q) => !firstOfEachKind.includes(q))];
   const shown = ordered.slice(0, MAX_LISTED_APPROVALS);
   const dropped = ordered.length - shown.length;
-  const list = whichOneReply(shown.map((question) => question.subject), numbered);
+  const list = whichOneReply(
+    shown.map((question) => question.subject),
+    numbered,
+  );
   // Honest and destination-free. NOT "behind those": nothing queues behind an
   // introduction, so the approvals list's own tail would be a false promise here.
-  const reply =
-    dropped === 0 ? list : `${list} (and ${dropped} other${dropped === 1 ? '' : 's'}.)`;
+  const reply = dropped === 0 ? list : `${list} (and ${dropped} other${dropped === 1 ? '' : 's'}.)`;
   return { reply, shown };
 }
 

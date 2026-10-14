@@ -16,6 +16,7 @@ import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import {
   DISCOVERABILITY_ALREADY_ON,
   DISCOVERABILITY_OFF,
@@ -24,7 +25,7 @@ import {
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
-import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
+import { FLOOD_REPLY, capabilityReply, failureReply } from './copy';
 import type {
   DisambiguationOption,
   DisambiguationStore,
@@ -462,6 +463,7 @@ function harness(
       recordStatedState:
         options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
       // VIL-360. No ask standing by default, for the reason above it.
+      consentAsk: askWriter(),
       weekdayCareReader: options.weekdayCareReader ?? {
         read: async () => ({ status: 'nothing_stated' as const }),
       },
@@ -1416,19 +1418,24 @@ describe('failure honesty', () => {
       const result = await routeChannelMessage(h.deps, job());
 
       expect(result.status).toBe('agent_failed');
-      expect(h.transport.bodies()).toEqual([partialFailureReply(2)]);
+      expect(h.transport.bodies()).toEqual([
+        writtenAsk({ kind: 'partial_failure', draftCount: 2 }),
+      ]);
       expect(apology.calls).toBe(0);
-      expect(partialFailureReply(2)).toMatch(/2 changes/);
-      expect(partialFailureReply(2)).not.toMatch(/nothing was changed/i);
-      expect(partialFailureReply(1)).toMatch(/1 change\b/);
+      expect(writtenAsk({ kind: 'partial_failure', draftCount: 2 })).toMatch(/2 changes/);
+      expect(writtenAsk({ kind: 'partial_failure', draftCount: 2 })).not.toMatch(
+        /nothing was changed/i,
+      );
+      expect(writtenAsk({ kind: 'partial_failure', draftCount: 1 })).toMatch(/1 change\b/);
     });
 
     /** The longest line the router sends. A typographic dash in it would flip the
      * message to UCS-2 (70 chars a segment) and cost three segments instead of one —
      * the same rule the coach skill states, and the reason this copy is plain ASCII. */
     it('costs one GSM-7 segment', () => {
-      expect(smsEncoding(partialFailureReply(2))).toBe('gsm7');
-      expect(smsSegments(partialFailureReply(2))).toBe(1);
+      const body = writtenAsk({ kind: 'partial_failure', draftCount: 2 });
+      expect(smsEncoding(body)).toBe('gsm7');
+      expect(smsSegments(body)).toBe(1);
     });
 
     it('composes the apology when the turn drafted nothing', async () => {
@@ -2627,6 +2634,14 @@ describe('the 09:47 sequence', () => {
   function introChain(standing: 'unanswered' | 'granted') {
     const written: boolean[] = [];
     const deps: VillageIntroReplyDeps = {
+      consent: {
+        read: async ({ text }) => {
+          const folded = text.trim().toLowerCase();
+          if (folded === 'yes intros') return { verdict: 'yes', target: 'discoverability' };
+          if (folded === 'no intros') return { verdict: 'no', target: 'discoverability' };
+          return null;
+        },
+      },
       recordDiscoverability: async (_db, input) => {
         written.push(input.granted);
       },

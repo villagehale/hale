@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { startCoParentInvite } from '~/lib/channel/caregiver/invites';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -39,6 +40,7 @@ export async function openChosenHouseholdGroup(
     /** A number in this message that is not yet a confirmed co-parent. */
     namedPhone?: { phoneE164: string; name: string | null } | null;
     fetch?: typeof fetch;
+    ask?: ConsentAskWriter;
   },
 ): Promise<OpenChosenGroupOutcome> {
   if (!linqGroupOnboardingV2Enabled()) return { status: 'flag_off' };
@@ -122,6 +124,7 @@ async function startInviteForUnconfirmed(
     parentPhoneE164: string;
     now: Date;
     inboundBody: string;
+    ask?: ConsentAskWriter;
   },
   named: { phoneE164: string; name: string | null },
 ): Promise<OpenChosenGroupOutcome> {
@@ -147,8 +150,10 @@ async function startInviteForUnconfirmed(
     },
     language,
     now: args.now,
+    ask: args.ask,
   });
   if (started.status === 'refused') return { status: 'invite_refused', reason: started.reason };
+  if (started.status !== 'started') return { status: 'invite_refused', reason: 'ask_unwritten' };
   return { status: 'invite_started', reply: started.reply };
 }
 

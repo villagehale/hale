@@ -195,15 +195,19 @@ describe('two evenings in the voice', () => {
       })
       .returning({ id: schema.channelMessages.id });
 
-    const outcome = await handleEveningCheckInReply(db.database, {
-      familyId,
-      parentUserId,
-      body: 'she loved it, went straight to sleep after',
-      askedAt: standing?.askedAt as Date,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound?.id as string,
-      now: answeredAt,
-    });
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      {
+        familyId,
+        parentUserId,
+        body: 'she loved it, went straight to sleep after',
+        askedAt: standing?.askedAt as Date,
+        timeZone: TZ,
+        inboundChannelMessageId: inbound?.id as string,
+        now: answeredAt,
+      },
+      { read: async () => ({ asks: false }) },
+    );
     expect(outcome.status).toBe('note_stored');
 
     const notes = await db.database

@@ -21,6 +21,7 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN_TEMPLATE_KEY } from './copy';
 import { NOTE_RETENTION_DAYS, purgeExpiredCheckInNotes } from './notes';
 import { eveningCheckInQuestion, handleEveningCheckInReply } from './reply';
+import type { EveningRequestReader } from './request';
 
 /**
  * The evening answer, against real Postgres and through the PRODUCTION reader.
@@ -36,6 +37,9 @@ const ASKED_AT = new Date('2026-07-06T00:17:00.000Z');
 /** 21:40 the same local evening — a parent answering from the couch. */
 const ANSWERED_AT = new Date('2026-07-06T01:40:00.000Z');
 const TZ = 'America/Toronto';
+
+const diary: EveningRequestReader = { read: async () => ({ asks: false }) };
+const asking: EveningRequestReader = { read: async () => ({ asks: true }) };
 
 let db: TestDb;
 
@@ -218,14 +222,18 @@ describe('words that used to be cadence keywords', () => {
     for (const body of ['DAILY', 'WEEKLY', 'LESS', 'no', '每天提醒我', 'plus souvent stp']) {
       const seeded = await seedFamily();
       const inbound = await seedInbound(seeded, body);
-      const outcome = await handleEveningCheckInReply(db.database, {
-        ...seeded,
-        body,
-        askedAt: ASKED_AT,
-        timeZone: TZ,
-        inboundChannelMessageId: inbound,
-        now: ANSWERED_AT,
-      });
+      const outcome = await handleEveningCheckInReply(
+        db.database,
+        {
+          ...seeded,
+          body,
+          askedAt: ASKED_AT,
+          timeZone: TZ,
+          inboundChannelMessageId: inbound,
+          now: ANSWERED_AT,
+        },
+        diary,
+      );
       expect(outcome, body).toEqual({ status: 'note_stored', reply: null });
       expect((await readPrefs(seeded.familyId))?.cadence, body).toBe('daily');
       expect(await readNotes(seeded.familyId), body).toHaveLength(1);
@@ -269,14 +277,18 @@ describe('what the parent said about their day', () => {
     const body = 'Park after daycare and both asleep by 7. Rare win.';
     const inbound = await seedInbound(seeded, body);
 
-    const outcome = await handleEveningCheckInReply(db.database, {
-      ...seeded,
-      body,
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound,
-      now: ANSWERED_AT,
-    });
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      {
+        ...seeded,
+        body,
+        askedAt: ASKED_AT,
+        timeZone: TZ,
+        inboundChannelMessageId: inbound,
+        now: ANSWERED_AT,
+      },
+      diary,
+    );
     expect(outcome).toEqual({
       status: 'note_stored',
       reply: null,
@@ -308,14 +320,18 @@ describe('what the parent said about their day', () => {
     const body = 'Mia had a fever all afternoon, up half the night';
     const inbound = await seedInbound(seeded, body);
 
-    const outcome = await handleEveningCheckInReply(db.database, {
-      ...seeded,
-      body,
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound,
-      now: ANSWERED_AT,
-    });
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      {
+        ...seeded,
+        body,
+        askedAt: ASKED_AT,
+        timeZone: TZ,
+        inboundChannelMessageId: inbound,
+        now: ANSWERED_AT,
+      },
+      diary,
+    );
     expect(outcome).toEqual({ status: 'not_stored_sensitive', reply: null });
     expect(await readNotes(seeded.familyId)).toEqual([]);
     // The answer still counts as an answer: the ladder must not punish a parent for
@@ -335,12 +351,16 @@ describe('what the parent said about their day', () => {
       inboundChannelMessageId: first,
       now: ANSWERED_AT,
     };
-    await handleEveningCheckInReply(db.database, { ...input, body: 'ok day' });
-    await handleEveningCheckInReply(db.database, {
-      ...input,
-      body: 'actually a great day',
-      now: new Date(ANSWERED_AT.getTime() + 120_000),
-    });
+    await handleEveningCheckInReply(db.database, { ...input, body: 'ok day' }, diary);
+    await handleEveningCheckInReply(
+      db.database,
+      {
+        ...input,
+        body: 'actually a great day',
+        now: new Date(ANSWERED_AT.getTime() + 120_000),
+      },
+      diary,
+    );
     const notes = await readNotes(seeded.familyId);
     expect(notes).toHaveLength(1);
     expect(notes[0]?.note).toBe('actually a great day');
@@ -350,14 +370,18 @@ describe('what the parent said about their day', () => {
     const seeded = await seedFamily();
     const body = 'Fine - can you find a swim class on Saturdays?';
     const inbound = await seedInbound(seeded, body);
-    const outcome = await handleEveningCheckInReply(db.database, {
-      ...seeded,
-      body,
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound,
-      now: ANSWERED_AT,
-    });
+    const outcome = await handleEveningCheckInReply(
+      db.database,
+      {
+        ...seeded,
+        body,
+        askedAt: ASKED_AT,
+        timeZone: TZ,
+        inboundChannelMessageId: inbound,
+        now: ANSWERED_AT,
+      },
+      asking,
+    );
     expect(outcome).toEqual({ status: 'declined_to_claim' });
     expect(await readNotes(seeded.familyId)).toEqual([]);
     expect(await readAudit(seeded.familyId)).toEqual([]);
@@ -389,8 +413,10 @@ describe('the handler in the chain', () => {
     };
   }
 
-  function handler() {
-    const found = defaultHandlers().find((each) => each.name === 'evening_check_in');
+  function handler(reader: EveningRequestReader = diary) {
+    const found = defaultHandlers({ eveningRequest: reader }).find(
+      (each) => each.name === 'evening_check_in',
+    );
     if (!found) throw new Error('the evening check-in handler is not in the chain');
     return found;
   }
@@ -435,20 +461,23 @@ describe('the handler in the chain', () => {
     const body = 'add swim to the calendar saturday 10am';
     const inbound = await seedInbound(seeded, body);
     expect(
-      await handler().handle(db.database, turn(seeded, body, [evening(askId)], inbound)),
+      await handler(asking).handle(db.database, turn(seeded, body, [evening(askId)], inbound)),
     ).toEqual({ claimed: false });
     expect(await readNotes(seeded.familyId)).toEqual([]);
   });
 
-  it('hands back a two-word question whose only marker is the question mark', async () => {
-    const seeded = await seedFamily();
-    const askId = await seedAsk(seeded);
-    const body = 'Swim tomorrow?';
-    const inbound = await seedInbound(seeded, body);
-    expect(
-      await handler().handle(db.database, turn(seeded, body, [evening(askId)], inbound)),
-    ).toEqual({ claimed: false });
-    expect(await readNotes(seeded.familyId)).toEqual([]);
+  it('hands a Chinese request and an Arabic request to the coach', async () => {
+    for (const body of ['帮我找周六的游泳课', 'ساعدني أجد درس سباحة يوم السبت']) {
+      const seeded = await seedFamily();
+      const askId = await seedAsk(seeded);
+      const inbound = await seedInbound(seeded, body);
+      expect(
+        await handler(asking).handle(db.database, turn(seeded, body, [evening(askId)], inbound)),
+        body,
+      ).toEqual({ claimed: false });
+      expect(await readNotes(seeded.familyId), body).toEqual([]);
+      await db.exec('truncate table families, users cascade');
+    }
   });
 
   it('does not answer a text question with an email, or file the email as a day note', async () => {
@@ -513,7 +542,7 @@ describe('a diary answer through the real router', () => {
       database: db.database,
       loadContext: loadInboundContext,
       transport: new FakeReplyTransport(),
-      handlers: defaultHandlers(),
+      handlers: defaultHandlers({ eveningRequest: diary }),
       questions: defaultOpenQuestionReader(),
       offDomain: { consider: async () => ({ status: 'in_domain', fallback: null }) },
       coach: {
@@ -621,14 +650,18 @@ describe('the thirty-day purge', () => {
   it('destroys what is past its stamp and leaves the rest', async () => {
     const seeded = await seedFamily();
     const inbound = await seedInbound(seeded, 'good day');
-    await handleEveningCheckInReply(db.database, {
-      ...seeded,
-      body: 'good day',
-      askedAt: ASKED_AT,
-      timeZone: TZ,
-      inboundChannelMessageId: inbound,
-      now: ANSWERED_AT,
-    });
+    await handleEveningCheckInReply(
+      db.database,
+      {
+        ...seeded,
+        body: 'good day',
+        askedAt: ASKED_AT,
+        timeZone: TZ,
+        inboundChannelMessageId: inbound,
+        now: ANSWERED_AT,
+      },
+      diary,
+    );
 
     const oneDayShort = new Date(
       ANSWERED_AT.getTime() + (NOTE_RETENTION_DAYS - 1) * 24 * 3_600_000,

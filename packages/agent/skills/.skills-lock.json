@@ -55,6 +55,14 @@
     "file": "coach-plan.md",
     "sha256": "51c69fa3664adb0ea2d497f226813437cf155be00399c059688e729266c70190"
   },
+  "consent-ask.md": {
+    "file": "consent-ask.md",
+    "sha256": "92a931bb810a64832c47528071dcc0c77482010f86217b7ba60b804de16d1cb4"
+  },
+  "consent-reply.md": {
+    "file": "consent-reply.md",
+    "sha256": "da33f7086128a7c99f7fb35456d77c76ea9f86bd06468dd6b4951b122af218bb"
+  },
   "curate-shortlist.md": {
     "file": "curate-shortlist.md",
     "sha256": "44f794b974575b8d8b8a85fe44adfba0756abb1bdcf32df75d1a1cd072f47e72"
@@ -62,6 +70,10 @@
   "draft-action.md": {
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
+  },
+  "evening-request.md": {
+    "file": "evening-request.md",
+    "sha256": "ebe28455ab5c0ec920d418694812fdb6fc4e31e6257b8912ac27c6cda1a87fee"
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",

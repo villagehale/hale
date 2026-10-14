@@ -16,6 +16,7 @@ import type {
   PreparingSequence,
 } from '~/lib/registration/sequence/prepare-reply';
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
+import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
@@ -194,6 +195,7 @@ function healthDeps(
       closed.push(input.channelMessageId ?? 'none');
       return { status: 'closed', commitmentIds: ['commitment-1'] };
     },
+    ask: askWriter(),
   };
 }
 
@@ -258,10 +260,7 @@ describe('healthReplyHandler', () => {
     const verdict = await healthReplyHandler(deps).handle(DB, turn('yes'));
 
     expect(deps.drafted).toEqual(['book_checkup']);
-    // The hold is stated in-thread (doctrine: never an app link), with honest
-    // verbs: YES puts it on the week; the clinic call stays the parent's.
-    expect(verdict.claimed && verdict.reply).toMatch(/reply YES/i);
-    expect(verdict.claimed && verdict.reply).toMatch(/nothing's booked/i);
+    expect(verdict.claimed && verdict.reply).toBe(writtenAsk({ kind: 'checkup_drafted' }));
     expect(verdict.claimed && verdict.reply).not.toMatch(/https?:/);
   });
 });
@@ -478,6 +477,12 @@ describe('handler order — registration last', () => {
  */
 describe('the village intro lane and the lanes behind it', () => {
   const introDeps: VillageIntroReplyDeps = {
+    consent: {
+      read: async ({ text }) =>
+        text === 'YES INTRO'
+          ? { verdict: 'yes', target: 'proposal' }
+          : { verdict: 'neither', target: 'none' },
+    },
     recordDiscoverability: async () => {},
     discoverabilityStanding: async () => 'unanswered' as const,
     answerableProposal: async () => null,

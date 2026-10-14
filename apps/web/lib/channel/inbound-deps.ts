@@ -10,6 +10,8 @@ import {
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
+import { createConsentAskWriter } from '~/lib/channel/consent-ask';
+import { createConsentReader } from '~/lib/channel/consent-reply';
 import {
   type DepartureNoticePorts,
   departureNoticeReaders,
@@ -84,6 +86,8 @@ export function buildIntakeDeps(
     extractor: createIntakeExtractor(client),
     intentReader: createReplyIntentReader(client),
     signupStepReader: createSignupStepReader(() => client),
+    consent: createConsentReader(() => client),
+    consentAsk: createConsentAskWriter(() => client),
     radar: createRadarComposer({
       database,
       weather: createOpenMeteoWeather(),
