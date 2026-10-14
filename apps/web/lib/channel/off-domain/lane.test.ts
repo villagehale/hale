@@ -821,7 +821,7 @@ describe("today's date", () => {
               });
             }
             if (system.includes('Read the draft against the notes')) {
-              return structured({ verdict: 'send', reason: '', search_again: false });
+              return structured({ verdict: 'send', reason: '' });
             }
             composePayloads.push(request.messages[0]?.content ?? '');
             return structured({ answer: 'Lima.' });

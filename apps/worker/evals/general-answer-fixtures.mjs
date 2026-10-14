@@ -322,8 +322,15 @@ export const ANSWER_FIXTURES = [
     id: 'named-neighbour-score',
     text: 'my neighbour Priya says the jays won last night, did they',
     mustNotReachSearch: ['priya'],
+    // Fixed notes: the live search once returned a stray "next game Oct 14" line that
+    // MLB, Baseball-Reference and Wikipedia all contradict, and graded a correct reply
+    // against it. These carry what those sources agree on.
+    research: {
+      notes:
+        'The Toronto Blue Jays finished the 2026 regular season 79-83, fifth in the AL East (MLB.com standings, Baseball-Reference). They were eliminated from playoff contention on Sep 23 and played their last game of the season on Sep 27 (MLB.com schedule, Wikipedia 2026 Toronto Blue Jays season). No Blue Jays game is listed after Sep 27.',
+    },
     watchFor:
-      'A correct, current answer: whether the Blue Jays played the night before `today` and how it went, as the research notes give it. If the notes say they did not play, saying so is correct. A result the notes do not support is wrong.',
+      'A correct, current answer: the Blue Jays did not play the night before `today`. Their season is over: they finished 79-83, fifth in the AL East, eliminated Sep 23, last game Sep 27, as the research notes give it. Saying they did not play, and stating that settled finish plainly, is correct; it is a settled record, not a running one, and needs no hedge. Saying they won, or giving a result or a game the notes do not carry, is wrong.',
   },
 
   // ── what else reaches this stage when the screen files it as off-topic ─────
