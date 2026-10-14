@@ -7,7 +7,6 @@ import {
 } from '../copy';
 import {
   ASK_UNANSWERED_MS,
-  ASK_WINDOW_MS,
   type AskLedgerRow,
   SHARED_STOP_ASKING_KEY,
   judgeAskBudget,
@@ -137,7 +136,7 @@ describe('ask budget', () => {
     expect(SHARED_STOP_ASKING_KEY).toBe(DUTY_STOP_ASKING_KEY);
   });
 
-  it('allows four optional asks and counts a duty ask toward the cap and the day', () => {
+  it('does not hold an ask because another ask already went today or four already went', () => {
     const duty = row({
       sendClass: 'duty_ask',
       askKey: 'duty-1',
@@ -154,9 +153,8 @@ describe('ask budget', () => {
         },
         { sendClass: 'logistics', askKey: 'logistics:swim' },
       ),
-    ).toEqual({ allow: false, reason: 'ask_budget' });
+    ).toEqual({ allow: true });
 
-    const nextDay = new Date(START.getTime() + 24 * 60 * 60 * 1000);
     const rows = [0, 1, 2, 3].map((index) =>
       row({
         askKey: `ask-${index}`,
@@ -175,41 +173,7 @@ describe('ask budget', () => {
         },
         { sendClass: 'calendar', askKey: 'calendar' },
       ),
-    ).toEqual({ allow: false, reason: 'ask_budget' });
-    expect(nextDay.getTime()).toBeGreaterThan(START.getTime());
-  });
-
-  it('lets the onboarding sequence ask again on a day that already had an ask', () => {
-    const duty = row({
-      sendClass: 'duty_ask',
-      askKey: 'duty-1',
-      createdAt: START,
-    });
-    expect(
-      judgeAskBudget(
-        {
-          now: START,
-          familyStartedAt: START,
-          rows: [duty],
-          stopUntil: null,
-          parentWroteSincePause: false,
-        },
-        { sendClass: 'names', askKey: 'names' },
-        { onboardingSequence: true },
-      ),
     ).toEqual({ allow: true });
-    expect(
-      judgeAskBudget(
-        {
-          now: START,
-          familyStartedAt: START,
-          rows: [duty],
-          stopUntil: null,
-          parentWroteSincePause: false,
-        },
-        { sendClass: 'names', askKey: 'names' },
-      ),
-    ).toEqual({ allow: false, reason: 'ask_budget' });
   });
 
   it('treats a declined ask as final and pauses after two bad asks', () => {
@@ -264,7 +228,7 @@ describe('ask budget', () => {
     ).toBe(true);
   });
 
-  it('blocks on a 30-day stop and stops capping after day 7', () => {
+  it('blocks on a 30-day stop, and earlier asks do not hold a later one', () => {
     expect(
       judgeAskBudget(
         {
@@ -280,7 +244,7 @@ describe('ask budget', () => {
     expect(
       judgeAskBudget(
         {
-          now: new Date(START.getTime() + ASK_WINDOW_MS + 1000),
+          now: new Date(START.getTime() + 8 * 24 * 60 * 60 * 1000),
           familyStartedAt: START,
           rows: [0, 1, 2, 3].map((index) => row({ askKey: `old-${index}`, createdAt: START })),
           stopUntil: null,

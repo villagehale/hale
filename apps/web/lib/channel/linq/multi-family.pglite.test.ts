@@ -323,7 +323,7 @@ describe('multi-family joins', () => {
       now: NOW,
       send: wire.send,
     });
-    expect(again).toEqual({ outcome: 'ask_budget' });
+    expect(again).toEqual({ outcome: 'asked', notice: 'already_sent' });
     const otherFamily = await spendSharedGroupAsk(db.database, {
       chatId: CHAT,
       familyId: bao.familyId,
@@ -350,7 +350,7 @@ describe('multi-family joins', () => {
       now: NOW,
       send: wire.send,
     });
-    expect(capped).toMatchObject({ handled: true, outcome: 'family_send_cap' });
+    expect(capped).toMatchObject({ handled: true, outcome: 'shared_reply' });
   });
 
   it('leaves the family and unseats a removed member without dropping the join', async () => {
