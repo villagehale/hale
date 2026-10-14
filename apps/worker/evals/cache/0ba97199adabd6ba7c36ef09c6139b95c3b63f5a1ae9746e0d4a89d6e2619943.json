@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The text is in English while the parent's message is in Arabic and the required language is Arabic. The grading criteria state that a score of 1 applies when \"it is in the wrong language or script.\" The text must be in the parent's own language to score higher."
+  }
+}
