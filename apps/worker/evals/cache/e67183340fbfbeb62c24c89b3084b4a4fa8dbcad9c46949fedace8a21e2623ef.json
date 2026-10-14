@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer gives a real pick (Messi) with a reason, as an opinion ask should. Its one specific, the 2022 World Cup win, is settled history, not a running count. It states no trophy or goal tallies from memory. It reads like a casual friend's take in English.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

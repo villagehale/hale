@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message leads with a plain 'I checked' that is mandated by the contract, and it states only the given facts: Toronto, Fall 2026, Sep 15 opening. The firstFindBeat is reproduced verbatim. It omits nextCycle and any closed-registration claim, which is correct because stillOpenPage is true. It does not announce a weekend pick or invent a town-wide scope or time for the check. The offer question is not mentioned, which is acceptable for a short, quiet first message. Clean, short, faithful.",
-    "score": 5
-  }
-}

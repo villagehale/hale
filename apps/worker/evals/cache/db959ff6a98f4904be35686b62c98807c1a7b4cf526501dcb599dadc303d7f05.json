@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "It correctly says it can't check the forecast and doesn't ask for a city. But it then adds a vague guess from memory ('mid-October is usually cool with a chance of rain'). That isn't a hard forecast, but it's filler that edges toward guessing. The apologetic, slightly formal phrasing ('Sorry… I don't want to guess and get you wrong… you'll need a live forecast') reads more like an assistant than a friend's quick text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 3
-  }
-}

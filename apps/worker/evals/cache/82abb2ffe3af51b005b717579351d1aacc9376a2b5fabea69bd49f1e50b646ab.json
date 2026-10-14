@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The first sentence opens with 'I checked Markham's calendar', a first-person verb of checking that attributes the find to Hale's own look, and the registration fact (Aug 11, 6:30 a.m.) lands in that same sentence. The town, cycle, and date are all in the facts payload, so naming them is given rather than invented.",
-    "score": 5
-  }
-}

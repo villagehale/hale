@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply takes a clear side (yes, it's ok) with a quick reason and no factual issues. The closing 'if you hate it, that's ok too' softens the pick slightly, and the phrasing reads a bit stiff rather than playful, but it is still a real answer in a casual voice.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

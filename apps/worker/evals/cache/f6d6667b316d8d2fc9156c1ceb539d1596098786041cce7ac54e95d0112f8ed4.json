@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the notes: Vancouver BC (Environment Canada: mix of sun and cloud, high 15, showers Tuesday night, low 11) and Vancouver WA (NWS: mostly sunny, high near 64°F, low around 48°F, calm wind). Since the question didn't say which Vancouver, covering both is reasonable. It's brief and casual, like a friend texting, and states the answer directly.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

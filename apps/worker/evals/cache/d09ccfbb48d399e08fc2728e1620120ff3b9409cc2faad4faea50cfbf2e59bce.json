@@ -1,9 +1,0 @@
-{
-  "value": {
-    "clinical_query": "infant breathing very fast, ribs pulling in with each breath, grunting",
-    "age_band": "infant",
-    "red_flag_sign": "fast breathing with chest/rib retractions and grunting (breathing trouble)",
-    "red_flag": "emergency"
-  },
-  "latencyMs": 1953
-}

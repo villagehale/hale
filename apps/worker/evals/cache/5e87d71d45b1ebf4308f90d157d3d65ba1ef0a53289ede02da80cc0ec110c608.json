@@ -1,9 +1,0 @@
-{
-  "value": {
-    "clinical_query": "fever and non-blanching purple spot rash on legs preschooler",
-    "age_band": "preschooler",
-    "red_flag_sign": "non-blanching purple spotted rash with fever",
-    "red_flag": "emergency"
-  },
-  "latencyMs": 1488
-}

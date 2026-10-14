@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer makes real picks for both readings of 'football': Messi for soccer and Brady for the NFL. Every fact it gives is backed by the research notes: eight Ballon d'Ors, 672 Barcelona goals, the 2022 World Cup, seven Super Bowls, and Brady calling Rice the GOAT. It covers the ambiguity without dodging and reads like a casual text back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

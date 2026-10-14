@@ -1,9 +1,0 @@
-{
-  "value": {
-    "clinical_query": "preschooler watery diarrhea and vomiting, still drinking, wet diapers, otherwise normal",
-    "age_band": "preschooler",
-    "duration": "2 days",
-    "language": "en"
-  },
-  "latencyMs": 4742
-}

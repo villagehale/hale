@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the research notes: 4.34% is the lowest insured rate (Ratehub, dated today, available in Ontario), uninsured starts at 4.44% (WOWA), the big banks average 5.14% (Nesto), and rates are rising this month. It explains the insured vs. uninsured split briefly and reads like a well-informed friend texting back, with no deflect and no offer of service. It is a bit dense, but it is casual.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

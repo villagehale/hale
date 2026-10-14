@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The lead sentence states the pick (free outdoor High Park playground meetup, Saturday, for Ada and Noor) using only given facts, with 'I found' as the required lead-in. Null venue is correctly omitted rather than padded. The no-registration clause matches the contract's instructed wording for both registration and registrationAbsence being null. Concise, plain, no hype. Minor deduction: 'one for Ada and Noor' is slightly awkward phrasing and the message does not mention the still-learning-the-area clause, but since weekendPick is present that is not required.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message leads with a useful registration fact and includes the Saturday pick, both drawn from the facts. It uses 'I checked' as the contract requires. It omits the checkpoint but that is not required to be stated. Tone is plain and neighbourly, with no hype, though it does not explicitly cover the registrationAbsence null case, which is acceptable since registration is present.",
-    "score": 5
-  }
-}

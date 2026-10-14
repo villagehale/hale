@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The rationale states the signal is generic marketing from an unknown sender, which matches the content (promotional subject, urgency language, unknown domain). However, it labels the event 'unclassified' without explaining why no category fits, and the final clause 'nothing to do with the family' is an unexplained reference to context not present in the signal, so the reasoning is only partly grounded.",
-    "score": 3
-  }
-}

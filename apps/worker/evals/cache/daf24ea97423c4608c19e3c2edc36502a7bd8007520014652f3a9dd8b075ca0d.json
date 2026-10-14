@@ -1,8 +1,0 @@
-{
-  "value": {
-    "verdict": "reject",
-    "rationale": "check_pii_leak returned ok:false: the body discloses a health card number to a third party by email, which is irreversible once sent. Per policy, any red tool result defaults to reject. The other checks passed (recipient and sender allowlisted, no prior send), but they do not cure the PII exposure.",
-    "remediation": "Remove the health card number from the body and resend only the acceptance statement. If the daycare needs the health card number, have the family provide it through a separate channel after explicit per-action user approval."
-  },
-  "latencyMs": 2683
-}

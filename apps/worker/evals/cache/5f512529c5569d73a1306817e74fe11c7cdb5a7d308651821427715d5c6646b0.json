@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer makes a real pick (Odyssey) and gives reasons. Each fact checks out against the notes: U.S. News ranks it #1 at 9.3, Car Talk's staff picked it, and Edmunds likes driving it most. The Sienna details are also supported: 36 mpg combined and 8.7 from U.S. News. Calling the Sienna the 'runner-up' is the answer's own opinion, and it admits the rankings split. It reads casual and friendly, in English, with no offer of service.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

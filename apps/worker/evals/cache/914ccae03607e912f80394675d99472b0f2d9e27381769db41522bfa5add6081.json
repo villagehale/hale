@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct per the fixture: it plainly says it couldn't answer, makes no claim that the question is out of scope, invents no hours and gives no phone number. But the tone reads like a canned system error message ('Please try asking again in a moment') rather than a friend texting back, so it loses points on voice.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 3
-  }
-}

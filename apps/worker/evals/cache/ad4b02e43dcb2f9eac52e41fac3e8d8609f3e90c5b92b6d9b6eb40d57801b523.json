@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The search was unavailable, and the answer says plainly that it can't check. It states no forecast and doesn't ask which city. It's brief and casual, like a friend texting. The 'Sorry' is a touch formal but fine.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

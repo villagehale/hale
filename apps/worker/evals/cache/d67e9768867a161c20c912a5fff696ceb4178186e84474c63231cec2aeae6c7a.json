@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct: Lima is the capital, and it is a coastal city on the Pacific, which is common knowledge. It answers this question only, with nothing about the earlier pending weather question. Brief and casual, like a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

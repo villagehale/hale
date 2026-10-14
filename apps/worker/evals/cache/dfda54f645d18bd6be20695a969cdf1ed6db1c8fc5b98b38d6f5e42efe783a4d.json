@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The rationale correctly identifies the sender as a school counsellor and the content as a wellbeing check-in about a student (withdrawn, overwhelmed by exams), which fits school_communication. It also gives a concrete handling reason: the sensitive teen content should be surfaced to the parent rather than auto-replied to. It is specific and matches the signal.",
-    "score": 5
-  }
-}

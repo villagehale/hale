@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "No message was composed, so only the slots are scored. There is one slot, grounded in the search snippet: Parent & Tot lessons at Gellert, ages 4 months to 3 years, which fits a toddler. The when, price and registration fields are correctly null and the age fit is explicitly hedged as snippet-only. The slot cites the operator's own URL as its source, which is reasonable attribution for a snippet off the venue's site. The notes honestly record that both fetches failed and make no claim that the schedule is not posted. No figures are invented. pages_read is not shown, so the watchFor defect cannot be checked.",
-    "score": 5
-  }
-}

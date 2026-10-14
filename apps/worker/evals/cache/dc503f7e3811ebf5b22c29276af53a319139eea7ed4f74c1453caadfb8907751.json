@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The single slot is real and cited to the programme page. Its day, time and session dates match the page exactly, and the price is correctly null; neither the $185 party rate nor the $95 meeting-room rate from the rentals page was borrowed. Registration is null because the page gives none. The message leads with the slot by name and attributes the facts with \"their site says\". It is two plain sentences with no link and no question. The gap is stated in the first person (\"I could not pin down the price\"), which suits page_has_schedule. With watch true, \"I'll keep watching and text you\" backs an existing commitment. No unearned negative claim and no verification overclaim.",
-    "score": 5
-  }
-}

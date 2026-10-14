@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The rationale is clear and correct: the sender is a pediatric clinic offering a specific 18-month well-child visit slot for Mira on Tuesday June 23 at 5:30 PM and asking for confirmation, which matches the pediatric_appointment_request event type. It could have been slightly more specific by noting the time and date, but it captures the key content.",
-    "score": 4
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Three real, named Oakville providers, with no aggregator. The message leads with the Town of Oakville program and attributes it (\"their site says\"). The registration date matches the picks, and no day, time or price is invented. Under no_page_read the gap is correctly phrased as \"I could not get into the page.\" With watch=true it correctly makes a first-person \"I'll keep watching\" commitment. There is no question and no link, and dropping Goldfish whole is acceptable. Minor faults: it runs three sentences rather than one or two, and the YMCA line states its ages as fact without attribution.",
-    "score": 4
-  }
-}

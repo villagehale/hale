@@ -1,9 +1,0 @@
-{
-  "value": {
-    "clinical_query": "preschooler runny nose and mild cough, no fever, eating and playing normally",
-    "age_band": "preschooler",
-    "duration": "2 days",
-    "language": "fr"
-  },
-  "latencyMs": 2021
-}

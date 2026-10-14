@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure is backed by research_notes. For BC, Environment Canada gives a mix of sun and cloud, high 15°C, Tuesday night showers, low 11. For WA, the NWS gives mostly sunny, high near 64°F, mostly cloudy overnight, low around 48. Covering both Vancouvers is a sensible way to handle the ambiguity. Leaving out the WA frost advisory is not a safety issue for a casual weather question. The tone is a little report-like, with the formal source attributions, but it reads as a direct text-back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

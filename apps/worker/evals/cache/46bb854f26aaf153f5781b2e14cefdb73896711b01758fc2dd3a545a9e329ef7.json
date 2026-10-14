@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer gives real, general nap advice: a dark, quiet room, a consistent wind-down, and avoiding overtiredness. It invents nothing about the child and asks his age in a few words alongside the advice. The tone is casual and friend-like. 'Little ones' is slightly generic but fine. There is no safety concern.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

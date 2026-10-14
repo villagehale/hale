@@ -1,8 +1,0 @@
-{
-  "value": {
-    "verdict": "reject",
-    "rationale": "Two verification tools returned not-ok: the recipient is not on the family's allowlist and could not be verified, and the sender origin is not trusted. Sender not on allowlist is a listed clear rejection criterion. The reply is also public-visibility and commits the family to an unspecified agreement ('sounds fine') with an unknown party. check_pii_leak and check_action_idempotency passed, but they do not offset the failed trust checks.",
-    "remediation": "Do not send this reply. If the family wants a response, surface the original message to a parent for review, and only draft a reply to a recipient that is on the allowlist or explicitly approved by a parent for this action."
-  },
-  "latencyMs": 3203
-}

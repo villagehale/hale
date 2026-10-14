@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure checks out against the research notes: early showers, a 60% chance of more, thunderstorm risk, a high of 24–25, feels-like 28–31, southwest gusts to 40 near noon and 10–20 mm of rain. It correctly treats 'Toronto' as the answer to the earlier city question and gives tomorrow's forecast directly. The tone is more weather bulletin than friend texting, dense with figures and a sourcing line, so it falls a little short of casual.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

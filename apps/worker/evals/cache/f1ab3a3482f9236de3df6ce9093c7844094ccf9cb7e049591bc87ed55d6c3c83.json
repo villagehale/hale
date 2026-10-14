@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer makes real picks in both sports: Messi for soccer and Brady for the NFL, which covers the ambiguous 'football' briefly. Each fact is backed by research_notes: Messi's 2026 World Cup run strengthening his case, his trophy record (eight Ballons d'Or), Ronaldo and Pelé as live alternatives, Brady's seven Super Bowls and Mahomes as the challenger. It reads like a casual friend's text and adds nothing invented.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

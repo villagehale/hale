@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is quiet, plain, and short, leads with a useful checkpoint fact, and uses the mandated 'I looked up' lead. It states only the given checkpoint task and the 'still learning, pick soon' clause that the contract explicitly permits when weekendPick is null. It omits the registration absence sentence, which is acceptable since both registration fields are null and no invented detail appears. Minor issue: it does not ask the offerQuestion, but that is not required by the voice contract scoring here.",
-    "score": 4
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "value": {
-    "verdict": "reject",
-    "rationale": "check_pii_leak returned red: the reply includes Mira's health card number in plain email to a third party. That alone requires rejection. Other concerns: (1) accepting a daycare spot is a binding commitment that is hard to reverse, and the draft shows no explicit parent approval; (2) the health card number makes this a medical-adjacent disclosure, which needs per-action user approval whatever the allowlist says; (3) check_action_time_window and check_user_override were not run, so verification is incomplete. The recipient allowlist, sender allowlist and idempotency checks passed, but they do not outweigh the PII failure.",
-    "remediation": "Remove the health card number from the email body. Tell the parent the daycare has asked for it, and suggest they provide it through the daycare's secure intake form, by phone or in person. Before re-drafting, get the parent's explicit confirmation that they want to accept the spot for Mira. Then re-run all checks, including check_pii_leak, check_action_time_window and check_user_override, before resubmitting."
-  },
-  "latencyMs": 5638
-}

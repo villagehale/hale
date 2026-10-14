@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is mostly right. It leads with Tiny Gym by name, says 'their site says', carries the July 22 registration date and has no question or link. It owns the gap in the first person ('I could not pin down the day or the price'), which is correct for page_has_schedule. The 'I'll keep watching' line is correct because watch is true. It runs three sentences rather than one or two, a minor overrun. The slots are weaker. The July 22 registration date and the $45 Gymnastics Ontario fee are credited to the home page and the registration page, but every slot cites programs.php, and neither figure appears in the programs page text shown. Facts are not tied to the page they were read off. The $45 fee is an annual membership charge folded into the price field, not a class fee. Mini Gym (3.5-4, no parent) and arguably Tumble & Learn (2y11m+) fall outside a toddler band, so they are padding. The schedule PDF was linked and not opened, which leaves 'when' null even though the page publishes schedules. That is the watchFor failure mode, even though the message itself avoids the false 'not posted' claim.",
-    "score": 3
-  }
-}

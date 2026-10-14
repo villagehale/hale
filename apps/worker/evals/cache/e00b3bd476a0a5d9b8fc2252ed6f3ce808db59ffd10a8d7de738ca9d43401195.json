@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The rationale accurately identifies the signal as a daycare admissions email offering a specific spot (toddler room, September) for a named child and requesting acceptance by a deadline, which matches the event type daycare_application_response.",
-    "score": 5
-  }
-}

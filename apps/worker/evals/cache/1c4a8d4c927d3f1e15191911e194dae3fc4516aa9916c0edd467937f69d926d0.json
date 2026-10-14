@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message does both required jobs in one short sentence: it says Hale will watch the dates ('I'll watch your dates') and that the parent can text a question ('you can text me a question'), then asks 'Your name?' which contains the word name. It doesn't re-thank, re-confirm coverage, mention STOP, greet, or explain why the name is needed. It is slightly clipped with the 'Your name?' fragment, but the watchFor explicitly prefers tightness over elegance, so it fully meets the bar.",
-    "score": 5
-  }
-}

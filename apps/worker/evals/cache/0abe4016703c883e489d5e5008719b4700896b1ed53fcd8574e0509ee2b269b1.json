@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure checks out against the notes. The 4.34% insured rate as of today is Ratehub's Oct 12 figure, Frank Mortgage at 4.34% is from WOWA, and 4.44% for conventional (20%+ down) is from WOWA. Big banks at around 4.5% and up fits Ratehub's 4.54%, Scotiabank's 4.74% and the higher averages. Rates climbing this month is also in the notes. It answers for Canada without asking which country, and reads as a brief, casual text that just gives the answer.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The draft is a structured calendar payload (title, start time, location, provider) rather than a message body, so tone criteria apply only loosely. It is neutral, clear, and contains no robotic self-reference or inappropriate emotional performance, though it lacks any first-person parent voice, which is expected for this format.",
-    "score": 4
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both slots match the page exactly: two real preschool levels, correct 3-5 age band, Saturday times and Sept 12-Nov 28 dates as printed, price correctly null since no fee is printed, and the Aug 11 7am registration date cited to the Oakville page. The message leads with Preschool A by name, attributes the facts ('their site says') and carries the not-yet-open registration date. With page_has_schedule, the price gap is correctly stated in the first person ('I could not pin down the price') rather than as 'not posted'. With watch=true, 'I'll keep watching and text you' is a legitimate commitment. It is two plain-ASCII sentences with no link and no question. The only nit is that the end times are dropped, which is acceptable compression.",
-    "score": 5
-  }
-}

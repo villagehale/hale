@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure is supported by the research notes for Denver, Colorado: the 65°F high, partly sunny skies, the 30% chance of rain after 3 p.m., evening showers, lows in the 30s and low 40s, and NNE winds at 6–10 mph. It answers directly for the right city without asking which one. The tone reads more like a forecast readout than a casual friend's text, since it packs in wind and overnight detail, but it is still the answer, in English, with nothing assistant-like or about the family.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

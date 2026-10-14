@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The question leaves out the country and nothing was searched, so asking which country is the correct move, and the answer states no broadcaster or other current fact. It is brief and in the right language. The second sentence is a little stiff and assistant-like (\"I need that to point you to the right service\") rather than a casual text back, so it falls short of top marks.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

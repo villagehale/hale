@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "All three picks are real, named Halton Hills venues with toddler age fits, so there are no more than three. Every day, time and price in the message appears in the picks. It leads with Halton Hills Gymnastics Centre and attributes each source (\"their site says\", \"town listing says\"). It has no link, asks no question and makes no unearned negative claim, which is correct under no_page_read. Because watch is true, the first-person \"I'll keep watching and text you\" is earned. Three things hold it below a 5. First, Parent and Tot has a null price, and the message writes around that gap instead of naming it (\"I could not pin down the price\"). Second, \"when they post more\" is vague about what Hale is actually watching for. Third, it runs to three sentences and is dense and abbreviated, more than the one or two short sentences asked for, though still within two segments.",
-    "score": 4
-  }
-}

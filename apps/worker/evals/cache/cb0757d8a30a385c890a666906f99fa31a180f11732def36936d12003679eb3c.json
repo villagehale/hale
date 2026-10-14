@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is missing_detail, and the answer correctly asks which country without stating any broadcaster or current fact. The brief reason given (rights differ by country) is common knowledge. The phrasing \"I need that to point you to the right place\" leans slightly toward an assistant offering a service rather than a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

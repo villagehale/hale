@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every stated fact matches the research notes: BC has a mix of sun and cloud, a high of 15°C, then showers Tuesday night with a low of 11°C; WA is mostly sunny, high near 64°F, with a frost advisory early Tuesday. Covering both Vancouvers and asking which one is sensible, since the question was ambiguous. The reply is brief, answers directly and reads like a text back, not a service offer.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

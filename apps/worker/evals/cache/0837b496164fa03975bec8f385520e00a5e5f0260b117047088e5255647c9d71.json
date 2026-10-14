@@ -1,8 +1,0 @@
-{
-  "value": {
-    "clinical_query": "fever 38.5C since last night infant under 3 months",
-    "red_flag_sign": "fever in a baby younger than 3 months",
-    "red_flag": "emergency"
-  },
-  "latencyMs": 1960
-}

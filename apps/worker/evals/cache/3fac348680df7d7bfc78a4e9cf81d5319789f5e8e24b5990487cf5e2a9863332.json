@@ -1,8 +1,0 @@
-{
-  "value": {
-    "verdict": "reject",
-    "rationale": "check_spending_cap returned red. The order total of $189.00 for 8 packs of size 4 diapers exceeds the family's $75 monthly autonomous cap, which is a clear policy violation. Idempotency (no prior identical order) and user override (none set) checks passed, but one red tool requires rejection. check_action_time_window and check_pii_leak results were not supplied. They would be needed before any future approval, but they do not change this verdict.",
-    "remediation": "Send the order to a parent for explicit approval at $189.00. Alternatively, the Drafter can submit a new order under the cap: at about $23.63 per pack, 3 packs comes to about $70.88. Check this against any spending already counted toward this month's cap. A revised draft must include check_action_time_window and check_pii_leak results."
-  },
-  "latencyMs": 6213
-}

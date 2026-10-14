@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The rationale correctly ties the supply_low_signal event to the data: 6 units on hand with 7 used daily gives about 1 day remaining, which matches days_remaining=1. It also notes the absence of a reorder, which is relevant context. It is specific and accurate, though it could mention the urgency more explicitly.",
-    "score": 5
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is missing_detail, and the reply correctly asks which country without stating any rate from memory. It's brief and in English. The 'tell me and I'll check' line edges slightly toward an assistant offering a service, and explaining why rates vary is a bit more than a friend would bother texting.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

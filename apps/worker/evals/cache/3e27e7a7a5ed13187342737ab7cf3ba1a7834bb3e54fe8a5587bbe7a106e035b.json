@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both slots match the page exactly: names, ages, Saturday times, Sept 12 to Nov 28, and the Aug 11 7am resident registration with the Aug 4 browse date. Price is correctly null since the page prints no fee, there is no invented third level, and each slot is cited to the Oakville page. The message leads with Preschool A by name, attributes the facts with 'their site says' and carries the not-yet-open registration date. It owns the price gap in the first person ('I could not pin down'), which is right under page_has_schedule, and makes no unearned 'not posted' claim. Since watch is true, 'I'll keep watching' is a real commitment. It is plain ASCII with no link and no question. The two sentences are dense but within limits.",
-    "score": 5
-  }
-}

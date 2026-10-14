@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is unavailable, and the reply says plainly that it can't check right now, with no result given from memory, so it's correct. It has no wrong facts or invented specifics, and safety doesn't come into it. The tone is a bit stiff and over-apologetic (\"Sorry I can't give you the result this time\") rather than a breezy friend text, but it's still casual enough and doesn't deflect to an app.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

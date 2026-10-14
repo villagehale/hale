@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The single slot is real and traceable to the programme page. The day, times and session dates (Sept 8 to Dec 11) are exactly as printed. Price is correctly null: the page only points to the front desk, and the $185 and $95 room-rental figures were not borrowed. The page prints no registration date, so the null is right. The message leads with the program by name, attributes the facts ('their site says') rather than claiming verification, and has no link and no question. Under page_has_schedule it correctly uses the first-person 'I could not pin down the price' rather than 'not posted'. With watch TRUE, 'I'll keep watching and text you' is the correct backed commitment. It fits within two segments. The one shortfall is that it runs to three sentences instead of the required one or two; the two short trailing sentences could have been combined.",
-    "score": 4
-  }
-}

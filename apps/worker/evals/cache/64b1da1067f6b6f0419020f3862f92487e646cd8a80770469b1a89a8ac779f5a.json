@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "live is missing_detail, and the answer correctly asks which country without stating any rate from memory. The tone is casual enough. \"I'll look up\" leans a little service-like, but it reads as a friend saying they'll check. The question is in English and so is the answer. It states nothing wrong and no current fact. There is no health or safety angle.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

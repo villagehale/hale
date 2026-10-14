@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Lima is correct, settled knowledge. The coastal detail is also common knowledge. The reply is brief and casual, like a friend texting back, and it answers this question without mentioning the pending weather question.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

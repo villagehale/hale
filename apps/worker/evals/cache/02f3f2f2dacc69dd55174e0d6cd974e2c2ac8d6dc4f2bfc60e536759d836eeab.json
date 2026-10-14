@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The first sentence opens with 'I checked Markham's calendar', so the registration fact arrives as the result of a look Hale already took, and the kid name Maya and the Markham and Fall 2026 facts are all given in the payload. No invented scope such as a count of places checked or a postal code appears.",
-    "score": 5
-  }
-}

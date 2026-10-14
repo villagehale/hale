@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message contains the word \"name\" and asks for it, and it keeps both halves: \"I watch your dates\" (Hale watches by itself) and \"you can text me a question\" (the parent can ask anytime). It fits the short tail budget and stays plain rather than stiff. It is slightly clipped, but the watchFor explicitly says clipped beats elegant when there is no room, and both required clauses survive, so this meets the bar for the top score.",
-    "score": 5
-  }
-}

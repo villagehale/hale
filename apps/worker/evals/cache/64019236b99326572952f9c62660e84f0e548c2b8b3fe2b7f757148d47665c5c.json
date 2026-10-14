@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure (showers ending near noon, thunderstorm risk, 10–20 mm, SW gusts to 40 km/h, high 24°C, night low 12°C with a 60% chance of showers) matches the Environment Canada forecast in the notes. 'This morning's' fits the 11 AM issue time. It correctly treats 'Toronto' as the answer to the city question and gives tomorrow's forecast directly. It reads more like a dense forecast readout than a casual text, so it falls a bit short of a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

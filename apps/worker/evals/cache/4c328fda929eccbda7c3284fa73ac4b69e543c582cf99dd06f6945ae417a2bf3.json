@@ -1,7 +1,0 @@
-{
-  "value": {
-    "answer": "This is Hale, a kids' rec helper - I'm an AI texting on behalf of the signup you started, and nothing's been set up for you yet.",
-    "returnLine": "Could you send me the names and ages of your kids, along with your postal code, so I can see what fits?"
-  },
-  "latencyMs": 1328
-}

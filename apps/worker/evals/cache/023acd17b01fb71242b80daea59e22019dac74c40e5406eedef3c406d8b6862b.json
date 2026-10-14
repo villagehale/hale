@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both forecasts match the research notes. BC: mix of sun and cloud, high 15, showers Tuesday night, low 11 (Environment Canada). WA: mostly sunny, high near 64, mostly cloudy night, low around 48, frost advisory 12–8 AM Tuesday (NWS). Covering both Vancouvers handles the ambiguity well. It reads like a brief, casual text from a friend, with no offers and no deflecting. 'Cloudier overnight' is a fair paraphrase of 'mostly cloudy'.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "It names typical broadcasters by region (BBC/ITV in the UK, TSN/CTV in Canada) and hedges properly on currency and region, which is what watchFor allows. The facts are historically accurate, there are no links, and it doesn't claim live data. Weaknesses: the second sentence is long, and it opens with the limitation rather than the useful answer, which slightly misses the useful-first ideal. The closing hedge is a bit redundant with the opening. It's about two sentences, so it's within bounds.",
-    "score": 4
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer gives a real pick (Messi) with a reason, as an opinion ask needs. The only specific it states is the 2022 World Cup win, which is settled and can no longer change. 'About two decades' is a loose description, not a running count of titles or goals. It cites no trophy counts, goal tallies or records that could have changed since. It reads like a friend texting back and is in English.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

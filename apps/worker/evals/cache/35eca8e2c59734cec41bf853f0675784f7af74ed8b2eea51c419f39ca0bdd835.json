@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The single slot is real and cited to the programme page, with the day, time and dates exactly as printed. Price is correctly null: the page prints no fee, and none of the room-rental figures were borrowed. Registration is null because the page gives no registration date. The message leads with the programme by name and attributes the facts with 'their site says'. It contains no link and no question, and is two plain-ASCII sentences. The gap is phrased in the first person ('I could not pin down'), as page_has_schedule requires. Watch is true, so the first-person 'I'll keep watching and text you' reflects a commitment that exists.",
-    "score": 5
-  }
-}

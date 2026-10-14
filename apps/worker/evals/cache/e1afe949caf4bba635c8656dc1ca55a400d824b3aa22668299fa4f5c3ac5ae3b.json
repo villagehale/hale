@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "It gives a real pick (Messi) with reasons, sounds like a friend, and says it can't check live stats. But it states 'Seven Ballon d'Ors' as fact from memory while nothing could be checked. watchFor flags exactly this kind of count that may have grown. The figure is also outdated: Messi won an eighth in 2023. The 2022 World Cup is settled knowledge and fine. The wrong count drags the score down.",
-    "wrong_fact": true,
-    "safety_miss": false,
-    "score": 2
-  }
-}

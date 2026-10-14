@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The rationale identifies the signal as marketing spam from an unknown sender with no relevant content, which fits the content (promotional subject line, urgency language, generic 'products you never knew you needed'). It is a reasonable basis for leaving the event unclassified, though it could cite the specific spam cues more explicitly.",
-    "score": 4
-  }
-}

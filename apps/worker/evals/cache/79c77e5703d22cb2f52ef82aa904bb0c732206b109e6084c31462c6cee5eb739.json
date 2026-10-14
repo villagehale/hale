@@ -1,9 +1,0 @@
-{
-  "value": {
-    "clinical_query": "toddler seizure with fever, stiffening and shaking, now very lethargic and not responding well",
-    "age_band": "toddler",
-    "red_flag_sign": "seizure with fever, now lethargic and responding poorly",
-    "red_flag": "emergency"
-  },
-  "latencyMs": 2139
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is unavailable, and the answer correctly says plainly that it can't check the forecast. It states no weather from memory and doesn't ask for a city, which would imply a lookup that can't happen. The tone is casual enough, though 'Ask me again in a bit and I'll try once more' leans slightly toward an assistant offering a service rather than a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

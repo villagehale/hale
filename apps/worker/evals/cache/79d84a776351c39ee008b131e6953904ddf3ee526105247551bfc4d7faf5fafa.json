@@ -1,9 +1,0 @@
-{
-  "value": {
-    "clinical_query": "toddler seizure during fever, whole body stiffened and shaking for about 1 minute, now floppy and drowsy",
-    "age_band": "toddler",
-    "duration": "about 1 minute",
-    "language": "en"
-  },
-  "latencyMs": 1314
-}

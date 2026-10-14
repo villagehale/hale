@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the research notes: closed for Thanksgiving, Friday close 35,664.62, up 519.24 (1.48% rounds 1.477%), weak jobs data easing rate-hike expectations, and trading resuming Oct 13 at 9:30 ET. It reads as a brief, casual text that actually answers the question. Slightly dense with figures, but natural.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

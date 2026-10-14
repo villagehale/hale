@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Handles the ambiguity well by covering both sports. It makes a real pick in each: Messi for soccer and Brady for the NFL. Every fact checks out against the notes, including Messi edging ahead and Brady's 7 Super Bowl wins. Mahomes chasing him is also supported. Brady is retired, so his 7 wins cannot change, and grounding does not mark them settled. It reads casual and brief, like a friend texting.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

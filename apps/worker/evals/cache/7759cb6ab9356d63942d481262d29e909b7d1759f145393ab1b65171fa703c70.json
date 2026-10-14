@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The slots are accurate. Both preschool levels match the page exactly: ages 3-5, Saturday times, Sept 12 to Nov 28, and the Aug 11 7am registration opening (with the Aug 4 browse date). Price is correctly null because the page prints no fee, and there is no invented third slot. The message leads with the named program, attributes the facts to their site, and carries the not-yet-open registration date. It has no question and no link, and is plain ASCII. With watch=true, the first-person 'I'll keep watching and text you' is correct, and 'I could not pin down the price' is the right first-person framing under page_has_schedule. The one deduction is length: it runs to three sentences rather than one or two short ones, and the attribution sits awkwardly mid-message.",
-    "score": 4
-  }
-}

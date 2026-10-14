@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The rationale correctly identifies the event as lab results being ready, noting the sender is a known clinic portal and the message is a one-way notice that bloodwork results are viewable, which matches the signal content. It is specific and accurate, though it could mention the reference to a specific patient (Mira) or the call to log in.",
-    "score": 4
-  }
-}

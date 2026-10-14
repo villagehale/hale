@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the Environment Canada notes for Windsor, Ontario on Tuesday: mainly cloudy early, 30% chance of showers, a thunderstorm risk, clearing in the morning, high of 29, humidex 35, and southwest gusts to 60 late morning. The 'as of this afternoon' timing fits the 4:09 PM issue. It answers directly, with no deflect and no city question. It does read more like a forecast bulletin than a casual text, though.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada forecast in the notes: high of 24°C, showers ending near noon, then mainly cloudy with a 60% chance of showers, thunderstorm risk morning and afternoon, 10–20 mm of rain, and SW wind 20 km/h gusting to 40 near noon. It uses the known city and states the forecast directly, with no deflect. The tone is a bit dense and reads more like a weather bulletin than a quick casual text, which keeps it from top marks.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

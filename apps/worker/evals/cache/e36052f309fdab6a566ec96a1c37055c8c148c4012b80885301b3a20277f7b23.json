@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Lead sentence includes the mandated 'I looked up' phrasing, names only given facts (Halton Hills, Fall 2026, Sep 1, Winter 2027 not yet posted, firstFindBeat reproduced verbatim). It states the absence plainly since stillOpenPage is false and the next dates are not posted. Short, plain, no hype, no invented details. Minor omission: no explicit pick-absence clause, but weekendPick is null and the firstFindBeat covers the timing, so it is acceptable.",
-    "score": 5
-  }
-}

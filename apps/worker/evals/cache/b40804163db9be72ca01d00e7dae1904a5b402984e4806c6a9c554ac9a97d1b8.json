@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada forecast in the notes: showers ending near noon then mostly cloudy, a 60% chance of showers, thunderstorm risk, 10–20 mm of rain, a high of 24°C and a low of 12°C. The reply correctly reads 'Toronto' as the answer to the city question and gives tomorrow's forecast directly. It is brief and casual enough, and it cites the source without deflecting.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

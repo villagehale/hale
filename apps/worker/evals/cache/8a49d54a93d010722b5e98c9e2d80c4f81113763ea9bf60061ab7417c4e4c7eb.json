@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Lead sentence says Hale checked Toronto's calendar (mandatory phrasing, no invented scope), states the Fall 2026 open date that is in the facts, and the firstFindBeat is reproduced verbatim as instructed. It is short and plain, and it does not pad or invent a pick or registration date. Omitting nextCycle is correct since stillOpenPage is true, and the offer question is not required to appear in the text. The wording is slightly flat and drops the 7:00 a.m. time, but nothing is invented.",
-    "score": 5
-  }
-}

@@ -1,9 +1,0 @@
-{
-  "value": {
-    "clinical_query": "fever 38.2C infant under 3 months",
-    "age_band": "infant_under_3mo",
-    "red_flag_sign": "fever in a baby younger than 3 months",
-    "red_flag": "emergency"
-  },
-  "latencyMs": 1921
-}

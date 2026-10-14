@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "It delivers an actual short poem about Mondays, which is the creative ask done rather than declined. There are no factual claims, so nothing can be wrong, and no safety angle. It reads like a friend dashing off a playful verse. The rhyme scheme is a little loose and the closing line ('the weekend will know where you go') is muddled, so it's solid rather than great.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

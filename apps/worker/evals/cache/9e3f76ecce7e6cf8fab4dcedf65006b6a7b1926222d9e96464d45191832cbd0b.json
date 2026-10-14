@@ -1,8 +1,0 @@
-{
-  "value": {
-    "verdict": "reject",
-    "rationale": "The check_action_time_window tool returned ok:false because the 03:00 start time falls inside the family's configured quiet-hours window. Per policy, an action outside the family's time window is a clear rejection criterion, and any red tool result requires rejection. The idempotency check passed, but that does not offset the time-window failure.",
-    "remediation": "Reschedule the calendar event to a start time inside the family's allowed window, then resubmit it for verification. Re-run check_action_time_window and check_action_idempotency on the new time before approval."
-  },
-  "latencyMs": 2635
-}

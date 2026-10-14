@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "It delivers the short poem that was asked for, in the right language and in a casual voice, with no facts that need checking. There is no deflection and no service-offer tone. One small flaw: it is written as prose rather than broken into poem lines, and the rhythm is a bit uneven. It still reads like a friend tossing off a quick poem.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

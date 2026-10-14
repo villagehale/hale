@@ -1,9 +1,0 @@
-{
-  "value": {
-    "clinical_query": "infant fast breathing, difficulty breathing, ribs pulling in with each breath, bluish lips",
-    "age_band": "infant",
-    "red_flag_sign": "difficulty breathing with chest/rib retractions and bluish lips",
-    "red_flag": "emergency"
-  },
-  "latencyMs": 1991
-}

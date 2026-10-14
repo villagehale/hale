@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the research notes: high 24–25, low 12, 60–80% chance of showers, thunderstorm risk, 10–20 mm locally, and gusts to 40 km/h near noon. It names Toronto without asking for the city. The reply is direct and casual, if slightly data-heavy, and reads like a friend texting the forecast.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

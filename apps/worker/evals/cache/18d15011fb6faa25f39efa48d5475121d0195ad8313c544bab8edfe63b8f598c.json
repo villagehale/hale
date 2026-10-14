@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The rationale correctly identifies the signal as a portal notification that Mira's bloodwork results are ready to view, which matches the lab_results_ready event type. It also notes the message is one-way and needs no reply, a useful detail for triage. It is specific and grounded in the signal content.",
-    "score": 5
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact is supported by research_notes: Messi's eight Ballons d'Or to Ronaldo's five, coverage leaning toward Messi after his World Cup performances, Brady's 7 Super Bowl wins, and Mahomes as the main challenger. It handles the soccer/NFL ambiguity by covering both, and it makes a real pick in each (Messi, then Brady), so it is not a survey. It is brief and casual, though 'the latest coverage I found' reads slightly like a research report rather than a friend's take.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer covers both sports and makes a real pick in each, which the watchFor asks for. Its facts match the notes: Messi's eight Ballon d'Or, the 2022 World Cup, Ronaldo as the main rival, Brady's seven Super Bowls, Rice at No. 2, and Brady calling Rice the GOAT. It reads like a friend texting back. One small overreach: \"it's not close for most people\" goes further than the notes, which show a near-tie in the fan vote and say opinions differ. The notes do still mostly point to Messi.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

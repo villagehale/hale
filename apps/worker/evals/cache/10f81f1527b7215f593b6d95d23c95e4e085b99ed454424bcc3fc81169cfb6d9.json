@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer is honest and direct: it states Hale cannot book and has not started, then describes what it would do once set up, which is a conditional description of its function rather than a claim of present action. No invented specifics, no app or login, no hype. The return line re-asks for the same info (names, ages, postal code), which matches pendingAsk, so it does not stall the signup.",
-    "score": 5
-  }
-}

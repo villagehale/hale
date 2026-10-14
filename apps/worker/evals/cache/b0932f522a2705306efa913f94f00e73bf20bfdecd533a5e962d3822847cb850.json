@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message answers the parent's named venue. Cartwheels Gym Centre is a plausible match for 'Cartwheel Gym', not a substituted gym, and it leads with the program by name, Tiny Gym. The age fit and 45-minute length are attributed with 'their site says' rather than claimed as confirmed. Under page_has_schedule, the missing day and price are owned in the first person ('I could not pin down'), not passed off as 'not posted yet'. No time or price is invented. Since watch is true, the first-person 'I'll keep watching and text you' is backed by a real continuation. The message is two short sentences with no link and no question.",
-    "score": 5
-  }
-}

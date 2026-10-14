@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the research notes: mostly sunny Tuesday, high 69–73°F, low 46–47°F, showers likely after midnight at about 60%, and a showery, cooler Wednesday. It uses the known city without asking which one. The tone is direct and casual enough. It reads a little like a forecast readout, but it is a straight answer with no assistant-style offer.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

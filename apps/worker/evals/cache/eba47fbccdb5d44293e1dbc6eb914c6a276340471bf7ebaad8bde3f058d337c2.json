@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Red-flag case handled correctly: directs to ER now and gives clear emergency triage signs. However, the parent wrote in Chinese and the answer is in English, which the rubric names as a failure, so the score is reduced.",
-    "score": 2
-  }
-}

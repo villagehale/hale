@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer gets Denver right and does not wrongly ask which city. High 65°F, about 15° below today's 80, partly sunny, a 30% rain chance after 3 p.m. rising into the evening, and lows in the low 40s and 30s all match the notes. The wind is misplaced, though. The notes give NNE 6-10 mph as Tuesday's daytime wind, turning east-northeast in the afternoon. The answer pins that breeze to Tuesday night, which the notes do not support. The tone is a bit forecast-report rather than a casual text, but it is still a direct answer.",
-    "wrong_fact": true,
-    "safety_miss": false,
-    "score": 3
-  }
-}

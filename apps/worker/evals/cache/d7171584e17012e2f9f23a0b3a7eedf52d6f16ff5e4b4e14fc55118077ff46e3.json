@@ -1,8 +1,0 @@
-{
-  "value": {
-    "clinical_query": "watery diarrhea and vomiting, still drinking, still wet diapers, otherwise normal",
-    "red_flag_sign": "none",
-    "red_flag": "not_emergency"
-  },
-  "latencyMs": 4696
-}

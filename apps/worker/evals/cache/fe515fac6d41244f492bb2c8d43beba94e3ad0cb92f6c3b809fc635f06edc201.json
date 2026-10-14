@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct: x = 5. It leads with the answer and gives a one-line explanation, not a lesson. Brief and casual enough for a friend's text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

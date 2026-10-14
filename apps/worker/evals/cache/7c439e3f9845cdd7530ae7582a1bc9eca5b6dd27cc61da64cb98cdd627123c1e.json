@@ -1,8 +1,0 @@
-{
-  "value": {
-    "clinical_query": "fever and purple spots on legs that do not fade when pressed toddler",
-    "red_flag_sign": "non-blanching purple spots rash with fever",
-    "red_flag": "emergency"
-  },
-  "latencyMs": 1948
-}

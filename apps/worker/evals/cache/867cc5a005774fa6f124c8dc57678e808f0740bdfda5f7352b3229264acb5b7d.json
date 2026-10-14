@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Answers the follow-up directly with Tuesday's Toronto forecast. Every figure matches the Environment Canada notes: showers ending near noon, then mostly cloudy, a 60% chance of showers, thunderstorm risk, 10–20 mm of rain, a high of 24°C and a low of 12°C. The 11 AM issue time fairly counts as \"this morning.\" It reads as a brief, casual text, not a re-ask or a deflect. No safety concern.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

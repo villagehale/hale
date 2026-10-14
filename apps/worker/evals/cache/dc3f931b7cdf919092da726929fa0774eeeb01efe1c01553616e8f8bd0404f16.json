@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer handles the ambiguity well by covering both sports, and it makes a real pick for each: Messi and Brady. Every stat it gives (eight Ballon d'Ors, 672 Barcelona goals, the 2022 World Cup, seven Super Bowls, five SB MVPs, three NFL MVPs) matches research_notes. The alternatives it names, Ronaldo and Rice, are also in the notes. Not mentioning a 2026 World Cup win avoids a claim the notes don't clearly support. The tone is casual and friendly, in English, and doesn't read like an assistant.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

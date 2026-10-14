@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is null, so I scored the slots alone. There is one slot, grounded in a search snippet: Parent & Tot lessons at Gellert for 4 months to 3 years, run by the Town of Halton Hills. It fits the toddler stage. 'when' and 'price' are left null rather than invented. Registration is marked unconfirmed and says the pages could not be opened. It does not claim the schedule is unposted. The source is cited to the operator's own domain. The one weak spot is that sourceUrl points at a page whose fetch failed, so it reads as if the facts came off that page when they came from a snippet. The registration text discloses this, and no pages_read field claims an open, so it is a minor point.",
-    "score": 4
-  }
-}

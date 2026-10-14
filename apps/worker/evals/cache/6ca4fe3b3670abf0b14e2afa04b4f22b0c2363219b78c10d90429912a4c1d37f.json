@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The Tiny Gym and Rock n' Roll slots are real and correctly cited to programs.php. The page itself says pricing sits behind the registration login, so that part is accurate. But the message fails in three ways. First, it drops the Term 1/Fall registration date (Wednesday July 22, 2026, 8:00am online). The slots carried that date, but only as a separate pseudo-slot rather than on the program slots. Second, it claims days and times only show after login. pageEvidence is page_has_schedule, and the programs page links a 'Schedule at a glance' PDF that Hale opened but could not decode. That makes this an unearned negative claim; it should have been first person ('I could not pin down the day'). Third, the message runs to three sentences. The first-person watch line is correct because watch is true.",
-    "score": 2
-  }
-}

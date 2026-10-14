@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every specific matches the Environment Canada notes: showers ending near noon, then mainly cloudy with a 60% chance of showers, thunderstorm risk, a high of 24°C with humidex 28, SW gusts to 40 km/h near noon, and Tuesday night cloudy with a 60% chance of showers and a low of 12°C. It correctly uses Toronto and answers directly. The tone reads more like a weather bulletin than a casual friend's text, with the full wind detail and the source citation, but it is still a straight answer and not a service offer.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

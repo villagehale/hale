@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada forecast in the notes: Tuesday's high of 24°C, the 60% chance of showers, the thunderstorm risk, the southwest wind at 20 km/h gusting to 40, Tuesday night's low of 12°C, and Wednesday's high of 19°C with a 30% chance of showers. It correctly takes 'Toronto' as the answer to the city question and gives tomorrow's forecast directly. The wording is dense and reads a bit like a bulletin, more than a casual text, so it falls short of top marks.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

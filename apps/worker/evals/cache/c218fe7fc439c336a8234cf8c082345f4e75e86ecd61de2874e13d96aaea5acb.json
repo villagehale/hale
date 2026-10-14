@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Message is null, so only the slots are scored. The single slot names a real program (Parent & Tot at Gellert, 4 months to 3 years, Town of Halton Hills). That fits a toddler. The ageFit field is explicitly caveated as coming from a search snippet only. When, price and registration are null rather than invented, which is correct because no page was opened. The sourceUrl points at the Gellert page, which was the page the snippet described, and it is attribution, not a claim to have read the page. Nothing borrowed, nothing fabricated, and no 'not posted' claim. This is the snippet-grounded answer watchFor asks for.",
-    "score": 5
-  }
-}

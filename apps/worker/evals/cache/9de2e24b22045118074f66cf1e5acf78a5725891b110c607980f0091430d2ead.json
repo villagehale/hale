@@ -1,4 +1,0 @@
-{
-  "searchCount": 9,
-  "notes": "I couldn't call `medical_answer` from this step, so here is the object it would return:\n\n```json\n{\n  \"answer\": \"Go to the ER now. A fever of 38C or higher in a baby under 3 months needs emergency assessment, even if baby seems well, because at this age fever can be the only sign of a serious infection.\",\n  \"triage\": \"Go to the ER now - do not wait it out. Call 911 if baby is hard to wake, limp, breathing fast or hard, has blue lips, a seizure, or a rash that does not fade. 811 can advise, but do not delay the ER.\",\n  \"sources\": [\"Children's Hospital of Philadelphia\", \"Connecticut Children's\"]\n}\n```"
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Creative ask, no search needed. It delivers the poem directly with no preamble and no assistant-style offer. The poem is short and casual, with a light rhyme, the way a friend might text one back. There are no facts to check and nothing is said about the parent's family. One minor flaw: the rhyme and meter are a bit uneven (\"missed\" / \"sip\"). It still works well as a friendly reply.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

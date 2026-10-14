@@ -1,7 +1,0 @@
-{
-  "value": {
-    "answer": "I'm Hale, an AI that helps families keep track of kids' rec programs. You texted me earlier about signing up, so this is that. Nothing is set up yet and nothing is agreed.",
-    "returnLine": "Could you send me your kids' names, their ages, and your postal code so I know what to look for?"
-  },
-  "latencyMs": 4792
-}

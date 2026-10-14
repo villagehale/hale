@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada forecast in the notes for Windsor, Ontario, tomorrow: high 29, humidex 35, a small early chance of showers with a thunderstorm risk, clearing in the morning, and gusts to 60 km/h late morning. It answers directly, without asking which city, and reads like a casual text. 'Going by the afternoon forecast' fits the 4:09 PM issue time.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

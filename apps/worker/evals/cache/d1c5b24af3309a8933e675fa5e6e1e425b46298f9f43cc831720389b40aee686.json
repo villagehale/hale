@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Asking for the city is the right move here, and the answer states no price, so the content is correct. But 'so I need that to look it up' reads like an assistant explaining a service step, not a friend texting. It's also a bit wordy and formal for a text. A friend would just say 'which costco? prices vary a lot by area'. The answer is correct but the tone is somewhat assistant-like.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 3
-  }
-}

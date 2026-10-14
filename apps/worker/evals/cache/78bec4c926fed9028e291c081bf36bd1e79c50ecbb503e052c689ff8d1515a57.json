@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer makes a real pick in both sports, and every fact checks out against the notes: Messi's eight Ballons d'Or to Ronaldo's five, his 2026 World Cup run strengthening his case, Brady's 7 Super Bowl wins, and Mahomes as the main challenger. It handles the soccer-or-NFL ambiguity neatly and reads like a casual friend's text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

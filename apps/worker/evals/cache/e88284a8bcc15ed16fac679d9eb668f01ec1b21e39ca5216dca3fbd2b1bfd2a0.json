@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The rationale correctly identifies the signal as a one-way reminder from a known pediatric clinic about Leo's existing 4-year checkup, and accurately notes that no action is required, which matches the event type pediatric_appointment_reminder.",
-    "score": 5
-  }
-}

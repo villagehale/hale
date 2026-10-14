@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both slots match the page exactly: the Saturday times and the Sept 12 to Nov 28 dates are as printed, the 3-5 age band fits, and each is cited to the Town of Oakville page. Price is correctly null because the page prints no fee and only points to the Recreation Guide. The registration line (opens Aug 11, 7am, residents) is carried in the slots and in the message, which correctly signals that registration has not opened yet. The message leads with Preschool A by name, attributes with 'their site says' and uses the first-person 'I could not pin down the price', which is right for page_has_schedule. With watch true, the first-person keep-watching line is legitimate. It has no question and no link, is plain ASCII and is two sentences within the segment limit. Two small lapses: '9:00' drops the a.m., and the message is slightly long.",
-    "score": 5
-  }
-}

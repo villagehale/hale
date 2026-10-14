@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both picks are real, named venues in Halton Hills that fit a toddler, and there are only two. The message leads with the best one, Kids & Me at the Acton Branch library, and attributes it ('Halton Region says'). Its day, time, start and price all match the picks, with nothing invented. For EarlyON, which has a null 'when', it names the gap in the form no_page_read earns: 'I could not get into their page today'. It does not claim the times are not posted. watch is false and there is no coming-back promise, which is correct. It is two plain sentences with no link and no question. The second find is attributed somewhat more loosely than the first, but that is minor.",
-    "score": 5
-  }
-}

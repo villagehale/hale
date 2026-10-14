@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the research notes: the market is closed for Thanksgiving and reopens Tuesday, and Friday's close was up 519 points at 35,664, about 1.5%, after a volatile week. It reads as a brief, casual text that answers the question directly.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

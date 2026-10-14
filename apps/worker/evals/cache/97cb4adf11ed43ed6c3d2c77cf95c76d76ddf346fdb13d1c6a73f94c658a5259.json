@@ -1,8 +1,0 @@
-{
-  "value": {
-    "verdict": "flag_for_human",
-    "rationale": "Only two checks were run: time window and idempotency, and both came back ok. The other required checks are missing. check_calendar_conflict was not run, so it is unknown whether the 10:15 slot on 2026-06-23 is actually clear. check_pii_leak and check_user_override were not run either. check_vaccine_schedule was not run, even though this is an 18-month well visit. The action itself is internal-only, reversible and low-risk. However, it is medical in nature, and policy says never to approve without full tool coverage. Because the evidence is incomplete rather than red, this is flagged rather than rejected.",
-    "remediation": "Run check_calendar_conflict for 2026-06-23 at 10:15-04:00, plus check_pii_leak, check_user_override and optionally check_vaccine_schedule. If all return ok, resubmit for approval. Otherwise, have a parent confirm the appointment details before it is committed."
-  },
-  "latencyMs": 11714
-}

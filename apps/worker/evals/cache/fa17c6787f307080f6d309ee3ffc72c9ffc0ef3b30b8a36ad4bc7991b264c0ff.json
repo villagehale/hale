@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer delivers the poem it was asked for, with no deflection and no facts to get wrong. It is brief, in the question's language, and reads like a friend dashing off a quick verse rather than an assistant offering a service. A line or two is a bit clunky, but it fully meets the ask.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

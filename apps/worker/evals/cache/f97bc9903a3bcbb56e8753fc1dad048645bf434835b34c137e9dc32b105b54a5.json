@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The Tiny Gym and Rock n' Roll slots are real, and their age bands match programs.php. The July 22, 2026 8:00am registration date is correctly read off the home page and cited. However, the message drops that registration date entirely, which is a low-score fault. It also says days and times only show after logging in. That is an unearned negative claim under page_has_schedule: the site links a schedule PDF, and the page only says availability and pricing are behind the login. The message runs three sentences instead of one or two. The first-person watch line is correct given watch=true.",
-    "score": 2
-  }
-}

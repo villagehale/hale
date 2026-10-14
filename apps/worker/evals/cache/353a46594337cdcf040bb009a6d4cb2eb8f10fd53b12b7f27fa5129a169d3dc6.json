@@ -1,8 +1,0 @@
-{
-  "value": {
-    "clinical_query": "school-age child high fever, severe headache, stiff neck, sensitivity to light",
-    "age_band": "school_age",
-    "language": "en"
-  },
-  "latencyMs": 1908
-}

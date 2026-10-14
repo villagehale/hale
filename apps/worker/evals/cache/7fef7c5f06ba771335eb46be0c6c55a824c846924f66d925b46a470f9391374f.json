@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer is correct: Lima is the capital of Peru, which is settled knowledge. It answers this question flat, in the same language, and doesn't bring up the pending weather question. It reads like a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

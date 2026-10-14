@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The first sentence says \"I checked Markham's calendar\", so the registration fact arrives as Hale reporting a look it already took, and the fact sits in that same sentence. The look does not carry invented specifics: town, cycle, time and child name all appear in the facts payload.",
-    "score": 5
-  }
-}

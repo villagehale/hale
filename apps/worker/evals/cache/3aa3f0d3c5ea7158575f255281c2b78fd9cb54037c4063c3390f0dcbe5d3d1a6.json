@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The advice is real and usable: drowsy-but-awake, a dark room, a consistent short routine, and catching tired cues early. It invents nothing about the child and asks his age in a few words, which watchFor allows. There is no safety concern. The tone reads a bit like a tidy advice column rather than a casual text, and the closing 'I can get more specific from there' leans slightly assistant-like, but it is still mostly a friend answering.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

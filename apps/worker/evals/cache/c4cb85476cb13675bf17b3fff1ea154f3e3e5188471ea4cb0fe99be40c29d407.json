@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message leads with a plain 'I looked up' that the contract requires, names Noor, and states the checkpoint fact accurately without inventing anything. It omits the offer question and any statement about the absent weekend pick or registration, which is acceptable since those are null, but it reads somewhat like a database entry rather than a warm neighbour's text, and it doesn't acknowledge the offerQuestion prompt, so it is slightly incomplete.",
-    "score": 4
-  }
-}

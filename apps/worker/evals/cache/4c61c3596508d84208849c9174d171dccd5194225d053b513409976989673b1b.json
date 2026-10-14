@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every stated fact matches the research notes. For Vancouver, BC: mix of sun and cloud, high 15°C, showers Tuesday night, low 11°C. For Vancouver, WA: mostly sunny, high near 64°F, frost advisory early Tuesday. It sensibly covers both cities since the question was ambiguous. It reads as a brief text, if a bit forecast-like, and the closing question is a light friend-style touch. No safety issue.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

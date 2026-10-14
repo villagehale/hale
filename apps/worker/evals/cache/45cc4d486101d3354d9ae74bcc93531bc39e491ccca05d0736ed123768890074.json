@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches research_notes. BC: mix of sun and cloud, high 15°C, showers Tuesday night, low 11. WA: mostly sunny, high near 64°F, frost advisory 12–8 AM. It sensibly covers both Vancouvers, since the question didn't say which. It's brief and gives the answer directly with no deflect. The phrasing is a bit like a forecast readout rather than a casual text, so it falls just short of top marks.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "It says plainly that it can't check the forecast, which is right when live search is unavailable, and it doesn't ask which city. But it closes by telling the parent to check a weather app, which is a look-it-up. 'Mid-October is usually cooler' is a vague seasonal filler line, not a forecast, though it also depends on hemisphere. The opening apology and the 'reliable answer' wording read a bit more like an assistant than a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 2
-  }
-}

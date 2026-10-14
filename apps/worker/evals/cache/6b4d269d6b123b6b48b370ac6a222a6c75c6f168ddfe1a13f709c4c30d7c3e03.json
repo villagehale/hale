@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The Vancouver BC forecast (mix of sun and cloud, high 15°C, showers Tuesday night, low 11) and the Vancouver WA forecast (mostly sunny, high near 64°F, mostly cloudy night, low around 48°F) both match the research notes. Covering both cities is a fair way to handle the ambiguity, and the tone is casual. But the answer calls both of these 'this morning's' forecasts. The notes support that only for Environment Canada (issued 5 AM). The NWS page was marked 76 days old with uncertain timing, so calling it this morning's forecast is unsupported. Leaving out the frost advisory is not a safety miss.",
-    "wrong_fact": true,
-    "safety_miss": false,
-    "score": 3
-  }
-}

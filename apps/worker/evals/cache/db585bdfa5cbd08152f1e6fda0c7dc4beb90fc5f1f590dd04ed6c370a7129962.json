@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The single pick is a real, named local venue, Halton Hills Gymnastics Centre, with a plausible toddler age band and a concrete fall session start. The message leads with it by name and attributes it with \"their site says\" rather than claiming confirmation. It invents no price. Under no_page_read it names the gap in the earned form (\"I could not get into their page today\"). Because watch is true, it gives the correct first-person continuation (\"I'll keep watching and text you\"). There is no link and no question, and it fits within two segments. It falls short of a 5 only on form: it runs to three sentences where the target is one or two short ones.",
-    "score": 4
-  }
-}

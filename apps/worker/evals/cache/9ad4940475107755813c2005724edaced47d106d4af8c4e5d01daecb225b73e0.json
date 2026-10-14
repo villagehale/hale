@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The draft is a calendar event rather than a message to a family member, so tone is largely neutral. The title, location, and description are plain and accurate to the input, with no invented specifics beyond the given details, though the description merely repeats the title and no reminder or note was added for the family.",
-    "score": 3
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "It gives a real pick (Messi) with a reason and a casual tone, which fits an opinion ask. But it states 'Seven Ballon d'Ors' as fact from memory. That is exactly the kind of count watchFor says not to state, and it is also wrong: Messi won his eighth in 2023. The closing caveat about not checking news does not fix a stated, outdated figure. That caveat is also a bit long and assistant-like for a friend's text.",
-    "wrong_fact": true,
-    "safety_miss": false,
-    "score": 2
-  }
-}
