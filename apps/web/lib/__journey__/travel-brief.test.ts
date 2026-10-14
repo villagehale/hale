@@ -264,7 +264,13 @@ function recordedPicks(): ActivityPick[] {
       };
     }
   >;
-  for (const entry of Object.values(recordings)) {
+  // The newest picks turn is the one the sweep replays; an older entry for a request that
+  // no longer happens is not.
+  const entries = Object.values(recordings) as Array<
+    (typeof recordings)[string] & { recordedAt?: string }
+  >;
+  entries.sort((x, y) => (y.recordedAt ?? '').localeCompare(x.recordedAt ?? ''));
+  for (const entry of entries) {
     // The structured seam asks for a JSON output (a text block) or, for a schema with no
     // grammar, a tool call; the picks turn is whichever carries `picks`.
     const answers = entry.response.content.map((b) =>
@@ -417,179 +423,195 @@ function tripFacts(trip: object): Record<string, unknown> {
 // A recording waits on live model calls, which outlast the 5s default; replay keeps it.
 const RECORD_TIMEOUT = process.env.HALE_RECORD === '1' ? 180_000 : undefined;
 
-describe('a booking email becomes one text a week before the trip', { timeout: RECORD_TIMEOUT }, () => {
-  it('does not treat a timestamp or an id as the fare', () => {
-    const facts = JSON.stringify(
-      tripFacts({
-        id: '11111111-2222-3333-4444-555555558121',
+describe(
+  'a booking email becomes one text a week before the trip',
+  { timeout: RECORD_TIMEOUT },
+  () => {
+    it('does not treat a timestamp or an id as the fare', () => {
+      const facts = JSON.stringify(
+        tripFacts({
+          id: '11111111-2222-3333-4444-555555558121',
+          destinationCity: 'New York',
+          createdAt: new Date('2026-09-01T15:00:22.812Z'),
+          closedAt: '2026-09-05T13:00:00.812Z',
+          startsOn: '2026-09-12',
+        }),
+      );
+      expect(facts).toBe('{"destinationCity":"New York","startsOn":"2026-09-12"}');
+      expect(facts).not.toContain('812');
+    });
+
+    it('writes the trip on the sweep, and texts it at T-7d', async () => {
+      // ── the connector sweep, for real ────────────────────────────────────────
+      const { sync, requests } = await runSync();
+      expect(sync.travelDetections).toEqual(['trip_written']);
+
+      const [trip] = await db.database.select().from(schema.familyTrips);
+      expect(trip).toMatchObject({
+        familyId,
+        parentUserId,
         destinationCity: 'New York',
-        createdAt: new Date('2026-09-01T15:00:22.812Z'),
-        closedAt: '2026-09-05T13:00:00.812Z',
+        destinationRegion: 'NY',
         startsOn: '2026-09-12',
-      }),
-    );
-    expect(facts).toBe('{"destinationCity":"New York","startsOn":"2026-09-12"}');
-    expect(facts).not.toContain('812');
-  });
+        endsOn: '2026-09-15',
+        childEvidence: 'named_traveller',
+        closedAt: null,
+      });
+      // Nothing the confirmation said survived: no body, no reference, no fare, no
+      // passenger line. Asserted over the serialised facts rather than a field list, with
+      // timestamps and ids left out: `createdAt` is `….812Z` often enough that the fare
+      // digits match the milliseconds, and `812` is also a hex run inside a random uuid.
+      if (trip === undefined) throw new Error('expected one trip row');
+      const row = JSON.stringify(tripFacts(trip));
+      for (const forbidden of ['QRT4LM', '812', 'CHEN', 'AC 704', 'Seat']) {
+        expect(row, `the trip row must not carry ${forbidden}`).not.toContain(forbidden);
+      }
 
-  it('writes the trip on the sweep, and texts it at T-7d', async () => {
-    // ── the connector sweep, for real ────────────────────────────────────────
-    const { sync, requests } = await runSync();
-    expect(sync.travelDetections).toEqual(['trip_written']);
+      // Nothing has been sent. The detect pass writes a row and two kinds of audit line;
+      // the text is a different sweep four days later.
+      expect(await db.database.select().from(schema.channelMessages)).toHaveLength(0);
 
-    const [trip] = await db.database.select().from(schema.familyTrips);
-    expect(trip).toMatchObject({
-      familyId,
-      parentUserId,
-      destinationCity: 'New York',
-      destinationRegion: 'NY',
-      startsOn: '2026-09-12',
-      endsOn: '2026-09-15',
-      childEvidence: 'named_traveller',
-      closedAt: null,
+      // WHAT CROSSED THE BORDER ON LEG ONE, said plainly rather than left to a comment. The
+      // extraction is handed the booking's BODY and the children's FIRST NAMES, because
+      // `named_traveller` is a string match and there is no way to derive it without them.
+      // It is handed no age and no id. One call, and only one.
+      expect(requests).toHaveLength(1);
+      const extractionLeg = requests[0] ?? '';
+      expect(extractionLeg).toContain('CHEN/MIA MISS');
+      expect(extractionLeg).toContain('"household_child_first_names":["Mia","Leo"]');
+      expect(extractionLeg).not.toContain('ageInMonths');
+      expect(extractionLeg).not.toContain(parentUserId);
+
+      // ── T-7d: the hourly nudge leg ───────────────────────────────────────────
+      const { result, sent, searched } = await runBrief();
+      expect(result.sent).toBe(1);
+      expect(result.due).toBe(1);
+
+      // THE QUERY THAT CROSSED THE BORDER. The window survived `scrubResidualPii` with its
+      // dates intact — which is the whole reason it is composed without a year — and the
+      // subject asked about a VISIT rather than a term.
+      expect(searched).toHaveLength(1);
+      const query = searched[0] ?? '';
+      expect(query).toContain('New York, NY');
+      expect(query).toContain('September 12 to 15');
+      expect(query).not.toContain('[redacted]');
+      expect(query).not.toContain('2026');
+      // And leg two carries none of what leg one did: no name, no body, no booking. The
+      // extraction assertion above is this one's positive control — the same recorder saw
+      // both, and it saw 'Mia' on exactly one of them.
+      for (const forbidden of ['Mia', 'Leo', 'QRT4LM', 'AC 704', 'CHEN']) {
+        expect(query, `the search query must not carry ${forbidden}`).not.toContain(forbidden);
+      }
+
+      // THE FAR SIDE: one text, on the connecting parent's phone.
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.to).toBe(PHONE);
+      const body = sent[0]?.body ?? '';
+      expect(body).toContain("You're in New York the 12th to the 15th");
+      // Both children are under 13, so both are named; neither age is.
+      expect(body).toContain('for Mia and Leo');
+      // The ages, not a clock time: a venue's "10:00-4:30" is not an age.
+      expect(body).not.toMatch(/\b(4|7)\b(?![:.]\d)/);
+
+      // THE PICKS ARE THE MODEL'S OWN, read out of the recording rather than typed here —
+      // so this is a claim about the RENDERER carrying what the lane found, not about a set
+      // of words this file chose. The text may word a name its own way, so the claim is
+      // structural: it names at least one stored pick, by containment or by a match with
+      // case, punctuation, dashes and articles folded.
+      const picks = recordedPicks();
+      expect(picks.length).toBeGreaterThan(0);
+      const fold = (text: string) =>
+        text
+          .normalize('NFKC')
+          .toLowerCase()
+          .replace(/[\u2012-\u2015]/g, '-')
+          .replace(/[\u2018\u2019]/g, "'")
+          .replace(/\b(the|a|an)\b/g, ' ')
+          .replace(/[^\p{L}\p{N}$:.-]+/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      const named = (name: string | null | undefined) =>
+        Boolean(name) && (body.includes(name ?? '') || fold(body).includes(fold(name ?? '')));
+      expect(picks.some((pick) => named(pick.name))).toBe(true);
+
+      // NOTHING WAS INVENTED: every price figure in the body is one a stored pick carries
+      // (none at all when no pick has a price), and at least one stored `when` reaches the
+      // parent, so the check cannot pass by the renderer dropping everything.
+      const storedPrices = picks.map((pick) => pick.price ?? '').join('\n');
+      for (const figure of body.match(/\$\s?\d[\d.,]*\d|\$\s?\d/g) ?? []) {
+        expect(storedPrices, `price ${figure} is not one a stored pick carries`).toContain(figure);
+      }
+      expect(
+        picks.some((pick) => Boolean(pick.when) && fold(body).includes(fold(pick.when ?? ''))),
+      ).toBe(true);
+
+      // It claims nothing about anyone having been, and it asks nothing.
+      expect(body).toContain("not from anyone who's been");
+      expect(body).not.toContain('?');
+      expect(body).not.toContain('Reply STOP');
+      expect(body).not.toContain('STOP to opt out.');
+
+      // The trip closed exactly once, carried by the message the parent got.
+      const [closed] = await db.database.select().from(schema.familyTrips);
+      expect(closed?.closedReason).toBe('sent');
+      expect(closed?.closedAt).not.toBeNull();
+      const [message] = await db.database
+        .select({ id: schema.channelMessages.id, dedupeKey: schema.channelMessages.dedupeKey })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.category, 'travel_brief'));
+      expect(closed?.briefChannelMessageId).toBe(message?.id);
+      expect(message?.dedupeKey).toBe(`travel_brief:${trip?.id}`);
+
+      // One audit row of each verb, both enum-and-count only.
+      const allAudit = await db.database
+        .select({ verb: schema.auditLog.actionTaken, after: schema.auditLog.after })
+        .from(schema.auditLog);
+      // The seed's own watch-consent row is in this table too; the claim is about the two
+      // verbs this feature writes, and that there is not a third.
+      const audit = allAudit.filter((entry) => entry.verb.startsWith('travel_'));
+      expect(audit.map((entry) => entry.verb).sort()).toEqual([
+        'travel_brief_sent',
+        'travel_trip_noticed',
+      ]);
+      expect(audit.find((e) => e.verb === 'travel_trip_noticed')?.after).toEqual({
+        childEvidence: 'named_traveller',
+        nights: 3,
+      });
+      expect(audit.find((e) => e.verb === 'travel_brief_sent')?.after).toEqual({
+        picks: 2,
+        merged: 0,
+      });
+      expect(JSON.stringify(audit)).not.toContain('New York');
+
+      // And a second tick in the same hour sends nothing: the trip is closed.
+      const again = await runBrief();
+      expect(again.sent).toEqual([]);
+      expect(again.result.due).toBe(0);
     });
-    // Nothing the confirmation said survived: no body, no reference, no fare, no
-    // passenger line. Asserted over the serialised facts rather than a field list, with
-    // timestamps and ids left out: `createdAt` is `….812Z` often enough that the fare
-    // digits match the milliseconds, and `812` is also a hex run inside a random uuid.
-    if (trip === undefined) throw new Error('expected one trip row');
-    const row = JSON.stringify(tripFacts(trip));
-    for (const forbidden of ['QRT4LM', '812', 'CHEN', 'AC 704', 'Seat']) {
-      expect(row, `the trip row must not carry ${forbidden}`).not.toContain(forbidden);
-    }
 
-    // Nothing has been sent. The detect pass writes a row and two kinds of audit line;
-    // the text is a different sweep four days later.
-    expect(await db.database.select().from(schema.channelMessages)).toHaveLength(0);
+    /**
+     * THE MUTATION THIS FILE EXISTS FOR.
+     *
+     * Take the booking noun out of the subject and the pre-filter rejects the envelope. No
+     * model is called, no row is written, and the only thing that says so is a counter.
+     * Every test below the filter — the extraction's schema tests, the detect pglite tests
+     * that hand in an extraction, the sweep's whole suite — stays green, because every one
+     * of them starts after this stage. Only the real `looksLikeBooking`, over the real
+     * envelope the real Gmail mapping produced, can catch it.
+     */
+    it('goes red at the trip row when the subject loses its booking noun', async () => {
+      const { sync, requests } = await runSync('AC 704 tomorrow morning');
+      expect(sync.travelDetections).toEqual(['not_booking_shaped']);
+      // NO MODEL WAS CALLED AT ALL. The pre-filter is free and it is the whole cost guard:
+      // a rejected envelope never becomes a body fetch, never crosses the border, and never
+      // appears on a bill. The positive control is the passing run above, which made one.
+      expect(requests).toEqual([]);
+      expect(await db.database.select().from(schema.familyTrips)).toHaveLength(0);
 
-    // WHAT CROSSED THE BORDER ON LEG ONE, said plainly rather than left to a comment. The
-    // extraction is handed the booking's BODY and the children's FIRST NAMES, because
-    // `named_traveller` is a string match and there is no way to derive it without them.
-    // It is handed no age and no id. One call, and only one.
-    expect(requests).toHaveLength(1);
-    const extractionLeg = requests[0] ?? '';
-    expect(extractionLeg).toContain('CHEN/MIA MISS');
-    expect(extractionLeg).toContain('"household_child_first_names":["Mia","Leo"]');
-    expect(extractionLeg).not.toContain('ageInMonths');
-    expect(extractionLeg).not.toContain(parentUserId);
-
-    // ── T-7d: the hourly nudge leg ───────────────────────────────────────────
-    const { result, sent, searched } = await runBrief();
-    expect(result.sent).toBe(1);
-    expect(result.due).toBe(1);
-
-    // THE QUERY THAT CROSSED THE BORDER. The window survived `scrubResidualPii` with its
-    // dates intact — which is the whole reason it is composed without a year — and the
-    // subject asked about a VISIT rather than a term.
-    expect(searched).toHaveLength(1);
-    const query = searched[0] ?? '';
-    expect(query).toContain('New York, NY');
-    expect(query).toContain('September 12 to 15');
-    expect(query).not.toContain('[redacted]');
-    expect(query).not.toContain('2026');
-    // And leg two carries none of what leg one did: no name, no body, no booking. The
-    // extraction assertion above is this one's positive control — the same recorder saw
-    // both, and it saw 'Mia' on exactly one of them.
-    for (const forbidden of ['Mia', 'Leo', 'QRT4LM', 'AC 704', 'CHEN']) {
-      expect(query, `the search query must not carry ${forbidden}`).not.toContain(forbidden);
-    }
-
-    // THE FAR SIDE: one text, on the connecting parent's phone.
-    expect(sent).toHaveLength(1);
-    expect(sent[0]?.to).toBe(PHONE);
-    const body = sent[0]?.body ?? '';
-    expect(body).toContain("You're in New York the 12th to the 15th");
-    // Both children are under 13, so both are named; neither age is.
-    expect(body).toContain('for Mia and Leo');
-    // The ages, not a clock time: a venue's "10:00-4:30" is not an age.
-    expect(body).not.toMatch(/\b(4|7)\b(?![:.]\d)/);
-
-    // THE PICKS ARE THE MODEL'S OWN, read out of the recording rather than typed here —
-    // so this is a claim about the RENDERER carrying what the lane found, not about a set
-    // of words this file chose. Two of the three are rendered and the third is dropped
-    // WHOLE (SLOTS_IN_TEXT), which is the never-a-directory rule on real output.
-    const picks = recordedPicks();
-    expect(picks).toHaveLength(3);
-    expect(body).toContain(picks[0]?.name);
-    expect(body).toContain(picks[1]?.name);
-    expect(body).not.toContain(picks[2]?.name);
-
-    // NOTHING WAS INVENTED, and the pair is what makes that a claim rather than a hope.
-    // The live New York turn published NO price for either pick — the null path the
-    // product will meet most days — so no currency may appear in the body; and the second
-    // pick's `when` DID come back, so its own figures must, or the absence above would
-    // only be proving that the renderer drops everything.
-    expect(picks[0]?.price).toBeNull();
-    expect(picks[1]?.price).toBeNull();
-    expect(body).not.toMatch(/\$|USD|CAD|EUR|GBP/);
-    expect(body).toContain(picks[1]?.when);
-
-    // It claims nothing about anyone having been, and it asks nothing.
-    expect(body).toContain("not from anyone who's been");
-    expect(body).not.toContain('?');
-    expect(body).not.toContain('Reply STOP');
-    expect(body).not.toContain('STOP to opt out.');
-
-    // The trip closed exactly once, carried by the message the parent got.
-    const [closed] = await db.database.select().from(schema.familyTrips);
-    expect(closed?.closedReason).toBe('sent');
-    expect(closed?.closedAt).not.toBeNull();
-    const [message] = await db.database
-      .select({ id: schema.channelMessages.id, dedupeKey: schema.channelMessages.dedupeKey })
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.category, 'travel_brief'));
-    expect(closed?.briefChannelMessageId).toBe(message?.id);
-    expect(message?.dedupeKey).toBe(`travel_brief:${trip?.id}`);
-
-    // One audit row of each verb, both enum-and-count only.
-    const allAudit = await db.database
-      .select({ verb: schema.auditLog.actionTaken, after: schema.auditLog.after })
-      .from(schema.auditLog);
-    // The seed's own watch-consent row is in this table too; the claim is about the two
-    // verbs this feature writes, and that there is not a third.
-    const audit = allAudit.filter((entry) => entry.verb.startsWith('travel_'));
-    expect(audit.map((entry) => entry.verb).sort()).toEqual([
-      'travel_brief_sent',
-      'travel_trip_noticed',
-    ]);
-    expect(audit.find((e) => e.verb === 'travel_trip_noticed')?.after).toEqual({
-      childEvidence: 'named_traveller',
-      nights: 3,
+      // Nothing to brief, and nothing sent.
+      const { result, sent } = await runBrief();
+      expect(result.due).toBe(0);
+      expect(sent).toEqual([]);
     });
-    expect(audit.find((e) => e.verb === 'travel_brief_sent')?.after).toEqual({
-      picks: 2,
-      merged: 0,
-    });
-    expect(JSON.stringify(audit)).not.toContain('New York');
-
-    // And a second tick in the same hour sends nothing: the trip is closed.
-    const again = await runBrief();
-    expect(again.sent).toEqual([]);
-    expect(again.result.due).toBe(0);
-  });
-
-  /**
-   * THE MUTATION THIS FILE EXISTS FOR.
-   *
-   * Take the booking noun out of the subject and the pre-filter rejects the envelope. No
-   * model is called, no row is written, and the only thing that says so is a counter.
-   * Every test below the filter — the extraction's schema tests, the detect pglite tests
-   * that hand in an extraction, the sweep's whole suite — stays green, because every one
-   * of them starts after this stage. Only the real `looksLikeBooking`, over the real
-   * envelope the real Gmail mapping produced, can catch it.
-   */
-  it('goes red at the trip row when the subject loses its booking noun', async () => {
-    const { sync, requests } = await runSync('AC 704 tomorrow morning');
-    expect(sync.travelDetections).toEqual(['not_booking_shaped']);
-    // NO MODEL WAS CALLED AT ALL. The pre-filter is free and it is the whole cost guard:
-    // a rejected envelope never becomes a body fetch, never crosses the border, and never
-    // appears on a bill. The positive control is the passing run above, which made one.
-    expect(requests).toEqual([]);
-    expect(await db.database.select().from(schema.familyTrips)).toHaveLength(0);
-
-    // Nothing to brief, and nothing sent.
-    const { result, sent } = await runBrief();
-    expect(result.due).toBe(0);
-    expect(sent).toEqual([]);
-  });
-});
+  },
+);
