@@ -1,6 +1,5 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from '~/lib/channel/intake/live-lookup';
 import { MAX_ANSWER_SEGMENTS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
 import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from './copy';
 
@@ -311,7 +310,7 @@ describe('after provision leftover facts · VIL-327', () => {
     expect(outcome.reply).not.toMatch(/https?:\/\//);
   });
 
-  it('says no current source yet, then returns to the kids / the week', async () => {
+  it('has the model say there is no current source', async () => {
     const exploding = () =>
       ({
         messages: {
@@ -323,12 +322,12 @@ describe('after provision leftover facts · VIL-327', () => {
     const log = quiet();
     const outcome = await createGeneralAnswer(exploding).compose('Who is the US president?');
     log.mockRestore();
-    expect(outcome.status).toBe('composed');
-    if (outcome.status !== 'composed') return;
-    expect(outcome.reply).toContain(NO_CURRENT_SOURCE_YET);
+    // #868: no fixed line. The model writes it; a dead model means unavailable,
+    // never a canned sentence from this composer.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'model_failed' });
   });
 
-  it('answers a cheer-up with warmth and a line back to the week', async () => {
+  it('has the model write the cheer-up', async () => {
     const exploding = () =>
       ({
         messages: {
@@ -338,10 +337,9 @@ describe('after provision leftover facts · VIL-327', () => {
         },
       }) as unknown as AgentClient;
     const outcome = await createGeneralAnswer(exploding).compose('cheer me up');
-    expect(outcome.status).toBe('composed');
-    if (outcome.status !== 'composed') return;
-    expect(outcome.reply).toContain(CHEER_UP_REPLY);
-    expect(outcome.reply).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
+    // #868: no fixed line. The model writes it; a dead model means unavailable,
+    // never a canned sentence from this composer.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'model_failed' });
   });
 
   it('answers a crisis with safety and no return ask', async () => {

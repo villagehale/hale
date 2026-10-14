@@ -19,14 +19,6 @@ const INTAKE_MAX_REPLY_CHARS = 300;
 const MAX_SEARCHES = 2;
 const GROUND_MAX_TOKENS = 2048;
 
-export const NO_CURRENT_SOURCE_YET = 'I do not have a current source yet.';
-
-/**
- * Warm parent, not a clinician. Reviewed copy — a model does not write a
- * method, a diagnosis, or "I'm a therapist."
- */
-export const CHEER_UP_REPLY = "That's a lot to carry. You're doing the hard part.";
-
 const NO_CURRENT_SOURCE_MARK = /no current source/i;
 
 function fold(body: string): string {
@@ -91,22 +83,6 @@ export function liveLookupReturnLine(pendingAsk: string): string {
   return officialPageReturnLine(pendingAsk);
 }
 
-export function liveLookupFallbackReply(pendingAsk: string): string {
-  return joinLiveLookupAnswer(NO_CURRENT_SOURCE_YET, pendingAsk);
-}
-
-export function afterProvisionFallbackReply(): string {
-  return joinAfterProvisionAnswer(NO_CURRENT_SOURCE_YET);
-}
-
-export function cheerUpIntakeReply(pendingAsk: string): string {
-  return joinLiveLookupAnswer(CHEER_UP_REPLY, pendingAsk);
-}
-
-export function cheerUpAfterProvisionReply(): string {
-  return joinAfterProvisionAnswer(CHEER_UP_REPLY);
-}
-
 function sentences(text: string): string[] {
   return text
     .split(/(?<=[.!])\s+/)
@@ -137,31 +113,34 @@ export function notesGroundACurrentSource(notes: string): boolean {
   return extractLiveLookupAnswer(notes) !== null;
 }
 
-function sendableJoined(joined: string, fallback: string): string {
-  if (joined.length > INTAKE_MAX_REPLY_CHARS) return fallback;
-  if (smsEncoding(joined) !== 'gsm7') return fallback;
-  if (/https?:\/\/|www\./i.test(joined)) return fallback;
-  if (/\bi('?m| am) a therapists?\b/i.test(joined)) return fallback;
+/** Null when the grounded text cannot go out as one plain SMS; the caller has the
+ * model say it has no current source (#868: no fixed fallback line). */
+function sendableJoined(joined: string): string | null {
+  if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
+  if (smsEncoding(joined) !== 'gsm7') return null;
+  if (/https?:\/\/|www\./i.test(joined)) return null;
+  if (/\bi('?m| am) a therapists?\b/i.test(joined)) return null;
   return joined;
 }
 
-export function joinLiveLookupAnswer(answer: string, pendingAsk: string): string {
+export function joinLiveLookupAnswer(answer: string, pendingAsk: string): string | null {
   const ask = liveLookupReturnLine(pendingAsk);
-  const join = (head: string) => [head, ask].filter((part) => part.length > 0).join(' ');
-  return sendableJoined(join(answer), join(NO_CURRENT_SOURCE_YET));
+  return sendableJoined([answer, ask].filter((part) => part.length > 0).join(' '));
 }
 
-export function joinAfterProvisionAnswer(answer: string): string {
+export function joinAfterProvisionAnswer(answer: string): string | null {
   // #868: no fixed return ask after the answer; the next turn asks in the model's words.
-  return sendableJoined(answer, NO_CURRENT_SOURCE_YET);
+  return sendableJoined(answer);
 }
 
-export function liveLookupReplyFromNotes(notes: string, pendingAsk: string): string {
-  return joinLiveLookupAnswer(extractLiveLookupAnswer(notes) ?? NO_CURRENT_SOURCE_YET, pendingAsk);
+export function liveLookupReplyFromNotes(notes: string, pendingAsk: string): string | null {
+  const answer = extractLiveLookupAnswer(notes);
+  return answer === null ? null : joinLiveLookupAnswer(answer, pendingAsk);
 }
 
-export function afterProvisionReplyFromNotes(notes: string): string {
-  return joinAfterProvisionAnswer(extractLiveLookupAnswer(notes) ?? NO_CURRENT_SOURCE_YET);
+export function afterProvisionReplyFromNotes(notes: string): string | null {
+  const answer = extractLiveLookupAnswer(notes);
+  return answer === null ? null : joinAfterProvisionAnswer(answer);
 }
 
 /**

@@ -2,14 +2,14 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import {
-  afterProvisionFallbackReply,
   afterProvisionReplyFromNotes,
-  cheerUpAfterProvisionReply,
   groundCurrentSource,
   isCheerUpAsk,
   isLiveLookupAsk,
 } from '~/lib/channel/intake/live-lookup';
+import { replyLanguage } from '~/lib/channel/language';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
@@ -178,7 +178,16 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
       }
 
       if (isCheerUpAsk(text)) {
-        return { status: 'composed', reply: cheerUpAfterProvisionReply() };
+        // #868: the warmth is the model's words, not a reviewed fixed line.
+        const written = await createSaidLineWriter(client).write({
+          purpose: 'cheer_up',
+          language: replyLanguage(text),
+          parentWords: text,
+          facts: {},
+        });
+        return written
+          ? { status: 'composed', reply: written }
+          : unavailable('model_failed', 'cheer_up');
       }
 
       let resolved: AgentClient;
@@ -197,9 +206,20 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
             { reason: ground.reason },
             'off-domain answer: current source not grounded, returned to Hale',
           );
-          return { status: 'composed', reply: afterProvisionFallbackReply() };
         }
-        return { status: 'composed', reply: afterProvisionReplyFromNotes(ground.notes) };
+        const grounded =
+          ground.status === 'grounded' ? afterProvisionReplyFromNotes(ground.notes) : null;
+        if (grounded !== null) return { status: 'composed', reply: grounded };
+        // #868: "no current source" in the model's words, not a fixed line.
+        const written = await createSaidLineWriter(resolved).write({
+          purpose: 'no_source',
+          language: replyLanguage(text),
+          parentWords: text,
+          facts: {},
+        });
+        return written
+          ? { status: 'composed', reply: written }
+          : unavailable('model_failed', 'no_source');
       }
 
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;

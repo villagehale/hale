@@ -15,7 +15,17 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * canned goes out in its place.
  */
 
-export type SaidLinePurpose = 'crisis_emergency' | 'crisis_mental' | 'identity' | 'connector_links';
+export type SaidLinePurpose =
+  | 'crisis_emergency'
+  | 'crisis_mental'
+  | 'identity'
+  | 'connector_links'
+  /** They asked for a date the official page has not posted. */
+  | 'not_posted'
+  /** They asked for a current fact search could not ground. */
+  | 'no_source'
+  /** A caregiver venting: warm, not a clinician, no method, no diagnosis. */
+  | 'cheer_up';
 
 export interface SaidLineInput {
   purpose: SaidLinePurpose;

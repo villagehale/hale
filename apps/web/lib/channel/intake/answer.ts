@@ -12,18 +12,15 @@ import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
 import { isIdentityChallenge } from './identity-challenge';
 import {
-  cheerUpIntakeReply,
   groundCurrentSource,
   isCheerUpAsk,
   isLiveLookupAsk,
-  liveLookupFallbackReply,
   liveLookupReplyFromNotes,
 } from './live-lookup';
 import {
   deidentifyOfficialQuery,
   isOfficialPageAsk,
   notesGroundADate,
-  officialPageFallbackReply,
   officialPageReplyFromNotes,
 } from './official-page';
 
@@ -156,7 +153,14 @@ export type IntakeAnswerRefusal =
 /** Why the stage produced no words. Four separate operational stories, none of them
  * silence (rule #11): `skill_unavailable` is a deploy bug, `model_failed` an outage,
  * `unusable` the model getting it wrong and the gates catching it. */
-export type IntakeAnswerFallback = 'skill_unavailable' | 'model_failed' | 'unusable';
+export type IntakeAnswerFallback =
+  | 'skill_unavailable'
+  | 'model_failed'
+  | 'unusable'
+  /** Search found nothing sendable; the machine has the model say so (#868). */
+  | 'ungrounded'
+  /** A caregiver venting; the machine has the model write the warmth (#868). */
+  | 'cheer_up';
 
 export type IntakeAnswerOutcome =
   /** The whole message: the answer, then Hale's question again in different words. */
@@ -395,22 +399,19 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       if (isOfficialPageAsk(input.parentWords)) {
         const ground = await groundOfficialPages(client, input);
         if (ground.status === 'ungrounded') {
-          console.error(
-            { reason: ground.reason },
-            'intake answer: official page not grounded, said the date is not posted',
-          );
-          return { status: 'answered', body: officialPageFallbackReply(input.pendingAsk) };
+          console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
+          return { status: 'unavailable', reason: 'ungrounded' };
         }
-        return {
-          status: 'answered',
-          body: officialPageReplyFromNotes(ground.notes, input.pendingAsk),
-        };
+        const body = officialPageReplyFromNotes(ground.notes, input.pendingAsk);
+        return body === null
+          ? { status: 'unavailable', reason: 'ungrounded' }
+          : { status: 'answered', body };
       }
 
       // VIL-327 caregiver cheer-up: reviewed warmth, not a clinician, then
       // one return ask. Crisis already left above. Therapist-find is live lookup.
       if (isCheerUpAsk(input.parentWords)) {
-        return { status: 'answered', body: cheerUpIntakeReply(input.pendingAsk) };
+        return { status: 'unavailable', reason: 'cheer_up' };
       }
 
       // VIL-327: raising-kids, leftover current-source facts, therapist-find.
@@ -419,16 +420,13 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       if (isLiveLookupAsk(input.parentWords)) {
         const ground = await groundCurrentSource(client, input.parentWords, input.children);
         if (ground.status === 'ungrounded') {
-          console.error(
-            { reason: ground.reason },
-            'intake answer: current source not grounded, said so',
-          );
-          return { status: 'answered', body: liveLookupFallbackReply(input.pendingAsk) };
+          console.error({ reason: ground.reason }, 'intake answer: current source not grounded');
+          return { status: 'unavailable', reason: 'ungrounded' };
         }
-        return {
-          status: 'answered',
-          body: liveLookupReplyFromNotes(ground.notes, input.pendingAsk),
-        };
+        const body = liveLookupReplyFromNotes(ground.notes, input.pendingAsk);
+        return body === null
+          ? { status: 'unavailable', reason: 'ungrounded' }
+          : { status: 'answered', body };
       }
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the

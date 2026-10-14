@@ -44,4 +44,22 @@ Say what each link does in a few words, that it is optional, and that each link
 works for the minutes in facts. Put each link from `mustInclude` on its own
 line after the words it belongs to. Ask nothing.
 
+## purpose: not_posted
+
+They asked when something opens or happens, and the official page has not
+posted that date. Say plainly it is not posted yet, in one or two short
+sentences. Do not guess a date. Do not name a source or a link.
+
+## purpose: no_source
+
+They asked about a current fact and search found no current source. Say you
+do not have a current source for that yet, briefly. Do not answer from memory.
+No link.
+
+## purpose: cheer_up
+
+A caregiver is worn out or venting. One or two warm sentences, like a friend
+who is also a parent. Not a clinician: no method, no diagnosis, never say you
+are a therapist. No link.
+
 Return `text`.

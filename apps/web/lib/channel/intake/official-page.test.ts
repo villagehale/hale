@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import {
-  NOT_POSTED_YET,
   deidentifyOfficialQuery,
   extractOfficialAnswer,
   isOfficialPageAsk,
   notesGroundADate,
-  officialPageFallbackReply,
   officialPageReplyFromNotes,
   officialPageReturnLine,
 } from './official-page';
@@ -46,18 +43,6 @@ describe('official-page · the return ask is never COLD_START_ASK', () => {
 });
 
 describe('official-page · not posted yet when search cannot ground a date', () => {
-  it('is the locked fallback, GSM-7, under 300, no URL, no I do not do that', () => {
-    const body = officialPageFallbackReply(COLD_START_ASK);
-    expect(body.startsWith(NOT_POSTED_YET)).toBe(true);
-    expect(body).not.toBe(COLD_START_ASK);
-    expect(body).not.toContain(COLD_START_ASK);
-    expect(body).not.toContain("I don't do that");
-    expect(body).not.toMatch(/https?:\/\//);
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(smsSegments(body)).toBeLessThanOrEqual(2);
-    expect(body.length).toBeLessThanOrEqual(300);
-  });
-
   it('extracts a posted date from official notes and refuses a clock that is not there', () => {
     const notes =
       'The City of Hamilton posted swim registration for residents on September 8 at 7:00 a.m.';
@@ -77,7 +62,8 @@ describe('official-page · not posted yet when search cannot ground a date', () 
     expect(grounded).not.toContain(COLD_START_ASK);
 
     const empty = officialPageReplyFromNotes('Nothing on the municipal page.', COLD_START_ASK);
-    expect(empty).toBe(officialPageFallbackReply(COLD_START_ASK));
+    // #868: no fixed fallback; null hands the turn to the model's not_posted line.
+    expect(empty).toBeNull();
   });
 });
 

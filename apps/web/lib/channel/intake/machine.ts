@@ -106,13 +106,8 @@ import {
 import { identityChallengeReply } from './identity-challenge';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type IntakeKeyword, type IntakeKeywordMatch, matchKeyword } from './keywords';
-import {
-  cheerUpIntakeReply,
-  isCheerUpAsk,
-  isLiveLookupAsk,
-  liveLookupFallbackReply,
-} from './live-lookup';
-import { isOfficialPageAsk, officialPageFallbackReply } from './official-page';
+import { isCheerUpAsk, isLiveLookupAsk } from './live-lookup';
+import { isOfficialPageAsk } from './official-page';
 import {
   type CoparentGroupMode,
   type OnboardingCapture,
@@ -1034,16 +1029,27 @@ async function offScriptReply(
   if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };
   // VIL-326 / VIL-327: unavailable / empty must not fall back to the greet or
   // the pending ask alone when they asked a real question. Safety stays above.
-  if (isOfficialPageAsk(args.parentWords)) {
-    return { body: officialPageFallbackReply(args.pendingAsk), source: 'composed' };
+  // #868: the not-posted / no-source / cheer-up lines are the model's words now;
+  // the code only picks which one is owed. Nothing written means nothing sent.
+  const purpose = isOfficialPageAsk(args.parentWords)
+    ? 'not_posted'
+    : isLiveLookupAsk(args.parentWords)
+      ? 'no_source'
+      : isCheerUpAsk(args.parentWords)
+        ? 'cheer_up'
+        : null;
+  if (purpose === null) return null;
+  const written = await deps.saidLine?.write({
+    purpose,
+    language: replyLanguage(args.parentWords),
+    parentWords: args.parentWords,
+    facts: {},
+  });
+  if (!written) {
+    console.error({ purpose }, 'intake answer fallback: no line written - nothing sent');
+    return HELD_SILENT;
   }
-  if (isLiveLookupAsk(args.parentWords)) {
-    return { body: liveLookupFallbackReply(args.pendingAsk), source: 'composed' };
-  }
-  if (isCheerUpAsk(args.parentWords)) {
-    return { body: cheerUpIntakeReply(args.pendingAsk), source: 'composed' };
-  }
-  return null;
+  return { body: written, source: 'composed' };
 }
 
 /**

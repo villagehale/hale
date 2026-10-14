@@ -12,8 +12,6 @@ import type { ExtractedChild } from './extract';
 
 const INTAKE_MAX_REPLY_CHARS = 300;
 
-export const NOT_POSTED_YET = "That date isn't posted yet.";
-
 const DATE_OR_CLOCK =
   /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b|\b\d{1,2}:\d{2}\b/i;
 
@@ -50,10 +48,6 @@ export function officialPageReturnLine(pendingAsk: string): string {
   return '';
 }
 
-export function officialPageFallbackReply(pendingAsk: string): string {
-  return joinOfficialAnswer(NOT_POSTED_YET, pendingAsk);
-}
-
 function sentences(text: string): string[] {
   return text
     .split(/(?<=[.!])\s+/)
@@ -79,19 +73,20 @@ export function extractOfficialAnswer(notes: string): string | null {
   return answer;
 }
 
-export function joinOfficialAnswer(answer: string, pendingAsk: string): string {
+/** Null when the grounded answer cannot go out as one plain SMS: the caller has the
+ * model say the date is not posted (#868: no fixed fallback line). */
+export function joinOfficialAnswer(answer: string, pendingAsk: string): string | null {
   const ask = officialPageReturnLine(pendingAsk);
-  const fallback = [NOT_POSTED_YET, ask].filter((part) => part.length > 0).join(' ');
   const joined = [answer, ask].filter((part) => part.length > 0).join(' ');
-  if (joined.length > INTAKE_MAX_REPLY_CHARS) return fallback;
-  if (smsEncoding(joined) !== 'gsm7') return fallback;
-  if (/https?:\/\/|www\./i.test(joined)) return fallback;
+  if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
+  if (smsEncoding(joined) !== 'gsm7') return null;
+  if (/https?:\/\/|www\./i.test(joined)) return null;
   return joined;
 }
 
-export function officialPageReplyFromNotes(notes: string, pendingAsk: string): string {
+export function officialPageReplyFromNotes(notes: string, pendingAsk: string): string | null {
   const answer = extractOfficialAnswer(notes);
-  return joinOfficialAnswer(answer ?? NOT_POSTED_YET, pendingAsk);
+  return answer === null ? null : joinOfficialAnswer(answer, pendingAsk);
 }
 
 /**

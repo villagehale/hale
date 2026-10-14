@@ -9,8 +9,6 @@ import {
   readPair,
   refusals,
 } from './answer';
-import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
-import { NOT_POSTED_YET } from './official-page';
 
 /** #868: the fixed ask is gone; any pending-ask text is a fixture. */
 const COLD_START_ASK = 'cold start ask (test fixture)';
@@ -192,7 +190,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW))).toBe(true);
+    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW) as string)).toBe(true);
     expect(outcome.body).toContain('Markham');
     expect(outcome.body).not.toContain('7:00');
     expect(outcome.body).not.toMatch(/Sept?\s*15/i);
@@ -217,7 +215,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW))).toBe(true);
+    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW) as string)).toBe(true);
   });
 
   it("answers adult-learn / I wanna learn swimming with the kids-only door, never I don't do that", async () => {
@@ -271,14 +269,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(NOT_POSTED_YET);
-    expect(outcome.body).not.toBe(COLD_START_ASK);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain("I don't do that");
-    expect(outcome.body).not.toMatch(/https?:\/\//);
-    expect(outcome.body).not.toMatch(/I'm an AI/i);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
   });
 
   it('answers from official notes when search grounds a date, still no invented clock', async () => {
@@ -339,14 +331,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.body).not.toBe(COLD_START_ASK);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain("I don't do that");
-    expect(outcome.body).not.toMatch(/https?:\/\//);
-    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
   });
 
   it('answers a leftover factual question from search notes, never from memory', async () => {
@@ -404,12 +390,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
-    expect(outcome.body).not.toMatch(/https?:\/\//);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
   });
 
   it('answers a cheer-up with reviewed warmth, not a clinical method', async () => {
@@ -426,11 +408,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(CHEER_UP_REPLY);
-    expect(outcome.body).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'cheer_up' });
   });
 });
 
