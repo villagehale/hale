@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct per the notes: the market is closed for Thanksgiving, and Friday's close and move match exactly. It's brief and states the answer, though 'Thanksgiving weekend' is slightly off since Monday is the holiday itself. It reads a touch formal but is fine as a text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

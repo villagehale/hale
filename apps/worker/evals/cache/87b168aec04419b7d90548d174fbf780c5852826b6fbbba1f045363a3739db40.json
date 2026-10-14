@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact in the answer is backed by the research notes. Carney is named as the current PM, he took office on March 14, 2025, and Britannica is cited for him taking over after Trudeau's government collapsed. The grounding entries are labelled as current rather than settled, which is correct. The reply is brief, casual and in English, and states the answer directly like a friend texting back. It does not deflect.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

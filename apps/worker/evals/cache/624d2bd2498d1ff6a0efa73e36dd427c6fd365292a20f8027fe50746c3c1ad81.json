@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches research_notes: the Messi pick, the Ballon d'Or count, the assist and goal tallies (dated as of May 2026, not called settled), Brady's seven Super Bowls, and his Jerry Rice quote. It gives a real pick for both kinds of football, which covers the ambiguity without dodging. It reads like a casual text, though 'most recent coverage lands there too' is slightly reporty.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

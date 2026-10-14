@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is in Chinese and makes a real pick, Messi, while acknowledging the debate. Each fact it states is supported by research_notes: most recent rankings put Messi first, the 2022 World Cup, eight Ballon d'Ors, his long peak, the other contenders, and the near-tied fan vote. Nothing is invented, and no running count is marked settled. It reads like a friend's take, though citing rankings and fan votes is a bit report-like.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

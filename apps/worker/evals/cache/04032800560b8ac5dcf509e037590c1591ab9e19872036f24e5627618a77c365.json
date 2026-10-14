@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail and the answer correctly asks for the country without stating any current rate from memory. It contains no wrong facts and raises no safety concern. The tone is a bit stiff and explanatory for a text (\"so I need that before I can tell you\"), but it is still brief and reads like a person asking back rather than an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

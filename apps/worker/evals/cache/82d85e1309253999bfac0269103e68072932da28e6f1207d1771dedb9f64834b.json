@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "A 2023 YouGov poll of 1,000 U.S. adults had about 59% liking or loving pineapple on pizza",
+        "from": "YouGov poll, March 2023: 22% love, 37% like... By this poll, a majority (about 59%) like or love it."
+      },
+      {
+        "states": "A 2017 Slice app survey had 54% saying pineapple does not belong on pizza",
+        "from": "Slice app survey, 2017: 54% of respondents said pineapple does not belong on pizza."
+      },
+      {
+        "states": "Americans find anchovies and eggplant more disgusting than pineapple (2019 YouGov)",
+        "from": "A 2019 YouGov poll found Americans consider anchovies and eggplant more disgusting than pineapple."
+      }
+    ],
+    "answer": "Yep, it's ok. It's a taste thing and people are split. A 2023 YouGov poll had about 59% of Americans liking or loving it, but a 2017 Slice survey had 54% saying it doesn't belong. Anchovies and eggplant get more hate than pineapple, so you're in good company either way."
+  },
+  "latencyMs": 4067
+}

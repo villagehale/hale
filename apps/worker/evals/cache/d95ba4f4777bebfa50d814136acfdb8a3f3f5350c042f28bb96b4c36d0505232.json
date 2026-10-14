@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Short-term use at low-to-moderate doses (5 mg daily or less) appears safe and well tolerated for adults",
+        "from": "melatonin taken in low-to-moderate doses (e.g., 5 mg daily or less) for short periods appears safe and well-tolerated"
+      },
+      {
+        "states": "Common side effects are headache and fatigue (somnolence) and resolve once use stops",
+        "from": "The most frequent are headache and somnolence (fatigue). ... resolve once use stops"
+      },
+      {
+        "states": "Long-term safety is not well established",
+        "from": "The long-term effects are not well established"
+      },
+      {
+        "states": "A preliminary AHA study linked 12+ months of melatonin use in adults with insomnia to higher heart failure risk, but it cannot prove cause and is not peer-reviewed",
+        "from": "A preliminary study was presented at the American Heart Association (AHA) Scientific Sessions in November 2025... The AHA itself says the study cannot prove a cause-and-effect relationship... abstracts presented at AHA meetings are not peer-reviewed"
+      },
+      {
+        "states": "A later 2026 analysis reportedly found no significant association, so the question remains open",
+        "from": "A Masters of Longevity summary says a 2026 analysis found no significant association, and the different study designs explain why the question remains open"
+      },
+      {
+        "states": "Doctors advise against chronic use without a proper reason",
+        "from": "melatonin should not be taken chronically without a proper indication"
+      },
+      {
+        "states": "Possible interactions with blood thinners and antidepressants; check with a doctor or pharmacist",
+        "from": "One source lists possible interactions with blood thinners and antidepressants"
+      }
+    ],
+    "answer": "Short term, at low doses (5 mg or less a day), it looks safe for most adults. Common side effects are headache and grogginess, and they go away when you stop. Long term is less clear. A preliminary study presented to the American Heart Association in November 2025 linked a year or more of use in adults with insomnia to higher heart failure rates, but it can't prove cause and hasn't been peer-reviewed. A later 2026 analysis reportedly found no significant link, so it's still open. Doctors generally don't want it used long term without a good reason. It can also interact with blood thinners and antidepressants, so check with a doctor or pharmacist if you take either."
+  },
+  "latencyMs": 6794
+}

@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Monday daytime is mostly dry, mainly cloudy, with no rain forecast for the daytime",
+        "from": "Daytime: Environment Canada's 11:00 AM EDT forecast calls for mainly cloudy skies... That forecast has no rain for the daytime."
+      },
+      {
+        "states": "Rain is likely to start tonight, after dark or overnight",
+        "from": "Rain is likely to start after dark or overnight."
+      },
+      {
+        "states": "A few showers before morning, with a risk of a thunderstorm before morning",
+        "from": "The 11:00 AM forecast says mainly cloudy, with a few showers beginning before morning and a risk of a thunderstorm before morning."
+      },
+      {
+        "states": "The sources differ on the exact time the rain starts, so it is not confirmed",
+        "from": "The sources differ on exactly when the rain starts."
+      }
+    ],
+    "answer": "Mostly no for the daytime. It's cloudy with no rain expected through the afternoon. Showers are likely to start tonight, after dark or overnight, and there's a chance of a thunderstorm before morning. The forecasts don't agree on the exact start time."
+  },
+  "latencyMs": 5061
+}

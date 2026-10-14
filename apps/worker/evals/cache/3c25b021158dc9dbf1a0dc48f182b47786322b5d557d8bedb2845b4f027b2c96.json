@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (25°C high, mix of sun and cloud, 40% late-afternoon showers, thunderstorm risk, humidex 32, SW wind 20 gusting 40, low 15°C) matches the newest Environment Canada forecast in the notes. It correctly takes 'Toronto' as the city for tomorrow's forecast and answers directly. The tone reads more like a weather bulletin, dense with numbers, than a casual friend's text, but it is not an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

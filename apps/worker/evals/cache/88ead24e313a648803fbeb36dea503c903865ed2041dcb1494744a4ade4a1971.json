@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Lima is correct and supported by the notes, as are the three branches and the Cusco point. The answer stays on this question and says nothing about the pending weather question. It reads a bit encyclopedic for a text, but it's brief, casual enough, and leads with the answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

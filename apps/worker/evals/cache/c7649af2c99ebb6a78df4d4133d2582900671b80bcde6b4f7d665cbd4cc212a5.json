@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Blue Jays did not play last night; their last game of the 2026 season was Sep 27, and no Blue Jays game is listed after that.",
+        "from": "played their last game of the season on Sep 27 (MLB.com schedule, Wikipedia 2026 Toronto Blue Jays season). No Blue Jays game is listed after Sep 27."
+      },
+      {
+        "states": "The Blue Jays finished the 2026 regular season 79-83, fifth in the AL East.",
+        "from": "settled"
+      }
+    ],
+    "answer": "Nope, they didn't play last night. Their season wrapped up Sep 27 at 79-83, fifth in the AL East, and there are no games listed after that."
+  },
+  "latencyMs": 3507
+}

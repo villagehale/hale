@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "lowest insured (high-ratio, under 20% down) 5-year fixed rate is 4.34%, Toronto area, as of Oct 12, 2026",
+        "from": "Ratehub lists the best high-ratio (insured) 5-year fixed rate in Canada at 4.34%. Wowa gives the same 4.34% as the lowest insured 5-year fixed rate."
+      },
+      {
+        "states": "rates have been climbing in October 2026, after big banks raised fixed rates since early September",
+        "from": "Rates are climbing in October 2026, after all six of the largest banks raised select fixed rates since early September."
+      }
+    ],
+    "answer": "Around Toronto, the lowest insured 5-year fixed (under 20% down) is 4.34% right now. Uninsured rates are higher, but the sources I found don't agree on the lowest uninsured number, so I can't give you one. Fixed rates have been climbing since early September. Are you putting down under 20%, or 20% or more?"
+  },
+  "latencyMs": 7254
+}

@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Soccer pick: Lionel Messi",
+        "from": "Most recent coverage names Lionel Messi."
+      },
+      {
+        "states": "Messi has 8 Ballon d'Or wins to Ronaldo's 5",
+        "from": "Messi has 8 Ballon d'Or wins to Ronaldo's 5."
+      },
+      {
+        "states": "Messi has more career assists, 408 to 261",
+        "from": "Messi has more career assists, 408 to 261."
+      },
+      {
+        "states": "Ronaldo has more career goals, 970 to 906",
+        "from": "Ronaldo has more career goals, 970 to 906, and more international goals, 143 to 109."
+      },
+      {
+        "states": "American football pick: Tom Brady",
+        "from": "Tom Brady is the most common answer."
+      },
+      {
+        "states": "Brady won seven Super Bowls",
+        "from": "Brady won seven Super Bowls, which is the basis of his case."
+      },
+      {
+        "states": "Brady himself said Jerry Rice is still the GOAT",
+        "from": "Brady himself has named someone else. In early 2026 he said \"Jerry Rice is still the GOAT.\""
+      }
+    ],
+    "answer": "Soccer: I'd go with Messi. Most of the recent coverage lands there too, and he has 8 Ballon d'Or wins to Ronaldo's 5 and more career assists. Ronaldo does have more career goals though, so it's not a blowout. American football: Tom Brady, for the seven Super Bowls, though Brady himself has said Jerry Rice is still the GOAT."
+  },
+  "latencyMs": 7442
+}

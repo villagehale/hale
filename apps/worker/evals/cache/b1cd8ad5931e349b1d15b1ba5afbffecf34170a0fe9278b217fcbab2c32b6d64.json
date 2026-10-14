@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "My pick is the 2026 Kia Carnival Hybrid, per The Weekly Driver (5 days old, newest source), which calls it the best overall minivan for most families",
+        "from": "The Weekly Driver (5 days old, the newest source): It calls the 2026 Kia Carnival Hybrid the best overall minivan for most families."
+      },
+      {
+        "states": "Carnival Hybrid gets 32 mpg combined",
+        "from": "The Hybrid gets 32 mpg combined, and its powertrain warranty is 10 years/100,000 miles."
+      },
+      {
+        "states": "Carnival Hybrid has a 10-year/100,000-mile powertrain warranty, the segment's best warranty per the Weekly Driver",
+        "from": "its powertrain warranty is 10 years/100,000 miles.; Its reasons are near-Sienna fuel economy, 44 more cubic feet of cargo space, and the segment's best warranty."
+      },
+      {
+        "states": "Sources do not agree on one winner",
+        "from": "There is no single agreed winner. The sources split between the Toyota Sienna, Honda Odyssey, Kia Carnival Hybrid and Chrysler Pacifica."
+      },
+      {
+        "states": "U.S. News names the 2026 Honda Odyssey best minivan (about 41 days old)",
+        "from": "U.S. News: It names the 2026 Honda Odyssey the best minivan, with a 9.3/10 score. It was about 41 days old."
+      },
+      {
+        "states": "Edmunds ranks the 2026 Toyota Sienna first (about 250 days old)",
+        "from": "Edmunds: Its ranking is 1) 2026 Toyota Sienna, 2) 2026 Kia Carnival Hybrid. The page was listed as about 250 days old."
+      }
+    ],
+    "answer": "Honestly, the sources don't agree on one winner. My pick is the 2026 Kia Carnival Hybrid. The Weekly Driver, the newest review I found, calls it the best overall minivan for most families. It gets about 32 mpg combined and has a 10-year/100,000-mile powertrain warranty, the best in the class. U.S. News has the Honda Odyssey on top and Edmunds has the Sienna, so if fuel economy or how it drives matters most to you, those two are worth a look too."
+  },
+  "latencyMs": 7360
+}
