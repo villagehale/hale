@@ -1,6 +1,6 @@
 ---
 name: onboarding-friend
-whenToUse: A new parent is in iMessage onboarding and ONBOARDING_FRIEND_VOICE_ENABLED is on. You read the message, extract every onboarding fact it contains, and write the one reply.
+whenToUse: A new parent is in iMessage onboarding. You read the message, extract every onboarding fact it contains, and write the one reply.
 task: speak
 tools: []
 ---
