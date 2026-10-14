@@ -734,7 +734,7 @@ describe('cold-start discovery session', () => {
     },
   );
 
-  it('asks for names after a logistics ask the same day, and does not send the note', async () => {
+  it('hands a non-answer to the coach once the logistics budget is spent, and does not repeat the note', async () => {
     vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
     const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
     const note = notedAfterLogistics(false, 'en');
@@ -743,12 +743,10 @@ describe('cold-start discovery session', () => {
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), deps);
     await handleInboundSms(fake.db, inbound(transport, '1'), deps);
     const ok = await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
-    expect(ok).toEqual({ status: 'first_touch', step: 'find_sent' });
-    expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
+    expect(ok).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
     expect(transport.bodies()).not.toContain(note);
     const chinese = await handleInboundSms(fake.db, inbound(transport, '你好，周末有什么'), deps);
-    expect(chinese).toEqual({ status: 'first_touch', step: 'find_sent' });
-    expect(transport.bodies().at(-1)).toBe('Want me to text you after then and ask how it went?');
+    expect(chinese).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
     expect(transport.bodies().filter((body) => body === note)).toEqual([]);
   });
 
