@@ -2527,28 +2527,6 @@ async function sendReply(
   }
 
   await settleOpenAsks(channelMessageId);
-
-  // ENG-1. After the utility reply, maybe the later year-retention ask.
-  // Flag off returns before any read. A failure here must not unsend the
-  // reply the parent already has.
-  if (args.conversationId && args.route.channel === 'imessage') {
-    try {
-      await maybeOfferYearRetention(deps.database, {
-        familyId: args.job.family_id,
-        parentUserId: args.job.parent_user_id,
-        parentChatId: args.route.chatId,
-        channel: 'imessage',
-        templateKey: args.templateKey ?? null,
-        excludeMessageId: channelMessageId,
-        now: deps.now(),
-      });
-    } catch (err) {
-      deps.log.warn(
-        { code: err instanceof Error ? err.name : 'unknown' },
-        'year retention: the reply landed; the upgrade ask did not',
-      );
-    }
-  }
   return channelMessageId;
 }
 

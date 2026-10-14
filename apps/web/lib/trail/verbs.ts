@@ -349,6 +349,21 @@ export const AUDIT_VERBS = [
   // The sixth ActionGateReason; the other five were curated, this one was not.
   'action.gated.autonomy_not_opted_in',
   'action.gated.parent_commitment',
+  // The execute lane switched off. It reuses an existing sentence: no new copy.
+  'action.gated.lane_off',
+  // Booking, registration and paying are never autonomous. Same reused sentence.
+  'action.gated.autonomy_denied_kind',
+  // Held because the turn-on text has not been delivered yet.
+  'action.gated.autonomy_notice_pending',
+  'autonomy_armed_notice_sent',
+  'autonomy_acted_notice_sent',
+  'autonomy_notice_covered',
+  'autonomy_notice_cover_released',
+  'autonomy_acted_notice_aged_out',
+  // A parent turned Hale's autonomy off for one kind of action.
+  'autonomous_action_class.revoked',
+  // A parent's own approval that completed their streak turned it on for them.
+  'autonomous_action_class.granted',
   // ── the weekly loop + calendar subscription ─────────────────────────────
   'compose_week_plan',
   'week_plan.calendar_drafted',
@@ -1292,6 +1307,40 @@ const VERBS: Record<AuditVerb, Verb> = {
   'action.gated.parent_commitment': {
     sentence: 'brought a draft to you',
     family: 'awaiting',
+  },
+  'action.gated.lane_off': { sentence: 'brought a draft to you', family: 'awaiting' },
+  'action.gated.autonomy_denied_kind': { sentence: 'brought a draft to you', family: 'awaiting' },
+  'action.gated.autonomy_notice_pending': {
+    sentence: 'held until Hale had told you it would handle this on its own',
+    family: 'awaiting',
+  },
+  autonomy_armed_notice_sent: {
+    sentence: 'texted you that Hale will handle this on its own',
+    family: 'done',
+  },
+  autonomy_acted_notice_sent: {
+    sentence: 'texted you about something Hale did on its own',
+    family: 'done',
+  },
+  autonomy_notice_covered: {
+    sentence: 'noted a notice already covered by the text that went out',
+    family: 'note',
+  },
+  autonomy_notice_cover_released: {
+    sentence: 'cleared a covered notice so it can be tried again',
+    family: 'note',
+  },
+  autonomy_acted_notice_aged_out: {
+    sentence: 'left an on-its-own text unsent after 7 days',
+    family: 'note',
+  },
+  'autonomous_action_class.revoked': {
+    sentence: 'you stopped Hale doing this on its own',
+    family: 'done',
+  },
+  'autonomous_action_class.granted': {
+    sentence: "You've approved this 5 times, so Hale will handle it on its own from now on",
+    family: 'done',
   },
   // ── the weekly loop + calendar subscription ─────────────────────────────
   compose_week_plan: { sentence: 'put together your week', family: 'done' },

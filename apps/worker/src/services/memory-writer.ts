@@ -522,9 +522,11 @@ export type ActionGateReason =
   | 'streak'
   | 'cross_parent_consent'
   | 'teen_redaction'
-  | 'over_allowance'
   | 'autonomy_not_opted_in'
-  | 'parent_commitment';
+  | 'parent_commitment'
+  | 'lane_off'
+  | 'autonomy_denied_kind'
+  | 'autonomy_notice_pending';
 
 interface RecordActionGateInput {
   familyId: string;

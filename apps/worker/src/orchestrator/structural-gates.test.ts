@@ -1,6 +1,6 @@
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { ClassifierSuggestion, FamilyStage } from '@hale/types';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 
 /**
@@ -257,10 +257,6 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
     suggestion = { kind: 'autonomous_action', actionType: 'reply_to_email' };
     draftActionType = 'reply_to_email';
     commitsParent = true;
-    approvalHistory = Array.from({ length: 5 }, () => ({
-      actionType: 'reply_to_email',
-      humanApproved: true,
-    }));
     await runOrchestrator(job);
     expect(runExecutor).not.toHaveBeenCalled();
     expect(recordActionGate).toHaveBeenCalledWith(
@@ -272,10 +268,6 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
     suggestion = { kind: 'autonomous_action', actionType: 'reply_to_email' };
     draftActionType = 'reply_to_email';
     commitsParent = false;
-    approvalHistory = Array.from({ length: 5 }, () => ({
-      actionType: 'reply_to_email',
-      humanApproved: true,
-    }));
     await runOrchestrator(job);
     expect(runExecutor).toHaveBeenCalledTimes(1);
     expect(recordActionGate).not.toHaveBeenCalled();
