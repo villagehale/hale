@@ -5,7 +5,7 @@ import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
 import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
-import { capDefersToDecider, proactiveCadence } from './proactive/flag';
+import { proactiveCadence } from './proactive/flag';
 import { quietStartForPhone } from './proactive/quiet';
 
 /**
@@ -18,11 +18,10 @@ import { quietStartForPhone } from './proactive/quiet';
  * and this is it.
  *
  * EVERY future proactive send class routes through `assertProactiveSendAllowed` —
- * add the kind to {@link ProactiveSendKind} and its budget to {@link PROACTIVE_CAP},
- * and it inherits all four checks. A caller that reaches a transport without an
- * `allowed: true` verdict is a bug, not a shortcut.
+ * add the kind to {@link ProactiveSendKind}, and it inherits the checks. A caller
+ * that reaches a transport without an `allowed: true` verdict is a bug, not a shortcut.
  *
- * The four checks run IN THIS ORDER, and the order is the design:
+ * The checks run IN THIS ORDER, and the order is the design:
  *
  *   1. ENROLLED — the live `parent_channels` row (via loadSmsChannelState), never a
  *      consent-ledger read. `consent_records` is an append-only CASL ledger: after a
@@ -32,15 +31,13 @@ import { quietStartForPhone } from './proactive/quiet';
  *   2. WATCH CONSENT — the parent said yes to being watched (rule #4). Read
  *      latest-row-wins, because the ledger carries BOTH withdrawal conventions
  *      (a revoked_at stamp, and an appended granted=false row).
- *   3. FREQUENCY CAP — per FAMILY, not per parent: a household is one audience, and
- *      counting per parent would let a co-parent signup silently double the volume.
- *   4. QUIET HOURS — the PARENT'S wall clock. A proactive message is never urgent by
+ *   3. QUIET HOURS — the PARENT'S wall clock. A proactive message is never urgent by
  *      construction (an urgent thing is an alert, which is a different class), so
  *      there is no bypass here at all.
  *
  * First failure wins and the rest are never evaluated. That is not an optimization:
- * a family that pressed STOP must not have their message volume counted or their
- * timezone read, because after STOP none of it is ours to look at.
+ * a family that pressed STOP must not have their timezone read, because after STOP
+ * none of it is ours to look at.
  */
 
 /**
@@ -202,131 +199,6 @@ export type ProactiveSendVerdict =
   | { allowed: true; optOut: OptOutForm }
   | { allowed: false; reason: ProactiveHoldReason };
 
-/**
- * The volume budget per class, per FAMILY — or `null` where the class is bounded by
- * something better than a counter.
- *
- * A nudge is the "Hale noticed something" message: discretionary, open-ended, and
- * capable of becoming a feed, so one a week is the most a household can receive and
- * still read it as a signal.
- *
- * A registration sequence is neither. Its length is fixed by the window it serves (a
- * heads-up, a battle plan, a go, one check-in, at most two waitlist guards) and every
- * leg exists because the parent approved a shortlist for that specific date. A counter
- * over it would not be a safety rail, it would be a bug: a family who approved two
- * windows in one week would silently lose the second window's 6:15 a.m. message — the
- * single most valuable thing this product sends — to a budget designed for suggestions.
- * The bound is the ladder; `null` says so explicitly rather than by omission (`Record`
- * still forces every class to make a choice).
- */
-export const PROACTIVE_CAP: Record<ProactiveSendKind, { max: number; windowHours: number } | null> =
-  {
-    nudge: { max: 1, windowHours: 24 * 7 },
-    registration_sequence: null,
-    // Village intros v1. The intro loop is bounded by its own state machine — one ask
-    // ever, one card per side per pairing, one close — so in a healthy week a household
-    // sees at most three. The counter is not that bound restated; it is the rail under a
-    // MATCHER that goes wrong. A pairing bug is the one failure here that scales: it
-    // would text every family in an FSA about each other, unprompted, about other
-    // people's children. Three a week is the most that bug can cost before it stops.
-    village_intro: { max: 3, windowHours: 24 * 7 },
-    // The follow-up ask. ONE PER FAMILY PER DAY, and this entry IS that rule rather than a
-    // counter guarding it: the gate already answers "at most N of this class per family per
-    // window", which is exactly what the rail says, so expressing it anywhere else would be
-    // a second implementation of a policy that already has one.
-    //
-    // It also settles precedence for free. Both kinds of follow-up are due on the same
-    // sweep tick sometimes, and the intro one runs first — so its send consumes the day's
-    // single slot and the activity ask is held here, honestly, as `frequency_cap`, and
-    // comes back tomorrow. No tie-break code, no priority field.
-    followup: { max: 1, windowHours: 24 },
-    // The three-day follow-up on a full coaching plan. Like the registration ladder it is
-    // SUBSCRIBED — the parent asked a question, was offered the plan, and said yes — but
-    // unlike that ladder its volume is a function of how much COACHING a family does, and
-    // a household that asks four questions in a week is exactly the household that must
-    // not get four unprompted follow-ups. Two is the rail: enough that two live plans can
-    // both be followed up, few enough that a bug in the sweep stops after a nuisance.
-    plan_check_in: { max: 2, windowHours: 24 * 7 },
-    // Hale keeping a promise it made in a coach turn. The BOUND IS THE LEDGER, not a
-    // counter: the partial unique index on agent_commitments permits one open
-    // activity_followup per family, so a household can owe at most one of these at a
-    // time and the sweep cannot produce a second until the first is discharged. `null`
-    // says that out loud, the way the registration ladder's does — and a counter here
-    // would be strictly worse than the index, because the one thing it could do is drop
-    // a promise the family is owed on the floor.
-    activity_followup: null,
-    // The seat that came free. A REAL counter, unlike the two nulls above, because the
-    // bound those rely on does not exist here: a household may hold several watches at
-    // once, and a portal that flaps 0/1 seats can produce an opening every ten minutes.
-    // Four a day is enough for a family watching four classes to hear about each of them
-    // and few enough that a flapping page is a nuisance rather than a campaign.
-    spot_open: { max: 4, windowHours: 24 },
-    // The SAME budget, deliberately: the instant opt-in bought a family timing, not
-    // volume. Both kinds also count under one category (see PROACTIVE_CATEGORY), so the
-    // two entries are one budget rather than two.
-    spot_open_instant: { max: 4, windowHours: 24 },
-    // The inbox. THREE A DAY, and the number is chosen against the failure mode rather
-    // than against a busy week: a household's school, daycare and two activity providers
-    // can all say something real on a Monday in September, and three is enough to carry
-    // the ones that matter while a triage stage that starts saying yes to newsletters
-    // stops after a nuisance instead of after a mailbox.
-    email_alert: { max: 3, windowHours: 24 },
-    // The calendar. The SAME three a day as the inbox, on its own counter: a household
-    // whose week is being rearranged gets the three SOONEST changes and never hears the
-    // rest — the sweep advanced the syncToken the moment it read the page, so a change this
-    // cap refuses is not offered again. That is the cap's real price, and it is the right
-    // one: a connector that re-seeds and reports forty edits as new stops after a nuisance
-    // instead of after a phone full of texts.
-    calendar_alert: { max: 3, windowHours: 24 },
-    // The evening question. ONE PER FAMILY PER EVENING — and the window is 20 hours rather
-    // than 24 BECAUSE the rail is "per evening" and not "per day". Two consecutive evenings
-    // are 24 hours apart, so a 24-hour window holds tonight's question on the strength of
-    // last night's: the ledger row is written after the run's clock is read, so last night's
-    // send always sits a hair inside tonight's window and the nightly question never goes
-    // out twice in a row. The window only has to be wider than one evening's SLOT (an hour)
-    // and narrower than the gap between two slots, which a spring-forward night shortens to
-    // 22h — 20 sits in the middle of that range with room on both sides, and a family-local
-    // date would buy nothing a fixed window this far from either edge does not already have.
-    evening_check_in: { max: 1, windowHours: 20 },
-    // THE BOUND IS THE EVENT, not a counter, and `null` says so out loud. A seat can be
-    // vacated exactly once per (family, departed parent) — the DELETE that claims the
-    // departure is what makes that true (coparent/depart.ts) — and the dedupe key is keyed
-    // on that same pair. A counter over it could do only one thing the index cannot: drop
-    // the notice for a household that had already heard something else this week.
-    co_parent_departed: null,
-    // The trip brief. ONE A WEEK, and the number is chosen against the failure mode rather
-    // than against a travelling family: the per-trip bound is the claim keyed on the trip
-    // id, so this counter only ever binds when something upstream has gone wrong — or in the
-    // one honest case the design names out loud, a household with TWO trips inside one
-    // seven-day window, where the second is held as `frequency_cap` and either comes due
-    // again when the window rolls or closes `overtaken`. A family with two trips in a week
-    // is not the launch cohort, and raising the cap to serve them would raise it for every
-    // household.
-    travel_brief: { max: 1, windowHours: 24 * 7 },
-    // Two a day, the same ceiling as every other proactive group bubble. A household
-    // that already heard the weekly overview does not also get a third duty text.
-    // The tighter discretionary rail (one a day, three a week) is the group bubble
-    // kind, counted in family-outbound, not a second number here.
-    duty_ask: { max: 2, windowHours: 24 },
-    // THE BOUND IS THE GRANT, and the execution. A counter could only drop the text
-    // a parent is owed before Hale does the kind, or the notice that it just did.
-    autonomy_armed: null,
-    autonomy_acted: null,
-  };
-
-/**
- * Which classes may claim `urgent` and cross quiet hours.
- *
- * The quiet-hours rule reads "a proactive message is never urgent by construction",
- * and that holds for everything Hale decides to send on its own. A registration
- * sequence is the exception the sentence anticipated: the parent asked for a message
- * timed to a municipal clock they do not control, and the two legs that claim urgency
- * are WORTHLESS late — a battle plan deferred to 08:00 arrives after a 06:30 open, and
- * a 15-minute warning that waits never fires at all.
- *
- * Fail-closed and per CLASS, never per caller: a `nudge` that sets `urgent` is still
- * held, so the exemption cannot be widened by a flag at a call site.
- */
 const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   nudge: false,
   registration_sequence: true,
@@ -506,22 +378,8 @@ export async function assertProactiveSendAllowed(
     return { allowed: false, reason: 'no_watch_consent' };
   }
 
-  // VIL-226 · for a class the decider sees, live cadence reads the counter as context,
-  // not a hold. The Record stays so every class still names its budget; off and shadow
-  // keep it, and so does every class that still sends on its own.
-  const cap = capDefersToDecider(request.kind, proactiveCadence())
-    ? null
-    : PROACTIVE_CAP[request.kind];
-  if (cap !== null) {
-    const since = new Date(request.now.getTime() - cap.windowHours * 3_600_000);
-    if ((await ports.countProactiveSends(request.familyId, request.kind, since)) >= cap.max) {
-      return { allowed: false, reason: 'frequency_cap' };
-    }
-  }
-
-  // An uncapped class does not read the ledger at all, and an urgent leg does not read
-  // the clock: in both cases the answer could not change the verdict, and the gate's
-  // standing discipline is to look at nothing it is not entitled to act on.
+  // An urgent leg does not read the clock: the answer could not change the verdict,
+  // and the gate's standing discipline is to look at nothing it is not entitled to act on.
   if (request.urgent === true && URGENCY_ALLOWED[request.kind]) {
     return { allowed: true, optOut: await optOutForm(ports, request) };
   }

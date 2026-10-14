@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarChange } from './calendar-alert';
-import { EMAIL_ALERT_MAX_PER_SWEEP, type GmailAlertEnvelope } from './email-alert';
+import type { GmailAlertEnvelope } from './email-alert';
 import type { ActiveConnectorConnection } from './store';
 import {
   BOOKED_BACKFILL_MAX_PER_SWEEP,
@@ -1265,11 +1265,11 @@ describe('syncConnection — the gmail alert watermark under the email lane', ()
     };
   }
 
-  it('a held backlog larger than one slice is released over two runs, oldest first, each message once', async () => {
+  it('releases a held backlog in one run, oldest first, each message once', async () => {
     vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
     vi.spyOn(console, 'info').mockImplementation(() => {});
     const sent: string[] = [];
-    const mail = backlog(EMAIL_ALERT_MAX_PER_SWEEP + 2);
+    const mail = backlog(12);
     const { deps, cap } = stubDeps({
       googleFetch: mail.fetchImpl,
       alertGmailEnvelopes: laneAwarePort(sent),
@@ -1279,17 +1279,9 @@ describe('syncConnection — the gmail alert watermark under the email lane', ()
       connection('gmail', { historyId: '9100', alertHistoryId: '9002' }),
       deps,
     );
-    expect(first.gmailCursor).toBe('releasing');
-    expect(sent).toEqual(mail.ids.slice(0, EMAIL_ALERT_MAX_PER_SWEEP));
-    expect(cap.cursor).toEqual({
-      historyId: '9200',
-      alertPendingIds: mail.ids.slice(EMAIL_ALERT_MAX_PER_SWEEP),
-    });
-
-    const second = await syncConnection(connection('gmail', cap.cursor ?? {}), deps);
-    expect(second.gmailCursor).toBe('released');
-    expect(cap.cursor).toEqual({ historyId: '9200' });
+    expect(first.gmailCursor).toBe('released');
     expect(sent).toEqual(mail.ids);
+    expect(cap.cursor).toEqual({ historyId: '9200' });
   });
 
   it('an alert pass that throws on the release leaves the held watermark, and the next run releases it', async () => {
@@ -1346,9 +1338,9 @@ describe('syncConnection — the gmail alert watermark under the email lane', ()
     );
 
     expect(result.gmailCursor).toBe('releasing');
-    expect(sent).toEqual(Array.from({ length: EMAIL_ALERT_MAX_PER_SWEEP }, (_, i) => `e${i + 1}`));
+    expect(sent).toEqual(Array.from({ length: mail.served }, (_, i) => `e${i + 1}`));
     expect(cap.cursor?.alertHistoryId).toBe(String(9002 + mail.served));
-    expect(cap.cursor?.alertPendingIds).toHaveLength(mail.served - EMAIL_ALERT_MAX_PER_SWEEP);
+    expect(cap.cursor?.alertPendingIds).toBeUndefined();
   });
 
   it('the lane going off mid-release keeps the ids still owed beside a new held watermark', async () => {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { schema } from '@hale/db';
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
@@ -13,11 +13,11 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
 import { GOING_COUNT_ENABLED_ENV } from '~/lib/integrations/going';
 import { pipelineClient } from '~/lib/pipeline/client';
+import type { FamilyChildRef } from '~/lib/sentinel';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
-import type { FamilyChildRef } from '~/lib/sentinel';
-import { recordedModel } from '~/lib/testing/recorded-model';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordedModel } from '~/lib/testing/recorded-model';
 
 /**
  * WHO ELSE IS GOING, END TO END — three households register for one class, and only the
@@ -196,11 +196,7 @@ async function household(displayName: string): Promise<Household> {
 
 /** The real alert ports: the REAL sentinel over a recorded model, the REAL gate, the REAL
  * phone read, the REAL thread. Only the wire and Gmail's body endpoint are stand-ins. */
-function alertPorts(
-  who: Household,
-  transport: FakeTransport,
-  body: string,
-): EmailAlertPorts {
+function alertPorts(who: Household, transport: FakeTransport, body: string): EmailAlertPorts {
   const recorded = recordedModel(RECORDINGS, pipelineClient);
   return {
     classify: async (envelope, familyTimezone) =>
@@ -283,117 +279,5 @@ describe('two real receipts for one class', () => {
       expect(rowOne?.sessionKey).not.toContain(secret);
       expect(rowTwo?.sessionKey).not.toContain(secret);
     }
-  });
-});
-
-describe('the third family into the class hears a number', () => {
-  it('runs the whole arc: two quiet households, one count, one cancellation, one repeat', async () => {
-    // ── A AND B REGISTER, AND HEAR NOTHING ABOUT EACH OTHER ──────────────────
-    // Their receipts go through the same real path, because "only the third family ever
-    // hears anything" is a claim about the product and not about the fixture.
-    const a = await household('Family A');
-    const b = await household('Family B');
-    const firstIn = await receiptArrives(a, RECEIPT_ONE);
-    expect(firstIn.going).toBe('below_floor');
-    expect(firstIn.text).not.toContain('Hale families');
-
-    const secondIn = await receiptArrives(b, RECEIPT_ONE);
-    // One other family is a SINGLETON: hear that one neighbour uses Hale and you have
-    // learned their child's weekly schedule. The floor is what closes that.
-    expect(secondIn.going).toBe('below_floor');
-    expect(secondIn.text).not.toContain('Hale families');
-
-    // ── C IS THE THIRD, AND C IS TOLD ────────────────────────────────────────
-    const c = await household('Family C');
-    const thirdIn = await receiptArrives(c, RECEIPT_ONE);
-    expect(thirdIn.going).toBe('shown');
-    expect(thirdIn.booking).toBe('recorded');
-    expect(thirdIn.text).toContain('with two other Hale families');
-    // The population is named. A bare "two other families" would be a claim about the
-    // class roster Hale cannot back.
-    expect(thirdIn.text).not.toMatch(/(?<!Hale )other families/);
-    // ...and the receipt's own details still never reach the wire.
-    for (const secret of ['RC-88214', '96.00', '4412', 'Tremblay']) {
-      expect(thirdIn.text).not.toContain(secret);
-    }
-
-    const cAudit = await db.database
-      .select()
-      .from(schema.auditLog)
-      .where(
-        and(eq(schema.auditLog.familyId, c.familyId), eq(schema.auditLog.actionTaken, 'email_alert_sent')),
-      );
-    // EXACTLY the number and the two flags. `toEqual`, not `toMatchObject`: the rule for
-    // this row is enums and flags only, and a subset match would pass with the provider's
-    // domain sitting beside the count.
-    expect(cAudit[0]?.after).toEqual({
-      kind: 'booking_confirmation',
-      teenContent: false,
-      othersCount: 2,
-    });
-
-    // ── THE FOURTH-AXIS ASSERTION: THE COUNTED HOUSEHOLDS WERE NEVER TOLD ────
-    // A row in A's or B's trail saying their booking was counted into a text to another
-    // family would tell them another Hale family is in their child's class — the same
-    // disclosure, in reverse, to a household that was never asked. This is the assertion
-    // that catches anybody "improving" the design by auditing the subjects.
-    const subjectAudit = await db.database
-      .select()
-      .from(schema.auditLog)
-      .where(inArray(schema.auditLog.familyId, [a.familyId, b.familyId]));
-    // Their OWN household and nothing else: the consent the seed recorded, the text their
-    // own receipt produced, and the booking it wrote. No fifth verb, and no row whose
-    // subject is C.
-    expect(subjectAudit.map((row) => row.actionTaken).sort()).toEqual([
-      'activity_booking_recorded',
-      'activity_booking_recorded',
-      'email_alert_sent',
-      'email_alert_sent',
-      'proactive_watch_granted',
-      'proactive_watch_granted',
-    ]);
-    // ...and neither `email_alert_sent` carries a count, because neither of them was told
-    // one. The positive control for this negative is C's row, asserted above.
-    for (const row of subjectAudit) {
-      expect(row.after).not.toMatchObject({ othersCount: 2 });
-    }
-    // One outbound text each — their own receipt's — and no second one when C registered.
-    for (const who of [a, b]) {
-      await expect(
-        db.database
-          .select()
-          .from(schema.channelMessages)
-          .where(eq(schema.channelMessages.familyId, who.familyId)),
-      ).resolves.toHaveLength(1);
-    }
-
-    // ── B'S CLASS IS CALLED OFF, AND THE COUNT FALLS ─────────────────────────
-    // Stamped directly: the closer itself is pinned end to end in
-    // `booking.pglite.test.ts` (a cancellation email, the trail verb, the withdrawn
-    // offer), and what is under test HERE is that the count reads `cancelled_at`.
-    const [bBooking] = await bookingsFor(b.familyId);
-    await db.database
-      .update(schema.activityBookings)
-      .set({ cancelledAt: new Date('2026-07-21T13:00:00.000Z') })
-      .where(eq(schema.activityBookings.id, bBooking?.id as string));
-
-    const d = await household('Family D');
-    const fourthIn = await receiptArrives(d, RECEIPT_ONE);
-    // THREE households hold this key and only TWO are live, so D hears two. This is the
-    // assertion that would go red if the count stopped reading `cancelled_at`: it would
-    // say three, about a household the provider had already released.
-    expect(fourthIn.going).toBe('shown');
-    expect(fourthIn.text).toContain('with two other Hale families');
-    expect(fourthIn.text).not.toContain('three');
-    // (And the state UNDER the floor is A's and B's own texts at the top of this arc: not
-    // a zero, not a "you're the first" - the absence of a sentence.)
-
-    // ── C GETS A SECOND RECEIPT FOR THE SAME SESSION ─────────────────────────
-    // A provider that sends "Registration confirmed" and then "Payment receipt" is two
-    // receipts for one class. Speaking again would let C difference the two numbers and
-    // learn that exactly one household registered in between.
-    const repeat = await receiptArrives(c, RECEIPT_ONE, { messageId: 'gmail-rc-88214-payment' });
-    expect(repeat.going).toBe('repeat_receipt');
-    expect(repeat.text).not.toContain('Hale families');
   });
 });

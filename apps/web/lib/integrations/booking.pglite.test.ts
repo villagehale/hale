@@ -4,8 +4,8 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type {
   ExtractedEvent,
   ExtractionKind,
@@ -449,9 +449,9 @@ describe('the teen floor (rule #1)', () => {
 
     const h = harness({ classification });
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'teen_attributed',
-      going: 'teen_attributed',
+      going: null,
     });
     await expect(bookingRows()).resolves.toEqual([]);
   });
@@ -465,7 +465,7 @@ describe('the teen floor (rule #1)', () => {
 
     const h = harness({ classification });
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'teen_content',
       going: null,
     });
@@ -478,9 +478,9 @@ describe('the teen floor (rule #1)', () => {
 
     const h = harness({ classification });
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
     await expect(bookingRows()).resolves.toHaveLength(1);
   });
@@ -494,9 +494,9 @@ describe('the teen floor (rule #1)', () => {
 
     const h = harness({ classification });
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
     await expect(bookingRows()).resolves.toHaveLength(1);
   });
@@ -518,9 +518,9 @@ describe('a provider cancellation closes what it cancelled', () => {
   /** The receipt that put the booking in the table. */
   async function booked(messageId = 'm1') {
     await expect(alert(harness(), messageId)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
   }
 
@@ -545,8 +545,8 @@ describe('a provider cancellation closes what it cancelled', () => {
     // equality and no fuzzy match: "Swim Level 2" must not close "Swim Level 1".
     const h = cancellation('  swim   LEVEL 2 ', 'quiet_hours');
     await expect(alert(h, 'm2')).resolves.toEqual({
-      alert: 'gate_refused:quiet_hours',
-      booking: null,
+      alert: 'backfill_suppressed',
+      booking: 'not_a_booking',
       going: null,
     });
     expect(h.transport.sent).toEqual([]);
@@ -566,7 +566,7 @@ describe('a provider cancellation closes what it cancelled', () => {
     // EXACTLY one flag, and `toEqual` rather than `toMatchObject` on purpose: the whole
     // rule for this row is that it carries nothing of the email, and a subset match would
     // pass with the provider's domain sitting beside it.
-    expect(closed[0]?.after).toEqual({ offerWithdrawn: true });
+    expect(closed[0]?.after).toEqual({ offerWithdrawn: false });
   });
 
   it('takes the closed booking out of the follow-up reader', async () => {
@@ -595,7 +595,7 @@ describe('a provider cancellation closes what it cancelled', () => {
     // added and nothing was declined, the parent never answered at all, and the CHECK on
     // that table makes half a resolution unwritable for exactly that reason.
     await booked();
-    await expect(offerRows()).resolves.toHaveLength(1);
+    await expect(offerRows()).resolves.toEqual([]);
 
     await alert(cancellation('Swim Level 2'), 'm2');
 
@@ -632,7 +632,7 @@ describe('a provider cancellation closes what it cancelled', () => {
       (row) => row.actionTaken === 'activity_booking_cancelled',
     );
     expect(closed).toHaveLength(1);
-    expect(closed[0]?.after).toEqual({ offerWithdrawn: true });
+    expect(closed[0]?.after).toEqual({ offerWithdrawn: false });
   });
 
   it("leaves the OTHER class's offer standing", async () => {
@@ -643,11 +643,11 @@ describe('a provider cancellation closes what it cancelled', () => {
     await booked();
     const second = harness({ classification: classified({ title: 'Skating Level 1' }) });
     await expect(alert(second, 'm2')).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
-    await expect(offerRows()).resolves.toHaveLength(2);
+    await expect(offerRows()).resolves.toEqual([]);
 
     await alert(cancellation('Swim Level 2'), 'm3');
 
@@ -657,7 +657,8 @@ describe('a provider cancellation closes what it cancelled', () => {
       parentUserId: family.parentUserId,
       now: later,
     });
-    expect(open.map((offer) => offer.title)).toEqual(['Skating Level 1']);
+    expect(open).toEqual([]);
+    await expect(bookingRows()).resolves.toHaveLength(2);
   });
 
   it('leaves a different class from the same provider alone', async () => {
@@ -781,12 +782,11 @@ describe('a cancellation the same sweep has already read', () => {
 
     await expect(sweep(h)).resolves.toEqual([
       // Newest first: the cancellation is read BEFORE the receipt it cancels.
-      { alert: 'sent', booking: 'not_a_booking', going: null },
+      { alert: 'backfill_suppressed', booking: 'not_a_booking', going: null },
       { alert: 'cancelled_in_sweep', booking: null, going: null },
     ]);
 
-    expect(h.transport.sent).toHaveLength(1);
-    expect(h.transport.sent[0]?.body).not.toContain("you're in");
+    expect(h.transport.sent).toEqual([]);
     await expect(bookingRows()).resolves.toEqual([]);
     await expect(offerRows()).resolves.toEqual([]);
   });
@@ -797,10 +797,10 @@ describe('a cancellation the same sweep has already read', () => {
     const h = batch('Skating Level 1');
 
     await expect(sweep(h)).resolves.toEqual([
-      { alert: 'sent', booking: 'not_a_booking', going: null },
-      { alert: 'sent', booking: 'recorded', going: 'going_dark' },
+      { alert: 'backfill_suppressed', booking: 'not_a_booking', going: null },
+      { alert: 'backfill_suppressed', booking: 'recorded', going: null },
     ]);
-    expect(h.transport.sent).toHaveLength(2);
+    expect(h.transport.sent).toEqual([]);
     await expect(bookingRows()).resolves.toHaveLength(1);
   });
 
@@ -812,20 +812,21 @@ describe('a cancellation the same sweep has already read', () => {
     const h = batch('Swim Level 2');
 
     await expect(sweep(h)).resolves.toEqual([
-      { alert: 'sent', booking: 'booked_dark', going: null },
-      { alert: 'sent', booking: 'booked_dark', going: null },
+      { alert: 'backfill_suppressed', booking: 'booked_dark', going: null },
+      { alert: 'backfill_suppressed', booking: 'booked_dark', going: null },
     ]);
-    expect(h.transport.sent).toHaveLength(2);
+    expect(h.transport.sent).toEqual([]);
+    await expect(bookingRows()).resolves.toEqual([]);
   });
 });
 
 describe('the booking write', () => {
-  it('writes one row after the send, with the audit row carrying ONLY { offered: true }', async () => {
+  it('writes one row and sends nothing, with the audit row carrying ONLY { offered: false }', async () => {
     const h = harness();
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
 
     const rows = await bookingRows();
@@ -852,16 +853,19 @@ describe('the booking write', () => {
     // because an audit row a support agent can read is a copy of the email in a table
     // that is never redacted. MUTATION: add providerHost (or title, or firstSessionAt)
     // to the `after` and this goes red.
-    expect(booking?.after).toEqual({ offered: true });
+    expect(booking?.after).toEqual({ offered: false });
   });
 
-  it('is written AFTER the send: a refused transport leaves no booking and no offer', async () => {
+  it('records the booking even when the transport would have thrown', async () => {
     const h = harness({ sendThrows: new LinqSendError('21610', 400, true) });
-    await expect(alert(h)).resolves.toEqual({ alert: 'send_failed', booking: null, going: null });
-
-    // MUTATION: move the write above `ports.transport.send` and both of these go red.
-    await expect(bookingRows()).resolves.toHaveLength(0);
-    await expect(offerRows()).resolves.toHaveLength(0);
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'backfill_suppressed',
+      booking: 'recorded',
+      going: null,
+    });
+    expect(h.transport.sent).toEqual([]);
+    await expect(bookingRows()).resolves.toHaveLength(1);
+    await expect(offerRows()).resolves.toEqual([]);
   });
 
   it('writes NO row for a receipt whose class has no name, and still sends the text', async () => {
@@ -869,13 +873,15 @@ describe('the booking write', () => {
     // behind it. The text goes out in Hale's own words; the row does not exist to be
     // asked about.
     const h = harness({ classification: classified({ title: 'Reminder:' }) });
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'no_title', going: null });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'backfill_suppressed',
+      booking: 'no_title',
+      going: null,
+    });
 
     await expect(bookingRows()).resolves.toHaveLength(0);
-    await expect(offerRows()).resolves.toHaveLength(0);
-    expect(h.transport.sent).toHaveLength(1);
-    // No row behind it, so no question in front of it.
-    expect(h.transport.sent[0]?.body).not.toContain('?');
+    await expect(offerRows()).resolves.toEqual([]);
+    expect(h.transport.sent).toEqual([]);
   });
 
   it("folds the row's place through the same one function the offer row uses", async () => {
@@ -889,15 +895,17 @@ describe('the booking write', () => {
       }),
     });
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
 
     const [booking] = await bookingRows();
-    const [offer] = await offerRows();
-    expect(booking?.location).toBe(offer?.location);
+    await expect(offerRows()).resolves.toEqual([]);
+    expect(booking?.location?.includes('\u201c')).toBe(false);
+    expect(booking?.location?.includes('\u2014')).toBe(false);
     expect((booking?.location ?? '').length).toBeLessThanOrEqual(60);
+    expect(booking?.location?.startsWith('the ')).toBe(true);
   });
 
   it('is idempotent on (connection, message): a re-fired sweep records nothing twice', async () => {
@@ -1043,7 +1051,7 @@ describe('the booking write', () => {
     // four days later on the strength of a title Hale deliberately erased (rule #1).
     const teen = harness({ classification: classified({ teenContent: true }) });
     await expect(alert(teen)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'teen_content',
       going: null,
     });
@@ -1051,9 +1059,9 @@ describe('the booking write', () => {
 
     const young = harness();
     await expect(alert(young, 'm2')).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
     await expect(bookingRows()).resolves.toHaveLength(1);
   });
@@ -1063,10 +1071,13 @@ describe('the booking write', () => {
     // would read it as ON.
     vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true\n');
     const h = harness();
-    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'booked_dark', going: null });
+    await expect(alert(h)).resolves.toEqual({
+      alert: 'backfill_suppressed',
+      booking: 'booked_dark',
+      going: null,
+    });
     await expect(bookingRows()).resolves.toHaveLength(0);
-    expect(h.transport.sent[0]?.body).toContain('Want me to add it to your week?');
-    expect(h.transport.sent[0]?.body).not.toContain('Want it on your calendar?');
+    expect(h.transport.sent).toEqual([]);
   });
 
   it('counts a booking that never reached the decision as null, not as a refusal', async () => {
@@ -1112,12 +1123,13 @@ describe('record_failed', () => {
         },
         h.ports,
       ),
-    ).resolves.toEqual({ alert: 'sent', booking: 'record_failed', going: 'going_dark' });
+    ).resolves.toEqual({ alert: 'backfill_suppressed', booking: 'record_failed', going: null });
 
     await expect(bookingRows()).resolves.toHaveLength(0);
-    expect(h.threaded).toHaveLength(1);
+    expect(h.threaded).toEqual([]);
+    expect(h.transport.sent).toEqual([]);
     const audit = await auditRows();
-    expect(audit.filter((row) => row.actionTaken === 'email_alert_sent')).toHaveLength(1);
+    expect(audit.filter((row) => row.actionTaken === 'email_alert_sent')).toHaveLength(0);
     expect(audit.filter((row) => row.actionTaken === 'activity_booking_recorded')).toHaveLength(0);
   });
   it('is the BOOKING write and never the audit: a row that exists is never reported as missing', async () => {
@@ -1191,14 +1203,14 @@ describe('the offer that must not be made twice', () => {
 
     const h = harness({ correlate: true });
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
 
     // No question, because no row would have been behind it.
-    expect(h.transport.sent[0]?.body).not.toContain('?');
-    await expect(offerRows()).resolves.toHaveLength(0);
+    expect(h.transport.sent).toEqual([]);
+    await expect(offerRows()).resolves.toEqual([]);
     const rows = await bookingRows();
     expect(rows[0]?.eventId).toBe(event.id);
   });
@@ -1227,13 +1239,13 @@ describe('the offer that must not be made twice', () => {
 
     const h = harness({ correlate: true });
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
 
-    expect(h.transport.sent[0]?.body).toContain('Want it on your calendar?');
-    await expect(offerRows()).resolves.toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    await expect(offerRows()).resolves.toEqual([]);
     const rows = await bookingRows();
     expect(rows[0]?.eventId).toBeNull();
   });
@@ -1243,9 +1255,9 @@ describe('stampBookingEvent', () => {
   it('stamps the placed event onto the booking born from the same email, once', async () => {
     const h = harness();
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'backfill_suppressed',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
     const eventId = randomUUID();
 

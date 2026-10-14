@@ -11,11 +11,7 @@ import {
 } from './booked';
 import type { CalendarAlertOutcome, CalendarAlertSweep, CalendarChange } from './calendar-alert';
 import type { CalendarMirrorCounts } from './calendar-mirror';
-import {
-  EMAIL_ALERT_MAX_PER_SWEEP,
-  type EmailAlertResult,
-  type GmailAlertEnvelope,
-} from './email-alert';
+import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
 import { type ConnectorErrorCode, ConnectorSyncError, classifyConnectorError } from './sync-error';
@@ -887,17 +883,15 @@ async function syncGmail(
     queue = [...new Set(replay.messageIds)].filter((id) => !read.has(id));
     carry = replay.truncatedAt;
   }
-  const slice = queue.slice(0, EMAIL_ALERT_MAX_PER_SWEEP);
-  const rest = queue.slice(EMAIL_ALERT_MAX_PER_SWEEP);
-  const held = await readGmailMessageBatch(googleFetch, accessToken, connection, slice);
+  const held = await readGmailMessageBatch(googleFetch, accessToken, connection, queue);
   return {
     events,
     nextMetadata: holding(heldFrom, pending),
     gmail: {
       seeding,
       envelopes,
-      cursor: carry === undefined && rest.length === 0 ? 'released' : 'releasing',
-      release: { envelopes: held.envelopes, nextMetadata: holding(carry, rest) },
+      cursor: carry === undefined ? 'released' : 'releasing',
+      release: { envelopes: held.envelopes, nextMetadata: holding(carry, []) },
     },
   };
 }

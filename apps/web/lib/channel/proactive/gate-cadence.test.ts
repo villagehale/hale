@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  type OutboundGatePorts,
-  PROACTIVE_CAP,
-  assertProactiveSendAllowed,
-} from '../outbound-gate';
+import { type OutboundGatePorts, assertProactiveSendAllowed } from '../outbound-gate';
 
 /**
  * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
@@ -69,26 +65,9 @@ const nudge = (now: Date) => ({
   now,
 });
 
-describe('the numeric cap under the cadence flag', () => {
-  it('holds the weekly nudge cap while the flag is unset', async () => {
+describe('there is no numeric cap under the cadence flag', () => {
+  it('lets the nudge through while the flag is unset, and still requires consent', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', undefined);
-    expect(PROACTIVE_CAP.nudge).toEqual({ max: 1, windowHours: 24 * 7 });
-    await expect(assertProactiveSendAllowed(nudge(MIDDAY), ports())).resolves.toEqual({
-      allowed: false,
-      reason: 'frequency_cap',
-    });
-  });
-
-  it('still holds it in shadow', async () => {
-    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
-    await expect(assertProactiveSendAllowed(nudge(MIDDAY), ports())).resolves.toEqual({
-      allowed: false,
-      reason: 'frequency_cap',
-    });
-  });
-
-  it('lets a nudge past the old cap when live, and keeps consent', async () => {
-    vi.stubEnv('PROACTIVE_CADENCE', 'live');
     await expect(assertProactiveSendAllowed(nudge(MIDDAY), ports())).resolves.toEqual({
       allowed: true,
       optOut: 'short',
@@ -98,23 +77,25 @@ describe('the numeric cap under the cadence flag', () => {
     ).resolves.toEqual({ allowed: false, reason: 'no_watch_consent' });
   });
 
-  it('keeps the nudge cap for a requested live while any class is unrouted', async () => {
-    routing.complete = false;
-    vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    await expect(assertProactiveSendAllowed(nudge(MIDDAY), ports())).resolves.toEqual({
-      allowed: false,
-      reason: 'frequency_cap',
-    });
+  it('lets the nudge through in shadow and when live is requested', async () => {
+    for (const mode of ['shadow', 'live'] as const) {
+      vi.stubEnv('PROACTIVE_CADENCE', mode);
+      await expect(assertProactiveSendAllowed(nudge(MIDDAY), ports())).resolves.toEqual({
+        allowed: true,
+        optOut: 'short',
+      });
+    }
   });
 
-  it('keeps the cap when live for a kind the decider does not see yet', async () => {
+  it('lets an unrouted kind through when live is requested', async () => {
+    routing.complete = false;
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     await expect(
       assertProactiveSendAllowed({ ...nudge(MIDDAY), kind: 'email_alert' }, ports()),
-    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
     await expect(
       assertProactiveSendAllowed({ ...nudge(MIDDAY), kind: 'evening_check_in' }, ports()),
-    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
 });
 

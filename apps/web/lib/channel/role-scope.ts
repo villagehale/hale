@@ -23,14 +23,10 @@ import { deriveStage } from '@hale/types';
  * carry. A sender that passes the budget and skips this one sends a grandmother a
  * teenager's week.
  *
- * WHICH BUDGET depends on which pipe the sender rides, and the first sender rides the
- * LOOP: the caregiver event reminders go through the A2 dispatch (channel/dispatch.ts),
- * whose `CATEGORY_CAPS` + quiet hours + live-consent gate + ledger + audit are per
- * RECIPIENT and therefore already meter a caregiver. It does not add a
- * `ProactiveSendKind`, and adding one would have given it a second, differently shaped
- * meter for the same texts. A future caregiver sender on the F14 outbound-gate
- * path (outbound-gate.ts) still takes `PROACTIVE_CAP` — the rule is one meter per pipe,
- * not one meter per role.
+ * The first sender rides the LOOP: the caregiver event reminders go through the A2
+ * dispatch (channel/dispatch.ts), whose quiet hours, live-consent gate, ledger and
+ * audit are per RECIPIENT and therefore already meter a caregiver. It does not add a
+ * `ProactiveSendKind`. There is no numeric cap on how many messages leave.
  *
  * The M6 invite exchange itself does NOT route through the gate, and the reason is
  * structural rather than an exemption: every check the gate makes is about an ENROLLED
@@ -81,8 +77,11 @@ export const CONTENT_CLASSES = [
 export type ContentClass = (typeof CONTENT_CLASSES)[number];
 
 /** The three SCOPED roles — people helping with the household who are not parents. */
-export const CAREGIVER_ROLES = ['grandparent', 'nanny', 'babysitter'] as const satisfies
-  readonly FamilyRole[];
+export const CAREGIVER_ROLES = [
+  'grandparent',
+  'nanny',
+  'babysitter',
+] as const satisfies readonly FamilyRole[];
 
 export type CaregiverRole = (typeof CAREGIVER_ROLES)[number];
 

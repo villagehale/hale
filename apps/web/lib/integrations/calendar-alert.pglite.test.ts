@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
+import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import {
   type TestDb,
@@ -14,7 +14,6 @@ import {
   seedIntegration,
 } from '~/lib/testing/pglite';
 import {
-  CALENDAR_ALERT_MAX_PER_SWEEP,
   CALENDAR_ALERT_PENDING_MAX_DAYS,
   CALENDAR_ALERT_TEMPLATE_KEY,
   type CalendarAlertOutcome,
@@ -602,9 +601,8 @@ describe('alertParentForCalendarChanges', () => {
     expect(rows[0]).toMatchObject({ status: 'failed', errorCode: 'no_send_target' });
   });
 
-  it('reads at most CALENDAR_ALERT_MAX_PER_SWEEP, SOONEST first, and names the rest', async () => {
+  it('texts every change in the window, soonest included, with none dropped for a count', async () => {
     const h = harness();
-    // Seven events on seven consecutive days; the two LATEST must be the ones dropped.
     const changes = Array.from({ length: 7 }, (_, i) => ({
       ...TIMED,
       eventId: `ev-${i}`,
@@ -614,16 +612,10 @@ describe('alertParentForCalendarChanges', () => {
 
     const outcomes = await sweep(h, { changes });
 
-    // One outcome per change, positionally — the two dropped are the two LAST, which is
-    // only visible because the answer is in input order.
-    expect(outcomes).toEqual([
-      ...Array.from({ length: CALENDAR_ALERT_MAX_PER_SWEEP }, () => 'sent'),
-      'over_sweep_cap',
-      'over_sweep_cap',
-    ]);
+    expect(outcomes).toEqual(Array.from({ length: 7 }, () => 'sent'));
     const keys = new Set((await ledgerRows()).map((r) => r.dedupeKey));
     expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-0', TIMED.updated))).toBe(true);
-    expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-6', TIMED.updated))).toBe(false);
+    expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-6', TIMED.updated))).toBe(true);
   });
 
   it('never lets stale edits to events already OVER spend the sweep', async () => {
@@ -634,7 +626,7 @@ describe('alertParentForCalendarChanges', () => {
     // all five slots, and tomorrow's class is never offered again, because syncCalendar
     // advanced the syncToken the moment it read the page.
     const h = harness();
-    const stale = Array.from({ length: CALENDAR_ALERT_MAX_PER_SWEEP }, (_, i) => ({
+    const stale = Array.from({ length: 5 }, (_, i) => ({
       ...TIMED,
       eventId: `ev-past-${i}`,
       start: { dateTime: `2026-09-0${i + 1}T20:15:00.000Z` },
@@ -1162,9 +1154,8 @@ describe('one edit to a series is one text', () => {
     );
   });
 
-  it('spends ONE of the five per-sweep slots on a whole series', async () => {
-    // Before the collapse, one edit to a weekly class spent the entire budget on itself
-    // and everything else that sweep went unsaid for good.
+  it('sends the series and the other changes in the same sweep', async () => {
+    // A weekly class collapses to one text. The other changes in the sweep still go.
     const h = harness();
     const others = Array.from({ length: 4 }, (_, i) => ({
       ...TIMED,
@@ -1175,7 +1166,6 @@ describe('one edit to a series is one text', () => {
     }));
     const outcomes = await sweep(h, { changes: [...instances(), ...others] });
     expect(outcomes.filter((one) => one === 'sent')).toHaveLength(5);
-    expect(outcomes.filter((one) => one === 'over_sweep_cap')).toEqual([]);
     expect(h.transport.sent).toHaveLength(5);
   });
 });
@@ -1434,9 +1424,9 @@ describe('a change the gate held is offered again', () => {
     expect(afterwards.transport.sent).toEqual([]);
   });
 
-  it('puts the oldest debt first, and spends the SAME five slots on debts and new news', async () => {
-    // Four debts, four fresh changes, five slots: the debts go first and one fresh change
-    // is held over. A cap that counted them separately would send eight.
+  it('puts the oldest debt first, and sends the debts and the new news in one sweep', async () => {
+    // Four debts, four fresh changes. There is no per-sweep count: the debts go first
+    // and every fresh change goes in the same sweep.
     for (let i = 0; i < 4; i += 1) {
       await sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
         now: new Date(NOW.getTime() + i * 1000),
@@ -1462,14 +1452,13 @@ describe('a change the gate held is offered again', () => {
     });
 
     expect(both.reoffers).toEqual(['sent', 'sent', 'sent', 'sent']);
-    expect(both.changes).toEqual(['sent', 'over_sweep_cap', 'over_sweep_cap', 'over_sweep_cap']);
-    expect(h.transport.sent).toHaveLength(5);
+    expect(both.changes).toEqual(['sent', 'sent', 'sent', 'sent']);
+    expect(h.transport.sent).toHaveLength(8);
     // The debts were paid in the order they were owed, not soonest-event-first: owed-0 is
     // the LATEST event and still went first.
     expect(h.transport.sent[0]?.body).toContain('Friday, Sep 25');
-    // ...and the three that lost the cap are owed now, so nothing was dropped.
     const carried = (await snapshotRows()).filter((row) => row.pendingSince !== null);
-    expect(carried.map((row) => row.eventId).sort()).toEqual(['new-1', 'new-2', 'new-3']);
+    expect(carried).toEqual([]);
   });
 });
 
@@ -1761,6 +1750,5 @@ describe('the gate registration', () => {
     // Kills PROACTIVE_CATEGORY.calendar_alert = 'email_alert', which would let a busy
     // calendar spend the inbox's budget.
     expect(PROACTIVE_CATEGORY.calendar_alert).toBe('calendar_alert');
-    expect(PROACTIVE_CAP.calendar_alert).toEqual({ max: 3, windowHours: 24 });
   });
 });

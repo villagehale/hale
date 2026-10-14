@@ -123,7 +123,6 @@ export const CALENDAR_ALERT_OUTCOMES = [
   'already_sent',
   'dark',
   'seeding_run',
-  'over_sweep_cap',
   'outside_window',
   'no_start',
   'no_parent_user',
@@ -180,13 +179,6 @@ export interface CalendarAlertSweep {
   passport?: 'lane_off';
 }
 
-/** At most this many ALERTABLE texts per connection per sweep, oldest debt first and then
- * soonest first. A household that rebuilds its September in one sitting produces thirty
- * edits in one 15-minute window; the ones worth a text are the ones happening next. A
- * series collapsed into one text spends ONE of these, and a re-offer spends one too —
- * which is what keeps the budget a budget rather than two of them. */
-export const CALENDAR_ALERT_MAX_PER_SWEEP = 5;
-
 /** How far ahead an event has to start to be worth interrupting for. A cancellation is
  * exempt from the ceiling (see {@link withinAlertWindow}) — a March camp that just went
  * away is news in September. */
@@ -198,8 +190,7 @@ export const CALENDAR_ALERT_WINDOW_DAYS = 14;
 export const CALENDAR_ALERT_PENDING_MAX_DAYS = 3;
 
 /** A group of this many instances of one series, in one sweep, is one text: two changes
- * about the same class are the same news said twice, and they spend one of the five slots
- * rather than two. Below it — a lone instance, which is what a single cancelled session
+ * about the same class are the same news said twice. Below it — a lone instance, which is what a single cancelled session
  * inside a live term reduces to — the change is an ordinary single. */
 const SERIES_MIN_INSTANCES = 2;
 
@@ -216,7 +207,6 @@ export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
 const HELD_OUTCOMES = new Set<CalendarAlertOutcome>([
   'gate_refused:quiet_hours',
   'gate_refused:frequency_cap',
-  'over_sweep_cap',
 ]);
 
 /**
@@ -441,11 +431,8 @@ export async function alertParentForCalendarChanges(
       (a, b) => a.startMs - b.startMs,
     ),
   ];
-  for (const [rank, offer] of offers.entries()) {
-    const outcome =
-      rank < CALENDAR_ALERT_MAX_PER_SWEEP
-        ? await sendOffer(database, input, parentUserId, offer, ports)
-        : 'over_sweep_cap';
+  for (const offer of offers) {
+    const outcome = await sendOffer(database, input, parentUserId, offer, ports);
     settle(offer, outcome, writes, now);
   }
 

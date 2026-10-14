@@ -258,7 +258,7 @@ describe('formatProviderAlert', () => {
     expect(subject).toBe('Hale ops: the weekly papercut digest failed to send');
     expect(text).toContain('provider_error');
     expect(text).toContain('never as a');
-    expect(text).toContain('RESEND_API_KEY');
+    expect(text).toContain('Re-run the digest cron');
     expect(text).not.toContain('FOUNDER_ALERT_PHONE');
   });
 });
@@ -425,20 +425,6 @@ describe('providerPreflight', () => {
   });
 });
 
-// ── the founder alert transport ──────────────────────────────────────────────
-
-interface SendPayload {
-  to: string;
-  from: string;
-  subject: string;
-  text: string;
-}
-
-function fakeResend() {
-  const send = vi.fn(async (_payload: SendPayload) => ({ data: { id: 'resend-1' }, error: null }));
-  return { emails: { send } } as never;
-}
-
 beforeEach(() => {
   vi.stubEnv('RESEND_API_KEY', 'test-key');
   vi.stubEnv('FOUNDER_ALERT_EMAIL', 'founder@villagehale.com');
@@ -450,24 +436,22 @@ afterEach(() => {
 });
 
 describe('createProviderAlertSender', () => {
-  it('emails the founder address with the given subject and body', async () => {
-    const client = fakeResend();
+  it('posts the subject and body to Slack #ops', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/test');
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response('ok', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchImpl);
 
-    const sent = await createProviderAlertSender(client).send('a subject', 'a body');
+    const sent = await createProviderAlertSender().send('a subject', 'a body');
 
     expect(sent).toBe(true);
-    const payload = (
-      client as unknown as { emails: { send: { mock: { calls: [SendPayload][] } } } }
-    ).emails.send.mock.calls[0]?.[0];
-    expect(payload?.to).toBe('founder@villagehale.com');
-    expect(payload?.subject).toBe('a subject');
-    expect(payload?.text).toBe('a body');
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)) as { text: string };
+    expect(body.text).toBe('a subject\na body');
   });
 
-  it('is a clean no-op when no founder address is configured', async () => {
-    vi.stubEnv('FOUNDER_ALERT_EMAIL', '');
-    const client = fakeResend();
-
-    expect(await createProviderAlertSender(client).send('s', 'b')).toBe(false);
+  it('is a clean no-op when #ops is not configured', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', '');
+    expect(await createProviderAlertSender().send('s', 'b')).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
-import { f14EnabledFor } from '~/lib/channel/f14';
 import { namesAPerson } from '~/lib/channel/activity/deidentify';
+import { f14EnabledFor } from '~/lib/channel/f14';
 import type { GmailAlertEnvelope } from '~/lib/integrations/email-alert';
 import { isAwayDestination } from './away';
 import type { TravelExtractInput, TravelExtraction } from './extract';
@@ -11,8 +11,7 @@ import { travelBriefEnabledFor } from './flag';
  *
  * Two stages and only the second costs anything. {@link looksLikeBooking} is a
  * deterministic two-token filter over the envelope the connector sweep already holds, so
- * the inbox is free; the extraction runs on what survives it, at most
- * {@link MAX_TRAVEL_EXTRACTS_PER_SWEEP} per connection per sweep.
+ * the inbox is free; the extraction runs on what survives it.
  *
  * IT IS NOT A SENTINEL CLASS, deliberately. The sentinel's triage is a JUDGEMENT stage —
  * "would this email, if fully read, plausibly describe a change to a specific dated
@@ -50,7 +49,6 @@ export const TRAVEL_DETECT_OUTCOMES = [
   /** F14, or the travel flag and its allowlist. Counted before anything is read. */
   'dark',
   'no_parent_user',
-  'over_sweep_cap',
   /** The extraction found no city — a restaurant reservation, a haircut, a parcel. */
   'no_destination',
   /** The city or region failed {@link destinationShape}, or named a household member.
@@ -82,15 +80,6 @@ export type TravelDetectCounts = Record<TravelDetectOutcome, number>;
 export function emptyTravelDetectCounts(): TravelDetectCounts {
   return Object.fromEntries(TRAVEL_DETECT_OUTCOMES.map((o) => [o, 0])) as TravelDetectCounts;
 }
-
-/**
- * At most this many envelopes per connection per sweep reach the model, newest first.
- *
- * The `EMAIL_ALERT_MAX_PER_SWEEP = 10` shape, and LOWER because the pre-filter has already
- * cut the field: ten booking-shaped confirmations in one fifteen-minute window is not a
- * family, it is a mailbox worth stopping at three.
- */
-export const MAX_TRAVEL_EXTRACTS_PER_SWEEP = 3;
 
 /** Longer than three weeks is not a trip — it is a lease, a term abroad, or a misread
  * date. */
@@ -271,7 +260,7 @@ export interface TravelDetectInput {
 /**
  * One sweep's worth of Gmail envelopes for one connection → one outcome per envelope.
  *
- * Newest first and bounded, the email alert's own shape.
+ * Newest first. Every booking-shaped envelope in the sweep is read.
  */
 export async function detectTravelBookingsForSweep(
   database: Database,
@@ -296,16 +285,10 @@ export async function detectTravelBookingsForSweep(
       outcomes.push('not_booking_shaped');
       continue;
     }
-    // An envelope with no `internalDate` cannot anchor a relative date, and the filter has
-    // already said this one is booking-shaped — so it is the sweep cap's problem, not a
-    // separate outcome: it sorts last and falls off the end.
     dated.push({ ...envelope, receivedAt: envelope.receivedAt ?? '' });
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  for (let i = MAX_TRAVEL_EXTRACTS_PER_SWEEP; i < dated.length; i += 1) {
-    outcomes.push('over_sweep_cap');
-  }
-  const considered = dated.slice(0, MAX_TRAVEL_EXTRACTS_PER_SWEEP);
+  const considered = dated;
   if (considered.length === 0) return outcomes;
 
   const [childFirstNames, householdNames, timeZone] = await Promise.all([

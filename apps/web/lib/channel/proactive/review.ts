@@ -37,7 +37,6 @@ import {
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
-  PROACTIVE_CAP,
   PROACTIVE_QUIET_HOURS,
   type ProactiveHoldReason,
   type ProactiveSendKind,
@@ -45,6 +44,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { PROACTIVE_ROUTING } from '~/lib/channel/proactive/flag';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -399,7 +399,7 @@ async function loadOpenItems(
 }
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
-  return Object.hasOwn(PROACTIVE_CAP, kind);
+  return Object.hasOwn(PROACTIVE_ROUTING, kind);
 }
 
 /** The users who hold a seat Hale texts (`TEXTABLE_ROLES`) in this family right now. */

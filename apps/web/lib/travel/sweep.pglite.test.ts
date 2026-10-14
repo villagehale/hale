@@ -5,7 +5,6 @@ import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFindResult, ActivityPick } from '~/lib/channel/activity/lane';
 import { dedupeActive } from '~/lib/channel/ledger';
 import {
-  PROACTIVE_CAP,
   PROACTIVE_CATEGORY,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
@@ -604,9 +603,6 @@ describe('the hold, and how many rows a week of it leaves', () => {
       h.deps.buildGate(database),
     );
     expect(morning.allowed).toBe(true);
-
-    // And the budget the class was forced to choose.
-    expect(PROACTIVE_CAP.travel_brief).toEqual({ max: 1, windowHours: 168 });
     expect(PROACTIVE_CATEGORY.travel_brief).toBe('travel_brief');
   });
 });

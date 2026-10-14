@@ -277,17 +277,16 @@ describe('the pre-filter spends nothing on a mailbox', () => {
     expect(spy.bodyFetches).toEqual(['m2']);
   });
 
-  it('caps the extractions per connection per sweep, newest first', async () => {
+  it('reads every booking-shaped envelope in the sweep, newest first', async () => {
     const spy = ports();
     const envelopes = [1, 2, 3, 4].map((n) => ({
       ...envelope({ messageId: `m${n}` }),
       receivedAt: `2026-09-0${n}T12:00:00.000Z`,
     }));
     const outcomes = await run(spy, { envelopes });
-    expect(outcomes.filter((o) => o === 'over_sweep_cap')).toHaveLength(1);
-    expect(spy.extractions).toBe(3);
-    // Newest first: m1 (the oldest) is the one that falls off.
-    expect(spy.bodyFetches.sort()).toEqual(['m2', 'm3', 'm4']);
+    expect(outcomes.filter((o) => o === 'trip_written')).toHaveLength(4);
+    expect(spy.extractions).toBe(4);
+    expect(spy.bodyFetches).toEqual(['m4', 'm3', 'm2', 'm1']);
   });
 });
 
