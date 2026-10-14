@@ -142,23 +142,26 @@ async function main() {
   );
   let failed = 0;
   for (const f of SAID_LINE_FIXTURES) {
-    const out = await cachedToolCall({
-      tag: `said-line:${f.id}`,
-      model,
-      system: skill.instructions,
-      userMessage: userMessage(f),
-      toolName: 'said_line',
-      toolDescription: 'Return the one text Hale sends.',
-      toolSchema: TOOL_SCHEMA,
-      maxTokens: SUBJECT_MAX_TOKENS,
-      cachedOnly,
-      getClient,
-      cost,
-    });
+    const out = (
+      await cachedToolCall({
+        tag: `said-line:${f.id}`,
+        model,
+        system: skill.instructions,
+        userMessage: userMessage(f),
+        toolName: 'said_line',
+        toolDescription: 'Return the one text Hale sends.',
+        toolSchema: TOOL_SCHEMA,
+        maxTokens: SUBJECT_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      })
+    )?.value;
     const text = out?.text ?? '';
     if (!factsHold(text, f)) {
       failed += 1;
       console.info(`FAIL  ${f.id}  facts: a required string is missing or a link was added`);
+      console.info(`      text: ${JSON.stringify(text)}`);
       continue;
     }
     const verdict = await judge(f.id, {
@@ -171,6 +174,10 @@ async function main() {
     const ok = verdict.score >= JUDGE_MIN;
     if (!ok) failed += 1;
     console.info(`${ok ? 'PASS' : 'FAIL'}  ${f.id}  judge:${verdict.score}`);
+    if (!ok) {
+      console.info(`      text: ${JSON.stringify(text)}`);
+      console.info(`      judge: ${verdict.reason ?? ''}`);
+    }
   }
   if (failed > 0) process.exit(1);
 }

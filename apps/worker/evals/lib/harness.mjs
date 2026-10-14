@@ -253,7 +253,8 @@ export function lazyAnthropic() {
   let client;
   return () => {
     if (!client) {
-      client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
+      client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, fetch: globalThis.fetch });
       client.messages.create = cappedCreate(client.messages.create.bind(client.messages));
     }
     return client;

@@ -115,23 +115,28 @@ async function main() {
   );
   let failed = 0;
   for (const f of OPT_OUT_FIXTURES) {
-    const out = await cachedToolCall({
-      tag: `opt-out-read:${f.id}`,
-      model,
-      system: skill.instructions,
-      userMessage: JSON.stringify({ text: f.text, threadLanguage: f.language }),
-      toolName: 'opt_out',
-      toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
-      toolSchema: TOOL_SCHEMA,
-      maxTokens: SUBJECT_MAX_TOKENS,
-      cachedOnly,
-      getClient,
-      cost,
-    });
+    const out = (
+      await cachedToolCall({
+        tag: `opt-out-read:${f.id}`,
+        model,
+        system: skill.instructions,
+        userMessage: JSON.stringify({ text: f.text, threadLanguage: f.language }),
+        toolName: 'opt_out',
+        toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
+        toolSchema: TOOL_SCHEMA,
+        maxTokens: SUBJECT_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      })
+    )?.value;
     const intent = out?.intent ?? 'none';
     if (intent !== f.expect || out?.verbatim !== f.text) {
       failed += 1;
       console.info(`FAIL  ${f.id}  intent=${intent} expected=${f.expect}`);
+      console.info(
+        `      text: ${JSON.stringify(f.text)} reply: ${JSON.stringify(out?.confirmation ?? '')}`,
+      );
       continue;
     }
     if (f.expect === 'none' || f.expect === 'identity') {
