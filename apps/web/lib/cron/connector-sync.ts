@@ -5,9 +5,11 @@ import { ageInMonths } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import type PgBoss from 'pg-boss';
 import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import { laneEnabled } from '~/lib/channel/lanes';
 import {
   narrateHouseholdMailbox,
   rememberAndNarrateCalendar,
+  rememberHouseholdCalendar,
 } from '~/lib/channel/linq/household-calendar';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
@@ -315,32 +317,49 @@ function travelDetectPorts(
 
 /**
  * The sweep's half of the reminder mirror. The connecting parent's timezone places
- * an all-day occasion on their local midnight. No user means nobody to remind:
- * that absence is logged and the window is held (rule #11).
+ * an all-day occasion on their local midnight. No user means nobody to remind, no
+ * timezone means no local midnight to place anything on, and the lane switch off means
+ * nothing may be mirrored: each absence is logged and the window is held, so mirrors
+ * already written stay in place (rule #11).
  */
 async function mirrorCalendarWindow(
   database: Database,
   batch: CalendarMirrorBatch,
 ): Promise<CalendarMirrorCounts> {
+  if (!laneEnabled('parent_calendar_mirror')) {
+    console.info(
+      { integrationId: batch.connection.id },
+      'calendar mirror: parent_calendar_mirror lane off, skipped',
+    );
+    return emptyCalendarMirrorCounts('lane_off');
+  }
   const userId = batch.connection.userId;
   if (!userId) {
     console.info(
       { integrationId: batch.connection.id },
       'calendar mirror: no parent user, skipped',
     );
-    return emptyCalendarMirrorCounts(true);
+    return emptyCalendarMirrorCounts('no_parent_user');
   }
   const [parent] = await database
     .select({ timezone: schema.users.timezone })
     .from(schema.users)
     .where(eq(schema.users.id, userId))
     .limit(1);
+  const timeZone = parent?.timezone;
+  if (!timeZone) {
+    console.info(
+      { integrationId: batch.connection.id },
+      'calendar mirror: no timezone for the family, skipped',
+    );
+    return emptyCalendarMirrorCounts('no_timezone');
+  }
   return reconcileCalendarMirrors(database, {
     familyId: batch.connection.familyId,
     userId,
     integrationId: batch.connection.id,
     items: batch.items,
-    timeZone: parent?.timezone || 'America/Toronto',
+    timeZone,
     now: batch.now,
     trustWindow: batch.trustWindow,
   });
@@ -385,14 +404,25 @@ async function alertCalendarSweep(database: Database, batch: CalendarAlertBatch)
     proactiveSendPorts(database),
   );
   try {
-    await rememberAndNarrateCalendar(database, {
+    const household = {
       integrationId: batch.connection.id,
       familyId: batch.connection.familyId,
       userId: batch.connection.userId,
       changes: batch.changes,
       seeding: batch.seeding,
       now: new Date(),
-    });
+    };
+    if (laneEnabled('calendar_alert')) {
+      await rememberAndNarrateCalendar(database, household);
+    } else {
+      // The group notice is a calendar alert too, so the lane holds it: the changes are
+      // remembered and stay unannounced until the lane is back on (rule #11).
+      await rememberHouseholdCalendar(database, household);
+      console.info(
+        { integrationId: batch.connection.id, groupNotice: 'lane_off' },
+        'household calendar: calendar_alert lane off, notice skipped',
+      );
+    }
   } catch (err) {
     console.warn(
       { reason: err instanceof Error ? err.name : 'unknown' },

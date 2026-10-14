@@ -3,7 +3,11 @@ import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { loadReminderVoiceSkill } from '~/lib/cron/skill';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
-import { eventDescriptor, localTimeLabel } from '~/lib/loop/templates/reminder/core';
+import {
+  eventDescriptor,
+  localDayLabel,
+  localTimeLabel,
+} from '~/lib/loop/templates/reminder/core';
 import type {
   ReminderChild,
   ReminderEventView,
@@ -24,9 +28,25 @@ import { type ComposedVoice, composeVoice, firstJsonObject } from './compose';
 
 const VOICE_MAX_TOKENS = 150;
 
+/** The send moment's family-local clock — "7:00 AM". Built from parts so the space before
+ * the meridiem is a plain one on every ICU build. */
+function localClockLabel(instant: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone,
+  }).formatToParts(instant);
+  const value = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${value('hour')}:${value('minute')} ${value('dayPeriod')}`;
+}
+
 /** The redacted view handed to the model: every event's already-redacted descriptor
- * (teen/sensitive → the bare generic, never a name) + its resolved time label — no
- * more than the email will show (rule #1). */
+ * (teen/sensitive → the bare generic, never a name) + its local day and time label — no
+ * more than the email will show (rule #1) — and `now`, the send moment in the same zone.
+ * The day is a FACT the model phrases ("tomorrow", "this afternoon") against `now`, never
+ * one read off the offset: a reminder held past its evening slot is sent on the event's
+ * own day. */
 export function reminderVoiceContext(
   events: readonly ReminderEventView[],
   children: readonly ReminderChild[],
@@ -34,11 +54,17 @@ export function reminderVoiceContext(
   timeZone: string,
   offset: '-P1D' | '-PT1H',
   now: Date,
-): { offset: '-P1D' | '-PT1H'; events: Array<{ what: string; when: string }> } {
+): {
+  offset: '-P1D' | '-PT1H';
+  now: { day: string; time: string };
+  events: Array<{ what: string; day: string; when: string }>;
+} {
   return {
     offset,
+    now: { day: localDayLabel(now.toISOString(), timeZone), time: localClockLabel(now, timeZone) },
     events: events.map((event) => ({
       what: eventDescriptor(event, children, level, now),
+      day: localDayLabel(event.startsAt, timeZone),
       when: localTimeLabel(event.startsAt, timeZone),
     })),
   };

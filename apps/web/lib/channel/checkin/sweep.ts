@@ -460,7 +460,7 @@ async function runForFamily(
     now,
   });
   if (delivered.status === 'held') {
-    console.warn({ familyId: family.familyId }, 'evening check-in: group cap reached');
+    console.warn({ familyId: family.familyId, reason: delivered.reason }, 'evening check-in: held');
     return;
   }
   if (delivered.status === 'skipped') {

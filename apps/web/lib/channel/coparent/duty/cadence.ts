@@ -10,21 +10,13 @@ import type { DutyRole } from './model';
  * "who's got pickup Thursday?" is answered in the group. One open question
  * per group. After three unanswered asks, stop.
  *
- * Caps here are the group bubble budget: two proactive bubbles a day, and
- * one discretionary bubble a day / three a week. Quiet hours are decided by
- * the caller with the outbound gate's window so this file does not grow a
- * second clock.
+ * Quiet hours are decided by the caller with the outbound gate's window so
+ * this file does not grow a second clock. A count is not a hold.
  */
 
 export const REASK_WITHIN_MS = 48 * 60 * 60 * 1000;
 export const UNANSWERED_STEP_DOWN = 3;
 export const NIGHT_BEFORE_START_MIN = 17 * 60;
-export const DUTY_LLM_DAY_MAX = 1;
-
-/** Matches family-outbound's group ceiling. A test pins the two together. */
-export const PROACTIVE_BUBBLES_PER_DAY = 2;
-export const DISCRETIONARY_PER_DAY = 1;
-export const DISCRETIONARY_PER_WEEK = 3;
 
 export type DutyAskMode =
   | 'week_overview'
@@ -75,9 +67,6 @@ export interface CadenceContext {
   occasions: readonly DutyOccasion[];
   /** Set when a parent just asked. Null when this is the sweep. */
   parentAsk: { role: DutyRole | null; weekday: number | null } | null;
-  proactiveToday: number;
-  discretionaryToday: number;
-  discretionaryWeek: number;
   /** Minutes since local midnight. */
   localMinutes: number;
   /** 0 = Sunday … 6 = Saturday, in the parent's zone. */
@@ -111,7 +100,7 @@ export interface CadencePlan {
   stepDown: { eventKey: string; role: DutyRole } | null;
   /** Cancelled events whose recorded duty must be closed. No text. */
   invalidateEventKeys: string[];
-  held: 'quiet_hours' | 'group_cap' | 'open_question' | null;
+  held: 'quiet_hours' | 'open_question' | null;
 }
 
 const DAY_NAMES: ReadonlyArray<readonly [string, number]> = [
@@ -159,22 +148,9 @@ export function inNightBeforeWindow(minutes: number, quietStartMin: number): boo
   return minutes >= NIGHT_BEFORE_START_MIN && minutes < quietStartMin;
 }
 
-export function dutySendHeldByCaps(input: {
-  discretionary: boolean;
-  proactiveToday: number;
-  discretionaryToday: number;
-  discretionaryWeek: number;
-}): 'group_cap' | null {
-  if (input.proactiveToday >= PROACTIVE_BUBBLES_PER_DAY) return 'group_cap';
-  if (!input.discretionary) return null;
-  if (input.discretionaryToday >= DISCRETIONARY_PER_DAY) return 'group_cap';
-  if (input.discretionaryWeek >= DISCRETIONARY_PER_WEEK) return 'group_cap';
-  return null;
-}
-
 /**
  * Rules only. The model is not called from here. A miss returns null and the
- * caller decides whether a budgeted extractor may run.
+ * caller decides whether the extractor may run.
  */
 export function matchParentDutyAsk(
   text: string,
@@ -198,9 +174,9 @@ export function matchParentDutyAsk(
   return { role, weekday };
 }
 
-/** Flag off, or the day's calls already spent: the extractor must not run. */
-export function dutyExtractorMayRun(input: { sendsActive: boolean; callsToday: number }): boolean {
-  return input.sendsActive && input.callsToday < DUTY_LLM_DAY_MAX;
+/** Flag off: the extractor must not run. A count is not a hold. */
+export function dutyExtractorMayRun(input: { sendsActive: boolean }): boolean {
+  return input.sendsActive;
 }
 
 function speakable(occasion: DutyOccasion): boolean {
@@ -368,18 +344,7 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
       (question.mode === 'night_before' || question.mode === 'parent_initiated')
     ) {
       if (ctx.quiet) held = held ?? 'quiet_hours';
-      else if (
-        dutySendHeldByCaps({
-          discretionary: question.discretionary,
-          proactiveToday: ctx.proactiveToday,
-          discretionaryToday: ctx.discretionaryToday,
-          discretionaryWeek: ctx.discretionaryWeek,
-        })
-      ) {
-        held = held ?? 'group_cap';
-      } else {
-        sendLines.push(question);
-      }
+      else sendLines.push(question);
     }
   }
 

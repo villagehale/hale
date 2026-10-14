@@ -673,21 +673,10 @@ async function runForFamily(
   const recipients = await deps.loadRecipients(database, family.familyId);
   if (recipients.length === 0) return emptyTally({ held: ['not_enrolled'] });
 
-  // EVERY RECIPIENT IS GATED BEFORE ANYBODY IS SENT TO, and here that ordering is what
-  // makes the feature work at all: the nudge's cap is ONE PER FAMILY PER WEEK, counted
-  // over the family's ledger (outbound-gate.ts), so a send to the first parent inside
-  // this loop would hold the second under a budget the very same message had just
-  // spent. Gating first keeps the cap meaning what it says — a household hears one
-  // nudge a week — while both parents get their own copy of it, and next week's tick is
-  // capped for both.
-  //
-  // WHAT THAT COSTS, NAMED (verifier r1): on a tick where one parent is allowed and the
-  // other is inside their own quiet hours — a split-timezone household — the send
-  // spends the week's budget and every later tick holds the second parent
-  // `frequency_cap`. They miss that week's nudge rather than get it a day late. The
-  // alternative is a per-recipient cap, which is a household hearing the same nudge
-  // twice from two directions, and that is the worse of the two. (The registration
-  // ladder has no cap, so its legs simply split across ticks instead.)
+  // EVERY RECIPIENT IS GATED BEFORE ANYBODY IS SENT TO. Enrollment, watch consent,
+  // and quiet hours are known before a compose. There is no count of how many
+  // nudges the household already had. A parent inside quiet hours waits; the other
+  // parent is sent on this tick. The dedupe key stops a second copy of the same nudge.
   const allowed: Array<{ recipient: FamilyTextRecipient; optOut: OptOutForm }> = [];
   const held: ProactiveHoldReason[] = [];
   for (const recipient of recipients) {

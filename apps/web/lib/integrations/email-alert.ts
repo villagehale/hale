@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { laneEnabled } from '~/lib/channel/lanes';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -27,7 +28,7 @@ import type {
   SentinelClassification,
 } from '~/lib/sentinel';
 import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
-import { BOOKED_BACKFILL_MAX_PER_SWEEP, bookedDetectionEnabledFor } from './booked';
+import { bookedDetectionEnabledFor } from './booked';
 import {
   type BookingDraftResult,
   bookingCancellationKey,
@@ -117,7 +118,6 @@ export const EMAIL_ALERT_OUTCOMES = [
   'seeding_run',
   /** Historical mail recorded by the booked-detection backfill. No text was sent. */
   'backfill_suppressed',
-  'over_sweep_cap',
   'no_received_at',
   'gate_refused:not_enrolled',
   'gate_refused:no_watch_consent',
@@ -130,6 +130,8 @@ export const EMAIL_ALERT_OUTCOMES = [
   /** A claimed Linq group. Mailbox subjects, senders, and bodies stay off the
    * group and off SMS. Kid dates, when they exist, use the kid-event notice. */
   'group_privacy',
+  /** EMAIL_ALERT_ENABLED is not `true`: no classifier call, no text, no offer. */
+  'lane_off',
 ] as const;
 
 export type EmailAlertOutcome = (typeof EMAIL_ALERT_OUTCOMES)[number];
@@ -209,12 +211,6 @@ export interface EmailAlertResult {
   going: GoingOutcome | null;
 }
 
-/** At most this many messages per connection per sweep reach the classifier, newest
- * first. A 15-minute cron over a mailbox that just received a hundred messages is the
- * shape this bounds: the cap on what may be SENT is the outbound gate's, and this is the
- * cap on what may be SPENT — ten model calls, not a hundred. */
-export const EMAIL_ALERT_MAX_PER_SWEEP = 10;
-
 export const EMAIL_ALERT_TEMPLATE_KEY = 'connector:email_alert';
 
 /** Keyed on the CONNECTION and the provider's message id, so re-connecting a mailbox
@@ -266,6 +262,7 @@ export async function alertParentForEmail(
 ): Promise<EmailAlertResult> {
   const { familyId, parentUserId, integrationId, messageId, now } = input;
   if (!f14EnabledFor(familyId)) return { alert: 'dark', booking: null, going: null };
+  if (!laneEnabled('email_alert')) return { alert: 'lane_off', booking: null, going: null };
 
   const dedupeKey = emailAlertDedupeKey(integrationId, messageId);
   // Read BEFORE the classifier, not only via the claim below: a re-fired sweep over a
@@ -851,9 +848,8 @@ export function gmailAlertSweepInput(
 /**
  * One sweep's worth of Gmail envelopes for one connection → one outcome per envelope.
  *
- * Newest first and bounded, because the interesting failure is not a quiet mailbox: it is
- * a mailbox that just received sixty messages, where the ones worth a text are the ones
- * that arrived last and the cost of reading all of them is sixty model calls.
+ * Newest first. Every dated envelope in the sweep is read. A count is not a reason
+ * to leave one unsaid.
  */
 const BOOKING_WROTE = new Set<BookingOutcome>(['recorded', 'already_recorded', 'refreshed']);
 
@@ -901,13 +897,9 @@ function logSweepOutcomes(
   }
 }
 
-function datedEnvelopes(
-  envelopes: readonly GmailAlertEnvelope[],
-  limit = EMAIL_ALERT_MAX_PER_SWEEP,
-): {
+function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {
   skipped: EmailAlertResult[];
   considered: Array<GmailAlertEnvelope & { receivedAt: string }>;
-  capped: EmailAlertResult[];
 } {
   const skipped: EmailAlertResult[] = [];
   const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
@@ -917,11 +909,7 @@ function datedEnvelopes(
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  const capped: EmailAlertResult[] = [];
-  for (let i = limit; i < dated.length; i += 1) {
-    capped.push({ alert: 'over_sweep_cap', booking: null, going: null });
-  }
-  return { skipped, considered: dated.slice(0, limit), capped };
+  return { skipped, considered: dated };
 }
 
 /**
@@ -1053,14 +1041,9 @@ export async function alertParentForGmailSweep(
   }
 
   if (input.backfill === true) {
-    // The live sweep's cap is ten texts. A backfill is not a text: the sync
-    // already stopped at its time budget, and applying the text cap here would
-    // mark the rest over_sweep_cap and never record them.
-    const { skipped, considered, capped } = datedEnvelopes(
-      envelopes,
-      BOOKED_BACKFILL_MAX_PER_SWEEP,
-    );
-    const outcomes: EmailAlertResult[] = [...skipped, ...capped];
+    // A backfill is not a text. Every envelope this pass was handed is recorded.
+    const { skipped, considered } = datedEnvelopes(envelopes);
+    const outcomes: EmailAlertResult[] = [...skipped];
     if (considered.length > 0) {
       const timeZone = await ports.timeZone(parentUserId);
       const cancelledThisSweep = new Set<string>();
@@ -1086,6 +1069,16 @@ export async function alertParentForGmailSweep(
     return outcomes;
   }
 
+  // Below the backfill pass on purpose: that pass never texts, and it is held under this
+  // lane by backfillBookedMail (sync.ts), where its page cursor lives.
+  if (!laneEnabled('email_alert')) {
+    const outcomes = envelopes.map(
+      (): EmailAlertResult => ({ alert: 'lane_off', booking: null, going: null }),
+    );
+    logSweepOutcomes(input, outcomes);
+    return outcomes;
+  }
+
   // Nothing from a mailbox reaches the group, and a family whose home channel
   // is the group is not texted the same mail on SMS either.
   const outbound = await familyOutboundTarget(database, input.familyId);
@@ -1101,8 +1094,8 @@ export async function alertParentForGmailSweep(
     return outcomes;
   }
 
-  const { skipped, considered, capped } = datedEnvelopes(envelopes);
-  const outcomes: EmailAlertResult[] = [...skipped, ...capped];
+  const { skipped, considered } = datedEnvelopes(envelopes);
+  const outcomes: EmailAlertResult[] = [...skipped];
   if (considered.length === 0) {
     logSweepOutcomes(input, outcomes);
     return outcomes;

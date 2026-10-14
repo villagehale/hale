@@ -1,8 +1,10 @@
 import { schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import type PgBoss from 'pg-boss';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { POLICY_VERSION } from '~/lib/consent';
+import { connectorSyncDeps } from '~/lib/cron/connector-sync';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
@@ -424,44 +426,6 @@ describe('household calendars', () => {
     }
   });
 
-  it('sends at most one group bubble a day', async () => {
-    const seeded = await seedPair();
-    const wire = linqFetch();
-    await rememberAndNarrateCalendar(db.database, {
-      integrationId: seeded.primaryIntegrationId,
-      familyId: seeded.familyId,
-      userId: seeded.primaryUserId,
-      changes: [change({ eventId: 'gym', title: 'Maya gymnastics' })],
-      seeding: false,
-      now: DAY,
-      fetch: wire.fetch,
-    });
-    expect(wire.texts()).toContain('Heads up:');
-    const afterFirst = wire.texts();
-    await rememberAndNarrateCalendar(db.database, {
-      integrationId: seeded.primaryIntegrationId,
-      familyId: seeded.familyId,
-      userId: seeded.primaryUserId,
-      changes: [
-        change({
-          eventId: 'swim',
-          title: 'Maya swim',
-          start: { dateTime: '2026-09-26T19:00:00.000Z' },
-          end: { dateTime: '2026-09-26T20:00:00.000Z' },
-        }),
-      ],
-      seeding: false,
-      now: DAY,
-      fetch: wire.fetch,
-    });
-    expect(wire.texts()).toBe(afterFirst);
-    const [held] = await db.database
-      .select({ announcedAt: schema.parentCalendarBlocks.announcedAt })
-      .from(schema.parentCalendarBlocks)
-      .where(eq(schema.parentCalendarBlocks.eventId, 'swim'));
-    expect(held?.announcedAt).toBeNull();
-  });
-
   it('sends kid-event, conflict, handoff, and post-event only to the Linq group chat', async () => {
     const start = new Date('2026-09-25T19:00:00.000Z');
     const end = new Date('2026-09-25T20:00:00.000Z');
@@ -730,7 +694,7 @@ describe('household calendars', () => {
     expect(wire.urls().some((url) => url.includes('/polls'))).toBe(false);
   });
 
-  it('does not poll a conflict during quiet hours or after the daily cap', async () => {
+  it('does not poll a conflict during quiet hours', async () => {
     vi.stubEnv('LINQ_POLLS', 'on');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const seeded = await seedPair();
@@ -770,28 +734,6 @@ describe('household calendars', () => {
     });
     expect(quiet.texts()).toEqual([]);
     expect(quiet.pollOptions()).toEqual([]);
-
-    const cappedAt = new Date('2026-09-23T14:00:00.000Z');
-    await db.database.insert(schema.channelMessages).values({
-      familyId: seeded.familyId,
-      parentUserId: seeded.primaryUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'calendar_alert',
-      templateKey: 'linq:group_kid_event',
-      providerChatId: GROUP,
-      status: 'sent',
-      sentAt: cappedAt,
-      createdAt: cappedAt,
-    });
-    const capped = pollWire();
-    await narrateHouseholdCalendar(db.database, {
-      familyId: seeded.familyId,
-      now: cappedAt,
-      fetch: capped.fetch,
-    });
-    expect(capped.texts()).toEqual([]);
-    expect(capped.pollOptions()).toEqual([]);
   });
 
   it('uses a vote at the evening handoff and does not invent a taker without one', async () => {
@@ -1042,3 +984,64 @@ function pollWire(): {
     urls: () => urls,
   };
 }
+
+describe("the connector sweep's group notice under the calendar_alert lane", () => {
+  async function sweep(seeded: Awaited<ReturnType<typeof seedPair>>) {
+    vi.useFakeTimers({ toFake: ['Date'], now: DAY });
+    try {
+      const deps = connectorSyncDeps(db.database, {} as PgBoss).buildDeps();
+      return await deps.alertCalendarChanges({
+        connection: {
+          id: seeded.primaryIntegrationId,
+          familyId: seeded.familyId,
+          userId: seeded.primaryUserId,
+          provider: 'gcal',
+          providerMetadata: {},
+          tokens: { accessToken: 'ya29.test' },
+        },
+        seeding: false,
+        changes: [change({ eventId: 'gym', title: 'Maya gymnastics' })],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  async function groupNotices(familyId: string) {
+    return db.database
+      .select({ templateKey: schema.channelMessages.templateKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, familyId));
+  }
+
+  it('remembers the change but sends no group notice while the lane is off', async () => {
+    const seeded = await seedPair();
+    const wire = groupWire();
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    await sweep(seeded);
+    expect(wire.linqUrls()).toEqual([]);
+    expect(await groupNotices(seeded.familyId)).toEqual([]);
+    const [block] = await db.database
+      .select({
+        title: schema.parentCalendarBlocks.title,
+        kidRelated: schema.parentCalendarBlocks.kidRelated,
+        announcedAt: schema.parentCalendarBlocks.announcedAt,
+      })
+      .from(schema.parentCalendarBlocks)
+      .where(eq(schema.parentCalendarBlocks.eventId, 'gym'));
+    expect(block).toEqual({ title: 'Maya gymnastics', kidRelated: true, announcedAt: null });
+    expect(info).toHaveBeenCalledWith(
+      { integrationId: seeded.primaryIntegrationId, groupNotice: 'lane_off' },
+      'household calendar: calendar_alert lane off, notice skipped',
+    );
+  });
+
+  it('sends the group notice once the lane is exactly true', async () => {
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', 'true');
+    const seeded = await seedPair();
+    const wire = groupWire();
+    await sweep(seeded);
+    expect(wire.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(await groupNotices(seeded.familyId)).toEqual([{ templateKey: 'linq:group_kid_event' }]);
+  });
+});

@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 import { OPT_OUT_PERIOD_DAYS, optOutPeriodStart } from './opt-out.js';
 import {
   type OutboundGatePorts,
-  PROACTIVE_CAP,
   PROACTIVE_CATEGORY,
   PROACTIVE_QUIET_HOURS,
   assertProactiveSendAllowed,
@@ -113,34 +112,27 @@ describe('assertProactiveSendAllowed', () => {
     });
   });
 
-  it('holds at the frequency cap — one proactive nudge per family per rolling 7 days', async () => {
-    expect(PROACTIVE_CAP.nudge).toEqual({ max: 1, windowHours: 24 * 7 });
-    await expect(callGate(MIDDAY, { recentSends: 1 }).verdict).resolves.toEqual({
-      allowed: false,
-      reason: 'frequency_cap',
+  it('does not hold a nudge because earlier nudges were already sent', async () => {
+    await expect(callGate(MIDDAY, { recentSends: 99 }).verdict).resolves.toEqual({
+      allowed: true,
+      optOut: 'short',
     });
   });
 
-  it('passes the cap window start the count must be taken from', async () => {
-    let seen: { since: Date; familyId: string } | null = null;
+  it('does not read the send count', async () => {
+    let seen = false;
     const verdict = await assertProactiveSendAllowed(
       { familyId: FAMILY, parentUserId: PARENT, kind: 'nudge', now: MIDDAY },
       {
         ...ports().ports,
-        async countProactiveSends(familyId, _kind, since) {
-          seen = { since, familyId };
-          return 0;
+        async countProactiveSends() {
+          seen = true;
+          return 99;
         },
       },
     );
     expect(verdict).toEqual({ allowed: true, optOut: 'short' });
-    expect(seen).not.toBeNull();
-    const { since, familyId } = seen as unknown as { since: Date; familyId: string };
-    // Per FAMILY (not per parent) — a co-parent must not double the family's budget.
-    expect(familyId).toBe(FAMILY);
-    expect(MIDDAY.getTime() - since.getTime()).toBe(
-      (PROACTIVE_CAP.nudge?.windowHours ?? 0) * 3_600_000,
-    );
+    expect(seen).toBe(false);
   });
 
   it('holds inside quiet hours in the parent’s own zone', async () => {
@@ -217,14 +209,6 @@ describe('the registration-sequence class', () => {
     };
   }
 
-  it('has no volume budget at all — the ladder is bounded by the window, not by a cap', () => {
-    // A sequence's legs are finite by construction (one window, one ladder) and every
-    // one of them is a date the parent asked to be walked through. Counting them
-    // against a discretionary weekly nudge budget would let a busy registration season
-    // silence the sequence a parent explicitly approved.
-    expect(PROACTIVE_CAP.registration_sequence).toBeNull();
-  });
-
   it('never even counts the family’s recent sends', async () => {
     const { calls, verdict } = callSequenceGate(MIDDAY, { recentSends: 99 });
     await expect(verdict).resolves.toEqual({ allowed: true, optOut: 'short' });
@@ -278,24 +262,21 @@ describe('the registration-sequence class', () => {
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
 
-  it('does NOT let a nudge escape its cap', async () => {
-    // The other half of the scoping test: the uncapped class must not have widened
-    // the budget check for everyone.
-    expect(PROACTIVE_CAP.nudge).toEqual({ max: 1, windowHours: 24 * 7 });
+  it('does not hold a nudge that has already been sent this week', async () => {
     await expect(callGate(MIDDAY, { recentSends: 1 }).verdict).resolves.toEqual({
-      allowed: false,
-      reason: 'frequency_cap',
+      allowed: true,
+      optOut: 'short',
     });
   });
 });
 
 describe('gate ordering', () => {
-  it('runs enrolled → consent → cap → quiet hours', async () => {
+  it('runs enrolled → consent → quiet hours', async () => {
     const { calls, verdict } = callGate(MIDDAY);
     await verdict;
     // 'opt_out' runs LAST and only on the allowed path: a held message is not a send,
     // so it must not spend the family's reminder.
-    expect(calls).toEqual(['enrolled', 'consent', 'cap', 'tz', 'opt_out']);
+    expect(calls).toEqual(['enrolled', 'consent', 'tz', 'opt_out']);
   });
 
   it('stops at the first failure — an unenrolled family is never counted or clock-checked', async () => {
@@ -310,10 +291,10 @@ describe('gate ordering', () => {
     expect(calls).toEqual(['enrolled', 'consent']);
   });
 
-  it('never reads the clock for a family already at its cap', async () => {
+  it('still reads the clock when earlier sends already went out', async () => {
     const { calls, verdict } = callGate(MIDDAY, { recentSends: 1 });
     await verdict;
-    expect(calls).toEqual(['enrolled', 'consent', 'cap']);
+    expect(calls).toEqual(['enrolled', 'consent', 'tz', 'opt_out']);
   });
 });
 
@@ -469,8 +450,6 @@ describe('the watched-spot proactive classes', () => {
     // the cap the two classes exist to share would read as half spent.
     expect(PROACTIVE_CATEGORY.spot_open).toBe('spot_open');
     expect(PROACTIVE_CATEGORY.spot_open_instant).toBe('spot_open');
-    expect(PROACTIVE_CAP.spot_open).toEqual({ max: 4, windowHours: 24 });
-    expect(PROACTIVE_CAP.spot_open_instant).toEqual({ max: 4, windowHours: 24 });
   });
 
   it('never lets an email alert claim urgency — the inbox keeps until 08:00', async () => {
@@ -490,19 +469,11 @@ describe('the watched-spot proactive classes', () => {
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
 
-  it('holds the fourth email alert in a day', async () => {
-    // Kills PROACTIVE_CAP.email_alert = null: the volume of this class is set by how much
-    // mail arrives, so an uncapped one turns a busy mailbox into a feed.
+  it('does not hold an email alert because earlier ones were already sent', async () => {
     await expect(
       assertProactiveSendAllowed(
         { familyId: FAMILY, parentUserId: PARENT, kind: 'email_alert', now: MIDDAY },
         ports({ recentSends: 3 }).ports,
-      ),
-    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
-    await expect(
-      assertProactiveSendAllowed(
-        { familyId: FAMILY, parentUserId: PARENT, kind: 'email_alert', now: MIDDAY },
-        ports({ recentSends: 2 }).ports,
       ),
     ).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
@@ -524,19 +495,11 @@ describe('the watched-spot proactive classes', () => {
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
 
-  it('holds the fourth calendar alert in a day, on a counter of its own', async () => {
-    // Kills PROACTIVE_CAP.calendar_alert = null: the volume is set by how much a family
-    // rearranges its week, and a Sunday-evening rebuild is thirty edits in one sweep.
+  it('does not hold a calendar alert because earlier ones were already sent', async () => {
     await expect(
       assertProactiveSendAllowed(
         { familyId: FAMILY, parentUserId: PARENT, kind: 'calendar_alert', now: MIDDAY },
         ports({ recentSends: 3 }).ports,
-      ),
-    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
-    await expect(
-      assertProactiveSendAllowed(
-        { familyId: FAMILY, parentUserId: PARENT, kind: 'calendar_alert', now: MIDDAY },
-        ports({ recentSends: 2 }).ports,
       ),
     ).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
@@ -548,15 +511,13 @@ describe('the watched-spot proactive classes', () => {
     expect(PROACTIVE_CATEGORY.email_alert).toBe('email_alert');
   });
 
-  it('holds the fifth opening in a day', async () => {
-    // Kills `PROACTIVE_CAP.spot_open = null`, which the registration ladder's entry makes
-    // an easy copy: a flapping portal would then be an unbounded text campaign.
+  it('does not hold an opening because earlier ones were already sent', async () => {
     await expect(
       assertProactiveSendAllowed(
         { familyId: FAMILY, parentUserId: PARENT, kind: 'spot_open', now: MIDDAY },
         ports({ recentSends: 4 }).ports,
       ),
-    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
 });
 
@@ -582,24 +543,13 @@ describe('the travel brief class', () => {
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
 
-  it('holds the second trip inside one week, on a counter of its own', async () => {
-    // Kills PROACTIVE_CAP.travel_brief = null, which the two nulls above make an easy
-    // copy. The per-trip bound is the claim keyed on the trip id, so this counter only
-    // binds when something upstream went wrong — or in the one honest case the design
-    // names out loud, a household with two trips in one seven-day window.
+  it('does not hold a second trip because one was already sent this week', async () => {
     await expect(
       assertProactiveSendAllowed(
         { familyId: FAMILY, parentUserId: PARENT, kind: 'travel_brief', now: MIDDAY },
         ports({ recentSends: 1 }).ports,
       ),
-    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
-    await expect(
-      assertProactiveSendAllowed(
-        { familyId: FAMILY, parentUserId: PARENT, kind: 'travel_brief', now: MIDDAY },
-        ports({ recentSends: 0 }).ports,
-      ),
     ).resolves.toEqual({ allowed: true, optOut: 'short' });
-    expect(PROACTIVE_CAP.travel_brief).toEqual({ max: 1, windowHours: 24 * 7 });
   });
 
   it('counts apart from the inbox it was detected in', () => {
@@ -629,18 +579,11 @@ describe('the duty ask class', () => {
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
 
-  it('holds the third duty ask in a day, on a counter of its own', async () => {
-    expect(PROACTIVE_CAP.duty_ask).toEqual({ max: 2, windowHours: 24 });
+  it('does not hold a duty ask because earlier ones were already sent', async () => {
     await expect(
       assertProactiveSendAllowed(
         { familyId: FAMILY, parentUserId: PARENT, kind: 'duty_ask', now: MIDDAY },
         ports({ recentSends: 2 }).ports,
-      ),
-    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
-    await expect(
-      assertProactiveSendAllowed(
-        { familyId: FAMILY, parentUserId: PARENT, kind: 'duty_ask', now: MIDDAY },
-        ports({ recentSends: 1 }).ports,
       ),
     ).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
@@ -690,7 +633,7 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
 
   it('is imported by every file that records a hold — the control for the scan above', () => {
     // Absence proves nothing on its own: the scan would also pass if no file used the
-    // mapping at all. These three take it from the one copy.
+    // mapping at all. These still record a hold, and they take the status from the one copy.
     const web = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
     for (const file of [
       'lib/integrations/email-alert.ts',

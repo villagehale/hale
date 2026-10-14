@@ -29,9 +29,9 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { readDueBookings } from '~/lib/integrations/booking';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
@@ -370,7 +370,7 @@ export interface FollowupSweepResult {
    * here is the voice inventing state, and that must never read as a quiet tick.
    */
   refusedAtSend: number;
-  held: Record<ProactiveHoldReason, number>;
+  held: Record<ProactiveHoldReason | 'coparent_ask', number>;
   skipped: Record<FollowupSkipReason, number>;
   failed: number;
 }
@@ -383,7 +383,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
     daycareAsked: 0,
     composeDeferred: 0,
     refusedAtSend: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0, coparent_ask: 0 },
     skipped: {
       opted_out: 0,
       already_claimed: 0,
@@ -399,7 +399,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
 
 type SendOutcome =
   | { status: 'sent' }
-  | { status: 'held'; reason: ProactiveHoldReason }
+  | { status: 'held'; reason: ProactiveHoldReason | 'coparent_ask' }
   | { status: 'already_claimed' }
   | { status: 'already_discussed' }
   | { status: 'compose_deferred'; reason: ComposeDeferral }
@@ -504,7 +504,7 @@ async function sendFollowup(
     now: input.now,
     bubbleKind: 'discretionary',
   });
-  if (delivered.status === 'held') return { status: 'held', reason: 'frequency_cap' };
+  if (delivered.status === 'held') return { status: 'held', reason: delivered.reason };
   if (delivered.status === 'skipped') {
     console.warn(
       { familyId: input.familyId, code: delivered.reason },
@@ -574,8 +574,7 @@ function tally(result: FollowupSweepResult, outcome: SendOutcome): boolean {
  * that has stepped back, on the strength of a connection the other side no longer wants
  * Hale in the middle of.
  *
- * IT RUNS BEFORE THE ACTIVITY STAGE, and that ordering is the whole of "intro wins".
- * The day's single slot in PROACTIVE_CAP goes to whoever asks first.
+ * IT RUNS BEFORE THE ACTIVITY STAGE. Both stages may send in the same sweep.
  */
 async function runIntroFollowups(
   database: Database,

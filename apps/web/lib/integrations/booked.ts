@@ -20,9 +20,8 @@
  * (a flag that changed what the model may return would invalidate the eval cache on every
  * flip), and the triage skill's widening is a prompt rather than a runtime branch — so
  * merging makes `booking_confirmation` reachable for every F14 family regardless. What
- * the flag stops is everything after. The observable delta with it off is bounded: at
- * most ten extra Sonnet extractions per connection per 15-minute sweep, because
- * EMAIL_ALERT_MAX_PER_SWEEP is applied before any model call.
+ * the flag stops is everything after. The live lane tells the parent what the mail
+ * says, in their 1:1. A count does not decide how many of those texts leave.
  */
 
 export const BOOKED_DETECTION_ENABLED_ENV = 'BOOKED_DETECTION_ENABLED';

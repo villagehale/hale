@@ -4,11 +4,16 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
+import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
-import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
-  CALENDAR_ALERT_MAX_PER_SWEEP,
+  type TestDb,
+  createTestDb,
+  seedChild,
+  seedFamily,
+  seedIntegration,
+} from '~/lib/testing/pglite';
+import {
   CALENDAR_ALERT_PENDING_MAX_DAYS,
   CALENDAR_ALERT_TEMPLATE_KEY,
   type CalendarAlertOutcome,
@@ -166,6 +171,7 @@ beforeEach(async () => {
   family = await seedFamily(db.database);
   INTEGRATION = await seedIntegration(db.database, family.familyId, family.parentUserId);
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('CALENDAR_ALERT_ENABLED', 'true');
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -233,6 +239,51 @@ describe('alertParentForCalendarChanges', () => {
     const quiet = harness();
     await expect(sweep(quiet, { changes: [] })).resolves.toEqual([]);
     expect(quiet.timeZoneReads).toEqual([]);
+  });
+
+  it('sends nothing while the calendar_alert lane is off, and names it lane_off', async () => {
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', undefined);
+    const h = harness();
+
+    await expect(sweepBoth(h)).resolves.toEqual({
+      changes: ['lane_off'],
+      reoffers: [],
+      passport: 'lane_off',
+    });
+
+    expect(h.transport.sent).toEqual([]);
+    expect(h.threaded).toEqual([]);
+    await expect(ledgerRows()).resolves.toEqual([]);
+    await expect(auditRows()).resolves.toEqual([]);
+  });
+
+  it('holds a text it owes while the lane is off and sends it once the lane is back on', async () => {
+    await expect(
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } })),
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
+    const owed = await snapshotOf(TIMED.eventId);
+    expect(owed?.pendingSince).not.toBeNull();
+
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', 'false');
+    const off = harness();
+    await expect(sweepBoth(off, { changes: [] })).resolves.toEqual({
+      changes: [],
+      reoffers: [],
+      passport: 'lane_off',
+    });
+    expect(off.transport.sent).toEqual([]);
+    expect(await snapshotOf(TIMED.eventId)).toMatchObject({
+      pendingSince: owed?.pendingSince,
+      heldTitle: 'Cartwheels Gym',
+    });
+
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', 'true');
+    const on = harness();
+    await expect(sweepBoth(on, { changes: [] })).resolves.toEqual({
+      changes: [],
+      reoffers: ['sent'],
+    });
+    expect(on.transport.sent).toHaveLength(1);
   });
 
   it('REMEMBERS the shape while it is dark, so the first change after the flip is a move', async () => {
@@ -550,9 +601,8 @@ describe('alertParentForCalendarChanges', () => {
     expect(rows[0]).toMatchObject({ status: 'failed', errorCode: 'no_send_target' });
   });
 
-  it('reads at most CALENDAR_ALERT_MAX_PER_SWEEP, SOONEST first, and names the rest', async () => {
+  it('texts every change in the window, soonest included, with none dropped for a count', async () => {
     const h = harness();
-    // Seven events on seven consecutive days; the two LATEST must be the ones dropped.
     const changes = Array.from({ length: 7 }, (_, i) => ({
       ...TIMED,
       eventId: `ev-${i}`,
@@ -562,16 +612,10 @@ describe('alertParentForCalendarChanges', () => {
 
     const outcomes = await sweep(h, { changes });
 
-    // One outcome per change, positionally — the two dropped are the two LAST, which is
-    // only visible because the answer is in input order.
-    expect(outcomes).toEqual([
-      ...Array.from({ length: CALENDAR_ALERT_MAX_PER_SWEEP }, () => 'sent'),
-      'over_sweep_cap',
-      'over_sweep_cap',
-    ]);
+    expect(outcomes).toEqual(Array.from({ length: 7 }, () => 'sent'));
     const keys = new Set((await ledgerRows()).map((r) => r.dedupeKey));
     expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-0', TIMED.updated))).toBe(true);
-    expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-6', TIMED.updated))).toBe(false);
+    expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-6', TIMED.updated))).toBe(true);
   });
 
   it('never lets stale edits to events already OVER spend the sweep', async () => {
@@ -582,7 +626,7 @@ describe('alertParentForCalendarChanges', () => {
     // all five slots, and tomorrow's class is never offered again, because syncCalendar
     // advanced the syncToken the moment it read the page.
     const h = harness();
-    const stale = Array.from({ length: CALENDAR_ALERT_MAX_PER_SWEEP }, (_, i) => ({
+    const stale = Array.from({ length: 5 }, (_, i) => ({
       ...TIMED,
       eventId: `ev-past-${i}`,
       start: { dateTime: `2026-09-0${i + 1}T20:15:00.000Z` },
@@ -647,6 +691,80 @@ describe('alertParentForCalendarChanges', () => {
       expect(body).not.toContain('Bring Leo');
       expect(body).not.toContain('@');
     }
+  });
+});
+
+describe('passport stamps from calendar changes follow the calendar_alert lane', () => {
+  /** Three Tuesdays of one weekly class: the shape a calendar stamp is inferred from. */
+  const WEEKLY: CalendarChange[] = ['2026-09-22', '2026-09-29', '2026-10-06'].map((day, i) => ({
+    ...TIMED,
+    eventId: `class-${i}`,
+    recurringEventId: 'class-master',
+    title: 'Swim lessons',
+    start: { dateTime: `${day}T21:00:00.000Z` },
+    end: { dateTime: `${day}T21:45:00.000Z` },
+  }));
+
+  function stampRows() {
+    return db.database
+      .select()
+      .from(schema.kidInterests)
+      .where(eq(schema.kidInterests.familyId, family.familyId));
+  }
+
+  beforeEach(async () => {
+    vi.stubEnv('INTEREST_PASSPORT_ENABLED', 'true');
+    await seedChild(db.database, family.familyId, 'Robin', 60, undefined, NOW);
+  });
+
+  it('writes no calendar stamp while the lane is off, and names it', async () => {
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', undefined);
+
+    await expect(sweepBoth(harness(), { changes: WEEKLY })).resolves.toEqual({
+      changes: ['lane_off', 'lane_off', 'lane_off'],
+      reoffers: [],
+      passport: 'lane_off',
+    });
+
+    await expect(stampRows()).resolves.toEqual([]);
+  });
+
+  it('writes the stamp as before once the lane is on', async () => {
+    await sweep(harness(), { changes: WEEKLY });
+
+    const rows = await stampRows();
+    expect(rows.map((row) => [row.activity, row.sourceType])).toEqual([
+      ['Swim lessons', 'calendar'],
+    ]);
+  });
+
+  it('writes no calendar stamp on a seeding run while the lane is off, and names it', async () => {
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', undefined);
+
+    await expect(sweepBoth(harness(), { seeding: true, changes: WEEKLY })).resolves.toEqual({
+      changes: ['seeding_run', 'seeding_run', 'seeding_run'],
+      reoffers: [],
+      passport: 'lane_off',
+    });
+
+    await expect(stampRows()).resolves.toEqual([]);
+    expect((await snapshotRows()).map((row) => row.eventId).sort()).toEqual([
+      'class-0',
+      'class-1',
+      'class-2',
+    ]);
+  });
+
+  it('writes the stamp on a seeding run once the lane is on', async () => {
+    await expect(sweepBoth(harness(), { seeding: true, changes: WEEKLY })).resolves.toEqual({
+      changes: ['seeding_run', 'seeding_run', 'seeding_run'],
+      reoffers: [],
+    });
+
+    const rows = await stampRows();
+    expect(rows.map((row) => [row.activity, row.sourceType])).toEqual([
+      ['Swim lessons', 'calendar'],
+    ]);
   });
 });
 
@@ -1036,9 +1154,8 @@ describe('one edit to a series is one text', () => {
     );
   });
 
-  it('spends ONE of the five per-sweep slots on a whole series', async () => {
-    // Before the collapse, one edit to a weekly class spent the entire budget on itself
-    // and everything else that sweep went unsaid for good.
+  it('sends the series and the other changes in the same sweep', async () => {
+    // A weekly class collapses to one text. The other changes in the sweep still go.
     const h = harness();
     const others = Array.from({ length: 4 }, (_, i) => ({
       ...TIMED,
@@ -1049,7 +1166,6 @@ describe('one edit to a series is one text', () => {
     }));
     const outcomes = await sweep(h, { changes: [...instances(), ...others] });
     expect(outcomes.filter((one) => one === 'sent')).toHaveLength(5);
-    expect(outcomes.filter((one) => one === 'over_sweep_cap')).toEqual([]);
     expect(h.transport.sent).toHaveLength(5);
   });
 });
@@ -1261,6 +1377,39 @@ describe('a change the gate held is offered again', () => {
     expect(inTime.transport.sent).toHaveLength(1);
   });
 
+  it('ages a hold out by name while the lane is off, and keeps one still inside the limit', async () => {
+    const OLD: CalendarChange = { ...AHEAD, eventId: 'ev-old', location: 'Main Gym' };
+    const RECENT: CalendarChange = {
+      ...AHEAD,
+      eventId: 'ev-recent',
+      location: 'Main Gym',
+      start: { dateTime: '2026-09-26T20:15:00.000Z' },
+      end: { dateTime: '2026-09-26T21:00:00.000Z' },
+    };
+    const refused = { verdict: { allowed: false, reason: 'frequency_cap' } } as const;
+    await sweep(harness(refused), { changes: [OLD] });
+    await sweep(harness(refused), { changes: [RECENT], now: afterDays(2) });
+    expect(await snapshotOf(OLD.eventId)).toMatchObject({ heldLocation: 'Main Gym' });
+
+    vi.stubEnv('CALENDAR_ALERT_ENABLED', undefined);
+    const off = harness();
+    await expect(
+      sweepBoth(off, { changes: [], now: afterDays(CALENDAR_ALERT_PENDING_MAX_DAYS) }),
+    ).resolves.toEqual({ changes: [], reoffers: ['pending_expired'], passport: 'lane_off' });
+
+    expect(off.transport.sent).toEqual([]);
+    expect(await snapshotOf(OLD.eventId)).toMatchObject({
+      pendingSince: null,
+      heldTitle: null,
+      heldLocation: null,
+    });
+    expect(await snapshotOf(RECENT.eventId)).toMatchObject({
+      heldTitle: 'Cartwheels Gym',
+      heldLocation: 'Main Gym',
+    });
+    expect((await snapshotOf(RECENT.eventId))?.pendingSince).toBeInstanceOf(Date);
+  });
+
   it('drops a hold the calendar overtook, under its own name', async () => {
     await expect(
       sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } })),
@@ -1275,9 +1424,9 @@ describe('a change the gate held is offered again', () => {
     expect(afterwards.transport.sent).toEqual([]);
   });
 
-  it('puts the oldest debt first, and spends the SAME five slots on debts and new news', async () => {
-    // Four debts, four fresh changes, five slots: the debts go first and one fresh change
-    // is held over. A cap that counted them separately would send eight.
+  it('puts the oldest debt first, and sends the debts and the new news in one sweep', async () => {
+    // Four debts, four fresh changes. There is no per-sweep count: the debts go first
+    // and every fresh change goes in the same sweep.
     for (let i = 0; i < 4; i += 1) {
       await sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
         now: new Date(NOW.getTime() + i * 1000),
@@ -1303,14 +1452,13 @@ describe('a change the gate held is offered again', () => {
     });
 
     expect(both.reoffers).toEqual(['sent', 'sent', 'sent', 'sent']);
-    expect(both.changes).toEqual(['sent', 'over_sweep_cap', 'over_sweep_cap', 'over_sweep_cap']);
-    expect(h.transport.sent).toHaveLength(5);
+    expect(both.changes).toEqual(['sent', 'sent', 'sent', 'sent']);
+    expect(h.transport.sent).toHaveLength(8);
     // The debts were paid in the order they were owed, not soonest-event-first: owed-0 is
     // the LATEST event and still went first.
     expect(h.transport.sent[0]?.body).toContain('Friday, Sep 25');
-    // ...and the three that lost the cap are owed now, so nothing was dropped.
     const carried = (await snapshotRows()).filter((row) => row.pendingSince !== null);
-    expect(carried.map((row) => row.eventId).sort()).toEqual(['new-1', 'new-2', 'new-3']);
+    expect(carried).toEqual([]);
   });
 });
 
@@ -1602,6 +1750,5 @@ describe('the gate registration', () => {
     // Kills PROACTIVE_CATEGORY.calendar_alert = 'email_alert', which would let a busy
     // calendar spend the inbox's budget.
     expect(PROACTIVE_CATEGORY.calendar_alert).toBe('calendar_alert');
-    expect(PROACTIVE_CAP.calendar_alert).toEqual({ max: 3, windowHours: 24 });
   });
 });

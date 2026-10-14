@@ -21,7 +21,7 @@ import {
  * What is pinned here: it is dark until armed, it only speaks in the 20:00 local hour,
  * it goes through the outbound gate rather than around it, it never speaks over a
  * registration morning, and the ladder's decisions reach the ledger intact. The gate's
- * own four checks live in outbound-gate.test.ts and the ladder's arithmetic in
+ * own checks live in outbound-gate.test.ts and the ladder's arithmetic in
  * cadence.test.ts — what matters here is that this sweep cannot reach a transport
  * without both.
  */
@@ -43,6 +43,7 @@ interface Overrides {
   state?: Partial<CheckInState>;
   timeZone?: string;
   hold?: ProactiveHoldReason;
+  recentSends?: number;
   alreadySent?: boolean;
   registrationStanding?: boolean;
   children?: string[];
@@ -77,7 +78,7 @@ function harness(overrides: Overrides = {}) {
     buildGate: () => ({
       channelEnrolled: async () => overrides.hold !== 'not_enrolled',
       watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
-      countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 9 : 0),
+      countProactiveSends: async () => overrides.recentSends ?? 0,
       proactiveSentSince: async () => false,
       // The gate reads the PARENT's own clock, which is the family's. The evening
       // instant is 20:17 in Toronto and 02:17 the next morning in Paris, so the hold
@@ -322,12 +323,7 @@ describe('what goes out', () => {
 describe('what stops it', () => {
   it('records the gate holds and writes nothing, so silence is not counted against the family', async () => {
     process.env[F14_ENABLED_ENV] = 'true';
-    for (const hold of [
-      'not_enrolled',
-      'no_watch_consent',
-      'frequency_cap',
-      'quiet_hours',
-    ] as const) {
+    for (const hold of ['not_enrolled', 'no_watch_consent', 'quiet_hours'] as const) {
       const { deps, sent, asks, cadences } = harness({ hold });
       const result = await runEveningCheckInSweep(database, deps, EVENING);
       expect(result.held[hold], hold).toBe(1);
@@ -335,6 +331,15 @@ describe('what stops it', () => {
       expect(sent, hold).toEqual([]);
       expect([...asks, ...cadences], hold).toEqual([]);
     }
+  });
+
+  it('asks even when the family already had several proactive texts', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    const { deps, sent } = harness({ recentSends: 9 });
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect(result.held.frequency_cap).toBe(0);
+    expect(result.asked).toBe(1);
+    expect(sent).toHaveLength(1);
   });
 
   it('sends nothing on a second tick inside the same evening', async () => {
@@ -553,13 +558,13 @@ describe('the activity anchor', () => {
   });
 
   it('never reads the calendar for a household it is not going to ask', async () => {
-    // The read joins the names read on the same side of the gate: a family already asked,
-    // or over budget, must not cost a read of what their children did today.
+    // The read joins the names read on the same side of the gate: a family the gate
+    // will not text must not cost a read of what their children did today.
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
     process.env[F14_ENABLED_ENV] = 'true';
     let reads = 0;
     const { deps } = harness({
-      hold: 'frequency_cap',
+      hold: 'not_enrolled',
       today: async () => {
         reads += 1;
         return { anchor: 'swim' };

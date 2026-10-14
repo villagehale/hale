@@ -175,6 +175,43 @@ describe('reconcileCalendarMirrors', () => {
     expect((await audits()).map((row) => row.actionTaken)).toContain('calendar_mirror_removed');
   });
 
+  it("a removed mirror keeps none of the parent's words, and a live one is untouched", async () => {
+    const piano = swim({
+      id: 'ev-piano',
+      summary: 'Piano',
+      start: { dateTime: '2026-10-06T15:00:00.000Z' },
+      end: { dateTime: '2026-10-06T16:00:00.000Z' },
+    });
+    await reconcile([swim(), piano]);
+    await db.database
+      .update(schema.familyEvents)
+      .set({ dutyOwnerLabel: 'Nana' })
+      .where(eq(schema.familyEvents.googleEventId, 'ev-swim'));
+
+    await expect(reconcile([piano])).resolves.toMatchObject({ removed: 1 });
+
+    const stored = await rows();
+    expect(stored.find((row) => row.googleEventId === 'ev-swim')).toMatchObject({
+      title: '',
+      location: null,
+      dutyOwnerLabel: null,
+      deletedAt: NOW,
+    });
+    expect(stored.find((row) => row.googleEventId === 'ev-piano')).toMatchObject({
+      title: 'Piano',
+      location: 'The pool',
+      deletedAt: null,
+    });
+
+    // The calendar listing it again brings the words back from Google, not from the row.
+    await reconcile([swim(), piano]);
+    expect((await rows()).find((row) => row.googleEventId === 'ev-swim')).toMatchObject({
+      title: 'Swim',
+      location: 'The pool',
+      deletedAt: null,
+    });
+  });
+
   it('does not delete a mirror the truncated window did not happen to include', async () => {
     await reconcile([swim()]);
     const held = await reconcile(
@@ -190,6 +227,22 @@ describe('reconcileCalendarMirrors', () => {
     expect(swimRow?.deletedAt).toBeNull();
     expect(piano?.deletedAt).toBeNull();
     expect(piano?.title).toBe('Piano');
+  });
+
+  it('names an empty untrusted window as held for untrusted_window and deletes nothing', async () => {
+    await reconcile([swim()]);
+
+    await expect(reconcile([], false)).resolves.toEqual({
+      mirrored: 0,
+      updated: 0,
+      removed: 0,
+      alreadyKnown: 0,
+      skipped: 0,
+      held: true,
+      heldReason: 'untrusted_window',
+    });
+    const stored = await rows();
+    expect(stored.map((row) => [row.googleEventId, row.deletedAt])).toEqual([['ev-swim', null]]);
   });
 
   it('gives each connecting parent their own mirror of the same title', async () => {

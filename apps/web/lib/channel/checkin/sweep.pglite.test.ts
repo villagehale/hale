@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { PRIVATE_EVENT_WHAT } from '~/lib/channel/coach/tools';
 import { F14_ENABLED_ENV } from '~/lib/channel/f14';
 import {
   FOLLOWUP_ASKS_ENABLED_ENV,
@@ -11,7 +12,6 @@ import {
 } from '~/lib/channel/followup/run';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { PRIVATE_EVENT_WHAT } from '~/lib/channel/coach/tools';
 import { CHECK_IN_ASK_TEMPLATE_KEY } from './copy';
 import { eveningCheckInQuestion } from './reply';
 import {
@@ -266,7 +266,7 @@ describe('who the sweep actually selects, and what it may call their children', 
     expect(order).toEqual([neverAsked.familyId, askedLastNight.familyId]);
   });
 
-  it('is stopped three separate ways from asking twice in one evening', async () => {
+  it('is stopped two ways from asking twice in one evening', async () => {
     const { familyId } = await seedFamily({ primaryTz: 'America/Toronto' });
     const sent: Array<{ to: string; body: string }> = [];
     await runEveningCheckInSweep(db.database, prodDeps(sent), TORONTO_EVENING);
@@ -283,20 +283,22 @@ describe('who the sweep actually selects, and what it may call their children', 
     );
     expect(again.skipped.asked_today).toBe(1);
 
-    // 2. with that row gone — a prefs write that never landed — the real frequency cap.
+    // 2. with that row gone, the ledger dedupe key. A count of earlier texts is not a stop.
     await db.database
       .delete(schema.familyCheckInPrefs)
       .where(eq(schema.familyCheckInPrefs.familyId, familyId));
-    const capped = await runEveningCheckInSweep(
+    const counted = await runEveningCheckInSweep(
       db.database,
       prodDeps(sent, { realCap: true }),
       tenMinutesOn,
     );
-    expect(capped.held.frequency_cap).toBe(1);
+    expect(counted.duplicate).toBe(1);
+    expect(counted.held.frequency_cap).toBe(0);
 
-    // 3. and with the cap blinded too, the dedupe key on the ledger row itself.
+    // 3. the same ledger stop when the count reader is forced to zero.
     const deduped = await runEveningCheckInSweep(db.database, prodDeps(sent), tenMinutesOn);
     expect(deduped.duplicate).toBe(1);
+    expect(deduped.held.frequency_cap).toBe(0);
 
     expect(sent).toHaveLength(1);
   });
@@ -665,10 +667,8 @@ describe('the evening anchor and the composed follow-up, in one tick', () => {
       TORONTO_EVENING,
     );
 
-    // BOTH ON THEIR REAL FREQUENCY CAPS, which is the half of this that only a database
-    // can answer: the two lanes count under different `channel_messages` categories, so
-    // the follow-up that just went out must not spend the evening question's budget. A
-    // stubbed counter here would pass whatever the categories said.
+    // The two lanes write different `channel_messages` categories. Neither is held
+    // because the other already sent.
     const checkInSent: Array<{ to: string; body: string }> = [];
     const checkIn = await runEveningCheckInSweep(
       db.database,

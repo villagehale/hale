@@ -254,7 +254,10 @@ async function sendOne(
     legacy: deps.transport,
   });
   if (delivered.status === 'held') {
-    console.warn({ familyId: commitment.familyId }, 'coach plan check-in: group cap reached');
+    console.warn(
+      { familyId: commitment.familyId, reason: delivered.reason },
+      'coach plan check-in: held',
+    );
     return;
   }
   if (delivered.status === 'skipped') {
