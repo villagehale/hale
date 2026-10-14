@@ -13,8 +13,8 @@ import {
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { yearOpenEmptyMessage } from '~/lib/channel/intake/year-open';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -125,6 +125,7 @@ async function runIntakeRadar(): Promise<Intake> {
     discoveryTrigger: () => {},
     ackComposer: createIntakeAckComposer(null),
     answerComposer: fakeSilentAnswerComposer,
+    friendVoice: scriptedFriendVoice,
     openQuestions: fakeNoOpenQuestions,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
@@ -139,7 +140,9 @@ async function runIntakeRadar(): Promise<Intake> {
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
   // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
   // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
-  const radarBody = transport.bodies().find((b) => b === yearOpenEmptyMessage('en')) as string;
+  // Every body the first turns sent: the reply is model-written, so the check is
+  // that no first message carries the checkpoint, whatever its words.
+  const radarBody = transport.bodies().join('\n');
 
   const childId = fake.rows(schema.children)[0]?.id as string;
   return { fake, transport, familyId, childId, radarBody };
@@ -340,7 +343,6 @@ describe('the radar never tells a checkpoint (pre-consent — ads-week audit, 20
     // construction — so the health-admin line may not ride it (intake/radar.ts). This
     // geo-empty family gets the honest empty-handed answer with the first-find promise.
     expect(told.intake.radarBody).not.toContain(taskOf(CHECKPOINT_ID));
-    expect(told.intake.radarBody).toBe(yearOpenEmptyMessage('en'));
   });
 
   it('writes no told-marker, so the checkpoint stays live for the post-consent surface', () => {

@@ -47,12 +47,20 @@ export function scriptedTurn(input: FriendVoiceInput): {
   if (postal?.[1]) {
     capture.postalCode = (postal[2] ? `${postal[1]} ${postal[2]}` : postal[1]).toUpperCase();
   }
-  const named = [...words.matchAll(/\b([A-Z][a-z]+)\s+is\s+(\d{1,2})\b/g)];
+  const months = [...words.matchAll(/\b([A-Z][a-z]+)\s+is\s+(\d{1,3})\s+months\b/g)];
+  const named = [...words.matchAll(/\b([A-Z][a-z]+)\s+is\s+(\d{1,2})\b(?!\s+months)/g)];
   if (named.length > 0) {
     capture.children = named.map((match) => ({
       name: match[1] ?? null,
       ageMonths: Number(match[2]) * 12,
       agePrecision: 'years' as const,
+    }));
+  }
+  if (months.length > 0) {
+    capture.children = months.map((match) => ({
+      name: match[1] ?? null,
+      ageMonths: Number(match[2]),
+      agePrecision: 'months' as const,
     }));
   }
   const bareNames = words.match(/^([A-Z][a-z]+)(?:\s+and\s+([A-Z][a-z]+))?$/);

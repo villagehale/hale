@@ -23,6 +23,7 @@ import {
   fakeSilentAnswerComposer,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ChannelCoachRuntime } from '~/lib/channel/router/coach-runtime';
 import { founderWelcomeHandler } from '~/lib/channel/router/handlers';
@@ -144,6 +145,7 @@ describe("the founder's welcome note", () => {
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),
       seedCivic: async () => 0,
       resolveCenter: async () => null,
@@ -473,7 +475,7 @@ describe("the founder's welcome note", () => {
       role: 'assistant',
       content: founderNote('Georgetown'),
     });
-    expect(familyTurns.at(0)?.content).toBe('RADAR');
+    expect(familyTurns.at(0)?.content).toEqual(expect.any(String)); // model-written
     expect(familyTurns.at(0)?.content).not.toContain('Want me to keep an eye');
     // And the founder's thread has his ping and his ack, and no trace of the note's
     // recipient (rule #1).
