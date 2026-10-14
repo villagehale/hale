@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in French and makes a real pick (oui), backed by the sweet-salty reason. It states no facts that could be wrong and has no safety angle. It reads like a friend, though slightly measured and stiff ('à mes yeux', the 'tu n'es pas obligé' hedge) rather than punchy and casual.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "No facts are stated, and asking for the country is the right move for a missing detail. But the opener 'Happy to help.' and the stack of three clarifying questions (country, men's or women's, which year) read like an assistant running intake, not a friend texting back. Only the country was needed. That service tone caps it below 4.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

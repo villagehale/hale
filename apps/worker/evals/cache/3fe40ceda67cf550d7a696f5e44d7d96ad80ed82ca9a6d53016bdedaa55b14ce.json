@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes for Denver, CO, on Tuesday: partly sunny, a high of 65 (other forecasts 64–67), NNE winds of 6–10 mph gusting to 17, a 30% rain chance after 3 pm rising to 35% by 11 PM, and overnight lows in the 30s to low 40s. It answers directly without asking for a city. It reads more like a forecast readout than a casual friend's text, with a lot of figures crammed in, but it is still a direct answer rather than a deflect or a service offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

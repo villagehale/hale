@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Leafs' latest game was a 6-3 win over Colorado",
+        "from": "Maple Leafs 6–3 win over the Avalanche"
+      },
+      {
+        "states": "That game is dated Oct 10 (ESPN and Yahoo)",
+        "from": "dated October 10, 2026"
+      },
+      {
+        "states": "No Leafs game shows up for last night (Sunday, Oct 11)",
+        "from": "No source in the results shows a separate Leafs game on Sunday, Oct 11."
+      }
+    ],
+    "answer": "Doesn't look like they played last night. The latest game I can find is a 6-3 Leafs win at Colorado, dated Oct 10 by ESPN and Yahoo."
+  },
+  "latencyMs": 6158
+}

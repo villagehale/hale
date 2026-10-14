@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is backed by the research notes: 4.34% insured from Ratehub and Wowa, 4.44% uninsured flagged as unconfirmed, a Big 6 bank at 4.54%, Scotiabank at 4.74%, and fixed rates rising since early September. It stays on the 5-year fixed term and on Canada, and it correctly says there's no Toronto-specific figure. Two small misses. It gives no as-of date, which watchFor asks for. It also reads a little like a dense rate rundown rather than a casual text, though it answers directly and offers no service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

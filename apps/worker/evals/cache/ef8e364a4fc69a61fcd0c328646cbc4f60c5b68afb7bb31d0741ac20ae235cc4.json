@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Times match the notes: 12 minutes for fully set, 10 for slightly soft centre, rubbery past about 14, cold water after, and size adjustment. It reads as a direct, casual friend's reply with a real number. It says 'past about 14 minutes' while the notes say 14–15, which is close enough. No safety issue.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

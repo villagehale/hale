@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto, Ontario: the free Ontario Structured Psychotherapy program offers CBT for depression and anxiety-related concerns to adults",
+        "from": "Research notes for Toronto, Ontario, Canada... The Ontario Structured Psychotherapy Program (OSP) gives adults free, publicly funded cognitive-behavioural therapy for depression and anxiety-related concerns."
+      },
+      {
+        "states": "No Ontario health card is needed and self-referrals are accepted",
+        "from": "No Ontario health card or primary care provider is needed, and self-referrals are accepted."
+      },
+      {
+        "states": "Find the local network and fill out the referral form at ontariohealth.ca/osp",
+        "from": "find the local network at ontariohealth.ca/osp and fill out the referral form."
+      },
+      {
+        "states": "It is not suitable for everyone and does not cover relationship or family counselling",
+        "from": "It is not suitable for everyone, such as people with complex needs or conditions it doesn't treat. One OSP site lists what it does not cover: DBT, crisis or housing support, substance use counselling, relationship or family counselling, and unstructured talk therapy."
+      },
+      {
+        "states": "Centre for Training in Psychotherapy: about $45 per session with a supervised student therapist, from an older list that may be out of date",
+        "from": "Centre for Training in Psychotherapy: $45 per session with a supervised student therapist. ... These fees and waits are old and may have changed."
+      },
+      {
+        "states": "If it becomes urgent, go to the nearest emergency room or call local emergency services",
+        "from": "settled"
+      }
+    ],
+    "answer": "That's a good step to take, and I'm glad you're reaching out. In Toronto, the free Ontario Structured Psychotherapy program gives CBT for depression and anxiety, and you don't need a health card to self-refer. Find your local network and the referral form at ontariohealth.ca/osp. It isn't a fit for everyone, and it doesn't cover relationship counselling. If you'd rather pay a little, the Centre for Training in Psychotherapy listed about $45 a session with a supervised student therapist, though that price is from an older list and may have changed. If things ever get urgent, don't wait: call your local emergency number or go to the nearest emergency room."
+  },
+  "latencyMs": 8823
+}

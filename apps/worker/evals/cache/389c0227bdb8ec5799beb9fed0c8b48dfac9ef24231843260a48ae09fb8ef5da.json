@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday, Denver: partly sunny skies",
+        "from": "The National Weather Service in Boulder said to expect partly sunny skies Tuesday"
+      },
+      {
+        "states": "Tuesday daytime high about 65 degrees",
+        "from": "The high is expected to reach 65 degrees"
+      },
+      {
+        "states": "Other forecast highs range from 64 to 67 degrees",
+        "from": "Weather Underground has a high of 64°F, partly cloudy. AccuWeather has a high of 67°. 9NEWS has a high of 64."
+      },
+      {
+        "states": "North-northeast winds of 6 to 10 mph, gusts up to 17 mph in the afternoon",
+        "from": "North-northeast winds of 6 to 10 mph are expected, becoming east to northeast in the afternoon with gusts up to 17 mph."
+      },
+      {
+        "states": "30% chance of rain after 3 p.m. Tuesday",
+        "from": "The weather service gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "Rain chance rising to about 35% by 11 PM Tuesday",
+        "from": "35% at 11 PM"
+      },
+      {
+        "states": "Tuesday night lows in the 30s to low 40s, with rain at times",
+        "from": "Lows are expected in the low 40s and 30s on Tuesday night, with increasing clouds and rain."
+      }
+    ],
+    "answer": "Tomorrow in Denver: partly sunny, high around 65 (other forecasts run 64 to 67). Winds north-northeast at 6 to 10 mph, gusting to 17 in the afternoon. Rain may move in after 3 pm, about a 30% chance, rising to around 35% by 11 PM. Overnight lows in the 30s to low 40s, with rain at times."
+  },
+  "latencyMs": 6530
+}

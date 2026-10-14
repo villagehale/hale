@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick (Sienna) with a reason, and every claim is supported by the notes: hybrid-only, 36 mpg best in class, Edmunds #1, KBB calling it top-rated, U.S. News picking the Odyssey, and the newest review picking the Carnival Hybrid. KBB's pages were inconsistent, but saying KBB has the Sienna at the top is still backed by one of them. The tone is mostly friendly, though citing several sources and the closing 'This is for the US market' read a little like a report rather than a quick text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

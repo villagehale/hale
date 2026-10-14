@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: today has a mix of sun and cloud with a high of 23 and no daytime rain, so a 3pm pickup should be dry. Tonight has a 60% chance of showers with a thunderstorm risk, and Tuesday's 60% is from the Oct 12 page, with the timing disagreement flagged honestly. It answers the pickup question directly, says nothing about the school or family, and reads as a casual text. The Tuesday caveat is slightly report-like but fine.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

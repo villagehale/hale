@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "A dark, quiet room can help babies sleep.",
+        "from": "Mayo Clinic: A dark, quiet room can help babies sleep."
+      },
+      {
+        "states": "Put babies to bed drowsy but awake.",
+        "from": "It also says to put babies to bed drowsy but awake, since they sleep best when drowsy."
+      },
+      {
+        "states": "Naps at the same time each day and for about the same length of time help.",
+        "from": "Babies get the most out of naps if they take them at the same time each day and for about the same length of time."
+      },
+      {
+        "states": "A consistent daily routine helps.",
+        "from": "A consistent daily routine helps."
+      },
+      {
+        "states": "A toddler should nap in his own bed or crib.",
+        "from": "It adds that a toddler at home should nap in his own bed or crib."
+      },
+      {
+        "states": "No blankets, stuffed toys or other soft items in the crib or bassinet.",
+        "from": "Put babies to sleep on their backs, with no blankets, stuffed toys or other soft items in the crib or bassinet."
+      }
+    ],
+    "answer": "Depends how old he is. If he's a baby or toddler: keep the room dark and quiet, put him down drowsy but awake, and keep naps at the same time and about the same length each day. Use the same routine every time, and have a toddler nap in his own bed or crib. For a baby, keep blankets and toys out of the crib. How old is he?"
+  },
+  "latencyMs": 5775
+}

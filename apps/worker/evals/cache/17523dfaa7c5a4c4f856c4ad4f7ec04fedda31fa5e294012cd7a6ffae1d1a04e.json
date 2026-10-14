@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Both formulas are third-party tested and NSF Certified for Sport",
+        "from": "Both formulas are third-party tested and NSF Certified for Sport, with certificates published publicly."
+      },
+      {
+        "states": "Taste is decent for most people",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "Several ingredient doses are underdosed",
+        "from": "It also flagged key ingredient amounts hidden in proprietary blends and several underdosed ingredients."
+      },
+      {
+        "states": "Dietitian calls the science far weaker than marketing suggests",
+        "from": "She wrote that IM8 is clever marketing wrapped around science that is far weaker than consumers are led to believe."
+      },
+      {
+        "states": "No independent clinical evidence for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "About $89 a month on subscription and about $112 for a one-time 30-serving box",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription"
+      },
+      {
+        "states": "Reishi and grape seed can interact with blood thinners and blood pressure medication",
+        "from": "It also noted reishi and grape seed can interact with blood thinners and blood pressure medication."
+      }
+    ],
+    "answer": "Mostly overrated, for the price. It's well made: third-party tested, NSF Certified for Sport, and most people find it tastes fine. But several doses are light, the dietitians who've looked at it are harsh, and I couldn't find independent clinical evidence for what it claims. At around $89 to $112 a month, I'd only bother if it's replacing four or five separate supplements you already buy. If you take blood thinners or blood pressure meds, check with a pharmacist first, since reishi and grape seed can interact with them."
+  },
+  "latencyMs": 7770
+}

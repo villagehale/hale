@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Paris is settled common knowledge, not a current fact, so having no live search doesn't matter. The reply is brief, casual, in French, and it is the answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

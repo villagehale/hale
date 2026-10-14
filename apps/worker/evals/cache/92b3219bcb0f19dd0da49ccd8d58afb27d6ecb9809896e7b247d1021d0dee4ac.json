@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No Leafs game found on Sunday, Oct 11, so no game last night",
+        "from": "No source in the results shows a separate Leafs game on Sunday, Oct 11."
+      },
+      {
+        "states": "Last game: Maple Leafs 6–3 win over the Avalanche at Colorado, Oct 10",
+        "from": "ESPN's box score lists it as a Maple Leafs 6–3 win over the Avalanche, dated October 10, 2026."
+      },
+      {
+        "states": "Oct 10 date confirmed by ESPN and Yahoo; NHL.com clips dated Oct 11",
+        "from": "Yahoo Sports' October schedule also shows a win at Colorado, 6–3, on Oct 10. The NHL.com Leafs highlight clips for the Colorado game are dated Oct 11, 2026"
+      }
+    ],
+    "answer": "Not last night, as far as I can find. No Leafs game shows up for Sunday. Their last game was a 6-3 win at Colorado on Oct 10. One site dates the highlight clips Oct 11, but the score is the same either way."
+  },
+  "latencyMs": 5791
+}

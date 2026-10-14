@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "A real pick (Messi) with a reason, casual tone, in English. The only specific stated is the 2022 World Cup win, which is settled history and not a running count. 'Best player on the pitch for years' is opinion, not a record. No counts or titles that could have grown are stated. It answers as a friend would, without deflecting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}
