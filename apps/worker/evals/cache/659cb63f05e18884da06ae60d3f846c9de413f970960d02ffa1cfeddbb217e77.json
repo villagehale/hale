@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are accurate. Both preschool levels are cited to the operator page, with days, times and dates exactly as printed. Price is correctly null because the page prints no fee, and both slots carry the registration window, which is not yet open. There is no invented third slot. The message leads with Preschool A by name and attributes it with 'their site says'. It carries the Aug 11 7am registration date. The price gap is framed in the first person ('I could not pin down'), which is correct for page_has_schedule. The first-person watch promise is properly backed by watch=true. There is no question and no link, and it fits in two segments. Deductions: it runs three sentences rather than one or two short ones. The attribution sits awkwardly mid-sentence. The registration fact is stated flatly rather than attributed.",
+    "score": 4
+  }
+}

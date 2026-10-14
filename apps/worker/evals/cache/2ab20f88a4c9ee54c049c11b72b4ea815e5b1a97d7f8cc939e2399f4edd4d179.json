@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The Vancouver, BC forecast matches the notes: mix of sun and cloud, high 15°C, showers Tuesday night, low 11°C. The reply claims it couldn't get a forecast for Vancouver, WA, but the notes do carry one (NWS: mostly sunny, high near 64, plus a frost advisory). So the answer misleadingly drops half of an ambiguous question the notes could answer. That is a gap and a soft non-answer rather than a wrong fact about the weather. The tone is casual and text-like enough.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

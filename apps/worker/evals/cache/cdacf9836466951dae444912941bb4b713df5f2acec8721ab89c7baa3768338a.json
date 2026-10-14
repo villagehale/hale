@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful to what was read: Tiny Gym and Rock n' Roll ages from programs.php; Term 1 dates (Sept 14-Nov 1, 2026) and times from the schedule PDF, with the flattened grid honestly noted; and the July 22, 2026 8:00am registration from the home page. Each is cited to its source, and no price is invented. The message leads with Tiny Gym by name, attributes the facts ('their site says') and uses the correct first-person gap ('I could not pin down the day... or the price') for page_has_schedule. Its watch line is correct because watch is true, and it asks no question. However, it drops the registration date the slots carried (Term 1/Fall registration Wednesday July 22, 2026, 8am online), which the rubric names as a low-score fault. The slot's added claim that the date 'has already passed' is also unsupported by the page.",
+    "score": 2
+  }
+}

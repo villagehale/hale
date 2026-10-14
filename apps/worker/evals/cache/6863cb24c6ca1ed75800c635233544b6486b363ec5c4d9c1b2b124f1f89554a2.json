@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply correctly says it can't check the forecast and states no weather from memory, so there is no wrong fact. It also doesn't ask for the city, which is right here. But the second line sends the parent to their weather app, which is a look-it-up the rubric marks down. The phrasing ('Sorry… will have the up-to-date answer') reads more like an assistant than a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 3
-  }
-}

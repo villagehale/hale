@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "No country was given, so asking which one is the correct move, and the reply states no rate from memory. It is in English and stays on the 5 year fixed term. The wording is a little assistant-ish (\"tell me and I'll look up\") rather than a quick friend's text, but it is still casual and brief enough.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

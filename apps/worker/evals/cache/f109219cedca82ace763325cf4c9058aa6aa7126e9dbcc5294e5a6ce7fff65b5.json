@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "With live set to missing_detail, the right move is to ask which country the parent is in without stating any current fact, and the reply does exactly that. It states no broadcaster, service or date, so nothing in it is wrong. The tone is a touch formal; the second sentence reads a bit like an explanation, but it's still brief, casual enough and a direct answer. A friend might just text 'which country?' but this works.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

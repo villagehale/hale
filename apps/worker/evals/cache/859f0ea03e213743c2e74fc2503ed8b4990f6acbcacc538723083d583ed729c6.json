@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches research_notes: the Leafs had no game Sunday, beat Colorado 6-3 on Saturday, and play next on Tuesday, Oct 13, at Utah. The grounding is correct and nothing is marked settled that could change. It reads like a casual friend's text, in English, and it answers the question directly.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

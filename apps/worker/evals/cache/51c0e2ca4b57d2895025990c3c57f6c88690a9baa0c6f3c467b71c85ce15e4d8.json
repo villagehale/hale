@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Daily Ultimate Essentials is the main IM8 product",
+        "from": "The results cover the supplement brand co-founded by David Beckham, mainly Daily Ultimate Essentials and the newer Daily Ultimate Longevity."
+      },
+      {
+        "states": "Both formulas are third-party tested and NSF Certified for Sport",
+        "from": "Both formulas are third-party tested and NSF Certified for Sport, with certificates published publicly."
+      },
+      {
+        "states": "Reviewers broadly agree on the convenience",
+        "from": "Reviewers broadly agree on the convenience, the third-party testing and the taste, which most find acceptable."
+      },
+      {
+        "states": "Most reviewers find the taste acceptable",
+        "from": "Reviewers broadly agree on the convenience, the third-party testing and the taste, which most find acceptable."
+      },
+      {
+        "states": "Critics say the doses of several ingredients fall short of effective ranges",
+        "from": "otherwise its ingredient doses fall short of effective ranges"
+      },
+      {
+        "states": "Independent critics say the evidence for its health claims is limited",
+        "from": "Independent critics say the evidence for its health claims is limited."
+      },
+      {
+        "states": "It is very expensive",
+        "from": "very high cost as cons"
+      },
+      {
+        "states": "Worth it only if it replaces several supplements you already buy",
+        "from": "Several reviewers say it's worth it only if it replaces several supplements you already buy."
+      },
+      {
+        "states": "Reishi and grape seed can interact with blood thinners and blood pressure medication",
+        "from": "ingredients like reishi and grape seed can interact with blood thinners and blood pressure medication."
+      }
+    ],
+    "answer": "Going by the main one, Essentials: I'd say overrated for most people. Reviewers agree it's convenient, third-party tested, and most find the taste okay. But critics say many ingredients are dosed too low to matter, the evidence for the health claims is thin, and it's very expensive. It only makes sense if it replaces several supplements you already buy. Reishi and grape seed can interact with blood thinners and blood pressure meds, so check with a doctor or pharmacist if you take either."
+  },
+  "latencyMs": 6337
+}

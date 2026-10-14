@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The single slot matches the programme page exactly: the 12 months to 4 years age band, Tue/Thu 9:30-11:00 a.m., and Sept 8 to Dec 11, cited to the preschool-play URL. Price is correctly null, and neither rental figure ($185 party or $95 room) was borrowed. The page gives no registration date, so a null registration is correct. The message leads with the programme by name and attributes the facts with 'their site says'. Under page_has_schedule it uses the first-person 'I could not pin down the price' rather than claiming nothing is posted. Because watch is true, the first-person 'I'll keep watching and text you' is correctly backed by a real commitment. It is two plain-ASCII sentences with no link and no question.",
-    "score": 5
-  }
-}

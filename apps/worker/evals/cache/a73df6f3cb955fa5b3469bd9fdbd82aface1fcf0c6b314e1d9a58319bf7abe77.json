@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent asked for a poem and got one. It is short and playful, and it reads like a friend texting a poem back. There are no facts to check and no specifics, so nothing is invented. The rhyme and meter are a bit uneven in the first half, and 'the day stays still' sits oddly next to 'the week just stretches on and on'. That is minor. It answers the ask in the right language with no assistant framing.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

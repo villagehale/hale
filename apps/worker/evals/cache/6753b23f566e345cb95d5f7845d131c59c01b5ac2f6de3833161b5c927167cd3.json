@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are accurate. Both Preschool A and B are real on the page, with day, times and Sept 12 to Nov 28 dates exactly as printed. Price is correctly null because the page defers fees to the Recreation Guide. Registration (Aug 11, 7am, residents) is carried, and both slots are cited to the page. There is no invented third level and no borrowed fee.\n\nThe message is mostly right. It leads with Preschool A by name, attributes with 'their site says' and carries the not-yet-open registration date. It has no question and no link. With watch=true, the first-person 'I'll keep watching and text you' is a legitimate commitment. With page_has_schedule, the first-person 'I could not pin down the price' is the correct form rather than 'not posted'.\n\nDeductions: the message runs three sentences against a one-or-two short sentence spec. The attribution sits mid-sentence and does not clearly cover the registration facts.",
+    "score": 4
+  }
+}

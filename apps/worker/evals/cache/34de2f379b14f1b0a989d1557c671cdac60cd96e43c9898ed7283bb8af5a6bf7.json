@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Message is null, so only the slots are scored. Both fetches were refused, and the single slot is grounded in the search snippet: the name is Parent & Tot at Gellert, the age band of 4 months to 3 years fits a toddler, and the ageFit note discloses that it came from a snippet. When, price and registration are correctly null, with nothing invented and no claim that the schedule is unposted. The slot does cite a sourceUrl that was not accessible. That URL is attribution to the operator's site, which is acceptable, and the slot does not claim the page was read. No pages_read field appears. This is the right answer for a refused fetch.",
-    "score": 5
-  }
-}

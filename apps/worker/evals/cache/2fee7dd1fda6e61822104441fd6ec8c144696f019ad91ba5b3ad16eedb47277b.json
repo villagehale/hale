@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is null, so only the slots are scored. Both fetches were refused, and the slot is correctly grounded in the search snippet: the program name, venue and the 4 months to 3 years band all come from the snippet, and the age fit is flagged '(from search snippet)'. The when, price and registration fields are null rather than invented, and there is no claim that the schedule is not posted. The sourceUrl points at the Town page the snippet came from, which is fair attribution to the operator. The slot does not claim the page was read; no pages_read field is present to check. This matches the watchFor's stated right answer: a snippet-grounded slot with null when and price.",
+    "score": 5
+  }
+}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure is backed by the research notes: 4.34% insured from Frank Mortgage, 4.44% uninsured, a 5.14% Big 6 average, and rates climbing in October. It answers directly and splits insured from uninsured, which the notes call for. It's a bit long and the 'get a quote' close leans helpful-assistant, but it still reads like a well-informed friend texting back. It doesn't say which day the rates are from beyond 'right now'.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

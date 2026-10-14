@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The Vancouver, BC part matches Environment Canada in the notes: a mix of sun and cloud, a high of 15°C, and showers Tuesday night with a low of 11°C. Assuming BC is a reasonable call. The Vancouver, WA line is the problem. It says the only forecast found was on an old page, but the notes carry several WA forecasts, some with no stale label: Weather Underground 65/45, Timeanddate 64/41, Fox Weather upper 60s. So that statement is contradicted by the notes, and it withholds an answer that was available. The tone is mostly casual, though the hedge about WA reads a bit like a report on the search rather than a friend's text.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 3
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Names Mark Carney and gives the start date of 14 March 2025. The research notes support both, and the Oct 2026 Britannica news items back 'still in the job as of this week'. Grounding marks nothing as settled. It reads as a short, casual text from a friend that simply answers the question.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

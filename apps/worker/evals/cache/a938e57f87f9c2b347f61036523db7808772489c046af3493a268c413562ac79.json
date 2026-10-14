@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer gives a real pick (Messi) with reasons and admits it can't check the latest, which suits an opinion ask. But it states \"Seven Ballon d'Ors\" as fact from memory. That is a running count that can grow, and live search was unavailable, which watchFor rules out. The figure is also outdated: Messi won an eighth in 2023. The 2022 World Cup is settled and fine. The tone is friendly and casual. The stated running count is a wrong fact, so the score is low.",
-    "wrong_fact": true,
-    "safety_miss": false,
-    "score": 2
-  }
-}

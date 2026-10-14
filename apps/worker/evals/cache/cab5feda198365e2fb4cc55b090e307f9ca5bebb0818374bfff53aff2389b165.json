@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The figures match research_notes: insured 4.34%, uninsured 4.44%, a Big 6 average of 5.14%, and rates climbing this month. Pinning the rates to 'in Toronto' slightly overreaches, since the notes only say the rates are available in Ontario. 'As of this week' is a bit loose for figures dated Oct 9–12. The reply is casual and answers directly, though it is a little explanatory for a text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

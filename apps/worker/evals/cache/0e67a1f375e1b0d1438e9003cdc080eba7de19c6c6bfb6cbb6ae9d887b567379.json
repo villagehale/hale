@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi won the 2022 World Cup",
+        "from": "settled"
+      },
+      {
+        "states": "Pelé and Maradona are the other names usually raised in the GOAT debate",
+        "from": "settled"
+      }
+    ],
+    "answer": "Messi, for me. He won the World Cup in 2022 and was the best player of his generation for years. Pelé and Maradona are the names people always bring up, but I'd still go with Messi."
+  },
+  "latencyMs": 4063
+}

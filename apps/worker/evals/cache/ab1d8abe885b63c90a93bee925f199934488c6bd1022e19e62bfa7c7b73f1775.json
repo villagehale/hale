@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches research_notes: dry and mainly cloudy during the day with a high of 23°C, a 20% chance at 6–7pm, and showers starting overnight into Tuesday. It answers the 3pm pickup question directly ('mostly no'), adds nothing about the family, and reads like a casual text back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

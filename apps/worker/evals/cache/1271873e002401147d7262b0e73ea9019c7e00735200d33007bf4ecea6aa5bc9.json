@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Private-practice therapy isn't covered by OHIP",
+        "from": "Private-practice therapy isn't covered by OHIP."
+      },
+      {
+        "states": "Private therapists are often covered by extended health plans through an employer",
+        "from": "Private therapists often are covered by extended health plans through an employer."
+      },
+      {
+        "states": "An employer's Employee Assistance Program may include some free sessions per year",
+        "from": "An employer's Employee Assistance Program may include some free sessions per year."
+      },
+      {
+        "states": "Ontario Structured Psychotherapy offers free, short-term CBT for adults with depression and anxiety",
+        "from": "The Ontario Structured Psychotherapy program offers free, short-term cognitive behavioural therapy for adults with depression and anxiety."
+      },
+      {
+        "states": "Family Service Toronto has sliding-scale fees based on income",
+        "from": "Family Service Toronto offers counselling for individuals, couples and families. It has sliding-scale fees based on income and several locations."
+      },
+      {
+        "states": "BounceBack Ontario is a free guided self-help program for people 15 and up with mild-to-moderate anxiety or depression",
+        "from": "BounceBack Ontario is a free, guided self-help program for people 15 and up with mild-to-moderate anxiety or depression."
+      },
+      {
+        "states": "Psychotherapy Referral Service connects people to registered psychotherapists in Toronto",
+        "from": "Psychotherapy Referral Service is a not-for-profit that has connected people to registered psychotherapists in Toronto, the GTA and the rest of Ontario since 1995."
+      },
+      {
+        "states": "First Session is a directory that lists Toronto therapists and offers free consultations",
+        "from": "First Session offers free consultations."
+      },
+      {
+        "states": "ConnexOntario is free, reachable 24 hours a day at 1-866-531-2600",
+        "from": "ConnexOntario gives free information and referrals for mental health, addiction and gambling services. It's reachable 24 hours a day by phone at 1-866-531-2600 or by web chat."
+      }
+    ],
+    "answer": "Sorry you're looking for that, it's a big step. Quick version: if you have an extended health plan through work, private therapists are often covered, and your employer's EAP may include a few free sessions a year. Private therapy isn't covered by OHIP, though. Free or low-cost options in Toronto: Ontario Structured Psychotherapy (free short-term CBT if you're dealing with depression or anxiety), Family Service Toronto (fees based on income), and BounceBack Ontario if you're 15 or older and want guided self-help. Psychotherapy Referral Service can match you with a registered psychotherapist, and First Session offers free consultations. If things get urgent, ConnexOntario is free and open 24 hours at 1-866-531-2600, and they can point you to the right service."
+  },
+  "latencyMs": 10627
+}

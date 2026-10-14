@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Psychotherapy Referral Service is a not-for-profit that connects people to registered psychotherapists in Toronto",
+        "from": "Psychotherapy Referral Service is a not-for-profit that has connected people to registered psychotherapists in Toronto, the GTA and the rest of Ontario since 1995."
+      },
+      {
+        "states": "You can contact a therapist directly from the service's profiles",
+        "from": "You can contact a therapist from its profiles directly."
+      },
+      {
+        "states": "Employer Employee Assistance Program may include some free sessions per year",
+        "from": "An employer's Employee Assistance Program may include some free sessions per year."
+      },
+      {
+        "states": "Private therapists are often covered by extended health plans through an employer",
+        "from": "Private therapists often are covered by extended health plans through an employer."
+      },
+      {
+        "states": "Ontario Structured Psychotherapy program offers free short-term CBT for adults with depression and anxiety",
+        "from": "The Ontario Structured Psychotherapy program offers free, short-term cognitive behavioural therapy for adults with depression and anxiety."
+      },
+      {
+        "states": "Family Service Toronto has sliding-scale fees based on income",
+        "from": "Family Service Toronto offers counselling for individuals, couples and families. It has sliding-scale fees based on income and several locations."
+      },
+      {
+        "states": "ConnexOntario is open 24 hours a day by phone at 1-866-531-2600",
+        "from": "ConnexOntario gives free information and referrals for mental health, addiction and gambling services. It's reachable 24 hours a day by phone at 1-866-531-2600 or by web chat."
+      },
+      {
+        "states": "Distress Centres of Greater Toronto offers free 24/7 support by hotline, online chat and text",
+        "from": "Distress Centres of Greater Toronto offer free 24/7 support for people in crisis or emotional distress by hotline, online chat and text."
+      }
+    ],
+    "answer": "Sorry you're going through something hard enough to need a therapist. In Toronto, Psychotherapy Referral Service is a not-for-profit that connects people with registered psychotherapists, and you can contact them from their profiles. If your work has an Employee Assistance Program, it may cover a few free sessions a year, and private therapy is often covered by an extended health plan through an employer. For free or low-cost options, the Ontario Structured Psychotherapy program offers free short-term CBT for adults with depression or anxiety, and Family Service Toronto has sliding-scale fees based on income. If it gets urgent, ConnexOntario is open 24 hours at 1-866-531-2600, and Distress Centres of Greater Toronto offers free 24/7 support by hotline, chat or text."
+  },
+  "latencyMs": 11013
+}

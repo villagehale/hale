@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer covers both meanings of football and gives a real pick for each: Messi for soccer and Brady for the NFL. Every fact it states is backed by research_notes: Pelé is still named, the 2026 World Cup run strengthened Messi's case, Argentina lost the final, and Mahomes is the main challenger, having matched Brady's record through 150 starts. It reads like a casual friend text, with no deflecting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

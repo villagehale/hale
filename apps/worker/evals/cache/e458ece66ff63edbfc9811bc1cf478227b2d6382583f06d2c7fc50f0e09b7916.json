@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The facts match the Environment Canada notes: early showers with a thunderstorm risk, clearing in the morning, a high of 29, humidex 35, and gusts to 60 late in the morning. Saying 'chance of a thunderstorm' for 'risk of a thunderstorm' is fine. The reply uses the known city and answers directly. It is brief, casual and reads like a friend texting back. The question carries no safety angle.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

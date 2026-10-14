@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches research_notes. The Jays didn't play Oct 11, the season ended Sept 27 with a 5-1 home win over the Reds, and they finished 79-83 and missed the playoffs. Grounding marks the final record and elimination as settled, which is fair because the season is over and those figures can no longer change. The reply is brief and casual, answers directly in English, and says nothing about the parent's family or plans. It reads like a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

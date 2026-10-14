@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Lima is correct. The extra details, that it's on the coast and is the largest city, are common knowledge. The reply is brief and casual, sounds like a friend, and doesn't bring up the pending weather question.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

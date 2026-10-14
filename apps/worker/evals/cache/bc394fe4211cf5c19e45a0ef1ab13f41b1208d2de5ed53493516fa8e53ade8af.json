@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is null, so only the slot is scored. The single slot is grounded in the search snippet: Parent & Tot swimming lessons at Gellert Community Centre for 4 months to 3 years, which fits a toddler. The age fit is marked as coming from the snippet. When, price and registration are correctly null because no figures appeared and neither page opened. Nothing is invented and nothing claims the schedule is not posted. The one blemish is that sourceUrl points to the Gellert page, whose fetch failed. The attribution is to the Town's own site, which is acceptable for a snippet, but it could read as if the page had been opened. No pages_read field is present to check. Overall, near-correct.",
+    "score": 4
+  }
+}

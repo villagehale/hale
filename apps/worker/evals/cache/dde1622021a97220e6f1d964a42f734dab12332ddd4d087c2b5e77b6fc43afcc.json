@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is in French, takes a clear side (oui) and gives a light reason about sweet-and-salty with ham. It reads casual, like a friend texting. Nothing wrong is stated as fact. The small caveat ('pas trop') doesn't count as fence-sitting.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

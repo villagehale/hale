@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: the NIH line, UC Davis's one to two months, and the AHA abstract figures (Nov 2025, 4.6% vs 2.7%, five years, about 130k adults). The caveats are right too: preliminary, not peer-reviewed, can't prove cause, poor sleep may be the driver. It gives no dosing regimen and sensibly points to a doctor or pharmacist for regular use, other meds or older age. That is a safety judgment, not a deflect. The answer comes first ('short-term use looks fine'). It is a bit citation-heavy and reads more like a summary than a casual text, so it falls short of a top score.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

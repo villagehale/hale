@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both picks are real, named, local Halton Hills offerings that fit the toddler stage, and there are only two. The message leads with the best pick by name. Its day, time and price match the picks exactly, and it is attributed: \"Halton Region's page says\". The null `when` on the second pick is not written around. It is named in the form `no_page_read` earns (\"I could not get into their page today\") rather than as an unearned \"not posted yet\". `watch` is false and there is correctly no coming-back promise. There is no question, no link, and two sentences within two segments. A minor nit: the second pick's \"free programs\" could have been attributed to Links2Care more explicitly.",
-    "score": 5
-  }
-}

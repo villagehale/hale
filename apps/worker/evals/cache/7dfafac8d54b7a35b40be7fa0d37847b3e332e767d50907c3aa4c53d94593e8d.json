@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message answers about the venue the parent named, Cartwheels Gym Centre, and its Tiny Gym class. Dropping the second gym, which is a different venue, was correct rather than a substitution. Every fact in the message (ages 1 to 3 with a parent, 45 minutes, fall registration opened July 22 at 8am online) comes from the pick. It credits the facts with 'their site says'. Under no_page_read it names the gap correctly as 'I could not get into their page today' and invents no day or price. With watch true, the first-person 'I'll keep watching and text you' is correct. It is two plain sentences with no link and no question.",
-    "score": 5
-  }
-}

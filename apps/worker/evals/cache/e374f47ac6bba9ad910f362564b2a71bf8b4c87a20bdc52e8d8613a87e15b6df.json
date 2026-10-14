@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer is in Chinese and makes a real pick, Messi, with a reason, then fairly notes Maradona and Pelé. Every specific is backed by research_notes: the full set of national-team titles, IFFHS 2025 ranking him first, and the Sports Illustrated top-55 list ranking him first. Calling IFFHS '国际足联…' is a common Chinese media rendering, not an invented fact. It reads like a friend's take, not an assistant's.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

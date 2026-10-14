@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Denver, Tuesday October 13: partly sunny skies",
+        "from": "The Denver Gazette (NWS Boulder forecast) says partly sunny skies Tuesday"
+      },
+      {
+        "states": "Denver, Tuesday high of 65°F (NWS), about 15 degrees cooler than Monday's 80",
+        "from": "The NWS forecast high is 65°F. That is roughly 15 degrees cooler than Monday's high of 80."
+      },
+      {
+        "states": "Denver, Tuesday: rain and showers possibly moving in Tuesday evening",
+        "from": "rain and showers possibly moving in Tuesday evening"
+      },
+      {
+        "states": "Denver, Tuesday: 30% chance of rain after 3 p.m. (NWS), rising into the evening",
+        "from": "NWS gives a 30% chance of rain after 3 p.m. The chances increase into the evening."
+      },
+      {
+        "states": "Denver, Tuesday night: lows in the low 40s and 30s",
+        "from": "Lows are expected in the low 40s and 30s Tuesday night (NWS via Denver Gazette)"
+      },
+      {
+        "states": "Denver, Tuesday: north-northeast winds 6 to 10 mph, turning east to northeast in the afternoon, gusts up to 17 mph",
+        "from": "North-northeast winds of 6 to 10 mph, turning east to northeast in the afternoon with gusts up to 17 mph."
+      }
+    ],
+    "answer": "Tomorrow in Denver is cooler: partly sunny, high around 65°F, about 15 degrees below Monday's 80. Rain or showers may move in Tuesday evening, with about a 30% chance after 3 p.m. Overnight lows drop into the 40s and 30s, and winds are around 6 to 10 mph, gusting to about 17 mph."
+  },
+  "latencyMs": 6442
+}

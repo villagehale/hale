@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer handles the ambiguity briefly and gives a real pick for each sport: Messi for soccer, Brady for American football. Every stated fact is backed by research_notes: Messi's 8 Ballons d'Or to Ronaldo's 5, coverage leaning toward Messi, Brady's 7 Super Bowl wins, and Mahomes as the main challenger. Grounding does not mark any running count as settled. It reads like a friend texting back, in English.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

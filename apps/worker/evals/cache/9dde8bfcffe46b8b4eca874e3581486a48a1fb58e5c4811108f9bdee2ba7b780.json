@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct: Paris is the capital of France, which is settled common knowledge. It is in French, the language the question was asked in, and it reads as a brief, casual friend's text that simply gives the answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

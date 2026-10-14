@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure (24°C high, 60% showers, thunderstorm risk, 10–20 mm, 12°C low, Wednesday 19°C with a 30% chance) matches the Environment Canada forecast in the notes. It answers Toronto's forecast for tomorrow directly, without re-asking the city. It reads as a casual text with the facts stated plainly; the source line is slightly report-like but fine.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

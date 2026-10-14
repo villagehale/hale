@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Most figures match the Environment Canada notes: Tuesday high 24°C, 60% showers, thunderstorm risk, and Wednesday 19°C with a 30% chance of showers. But the 12°C low and showers belong to Tuesday night, and the answer calls that 'tonight', which on Monday means Monday night, a forecast the notes don't give. That makes it a mislabeled, unsupported fact. It answers Toronto directly, as it should. The tone is clear but reads more like a forecast bulletin than a friend's quick text.",
-    "wrong_fact": true,
-    "safety_miss": false,
-    "score": 3
-  }
-}

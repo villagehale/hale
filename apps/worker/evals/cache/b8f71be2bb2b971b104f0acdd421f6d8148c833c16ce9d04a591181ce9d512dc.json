@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "live is missing_detail, and the answer correctly asks which city without stating any price from memory. That Costco gas varies by location is common knowledge, not an invented specific. The tone is brief and casual, though 'tell me where and I'll look it up' leans slightly toward an assistant offering a service rather than a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

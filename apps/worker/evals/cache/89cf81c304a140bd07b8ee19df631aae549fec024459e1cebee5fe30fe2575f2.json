@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The slot is real and exactly as printed: Tuesdays and Thursdays, 9:30-11:00 a.m., September 8 to December 11, ages 12 months to 4 years, cited to the programme page. The price is correctly null, so neither the $185 party package nor the $95 room rate was borrowed. The page gives no registration date, so a null registration is right. The message leads with the slot by name and attributes it with \"their site says\". It is two plain-ASCII sentences with no link and no question. Because pageEvidence is page_has_schedule, the gap is correctly put in the first person (\"I could not pin down the price\") rather than claiming the fee is not posted. Since watch is true, the first-person \"I'll keep watching and text you\" reflects a commitment that already exists. It could have mentioned that the fee is available at the front desk, but that is not required.",
-    "score": 5
-  }
-}

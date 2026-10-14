@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Soccer GOAT: Lionel Messi, as most recent coverage leans",
+        "from": "Most recent coverage leans toward Lionel Messi as the GOAT."
+      },
+      {
+        "states": "Messi has eight Ballons d'Or",
+        "from": "Messi has eight Ballons d'Or, compared to Ronaldo's five."
+      },
+      {
+        "states": "NFL GOAT: Tom Brady, still widely treated as the GOAT",
+        "from": "Tom Brady is still widely treated as the NFL GOAT."
+      },
+      {
+        "states": "Brady has 7 Super Bowl wins",
+        "from": "He has 7 Super Bowl wins (7-3 all-time)"
+      },
+      {
+        "states": "Mahomes is the main challenger to Brady",
+        "from": "Patrick Mahomes is the main challenger."
+      }
+    ],
+    "answer": "Depends which football you mean. Soccer: Messi, the one most of the recent coverage is leaning toward, with eight Ballons d'Or to Ronaldo's five. NFL: Brady, with 7 Super Bowl wins, though Mahomes is the one pushing hard to catch him. Fans are still split on both, but those are my picks."
+  },
+  "latencyMs": 5173
+}

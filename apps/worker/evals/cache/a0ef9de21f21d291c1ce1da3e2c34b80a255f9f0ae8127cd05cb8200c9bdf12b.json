@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (showers ending near noon, 60% chance, thunderstorm risk, 10–20 mm, 24°C high, humidex 28, SW gusts to 40 km/h, Environment Canada issued this morning) matches the research notes for Toronto tomorrow. It answers directly with no deflect. It is a bit data-dense, closer to a forecast readout than a casual text, but still reads as a friend passing along the forecast.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is backed by the research notes: 4.34% insured from Frank Mortgage, 4.44% uninsured, a 5.14% big-bank average, and rates rising. It answers the 5-year fixed question directly and reads like a casual text. The closing nudge is friendly and conditional, and it assumes nothing about the family.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The picks are real and local: Halton Hills Gymnastics Centre, plus the Town of Halton Hills swim and dance programs. They fit the toddler stage and carry session dates. The message leads with the best pick by name and attributes it with \"their site says\" and \"the town's\". It names the price gap in the form `no_page_read` earns: \"I could not get into their page today\". Because `watch` is true, it correctly makes a first-person continuation promise, and it asks no question. The dates and the $86.22 price match the picks. However, it runs to three sentences of about 350+ characters, which breaks the two-segment hard ceiling. It should have dropped the swim pick whole to stay within limits. \"Their site says, though I could not get into their page\" is also slightly muddled, and \"confirm the rest\" leans toward a verification framing.",
-    "score": 3
-  }
-}

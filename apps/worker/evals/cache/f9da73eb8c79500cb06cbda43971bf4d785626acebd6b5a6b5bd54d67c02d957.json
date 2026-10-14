@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is unavailable. The answer plainly says it can't check tomorrow's weather right now and states no forecast from memory. It also doesn't ask which city, which matches watchFor. The tone is brief and casual, like a friend texting back. 'Sorry... I don't want to guess and get it wrong' is a touch apologetic but still reads naturally. There is no deflect to an app and no look-it-up instruction.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

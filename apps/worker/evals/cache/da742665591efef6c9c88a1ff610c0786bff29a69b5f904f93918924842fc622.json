@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Short-term melatonin use appears safe for most people",
+        "from": "The NIH says short-term melatonin use appears safe for most people"
+      },
+      {
+        "states": "Long-term safety information is lacking",
+        "from": "information on long-term safety is lacking"
+      },
+      {
+        "states": "A preliminary AHA conference abstract linked a year or more of use in chronic insomnia to higher heart failure rates; not peer-reviewed; cannot prove cause and effect",
+        "from": "An American Heart Association abstract was presented in November 2025... The AHA says the study cannot prove cause and effect... abstracts at its meetings are not peer-reviewed"
+      },
+      {
+        "states": "Heart failure in 4.6% of long-term users vs 2.7% of non-users over five years",
+        "from": "found heart failure in 4.6% of long-term melatonin users versus 2.7% of non-users over five years"
+      },
+      {
+        "states": "Some experts think poor sleep may explain the results",
+        "from": "some experts think the results may reflect the effects of poor sleep rather than melatonin"
+      },
+      {
+        "states": "Check with a doctor or pharmacist before starting",
+        "from": "suggests checking with a healthcare team before starting"
+      },
+      {
+        "states": "Caution for older adults and people with previous low-impact fractures",
+        "from": "use melatonin with caution in older adults and in people with previous low-impact fractures"
+      }
+    ],
+    "answer": "Short-term, melatonin looks safe for most adults. Long-term safety isn't well established, though. A preliminary AHA conference abstract (not peer-reviewed yet) linked a year or more of use in people with chronic insomnia to higher heart failure rates. It can't prove cause, and some experts think poor sleep could explain it. Keeping it short-term is the usual advice, and it's worth checking with your doctor or pharmacist before starting, especially if you're older or have had low-impact fractures."
+  },
+  "latencyMs": 7097
+}

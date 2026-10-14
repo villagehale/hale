@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "x = 5 is correct and comes first. The one-line working is brief, not a lesson, and reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

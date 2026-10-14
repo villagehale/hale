@@ -1,0 +1,45 @@
+{
+  "value": {
+    "pages_read": [
+      "https://www.cartwheelsgymcentre.com/programs.php",
+      "https://www.cartwheelsgymcentre.com/",
+      "https://www.cartwheelsgymcentre.com/forms/Term_2_Schedule_2026-27.pdf"
+    ],
+    "slots": [
+      {
+        "name": "Tiny Gym, Cartwheels Gym Centre",
+        "age_fit": "1 and walking to 3 years, with their parent/caregiver, 45 minutes. 1-year-olds are strongly recommended to be fully independently walking before the term begins.",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php"
+      },
+      {
+        "name": "Tiny Gym, Cartwheels Gym Centre (Schedule at a glance PDF)",
+        "age_fit": "Tiny Gym (1 and walking to 3 years, per the programs page)",
+        "when": "Term 1 runs September 14 to November 1, 2026. Tiny Gym appears on the grid in the Monday, Tuesday, Wednesday, Thursday, Saturday and Sunday columns, in morning slots such as 9:30-10:15, 9:45-10:30, 8:45-9:30 and 8:30-9:15, and in afternoon and evening slots such as 4:30-5:15 and 5:15-6:00. The PDF text is flattened, so I could not match each class time to a single weekday. Classes are cancelled or edited if minimum registration is not met, and the schedule is subject to change. Revised July 2026.",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/forms/Term_2_Schedule_2026-27.pdf"
+      },
+      {
+        "name": "Rock n' Roll with Miss Kelly, Cartwheels Gym Centre",
+        "age_fit": "0+ years, 45 minutes, music and movement class",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php"
+      },
+      {
+        "name": "Rock n' Roll, Cartwheels Gym Centre (Schedule at a glance PDF)",
+        "age_fit": "Rock n' Roll (0+ years, per the programs page)",
+        "when": "Term 1 runs September 14 to November 1, 2026. Rock n' Roll is listed at 9:00-9:45 and 10:00-10:45. The PDF text does not show which weekday column these belong to.",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/forms/Term_2_Schedule_2026-27.pdf"
+      },
+      {
+        "name": "Term 1/Fall registration, Cartwheels Gym Centre (all general programming incl. Tiny Gym, plus Tumble n' Learn)",
+        "age_fit": "All general programming, including Tiny Gym and Rock n' Roll",
+        "registration": "Home page notice: Term 1/Fall registration is Wednesday July 22, 2026, 8:00am online for all general programming and Tumble n' Learn. Ability Athletics, Playability and Moveability were 10:00am by email request. That date has already passed. Register online at cartwheelsgymcentre.uplifterinc.com/login/. Prices and availability are shown only after logging in to that portal, and no price is printed on the pages I read.",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/"
+      }
+    ]
+  },
+  "latencyMs": 21506
+}

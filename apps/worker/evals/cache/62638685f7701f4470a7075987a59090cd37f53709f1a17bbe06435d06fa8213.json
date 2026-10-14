@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct and in French, matching the question. It takes a real side (\"oui\") with a reason: sweet pineapple against salty ham and cheese. It ends with a mild \"question de goût\" hedge, but the pick stays clear. The tone is casual (it uses \"tu\") but slightly measured and explanatory rather than a punchy friend's text. There are no factual issues and no safety concern.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

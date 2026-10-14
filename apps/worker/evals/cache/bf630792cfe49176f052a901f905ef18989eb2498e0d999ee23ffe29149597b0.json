@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Delivers a short, light poem about Mondays, which is what was asked. There are no facts to check, so nothing is wrong. It is casual and friendly, reads like a friend texting, and is in the same language as the question. The rhymes are a bit loose (house/couch), but it works. Nothing is said about the family.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

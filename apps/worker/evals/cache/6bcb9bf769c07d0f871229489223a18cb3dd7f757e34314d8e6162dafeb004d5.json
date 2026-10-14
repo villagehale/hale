@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both slots are real and match the page exactly: Saturdays, the times, Sept 12 to Nov 28, and ages 3-5. Price is correctly null because the page prints no fee, and each slot carries the registration line and the page URL. No third level was invented. The message leads with Preschool A by name, adds B in the same sentence, attributes the facts to their site, and carries the not-yet-open registration date (Tues Aug 11, 7am, residents). With pageEvidence page_has_schedule, the price gap is correctly framed in the first person ('I could not pin down the price') rather than as 'not posted'. Watch is true, so 'I'll keep watching and text you' is a real commitment, not an unbacked promise. It is two plain-ASCII sentences with no link and no question. Only nits: it runs a bit long, and the tacked-on '- their site says' is slightly awkward.",
-    "score": 5
-  }
-}

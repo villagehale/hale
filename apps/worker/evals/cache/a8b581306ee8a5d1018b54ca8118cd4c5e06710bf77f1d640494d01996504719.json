@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The slots are real and match the pages. Tiny Gym's age band, the Term 1 dates (Sept 14-Nov 1), the Term 2 dates and the July 22 8am registration date are all as printed. Prices are correctly left null, since the site says pricing is only shown after logging in. The message leads with Tiny Gym by name, attributes with \"their site says\" and carries the registration date. With page_has_schedule it uses the correct first-person gap (\"I could not pin down the day or the price\"), and with watch=true it gives the first-person keep-watching commitment. There is no question and no link. Minor issues: each slot cites the PDF even though the age and description came from programs.php and the registration date from the homepage. Rock n' Roll's registration is left null although the homepage's general-programming date applies to it. The message runs three sentences rather than one or two.",
-    "score": 4
-  }
-}

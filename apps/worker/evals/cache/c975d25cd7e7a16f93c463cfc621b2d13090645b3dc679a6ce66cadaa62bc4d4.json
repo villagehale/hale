@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Delivers a short, casual Monday poem as asked. No facts are claimed and no deflection. The rhymes are a bit clunky ('fresh go too'), but it reads like a friend texting back a quick poem.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

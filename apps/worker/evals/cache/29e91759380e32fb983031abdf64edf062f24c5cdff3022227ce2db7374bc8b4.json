@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Takes a real side (yes) with a light reason, and no invented facts. The tone is friendly, but 'Honestly, yes... it's a good pizza topping' reads a bit essay-like for a text. It has three full sentences plus a hedge, and 'If someone hates it, that's fair too' leans slightly diplomatic, though the pick is clear. Still reads as a friend overall.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

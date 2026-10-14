@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by research_notes. The Leafs did not play Sunday, Oct 11. Their last game was a 6-3 win over Colorado on Saturday, with Nylander and Cowan scoring 46 seconds apart late in the second and Nylander tying his career high of 5 points. Grounding is clean and nothing is invented. The tone breaks at the end: 'Want me to check anything else for you?' is an assistant offering a service, not a friend texting back, and that caps the score below 4 despite the correct content.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

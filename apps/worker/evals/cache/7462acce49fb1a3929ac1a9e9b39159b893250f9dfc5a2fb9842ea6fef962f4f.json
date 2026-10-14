@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The picks are real, specific, local and fit the toddler stage. The message leads with the best pick by name and attributes it ('their site says', 'the town's'). Under no_page_read it uses the correct first-person gap wording ('I could not get into their page today'). With watch TRUE, it correctly makes a first-person promise to keep watching. It invents no prices or times and asks no question. However, at about 357 characters across three sentences it exceeds the two-segment hard ceiling and the one-or-two-sentence brief. Dropping the second pick whole would have fixed this. Pairing 'their site says' with 'could not get into their page' also reads slightly contradictory.",
-    "score": 3
-  }
-}

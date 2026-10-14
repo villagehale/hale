@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every specific matches the Environment Canada notes: showers ending near noon, then mainly cloudy with a 60% chance of more, thunderstorm risk morning and afternoon, 10–20 mm of rain, a high of 24°C with humidex 28, and southwest gusts to 40 km/h near noon. 'Warm for October' is fair commentary. It answers directly in English for the right city and day. Tone is casual and friendly, if slightly dense with detail.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

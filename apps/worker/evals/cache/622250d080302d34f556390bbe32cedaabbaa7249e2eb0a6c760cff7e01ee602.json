@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada forecast in the research notes: showers ending near noon, then a 60% chance, thunderstorm risk, 10–20 mm of rain, gusts to 40 near noon, a high of 24 with humidex 28, and a low of 12 with showers overnight. It uses Toronto directly, which is right since Hale already knew the city. It answers in the parent's language and states the forecast rather than deflecting. It reads more like a weather bulletin than a casual text, though, listing every detail and closing with a source line instead of a quick friendly takeaway such as 'rainy morning, bring umbrellas.' Correct, but only moderately friend-like.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

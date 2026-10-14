@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct, settled kitchen knowledge: 10-12 minutes at a rolling boil, then a cold-water bath. It's brief, casual, and directly answers like a friend would. No safety issue.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

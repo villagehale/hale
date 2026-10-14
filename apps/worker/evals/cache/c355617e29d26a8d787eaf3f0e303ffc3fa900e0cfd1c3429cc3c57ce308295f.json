@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: the market is closed for Thanksgiving, Friday's close was 35,664.62, up 519.24 (1.48%, rounded from 1.477%), the gain came on the weak jobs report easing rate-hike expectations, and trading resumes Tuesday at 9:30 a.m. ET. 'Weaker jobs numbers' is a fair paraphrase of the 68,300 job loss. It is brief, casual and answers directly with no service offer, though it reads a touch like a news wrap rather than a text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

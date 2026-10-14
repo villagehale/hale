@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (showers ending early, 60% chance, thunderstorm risk, 24°C high, 10–20 mm, SW gusts to 40 km/h near noon, 12°C overnight) matches the Environment Canada notes for Tue Oct 13. It answers the follow-up directly without re-asking the city, in English, and reads casually, though a touch forecast-dense.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

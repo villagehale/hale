@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and correctly cited to the programme page. Age band, days, times and session dates are exactly as printed. The price is correctly left null, and the $185 birthday package and $95 room rate from the rentals page are not borrowed. The page shows no registration date, so a null registration is correct. The message leads with the programme by name and attributes the facts with 'their site says' rather than claiming to have confirmed them. It is two plain-ASCII sentences with no link and no question. Under page_has_schedule it puts the gap on Hale in the first person ('I could not pin down the price') rather than saying 'not posted'. With watch=true, the first-person 'I'll keep watching and text you' reflects a commitment that exists. A small optional improvement would be mentioning that their site says fees are available at the front desk.",
+    "score": 5
+  }
+}

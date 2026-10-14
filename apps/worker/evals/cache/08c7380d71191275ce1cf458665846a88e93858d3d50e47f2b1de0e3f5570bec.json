@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tomorrow (Tuesday) in Denver, Colorado",
+        "from": "Denver, Colorado, forecast for Tuesday, October 13, 2026"
+      },
+      {
+        "states": "Partly sunny skies Tuesday",
+        "from": "says partly sunny skies Tuesday"
+      },
+      {
+        "states": "High of 65°F on Tuesday",
+        "from": "The NWS forecast high is 65°F"
+      },
+      {
+        "states": "Rain or showers possibly moving in Tuesday evening",
+        "from": "with rain and showers possibly moving in Tuesday evening"
+      },
+      {
+        "states": "30% chance of rain after 3 p.m. Tuesday",
+        "from": "NWS gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "Lows in the low 40s and 30s Tuesday night",
+        "from": "Lows are expected in the low 40s and 30s Tuesday night"
+      }
+    ],
+    "answer": "Tomorrow in Denver: partly sunny and cooler, high around 65°F. Rain or showers could move in Tuesday evening, with about a 30% chance after 3 p.m. Overnight lows drop into the 30s and low 40s, so bring a jacket."
+  },
+  "latencyMs": 5056
+}

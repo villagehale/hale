@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the research notes. The TSX is closed for Thanksgiving, Friday's close was 35,664.62, up about 1.5% (1.477%), on weak jobs data that cut expectations for a Bank of Canada hike, and trading resumes tomorrow at 9:30 a.m. ET. It answers directly and reads as a casual, brief text. Nothing is invented and there is no deflect.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

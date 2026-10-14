@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC: Tuesday October 13, a mix of sun and cloud",
+        "from": "Environment Canada's forecast was issued 5:00 AM PDT on Monday, October 12, 2026. It gives Tuesday as a mix of sun and cloud"
+      },
+      {
+        "states": "Vancouver, BC: Tuesday high of 15°C",
+        "from": "with a high of 15°C"
+      },
+      {
+        "states": "Vancouver, BC: Tuesday night showers, low of 11°C",
+        "from": "Tuesday night: showers, low 11."
+      }
+    ],
+    "answer": "Assuming you mean Vancouver, BC: Tuesday is a mix of sun and cloud with a high around 15°C. Showers move in Tuesday night, with a low around 11°C. Take a jacket."
+  },
+  "latencyMs": 5846
+}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada forecast in the notes: high 29, humidex 35, 30% showers with thunder risk early, wind SW 40 gusting to 60 late morning, and Tuesday night low 15 with 40% showers. It answers directly for the right Windsor without asking which city. 'Clearing by late morning' is a slight paraphrase of 'clearing in the morning' but not wrong. The tone opens casually, then reads more like a weather bulletin than a friend's text, so it falls short of a top score.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

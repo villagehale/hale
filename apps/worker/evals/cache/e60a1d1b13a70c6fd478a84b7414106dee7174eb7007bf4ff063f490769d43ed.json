@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: the Jays didn't play last night, and the season ended Sept 27 with a 5-1 home win over the Reds and no playoffs. It answers the question directly in English. The tone is a little flat and formal for a friend's text, with no casual nod to Priya's claim, but it is a real answer and not an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi is the soccer GOAT pick, as recent coverage leans",
+        "from": "Most recent coverage leans toward Lionel Messi as the GOAT."
+      },
+      {
+        "states": "Argentina reached the 2026 World Cup final and lost",
+        "from": "Argentina reached the final and lost, per the Yahoo Sports headline."
+      },
+      {
+        "states": "Brady is the NFL GOAT pick, as he is still widely treated as the greatest",
+        "from": "Tom Brady is still widely treated as the NFL GOAT."
+      }
+    ],
+    "answer": "Depends which football you mean. For soccer, I'd go with Messi. Pelé still gets named, but the recent talk has been leaning Messi, and his 2026 World Cup run, even though Argentina lost the final, pushed that further. For NFL, I'd say Brady. Mahomes is closing in, but Brady is still the one most people put first."
+  },
+  "latencyMs": 5040
+}
