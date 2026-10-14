@@ -1,9 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
-import { CONSUMED_SEND_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { writeConsentAsk } from '~/lib/channel/consent-ask';
+import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
 import { posterLocation } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { CONSUMED_SEND_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import {
   createOutboundTransport,
   readSendRefusal,
@@ -14,7 +16,6 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { cancelCommitment, fulfillCommitment, loadOpenCommitment } from '~/lib/commitments/ledger';
 import {
   FOUNDER_NOTE_DECLINED_ACK,
-  FOUNDER_NOTE_FAILED_ACK,
   FOUNDER_NOTE_SENT_ACK,
   FOUNDER_NOTE_TEMPLATE_KEY,
   FOUNDER_NOTE_UNREACHABLE_ACK,
@@ -80,7 +81,7 @@ export type FounderReplyOutcome =
    * the above (rule #11): `unreachable` closed the offer because there is nothing left to
    * reach, `send_failed` left it OPEN because there is — and the founder is told which.
    */
-  | { status: 'not_sent'; reason: 'unreachable' | 'send_failed'; reply: string };
+  | { status: 'not_sent'; reason: 'unreachable' | 'send_failed'; reply: string | null };
 
 /** Who the note goes to, resolved live. */
 export interface FounderNoteRecipient {
@@ -109,6 +110,10 @@ export interface FounderReplyDeps {
   threadMessage: typeof threadProactiveMessage;
   fulfillCommitment: typeof fulfillCommitment;
   cancelCommitment: typeof cancelCommitment;
+  /** Reads his answer. Absence is named and claims nothing. */
+  consent?: ConsentReader;
+  /** Writes the retry line when the note did not go. Absence is named and sends nothing. */
+  ask?: ConsentAskWriter;
 }
 
 export async function handleFounderWelcomeReply(
@@ -127,16 +132,18 @@ export async function handleFounderWelcomeReply(
   },
   deps: FounderReplyDeps,
 ): Promise<FounderReplyOutcome> {
-  // Checked before any query: this handler runs on every inbound text in the product, and
-  // an ordinary message must not cost it a round trip.
-  const word = readAffirmative(input.body);
-  const answer = input.resolved ?? (word === 'unclear' ? null : word);
-  if (answer === null) return { status: 'declined_to_claim' };
-
+  // The offer first. This handler runs on every inbound text, and a family with
+  // nothing standing must not cost a model read.
   const offer = await deps.loadOpenOffer(database, input.familyId, 'founder_welcome_offer');
   if (!offer || offer.dueAt.getTime() < input.now.getTime()) {
     return { status: 'declined_to_claim' };
   }
+
+  const reading = input.resolved
+    ? { verdict: input.resolved }
+    : await readConsent(deps.consent, { question: 'founder_welcome', text: input.body });
+  const answer = reading && reading.verdict !== 'neither' ? reading.verdict : null;
+  if (answer === null) return { status: 'declined_to_claim' };
 
   if (answer === 'no') {
     await deps.cancelCommitment(database, {
@@ -196,7 +203,11 @@ export async function handleFounderWelcomeReply(
       { code: refusal?.code ?? 'unknown', founderFamilyId: input.familyId },
       'founder welcome: the note did not reach the provider - offer left open, a second YES retries',
     );
-    return { status: 'not_sent', reason: 'send_failed', reply: FOUNDER_NOTE_FAILED_ACK };
+    return {
+      status: 'not_sent',
+      reason: 'send_failed',
+      reply: await writeConsentAsk(deps.ask, { kind: 'founder_retry' }),
+    };
   }
 
   const noteChannelMessageId = await recordNote(database, {

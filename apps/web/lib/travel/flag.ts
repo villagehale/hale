@@ -21,21 +21,21 @@
  * works would mean reading other households' mailboxes to do it.
  */
 
-export const TRAVEL_BRIEF_ENABLED_ENV = 'TRAVEL_BRIEF_ENABLED';
+import { LANE_ENV, laneEnabled } from '../channel/lanes';
+
+export const TRAVEL_BRIEF_ENABLED_ENV = LANE_ENV.travel_brief;
 export const TRAVEL_BRIEF_ALLOWLIST_ENV = 'TRAVEL_BRIEF_FAMILY_ALLOWLIST';
 
 /**
- * STRICT equality on the literal 'true': `vercel env add` from a piped `echo` stores a
- * TRAILING NEWLINE, so a value that prints as `true` is really `'true\n'` — and a
- * truthiness check would read that as ON and start reading booking emails nobody armed.
- * Strict comparison fails closed on exactly that shape. Set it with `printf '%s'`, and
- * redeploy: the value only takes effect on a fresh deployment.
+ * Read through the shared lane switch, which compares STRICTLY to the literal 'true': a
+ * truthiness check would read a piped echo's `'true\n'` as ON and start reading booking
+ * emails nobody armed. `lanes.ts` documents that shape and how to set the value.
  */
 export function travelBriefEnabled(): boolean {
-  return process.env[TRAVEL_BRIEF_ENABLED_ENV] === 'true';
+  return laneEnabled('travel_brief');
 }
 
-/** The comma-separated family ids allowed through while the flag is off. */
+/** The comma-separated family ids the brief is narrowed to while the lane is on. */
 export function travelBriefAllowlist(): Set<string> {
   return new Set(
     (process.env[TRAVEL_BRIEF_ALLOWLIST_ENV] ?? '')
@@ -46,5 +46,9 @@ export function travelBriefAllowlist(): Set<string> {
 }
 
 export function travelBriefEnabledFor(familyId: string): boolean {
-  return travelBriefEnabled() || travelBriefAllowlist().has(familyId);
+  // The lane is the kill: off is off for every household. While it is on, a non-empty
+  // allowlist narrows the brief to the listed households (one household to prove).
+  if (!travelBriefEnabled()) return false;
+  const allowlist = travelBriefAllowlist();
+  return allowlist.size === 0 || allowlist.has(familyId);
 }

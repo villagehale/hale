@@ -18,6 +18,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { askWriter } from '~/lib/testing/consent-double';
 import {
   ADD_EXAMPLE,
   ALREADY_INVITED,
@@ -101,6 +102,19 @@ function harness(
       openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
+      consent: {
+        read: async ({ text }) => {
+          const folded = text.trim().toLowerCase();
+          if (['yes', 'oui', 'yes please', 'sounds good', '👍', 'yeah'].includes(folded)) {
+            return { verdict: 'yes' as const, target: 'none' as const };
+          }
+          if (['no', 'non', 'nope', 'no thanks'].includes(folded)) {
+            return { verdict: 'no' as const, target: 'none' as const };
+          }
+          return { verdict: 'neither' as const, target: 'none' as const };
+        },
+      },
+      consentAsk: askWriter(),
       now,
     },
   };
@@ -195,10 +209,9 @@ describe('caregiver invite · the double opt-in', () => {
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0]?.to).toBe(PARENT_PHONE);
     expect(transport.sent[0]?.body).toContain('Adding grandma as grandparent');
-    // The scope, in the parent's own reading, before anyone is contacted.
     expect(transport.sent[0]?.body).toContain("the week's schedule");
     expect(transport.sent[0]?.body).toContain('Never health or appointments');
-    expect(transport.sent[0]?.body).toContain('Reply YES');
+    expect(transport.sent[0]?.body).not.toMatch(/\bYES\b/);
     // Nothing has been authorised yet, so nothing has been consented to.
     expect(inserts(fake, schema.consentRecords)).toHaveLength(0);
     expect(inserts(fake, schema.familyMembers)).toHaveLength(1); // only the seeded parent
@@ -537,7 +550,7 @@ describe('caregiver invite · the ways it does not happen', () => {
    * A parent who has finished intake has no open session, so EVERY ordinary text they
    * send arrives here first and falls through to C1 when this route has nothing to say
    * (inbound-route.ts handOffToConversation). That makes this module the last thing
-   * that spoke before a coach turn — and `scopeConfirm` ("Reply YES and I'll text
+   * that spoke before a coach turn — and the scope question the model wrote
    * them") is an open question. Unthreaded, the coach reads whatever comes back with
    * nothing above it.
    *

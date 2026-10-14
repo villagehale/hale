@@ -3,9 +3,7 @@
   "buildCommand": "cd ../.. && pnpm --filter @hale/db exec node scripts/vercel-production-migrate.mjs && rm -rf packages/*/dist packages/*/*.tsbuildinfo packages/*/tsconfig.tsbuildinfo && pnpm turbo build --filter=@hale/web --force",
   "regions": ["yul1"],
   "crons": [
-    { "path": "/api/cron/week-plan", "schedule": "2 * * * *" },
     { "path": "/api/cron/intake-sitting-reminder", "schedule": "8 * * * *" },
-    { "path": "/api/cron/sunday-send", "schedule": "7 * * * *" },
     { "path": "/api/cron/reminders", "schedule": "12 * * * *" },
     { "path": "/api/cron/registration-sequence", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/nudge", "schedule": "17 * * * *" },
@@ -17,6 +15,7 @@
     { "path": "/api/cron/attachment-sweep", "schedule": "37 * * * *" },
     { "path": "/api/cron/inference", "schedule": "42 6 * * *" },
     { "path": "/api/cron/memory-digest", "schedule": "48 6 * * *" },
+    { "path": "/api/cron/ops-daily", "schedule": "14 13 * * *" },
     { "path": "/api/cron/loop-health-digest", "schedule": "52 14 * * 1" },
     { "path": "/api/cron/civic-sweep", "schedule": "57 15 * * 1" },
     { "path": "/api/cron/registration-verify", "schedule": "3 16 * * 1" },

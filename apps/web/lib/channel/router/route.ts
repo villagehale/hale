@@ -25,6 +25,8 @@ import {
   TURN_TIMEOUT,
   TURN_UNREACHABLE,
 } from '~/lib/channel/config';
+import { writeConsentAsk } from '~/lib/channel/consent-ask';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -66,7 +68,7 @@ import {
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
+import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
@@ -81,7 +83,7 @@ import {
   type ChannelTurnResult,
   draftsFromFailure,
 } from './coach-runtime';
-import { FLOOD_REPLY, clarifyWhichQuestion, partialFailureReply } from './copy';
+import { FLOOD_REPLY, clarifyWhichQuestion } from './copy';
 import {
   assertTurnLive,
   isCallTimeout,
@@ -285,10 +287,9 @@ export type HandlerVerdict =
        * `channel_messages` row exactly as a proactive send's is.
        *
        * Most receipts need none: nothing ever reads them back. A lane needs one when its
-       * own reader has to recognise its own voice later. The evening check-in is the
-       * case: whether LESS, NO and DAILY still mean what that lane taught them turns on
-       * whether the last thing this parent heard from Hale was ITS message, and a reply
-       * row with no name on it is indistinguishable from the coach's.
+       * own reader has to recognise its own voice later. The evening check-in still
+       * names `checkin:ask` on the send, so a later text is an answer only while that
+       * ask is Hale's last word. Pace is not a keyword on the reply.
        */
       templateKey?: string;
       /**
@@ -460,6 +461,17 @@ export interface ChannelRouterDeps {
    * without either would hear "she's home with me" in answer to a question Hale asked
    * yesterday and write nothing, while looking exactly like an ordinary coach turn.
    */
+  /**
+   * Read a parent's reply to a legacy care ask. Non-nullable (rule #11): a router
+   * with no reader would hear the answer and write nothing while looking like an
+   * ordinary coach turn. No client is `nothing_stated`, named in the reader's log.
+   */
+  weekdayCareReader: WeekdayCareReader;
+  /**
+   * Writes the drafts receipt when a turn breaks after drafting. Absence is
+   * named and the parent is not handed a keyword sentence. The drafts remain.
+   */
+  consentAsk?: ConsentAskWriter;
   weekdayCareAnswerTarget(
     database: Database,
     input: {
@@ -1100,10 +1112,10 @@ async function routeChannelMessageInner(
         'channel router: weekday search declined',
       );
     } else if (outcome?.status === 'unreadable') {
-      // WARN, NOT ERROR. A bare "yes" or "no" to an either/or is ordinary parent
-      // behaviour, not a fault: it is the signal the grammar has drifted, and it is
-      // worth a line only because nothing else makes it visible. Logging it at ERROR
-      // would make a routine turn indistinguishable from the ones that need somebody.
+      // WARN, NOT ERROR. A reply that does not settle the question is ordinary, and
+      // it is worth a line only because nothing else makes it visible. Logging it at
+      // ERROR would make a routine turn indistinguishable from the ones that need
+      // somebody.
       deps.log.warn(
         { familyId: turn.familyId, status: outcome.status },
         'channel router: the weekday-care ask is standing and the reply settles neither side',
@@ -1478,7 +1490,7 @@ async function recordWeekdayCareAnswer(
     return { status: 'unreadable' };
   }
 
-  const reading = readWeekdayCare(turn.body);
+  const reading = await deps.weekdayCareReader.read(turn.body);
   if (reading.status === 'nothing_stated') return { status: 'unreadable' };
 
   await deps.recordWeekdayCare(deps.database, {
@@ -2079,10 +2091,9 @@ async function composeReconciledReply(
  * A composer that cannot produce a sendable sentence defers too: there is no preset left
  * underneath it, and the re-drive may not need an apology at all.
  *
- * The ONE templated line still reachable from here is the drafts receipt, and it is not
- * an apology — it carries a count and the YES/NO grammar that resolves against real rows
- * (copy.ts partialFailureReply), the same reason every other receipt in this router is a
- * template the model never touches.
+ * The drafts receipt is written per send. It names the count. There is no keyword
+ * sentence underneath it. A writer that cannot produce one sends nothing, and the
+ * drafts stay in the queue.
  */
 type FailedTurnDisposition =
   | {
@@ -2192,11 +2203,15 @@ async function disposeOfFailedTurn(
   }
 
   if (drafted.length > 0) {
+    const receipt = await writeConsentAsk(deps.consentAsk, {
+      kind: 'partial_failure',
+      draftCount: drafted.length,
+    });
     return {
       outcome: 'agent_failed',
-      reply: partialFailureReply(drafted.length),
+      reply: receipt,
       reason: 'drafts_receipt',
-      log: {},
+      log: { consentAsk: receipt ? 'written' : 'unwritten' },
     };
   }
 

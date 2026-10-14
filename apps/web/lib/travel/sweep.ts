@@ -170,7 +170,7 @@ export function emptyTravelBriefResult(enabled: boolean): TravelBriefResult {
       names_a_person: 0,
       destination_unusable: 0,
     },
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0 },
     searchFailed: 0,
     noPicks: 0,
     refusedAtRender: 0,
@@ -514,9 +514,9 @@ async function briefOne(
     if (delivered.status === 'held') {
       await database
         .update(schema.channelMessages)
-        .set({ status: 'failed', errorCode: 'group_cap' })
+        .set({ status: 'failed', errorCode: delivered.reason })
         .where(eq(schema.channelMessages.id, claimed.id));
-      console.warn({ tripId: trip.id }, 'travel brief: group cap reached');
+      console.warn({ tripId: trip.id, reason: delivered.reason }, 'travel brief: held');
       return;
     }
     if (delivered.status === 'skipped') {

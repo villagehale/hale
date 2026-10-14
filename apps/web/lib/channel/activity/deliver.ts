@@ -2,9 +2,9 @@ import type { Database } from '@hale/db';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
+import type { OptOutForm } from '~/lib/channel/opt-out';
 import type { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import type { OptOutForm } from '~/lib/channel/opt-out';
 import type { fulfillCommitment } from '~/lib/commitments/ledger';
 import {
   ACTIVITY_WATCH_DUE_HOURS,
@@ -13,7 +13,6 @@ import {
 } from './commitment';
 import type { DeepSlot } from './deep';
 import type { PageVerdict } from './evidence';
-import { statesAFigure, statesNoCost } from './quote-match';
 import {
   type FollowUpComposer,
   type FollowUpFallback,
@@ -21,6 +20,7 @@ import {
   asksTheParent,
   claimsNotPosted,
 } from './followup-note';
+import { statesAFigure, statesNoCost } from './quote-match';
 import { type ActivitySharePage, SLOTS_IN_TEXT, withSharePage } from './share-page';
 
 /**
@@ -329,8 +329,11 @@ export async function deliverFollowUp(
     now,
   });
   if (delivered.status === 'held') {
-    console.warn({ familyId: input.familyId }, 'activity follow-up: group cap reached');
-    return { status: 'deferred', reason: 'group_cap' };
+    console.warn(
+      { familyId: input.familyId, reason: delivered.reason },
+      'activity follow-up: held',
+    );
+    return { status: 'deferred', reason: delivered.reason };
   }
   if (delivered.status === 'skipped') {
     console.warn(

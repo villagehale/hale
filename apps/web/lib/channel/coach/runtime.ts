@@ -149,6 +149,8 @@ export interface ChannelRunRecord {
   costUsd: number;
   /** Any turn of the loop read from the prompt cache (MEM-9 telemetry). */
   promptCacheHit: boolean;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
   langfuseTraceId: string | null;
 }
 
@@ -383,6 +385,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             completionTokens: result.usage.completionTokens,
             costUsd: agentRunCostUsd(modelUsed, result.usage),
             promptCacheHit: result.usage.cacheReadTokens > 0,
+            cacheReadTokens: result.usage.cacheReadTokens,
+            cacheWriteTokens: result.usage.cacheCreationTokens,
             langfuseTraceId: trace.traceId,
           });
 
@@ -625,6 +629,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         costUsd: run.costUsd,
         latencyMs: run.latencyMs,
         promptCacheHit: run.promptCacheHit,
+        cacheReadTokens: run.cacheReadTokens,
+        cacheWriteTokens: run.cacheWriteTokens,
         status: run.status,
         langfuseTraceId: run.langfuseTraceId,
       });

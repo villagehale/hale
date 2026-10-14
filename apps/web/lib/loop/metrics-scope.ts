@@ -1,5 +1,6 @@
 import type { Database } from '@hale/db';
 import { resolveFounderChannel } from '~/lib/channel/founder/channel';
+import { familyHasSyntheticProbeChannel } from '~/lib/channels/sms-consent-core';
 
 /**
  * WHO THE FOUNDER'S METRICS ARE ALLOWED TO COUNT — the households a retention number
@@ -47,6 +48,31 @@ export async function resolveMetricsExclusions(database: Database): Promise<Set<
   const founder = await resolveFounderChannel(database);
   if (founder) {
     excluded.add(founder.familyId);
+  }
+  return excluded;
+}
+
+/**
+ * {@link resolveMetricsExclusions} plus every active family with a channel in the
+ * operator's probe range (the inbound canary and the live probes). The family-level
+ * set an ops count is taken over.
+ *
+ * Without APP_ENCRYPTION_KEY no channel can be decrypted, so a probe cannot be told
+ * from a real family. That throws: counting probes as families is the wrong way to fail.
+ */
+export async function resolveOpsExclusions(
+  database: Database,
+  activeFamilyIds: readonly string[],
+): Promise<Set<string>> {
+  if (!process.env.APP_ENCRYPTION_KEY) {
+    throw new Error(
+      'resolveOpsExclusions: APP_ENCRYPTION_KEY is not set — probes cannot be told from families',
+    );
+  }
+  const excluded = await resolveMetricsExclusions(database);
+  for (const familyId of activeFamilyIds) {
+    if (excluded.has(familyId)) continue;
+    if (await familyHasSyntheticProbeChannel(database, familyId)) excluded.add(familyId);
   }
   return excluded;
 }

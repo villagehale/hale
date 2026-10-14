@@ -19,13 +19,13 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { askWriter, writtenAsk, yesNoReader } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { familyForForwardToken, mintForwardToken } from './forward-address';
 import {
   FORWARD_REVOKE_ASK_TEMPLATE_KEY,
   FORWARD_REVOKE_ASK_TTL_MS,
   FORWARD_REVOKE_TEMPLATE_KEY,
-  forwardRevokeAskReply,
   forwardRevokeDeclinedReply,
   forwardRevokeReply,
 } from './forward-request';
@@ -142,7 +142,7 @@ function deps(
     database: db.database,
     loadContext: loadInboundContext,
     transport,
-    handlers: defaultHandlers(),
+    handlers: defaultHandlers({ ask: askWriter(), consent: yesNoReader() }),
     questions: defaultOpenQuestionReader(),
     weekdayCareAnswerTarget: async () => ({ status: 'no_open_ask' as const }),
     recordWeekdayCare: async (_db, input) => ({
@@ -167,6 +167,7 @@ function deps(
     }),
     replyResolver,
     calendarOffers: calendarOffersIdle,
+    weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
     disambiguation: createDisambiguationStore(),
     reconcileView: loadReconcileView,
     recordStatedState: async () => ({ status: 'nothing_stated' }),
@@ -341,7 +342,7 @@ describe('the six sentences that used to revoke now open a question', () => {
     const result = await text(seeded, body, ASKED_AT);
 
     expect(result.handler).toBe('forward_address');
-    expect(transport.bodies()).toEqual([forwardRevokeAskReply('en')]);
+    expect(transport.bodies()).toEqual([writtenAsk({ kind: 'forward_revoke', language: 'en' })]);
     // THE COLUMN, read back. The whole class of defect this round closes is a live
     // credential deleted in answer to a question about it.
     expect(await tokenOf(seeded.familyId)).toBe(seeded.token);
@@ -364,7 +365,7 @@ describe('the six sentences that used to revoke now open a question', () => {
     expect(questions[0]).toMatchObject({
       kind: 'forward_address_revoke',
       askedAt: ASKED_AT,
-      solicited: true,
+      solicited: false,
       answerable: { yes: true, no: true },
       subject: 'turning off your forwarding address',
     });
@@ -380,7 +381,7 @@ describe('only a YES to the question Hale asked revokes', () => {
 
     expect(yes.handler).toBe('forward_address');
     expect(transport.bodies()).toEqual([
-      forwardRevokeAskReply('en'),
+      writtenAsk({ kind: 'forward_revoke', language: 'en' }),
       forwardRevokeReply('en', 'revoked'),
     ]);
     expect(await tokenOf(seeded.familyId)).toBeNull();

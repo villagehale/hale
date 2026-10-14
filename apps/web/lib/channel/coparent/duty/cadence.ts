@@ -8,23 +8,15 @@ import type { DutyRole } from './model';
  * bubble. The night-before confirmation may open one bubble, and only inside
  * 17:00–21:00 local, which ends where quiet hours begin. A parent who asks
  * "who's got pickup Thursday?" is answered in the group. One open question
- * per group. After three unanswered asks, stop.
+ * per group. How many of those went unanswered is history for the model.
+ * This file does not stop because of that count.
  *
- * Caps here are the group bubble budget: two proactive bubbles a day, and
- * one discretionary bubble a day / three a week. Quiet hours are decided by
- * the caller with the outbound gate's window so this file does not grow a
- * second clock.
+ * Quiet hours are decided by the caller with the outbound gate's window so
+ * this file does not grow a second clock. A count is not a hold.
  */
 
 export const REASK_WITHIN_MS = 48 * 60 * 60 * 1000;
-export const UNANSWERED_STEP_DOWN = 3;
 export const NIGHT_BEFORE_START_MIN = 17 * 60;
-export const DUTY_LLM_DAY_MAX = 1;
-
-/** Matches family-outbound's group ceiling. A test pins the two together. */
-export const PROACTIVE_BUBBLES_PER_DAY = 2;
-export const DISCRETIONARY_PER_DAY = 1;
-export const DISCRETIONARY_PER_WEEK = 3;
 
 export type DutyAskMode =
   | 'week_overview'
@@ -75,9 +67,6 @@ export interface CadenceContext {
   occasions: readonly DutyOccasion[];
   /** Set when a parent just asked. Null when this is the sweep. */
   parentAsk: { role: DutyRole | null; weekday: number | null } | null;
-  proactiveToday: number;
-  discretionaryToday: number;
-  discretionaryWeek: number;
   /** Minutes since local midnight. */
   localMinutes: number;
   /** 0 = Sunday … 6 = Saturday, in the parent's zone. */
@@ -108,10 +97,9 @@ export interface CadencePlan {
   foldLines: CadenceLine[];
   /** Lines for the one bubble this tick may open. Empty when nothing sends. */
   sendLines: CadenceLine[];
-  stepDown: { eventKey: string; role: DutyRole } | null;
   /** Cancelled events whose recorded duty must be closed. No text. */
   invalidateEventKeys: string[];
-  held: 'quiet_hours' | 'group_cap' | 'open_question' | null;
+  held: 'quiet_hours' | 'open_question' | null;
 }
 
 const DAY_NAMES: ReadonlyArray<readonly [string, number]> = [
@@ -159,22 +147,9 @@ export function inNightBeforeWindow(minutes: number, quietStartMin: number): boo
   return minutes >= NIGHT_BEFORE_START_MIN && minutes < quietStartMin;
 }
 
-export function dutySendHeldByCaps(input: {
-  discretionary: boolean;
-  proactiveToday: number;
-  discretionaryToday: number;
-  discretionaryWeek: number;
-}): 'group_cap' | null {
-  if (input.proactiveToday >= PROACTIVE_BUBBLES_PER_DAY) return 'group_cap';
-  if (!input.discretionary) return null;
-  if (input.discretionaryToday >= DISCRETIONARY_PER_DAY) return 'group_cap';
-  if (input.discretionaryWeek >= DISCRETIONARY_PER_WEEK) return 'group_cap';
-  return null;
-}
-
 /**
  * Rules only. The model is not called from here. A miss returns null and the
- * caller decides whether a budgeted extractor may run.
+ * caller decides whether the extractor may run.
  */
 export function matchParentDutyAsk(
   text: string,
@@ -198,9 +173,9 @@ export function matchParentDutyAsk(
   return { role, weekday };
 }
 
-/** Flag off, or the day's calls already spent: the extractor must not run. */
-export function dutyExtractorMayRun(input: { sendsActive: boolean; callsToday: number }): boolean {
-  return input.sendsActive && input.callsToday < DUTY_LLM_DAY_MAX;
+/** Flag off: the extractor must not run. A count is not a hold. */
+export function dutyExtractorMayRun(input: { sendsActive: boolean }): boolean {
+  return input.sendsActive;
 }
 
 function speakable(occasion: DutyOccasion): boolean {
@@ -215,7 +190,7 @@ function byStart(a: DutyOccasion, b: DutyOccasion): number {
   return a.startsAt.getTime() - b.startsAt.getTime();
 }
 
-/** which_kid, both_claimed, reask_48h, night_before. Overview, a direct answer, and the silent nudge do not. */
+/** Questions. An overview, a direct answer, and the silent line are not. */
 const ASK_BUDGET = new Set<DutyAskMode>(['which_kid', 'both_claimed', 'reask_48h', 'night_before']);
 
 /** Suppressed for 30 days after "stop asking". Overview and parent_initiated stay. */
@@ -305,11 +280,6 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
   ];
   const live = ctx.occasions.filter(speakable).slice().sort(byStart);
   const open = ctx.open;
-  const stepped = open?.status === 'stepped_down';
-  const stepDown =
-    open && !stepped && open.unanswered >= UNANSWERED_STEP_DOWN
-      ? { eventKey: open.eventKey, role: open.role }
-      : null;
 
   let held: CadencePlan['held'] = null;
   let question: CadenceLine | null = null;
@@ -319,7 +289,7 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
     if (match) {
       const specific = questionLine(match, ctx);
       const opens = !match.hasOwner || match.needsWhichKid || match.conflict;
-      if (opens && open && !stepped && !sameSlot(open, match)) {
+      if (opens && open && !sameSlot(open, match)) {
         held = 'open_question';
       } else if (
         (specific?.mode === 'which_kid' || specific?.mode === 'both_claimed') &&
@@ -328,11 +298,11 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
         question = specific;
       } else if (match.hasOwner) {
         question = line('parent_initiated', match, { opensQuestion: false });
-      } else if (!stepDown) {
+      } else {
         question = line('parent_initiated', match, { opensQuestion: true });
       }
     }
-  } else if (!stepDown && !stepped) {
+  } else {
     const pool = open ? live.filter((row) => sameSlot(open, row)) : live;
     for (const occasion of pool) {
       const next = questionLine(occasion, ctx);
@@ -368,33 +338,15 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
       (question.mode === 'night_before' || question.mode === 'parent_initiated')
     ) {
       if (ctx.quiet) held = held ?? 'quiet_hours';
-      else if (
-        dutySendHeldByCaps({
-          discretionary: question.discretionary,
-          proactiveToday: ctx.proactiveToday,
-          discretionaryToday: ctx.discretionaryToday,
-          discretionaryWeek: ctx.discretionaryWeek,
-        })
-      ) {
-        held = held ?? 'group_cap';
-      } else {
-        sendLines.push(question);
-      }
+      else sendLines.push(question);
     }
   }
 
   // A re-ask never opens a bubble. If a confirmation is already leaving, the
   // re-ask rides that one bubble — still the only open question.
-  if (
-    sendLines.length > 0 &&
-    !question?.opensQuestion &&
-    !stepDown &&
-    !stepped &&
-    !(open && open.unanswered >= UNANSWERED_STEP_DOWN)
-  ) {
-    const blocked = open && !stepped;
+  if (sendLines.length > 0 && !question?.opensQuestion) {
     const reask = live.find((row) => {
-      if (blocked && !sameSlot(open, row)) return false;
+      if (open && !sameSlot(open, row)) return false;
       if (row.hasOwner || row.reasked || row.needsWhichKid || row.conflict) return false;
       return eventWithinMs(ctx.now, row.startsAt, REASK_WITHIN_MS);
     });
@@ -410,7 +362,6 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
   const namingBubble = (ctx.bubbleLeaving && !ctx.quiet) || sendLines.length > 0;
   if (
     open &&
-    !stepped &&
     !open.silentNamed &&
     !heldByStopAsking(ctx, 'silent_parent') &&
     open.unanswered >= 1 &&
@@ -439,5 +390,5 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
     }
   }
 
-  return { foldLines, sendLines, stepDown, invalidateEventKeys, held };
+  return { foldLines, sendLines, invalidateEventKeys, held };
 }

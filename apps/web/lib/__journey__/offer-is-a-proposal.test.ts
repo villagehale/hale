@@ -2,29 +2,30 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
-import { introAskDedupeKey } from '~/lib/village/intros/run';
 import type { ChannelCoachRuntime } from '~/lib/channel/router/coach-runtime';
-import { checkupDraftedReply, conflictReply } from '~/lib/channel/router/copy';
-import { channelRouterDeps, defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
+import { conflictReply } from '~/lib/channel/router/copy';
 import { healthReplyHandler } from '~/lib/channel/router/handlers';
-import { defaultHealthReplyDeps } from '~/lib/health/reply';
+import { createReplyTransport } from '~/lib/channel/router/reply-transport';
+import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
 import type { ChannelRouterDeps } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
-import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
+import { channelRouterDeps, defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { checkpointById, checkpointRef } from '~/lib/health/checkpoints';
 import { matchHealthCheckpoints } from '~/lib/health/match';
-import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
 import {
   CHECKUP_OFFER_TTL_HOURS,
   defaultCheckupOfferPorts,
   recordCheckupOffer,
 } from '~/lib/health/offer';
-import { encryptString } from '~/lib/crypto/string-cipher';
+import { defaultHealthReplyDeps } from '~/lib/health/reply';
+import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -287,9 +288,11 @@ describe('the offer is a proposal', () => {
    * refused — which is the decision the 2026-08-20 transcript turned on. The model's own
    * pick is the eval's job (rule #8).
    */
-  function recordedResolver(
-    raw: { target: string; polarity: string; confidence: string },
-  ): ReplyResolver {
+  function recordedResolver(raw: {
+    target: string;
+    polarity: string;
+    confidence: string;
+  }): ReplyResolver {
     return { read: async ({ questions }) => toReading(raw, questions) };
   }
 
@@ -318,7 +321,7 @@ describe('the offer is a proposal', () => {
       // is the approval engine's own business, tested where it lives.
       handlers: channelRouterDeps(database).handlers.map((handler) =>
         handler.name === 'health'
-          ? healthReplyHandler({ ...defaultHealthReplyDeps(), draftCheckup })
+          ? healthReplyHandler({ ...defaultHealthReplyDeps(), draftCheckup, ask: askWriter() })
           : handler,
       ),
       // The production adapter over the fake pipe: the router hands it a resolved sms
@@ -336,30 +339,31 @@ describe('the offer is a proposal', () => {
   }
 
   /** The approvals-engine row a `book_checkup` acceptance mints, minus the model. */
-  const draftCheckup: NonNullable<ReturnType<typeof defaultHealthReplyDeps>['draftCheckup']> =
-    async (_database, input) => {
-      const [event] = await database
-        .insert(schema.events)
-        .values({
-          familyId: input.familyId,
-          source: 'ask_hale',
-          eventType: 'ask_hale.action_intent',
-          dedupHash: `journey-${input.intentKind}`,
-        })
-        .returning({ id: schema.events.id });
-      const [action] = await database
-        .insert(schema.actions)
-        .values({
-          familyId: input.familyId,
-          eventId: (event as { id: string }).id,
-          actionType: 'book_checkup',
-          payload: { title: input.sourceAnswer, childId: input.childId },
-          userVisibleState: 'drafted_for_approval',
-          draftedAt: REPLY_AT,
-        })
-        .returning({ id: schema.actions.id });
-      return { actionId: (action as { id: string }).id };
-    };
+  const draftCheckup: NonNullable<
+    ReturnType<typeof defaultHealthReplyDeps>['draftCheckup']
+  > = async (_database, input) => {
+    const [event] = await database
+      .insert(schema.events)
+      .values({
+        familyId: input.familyId,
+        source: 'ask_hale',
+        eventType: 'ask_hale.action_intent',
+        dedupHash: `journey-${input.intentKind}`,
+      })
+      .returning({ id: schema.events.id });
+    const [action] = await database
+      .insert(schema.actions)
+      .values({
+        familyId: input.familyId,
+        eventId: (event as { id: string }).id,
+        actionType: 'book_checkup',
+        payload: { title: input.sourceAnswer, childId: input.childId },
+        userVisibleState: 'drafted_for_approval',
+        draftedAt: REPLY_AT,
+      })
+      .returning({ id: schema.actions.id });
+    return { actionId: (action as { id: string }).id };
+  };
 
   async function drafts(actionType: string) {
     return database
@@ -454,7 +458,9 @@ describe('the offer is a proposal', () => {
     expect(offerQuestion).toBeDefined();
 
     const transport = new FakeTransport();
-    const coach = fakeCoach("The 18-month visit is on your week now - want me to do anything else?");
+    const coach = fakeCoach(
+      'The 18-month visit is on your week now - want me to do anything else?',
+    );
 
     // TURN 1 — "Add to my week". No closed vocabulary contains it: not a DONE word, not a
     // booking verb, not an affirmative. It is the offer's acceptance and nothing else.
@@ -482,7 +488,7 @@ describe('the offer is a proposal', () => {
     const booked = await drafts('book_checkup');
     expect(booked).toHaveLength(1);
     expect(booked[0]?.state).toBe('drafted_for_approval');
-    expect(transport.bodies()).toEqual([checkupDraftedReply()]);
+    expect(transport.bodies()).toEqual([writtenAsk({ kind: 'checkup_drafted' })]);
 
     // And the offer is closed by the message that told them so — a second yes cannot
     // draft the same visit twice.

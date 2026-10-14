@@ -1,20 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import {
-  GROUP_DISCRETIONARY_DAY_MAX,
-  GROUP_DISCRETIONARY_WEEK_MAX,
-  GROUP_HARD_DAY_MAX,
-} from '~/lib/channel/linq/family-outbound';
 import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
 import {
   type CadenceContext,
-  DISCRETIONARY_PER_DAY,
-  DISCRETIONARY_PER_WEEK,
   type DutyOccasion,
-  PROACTIVE_BUBBLES_PER_DAY,
   dutyExtractorMayRun,
   dutyModeCountsAgainstAskBudget,
-  dutySendHeldByCaps,
   inNightBeforeWindow,
   matchParentDutyAsk,
   planDutyCadence,
@@ -52,9 +43,6 @@ function ctx(partial: Partial<CadenceContext> = {}): CadenceContext {
     open: null,
     occasions: [],
     parentAsk: null,
-    proactiveToday: 0,
-    discretionaryToday: 0,
-    discretionaryWeek: 0,
     localMinutes: 15 * 60,
     weekday: 0,
     quiet: false,
@@ -146,60 +134,7 @@ describe('duty cadence windows', () => {
   });
 });
 
-describe('duty cadence caps and step-down', () => {
-  it('matches the group bubble budget', () => {
-    expect(PROACTIVE_BUBBLES_PER_DAY).toBe(GROUP_HARD_DAY_MAX);
-    expect(DISCRETIONARY_PER_DAY).toBe(GROUP_DISCRETIONARY_DAY_MAX);
-    expect(DISCRETIONARY_PER_WEEK).toBe(GROUP_DISCRETIONARY_WEEK_MAX);
-    expect(PROACTIVE_BUBBLES_PER_DAY).toBe(2);
-    expect(DISCRETIONARY_PER_DAY).toBe(1);
-    expect(DISCRETIONARY_PER_WEEK).toBe(3);
-  });
-
-  it('holds the third proactive bubble and the second discretionary bubble', () => {
-    const owned = occasion({ eventKey: 'swim', hasOwner: true, hasDutyRecord: true });
-    const evening = {
-      now: SUNDAY_EVENING,
-      localMinutes: 18 * 60,
-      occasions: [owned],
-    };
-    expect(planDutyCadence(ctx({ ...evening, proactiveToday: 2 })).held).toBe('group_cap');
-    expect(planDutyCadence(ctx({ ...evening, discretionaryToday: 1 })).held).toBe('group_cap');
-    expect(planDutyCadence(ctx({ ...evening, discretionaryWeek: 3 })).held).toBe('group_cap');
-    expect(
-      dutySendHeldByCaps({
-        discretionary: false,
-        proactiveToday: 1,
-        discretionaryToday: 1,
-        discretionaryWeek: 3,
-      }),
-    ).toBeNull();
-  });
-
-  it('steps down after three unanswered asks and does not ask again', () => {
-    const open = {
-      eventKey: 'swim',
-      role: 'pickup' as const,
-      unanswered: 3,
-      silentNamed: true,
-      status: 'open' as const,
-    };
-    const plan = planDutyCadence(
-      ctx({
-        bubbleLeaving: true,
-        open,
-        occasions: [occasion({ eventKey: 'swim' })],
-      }),
-    );
-    expect(plan.stepDown).toEqual({ eventKey: 'swim', role: 'pickup' });
-    expect(plan.foldLines.map((row) => row.mode)).toEqual(['week_overview']);
-    expect(plan.sendLines).toEqual([]);
-    const again = planDutyCadence(
-      ctx({ open: { ...open, status: 'stepped_down' }, bubbleLeaving: true }),
-    );
-    expect(again.stepDown).toBeNull();
-  });
-
+describe('a silent parent', () => {
   it('names a silent parent once, and only on a bubble that is already leaving', () => {
     const open = {
       eventKey: 'swim',
@@ -384,10 +319,9 @@ describe('ask budget and stop asking', () => {
   });
 });
 
-describe('duty extractor budget', () => {
-  it('does not run when the send flag is off or the day is spent', () => {
-    expect(dutyExtractorMayRun({ sendsActive: false, callsToday: 0 })).toBe(false);
-    expect(dutyExtractorMayRun({ sendsActive: true, callsToday: 1 })).toBe(false);
-    expect(dutyExtractorMayRun({ sendsActive: true, callsToday: 0 })).toBe(true);
+describe('duty extractor', () => {
+  it('does not run when the send flag is off', () => {
+    expect(dutyExtractorMayRun({ sendsActive: false })).toBe(false);
+    expect(dutyExtractorMayRun({ sendsActive: true })).toBe(true);
   });
 });

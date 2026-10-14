@@ -1,13 +1,13 @@
 import { smsSegments } from '~/lib/channel/sms-segments';
 import type { RenderedContent } from '~/lib/channel/types';
-import { localTimeLabel, whenLead } from '../reminder/core';
+import { localTimeLabel, reminderLead } from '../reminder/core';
 import { gsmSafe } from '../weekly-plan/core';
 import type { CaregiverReminderEvent, CaregiverReminderPayload } from './payload';
 
 /**
  * A caregiver's event reminder: where to be, when.
  *
- * It shares the parents' lead ("Tomorrow" / "In an hour") and their two-segment ceiling,
+ * It shares the parents' lead (the events' own local day) and their two-segment ceiling,
  * and diverges in the two places the recipient differs. It carries the LOCATION, which is
  * the half of "event logistics" the parents' copy never needed. And it runs no voice
  * stage: the reminder voice is composed once per parent batch against that parent's own
@@ -29,9 +29,9 @@ function eventLine(event: CaregiverReminderEvent, timeZone: string): string {
 }
 
 export function renderCaregiverReminderSms(payload: CaregiverReminderPayload): RenderedContent {
-  const lead = whenLead(payload.offset);
+  const lead = reminderLead(payload.events, payload.timeZone);
   const lines = payload.events.map((event) => eventLine(event, payload.timeZone));
-  // NO `Hale: ` PREFIX (docs/voice.md rule 2) — see plan-sms.ts.
+  // NO `Hale: ` PREFIX (docs/voice.md rule 2).
   const send = (body: string) => gsmSafe(`${lead} - ${body}`);
 
   const full = send(lines.join(LINE_SEP));

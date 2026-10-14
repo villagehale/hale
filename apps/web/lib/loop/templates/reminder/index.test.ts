@@ -73,22 +73,18 @@ const batch = payload({ offset: '-P1D', events: [apptAt10, swimAt430] });
 const single = payload({ offset: '-PT1H', events: [swimAt430], deepLink: null });
 
 /**
- * The lead is POOLED — three ways of saying each distance, rotating once per the event's
- * own family-local day, because a family with something on every day reads this string
- * every single day. The EMAIL subject keeps the unpooled first member: a subject line that
- * varied per day would make a reminder thread unrecognisable in a mailbox.
- *
- * Restated here rather than imported, deliberately: these words are the spec, and a copy
- * change to them should be a diff a reviewer reads in two places.
+ * The lead is the events' own family-local DAY, a fact, never a word for how far off it
+ * is: a reminder sent late on the event's day would otherwise call today "tomorrow". Both
+ * fixture events fall on Saturday the 25th in Toronto. How the day reads in words is the
+ * voice's to phrase.
  */
-const TOMORROW_LEADS = /^(?:Tomorrow|Coming up tomorrow|On for tomorrow): /;
-const HOUR_LEADS = /^(?:In an hour|An hour from now|Just about an hour away): /;
+const DAY_LEAD = /^Sat, Jul 25: /;
 
-describe('T-24h batch — Tomorrow lead, every event listed', () => {
+describe("T-24h batch — the events' day leads, every event listed", () => {
   it('sms folds to GSM-7 (em-dash → hyphen), one segment, no link (fits the budget)', () => {
     const text = sms(batch, 'first_name');
-    expect(text).toMatch(TOMORROW_LEADS);
-    expect(text.replace(TOMORROW_LEADS, '')).toBe(
+    expect(text).toMatch(DAY_LEAD);
+    expect(text.replace(DAY_LEAD, '')).toBe(
       'an appointment at 10:00, Maya - Swim class at 4:30',
     );
     expect(smsSegments(text)).toBe(1);
@@ -97,7 +93,7 @@ describe('T-24h batch — Tomorrow lead, every event listed', () => {
 
   it('email lists both events as a time→event note and carries the See-your-week link', () => {
     const e = email(batch, 'first_name');
-    expect(e.subject).toBe(`Tomorrow: an appointment at 10:00, Maya ${EM_DASH} Swim class at 4:30`);
+    expect(e.subject).toBe(`Sat, Jul 25: an appointment at 10:00, Maya ${EM_DASH} Swim class at 4:30`);
     expect(e.html).toContain('Swim class');
     expect(e.html).toContain('an appointment');
     // Both times are surfaced in the note body (the batch tabular list).
@@ -108,18 +104,18 @@ describe('T-24h batch — Tomorrow lead, every event listed', () => {
   });
 });
 
-describe('T-1h single — In an hour lead, glanceable, no links anywhere (rule #6)', () => {
+describe("T-1h single — the event's day leads, glanceable, no links anywhere (rule #6)", () => {
   it('sms is one segment and carries no url', () => {
     const text = sms(single, 'first_name');
-    expect(text).toMatch(HOUR_LEADS);
-    expect(text.replace(HOUR_LEADS, '')).toBe('Maya - Swim class at 4:30');
+    expect(text).toMatch(DAY_LEAD);
+    expect(text.replace(DAY_LEAD, '')).toBe('Maya - Swim class at 4:30');
     expect(smsSegments(text)).toBe(1);
     expect(text).not.toContain('http');
   });
 
   it('email has no See-your-week link and no /plan link (glanceable, rule #6)', () => {
     const e = email(single, 'first_name');
-    expect(e.subject).toBe(`In an hour: Maya ${EM_DASH} Swim class at 4:30`);
+    expect(e.subject).toBe(`Sat, Jul 25: Maya ${EM_DASH} Swim class at 4:30`);
     expect(e.html).not.toContain('See your week');
     expect(e.html).not.toContain('/plan');
   });
@@ -172,8 +168,8 @@ describe('SMS segment budget', () => {
     const text = sms(p, 'first_name');
 
     expect(smsSegments(text)).toBeLessThanOrEqual(2);
-    expect(text).toMatch(HOUR_LEADS);
-    expect(text.replace(HOUR_LEADS, '').startsWith('Parent teacher interview')).toBe(true);
+    expect(text).toMatch(DAY_LEAD);
+    expect(text.replace(DAY_LEAD, '').startsWith('Parent teacher interview')).toBe(true);
     expect(text.endsWith('...')).toBe(true); // says it was cut rather than just stopping
     expect(text).not.toContain('http'); // rule #6 — no link on the T-1h ping
   });
@@ -249,7 +245,7 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
    * of the renderer, because "the composer degraded" and "the composer wrote something we
    * would not send" are different bugs in different places (rule #11).
    */
-  const BODY = 'Tomorrow: Maya - Swim class at 4:30';
+  const BODY = 'Sat, Jul 25: Maya - Swim class at 4:30';
 
   function smsVoice(p: ReminderPayload): { text: string; voice: unknown } {
     const r = render(p, 'sms', 'first_name');
@@ -263,7 +259,7 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
     expect(text).toContain(VOICE);
     expect(smsSegments(text)).toBe(1);
     // The facts stay slot-injected and keep their place ahead of it.
-    expect(text).toMatch(TOMORROW_LEADS);
+    expect(text).toMatch(DAY_LEAD);
     expect(text).toContain('Swim class at 4:30');
     // THE OUTCOME LEAVES THE RENDERER. A caller that had to substring-match the body for
     // a sentence it did not choose would be guessing at its own renderer.
@@ -301,13 +297,13 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
     expect(foldReminderVoice(BODY, 'Towel packed?').outcome).toBe('refused:question_count');
   });
 
-  it('keeps the offset in front of the voice, because the offset IS the message', () => {
-    // whenLead is the FACT — "Tomorrow" / "In an hour" — and voice.line is composed by a
-    // skill that says nothing about it (reminder-voice.md). The voice rides AFTER the
-    // deterministic body, never instead of it.
+  it('keeps the day in front of the voice, because the day IS the fact', () => {
+    // The day label is the FACT — the event's own local date — and voice.line is not
+    // guaranteed to carry it. The voice rides AFTER the deterministic body, never instead
+    // of it.
     //
     // THE FOLD CANNOT LOSE THE LEAD, AND THAT IS WHY THERE IS NO CHECK FOR IT. It appends
-    // to the rendered body, which already opens with the lead, so "the offset went
+    // to the rendered body, which already opens with the lead, so "the day went
     // missing" is not a state this code has — the check that used to sit here compared the
     // function's own concatenation against its own prefix and could only fail if a test
     // called it with a lead the body never had. The property is real, so it is asserted
@@ -321,8 +317,8 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
         voice: { line: 'Towel by the door.' },
       }),
     );
-    expect(text).toMatch(HOUR_LEADS);
-    expect(text.indexOf('Towel by the door.')).toBeGreaterThan(text.search(HOUR_LEADS));
+    expect(text).toMatch(DAY_LEAD);
+    expect(text.indexOf('Towel by the door.')).toBeGreaterThan(text.search(DAY_LEAD));
     expect(text).toContain('Swim class at 4:30');
     expect(voice).toBe('used');
     expect(foldReminderVoice(BODY, 'Towel by the door.').text).toBe(`${BODY} Towel by the door.`);
@@ -367,11 +363,10 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
     expect(smsVoice(payload({ offset: '-P1D', events: many })).voice).toBe('absent');
   });
 
-  it('reads a different lead on a different day, and never a different fact', () => {
-    // The pool exists because a family with something on every day reads this string every
-    // single day. The occasion is the EVENT's own local day, not the render clock, so the
-    // same reminder does not change wording depending on when the job happened to run.
-    const days = ['2026-07-25', '2026-07-26', '2026-07-27', '2026-07-28'].map(
+  it("leads with each event's own local day, whatever moment the reminder is sent at", () => {
+    // A reminder held past its slot and sent on the event's own day must not call that day
+    // "tomorrow". The lead is the event's date, so it is true at any send moment.
+    const leads = ['2026-07-25', '2026-07-26', '2026-07-27', '2026-07-28'].map(
       (day) =>
         sms(
           payload({
@@ -379,39 +374,16 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
             events: [ev({ title: 'Swim class', startsAt: `${day}T20:30:00Z` })],
           }),
           'first_name',
-        ).split(':')[0] as string,
+        ).split(': ')[0] as string,
     );
-    for (let i = 1; i < days.length; i++) {
-      expect(days[i], `day ${i}`).not.toBe(days[i - 1]);
-    }
-    // Every member names the same distance in time — the fact never moves.
-    for (const lead of days) expect(lead.toLowerCase(), lead).toContain('tomorrow');
+    expect(leads).toEqual(['Sat, Jul 25', 'Sun, Jul 26', 'Mon, Jul 27', 'Tue, Jul 28']);
+    for (const lead of leads) expect(lead.toLowerCase(), lead).not.toContain('tomorrow');
   });
 });
 
 describe('registry routing by templateKey', () => {
   it('routes a reminder message to the reminder renderer', () => {
     const r = loopTemplateRenderer.render(msg(batch), 'sms', 'first_name');
-    expect(r.kind === 'sms' && TOMORROW_LEADS.test(r.text)).toBe(true);
-  });
-
-  it('still routes a weekly_plan message to its own renderer (not the reminder one)', () => {
-    const weekly: LoopMessage = {
-      templateKey: 'weekly_plan',
-      familyId: 'fam-1',
-      parentUserId: 'user-1',
-      category: 'weekly_plan',
-      urgency: 'normal',
-      payload: {
-        weekStart: '2026-07-20',
-        summary: null,
-        items: [],
-        children: [],
-        deepLink: DEEP_LINK,
-        unsubscribeUrl: UNSUB,
-      },
-    };
-    const r = loopTemplateRenderer.render(weekly, 'email', 'generic');
-    expect(r.kind === 'email' && r.subject).toBe('Your week ahead');
+    expect(r.kind === 'sms' && DAY_LEAD.test(r.text)).toBe(true);
   });
 });

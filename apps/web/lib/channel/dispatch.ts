@@ -1,9 +1,9 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
-import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
-import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
+import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
-import { CATEGORY_CAPS, SEND_RETRIES_EXHAUSTED } from './config';
+import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
+import { SEND_RETRIES_EXHAUSTED } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
 import type {
   Channel,
@@ -17,7 +17,7 @@ import type {
 /**
  * F11 · The Sunday Loop — the dispatch (VIL-213 · A2). THE one place loop policy
  * is enforced: no caller reaches a provider except through here, so consent, the
- * A5 per-category enables, quiet hours, caps, dedupe, the channel_messages ledger,
+ * A5 per-category enables, quiet hours, dedupe, the channel_messages ledger,
  * audit rows, and the email CASL dual-write all happen exactly once.
  *
  * Delivery model: the exchange send goes via the parent's loop_channel (email or
@@ -25,8 +25,9 @@ import type {
  * 'push' ledger rows keep their persisted enum value.
  *
  * Policy is evaluated PER LEG through this single point, and every leg writes its
- * own ledger row. Dedupe + caps are per (parent, category, CHANNEL) so a re-drain
- * can't double-send a leg.
+ * own ledger row. Dedupe is per (parent, category, CHANNEL) so a re-drain can't
+ * double-send a leg. A count is not a hold. `suppressed_cap` stays on the status
+ * union so an older ledger row still reads.
  *
  * Pure orchestrator over injected ports so the policy is tested against Fakes with
  * no live provider.
@@ -64,14 +65,6 @@ export interface DispatchPorts {
   emailOptedOut(userId: string, emailType: string): Promise<boolean>;
   /** CASL express SMS consent, live (an active verified parent_channels row). */
   smsConsentLive(userId: string): Promise<boolean>;
-  /** Non-suppressed sends of this category on THIS channel to this parent since
-   * `since` — the cap is per delivery leg. */
-  countRecent(
-    userId: string,
-    category: LoopCategory,
-    channel: ChannelKind,
-    since: Date,
-  ): Promise<number>;
   /** A prior send (not a suppression) already carries this per-channel dedupe key. */
   activeDedupe(dedupeKey: string): Promise<boolean>;
   /** Write one channel_messages row; returns its id (for the audit target). */
@@ -247,12 +240,6 @@ async function dispatchLeg(
   const legKey = msg.dedupeKey ? `${msg.dedupeKey}:${channel}` : null;
   if (legKey && (await ports.activeDedupe(legKey))) {
     return { channel, outcome: 'deduped' };
-  }
-
-  const cap = CATEGORY_CAPS[msg.category];
-  const since = new Date(now.getTime() - cap.windowHours * 3_600_000);
-  if ((await ports.countRecent(msg.parentUserId, msg.category, channel, since)) >= cap.max) {
-    return suppressed('suppressed_cap');
   }
 
   if (channel === 'email' && (await ports.emailOptedOut(msg.parentUserId, msg.category))) {

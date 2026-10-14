@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const runInferenceCronMock = vi.fn();
-const runWeekPlanCronMock = vi.fn();
 const sweepAttachmentsMock = vi.fn();
 const sweepForwardsMock = vi.fn();
 const runNudgeCronMock = vi.fn();
@@ -37,9 +36,6 @@ vi.mock('next/server', async (importActual) => ({
 }));
 vi.mock('~/lib/cron/inference', () => ({
   runInferenceCron: (...a: unknown[]) => runInferenceCronMock(...a),
-}));
-vi.mock('~/lib/loop/cron', () => ({
-  runWeekPlanCron: (...a: unknown[]) => runWeekPlanCronMock(...a),
 }));
 vi.mock('~/lib/coach/attachments', () => ({
   sweepUnlinkedAttachments: (...a: unknown[]) => sweepAttachmentsMock(...a),
@@ -102,7 +98,6 @@ const ROUTES = [
     path: '~/app/api/cron/attachment-sweep/route',
     mock: sweepAttachmentsMock,
   },
-  { name: 'week-plan', path: '~/app/api/cron/week-plan/route', mock: runWeekPlanCronMock },
   { name: 'nudge', path: '~/app/api/cron/nudge/route', mock: runNudgeCronMock },
   {
     name: 'proactive-review',
@@ -120,7 +115,6 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
   beforeEach(() => {
     vi.resetModules();
     runInferenceCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
-    runWeekPlanCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
     sweepForwardsMock.mockReset().mockResolvedValue({ purged: 0, senders: 0 });
     runNudgeCronMock.mockReset().mockResolvedValue({ enabled: false, evaluated: 0 });
@@ -143,7 +137,6 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
       considered: 0,
       sent: 0,
       invalidated: 0,
-      steppedDown: 0,
       held: 0,
       skipped: 0,
     });

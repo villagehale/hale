@@ -46,7 +46,7 @@ export interface SmsChannelDeps {
    * SMS, which is what every test double and every family without a group does.
    */
   familyTarget?(userId: string): Promise<FamilyOutboundTarget>;
-  /** The database the group cap is counted on. Required when `familyTarget` is set. */
+  /** The database a group send is recorded on. Required when `familyTarget` is set. */
   database?: Database;
 }
 

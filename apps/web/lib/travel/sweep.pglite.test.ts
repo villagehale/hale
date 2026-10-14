@@ -5,7 +5,6 @@ import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFindResult, ActivityPick } from '~/lib/channel/activity/lane';
 import { dedupeActive } from '~/lib/channel/ledger';
 import {
-  PROACTIVE_CAP,
   PROACTIVE_CATEGORY,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
@@ -552,7 +551,7 @@ describe('the hold, and how many rows a week of it leaves', () => {
         direction: 'out',
         category: 'travel_brief',
         templateKey: 'travel:brief',
-        dedupeKey: travelBriefHoldKey(trip, 'frequency_cap'),
+        dedupeKey: `travel_brief_hold:${trip}:frequency_cap`,
         status: 'suppressed_cap',
       })
       .onConflictDoNothing();
@@ -604,9 +603,6 @@ describe('the hold, and how many rows a week of it leaves', () => {
       h.deps.buildGate(database),
     );
     expect(morning.allowed).toBe(true);
-
-    // And the budget the class was forced to choose.
-    expect(PROACTIVE_CAP.travel_brief).toEqual({ max: 1, windowHours: 168 });
     expect(PROACTIVE_CATEGORY.travel_brief).toBe('travel_brief');
   });
 });
@@ -675,8 +671,7 @@ describe('a trip closes exactly once', () => {
    * minus `sent`, which is the shape rule #11 forbids.
    *
    * It also pins the ORDER: the dedupe read runs before the gate, so this household is
-   * counted as already claimed rather than as held by the weekly cap their own first text
-   * spent.
+   * counted as already claimed.
    */
   it('names the tick that finds the send already claimed, rather than returning silently', async () => {
     const family = await seedFamily();
@@ -694,7 +689,6 @@ describe('a trip closes exactly once', () => {
     expect(second.due).toBe(1);
     expect(second.sent).toBe(0);
     expect(second.alreadyClaimed).toBe(1);
-    expect(second.held.frequency_cap).toBe(0);
     expect(h.sent).toHaveLength(1);
   });
 
@@ -733,8 +727,8 @@ describe('the flags', () => {
     expect(h.sent).toEqual([]);
   });
 
-  it('the allowlist arms one household and not the one beside it', async () => {
-    vi.stubEnv('TRAVEL_BRIEF_ENABLED', '');
+  it('the allowlist narrows to one household and not the one beside it while the lane is on', async () => {
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', 'true');
     const armed = await seedFamily();
     const other = await seedFamily();
     vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', armed.familyId);
@@ -745,5 +739,16 @@ describe('the flags', () => {
     const result = await run(h);
     expect(result.sent).toBe(1);
     expect((await tripRow(dark))?.closedAt).toBeNull();
+  });
+
+  it('an allowlisted household gets nothing while the lane is off', async () => {
+    vi.stubEnv('TRAVEL_BRIEF_ENABLED', '');
+    const armed = await seedFamily();
+    vi.stubEnv('TRAVEL_BRIEF_FAMILY_ALLOWLIST', armed.familyId);
+    const held = await seedTrip({ ...armed, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+
+    const result = await run(harness());
+    expect(result.sent).toBe(0);
+    expect((await tripRow(held))?.closedAt).toBeNull();
   });
 });

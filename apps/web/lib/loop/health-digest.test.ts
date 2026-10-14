@@ -1,10 +1,10 @@
-import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CommitmentDebt } from '~/lib/commitments/ledger';
 import { type FunnelScoreboard, formatFunnelScoreboard } from './funnel-scoreboard';
 import {
+  type LoopHealthSummary,
   createLoopHealthDigestSender,
   formatLoopHealthDigest,
-  type LoopHealthSummary,
   runLoopHealthDigestCron,
 } from './health-digest';
 import type {
@@ -247,23 +247,6 @@ describe('formatLoopHealthDigest — top unmet intents', () => {
   });
 });
 
-interface SendPayload {
-  to: string;
-  from: string;
-  subject: string;
-  text: string;
-}
-
-function fakeResend() {
-  const send = vi.fn(async (_payload: SendPayload) => ({ data: { id: 'resend-digest-1' }, error: null }));
-  return { emails: { send } } as never;
-}
-
-function sendOf(client: unknown): Mock<(payload: SendPayload) => Promise<unknown>> {
-  return (client as { emails: { send: Mock<(payload: SendPayload) => Promise<unknown>> } }).emails
-    .send;
-}
-
 beforeEach(() => {
   vi.stubEnv('RESEND_API_KEY', 'test-key');
   vi.stubEnv('FOUNDER_ALERT_EMAIL', 'founder@villagehale.com');
@@ -275,33 +258,37 @@ afterEach(() => {
 });
 
 describe('createLoopHealthDigestSender', () => {
-  it('emails the founder the given body', async () => {
-    const client = fakeResend();
+  it('posts the body to Slack #ops', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/test');
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response('ok', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchImpl);
 
-    const sent = await createLoopHealthDigestSender(client).send('the digest body');
+    const sent = await createLoopHealthDigestSender().send('the digest body');
 
     expect(sent).toEqual({ sent: true });
-    const payload = sendOf(client).mock.calls[0]?.[0];
-    expect(payload?.to).toBe('founder@villagehale.com');
-    expect(payload?.text).toBe('the digest body');
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)) as { text: string };
+    expect(body.text).toContain('the digest body');
   });
 
-  it('does NOT send when no founder address is configured, and names the absence', async () => {
-    vi.stubEnv('FOUNDER_ALERT_EMAIL', '');
-    const client = fakeResend();
+  it('does NOT send when #ops is not configured, and names the absence', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', '');
 
-    expect(await createLoopHealthDigestSender(client).send('body')).toEqual({
+    expect(await createLoopHealthDigestSender().send('body')).toEqual({
       sent: false,
       reason: 'not_configured',
     });
-    expect(sendOf(client)).not.toHaveBeenCalled();
   });
 
   it('names a provider refusal apart from a missing config', async () => {
-    const client = fakeResend();
-    sendOf(client).mockResolvedValueOnce({ data: null, error: { message: 'refused' } });
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/test');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('no', { status: 500 })),
+    );
 
-    expect(await createLoopHealthDigestSender(client).send('body')).toEqual({
+    expect(await createLoopHealthDigestSender().send('body')).toEqual({
       sent: false,
       reason: 'provider_error',
     });
@@ -379,7 +366,6 @@ describe('runLoopHealthDigestCron', () => {
     expect(escalate).toHaveBeenCalledWith({}, 'provider_error');
   });
 });
-
 
 /**
  * MEM-10 · the open-loops line. What a founder is being told is how many FAMILIES are

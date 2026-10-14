@@ -240,7 +240,6 @@ describe('ci.yml wiring', () => {
       'eval:memory',
       'eval:memory-writeback',
       'eval:reviewer',
-      'eval:week-summary',
       'eval:agents',
       'eval:village-search',
       'eval:sentinel',

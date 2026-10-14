@@ -1,28 +1,7 @@
-import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLoopStopNotifier, dispatchLoopStopSideEffects } from './stop-alert';
 
-// X1 (VIL-227) · the STOP guardrail: page the founder at ANY loop-category
-// unsubscribe, immediately. Mirrors founder-signal.test.ts's fake-Resend-client
-// conventions so no real Resend/PostHog is touched.
-
 const USER_ID = '55555555-5555-4555-8555-555555555555';
-
-interface SendPayload {
-  to: string;
-  from: string;
-  subject: string;
-  text: string;
-}
-
-function fakeResend() {
-  const send = vi.fn(async (_payload: SendPayload) => ({ data: { id: 'resend-stop-1' }, error: null }));
-  return { emails: { send } } as never;
-}
-
-function sendOf(client: unknown): Mock<(payload: SendPayload) => Promise<unknown>> {
-  return (client as { emails: { send: Mock<(payload: SendPayload) => Promise<unknown>> } }).emails
-    .send;
-}
 
 beforeEach(() => {
   vi.stubEnv('RESEND_API_KEY', 'test-key');
@@ -37,29 +16,27 @@ afterEach(() => {
 });
 
 describe('createLoopStopNotifier', () => {
-  it('alerts the founder naming only the loop stream — no parent/child identifying detail', async () => {
-    const client = fakeResend();
+  it('posts to #ops naming only the loop stream — no parent/child identifying detail', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/test');
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response('ok', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchImpl);
 
-    const sent = await createLoopStopNotifier(client).notifyStop('weekly_plan');
+    const sent = await createLoopStopNotifier().notifyStop('weekly_plan');
 
     expect(sent).toBe(true);
-    const payload = sendOf(client).mock.calls[0]?.[0];
-    expect(payload?.to).toBe('founder@villagehale.com');
-    expect(payload?.subject).toContain('weekly_plan');
-    expect(payload?.text).toContain('weekly_plan');
-    // notifyStop takes only an enum category — no email/userId ever reaches the
-    // body, so no '@' can appear in it regardless of who unsubscribed.
-    expect(payload?.text).not.toContain('@');
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)) as { text: string };
+    expect(body.text).toContain('weekly_plan');
+    expect(body.text).not.toContain('@');
   });
 
-  it('does NOT send when no founder address is configured', async () => {
-    vi.stubEnv('FOUNDER_ALERT_EMAIL', '');
-    const client = fakeResend();
+  it('does NOT send when #ops is not configured', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', '');
 
-    const sent = await createLoopStopNotifier(client).notifyStop('reminder');
+    const sent = await createLoopStopNotifier().notifyStop('reminder');
 
     expect(sent).toBe(false);
-    expect(sendOf(client)).not.toHaveBeenCalled();
   });
 });
 

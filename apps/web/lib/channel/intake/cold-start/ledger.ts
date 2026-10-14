@@ -25,8 +25,6 @@ export interface OptionalAskGate {
   askKey: string;
   timeZone?: string;
   env?: Record<string, string | undefined>;
-  /** Name, calendar, and email in one sitting. Skips the one-a-day cap. */
-  onboardingSequence?: boolean;
 }
 
 export async function gateOptionalAsk(
@@ -35,7 +33,7 @@ export async function gateOptionalAsk(
 ): Promise<AskBudgetVerdict & { skipped?: 'flag_off' }> {
   if (!coldStartLadderEnabled(input.env)) return { allow: true, skipped: 'flag_off' };
   const [family] = await database
-    .select({ createdAt: schema.families.createdAt })
+    .select({ id: schema.families.id })
     .from(schema.families)
     .where(eq(schema.families.id, input.familyId))
     .limit(1);
@@ -43,7 +41,6 @@ export async function gateOptionalAsk(
     console.info({ reason: 'family_missing', familyId: input.familyId }, 'optional ask: no family');
     return { allow: false, reason: 'ask_budget' };
   }
-  const familyStartedAt = family.createdAt instanceof Date ? family.createdAt : input.now;
   const stored = await database
     .select()
     .from(schema.optionalAskLedger)
@@ -58,14 +55,11 @@ export async function gateOptionalAsk(
   return judgeAskBudget(
     {
       now: input.now,
-      familyStartedAt,
       rows,
       stopUntil,
       parentWroteSincePause,
-      ...(input.timeZone ? { timeZone: input.timeZone } : {}),
     },
     { sendClass: input.sendClass, askKey: input.askKey },
-    input.onboardingSequence ? { onboardingSequence: true } : undefined,
   );
 }
 

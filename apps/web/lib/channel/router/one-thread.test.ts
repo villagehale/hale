@@ -119,6 +119,7 @@ describe('one parent, two doors, one conversation', () => {
       questions: { open: async () => [] },
       replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
       calendarOffers: calendarOffersIdle,
+      weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       recordStatedState: async () => ({ status: 'nothing_stated' }),
