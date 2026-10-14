@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { localCalendarDay } from '~/lib/channel/intake/cold-start/budget';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -23,8 +22,7 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  *
  * A shared reply is one of the placeholders below. It is not built from a
  * family's memory, calendar, email, children, or signups. Those stay on the
- * family that owns them. Ask budget and send caps are counted per family,
- * and sends also face one cap for the whole chat.
+ * family that owns them. A prior send does not hold the next line.
  */
 
 /** DESIGN LOCK PENDING (Sloane). Placeholders until the lock. No opt-out line. */
@@ -49,14 +47,6 @@ const LEFT_TEMPLATE = 'linq:multi_family_left';
 const JOIN_NEEDED_TEMPLATE = 'linq:multi_family_join_needed';
 const REPLY_TEMPLATE = 'linq:multi_family_reply';
 const ASK_TEMPLATE = 'linq:multi_family_ask';
-
-/** Per family, inside one shared chat. */
-export const MULTI_FAMILY_ASK_DAILY_MAX = 1;
-export const MULTI_FAMILY_ASK_WINDOW_MAX = 4;
-export const MULTI_FAMILY_ASK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-export const MULTI_FAMILY_FAMILY_SEND_DAILY_MAX = 3;
-/** Whole chat, so one busy family cannot spend every other family's room, and Hale stays bounded. */
-export const MULTI_FAMILY_GROUP_SEND_DAILY_MAX = 6;
 
 export const PRIVATE_FAMILY_SURFACES = [
   'memory',
@@ -129,58 +119,12 @@ export function emptyFamilySlice(familyId: string): FamilyPrivateSlice {
   return { familyId, memory: [], calendar: [], email: [], children: [], signups: [] };
 }
 
-export interface LedgerStamp {
-  familyId: string;
-  kind: 'ask' | 'send';
-  createdAt: Date;
-}
-
-export function judgeFamilyAskBudget(
-  input: {
-    now: Date;
-    rows: readonly LedgerStamp[];
-    timeZone?: string;
-  },
-  familyId: string,
-): { allow: true } | { allow: false; reason: 'ask_budget' } {
-  const asks = input.rows.filter((row) => row.familyId === familyId && row.kind === 'ask');
-  const day = localCalendarDay(input.now, input.timeZone);
-  const today = asks.filter((row) => localCalendarDay(row.createdAt, input.timeZone) === day);
-  if (today.length >= MULTI_FAMILY_ASK_DAILY_MAX) return { allow: false, reason: 'ask_budget' };
-  const windowStart = input.now.getTime() - MULTI_FAMILY_ASK_WINDOW_MS;
-  const inWindow = asks.filter((row) => row.createdAt.getTime() >= windowStart);
-  if (inWindow.length >= MULTI_FAMILY_ASK_WINDOW_MAX) return { allow: false, reason: 'ask_budget' };
-  return { allow: true };
-}
-
-export function judgeFamilySendCap(
-  input: {
-    now: Date;
-    rows: readonly LedgerStamp[];
-    timeZone?: string;
-  },
-  familyId: string,
-): { allow: true } | { allow: false; reason: 'family_send_cap' | 'group_send_cap' } {
-  const day = localCalendarDay(input.now, input.timeZone);
-  const sendsToday = input.rows.filter(
-    (row) => row.kind === 'send' && localCalendarDay(row.createdAt, input.timeZone) === day,
-  );
-  const familyToday = sendsToday.filter((row) => row.familyId === familyId);
-  if (familyToday.length >= MULTI_FAMILY_FAMILY_SEND_DAILY_MAX) {
-    return { allow: false, reason: 'family_send_cap' };
-  }
-  if (sendsToday.length >= MULTI_FAMILY_GROUP_SEND_DAILY_MAX) {
-    return { allow: false, reason: 'group_send_cap' };
-  }
-  return { allow: true };
-}
-
 type SendGroup = (notice: { chatId: string; text: string }) => Promise<{
   providerMessageId: string;
 }>;
 
 type NoticeResult = 'sent' | 'already_sent' | 'not_sent' | 'refused_text' | 'no_parent';
-type SendNotice = NoticeResult | 'family_send_cap' | 'group_send_cap';
+type SendNotice = NoticeResult;
 
 function haleLine(phone: string): boolean {
   const from = linqFromE164();
@@ -344,24 +288,6 @@ async function recordSend(
   });
 }
 
-async function ledgerStamps(database: Database, chatId: string): Promise<LedgerStamp[]> {
-  const rows = await database
-    .select({
-      chatId: schema.linqMultiFamilyLedger.chatId,
-      familyId: schema.linqMultiFamilyLedger.familyId,
-      kind: schema.linqMultiFamilyLedger.kind,
-      createdAt: schema.linqMultiFamilyLedger.createdAt,
-    })
-    .from(schema.linqMultiFamilyLedger);
-  return rows
-    .filter((row) => row.chatId === chatId && (row.kind === 'ask' || row.kind === 'send'))
-    .map((row) => ({
-      familyId: row.familyId,
-      kind: row.kind as 'ask' | 'send',
-      createdAt: row.createdAt,
-    }));
-}
-
 async function cappedSend(
   database: Database,
   input: {
@@ -375,25 +301,6 @@ async function cappedSend(
     send?: SendGroup;
   },
 ): Promise<SendNotice> {
-  const cap = judgeFamilySendCap(
-    { now: input.now, rows: await ledgerStamps(database, input.chatId) },
-    input.familyId,
-  );
-  if (!cap.allow) {
-    await audit(database, {
-      familyId: input.familyId,
-      actor: input.parentUserId,
-      actionTaken: 'linq_multi_family_send_capped',
-      targetTable: 'linq_multi_family_ledger',
-      targetId: input.familyId,
-      after: { reason: cap.reason },
-    });
-    console.info(
-      { familyId: input.familyId, outcome: cap.reason },
-      'linq multi-family: send cap held the line',
-    );
-    return cap.reason;
-  }
   const notice = await sendOnce(database, input);
   if (notice === 'sent') await recordSend(database, input);
   return notice;
@@ -843,11 +750,7 @@ export async function spendSharedGroupAsk(
     timeZone?: string;
   },
 ): Promise<
-  | { outcome: 'flag_off' }
-  | { outcome: 'not_joined' }
-  | { outcome: 'ask_budget' }
-  | { outcome: 'family_send_cap' | 'group_send_cap' }
-  | { outcome: 'asked'; notice: NoticeResult }
+  { outcome: 'flag_off' } | { outcome: 'not_joined' } | { outcome: 'asked'; notice: NoticeResult }
 > {
   if (!linqMultiFamilyGroupsEnabled()) return { outcome: 'flag_off' };
   const joined = (await liveJoins(database, input.chatId)).some(
@@ -864,26 +767,6 @@ export async function spendSharedGroupAsk(
     });
     return { outcome: 'not_joined' };
   }
-  const rows = await ledgerStamps(database, input.chatId);
-  const ask = judgeFamilyAskBudget(
-    { now: input.now, rows, timeZone: input.timeZone },
-    input.familyId,
-  );
-  if (!ask.allow) {
-    await audit(database, {
-      familyId: input.familyId,
-      actor: input.parentUserId,
-      actionTaken: 'linq_multi_family_ask_capped',
-      targetTable: 'linq_multi_family_ledger',
-      targetId: input.familyId,
-      after: { reason: 'ask_budget' },
-    });
-    console.info(
-      { familyId: input.familyId, outcome: 'ask_budget' },
-      'linq multi-family: ask budget held the question',
-    );
-    return { outcome: 'ask_budget' };
-  }
   const notice = await cappedSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -894,7 +777,6 @@ export async function spendSharedGroupAsk(
     now: input.now,
     send: input.send,
   });
-  if (notice === 'family_send_cap' || notice === 'group_send_cap') return { outcome: notice };
   if (notice === 'sent') {
     await database.insert(schema.linqMultiFamilyLedger).values({
       chatId: input.chatId,
@@ -1090,11 +972,10 @@ export async function takeMultiFamilyTurn(
       after: { sources: 'thread' },
     });
   }
-  const capped = notice === 'family_send_cap' || notice === 'group_send_cap';
   return {
     handled: true,
-    outcome: capped ? notice : 'shared_reply',
-    count: capped ? 'ignored' : 'intake',
+    outcome: 'shared_reply',
+    count: 'intake',
     notice,
   };
 }

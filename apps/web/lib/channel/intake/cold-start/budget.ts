@@ -1,17 +1,14 @@
 /**
  * VIL-392 — one optional-ask budget, shared with the duty_ask send class.
  *
- * During the first seven days after the family starts: at most four optional
- * asks, and at most one per family-local calendar day. A duty ask counts.
  * A declined ask is final. Two declined or unanswered asks in a row pause
  * every discretionary ask until the parent writes again. Silence past 24h is
  * unanswered. The stop-asking fact blocks everything until it expires.
+ * How many asks already went does not hold the next one.
  */
 
 export const SHARED_STOP_ASKING_KEY = 'duty-ask/stop-asking';
 export const ASK_UNANSWERED_MS = 24 * 60 * 60 * 1000;
-export const ASK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-export const ASK_WINDOW_MAX = 4;
 
 export const OPTIONAL_ASK_CLASSES = [
   'duty_ask',
@@ -54,10 +51,6 @@ export function localCalendarDay(now: Date, timeZone = 'America/Toronto'): strin
   }).format(now);
 }
 
-export function inAskWindow(now: Date, familyStartedAt: Date): boolean {
-  return now.getTime() <= familyStartedAt.getTime() + ASK_WINDOW_MS;
-}
-
 /** The newer of two consecutive bad asks, or null when the pause is not on. */
 export function pauseAnchor(rows: readonly AskLedgerRow[], now: Date): Date | null {
   const sorted = [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -76,7 +69,7 @@ export function pauseAnchor(rows: readonly AskLedgerRow[], now: Date): Date | nu
 export function judgeAskBudget(
   input: AskBudgetInput,
   ask: { sendClass: OptionalAskClass; askKey: string },
-  options?: { onboardingSequence?: boolean },
+  _options?: { onboardingSequence?: boolean },
 ): AskBudgetVerdict {
   if (input.stopUntil && input.stopUntil.getTime() > input.now.getTime()) {
     return { allow: false, reason: 'stop_asking' };
@@ -86,14 +79,6 @@ export function judgeAskBudget(
   if (same.length > 0) return { allow: false, reason: 'already_asked' };
   if (pauseAnchor(input.rows, input.now) && !input.parentWroteSincePause) {
     return { allow: false, reason: 'paused' };
-  }
-  // The friend-voice onboarding sequence is one conversation: name, calendar,
-  // then email. The one-a-day cap would stop it on the logistics turn.
-  if (!options?.onboardingSequence && inAskWindow(input.now, input.familyStartedAt)) {
-    const day = localCalendarDay(input.now, input.timeZone);
-    if (input.rows.some((row) => row.localDay === day))
-      return { allow: false, reason: 'ask_budget' };
-    if (input.rows.length >= ASK_WINDOW_MAX) return { allow: false, reason: 'ask_budget' };
   }
   return { allow: true };
 }
