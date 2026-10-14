@@ -1,7 +1,7 @@
 ---
 name: opt-out-read
 whenToUse: Any text from a parent or a number Hale texts. Decide whether the sender is asking Hale to stop texting them (or, after they stopped, to start again), in any wording and any language, and write the one confirmation.
-task: classify
+task: screen
 tools: []
 ---
 

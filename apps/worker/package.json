@@ -44,6 +44,7 @@
     "eval:intro-voice": "node evals/run-intro-voice-eval.mjs --cached-only",
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",
     "eval:calendar-offer-read": "node evals/run-calendar-offer-read-eval.mjs --cached-only",
+    "eval:crisis-reply": "node evals/run-crisis-reply-eval.mjs --cached-only",
     "eval:radar": "node evals/run-radar-eval.mjs --cached-only",
     "eval:nudge": "node evals/run-nudge-eval.mjs --cached-only",
     "eval:rsvp": "node evals/run-rsvp-eval.mjs --cached-only",
