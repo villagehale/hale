@@ -414,7 +414,10 @@ function tripFacts(trip: object): Record<string, unknown> {
   return facts;
 }
 
-describe('a booking email becomes one text a week before the trip', () => {
+// A recording waits on live model calls, which outlast the 5s default; replay keeps it.
+const RECORD_TIMEOUT = process.env.HALE_RECORD === '1' ? 180_000 : undefined;
+
+describe('a booking email becomes one text a week before the trip', { timeout: RECORD_TIMEOUT }, () => {
   it('does not treat a timestamp or an id as the fare', () => {
     const facts = JSON.stringify(
       tripFacts({
