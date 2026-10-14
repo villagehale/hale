@@ -2,11 +2,7 @@ import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
-import {
-  namesAMentalCrisis,
-  namesAnEmergency,
-  reachesForTheHealthLine,
-} from '~/lib/channel/off-domain/copy';
+import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -14,7 +10,7 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
-import { identityChallengeReply } from './identity-challenge';
+import { isIdentityChallenge } from './identity-challenge';
 import {
   cheerUpIntakeReply,
   groundCurrentSource,
@@ -365,14 +361,13 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // FIRST, and with no model in the loop. See the module note: intake has never had
       // the screened safety lane, and an emergency must not wait on a provider that may
       // be the reason this turn is degraded at all.
-      if (namesAnEmergency(input.parentWords)) return { status: 'safety' };
-      if (namesAMentalCrisis(input.parentWords)) return { status: 'mental_crisis' };
 
       // VIL-333. Identity / distrust is a locked disclosure, not a composed answer
       // plus the pending ask. The machine short-circuits on the same read; this
       // is the same door for any caller of the composer.
-      const disclosure = identityChallengeReply(input.parentWords);
-      if (disclosure) return { status: 'answered', body: disclosure };
+      // #868: the disclosure is written by the model in the machine's seam (which
+      // holds the writer). Here a challenge is simply not a question to answer.
+      if (isIdentityChallenge(input.parentWords)) return { status: 'nothing_to_answer' };
 
       // VIL-323: adult-learn is a Designer-locked kids-only door, not a model "I
       // don't do that" and not a city clock. Checked before rec-morning so

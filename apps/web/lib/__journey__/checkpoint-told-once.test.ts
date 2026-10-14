@@ -10,7 +10,6 @@ import {
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
-import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
@@ -123,7 +122,6 @@ async function runIntakeRadar(): Promise<Intake> {
     seedCivic: async () => 0,
     resolveCenter: async () => null,
     discoveryTrigger: () => {},
-    ackComposer: createIntakeAckComposer(null),
     answerComposer: fakeSilentAnswerComposer,
     friendVoice: scriptedFriendVoice,
     openQuestions: fakeNoOpenQuestions,

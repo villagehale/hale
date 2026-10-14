@@ -1,8 +1,6 @@
-import { withGoogleConnectCaution } from '~/lib/channel/connect/text-connect';
 import { isJoinCode } from '~/lib/channel/join/code';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { isReferralCode } from '~/lib/channel/referral/code';
-import { PRIVACY_URL } from '~/lib/legal-links';
 
 /**
  * VIL-237 · M2 — every word Hale texts during intake, in one file.
@@ -16,11 +14,9 @@ import { PRIVACY_URL } from '~/lib/legal-links';
  * DECIDES — which turn comes next, what it will not invent, what a consent record says —
  * is deterministic here, and so is every compliance string (the keyword replies, the
  * blocked and region lines, the consent ask): those are promises, and a promise a model
- * paraphrased is a promise nobody made. What Hale SOUNDS like on the ACKNOWLEDGMENT
- * turns — the "Got it - …" that echoes a parent's own words back — is model-composed
- * through the `intake-voice` skill, gated on grounding and length, and falling back to
- * the template below whenever the model is unreachable, wrong, or over budget. Every
- * string here is therefore either the message itself or the floor under a composed one.
+ * paraphrased is a promise nobody made. #868 moved every onboarding turn to the
+ * friend voice (model-written); the fixed follow-up, watch, assent, connector-offer,
+ * identity and cold-start lines that used to live here are gone.
  *
  * Rule #1: no message ever carries a child's health detail, a precise location, or
  * anything the parent did not just tell us in this conversation.
@@ -440,13 +436,6 @@ export function posterLocation(code: string | null): string | null {
 }
 
 /**
- * The ask quoted to the answer composer as the pending question (official-page,
- * live-lookup and rec-morning fallbacks). It is not sent as a first hello.
- */
-export const COLD_START_ASK =
-  "Reply with your kids' names, ages, and postal code and I'll text back what's coming.";
-
-/**
  * What intake still needs before a family can be set up. Both are hard requirements
  * and for the same reason: Hale will not invent either one. A postal code it cannot
  * place is a compliance boundary (rule #1); an age it was never given would be a
@@ -454,113 +443,6 @@ export const COLD_START_ASK =
  * computed from afterwards.
  */
 export type IntakeGap = 'ages' | 'location';
-
-const GAP_ASK: Record<IntakeGap, string> = {
-  ages: 'how old are they',
-  location: "what's your postal code",
-};
-
-/**
- * The single targeted ASK, at most once per intake — so when two things are outstanding
- * it asks for both in the one message it gets.
- *
- * Split out from {@link followUp} because the composed acknowledgment reuses it verbatim:
- * `intake-voice` writes the "Got it - …" half and is forbidden from writing a question,
- * so this exact sentence is what the shell appends after it. One question, authored once,
- * whichever half of the turn the model wrote.
- */
-export function followUpQuestion(missing: readonly IntakeGap[]): string {
-  return `Last thing: ${missing.map((gap) => GAP_ASK[gap]).join(', and ')}?`;
-}
-
-/** The deterministic follow-up: the plain echo plus the ask. This is what goes out when
- * the composed acknowledgment is unavailable or unusable — so an outage costs a parent
- * warmth, never the question Hale actually needs answered. */
-export function followUp(summary: string, missing: readonly IntakeGap[]): string {
-  return `Got it - ${summary}. ${followUpQuestion(missing)}`;
-}
-
-/**
- * The consent question ITSELF, without the link that rides with it.
- *
- * Split out because a second reader now needs it: when a parent answers this with a
- * question of their own, the answering turn is handed the pending ask so it can get
- * back to it in different words (answer.ts). It is handed the QUESTION and not the
- * whole message — a privacy URL inside a model's context is a URL a model can quote,
- * and this stage is forbidden from writing links at all.
- */
-export const WATCH_OFFER_ASK = 'Want me to keep an eye on all of this for you?';
-
-/**
- * The consent moment, and the one message in intake that carries a link.
- *
- * The privacy URL lives HERE rather than in the greeting because this is the turn where
- * a parent is asked to agree to ongoing watching — "where does my family's data go" is a
- * question about the thing being consented to, and a link in the greeting would be asked
- * to answer it three messages too early. Built from the {@link PRIVACY_URL} constant so a
- * policy move cannot leave a stale URL inside a consent record's own question.
- */
-export const WATCH_OFFER = `${WATCH_OFFER_ASK} (how I handle your family's info: ${PRIVACY_URL})`;
-
-/**
- * The yes. Names the restraint (only when it matters). STOP, HELP, and START still
- * work as carrier keywords; this receipt does not teach them.
- *
- * IT DOES NOT ASK ANYTHING. One text, one ask. The name, the inbox, and the co-parent
- * each go out as their own later message after a real find (machine.ts). This sentence
- * stays whole so a yes is a receipt, not a second question stapled to the first.
- * Friend voice, when it is on, writes the live text. This line is the flag-off copy
- * and the length budget the identity tail still measures against.
- */
-export const ASSENT_ACK = "Done. You're covered. I'll text when something actually matters.";
-
-/**
- * The day-one connector offer, sent once beside the consent acknowledgment.
- *
- * IT OPENS ON "Optional" AND CLOSES ON THE SKIP, and both ends are load-bearing. A
- * link asking for a parent's mailbox, arriving unasked from a number they met an hour
- * ago, is the most alarming thing Hale sends all onboarding — so the message says what
- * it is for before it says what to tap, and it names doing nothing as a complete
- * answer. There is no NO to reply: ignoring it IS the no, which is the only refusal
- * that costs a parent nothing.
- *
- * ONE LINK PER CONNECTOR, each landing on its own Google consent. Both are minted in
- * the same ask so both are alive when the text arrives (channel-signin.ts), and neither
- * tap goes near the portal — which is the whole point: a second connector reached by
- * "text me again" is a second chance to lose a parent who was willing ten seconds ago.
- *
- * TWO SEGMENTS, not one, and deliberately: 137 of its characters are URLs Hale did not
- * write, and cutting the sentence to fit would cost either the reason or the skip. The
- * ceiling is held mechanically in sms-copy-encoding.test.ts with realistic links
- * inside it. The fifteen minutes is CHANNEL_SIGNIN_TTL_MS said out loud.
- */
-const CONNECTOR_OFFER_BY_LANGUAGE: Record<
-  ReplyLanguage,
-  (calendarUrl: string, gmailUrl: string) => string
-> = {
-  en: (calendarUrl, gmailUrl) =>
-    `Optional: I can also watch your Google Calendar and Gmail for daycare and school notices. Calendar: ${calendarUrl} Gmail: ${gmailUrl} Good for 15 minutes - ignore this to skip.`,
-  // 'Google Agenda' is the product's own French name. 'l'école' keeps its accent — é is
-  // in GSM-7; the circumflexes and the cedilla that are not never appear here. The
-  // possessive goes where English keeps it ('your Google Calendar'): French spends four
-  // characters more on every other word, and with two links in the body those four are
-  // the difference between two segments and three.
-  fr: (calendarUrl, gmailUrl) =>
-    `Optionnel : je peux aussi surveiller Google Agenda et Gmail pour les avis de la garderie et de l'école. Agenda : ${calendarUrl} Gmail : ${gmailUrl} Bon pour 15 minutes - ignorez pour passer.`,
-};
-
-/** The whole message, links included — composed here and nowhere else, so no later
- * fitting can split the sentence from the URLs it is about. */
-export function intakeConnectorOffer(
-  language: ReplyLanguage,
-  calendarUrl: string,
-  gmailUrl: string,
-): string {
-  return withGoogleConnectCaution(
-    language,
-    CONNECTOR_OFFER_BY_LANGUAGE[language](calendarUrl, gmailUrl),
-  );
-}
 
 /**
  * The calendar card, its own text, after the call-name.
@@ -632,21 +514,4 @@ export const STOP_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 export const START_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: START_ACK,
   fr: 'Vous voilà de retour - je reprends le fil de votre semaine.',
-};
-
-/**
- * The identity-challenge disclosure (VIL-333, Sloane 2026-09-23). Byte-locked.
- *
- * A person challenging who is behind this number — authority, scam fear, a demand
- * for a name and address — gets this string and nothing else on that turn. Not a
- * model sentence, not a signup ask, not a watch re-ask. The French twin is the
- * ASCII/GSM-7 line locked beside it (no accents invented on top). Hale takes no
- * gender in French, here as everywhere in this file.
- */
-export const IDENTITY_ACCOUNTABILITY_LINE =
-  'This is Hale from Village Hale Technologies Inc. (villagehale.com). Barton Dong runs it (aloha@villagehale.com). Reply STOP anytime and we stop.';
-
-export const IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: IDENTITY_ACCOUNTABILITY_LINE,
-  fr: "C'est Hale, Village Hale Technologies Inc. (villagehale.com). Barton Dong en est responsable (aloha@villagehale.com). Reponds STOP et on arrete.",
 };

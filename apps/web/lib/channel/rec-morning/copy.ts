@@ -1,4 +1,3 @@
-import { COLD_START_ASK, WATCH_OFFER_ASK } from '~/lib/channel/intake/copy';
 import { cityRecLine } from './city-line';
 import {
   JACK_OF_SPORTS_PAGE,
@@ -49,7 +48,8 @@ const JACK_OF_SPORTS = `Jack of Sports is a swim backup if the city or YMCA lane
 type RecMorningLine = (now: Date, where?: RecMorningWhere | null) => string | null;
 
 export const REC_MORNING_COPY: Record<RecMorningTopic, RecMorningLine> = {
-  toronto_swim: (now, where) => cityRecLine('toronto', now, 'swim', undefined, where?.postal ?? null),
+  toronto_swim: (now, where) =>
+    cityRecLine('toronto', now, 'swim', undefined, where?.postal ?? null),
   toronto_rec: (now, where) =>
     cityRecLine('toronto', now, 'rec_program', undefined, where?.postal ?? null),
   toronto_waitlist: () => TORONTO_FOLLOW,
@@ -110,19 +110,13 @@ export function recMorningReply(
 }
 
 export function recMorningReturnLine(pendingAsk: string): string {
-  const ask = pendingAsk.trim();
-  if (ask === WATCH_OFFER_ASK || /keep an eye/i.test(ask)) {
-    return 'Still want me watching?';
-  }
-  if (ask === COLD_START_ASK || /postal/i.test(ask)) {
-    return COLD_START_ASK;
-  }
+  // #868: the fixed watch / cold-start asks are gone as pending-ask text.
+  void pendingAsk;
   return 'What did you want to tell me first?';
 }
 
 /**
- * Mid-signup: the rec-morning answer plus Hale's outstanding ask. Cold start
- * returns {@link COLD_START_ASK} verbatim. Null when the parent's text was not a
+ * Mid-signup: the rec-morning answer plus Hale's outstanding ask. Null when the parent's text was not a
  * rec-morning question.
  */
 export function recMorningIntakeReply(input: {

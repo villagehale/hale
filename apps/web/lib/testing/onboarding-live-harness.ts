@@ -15,7 +15,6 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeSilentAnswerComposer,
 } from '~/lib/channel/intake/fakes';
@@ -264,7 +263,6 @@ export async function runOnboardingReplay(
       { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
     ]),
     radar: { compose: async () => liveRadarPayload() },
-    ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => now.getTime()),

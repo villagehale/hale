@@ -1,12 +1,9 @@
 import { type AgentClient, pickModel } from '@hale/agent';
 import { readEvidence } from '~/lib/channel/activity/evidence';
-import { namesAMentalCrisis } from '~/lib/channel/off-domain/copy';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ExtractedChild } from './extract';
 import { officialPageReturnLine } from './official-page';
-
-export { namesAMentalCrisis };
 
 /**
  * VIL-327 — live lookup for the questions official-page pins do not cover.
@@ -43,7 +40,6 @@ function fold(body: string): string {
 export function isRaisingKidsAsk(body: string): boolean {
   const text = fold(body);
   if (text === '') return false;
-  if (namesAMentalCrisis(text)) return false;
   return /\b(naps?|napping|sleep(?:ing|s)?|bedtime|solids?|potty|toilet|tantrums?|teething|formula|breastfeed(?:ing)?|weaning|colic|reflux|tummy time|picky eater|night wak(?:e|ing)|co-?sleep)\b/.test(
     text,
   );
@@ -56,7 +52,6 @@ export function isRaisingKidsAsk(body: string): boolean {
 export function isLeftoverFactAsk(body: string): boolean {
   const text = fold(body);
   if (text === '') return false;
-  if (namesAMentalCrisis(text)) return false;
   const office =
     /\b(presidents?|prime ministers?|premiers?|mayors?)\b/.test(text) &&
     /\b(who(?:'s| is| was)|current|today)\b/.test(text);
@@ -69,7 +64,6 @@ export function isLeftoverFactAsk(body: string): boolean {
 export function isTherapistFindAsk(body: string): boolean {
   const text = fold(body);
   if (text === '') return false;
-  if (namesAMentalCrisis(text)) return false;
   const care = /\b(therapists?|therapy|counsell?ors?|counsell?ing|psychologists?)\b/.test(text);
   if (!care) return false;
   return /\b(find|finding|need|need a|looking for|get|want|where)\b/.test(text);
@@ -82,7 +76,6 @@ export function isTherapistFindAsk(body: string): boolean {
 export function isCheerUpAsk(body: string): boolean {
   const text = fold(body);
   if (text === '') return false;
-  if (namesAMentalCrisis(text)) return false;
   if (isTherapistFindAsk(text) || isRaisingKidsAsk(text)) return false;
   return (
     /\bcheer(?: me)? up\b/.test(text) ||

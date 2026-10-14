@@ -15,15 +15,22 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * caller treats null as "not an opt-out" only because the keyword path already ran.
  * The verbatim echo is a structural guard: a model that paraphrased the text did
  * not read it, so its verdict is dropped.
+ *
+ * The same read routes a crisis (#868, Sloane 2026-10-14): an emergency or a
+ * mental-health crisis in any wording comes back as `crisis_*` with the model's own
+ * reply pointing to emergency or crisis help. One call per inbound covers both, and
+ * {@link readTurnOnce} shares it across every seam that asks within one turn.
  */
 
 const MAX_TOKENS = 400;
 
-export type OptOutIntent = 'stop' | 'start' | 'none';
+export type OptOutIntent = 'stop' | 'start' | 'crisis_emergency' | 'crisis_mental' | 'none';
+
+const INTENTS = ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'none'] as const;
 
 export interface OptOutReading {
   intent: OptOutIntent;
-  /** Model-written confirmation for stop/start; empty for none. */
+  /** Model-written reply: the stop/start confirmation, or the crisis reply. Empty for none. */
   confirmation: string;
 }
 
@@ -32,7 +39,7 @@ export interface OptOutReader {
 }
 
 const outputSchema = z.object({
-  intent: z.enum(['stop', 'start', 'none']),
+  intent: z.enum(INTENTS),
   verbatim: z.string(),
   confirmation: z.string(),
 });
@@ -40,7 +47,7 @@ const outputSchema = z.object({
 const outputJsonSchema = {
   type: 'object',
   properties: {
-    intent: { type: 'string', enum: ['stop', 'start', 'none'] },
+    intent: { type: 'string', enum: [...INTENTS] },
     verbatim: { type: 'string' },
     confirmation: { type: 'string' },
   },
@@ -52,7 +59,8 @@ export function optOutUserMessage(input: { text: string; language: ReplyLanguage
   return JSON.stringify({ text: input.text, threadLanguage: input.language });
 }
 
-/** Structural checks only: echo must match; stop/start must carry a confirmation. */
+/** Structural checks only: echo must match. A crisis reading with no reply is kept
+ * (the caller ends the turn and logs it) — the routing still stands. */
 export function acceptOptOutReading(
   value: z.infer<typeof outputSchema>,
   text: string,
@@ -95,3 +103,28 @@ export function createOptOutReader(client: AgentClient): OptOutReader {
 export const optOutReaderIdle: OptOutReader = {
   read: async () => ({ intent: 'none', confirmation: '' }),
 };
+
+const turnReads = new WeakMap<object, Promise<OptOutReading | null>>();
+
+/**
+ * One read per inbound, however many seams ask. Keyed by the inbound object, so a
+ * new turn always reads afresh and nothing outlives the turn.
+ */
+export function readTurnOnce(
+  reader: OptOutReader | null | undefined,
+  turn: object,
+  input: { text: string; language: ReplyLanguage | null },
+): Promise<OptOutReading | null> {
+  if (!reader || input.text.trim().length === 0) return Promise.resolve(null);
+  const cached = turnReads.get(turn);
+  if (cached) return cached;
+  const read = reader.read(input);
+  turnReads.set(turn, read);
+  return read;
+}
+
+export function isCrisisReading(
+  reading: OptOutReading | null,
+): reading is OptOutReading & { intent: 'crisis_emergency' | 'crisis_mental' } {
+  return reading?.intent === 'crisis_emergency' || reading?.intent === 'crisis_mental';
+}

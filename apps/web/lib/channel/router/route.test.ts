@@ -765,7 +765,7 @@ describe('routing order', () => {
  *   AHEAD of the coach, which is the entire point.
  */
 describe('VIL-333 identity challenge', () => {
-  it('sends the locked disclosure and does not wake the coach or the off-domain screen', async () => {
+  it('sends the model-written disclosure and does not wake the coach or the off-domain screen', async () => {
     const lane = fakeLane({ status: 'in_domain', fallback: null });
     const coach = fakeCoach();
     const h = harness({
@@ -773,6 +773,13 @@ describe('VIL-333 identity challenge', () => {
       offDomain: lane,
       coach,
     });
+    const asked: unknown[] = [];
+    h.deps.saidLine = {
+      async write(input) {
+        asked.push(input);
+        return 'Disclosure (test fixture) villagehale.com aloha@villagehale.com';
+      },
+    };
 
     const result = await routeChannelMessage(h.deps, job());
 
@@ -780,8 +787,21 @@ describe('VIL-333 identity challenge', () => {
     expect(coach.calls).toBe(0);
     expect(lane.calls).toBe(0);
     expect(h.transport.bodies()).toEqual([
-      'This is Hale from Village Hale Technologies Inc. (villagehale.com). Barton Dong runs it (aloha@villagehale.com). Reply STOP anytime and we stop.',
+      'Disclosure (test fixture) villagehale.com aloha@villagehale.com',
     ]);
+    expect(asked).toMatchObject([
+      { purpose: 'identity', mustInclude: ['villagehale.com', 'aloha@villagehale.com'] },
+    ]);
+  });
+
+  it('sends nothing when the disclosure cannot be written (no canned fallback)', async () => {
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'who is this??' }, coach });
+    h.deps.saidLine = { write: async () => null };
+    const result = await routeChannelMessage(h.deps, job());
+    expect(result).toMatchObject({ status: 'handled', handler: 'identity_challenge' });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(coach.calls).toBe(0);
   });
 });
 

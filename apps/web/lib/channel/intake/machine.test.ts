@@ -7,7 +7,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { COLD_START_ASK, START_ACK_BY_LANGUAGE, STOP_ACK, STOP_ACK_BY_LANGUAGE } from './copy';
+import { START_ACK_BY_LANGUAGE, STOP_ACK, STOP_ACK_BY_LANGUAGE } from './copy';
 import type { IntakeCollected } from './extract';
 import {
   FakeAnswerComposer,
@@ -15,7 +15,6 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeRadar,
   fakeSilentAnswerComposer,
@@ -28,6 +27,9 @@ import { FakeTransport } from './transport';
 import { claimIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS } from './watch-consent';
 import { WELCOME_CARD_BODY } from './welcome-card';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+14165551234';
@@ -108,7 +110,6 @@ function harness(options: {
           };
         },
       },
-      ackComposer: fakeAckComposer,
       answerComposer: options.answerComposer ?? fakeSilentAnswerComposer,
       friendVoice: scriptedFriendVoice,
       identityAsk,
@@ -637,7 +638,6 @@ describe('intake · CASL keywords', () => {
       extractor,
       intentReader,
       radar: fakeRadar,
-      ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
       openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),

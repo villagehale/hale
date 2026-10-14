@@ -6,7 +6,6 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeSilentAnswerComposer,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
@@ -153,7 +152,6 @@ describe('the first reply says what to do about the find', () => {
         now: () => INTAKE_AT,
         timeZone: TZ,
       }),
-      ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
       friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),

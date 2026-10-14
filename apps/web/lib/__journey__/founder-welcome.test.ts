@@ -18,7 +18,6 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeRadar,
   fakeSilentAnswerComposer,
 } from '~/lib/channel/intake/fakes';
@@ -143,7 +142,6 @@ describe("the founder's welcome note", () => {
         { intent: 'assent', verbatim: 'yes', interpretation: 'a clear yes' },
       ]),
       radar: fakeRadar,
-      ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
       friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),

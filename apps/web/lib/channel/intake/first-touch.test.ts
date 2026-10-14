@@ -2,16 +2,13 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
-import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY } from '~/lib/channel/off-domain/copy';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { IDENTITY_ACCOUNTABILITY_LINE } from './copy';
 import type { IntakeCollected } from './extract';
 import {
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeSilentAnswerComposer,
   makeFakeDb,
@@ -23,7 +20,6 @@ import { EMPTY_ONBOARDING_CAPTURE } from './onboarding-turn';
 import { loadOpenSession } from './session';
 import { runSittingReminderCron } from './sitting-reminder';
 import { type ChannelTransport, FakeTransport, type InboundMessage } from './transport';
-import { YEAR_OPEN_LEAD } from './year-open';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+14165551234';
@@ -73,7 +69,6 @@ function harness(
         };
       },
     },
-    ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
@@ -126,8 +121,6 @@ afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   vi.unstubAllEnvs();
 });
-
-describe('first touch stays off unless the flag is exactly on', () => {});
 
 describe('first touch ladder', () => {
   beforeEach(() => {
@@ -558,24 +551,6 @@ describe('friend voice onboarding', () => {
     expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
   });
 
-  it('answers who-is-this in the model voice with the company named, and steers back', async () => {
-    const { fake, transport, deps } = harness({ voice: true });
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
-    const result = await handleInboundSms(
-      fake.db,
-      inbound(transport, 'wait who is this? is this free?'),
-      deps,
-    );
-    expect(result.status).toBe('first_touch');
-    const body = transport.bodies().at(-1) ?? '';
-    expect(body).toContain('Village Hale Technologies');
-    expect(body).toContain('villagehale.com');
-    expect(body).not.toBe(IDENTITY_ACCOUNTABILITY_LINE);
-    expect(body).not.toMatch(/\bSTOP\b/);
-    expect(body.trim().endsWith("What are your kids' names?")).toBe(true);
-    expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
-  });
-
   it('walks a session left in awaiting_details with the friend voice, not the unreadable door', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
@@ -735,17 +710,33 @@ describe('friend voice onboarding', () => {
     expect(calendar).toContain('/connect?t=');
     expect(calendar).toContain('to=gcal');
   });
-  it('answers a first-text question and sends the safety line before any ask', async () => {
+  it('routes a crisis through the model reader and sends its reply before any ask', async () => {
+    // #868: no token list and no fixed crisis line. The turn's reader routes the
+    // crisis and writes the reply; the fixture stands in for the model.
+    const crisisReader = (intent: 'crisis_emergency' | 'crisis_mental', reply: string) => ({
+      read: async () => ({ intent, confirmation: reply }),
+    });
     const { fake, transport, deps } = harness({ voice: true });
+    deps.optOutReader = crisisReader('crisis_emergency', 'Emergency reply (test fixture).');
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
-    expect(transport.bodies()).toEqual([EMERGENCY_REPLY]);
-    expect(transport.bodies()[0]).not.toMatch(/postal/i);
+    expect(transport.bodies()).toEqual(['Emergency reply (test fixture).']);
 
     const { fake: fake2, transport: transport2, deps: deps2 } = harness({ voice: true });
-    const mental = await handleInboundSms(fake2.db, inbound(transport2, '988'), deps2);
+    deps2.optOutReader = crisisReader('crisis_mental', 'Crisis line reply (test fixture).');
+    const mental = await handleInboundSms(
+      fake2.db,
+      inbound(transport2, 'i cant do this anymore'),
+      deps2,
+    );
     expect(mental.status).toBe('first_touch');
-    expect(transport2.bodies()).toEqual([MENTAL_CRISIS_REPLY]);
+    expect(transport2.bodies()).toEqual(['Crisis line reply (test fixture).']);
+
+    // A crisis whose reply came back empty still ends the turn: no onboarding ask.
+    const { fake: fake3, transport: transport3, deps: deps3 } = harness({ voice: true });
+    deps3.optOutReader = crisisReader('crisis_emergency', '');
+    await handleInboundSms(fake3.db, inbound(transport3, 'fire'), deps3);
+    expect(transport3.bodies()).toEqual([]);
   });
 
   it('always replies on a place miss, including a place outside coverage', async () => {
@@ -814,7 +805,6 @@ describe('friend voice onboarding', () => {
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
     const kids = fake.rows(schema.children);
     expect(kids.map((row) => row.name)).toEqual(['Maya']);
-    expect(transport.bodies().join('\n')).not.toContain(YEAR_OPEN_LEAD);
     await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
     expect(transport.bodies().at(-1)).toContain(
       'Dana, want me to watch school and camp email for the dates?',

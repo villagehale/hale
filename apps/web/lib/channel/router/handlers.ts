@@ -46,7 +46,6 @@ import {
   type ParentCallNameVoice,
   handleParentCallNameReply,
 } from '~/lib/channel/identity/parent-call-name';
-import { intakeConnectorOffer } from '~/lib/channel/intake/copy';
 import { replyLanguage } from '~/lib/channel/language';
 import {
   type CoParentNumberDeps,
@@ -55,6 +54,11 @@ import {
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
+import {
+  type SaidLineWriter,
+  createSaidLineWriter,
+  writeConnectorLinks,
+} from '~/lib/channel/voice/said-line';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import {
@@ -62,6 +66,7 @@ import {
   resolveEmailAlertOffer,
 } from '~/lib/integrations/email-alert-offer';
 import type { OfferReceiptWriter } from '~/lib/integrations/offer-receipt';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import {
   type PrepareReplyDeps,
@@ -346,7 +351,10 @@ async function familyGroupTurn(database: Database, ctx: HandlerContext): Promise
   return message?.providerChatId === family.linqGroupChatId;
 }
 
-export function connectorLinkHandler(log: Pick<Console, 'error'> = console): DeterministicHandler {
+export function connectorLinkHandler(
+  log: Pick<Console, 'error'> = console,
+  saidLine: SaidLineWriter = createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+): DeterministicHandler {
   return {
     name: 'connector_link',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
@@ -401,12 +409,22 @@ export function connectorLinkHandler(log: Pick<Console, 'error'> = console): Det
           now: ctx.now,
         });
         switch (outcome.status) {
-          case 'minted':
-            return {
-              claimed: true,
-              outcome: 'sent',
-              reply: intakeConnectorOffer(language, outcome.urls[0], outcome.urls[1]),
-            };
+          case 'minted': {
+            // #868: the model writes the text around the two links.
+            const reply = await writeConnectorLinks(saidLine, {
+              language,
+              calendarUrl: outcome.urls[0],
+              gmailUrl: outcome.urls[1],
+            });
+            if (!reply) {
+              log.error(
+                { familyId: ctx.familyId, provider: target, outcome: 'links_unwritten' },
+                'connector link: both-links text could not be written - nothing sent',
+              );
+              return { claimed: true, outcome: 'links_unwritten', reply: null };
+            }
+            return { claimed: true, outcome: 'sent', reply };
+          }
           case 'not_enrolled':
             log.error(
               { familyId: ctx.familyId, provider: target, outcome: 'not_enrolled' },

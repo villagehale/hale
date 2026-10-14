@@ -68,9 +68,15 @@ import {
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
+import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
+import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
+import {
+  parentTimeZoneForOffer,
+  recordCoachCalendarOffer,
+} from '~/lib/integrations/email-alert-offer';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
 import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
 import { interestPassportEnabled } from '~/lib/passport/flag';
@@ -99,11 +105,6 @@ import {
   readsAsOrdinal,
 } from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
-import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
-import {
-  parentTimeZoneForOffer,
-  recordCoachCalendarOffer,
-} from '~/lib/integrations/email-alert-offer';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
@@ -359,6 +360,8 @@ export interface ChannelRouterDeps {
    * no model.
    */
   calendarOffers: CalendarOfferPorts;
+  /** #868: writes the lines that used to be fixed (identity disclosure). Absent → nothing sent. */
+  saidLine?: SaidLineWriter;
   /**
    * The menu Hale last put in front of this parent, and its memory (disambiguation.ts).
    * Non-nullable (rule #11) for the reason the two readers above it are: a router with no
@@ -969,9 +972,12 @@ async function routeChannelMessageInner(
   // it. Ahead of the handlers so "who are you" is not read as consent, and ahead
   // of the coach so a model cannot re-pitch. A menu pick above still wins: "2"
   // is an answer to a list Hale printed, not a challenge.
-  const identityReply = identityChallengeReply(turn.body);
-  if (identityReply) {
-    await answer(identityReply, null, null, IDENTITY_CHALLENGE_TEMPLATE_KEY);
+  const identity = await identityChallengeReply(turn.body, deps.saidLine);
+  if (identity.challenge) {
+    // #868: the model writes the disclosure. A failed write sends nothing.
+    if (identity.body) {
+      await answer(identity.body, null, null, IDENTITY_CHALLENGE_TEMPLATE_KEY);
+    }
     return done(deps, job, {
       status: 'handled',
       handler: 'identity_challenge',

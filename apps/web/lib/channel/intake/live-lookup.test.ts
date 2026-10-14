@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
-import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
 import {
   AFTER_PROVISION_RETURN_ASK,
   CHEER_UP_REPLY,
@@ -19,10 +18,15 @@ import {
   liveLookupFallbackReply,
   liveLookupReplyFromNotes,
   liveLookupReturnLine,
-  namesAMentalCrisis,
   notesGroundACurrentSource,
 } from './live-lookup';
-import { OFFICIAL_PAGE_RETURN_ASK } from './official-page';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const OFFICIAL_PAGE_RETURN_ASK = 'official page return ask (test fixture)';
 
 describe('live-lookup · which inbound needs a current source', () => {
   it('matches raising-kids questions mid-signup', () => {
@@ -71,17 +75,6 @@ describe('live-lookup · which inbound needs a current source', () => {
       expect(isLiveLookupAsk(body), body).toBe(false);
       expect(isCheerUpAsk(body), body).toBe(false);
     }
-  });
-});
-
-describe('live-lookup · mental crisis is the reviewed safety door', () => {
-  it('fires on suicide / self-harm and leaves a therapist-find alone', () => {
-    expect(namesAMentalCrisis('I want to die')).toBe(true);
-    expect(namesAMentalCrisis('I have been thinking about suicide')).toBe(true);
-    expect(namesAMentalCrisis('self-harm tonight')).toBe(true);
-    expect(namesAMentalCrisis('I need a therapist')).toBe(false);
-    expect(namesAMentalCrisis('cheer me up')).toBe(false);
-    expect(namesAMentalCrisis('How do I get him to nap?')).toBe(false);
   });
 });
 

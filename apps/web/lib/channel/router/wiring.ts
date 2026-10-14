@@ -41,14 +41,13 @@ import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
-import { createCalendarOfferReader } from '~/lib/integrations/calendar-offer-read';
-import { createOfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
+import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
@@ -57,11 +56,13 @@ import { loadOpenCommitment } from '~/lib/commitments/ledger';
 import { childBelongsToFamily } from '~/lib/companion/log-write';
 import { loadOpenCheckupOffer } from '~/lib/health/offer';
 import { defaultHealthReplyDeps } from '~/lib/health/reply';
+import { createCalendarOfferReader } from '~/lib/integrations/calendar-offer-read';
 import {
   emailAlertOfferSubject,
   emailAlertOfferSummary,
   loadOpenEmailAlertOffers,
 } from '~/lib/integrations/email-alert-offer';
+import { createOfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { familyMemoryKindsHandler } from '~/lib/memory/handler';
 import { rememberWorkstreamTurn, workstreamExtractClient } from '~/lib/memory/workstream-extract';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -714,6 +715,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     }),
     replyResolver: createReplyResolver(screenClient),
     calendarOffers: createCalendarOfferReader(screenClient),
+    saidLine: createSaidLineWriter(screenClient),
     weekdayCareReader: createWeekdayCareReader(screenClient),
     consentAsk: createConsentAskWriter(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,

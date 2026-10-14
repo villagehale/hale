@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { ASSENT_ACK } from '~/lib/channel/intake/copy';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import {
   type IdentityAskRequest,
   MAX_ASK_CHARS,
@@ -28,10 +26,6 @@ describe('the character budget', () => {
    * ask. This is the arithmetic that keeps it one segment, pinned rather than trusted —
    * an edit to either side that pushes it over doubles what every intake costs to send.
    */
-  it('leaves the tail ask exactly what is left of one segment after the ack', () => {
-    expect(ASSENT_ACK.length + 1 + MAX_TAIL_ASK_CHARS).toBe(MAX_ASK_CHARS);
-    expect(smsSegments(`${ASSENT_ACK} ${'a'.repeat(MAX_TAIL_ASK_CHARS)}`)).toBe(1);
-  });
 
   it('gives the standalone intros ask the whole segment', () => {
     expect(askCharCap(INTRO_BOTH)).toBe(MAX_ASK_CHARS);

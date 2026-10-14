@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
-import { PRIVACY_URL } from '~/lib/legal-links';
 import {
-  ASSENT_ACK,
-  IDENTITY_ACCOUNTABILITY_LINE,
-  IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
   START_ACK_BY_LANGUAGE,
   STOP_ACK_BY_LANGUAGE,
-  WATCH_OFFER,
-  followUp,
   posterLocation,
   sourceCodeFromBody,
   venueForCode,
@@ -21,11 +15,6 @@ import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
  * the answerer, so the site's constant is read from disk and pushed through the
  * classifier, with and without the venue tag the page appends.
  */
-describe('the /text prefill and the bare-hello classifier agree', () => {});
-
-describe('SITTING_SESSION_REMINDER', () => {});
-
-describe('greeting', () => {});
 
 describe('sourceCodeFromBody / venueForCode', () => {
   it('reads a known venue code from the prefilled body, case-insensitively', () => {
@@ -118,73 +107,6 @@ describe('sourceCodeFromBody / venueForCode', () => {
   });
 });
 
-describe('followUp', () => {
-  it('echoes the summary back before asking the one missing field', () => {
-    expect(followUp('Maya (4) and Leo (1)', ['location'])).toBe(
-      "Got it - Maya (4) and Leo (1). Last thing: what's your postal code?",
-    );
-  });
-
-  it('asks for the ages when those are what is missing — never invents one', () => {
-    expect(followUp('Nora and Ben', ['ages'])).toBe(
-      'Got it - Nora and Ben. Last thing: how old are they?',
-    );
-  });
-
-  it('asks for both in ONE message, because there is only ever one follow-up', () => {
-    expect(followUp('Nora and Ben', ['ages', 'location'])).toBe(
-      "Got it - Nora and Ben. Last thing: how old are they, and what's your postal code?",
-    );
-  });
-});
-
-describe('the consent moment', () => {
-  // The privacy link moved here from the greeting's disclosure parenthetical (v2): the
-  // one place a parent is actually asked to say yes is the one place the link earns its
-  // characters. It is the CONSTANT, never a copy of the string — a policy move that
-  // edits legal-links.ts must not leave a stale URL in the consent ask.
-  it('asks the watch question and names where the privacy policy lives', () => {
-    expect(WATCH_OFFER).toBe(
-      `Want me to keep an eye on all of this for you? (how I handle your family's info: ${PRIVACY_URL})`,
-    );
-    expect(WATCH_OFFER).toContain('https://www.villagehale.com/privacy');
-  });
-
-  it('confirms coverage without a keyword, asking nothing itself', () => {
-    expect(ASSENT_ACK).toBe("Done. You're covered. I'll text when something actually matters.");
-    expect(ASSENT_ACK).not.toMatch(/\bSTOP\b|unsubscribe/i);
-  });
-
-  /**
-   * The receipt asks nothing. The call-name is its own later text. Two questions in
-   * one SMS is a parent choosing which to answer.
-   */
-  it('ends without a question, so the call-name can be its own text', () => {
-    expect(ASSENT_ACK).not.toContain('?');
-    expect(ASSENT_ACK).not.toMatch(/call you/i);
-  });
-
-  // STOP, HELP, and START stay on the keyword matcher. This receipt does not teach them.
-  it('does not teach STOP in the acknowledgment a consenting parent reads', () => {
-    expect(ASSENT_ACK).not.toMatch(/\bSTOP\b|unsubscribe/i);
-  });
-});
-
-describe('the identity-challenge accountability line (VIL-333)', () => {
-  it('is the design-locked English disclosure, with no ask on the end', () => {
-    expect(IDENTITY_ACCOUNTABILITY_LINE).toBe(
-      'This is Hale from Village Hale Technologies Inc. (villagehale.com). Barton Dong runs it (aloha@villagehale.com). Reply STOP anytime and we stop.',
-    );
-    // A distrust turn may never end in a close: no question, no watch re-ask.
-    expect(IDENTITY_ACCOUNTABILITY_LINE).not.toContain('?');
-    expect(IDENTITY_ACCOUNTABILITY_LINE).toContain('STOP');
-    expect(IDENTITY_ACCOUNTABILITY_LINE).toContain('villagehale.com');
-    expect(IDENTITY_ACCOUNTABILITY_LINE).toContain('aloha@villagehale.com');
-  });
-});
-
-describe('the unparseable-intake door (doctrine G7/L2)', () => {});
-
 /**
  * THE FRENCH SCRIPT.
  *
@@ -206,15 +128,6 @@ describe('the French script', () => {
     }
   });
 
-  it('answers an identity challenge in the locked French twin, without gendering Hale', () => {
-    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).toBe(
-      "C'est Hale, Village Hale Technologies Inc. (villagehale.com). Barton Dong en est responsable (aloha@villagehale.com). Reponds STOP et on arrete.",
-    );
-    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).not.toContain('?');
-    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).not.toMatch(/une IA|je suis une/i);
-    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).toContain('STOP');
-  });
-
   /**
    * The rule #491's note was keeping by hand, kept structurally from here on: a fixed
    * line may not name a keyword the machine does not honour.
@@ -223,27 +136,6 @@ describe('the French script', () => {
    * tokens are read OFF the copy rather than listed beside it — a new line naming a new
    * word is covered the day it is written, which a hand-kept list never is.
    */
-  it('names no keyword the machine does not honour', () => {
-    const LINES: Record<string, string> = {
-      'IDENTITY_ACCOUNTABILITY_LINE.en': IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.en,
-      'IDENTITY_ACCOUNTABILITY_LINE.fr': IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr,
-      'STOP_ACK.en': STOP_ACK_BY_LANGUAGE.en,
-      'STOP_ACK.fr': STOP_ACK_BY_LANGUAGE.fr,
-    };
-    const named = Object.entries(LINES).flatMap(([name, body]) =>
-      (body.match(/\b[A-Z]{3,}\b/g) ?? []).map((token) => ({ name, token })),
-    );
-    const dead = named
-      .filter((entry) => matchKeyword(entry.token) === null)
-      .map((entry) => `${entry.name}: ${entry.token}`);
-
-    expect(dead).toEqual([]);
-    // The positive control: the scan really does find words, so an empty `dead` is a
-    // pass and not a regex that quietly stopped matching anything.
-    expect(named.map((entry) => `${entry.name}: ${entry.token}`)).toEqual(
-      expect.arrayContaining(['STOP_ACK.en: START', 'STOP_ACK.fr: DEBUT']),
-    );
-  });
 
   it('confirms the unsubscribe in French and offers the French way back', () => {
     expect(STOP_ACK_BY_LANGUAGE.fr).toBe(

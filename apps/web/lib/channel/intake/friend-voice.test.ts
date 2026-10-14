@@ -11,7 +11,6 @@ import {
   speakFriend,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
-import { YEAR_OPEN_LEAD, YEAR_OPEN_LEAD_FR } from './year-open';
 
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
   return {
@@ -145,19 +144,6 @@ describe('onboarding friend fixtures', () => {
     }
   });
 
-  it('puts the French find under the model lead, with no question', () => {
-    const french = FRIEND_CONVERSATIONS[1]?.turns[3];
-    expect(french).toBeDefined();
-    if (!french) return;
-    const body = fixtureBody(french);
-    expect(body).toContain('près');
-    expect(body).toContain('1. ');
-    expect(body).not.toContain('?');
-    expect(body).not.toContain(YEAR_OPEN_LEAD);
-    expect(body).not.toContain(YEAR_OPEN_LEAD_FR);
-    expect(body).not.toMatch(/\bpres\b|\bage\b|\badapt\b/);
-  });
-
   it('shows the map with no question when the first text already has everything, then asks the name', () => {
     const [first, second] = FRIEND_CONVERSATIONS[2]?.turns ?? [];
     expect(first).toBeDefined();
@@ -198,18 +184,6 @@ describe('friend-voice judge', () => {
     findLines: ['Swim (ages 3-5) - Saturdays 10am - $12'],
     listKind: 'year',
     language: 'en',
-  });
-
-  it('puts the question after the list, and rejects a question that sits above it', () => {
-    const prose = 'Maya is 4, near M5V. Which of these feels right?';
-    const body = assembleFriendBody(prose, swim);
-    const lines = body.split('\n');
-    expect(lines.at(-1)).toBe('Which of these feels right?');
-    expect(body).not.toContain(YEAR_OPEN_LEAD);
-    expect(body.indexOf('1. ')).toBeLessThan(body.lastIndexOf('?'));
-    expect(judgeFriendReply(body, swim)).toEqual({ ok: true });
-    const buried = `How old are the kids?\n${YEAR_OPEN_LEAD}\n1. Swim (ages 3-5) - Saturdays 10am - $12`;
-    expect(judgeFriendReply(buried, swim)).toEqual({ ok: false, reason: 'question' });
   });
 
   it('rejects a second question, the stock lines, and an invented price', () => {

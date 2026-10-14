@@ -1,5 +1,5 @@
 import { replyLanguage } from '~/lib/channel/language';
-import { IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE } from './copy';
+import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 
 /**
  * VIL-333 — an identity or distrust challenge, detected without a model.
@@ -91,12 +91,40 @@ export function isIdentityChallenge(body: string): boolean {
   return WHO.test(text) || SUSPICION.test(text) || DEMAND.test(text) || bareAuthorityClaim(text);
 }
 
+/** Who is accountable for Hale. Facts, not a sentence: the model says them in its own words. */
+export const IDENTITY_FACTS = {
+  assistant: 'Hale',
+  company: 'Village Hale Technologies Inc.',
+  website: 'villagehale.com',
+  accountablePerson: 'Barton Dong',
+  contactEmail: 'aloha@villagehale.com',
+} as const;
+
+export type IdentityChallengeReply =
+  | { challenge: false }
+  /** `body` null: the write failed and nothing goes out (logged by the writer). */
+  | { challenge: true; body: string | null };
+
 /**
- * The locked disclosure for this inbound, or null when it is not a challenge.
- * Language is the existing per-message {@link replyLanguage} read — English unless
- * the words prove French.
+ * The disclosure for this inbound, written by the model from {@link IDENTITY_FACTS}
+ * (#868: no fixed line). The site and the contact address must appear verbatim; the
+ * words around them are the model's. Not a challenge → `{ challenge: false }`.
  */
-export function identityChallengeReply(body: string): string | null {
-  if (!isIdentityChallenge(body)) return null;
-  return IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE[replyLanguage(body)];
+export async function identityChallengeReply(
+  body: string,
+  writer: SaidLineWriter | null | undefined,
+): Promise<IdentityChallengeReply> {
+  if (!isIdentityChallenge(body)) return { challenge: false };
+  if (!writer) {
+    console.error('identity challenge: no line writer - nothing sent');
+    return { challenge: true, body: null };
+  }
+  const written = await writer.write({
+    purpose: 'identity',
+    language: replyLanguage(body),
+    parentWords: body,
+    facts: { ...IDENTITY_FACTS },
+    mustInclude: [IDENTITY_FACTS.website, IDENTITY_FACTS.contactEmail],
+  });
+  return { challenge: true, body: written };
 }

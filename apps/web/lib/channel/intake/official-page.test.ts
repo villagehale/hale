@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
-import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
 import {
   NOT_POSTED_YET,
-  OFFICIAL_PAGE_RETURN_ASK,
   deidentifyOfficialQuery,
   extractOfficialAnswer,
   isOfficialPageAsk,
@@ -12,6 +10,13 @@ import {
   officialPageReplyFromNotes,
   officialPageReturnLine,
 } from './official-page';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const OFFICIAL_PAGE_RETURN_ASK = 'official page return ask (test fixture)';
 
 describe('official-page · which inbound is a real rec/camp clock question', () => {
   it('matches a first-text rec/camp ask that misses the city pins', () => {

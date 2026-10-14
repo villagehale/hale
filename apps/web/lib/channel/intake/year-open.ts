@@ -1,7 +1,6 @@
 import { type FamilyStage, STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import type { ReplyLanguage } from '~/lib/channel/language';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { type WeekendPick, asciiCopy, parseAgeRange } from './radar-decide';
 
@@ -12,26 +11,6 @@ import { type WeekendPick, asciiCopy, parseAgeRange } from './radar-decide';
  * Planner framing. Hale is the planner for the kids' year. A find is one beat
  * of that year.
  */
-
-export const YEAR_OPEN_LEAD = "Here's what's on for your kids this year:";
-
-/** French lead for the friend-voice year list. Accents stay; the English lead does not. */
-export const YEAR_OPEN_LEAD_FR = 'Voici ce qui se passe pour tes enfants cette année :';
-
-/**
- * Design locked (Sloane, 2026-09-24). The only bubble when the year search
- * truly failed and no source produced a line. One sentence. The ladder does
- * not continue in this turn.
- */
-export const YEAR_OPEN_EMPTY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: "Looking nearby for what's on. Nothing age-fit yet — I'll text you the first good one in a day or two.",
-  fr: "Je cherche ce qui se passe autour. Rien d'age adapt pour l'instant — je t'envoie le premier bon dans un jour ou deux.",
-};
-
-/** No live find yet. Not a registration date, and not a second ask. */
-export function yearOpenEmptyMessage(language: ReplyLanguage = 'en'): string {
-  return YEAR_OPEN_EMPTY_BY_LANGUAGE[language];
-}
 
 /**
  * What the live year search looks for. One subject for every age: the stage
@@ -124,14 +103,14 @@ function packYearOpen(
   };
 }
 
-export function renderYearOpen(lines: readonly string[], language: ReplyLanguage = 'en'): string {
+export function renderYearOpen(lines: readonly string[]): string {
   const shown = lines
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .slice(0, 3);
-  if (shown.length === 0) return yearOpenEmptyMessage(language);
-  const lead = language === 'fr' ? YEAR_OPEN_LEAD_FR : YEAR_OPEN_LEAD;
-  return `${lead}\n${shown.map((line, index) => `${index + 1}. ${line}`).join('\n')}`;
+  // Data, not a message: the numbered lines the friend voice is handed. No lead,
+  // and nothing at all when the search found nothing (#868: no fixed lines).
+  return shown.map((line, index) => `${index + 1}. ${line}`).join('\n');
 }
 
 /**

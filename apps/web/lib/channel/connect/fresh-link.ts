@@ -3,7 +3,6 @@ import { eq } from 'drizzle-orm';
 import { connectorOfferReply } from '~/lib/channel/connect/copy';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
-import { intakeConnectorOffer } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -17,7 +16,13 @@ import {
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  type SaidLineWriter,
+  createSaidLineWriter,
+  writeConnectorLinks,
+} from '~/lib/channel/voice/said-line';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 
 /**
  * A connect that expired, was denied, or failed. Hale mints a new one-tap link
@@ -34,6 +39,8 @@ export interface FreshLinkPorts {
   transport: ChannelTransport;
   imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
   threadMessage: typeof threadProactiveMessage;
+  /** #868: writes the both-links text. Absent → that text is not sent. */
+  saidLine?: SaidLineWriter;
 }
 
 export type FreshLinkOutcome =
@@ -53,6 +60,7 @@ export function defaultFreshLinkPorts(): FreshLinkPorts {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
     threadMessage: threadProactiveMessage,
+    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
   };
 }
 
@@ -93,7 +101,7 @@ async function sendFresh(
   ports: FreshLinkPorts,
 ): Promise<FreshLinkOutcome> {
   const language = await familyLanguage(database, args.familyId);
-  const minted = await mintBody(database, args, language);
+  const minted = await mintBody(database, args, language, ports.saidLine);
   if (minted.status !== 'minted') {
     console.info(
       { familyId: args.familyId, provider: args.provider, outcome: minted.status },
@@ -205,13 +213,19 @@ async function mintBody(
     now: Date;
   },
   language: ReplyLanguage,
+  saidLine: SaidLineWriter | undefined,
 ): Promise<{ status: 'minted'; body: string } | { status: 'not_enrolled' | 'mint_failed' }> {
   const owner = { familyId: args.familyId, parentUserId: args.parentUserId, now: args.now };
   if (args.provider === 'both') {
     const minted = await offerConnectorLinks(database, { ...owner, providers: ['gcal', 'gmail'] });
-    return minted.status === 'minted'
-      ? { status: 'minted', body: intakeConnectorOffer(language, minted.urls[0], minted.urls[1]) }
-      : minted;
+    if (minted.status !== 'minted') return minted;
+    const body = await writeConnectorLinks(saidLine, {
+      language,
+      calendarUrl: minted.urls[0],
+      gmailUrl: minted.urls[1],
+    });
+    // A failed write sends nothing; the minted links simply expire unused.
+    return body ? { status: 'minted', body } : { status: 'mint_failed' };
   }
   const minted = await offerConnectorLink(database, { ...owner, provider: args.provider });
   return minted.status === 'minted'

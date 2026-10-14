@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { COLD_START_ASK, WATCH_OFFER_ASK } from '~/lib/channel/intake/copy';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { townLabel } from '~/lib/channel/town-label';
 import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
@@ -19,6 +18,11 @@ import {
   recMorningReply,
   resolveHelloCity,
 } from './index';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
 
 /** Same ceiling as intake/answer.ts MAX_REPLY_CHARS — kept local so this spec does not
  * pull the model composer (and @hale/agent) into a copy test. */
@@ -559,9 +563,7 @@ describe('rec-morning SMS · what a derived line may never do', () => {
     const seeded = new Set(REGISTRATION_WINDOWS.map((seed) => seed.municipality));
     // Aurora is the one seeded town resolveHelloCity refuses (its line is not written).
     seeded.delete('aurora');
-    const missing = [...seeded].filter(
-      (town) => !ALL_HELLO_CITIES.includes(town as RecHelloCity),
-    );
+    const missing = [...seeded].filter((town) => !ALL_HELLO_CITIES.includes(town as RecHelloCity));
     expect(missing).toEqual([]);
   });
 

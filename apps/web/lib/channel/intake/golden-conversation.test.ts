@@ -19,13 +19,11 @@ import {
 import { LINQ_GROUP_TRIGGER_PHRASE } from '~/lib/channel/linq/group';
 import { LINQ_TYPING_REFRESH_MS } from '~/lib/channel/linq/presence';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { COLD_START_ASK } from './copy';
 import {
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeSilentAnswerComposer,
   makeFakeDb,
@@ -34,7 +32,6 @@ import type { FriendVoiceInput } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 import { FakeTransport, type InboundMessage } from './transport';
-import { YEAR_OPEN_LEAD, YEAR_OPEN_LEAD_FR } from './year-open';
 
 /**
  * End-to-end onboarding conversations against the real intake machine.
@@ -49,7 +46,7 @@ const NOW = new Date('2026-07-30T12:00:00.000Z');
 const FROM = '+15555550100';
 const FIND_MESSAGE = '1. Swim at the rec centre - Saturday\n2. Story time - Tuesday';
 
-const CANNED = [COLD_START_ASK, YEAR_OPEN_LEAD, YEAR_OPEN_LEAD_FR, googleUnverifiedAppLine('en')];
+const CANNED = [googleUnverifiedAppLine('en')];
 
 type Mark = 'typing-start' | 'typing-stop' | 'send' | 'card' | 'search';
 
@@ -341,7 +338,6 @@ function conversation(options?: {
         return findResult();
       },
     },
-    ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),

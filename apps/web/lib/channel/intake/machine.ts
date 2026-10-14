@@ -46,19 +46,14 @@ import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
-import {
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
-  SAFETY_REPLY_BY_LANGUAGE,
-  namesAMentalCrisis,
-  namesAnEmergency,
-} from '~/lib/channel/off-domain/copy';
+import { SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
 import {
   plainTextWithoutLinks,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { projectCivicCandidates } from '~/lib/civic/project';
@@ -109,7 +104,6 @@ import {
   turnsFromTranscript,
 } from './friend-voice';
 import { identityChallengeReply } from './identity-challenge';
-import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type IntakeKeyword, type IntakeKeywordMatch, matchKeyword } from './keywords';
 import {
@@ -131,7 +125,7 @@ import {
   onboardingMissing,
   storedFromCapture,
 } from './onboarding-turn';
-import type { OptOutReader } from './opt-out-reader';
+import { type OptOutReader, isCrisisReading, readTurnOnce } from './opt-out-reader';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
@@ -155,7 +149,6 @@ import type { SignupStepReader } from './signup-step';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
-import { yearOpenEmptyMessage } from './year-open';
 
 /**
  * VIL-237 · M2 — the conversational SMS intake state machine.
@@ -208,10 +201,6 @@ export interface IntakeDeps {
   extractor: IntakeExtractor;
   intentReader: ReplyIntentReader;
   radar: RadarComposer;
-  /** Writes the acknowledgment half of the one follow-up. Required, never nullable
-   * (rule #11): it owns its own deterministic fallback and always returns a whole
-   * message, so "no composer" would be a silently colder intake with nothing logged. */
-  ackComposer: IntakeAckComposer;
   /**
    * Friend-voice onboarding replies. Required in production wiring. A test that
    * leaves it off gets the named fallback inside {@link speakFriend}.
@@ -223,6 +212,8 @@ export interface IntakeDeps {
    * Absent in tests that do not exercise it.
    */
   optOutReader?: OptOutReader;
+  /** #868: writes the lines that used to be fixed (identity, a crisis the answer model flagged). */
+  saidLine?: SaidLineWriter;
   /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
    * Required, never nullable (rule #11): withholding it would restore the exact bug it
    * closed — an off-script question silently becoming a re-ask — and its own "there was
@@ -486,7 +477,7 @@ export async function handleInboundSms(
   // 5a. #868 · any other wording of "stop texting me", read by the model. Same
   // revocation as the carrier keyword, and the model writes the one confirmation.
   if (deps.optOutReader && inbound.body.trim().length > 0) {
-    const reading = await deps.optOutReader.read({
+    const reading = await readTurnOnce(deps.optOutReader, inbound, {
       text: inbound.body,
       language: session?.ladderLanguage ?? null,
     });
@@ -970,6 +961,9 @@ async function writeChannelMessage(
  * that the composer declined or could not use is not null (VIL-326): that empty
  * fallback was the leak. Safety is the reviewed line alone.
  */
+/** A turn that is answered by silence: the seam ends the turn and sends nothing. */
+const HELD_SILENT = { body: '', source: 'safety' as const };
+
 async function offScriptReply(
   args: {
     parentWords: string;
@@ -979,27 +973,26 @@ async function offScriptReply(
   },
   deps: IntakeDeps,
 ): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
-  // Crisis / physical emergency go out ALONE, and before any model. A parent in
-  // that moment should be dialling, not answering a signup question. Token matches
-  // never reach the composer; a composer that still returns `safety` or
-  // `mental_crisis` (a phrasing the tokens missed) is honoured below so a silent
-  // fake cannot ask-alone. Physical emergency is Call 911 now. Mental crisis is
-  // the 988 line. Neither is the child-health 811 SAFETY_REPLY.
-  if (namesAnEmergency(args.parentWords)) {
-    return { body: EMERGENCY_REPLY, source: 'safety' };
-  }
-  if (namesAMentalCrisis(args.parentWords)) {
-    return { body: MENTAL_CRISIS_REPLY, source: 'safety' };
-  }
-  // VIL-333. The locked disclosure is the whole turn: no composed concession,
-  // no return to the watch ask, no model.
-  const disclosure = identityChallengeReply(args.parentWords);
-  if (disclosure) {
-    return { body: disclosure, source: 'identity' };
+  // A crisis was already routed by the turn's reader before this seam (#868). The
+  // identity disclosure is the whole turn, written by the model from the facts.
+  const identity = await identityChallengeReply(args.parentWords, deps.saidLine);
+  if (identity.challenge) {
+    return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
   const outcome = await deps.answerComposer.compose(args);
   if (outcome.status === 'mental_crisis') {
-    return { body: MENTAL_CRISIS_REPLY, source: 'safety' };
+    // The answer model saw a crisis the reader did not. Still the model's words.
+    const written = await deps.saidLine?.write({
+      purpose: 'crisis_mental',
+      language: replyLanguage(args.parentWords),
+      parentWords: args.parentWords,
+      facts: { crisisLine: '988 (call or text, Canada and US)', emergency: '911' },
+    });
+    if (!written) {
+      console.error('intake crisis: answer model flagged a crisis, no reply written - page #ops');
+      return HELD_SILENT;
+    }
+    return { body: written, source: 'safety' };
   }
   if (outcome.status === 'safety') {
     return { body: SAFETY_REPLY_BY_LANGUAGE[replyLanguage(args.parentWords)], source: 'safety' };
@@ -1220,15 +1213,32 @@ function friendFields(
 }
 
 /**
- * The two replies that stay fixed when the friend voice is on: a physical
- * emergency and a mental-health crisis go out alone, before any model. Who is
- * behind this number is answered by the model from `facts.identity`, and the
- * judge refuses a reply to a challenge that does not name the company.
+ * #868 · a crisis, routed and answered by the model. The turn's one reader call
+ * (opt-out-reader.ts, shared by {@link readTurnOnce}) decides an emergency or a
+ * mental-health crisis in any wording and writes the reply that points to
+ * emergency or crisis help. Null: not a crisis. `body` null: a crisis whose reply
+ * came back empty — the turn still ends there (no onboarding ask to a person in
+ * crisis) and the miss is logged loudly for #ops.
  */
-function fixedSafetyReply(body: string): string | null {
-  if (namesAnEmergency(body)) return EMERGENCY_REPLY;
-  if (namesAMentalCrisis(body)) return MENTAL_CRISIS_REPLY;
-  return null;
+async function crisisReply(
+  inbound: Inbound,
+  language: ReplyLanguage | null,
+  deps: IntakeDeps,
+): Promise<{ body: string | null } | null> {
+  const reading = await readTurnOnce(deps.optOutReader, inbound, {
+    text: inbound.body,
+    language,
+  });
+  if (!isCrisisReading(reading)) return null;
+  const body = reading.confirmation.trim();
+  if (body.length === 0) {
+    console.error(
+      { intent: reading.intent },
+      'intake crisis: the model routed a crisis but wrote no reply - nothing sent, page #ops',
+    );
+    return { body: null };
+  }
+  return { body };
 }
 
 /** The kids as the model sees them: name and age only, so a line's age fit lands on the right kid. */
@@ -1506,9 +1516,11 @@ async function friendOnboardingTurn(
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
-  const safety = fixedSafetyReply(inbound.body);
+  const safety = await crisisReply(inbound, language, deps);
   if (safety) {
-    ({ transcript } = await sendAndRecord(database, ctx, safety, deps, transcript));
+    if (safety.body) {
+      ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
+    }
     await saveSession(
       database,
       session,
@@ -1979,10 +1991,10 @@ async function friendColdTurn(
   const language =
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const ctx = sendContext(args);
-  const safety = fixedSafetyReply(inbound.body);
+  const safety = await crisisReply(inbound, language, deps);
   if (safety) {
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    await sendAndRecord(database, ctx, safety, deps, recorded.transcript);
+    if (safety.body) await sendAndRecord(database, ctx, safety.body, deps, recorded.transcript);
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'first_touch', step: 'find_sent' };
   }
@@ -2818,10 +2830,7 @@ async function provision(
     await recordCommitment(database, {
       familyId,
       kind: 'first_find',
-      summary:
-        radar.message === yearOpenEmptyMessage('en') || radar.message === yearOpenEmptyMessage('fr')
-          ? radar.message
-          : FIRST_FIND_BEAT,
+      summary: FIRST_FIND_BEAT,
       dueAt: new Date(now.getTime() + FIRST_FIND_DUE_HOURS * 3_600_000),
       channelMessageId: sent.channelMessageId,
     });
@@ -2971,8 +2980,8 @@ async function handleWatchReply(
   // The watch offer is retired under the friend voice: the find is the watch.
   // A session left waiting on it still gets an answer, written by the model,
   // and is closed so the next text reaches the family's own thread.
-  const safety = fixedSafetyReply(inbound.body);
-  const body = safety ?? (await helpBody(deps, session, language, inbound.body));
+  const safety = await crisisReply(inbound, language, deps);
+  const body = safety ? safety.body : await helpBody(deps, session, language, inbound.body);
   if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
   await saveSession(
     database,
@@ -3015,9 +3024,9 @@ async function handleLadder(
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
 
-  if (namesAnEmergency(inbound.body) || namesAMentalCrisis(inbound.body)) {
-    const crisis = namesAnEmergency(inbound.body) ? EMERGENCY_REPLY : MENTAL_CRISIS_REPLY;
-    await sendAndRecord(database, ctx, crisis, deps, recorded.transcript);
+  const crisis = await crisisReply(inbound, language, deps);
+  if (crisis) {
+    if (crisis.body) await sendAndRecord(database, ctx, crisis.body, deps, recorded.transcript);
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'question_answered', source: 'safety' };
   }
@@ -3040,7 +3049,9 @@ async function handleLadder(
       deps,
     );
     if (offScript) {
-      await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+      if (offScript.body) {
+        await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+      }
       heldForQuestion = true;
     }
   }

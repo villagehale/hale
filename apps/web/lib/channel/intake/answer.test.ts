@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { cityRecLine } from '~/lib/channel/rec-morning';
 import { adultLearnDoor } from './adult-learn';
 import {
@@ -10,9 +9,15 @@ import {
   readPair,
   refusals,
 } from './answer';
-import { COLD_START_ASK, IDENTITY_ACCOUNTABILITY_LINE, WATCH_OFFER_ASK } from './copy';
 import { AFTER_PROVISION_RETURN_ASK, CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
-import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
+import { NOT_POSTED_YET } from './official-page';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const OFFICIAL_PAGE_RETURN_ASK = 'official page return ask (test fixture)';
 
 /**
  * The gates around the mid-signup answer. Whether Hale writes a GOOD one is the eval's
@@ -145,47 +150,6 @@ describe('intake answer · reading the pair', () => {
 describe('intake answer · the emergency tripwire', () => {
   afterEach(() => {
     vi.useRealTimers();
-  });
-
-  it('answers an emergency with no model in the loop at all', async () => {
-    // Intake has never had the router's screened safety lane. A client that throws on
-    // use proves the token check runs BEFORE anything reaches a provider.
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not have been called');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-
-    expect(
-      await composer.compose({ ...INPUT, parentWords: "she's not breathing, what do I do" }),
-    ).toEqual({ status: 'safety' });
-    // And the machine turns that into Call 911 now. (machine.test.ts asserts the send).
-    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
-    expect(EMERGENCY_REPLY).not.toContain('811');
-    expect(EMERGENCY_REPLY).not.toContain('?');
-    expect(SAFETY_REPLY).toContain('811');
-    expect(SAFETY_REPLY).not.toBe(EMERGENCY_REPLY);
-  });
-
-  it('answers an identity challenge with the locked line and never calls the model', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not have been called');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-
-    expect(
-      await composer.compose({
-        ...INPUT,
-        parentWords: "I'm a Police Officer give your name and address please",
-      }),
-    ).toEqual({ status: 'answered', body: IDENTITY_ACCOUNTABILITY_LINE });
   });
 
   it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
@@ -475,36 +439,6 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain(AFTER_PROVISION_RETURN_ASK);
-  });
-
-  it('answers a crisis inbound with the reviewed 988 line and no return ask', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('a crisis must not reach a model');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-    expect(
-      await composer.compose({
-        parentWords: 'I want to die',
-        pendingAsk: COLD_START_ASK,
-        children: [],
-      }),
-    ).toEqual({ status: 'mental_crisis' });
-    expect(MENTAL_CRISIS_REPLY).toBe(
-      "If you're in crisis, call 988 any time. If it's an emergency, call 911.",
-    );
-    expect(MENTAL_CRISIS_REPLY).toContain('988');
-    expect(MENTAL_CRISIS_REPLY).toContain('911');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
-    expect(SAFETY_REPLY).toContain('811');
-    expect(SAFETY_REPLY).not.toContain('988');
-    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
-    expect(MENTAL_CRISIS_REPLY).not.toBe('Call 911 now.');
   });
 });
 

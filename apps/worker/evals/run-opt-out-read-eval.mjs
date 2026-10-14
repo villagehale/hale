@@ -40,7 +40,10 @@ const HAIKU_OUT = 5;
 const TOOL_SCHEMA = {
   type: 'object',
   properties: {
-    intent: { type: 'string', enum: ['stop', 'start', 'none'] },
+    intent: {
+      type: 'string',
+      enum: ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'none'],
+    },
     verbatim: { type: 'string' },
     confirmation: { type: 'string' },
   },
