@@ -105,29 +105,12 @@ export const SAFETY_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 };
 
 /**
- * VIL-327 — caregiver mental crisis. Designer-locked 2026-08-28. Not
- * {@link SAFETY_REPLY}: that line is the child-health 811 reply and must not
- * go out for suicide / self-harm. 988 is the Canada Suicide Crisis Helpline.
- * No return ask. No 811. No "not something I should advise on."
- */
-export const MENTAL_CRISIS_REPLY =
-  "If you're in crisis, call 988 any time. If it's an emergency, call 911.";
-
-/**
- * VIL-328 — physical emergency. Designer-locked 2026-08-27, Advisor override
- * the same night. Not {@link SAFETY_REPLY}: that line is Telehealth 811 and
- * must not lead a real emergency. Not {@link MENTAL_CRISIS_REPLY}: 988 is the
- * mental-crisis line. This is the line alone, verbatim. No return ask. No 811.
- */
-export const EMERGENCY_REPLY = 'Call 911 now.';
-
-/**
- * The tokens that make {@link EMERGENCY_REPLY} go out with no model in the loop at all —
+ * The tokens that make the emergency reply (model-written since #868) go out with no model in the loop at all —
  * the outage smoke alarm's trigger (router/smoke-alarm.ts, founder-approved
  * 2026-08-12), and the ONE place Hale answers a parent without composing anything.
  *
  * THE BAR, and nothing else gets on this list: a token belongs only if sending
- * {@link EMERGENCY_REPLY} to someone who was NOT in an emergency is obviously
+ * the emergency reply (model-written since #868) to someone who was NOT in an emergency is obviously
  * acceptable, and missing a real one is obviously not. "Fever", "rash" and "hit her head" all fail it —
  * a parent asking about a rash during an outage is owed a composed answer once the
  * model is back, not two phone numbers now. The six below pass it: there is no ordinary
@@ -170,7 +153,7 @@ export function namesAnEmergency(body: string): boolean {
 }
 
 /**
- * VIL-327 — caregiver mental crisis. Sends {@link MENTAL_CRISIS_REPLY}
+ * VIL-327 — caregiver mental crisis. Routes to the model-written 988 reply (#868)
  * (988 / 911), never {@link SAFETY_REPLY}. A therapist-find or cheer-up
  * must not match.
  */

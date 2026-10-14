@@ -1,12 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { describe, expect, it } from 'vitest';
-import {
-  EMERGENCY_REPLY,
-  EMERGENCY_TOKENS,
-  MENTAL_CRISIS_REPLY,
-  SAFETY_REPLY,
-  namesAnEmergency,
-} from '~/lib/channel/off-domain/copy';
+import { describe, expect, it, vi } from 'vitest';
+import { EMERGENCY_TOKENS, namesAnEmergency } from '~/lib/channel/off-domain/copy';
 import { ChannelTurnFailed } from './coach-runtime';
 import {
   type SmokeAlarmClaim,
@@ -225,7 +219,6 @@ function alarm(
     err?: unknown;
     body?: string;
     claim?: SmokeAlarmClaim;
-    say?: (body: string) => Promise<void>;
   } = {},
 ): { run: () => Promise<SmokeAlarmOutcome>; sent: string[]; claim: SmokeAlarmClaim } {
   const sent: string[] = [];
@@ -241,38 +234,35 @@ function alarm(
         familyId: FAMILY,
         parentUserId: PARENT,
         channelMessageId: MESSAGE,
-        say:
-          options.say ??
-          (async (body: string) => {
-            sent.push(body);
-          }),
       }),
   };
 }
 
 describe('the smoke alarm', () => {
-  it('sends Call 911 now. alone when the model is gone and the text is an emergency', async () => {
+  it('sends nothing and logs urgently when the model is gone and the text is an emergency', async () => {
     const a = alarm();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     expect(await a.run()).toBe('fired');
-    expect(a.sent).toEqual([EMERGENCY_REPLY]);
-    expect(a.sent[0]).toBe('Call 911 now.');
-    expect(a.sent[0]).not.toContain('811');
-    expect(a.sent[0]).not.toContain('Health811');
-    expect(a.sent[0]).not.toContain('988');
-    expect(a.sent[0]).not.toContain('?');
-    expect(a.sent[0]).not.toBe(SAFETY_REPLY);
+    expect(a.sent).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'emergency', where: 'model_outage' }),
+      expect.stringContaining('URGENT'),
+    );
+    log.mockRestore();
   });
 
-  it('sends the reviewed 988 line on a suicide crisis during an outage', async () => {
+  it('logs a suicide crisis during an outage urgently, as mental, and sends nothing', async () => {
     const a = alarm({ body: 'I want to die' });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     expect(await a.run()).toBe('fired');
-    expect(a.sent).toEqual([MENTAL_CRISIS_REPLY]);
-    expect(a.sent[0]).not.toContain('?');
-    expect(a.sent[0]).not.toContain('811');
-    expect(a.sent[0]).not.toBe(SAFETY_REPLY);
-    expect(a.sent[0]).not.toBe(EMERGENCY_REPLY);
-    expect(a.sent[0]).not.toBe('Call 911 now.');
+    expect(a.sent).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'mental' }),
+      expect.stringContaining('URGENT'),
+    );
+    log.mockRestore();
   });
 
   /** Both conditions, independently insufficient. Either one alone is an ordinary
@@ -303,28 +293,6 @@ describe('the smoke alarm', () => {
     expect(await retry.run()).toBe('already_fired');
     expect(retry.sent).toEqual([]);
     expect(claim.recorded).toHaveLength(1);
-  });
-
-  /**
-   * Ordering, and it is the whole of the dedupe's correctness: the claim is written
-   * AFTER the send. A claim written first would mean a send that failed is never
-   * retried — the parent gets silence and the ledger says the alarm rang.
-   */
-  it('does not claim an alarm whose send failed, so the retry can ring it', async () => {
-    const claim = fakeClaim();
-    const failing = alarm({
-      claim,
-      say: async () => {
-        throw new Error('provider is down too');
-      },
-    });
-
-    await expect(failing.run()).rejects.toThrow('provider is down too');
-    expect(claim.recorded).toEqual([]);
-
-    const retry = alarm({ claim });
-    expect(await retry.run()).toBe('fired');
-    expect(retry.sent).toEqual([EMERGENCY_REPLY]);
   });
 
   /** The claim read is a query. It must not be spent on the overwhelmingly common

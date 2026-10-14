@@ -1232,7 +1232,10 @@ async function routeChannelMessageInner(
       verdict = { status: 'in_domain', fallback: null };
     }
     if (verdict.status === 'deflected') {
-      await answer(verdict.reply, verdict.medicalSource, verdict.replySource);
+      // Null: a crisis with no written line. The lane already logged it urgently.
+      if (verdict.reply !== null) {
+        await answer(verdict.reply, verdict.medicalSource, verdict.replySource);
+      }
       return done(deps, job, {
         status: 'deflected',
         handler: null,
@@ -2171,9 +2174,8 @@ async function disposeOfFailedTurn(
 
   if (classifyTurnFailure(err) === 'model_unreachable') {
     // THE SMOKE ALARM (smoke-alarm.ts), consulted first and only ever from here. During
-    // a provider outage the off-domain screen fails open, so the lane that owns the
-    // 811/911 sentence never got to classify — and deferring is what that parent would
-    // otherwise get: silence, for hours, standing over a child who is not breathing.
+    // a provider outage the off-domain screen fails open and no model can write a
+    // crisis reply; since #868 there is no fixed one, so the alarm pages #ops urgently.
     const smokeAlarm = await considerSmokeAlarm({
       claim: deps.smokeAlarm,
       err,
@@ -2181,14 +2183,6 @@ async function disposeOfFailedTurn(
       familyId: args.job.family_id,
       parentUserId: args.job.parent_user_id,
       channelMessageId: args.job.channel_message_id,
-      // The alarm's send IS this text's answer — the one the parent acts on and the one
-      // a re-drive must never repeat — so it claims the turn like every other. Adapted
-      // rather than passed straight through because `answer` now hands back the ledger
-      // row id (a promise is minted against the message that carried it), and the alarm
-      // has no use for one: it sends a fixed line and is done.
-      say: async (body) => {
-        await args.answer(body);
-      },
     });
     if (smokeAlarm === 'fired') {
       // No draft notice appended, deliberately. The alarm answers a parent who should be

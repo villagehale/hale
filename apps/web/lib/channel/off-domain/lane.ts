@@ -3,14 +3,17 @@ import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema }
 import { and, eq } from 'drizzle-orm';
 import { replyLanguage } from '~/lib/channel/language';
 import {
+  type SaidLineWriter,
+  createSaidLineWriter,
+  writeCrisisLine,
+} from '~/lib/channel/voice/said-line';
+import {
   type GeneralAnswerComposer,
   type GeneralAnswerFallback,
   createGeneralAnswer,
 } from './answer';
 import {
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
   namesAMentalCrisis,
   namesAnEmergency,
@@ -88,7 +91,9 @@ export type OffDomainVerdict =
       status: 'deflected';
       lane: UnmetIntentLane;
       category: UnmetIntentCategory;
-      reply: string;
+      /** Null only when a crisis was flagged and no line could be written: nothing is
+       * sent, and the urgent log already went (#868: no fixed crisis line). */
+      reply: string | null;
       replySource: ReplySource;
       /**
        * The medical lane's own outcome, for the router to stamp on the reply it sends —
@@ -115,6 +120,8 @@ export interface OffDomainPorts {
    * triage, or the fixed 811/911 line as a last resort. Non-nullable for the same reason
    * (rule #11) — its own failure modes are named inside it, never a missing dependency. */
   medical: MedicalComposer;
+  /** #868: writes the crisis reply. Absent or failed: the urgent log, nothing sent. */
+  saidLine?: SaidLineWriter;
   /** Stamps the inbound row with the lane + bucket. Never throws — see
    * {@link UnmetSignalOutcome}. */
   recordUnmetIntent(input: {
@@ -149,8 +156,8 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
           status: 'deflected',
           lane: 'safety_critical',
           category: 'emergency',
-          reply: EMERGENCY_REPLY,
-          replySource: 'fixed',
+          reply: await writeCrisisLine(ports.saidLine, 'emergency', input.text, 'off_domain'),
+          replySource: 'composed',
           medicalSource: null,
           signal,
         };
@@ -203,7 +210,10 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       const { reply, replySource } =
         lane === 'safety_critical'
           ? namesAMentalCrisis(input.text) || reading.category === 'mental-health'
-            ? { reply: MENTAL_CRISIS_REPLY, replySource: 'fixed' as const }
+            ? {
+                reply: await writeCrisisLine(ports.saidLine, 'mental', input.text, 'off_domain'),
+                replySource: 'composed' as const,
+              }
             : { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
           : lane === 'provider_access'
             ? { reply: referralReply(input.text, language), replySource: 'fixed' as const }
@@ -244,7 +254,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
 async function answerOrFallback(
   ports: OffDomainPorts,
   text: string,
-): Promise<{ reply: string; replySource: ReplySource }> {
+): Promise<{ reply: string | null; replySource: ReplySource }> {
   const composed = await ports.answer.compose(text);
   if (composed.status === 'composed') return { reply: composed.reply, replySource: 'composed' };
   const language = replyLanguage(text);
@@ -253,10 +263,14 @@ async function answerOrFallback(
   // the composer for a sentence it did not write would cost the founder's weekly count
   // the one distinction it is for (skill audit P0 #3).
   if (composed.status === 'safety') {
-    return {
-      reply: namesAnEmergency(text) ? EMERGENCY_REPLY : SAFETY_REPLY_BY_LANGUAGE[language],
-      replySource: 'fixed',
-    };
+    if (namesAnEmergency(text) || namesAMentalCrisis(text)) {
+      const kind = namesAnEmergency(text) ? 'emergency' : 'mental';
+      return {
+        reply: await writeCrisisLine(ports.saidLine, kind, text, 'off_domain_answer'),
+        replySource: 'composed',
+      };
+    }
+    return { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' };
   }
   return { reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE[language], replySource: composed.reason };
 }
@@ -329,6 +343,7 @@ export function productionOffDomainLane(
     screen: createInboundLaneScreen(client),
     answer: createGeneralAnswer(client),
     medical: createMedicalComposer(client),
+    saidLine: createSaidLineWriter(client),
     recordUnmetIntent: recordUnmetIntent(database),
   });
 }

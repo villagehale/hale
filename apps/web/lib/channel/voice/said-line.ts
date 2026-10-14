@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { connectorNoun } from '~/lib/channel/connect/copy';
 import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -145,6 +145,45 @@ export async function writeConnectorLink(
     },
     mustInclude: [input.url],
   });
+}
+
+export type CrisisKind = 'emergency' | 'mental';
+
+/**
+ * A crisis was flagged and no reply goes out (#868: there is no fixed crisis line to
+ * fall back on, anywhere). Never silent: an urgent, body-free log for #ops (rule #1).
+ */
+export function logCrisisUnanswered(kind: CrisisKind, where: string): void {
+  console.error(
+    { urgent: true, kind, where },
+    'URGENT: crisis flagged, no reply sent - page #ops now',
+  );
+}
+
+/**
+ * The crisis reply in the model's words; the numbers are the checked facts. Null after
+ * the urgent log when nothing could be written: the caller sends nothing.
+ */
+export async function writeCrisisLine(
+  writer: SaidLineWriter | null | undefined,
+  kind: CrisisKind,
+  parentWords: string,
+  where: string,
+): Promise<string | null> {
+  const written = writer
+    ? await writer.write({
+        purpose: kind === 'emergency' ? 'crisis_emergency' : 'crisis_mental',
+        language: replyLanguage(parentWords),
+        parentWords,
+        facts:
+          kind === 'emergency'
+            ? { emergency: '911' }
+            : { crisisLine: '988 (call or text, Canada and US)', emergency: '911' },
+        mustInclude: kind === 'emergency' ? ['911'] : ['988'],
+      })
+    : null;
+  if (!written) logCrisisUnanswered(kind, where);
+  return written;
 }
 
 /** Minutes a connect link stays live, said by the model (CHANNEL_SIGNIN_TTL_MS). */
