@@ -1,6 +1,5 @@
 import { schema } from '@hale/db';
 import { describe, expect, it } from 'vitest';
-import { COLD_START_ASK, greeting } from '~/lib/channel/intake/copy';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import {
   type ParentCallNameRead,
@@ -82,11 +81,6 @@ describe('decideParentCallName', () => {
     expect(decideParentCallName({ ...open, needsName: false, googleGivenName: 'Bea' }).kind).toBe(
       'none',
     );
-  });
-
-  it('never asks in the door greeting', () => {
-    const door = `${greeting(null, 'en')}\n${COLD_START_ASK}`;
-    expect(door).not.toMatch(/call you/i);
   });
 });
 

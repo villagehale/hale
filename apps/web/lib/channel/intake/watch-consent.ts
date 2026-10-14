@@ -1,7 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { POLICY_VERSION } from '~/lib/consent';
-import { WATCH_OFFER } from './copy';
 
 /**
  * VIL-237 · M2 — recording the answer to the watch-offer.
@@ -38,9 +37,8 @@ export interface WatchConsentInput {
    * message itself rather than at a copy of its text. */
   channelMessageId: string | null;
   /**
-   * What the row says was asked. Defaults to the legacy watch-offer text for a
-   * session that is still answering that question. The live path passes
-   * {@link IMPLIED_WATCH_BASIS} because that question is not sent.
+   * What the row says was asked. Defaults to {@link IMPLIED_WATCH_BASIS}: the
+   * watch question is no longer sent (#868), the live find is the watch.
    */
   question?: string;
 }
@@ -59,7 +57,7 @@ export async function recordWatchConsent(
       consentScope: WATCH_CONSENT_SCOPE,
       policyVersion: POLICY_VERSION,
       evidence: {
-        question: input.question ?? WATCH_OFFER,
+        question: input.question ?? IMPLIED_WATCH_BASIS,
         verbatimReply: input.verbatimReply,
         interpretation: input.interpretation,
         channelMessageId: input.channelMessageId,

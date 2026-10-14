@@ -1,0 +1,6 @@
+{
+  "value": {
+    "text": "Connecte ton agenda pour que je voie tes rendez-vous\n[[calendarLink]]\n\nConnecte Gmail pour que je lise tes messages importants\n[[gmailLink]]\n\nC'est optionnel, et chaque lien marche 15 minutes."
+  },
+  "latencyMs": 1327
+}

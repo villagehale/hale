@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The text is in English, but the parent's language is Arabic. The instructions require the text to be in the parent's own language and script. While the content itself addresses the identity purpose correctly with all required facts (Hale, Village Hale Technologies Inc., Barton Dong, email, website), the language mismatch is a critical failure that cannot be overlooked."
+  }
+}

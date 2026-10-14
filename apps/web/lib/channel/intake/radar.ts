@@ -14,7 +14,7 @@ import { type ActivityMapGroup, collectActivityMap, renderActivityMapBody } from
 import type { ExtractedChild } from './extract';
 import { type RadarCandidate, type RadarChild, decideYearFinds } from './radar-decide';
 import { type RadarMessage, promisesFirstFind } from './radar-voice';
-import { collectYearOpenLines, renderYearOpen, yearOpenEmptyMessage } from './year-open';
+import { collectYearOpenLines, renderYearOpen } from './year-open';
 
 /** Words too generic to prove the checkpoint reached the parent. */
 const CHECKPOINT_STOPWORDS = new Set([
@@ -410,7 +410,6 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         now,
         timeZone,
       });
-      const language = input.language ?? 'en';
       if (input.activityMap) {
         const map = await collectActivityMap({
           finder: deps.yearFinder ?? null,
@@ -442,8 +441,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         finder: deps.yearFinder ?? null,
         familyId: input.familyId,
       });
-      const message =
-        opened.lines.length > 0 ? renderYearOpen(opened.lines) : yearOpenEmptyMessage(language);
+      const message = renderYearOpen(opened.lines);
       const findWon = opened.lines.length > 0;
 
       // No child name, no postal code. The finder outcome is the fact an operator
@@ -466,10 +464,9 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         // weekend find. Stamping the D23 anchor would let weekday-care say "those are
         // all weekend finds" about a list that is the year's contents.
         weekendPickOffered: false,
-        firstFindPromised:
-          promisesFirstFind(message) ||
-          message === yearOpenEmptyMessage('en') ||
-          message === yearOpenEmptyMessage('fr'),
+        // The empty-radar promise was a fixed line; the friend voice now says it in
+        // its own words. Recording that promise is the #868 follow-up.
+        firstFindPromised: promisesFirstFind(message),
         findWon,
         actionMove: null,
         actionHeld: 'no_move',

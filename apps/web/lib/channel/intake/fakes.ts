@@ -13,9 +13,7 @@ import type {
 } from '~/lib/channel/identity/ask-voice';
 import type { IntroAskRequest, IntroVoice, IntroVoiceOutcome } from '~/lib/village/intros/voice';
 import type { IntakeAnswerComposer, IntakeAnswerInput, IntakeAnswerOutcome } from './answer';
-import { followUp } from './copy';
 import type { IntakeCollected, IntakeExtractor } from './extract';
-import type { IntakeAck, IntakeAckComposer } from './intake-voice';
 import type { IntentReading, ReplyIntentReader } from './intent';
 import type { RadarComposer } from './radar';
 
@@ -73,23 +71,6 @@ export const fakeRadar: RadarComposer = {
       actionMove: null,
       actionHeld: 'no_move',
       voiceFallback: null,
-    };
-  },
-};
-
-/**
- * An acknowledgment composer that always degrades to the template — the DETERMINISTIC
- * outcome, which is what the machine's routing tests want to assert against. The
- * composed path is not faked with a canned sentence anywhere: its quality is the eval's
- * job against real cached Claude (rule #8), and its guards are unit-tested directly in
- * intake-voice.test.ts.
- */
-export const fakeAckComposer: IntakeAckComposer = {
-  async compose(input): Promise<IntakeAck> {
-    return {
-      body: followUp(input.summary, input.missing),
-      source: 'template',
-      fallback: 'voice_unavailable',
     };
   },
 };

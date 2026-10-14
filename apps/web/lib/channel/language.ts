@@ -15,9 +15,8 @@
  * a preference column. A remembered language is a stored fact about a person, which is a
  * privacy decision and a migration; this is a function of the text that just arrived, it
  * holds nothing, and it is wrong for exactly one turn when it is wrong. What it costs is
- * stated where it bites: the CASL keyword replies are triggered by the English tokens
- * STOP/HELP/START, so a body that IS one of those tokens carries no French evidence and
- * can never route to the French twin (see keywords.ts and the note on HELP_REPLY).
+ * stated where it bites, and #868 limits it: a model is only ever told French when this
+ * is certain (`certainLanguageHint`), and the parent's own words decide the reply.
  *
  * IT DEFAULTS TO ENGLISH, always. Answering an anglophone in French is the expensive
  * error — it happens at first contact, it reads as a broken product rather than a
@@ -40,11 +39,8 @@ export type ReplyLanguage = 'en' | 'fr';
  * for a reason of its own: a parent who texts it has unmistakably written French, whether
  * or not the whole body is the bare CASL keyword.
  *
- * IT IS NOT WHAT DECIDES A KEYWORD TURN, and `aide` is the proof of why. A body that IS
- * a keyword is one token long, and this detector cannot rule on `aide` without ruling
- * wrongly on the English noun — so `matchKeyword` (intake/keywords.ts) carries the
- * language of the WORD alongside the match and the keyword branch reads that instead.
- * A fact about a word beats evidence weighed out of a sentence that isn't there.
+ * IT IS NOT WHAT ANSWERS A STOP. The opt-out reader writes that confirmation in the
+ * sender's own language (#868).
  */
 const FRENCH_ALONE = new Set([
   'bonjour',
@@ -222,6 +218,16 @@ function words(body: string): string[] {
     .replace(/['’ʼ`]/g, '')
     .split(/[^a-z]+/)
     .filter(Boolean);
+}
+
+/**
+ * #868: what a MODEL is told about language. The detector is not the source of truth:
+ * it only proves French (positive markers) and otherwise defaults to English, which is
+ * a guess for a Chinese or Arabic text. So the model gets a hint only when it is
+ * certain, and the parent's own words decide the language and script of the reply.
+ */
+export function certainLanguageHint(language: ReplyLanguage | null | undefined): 'fr' | null {
+  return language === 'fr' ? 'fr' : null;
 }
 
 /** The language Hale's fixed copy should go out in for THIS message. English unless the

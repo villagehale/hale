@@ -1,10 +1,9 @@
+import { ageInMonths } from '@hale/types';
 import { z } from 'zod';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { type BookMe4Model, fragment, readCourseModel } from '~/lib/channel/spots/availability';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
-import { ageInMonths } from '@hale/types';
 
 /**
  * VIL-338 · what a bound course page says, and which single truthful sentence the
@@ -188,8 +187,7 @@ const LINK_SHAPED = /:\/\/|http|www\./i;
  * Every value this guards was written by a municipal portal, so the composer's segment
  * budget and CASL footer are promises about text Hale does not control. A `\n` opens a
  * second line under Hale's name; a URL is a second link beside the one deep link the
- * message is allowed to carry; a bare `STOP` is the word the carrier and CASL reserve
- * for the parent, and quoting it back is how a program gets flagged; a bidi override
+ * message is allowed to carry; a bidi override
  * reorders the sentence around it; and an unbounded name is a segment nobody budgeted.
  *
  * A refusal DROPS the token — the clause that would have printed it is not composed —
@@ -199,8 +197,7 @@ const LINK_SHAPED = /:\/\/|http|www\./i;
 function sendableAsItself(value: string, maxChars: number): boolean {
   if (value.length > maxChars) return false;
   if (!isPrintableGsm7Basic(value)) return false;
-  if (LINK_SHAPED.test(value)) return false;
-  return matchKeyword(value) === null;
+  return !LINK_SHAPED.test(value);
 }
 
 /**

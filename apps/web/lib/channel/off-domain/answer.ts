@@ -2,23 +2,17 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import {
-  afterProvisionFallbackReply,
   afterProvisionReplyFromNotes,
-  cheerUpAfterProvisionReply,
   groundCurrentSource,
   isCheerUpAsk,
   isLiveLookupAsk,
 } from '~/lib/channel/intake/live-lookup';
+import { replyLanguage } from '~/lib/channel/language';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import {
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
-  namesAMentalCrisis,
-  namesAnEmergency,
-  reachesForTheHealthLine,
-} from './copy';
+import { namesAMentalCrisis, namesAnEmergency, reachesForTheHealthLine } from './copy';
 
 /**
  * Boundary v3 — the general answer.
@@ -168,17 +162,23 @@ function sendable(raw: string): GeneralAnswerOutcome {
 export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerComposer {
   return {
     async compose(text) {
-      // VIL-328: physical emergency is Call 911 now., never the 811 Telehealth
-      // line. Mental crisis is the reviewed 988 line, no return ask.
-      if (namesAnEmergency(text)) {
-        return { status: 'composed', reply: EMERGENCY_REPLY };
-      }
-      if (namesAMentalCrisis(text)) {
-        return { status: 'composed', reply: MENTAL_CRISIS_REPLY };
+      // #868: a crisis is the lane's to answer, in the model's words. This composer
+      // writes no crisis line of its own, fixed or otherwise.
+      if (namesAnEmergency(text) || namesAMentalCrisis(text)) {
+        return { status: 'safety' };
       }
 
       if (isCheerUpAsk(text)) {
-        return { status: 'composed', reply: cheerUpAfterProvisionReply() };
+        // #868: the warmth is the model's words, not a reviewed fixed line.
+        const written = await createSaidLineWriter(client).write({
+          purpose: 'cheer_up',
+          language: replyLanguage(text),
+          parentWords: text,
+          facts: {},
+        });
+        return written
+          ? { status: 'composed', reply: written }
+          : unavailable('model_failed', 'cheer_up');
       }
 
       let resolved: AgentClient;
@@ -197,9 +197,20 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
             { reason: ground.reason },
             'off-domain answer: current source not grounded, returned to Hale',
           );
-          return { status: 'composed', reply: afterProvisionFallbackReply() };
         }
-        return { status: 'composed', reply: afterProvisionReplyFromNotes(ground.notes) };
+        const grounded =
+          ground.status === 'grounded' ? afterProvisionReplyFromNotes(ground.notes) : null;
+        if (grounded !== null) return { status: 'composed', reply: grounded };
+        // #868: "no current source" in the model's words, not a fixed line.
+        const written = await createSaidLineWriter(resolved).write({
+          purpose: 'no_source',
+          language: replyLanguage(text),
+          parentWords: text,
+          facts: {},
+        });
+        return written
+          ? { status: 'composed', reply: written }
+          : unavailable('model_failed', 'no_source');
       }
 
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;

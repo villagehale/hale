@@ -2,11 +2,7 @@ import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
-import {
-  namesAMentalCrisis,
-  namesAnEmergency,
-  reachesForTheHealthLine,
-} from '~/lib/channel/off-domain/copy';
+import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -14,20 +10,16 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
-import { identityChallengeReply } from './identity-challenge';
 import {
-  cheerUpIntakeReply,
   groundCurrentSource,
   isCheerUpAsk,
   isLiveLookupAsk,
-  liveLookupFallbackReply,
   liveLookupReplyFromNotes,
 } from './live-lookup';
 import {
   deidentifyOfficialQuery,
   isOfficialPageAsk,
   notesGroundADate,
-  officialPageFallbackReply,
   officialPageReplyFromNotes,
 } from './official-page';
 
@@ -57,7 +49,7 @@ import {
  *
  *   AN EMERGENCY NEVER REACHES A MODEL. `namesAnEmergency` is checked first, before the
  *   client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` — the
- *   machine then sends {@link EMERGENCY_REPLY} (`Call 911 now.`), with no return-to-script
+ *   machine then sends the model-written crisis reply (#868: routed and written by the turn reader), with no return-to-script
  *   tacked onto it. Intake has never had the screened safety lane the router has
  *   (off-domain/lane.ts), so this is the whole of it, and it works during a provider
  *   outage because it is a substring test.
@@ -160,7 +152,14 @@ export type IntakeAnswerRefusal =
 /** Why the stage produced no words. Four separate operational stories, none of them
  * silence (rule #11): `skill_unavailable` is a deploy bug, `model_failed` an outage,
  * `unusable` the model getting it wrong and the gates catching it. */
-export type IntakeAnswerFallback = 'skill_unavailable' | 'model_failed' | 'unusable';
+export type IntakeAnswerFallback =
+  | 'skill_unavailable'
+  | 'model_failed'
+  | 'unusable'
+  /** Search found nothing sendable; the machine has the model say so (#868). */
+  | 'ungrounded'
+  /** A caregiver venting; the machine has the model write the warmth (#868). */
+  | 'cheer_up';
 
 export type IntakeAnswerOutcome =
   /** The whole message: the answer, then Hale's question again in different words. */
@@ -175,7 +174,7 @@ export type IntakeAnswerOutcome =
   | { status: 'safety' }
   /**
    * Caregiver mental crisis. Carries NO body — the machine sends
-   * {@link MENTAL_CRISIS_REPLY} (988 / 911), never the child-health 811 line.
+   * a model-written crisis reply (988 / 911), never the child-health 811 line.
    */
   | { status: 'mental_crisis' }
   | { status: 'unavailable'; reason: IntakeAnswerFallback };
@@ -365,14 +364,12 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // FIRST, and with no model in the loop. See the module note: intake has never had
       // the screened safety lane, and an emergency must not wait on a provider that may
       // be the reason this turn is degraded at all.
-      if (namesAnEmergency(input.parentWords)) return { status: 'safety' };
-      if (namesAMentalCrisis(input.parentWords)) return { status: 'mental_crisis' };
 
       // VIL-333. Identity / distrust is a locked disclosure, not a composed answer
       // plus the pending ask. The machine short-circuits on the same read; this
       // is the same door for any caller of the composer.
-      const disclosure = identityChallengeReply(input.parentWords);
-      if (disclosure) return { status: 'answered', body: disclosure };
+      // #868: the disclosure is written by the model in the machine's seam (which
+      // holds the writer). Here a challenge is simply not a question to answer.
 
       // VIL-323: adult-learn is a Designer-locked kids-only door, not a model "I
       // don't do that" and not a city clock. Checked before rec-morning so
@@ -400,22 +397,19 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       if (isOfficialPageAsk(input.parentWords)) {
         const ground = await groundOfficialPages(client, input);
         if (ground.status === 'ungrounded') {
-          console.error(
-            { reason: ground.reason },
-            'intake answer: official page not grounded, said the date is not posted',
-          );
-          return { status: 'answered', body: officialPageFallbackReply(input.pendingAsk) };
+          console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
+          return { status: 'unavailable', reason: 'ungrounded' };
         }
-        return {
-          status: 'answered',
-          body: officialPageReplyFromNotes(ground.notes, input.pendingAsk),
-        };
+        const body = officialPageReplyFromNotes(ground.notes, input.pendingAsk);
+        return body === null
+          ? { status: 'unavailable', reason: 'ungrounded' }
+          : { status: 'answered', body };
       }
 
       // VIL-327 caregiver cheer-up: reviewed warmth, not a clinician, then
       // one return ask. Crisis already left above. Therapist-find is live lookup.
       if (isCheerUpAsk(input.parentWords)) {
-        return { status: 'answered', body: cheerUpIntakeReply(input.pendingAsk) };
+        return { status: 'unavailable', reason: 'cheer_up' };
       }
 
       // VIL-327: raising-kids, leftover current-source facts, therapist-find.
@@ -424,16 +418,13 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       if (isLiveLookupAsk(input.parentWords)) {
         const ground = await groundCurrentSource(client, input.parentWords, input.children);
         if (ground.status === 'ungrounded') {
-          console.error(
-            { reason: ground.reason },
-            'intake answer: current source not grounded, said so',
-          );
-          return { status: 'answered', body: liveLookupFallbackReply(input.pendingAsk) };
+          console.error({ reason: ground.reason }, 'intake answer: current source not grounded');
+          return { status: 'unavailable', reason: 'ungrounded' };
         }
-        return {
-          status: 'answered',
-          body: liveLookupReplyFromNotes(ground.notes, input.pendingAsk),
-        };
+        const body = liveLookupReplyFromNotes(ground.notes, input.pendingAsk);
+        return body === null
+          ? { status: 'unavailable', reason: 'ungrounded' }
+          : { status: 'answered', body };
       }
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the

@@ -1,12 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  AFTER_PROVISION_RETURN_ASK,
-  CHEER_UP_REPLY,
-  NO_CURRENT_SOURCE_YET,
-} from '~/lib/channel/intake/live-lookup';
 import { MAX_ANSWER_SEGMENTS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
-import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from './copy';
 
 /** GSM-7 concatenation part size (sms-segments.ts GSM7_CONCAT_PART). A GSM-7 body of
  * this many characters is exactly {@link MAX_ANSWER_SEGMENTS} segments; one more tips it
@@ -312,11 +306,10 @@ describe('after provision leftover facts · VIL-327', () => {
     expect(outcome.status).toBe('composed');
     if (outcome.status !== 'composed') return;
     expect(outcome.reply).toContain('Argentina');
-    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
     expect(outcome.reply).not.toMatch(/https?:\/\//);
   });
 
-  it('says no current source yet, then returns to the kids / the week', async () => {
+  it('has the model say there is no current source', async () => {
     const exploding = () =>
       ({
         messages: {
@@ -328,13 +321,12 @@ describe('after provision leftover facts · VIL-327', () => {
     const log = quiet();
     const outcome = await createGeneralAnswer(exploding).compose('Who is the US president?');
     log.mockRestore();
-    expect(outcome.status).toBe('composed');
-    if (outcome.status !== 'composed') return;
-    expect(outcome.reply).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
+    // #868: no fixed line. The model writes it; a dead model means unavailable,
+    // never a canned sentence from this composer.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'model_failed' });
   });
 
-  it('answers a cheer-up with warmth and a line back to the week', async () => {
+  it('has the model write the cheer-up', async () => {
     const exploding = () =>
       ({
         messages: {
@@ -344,51 +336,26 @@ describe('after provision leftover facts · VIL-327', () => {
         },
       }) as unknown as AgentClient;
     const outcome = await createGeneralAnswer(exploding).compose('cheer me up');
-    expect(outcome.status).toBe('composed');
-    if (outcome.status !== 'composed') return;
-    expect(outcome.reply).toContain(CHEER_UP_REPLY);
-    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
-    expect(outcome.reply).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
+    // #868: no fixed line. The model writes it; a dead model means unavailable,
+    // never a canned sentence from this composer.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'model_failed' });
   });
 
-  it('answers a crisis with safety and no return ask', async () => {
+  it('hands a crisis back to the lane, writing no crisis line of its own', async () => {
     const exploding = () =>
       ({
         messages: {
           create: () => {
-            throw new Error('a crisis must not reach a model');
+            throw new Error("a crisis must not reach this composer's model");
           },
         },
       }) as unknown as AgentClient;
     expect(await createGeneralAnswer(exploding).compose('I want to die')).toEqual({
-      status: 'composed',
-      reply: MENTAL_CRISIS_REPLY,
+      status: 'safety',
     });
-    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
-    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
-  });
-
-  it('answers a physical emergency with Call 911 now. and no return ask', async () => {
-    const exploding = () =>
-      ({
-        messages: {
-          create: () => {
-            throw new Error('a physical emergency must not reach a model');
-          },
-        },
-      }) as unknown as AgentClient;
     expect(await createGeneralAnswer(exploding).compose('she is not breathing')).toEqual({
-      status: 'composed',
-      reply: EMERGENCY_REPLY,
+      status: 'safety',
     });
-    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
-    expect(EMERGENCY_REPLY).not.toContain('811');
-    expect(EMERGENCY_REPLY).not.toContain('Health811');
-    expect(EMERGENCY_REPLY).not.toContain('988');
-    expect(EMERGENCY_REPLY).not.toContain('?');
-    expect(EMERGENCY_REPLY).not.toBe(SAFETY_REPLY);
   });
 });
 

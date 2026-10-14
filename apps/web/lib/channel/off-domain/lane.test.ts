@@ -1,12 +1,11 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
+import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import type { GeneralAnswerFallback, GeneralAnswerOutcome } from './answer';
 import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
@@ -91,6 +90,7 @@ function ports(
         return medical;
       },
     },
+    saidLine: scriptedSaidLine(),
     recordUnmetIntent: async (input) => {
       harness.recorded.push({
         lane: input.lane,
@@ -128,26 +128,20 @@ describe('what each lane says', () => {
     },
   );
 
-  it('answers a mental-health crisis with the reviewed 988 line, never the 811 child-health line', async () => {
+  it("answers a mental-health crisis in the model's words, with 988 checked in", async () => {
     const p = ports({ read: reading({ lane: 'safety_critical', category: 'mental-health' }) });
 
     const verdict = await consider(p);
 
-    expect(verdict).toMatchObject({
-      status: 'deflected',
-      reply: MENTAL_CRISIS_REPLY,
-      replySource: 'fixed',
-    });
-    expect(MENTAL_CRISIS_REPLY).toContain('988');
-    expect(MENTAL_CRISIS_REPLY).toContain('911');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
-    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
+    if (verdict.status !== 'deflected') throw new Error('expected deflected');
+    expect(verdict.replySource).toBe('composed');
+    expect(verdict.reply).toContain('[crisis_mental/');
+    expect(verdict.reply).toContain('988');
     expect(p.medicalCalls).toBe(0);
   });
 
   it.each(['not breathing', 'unconscious', 'unresponsive', 'choking', 'seizure'] as const)(
-    'answers %s with Call 911 now. alone, never the 811 Telehealth line',
+    'answers %s with a model-written emergency line carrying 911, never 811',
     async (token) => {
       const p = ports({
         read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),
@@ -155,22 +149,30 @@ describe('what each lane says', () => {
 
       const verdict = await consider(p, `she is ${token}`);
 
-      expect(verdict).toMatchObject({
-        status: 'deflected',
-        reply: EMERGENCY_REPLY,
-        replySource: 'fixed',
-      });
-      expect(EMERGENCY_REPLY).toBe('Call 911 now.');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('811');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('Health811');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('988');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('?');
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toBe(SAFETY_REPLY);
-      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toBe(MENTAL_CRISIS_REPLY);
+      if (verdict.status !== 'deflected') throw new Error('expected deflected');
+      expect(verdict.replySource).toBe('composed');
+      expect(verdict.reply).toContain('[crisis_emergency/');
+      expect(verdict.reply).toContain('911');
+      expect(verdict.reply).not.toContain('811');
       expect(p.medicalCalls).toBe(0);
       expect(p.composeCalls).toBe(0);
     },
   );
+
+  it('sends nothing and logs urgently when a crisis is flagged and no line is written', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+    p.saidLine = { write: async () => null };
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const verdict = await consider(p, 'she is not breathing');
+
+    expect(verdict).toMatchObject({ status: 'deflected', reply: null });
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'emergency' }),
+      expect.stringContaining('URGENT'),
+    );
+    log.mockRestore();
+  });
 
   /**
    * Skill audit P0 #3. The general terminal has a fourth outcome: the composer wrote a

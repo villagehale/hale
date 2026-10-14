@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mintChannelSigninTokens } from '~/lib/auth/channel-signin';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -60,6 +61,7 @@ describe('textFreshConnectorLink', () => {
       {
         transport,
         threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(),
       },
     );
 
@@ -114,6 +116,7 @@ describe('textFreshConnectorLink', () => {
           return { providerMessageId: 'out-1' };
         },
         threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(),
       },
     );
 
@@ -170,6 +173,7 @@ describe('textFreshConnectorLink', () => {
           return { providerMessageId: 'out-1' };
         },
         threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(),
       },
     );
 
@@ -196,6 +200,7 @@ describe('textFreshConnectorLink', () => {
       {
         transport: refusing as unknown as FakeTransport,
         threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(),
       },
     );
 

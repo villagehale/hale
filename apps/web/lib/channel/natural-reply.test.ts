@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { matchPartyLinkConfirm } from '~/lib/party/reply';
 import { readAffirmative } from './affirmative';
 import { matchFastPath } from './router/fast-path';
@@ -35,9 +34,8 @@ describe('natural replies to a pending ask', () => {
     for (const phrase of NO) expect(matchPartyLinkConfirm(phrase), phrase).toBe(false);
   });
 
-  it('leaves STOP, HELP, and START to the keyword matcher', () => {
+  it('leaves STOP, HELP, and START to the opt-out reader', () => {
     for (const phrase of ['STOP', 'stop', 'HELP', 'START', 'arret']) {
-      expect(matchKeyword(phrase)?.keyword).toBeTruthy();
       expect(readAffirmative(phrase)).toBe('unclear');
       expect(matchFastPath(phrase)).toBeNull();
       expect(matchPartyLinkConfirm(phrase)).toBe(false);

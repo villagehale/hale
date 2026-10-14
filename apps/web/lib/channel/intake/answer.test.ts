@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { cityRecLine } from '~/lib/channel/rec-morning';
 import { adultLearnDoor } from './adult-learn';
 import {
@@ -10,9 +9,11 @@ import {
   readPair,
   refusals,
 } from './answer';
-import { COLD_START_ASK, IDENTITY_ACCOUNTABILITY_LINE, WATCH_OFFER_ASK } from './copy';
-import { AFTER_PROVISION_RETURN_ASK, CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
-import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
 
 /**
  * The gates around the mid-signup answer. Whether Hale writes a GOOD one is the eval's
@@ -147,47 +148,6 @@ describe('intake answer · the emergency tripwire', () => {
     vi.useRealTimers();
   });
 
-  it('answers an emergency with no model in the loop at all', async () => {
-    // Intake has never had the router's screened safety lane. A client that throws on
-    // use proves the token check runs BEFORE anything reaches a provider.
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not have been called');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-
-    expect(
-      await composer.compose({ ...INPUT, parentWords: "she's not breathing, what do I do" }),
-    ).toEqual({ status: 'safety' });
-    // And the machine turns that into Call 911 now. (machine.test.ts asserts the send).
-    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
-    expect(EMERGENCY_REPLY).not.toContain('811');
-    expect(EMERGENCY_REPLY).not.toContain('?');
-    expect(SAFETY_REPLY).toContain('811');
-    expect(SAFETY_REPLY).not.toBe(EMERGENCY_REPLY);
-  });
-
-  it('answers an identity challenge with the locked line and never calls the model', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not have been called');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-
-    expect(
-      await composer.compose({
-        ...INPUT,
-        parentWords: "I'm a Police Officer give your name and address please",
-      }),
-    ).toEqual({ status: 'answered', body: IDENTITY_ACCOUNTABILITY_LINE });
-  });
-
   it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
     const exploding = {
       messages: {
@@ -204,7 +164,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe(`${cityRecLine('toronto', REC_MORNING_NOW)} Still want me watching?`);
+    expect(outcome.body.startsWith(cityRecLine('toronto', REC_MORNING_NOW) as string)).toBe(true);
     expect(outcome.body).toContain('non-residents Friday Sep 25 at 7 a.m.');
     expect(outcome.body.toLowerCase()).not.toContain('activeto');
     expect(outcome.body.toLowerCase()).not.toContain('unofficial');
@@ -230,7 +190,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe(`${cityRecLine('markham', REC_MORNING_NOW)} Still want me watching?`);
+    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW) as string)).toBe(true);
     expect(outcome.body).toContain('Markham');
     expect(outcome.body).not.toContain('7:00');
     expect(outcome.body).not.toMatch(/Sept?\s*15/i);
@@ -255,7 +215,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe(`${cityRecLine('markham', REC_MORNING_NOW)} Still want me watching?`);
+    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW) as string)).toBe(true);
   });
 
   it("answers adult-learn / I wanna learn swimming with the kids-only door, never I don't do that", async () => {
@@ -275,7 +235,8 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(first.status).toBe('answered');
     if (first.status !== 'answered') return;
-    expect(first.body).toBe(`${adultLearnDoor(null)} ${COLD_START_ASK}`);
+    expect(first.body.startsWith(adultLearnDoor(null))).toBe(true);
+    expect(first.body).not.toContain(COLD_START_ASK);
     expect(first.body).toContain("I'm a kids' rec helper, not adult lessons");
     expect(first.body).not.toContain("I don't do that");
     expect(first.body).not.toMatch(/\b(Sept|Sep|Aug|Nov|Dec)\b/);
@@ -308,15 +269,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(NOT_POSTED_YET);
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(outcome.body).not.toBe(COLD_START_ASK);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain("I don't do that");
-    expect(outcome.body).not.toMatch(/https?:\/\//);
-    expect(outcome.body).not.toMatch(/I'm an AI/i);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
   });
 
   it('answers from official notes when search grounds a date, still no invented clock', async () => {
@@ -356,7 +310,6 @@ describe('intake answer · the emergency tripwire', () => {
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain('September 8');
     expect(outcome.body).toContain('7:00');
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
     expect(outcome.body).not.toMatch(/https?:\/\//);
@@ -378,15 +331,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(outcome.body).not.toBe(COLD_START_ASK);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain("I don't do that");
-    expect(outcome.body).not.toMatch(/https?:\/\//);
-    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
   });
 
   it('answers a leftover factual question from search notes, never from memory', async () => {
@@ -425,7 +371,6 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain('United States president');
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
     expect(outcome.body).not.toMatch(/https?:\/\//);
@@ -445,13 +390,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
-    expect(outcome.body).not.toMatch(/https?:\/\//);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
   });
 
   it('answers a cheer-up with reviewed warmth, not a clinical method', async () => {
@@ -468,43 +408,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(CHEER_UP_REPLY);
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(outcome.body).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain(AFTER_PROVISION_RETURN_ASK);
-  });
-
-  it('answers a crisis inbound with the reviewed 988 line and no return ask', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('a crisis must not reach a model');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-    expect(
-      await composer.compose({
-        parentWords: 'I want to die',
-        pendingAsk: COLD_START_ASK,
-        children: [],
-      }),
-    ).toEqual({ status: 'mental_crisis' });
-    expect(MENTAL_CRISIS_REPLY).toBe(
-      "If you're in crisis, call 988 any time. If it's an emergency, call 911.",
-    );
-    expect(MENTAL_CRISIS_REPLY).toContain('988');
-    expect(MENTAL_CRISIS_REPLY).toContain('911');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
-    expect(SAFETY_REPLY).toContain('811');
-    expect(SAFETY_REPLY).not.toContain('988');
-    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
-    expect(MENTAL_CRISIS_REPLY).not.toBe('Call 911 now.');
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'cheer_up' });
   });
 });
 

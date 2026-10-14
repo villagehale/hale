@@ -613,9 +613,9 @@ describe('a provider cancellation closes what it cancelled', () => {
       handleEmailAlertOfferReply(db.database, {
         familyId: family.familyId,
         parentUserId: family.parentUserId,
-        offerId: null,
+        offerId: randomUUID(),
         polarity: 'yes',
-        language: 'en',
+        parentReply: 'yes',
         now: later,
       }),
     ).resolves.toEqual({ status: 'no_open_offer' });

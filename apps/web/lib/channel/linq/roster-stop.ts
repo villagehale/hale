@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { departCoParent } from '~/lib/channel/coparent/depart';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -98,7 +98,7 @@ export async function stopInGroup(
   ports: RosterTurnPorts,
 ): Promise<RosterTurn> {
   if (!linqGroupOnboardingV2Enabled()) return NOT_HANDLED;
-  if (matchKeyword(message.text)?.keyword !== 'stop') return NOT_HANDLED;
+  if ((await optOutIntentOf(message.text)) !== 'stop') return NOT_HANDLED;
   const phone = realHumanPhone(message.senderHandle);
   if (!phone) return NOT_HANDLED;
 

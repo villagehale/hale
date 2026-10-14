@@ -16,6 +16,7 @@ import {
 } from '~/lib/channel/router/wiring';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN_TEMPLATE_KEY } from './copy';
@@ -559,6 +560,7 @@ describe('a diary answer through the real router', () => {
         commitmentId: '77777777-7777-4777-8777-777777777777',
       }),
       replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
+      calendarOffers: calendarOffersIdle,
       weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,

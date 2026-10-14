@@ -2,32 +2,13 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
-import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY } from '~/lib/channel/off-domain/copy';
-import { loadCronSkill } from '~/lib/cron/skill';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import {
-  EMAIL_ASK_BY_LANGUAGE,
-  KNOWN_VENUE_HELLO,
-  NAMES_ASK_BY_LANGUAGE,
-  notedAfterLogistics,
-  receiptLine,
-  signupOffer,
-} from './cold-start/copy';
-import {
-  FIRST_TOUCH_AGES_BY_LANGUAGE,
-  FIRST_TOUCH_EMPTY_BY_LANGUAGE,
-  FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
-  FIRST_TOUCH_SMS_BY_LANGUAGE,
-  HALE_GREETING_EN,
-  IDENTITY_ACCOUNTABILITY_LINE,
-} from './copy';
 import type { IntakeCollected } from './extract';
 import {
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeSilentAnswerComposer,
   makeFakeDb,
@@ -35,12 +16,10 @@ import {
 import { runFirstReplyRecoveryCron } from './first-reply-recovery';
 import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
-import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
+import { EMPTY_ONBOARDING_CAPTURE } from './onboarding-turn';
 import { loadOpenSession } from './session';
-import type { SignupStepReader } from './signup-step';
 import { runSittingReminderCron } from './sitting-reminder';
 import { type ChannelTransport, FakeTransport, type InboundMessage } from './transport';
-import { YEAR_OPEN_LEAD } from './year-open';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+14165551234';
@@ -54,198 +33,7 @@ const MAYA: IntakeCollected = {
   postalCode: 'M5V 2T6',
 };
 
-function offScriptAside(words: string): string | null {
-  if (/who is this/i.test(words)) {
-    return "I'm Hale, from Village Hale Technologies (villagehale.com). The site has the details, price included.";
-  }
-  if (/what is this/i.test(words)) return "I find what's on for your kids.";
-  if (/is this free/i.test(words)) return 'The price is on villagehale.com.';
-  if (/tell me a joke/i.test(words)) return "I'm not much of a comic.";
-  if (/privacy|private/i.test(words))
-    return 'I only keep what you send, and you can ask what I have.';
-  if (/weather|recipe/i.test(words)) return "That's outside what I do.";
-  if (/^(ok|lol|and|thanks)$/i.test(words) || /what's next/i.test(words)) return 'Got it.';
-  if (/\b10001\b/.test(words) || /\bchicago\b/i.test(words)) {
-    return 'I only cover the Toronto area right now.';
-  }
-  return null;
-}
-
-/**
- * Stand-in for the onboarding model. Production does not parse the message;
- * this fake does, so the tests can drive the order with plain texts. The ask
- * it writes follows ONBOARDING_ORDER from what the checklist and its own
- * capture say is known: postal, kids, ages, the map (no question), the name,
- * Gmail, calendar, schedule, co-parent.
- */
-function scriptedTurn(input: FriendVoiceInput): {
-  reply: string;
-  capture: OnboardingCapture;
-  groupLeads?: string[];
-} {
-  const words = input.parentWords.trim();
-  const capture: OnboardingCapture = {
-    ...EMPTY_ONBOARDING_CAPTURE,
-    children: [],
-    scheduleAdds: [],
-  };
-  const postal = words.match(
-    /\b([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])(?:[ -]?(\d[ABCEGHJ-NPRSTV-Z]\d))?\b/i,
-  );
-  if (postal?.[1]) {
-    capture.postalCode = (postal[2] ? `${postal[1]} ${postal[2]}` : postal[1]).toUpperCase();
-  }
-  const named = [...words.matchAll(/\b([A-Z][a-z]+)\s+is\s+(\d{1,2})\b/g)];
-  if (named.length > 0) {
-    capture.children = named.map((match) => ({
-      name: match[1] ?? null,
-      ageMonths: Number(match[2]) * 12,
-      agePrecision: 'years' as const,
-    }));
-  }
-  const bareNames = words.match(/^([A-Z][a-z]+)(?:\s+and\s+([A-Z][a-z]+))?$/);
-  if (bareNames?.[1] && input.step === 'kids_names') {
-    capture.children = [bareNames[1], bareNames[2]]
-      .filter((name): name is string => Boolean(name))
-      .map((name) => ({ name, ageMonths: null, agePrecision: null }));
-  }
-  const called = words.match(/\bI'm\s+([A-Z][a-z]+)\b/);
-  if (called?.[1]) capture.parentName = called[1];
-  if (/^dana$/i.test(words)) capture.parentName = 'Dana';
-  if (/\bI'm (his|her|their) dad\b/i.test(words)) {
-    capture.parentRole = { role: 'father', basis: 'stated' };
-  } else if (capture.parentName === 'Dana') {
-    capture.parentRole = { role: 'unknown', basis: 'guessed' };
-  }
-  const actually = words.match(/\bactually\s+(\d{1,2})\b/i);
-  if (actually?.[1]) {
-    capture.children = [{ name: null, ageMonths: Number(actually[1]) * 12, agePrecision: 'years' }];
-  }
-  if (/\b10001\b/.test(words)) capture.postalCode = '10001';
-  if (/\bchicago\b/i.test(words)) capture.city = 'Chicago';
-  if (/\bcheck my calendar\b/i.test(words)) capture.connectCalendar = true;
-  if (/\bwatch my email\b/i.test(words)) capture.connectGmail = true;
-  if (/^(yes|yeah|yep)$/i.test(words)) {
-    if (input.step === 'calendar') capture.connectCalendar = true;
-    if (input.step === 'email') capture.connectGmail = true;
-    if (input.step === 'coparent') capture.coparentGroup = true;
-    if (
-      input.step === 'schedule' &&
-      input.findLines.length > 0 &&
-      (input.scheduled ?? []).length === 0
-    ) {
-      capture.scheduleAdds = [
-        { line: 1, cadence: 'weekly', date: '2026-08-01', time: null, weeks: null },
-      ];
-    }
-  }
-  // The reminders are confirmed; the next plain reply closes the schedule.
-  if (input.step === 'schedule' && (input.scheduled ?? []).length > 0) capture.scheduleDone = true;
-  if (/^(no|nope)$/i.test(words)) {
-    if (input.step === 'names' || input.step === 'name_confirm') capture.nameDeclined = true;
-    if (input.step === 'kids_names') capture.kidsNamesDeclined = true;
-    if (input.step === 'calendar') capture.connectCalendar = false;
-    if (input.step === 'email') capture.connectGmail = false;
-    if (input.step === 'schedule') capture.scheduleDone = true;
-    if (input.step === 'coparent') capture.coparentGroup = false;
-  }
-  if (/^later$/i.test(words)) {
-    if (input.step === 'names') capture.nameDeclined = true;
-    if (input.step === 'calendar') capture.calendarLater = true;
-    if (input.step === 'email') capture.gmailLater = true;
-  }
-
-  const postalKnown =
-    (Boolean(capture.postalCode) && capture.postalCode !== '10001') ||
-    Boolean(input.placeLabel) ||
-    input.checklist?.postal === true;
-  const kidsKnown =
-    capture.children.some((child) => child.name) ||
-    capture.kidsNamesDeclined ||
-    input.checklist?.kids === true;
-  const capturedAges = capture.children.filter((child) => child.ageMonths != null);
-  const agesKnown =
-    (capture.children.length > 0 &&
-      capturedAges.length === capture.children.length &&
-      capturedAges.length > 0) ||
-    input.ageMonths.length > 0 ||
-    input.checklist?.ages === true;
-  const nameKnown =
-    Boolean(capture.parentName) ||
-    capture.nameDeclined ||
-    Boolean(input.parentName) ||
-    input.checklist?.name === true;
-  const gmailKnown =
-    capture.connectGmail != null || capture.gmailLater || input.checklist?.gmail === true;
-  const calendarKnown =
-    capture.connectCalendar != null || capture.calendarLater || input.checklist?.calendar === true;
-  const scheduleKnown = capture.scheduleDone || input.checklist?.schedule === true;
-  const coparentKnown = capture.coparentGroup != null || input.checklist?.coparent === true;
-  const name = capture.parentName ?? input.parentName;
-
-  if (input.step === 'find_show') {
-    return { reply: 'Here is what is on near you for their ages.', capture, groupLeads: [] };
-  }
-  // Reminders just recorded: confirm them, ask nothing.
-  if (capture.scheduleAdds.length > 0) {
-    return { reply: 'Done, a weekly reminder for the first one.', capture };
-  }
-  if (input.step === 'help') {
-    const missing =
-      input.checklist?.postal === false || !input.placeLabel ? 'postal code' : 'next step';
-    return {
-      reply: `I find what's on for your kids. You're on the ${missing}. Want to keep going?`,
-      capture,
-    };
-  }
-  if (input.step === 'nudge_find') {
-    return { reply: 'Still here if one of those looks good. What should I call you?', capture };
-  }
-  // A yes to the connector just asked: the receipt for the yes, nothing more.
-  // The next ask rides the connect receipt (connected-notice.ts) or the next text.
-  if (
-    (input.step === 'email' && capture.connectGmail === true && !input.checklist?.gmail) ||
-    (input.step === 'calendar' && capture.connectCalendar === true && !input.checklist?.calendar)
-  ) {
-    return {
-      reply:
-        "Great, the link is right there. Tap it when you're ready and I'll text you what I see.",
-      capture,
-    };
-  }
-
-  let ask: string;
-  if (input.language === 'fr' && !postalKnown) {
-    ask = "Salut, c'est Hale. Quel est ton code postal?";
-  } else if (input.language === 'fr' && !kidsKnown) {
-    ask = "Comment s'appellent tes enfants?";
-  } else if (input.language === 'fr' && !agesKnown) {
-    ask = 'Quel âge ont les enfants?';
-  } else if (!postalKnown) {
-    ask = input.introduce ? "Hey, it's Hale. What's your postal code?" : "What's your postal code?";
-  } else if (!kidsKnown) {
-    ask = "What are your kids' names?";
-  } else if (!agesKnown) {
-    ask = 'How old are your kids?';
-  } else if (!nameKnown) {
-    ask = 'What should I call you?';
-  } else if (!gmailKnown) {
-    ask = name
-      ? `${name}, want me to watch school and camp email for the dates?`
-      : 'Want me to watch school and camp email for the dates?';
-  } else if (!calendarKnown) {
-    ask = name ? `${name}, want me to check your calendar?` : 'Want me to check your calendar?';
-  } else if (!scheduleKnown && input.findLines.length > 0) {
-    ask = 'Want the first one on your calendar as a weekly reminder?';
-  } else if (!coparentKnown) {
-    ask = 'Want me to set up a group chat with the other parent?';
-  } else {
-    return { reply: offScriptAside(words) ?? 'All set.', capture };
-  }
-  const aside = offScriptAside(words);
-  const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture };
-}
+import { scriptedTurn } from './scripted-friend-voice.fixture';
 
 function harness(
   options: {
@@ -281,7 +69,6 @@ function harness(
         };
       },
     },
-    ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
@@ -289,7 +76,7 @@ function harness(
     resolveCenter: async () => ({ lat: 43.6426, lng: -79.3871 }),
     discoveryTrigger: () => {},
     ...(options.weekFinder !== undefined ? { weekFinder: options.weekFinder } : {}),
-    ...(options.voice
+    ...(options.voice !== false
       ? {
           friendVoice: {
             async compose(input: FriendVoiceInput) {
@@ -335,32 +122,9 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('first touch stays off unless the flag is exactly on', () => {
-  it.each(['', 'true', '1', 'ON', 'off'])('keeps the locked greeting for %j', async (value) => {
-    if (value) vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', value);
-    const { fake, transport, deps } = harness();
-    expect(await handleInboundSms(fake.db, inbound(transport, 'hi'), deps)).toEqual({
-      status: 'greeted',
-    });
-    expect(transport.bodies()).toEqual([HALE_GREETING_EN]);
-    expect(transport.locationRequests).toEqual([]);
-  });
-});
-
 describe('first touch ladder', () => {
   beforeEach(() => {
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
-  });
-
-  it('asks for a postal code on SMS and does not guess from the area code', async () => {
-    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
-    const { fake, transport, deps } = harness();
-    expect(await handleInboundSms(fake.db, inbound(transport, 'hi'), deps)).toEqual({
-      status: 'first_touch',
-      step: 'place_asked',
-    });
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
-    expect(transport.locationRequests).toEqual([]);
   });
 
   it('asks for a postal code on iMessage and records the location card as skipped', async () => {
@@ -371,9 +135,8 @@ describe('first touch ladder', () => {
       deps,
     );
     expect(first).toEqual({ status: 'first_touch', step: 'place_asked' });
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
+    expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
     expect(transport.locationRequests).toEqual([]);
-    expect(transport.bodies()[0]).not.toBe(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en);
 
     await handleInboundSms(
       fake.db,
@@ -398,109 +161,6 @@ describe('first touch ladder', () => {
     ).toBe(true);
   });
 
-  it.each(['on', '1', 'TRUE', 'true\n', ' true '])(
-    'keeps the postal sentence on iMessage when the location switch is %j',
-    async (value) => {
-      vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', value);
-      const { fake, transport, deps } = harness();
-      await handleInboundSms(
-        fake.db,
-        inbound(transport, 'hi', { transport: 'imessage', chatId: 'chat-1' }),
-        deps,
-      );
-      expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
-      expect(transport.locationRequests).toEqual([]);
-    },
-  );
-
-  it('sends the iMessage sentence and then the location card, and accepts a typed postal', async () => {
-    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
-    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY] });
-    const order: string[] = [];
-    const request = transport.requestLocation.bind(transport);
-    transport.requestLocation = async (input) => {
-      order.push('location');
-      return request(input);
-    };
-    const send = transport.send.bind(transport);
-    transport.send = async (input) => {
-      order.push('text');
-      return send(input);
-    };
-    const first = await handleInboundSms(
-      fake.db,
-      inbound(transport, 'hi', { transport: 'imessage', chatId: 'chat-1' }),
-      deps,
-    );
-    expect(first).toEqual({ status: 'first_touch', step: 'place_asked' });
-    expect(order.slice(0, 2)).toEqual(['location', 'text']);
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en]);
-    expect(transport.locationRequests).toEqual(['chat-1']);
-
-    const typed = await handleInboundSms(
-      fake.db,
-      inbound(transport, 'M5V 2T6', { transport: 'imessage', chatId: 'chat-1' }),
-      deps,
-    );
-    expect(typed).toEqual({ status: 'first_touch', step: 'find_sent' });
-    expect(transport.bodies()).toEqual([
-      FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en,
-      FIRST_TOUCH_EMPTY_BY_LANGUAGE.en,
-      FIRST_TOUCH_AGES_BY_LANGUAGE.en,
-    ]);
-    expect(transport.locationRequests).toEqual(['chat-1']);
-    expect(transport.bodies().join('\n')).not.toContain(FIRST_TOUCH_SMS_BY_LANGUAGE.en);
-  });
-
-  it('asks for a postal code when Linq refuses the location card, and still audits the request', async () => {
-    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
-    const transport = new FakeTransport();
-    const order: string[] = [];
-    transport.requestLocation = async (input) => {
-      order.push('location');
-      transport.locationRequests.push(input.chatId);
-      return { status: 'refused', code: '2011' };
-    };
-    const send = transport.send.bind(transport);
-    transport.send = async (input) => {
-      order.push('text');
-      return send(input);
-    };
-    const { fake, deps } = harness({ transport, extractions: [EMPTY, EMPTY, MAYA] });
-    await handleInboundSms(
-      fake.db,
-      transport.inbound(PHONE, 'hi', { transport: 'imessage', chatId: 'chat-1' }),
-      deps,
-    );
-    expect(order.slice(0, 2)).toEqual(['location', 'text']);
-    expect(transport.bodies()[0]).toBe(FIRST_TOUCH_SMS_BY_LANGUAGE.en);
-    expect(transport.bodies()[0]).not.toBe(FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en);
-    expect(transport.locationRequests).toEqual(['chat-1']);
-
-    await handleInboundSms(
-      fake.db,
-      transport.inbound(PHONE, 'M5V 2T6', { transport: 'imessage', chatId: 'chat-1' }),
-      deps,
-    );
-    const done = await handleInboundSms(
-      fake.db,
-      transport.inbound(PHONE, 'Maya is 4, Leo is 1', { transport: 'imessage', chatId: 'chat-1' }),
-      deps,
-    );
-    expect(done.status).toBe('provisioned');
-    expect(
-      fake.writes.some(
-        (write) =>
-          write.op === 'insert' &&
-          write.table === schema.auditLog &&
-          write.payload.actionTaken === 'first_touch_location_requested' &&
-          (write.payload.after as { outcome?: string; code?: string } | undefined)?.outcome ===
-            'refused' &&
-          (write.payload.after as { code?: string } | undefined)?.code === '2011',
-      ),
-    ).toBe(true);
-  });
-
   it('still sends the place ask when stopping the typing bubble throws', async () => {
     const { fake, transport, deps } = harness();
     const order: string[] = [];
@@ -515,29 +175,7 @@ describe('first touch ladder', () => {
     };
     await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
     expect(order[0]).toBe('stop');
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
-  });
-
-  it('uses the postal line in a group and does not open a 1:1 location card', async () => {
-    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', 'true');
-    const { fake, transport, deps } = harness();
-    await handleInboundSms(
-      fake.db,
-      inbound(transport, 'hi', { transport: 'imessage', chatId: 'chat-group', isGroup: true }),
-      deps,
-    );
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
-    expect(transport.locationRequests).toEqual([]);
-  });
-
-  it('skips the place ask when the first text already has a postal code', async () => {
-    const { fake, transport, deps } = harness();
-    const result = await handleInboundSms(fake.db, inbound(transport, "We're in M5V 2T6"), deps);
-    expect(result).toEqual({ status: 'first_touch', step: 'find_sent' });
-    expect(transport.bodies()).toEqual([
-      FIRST_TOUCH_EMPTY_BY_LANGUAGE.en,
-      FIRST_TOUCH_AGES_BY_LANGUAGE.en,
-    ]);
+    expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
   });
 
   it('sends the empty-find line when the live lookup has nothing', async () => {
@@ -548,84 +186,14 @@ describe('first touch ladder', () => {
     };
     const { fake, transport, deps } = harness({ weekFinder: finder });
     await handleInboundSms(fake.db, inbound(transport, 'Toronto'), deps);
-    expect(transport.bodies()[0]).toBe(FIRST_TOUCH_EMPTY_BY_LANGUAGE.en);
-    expect(transport.bodies()[1]).toBe(FIRST_TOUCH_AGES_BY_LANGUAGE.en);
-  });
-
-  it('sends a numbered find with no call to action, then the ages ask', async () => {
-    const finder: ActivityFinder = {
-      async find() {
-        return {
-          found: true,
-          picks: [
-            {
-              name: 'Storytime',
-              ageFit: 'all ages',
-              when: 'Saturday',
-              price: null,
-              sourceName: 'Library',
-              source: 'web',
-            },
-          ],
-        };
-      },
-    };
-    const { fake, transport, deps } = harness({ weekFinder: finder });
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
-    expect(transport.bodies()[0]).toBe('1. Storytime (all ages) - Saturday');
-    expect(transport.bodies()[0]).not.toMatch(/tap|postal|sign up|book|reserve/i);
-    expect(transport.bodies()[1]).toBe(FIRST_TOUCH_AGES_BY_LANGUAGE.en);
-  });
-
-  it('speaks French on the place ask, the empty find, and the ages ask', async () => {
-    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY] });
-    await handleInboundSms(fake.db, inbound(transport, 'Salut'), deps);
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.fr]);
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
-    expect(transport.bodies()).toEqual([
-      FIRST_TOUCH_SMS_BY_LANGUAGE.fr,
-      FIRST_TOUCH_EMPTY_BY_LANGUAGE.fr,
-      FIRST_TOUCH_AGES_BY_LANGUAGE.fr,
-    ]);
-    expect(transport.bodies().join('\n')).not.toMatch(/call you/i);
-  });
-
-  it('sends the age-fit find after the ages with no fixed name line, and does not repeat the ages ask', async () => {
-    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY] });
-    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
-    const done = await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), deps);
-    expect(done.status).toBe('provisioned');
-    expect(transport.bodies()).toEqual([
-      FIRST_TOUCH_SMS_BY_LANGUAGE.en,
-      FIRST_TOUCH_EMPTY_BY_LANGUAGE.en,
-      FIRST_TOUCH_AGES_BY_LANGUAGE.en,
-      'RADAR',
-    ]);
-    // The name ask is the model's to write; with no voice there is no line, and no stand-in.
-    expect(transport.bodies().join('\n')).not.toMatch(/call you/i);
-
-    const waiting = harness({ extractions: [EMPTY, EMPTY, EMPTY] });
-    await handleInboundSms(waiting.fake.db, inbound(waiting.transport, 'hi'), waiting.deps);
-    await handleInboundSms(waiting.fake.db, inbound(waiting.transport, 'Toronto'), waiting.deps);
-    const held = await handleInboundSms(
-      waiting.fake.db,
-      inbound(waiting.transport, 'not sure'),
-      waiting.deps,
-    );
-    expect(held).toEqual({ status: 'first_touch', step: 'ages_waiting' });
-    expect(
-      waiting.transport.bodies().filter((body) => body === FIRST_TOUCH_AGES_BY_LANGUAGE.en),
-    ).toHaveLength(2);
+    expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
   });
 
   it('skips the place ask for a known venue code', async () => {
     const { fake, transport, deps } = harness();
     const result = await handleInboundSms(fake.db, inbound(transport, 'Hi (via markham)'), deps);
-    expect(result).toEqual({ status: 'first_touch', step: 'find_sent' });
-    expect(transport.bodies()[0]).toBe(KNOWN_VENUE_HELLO.en);
-    expect(transport.bodies()[1]).toBe(FIRST_TOUCH_EMPTY_BY_LANGUAGE.en);
-    expect(transport.bodies()[2]).toBe(FIRST_TOUCH_AGES_BY_LANGUAGE.en);
+    expect(result).toMatchObject({ status: 'first_touch' });
+    expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
     expect(transport.locationRequests).toEqual([]);
     expect(transport.bodies().join('\n')).not.toMatch(/postal code/i);
   });
@@ -635,206 +203,6 @@ describe('cold-start discovery session', () => {
   beforeEach(() => {
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
-  });
-
-  it('sends the receipt and the find, and does not ask for a name', async () => {
-    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA] });
-    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
-    const done = await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), deps);
-    expect(done.status).toBe('provisioned');
-    const receipt = receiptLine([48, 12], 'M5V');
-    expect(transport.bodies().at(-1)).toBe(`${receipt}\nRADAR\nReply with the number you want.`);
-    expect(transport.bodies().join('\n')).not.toMatch(/call you/i);
-    expect(transport.bodies().join('\n')).not.toMatch(/stop|unsubscribe/i);
-  });
-
-  it('asks who is taking them after a numbered pick, in one bubble', async () => {
-    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY] });
-    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), deps);
-    const pick = await handleInboundSms(fake.db, inbound(transport, '1'), deps);
-    expect(pick.status).toBe('first_touch');
-    expect(transport.bodies().at(-1)).toBe("Who's taking them then to that one? I'll note it.");
-    expect(transport.bodies().at(-1)?.match(/\?/g)).toHaveLength(1);
-    expect(transport.bodies().join('\n')).not.toMatch(/call you/i);
-  });
-
-  it.each([
-    {
-      find: '1. Swim (sign-ups open Sept 8) - Saturday',
-      offer: signupOffer('date_known', {
-        activity: 'Swim',
-        env: { COLD_START_LADDER_COPY_LOCKED: 'true' },
-      }).body,
-    },
-    {
-      find: '1. Storytime (all ages) - Saturday',
-      offer: signupOffer('no_date', {
-        day: 'Saturday',
-        env: { COLD_START_LADDER_COPY_LOCKED: 'true' },
-      }).body,
-    },
-  ])(
-    'sends the sign-up offer after the name line, then calendar alone ($find)',
-    async ({ find, offer }) => {
-      vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
-      const { fake, transport, deps } = harness({
-        extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY, EMPTY, EMPTY],
-      });
-      const timed: IntakeDeps = {
-        ...deps,
-        now: NOW,
-        radar: {
-          async compose() {
-            return {
-              message: find,
-              itemCount: 1,
-              followUpNeeded: false,
-              checkpointTold: null,
-              weekendPickOffered: false,
-              findWon: true,
-              firstFindPromised: false,
-              actionMove: null,
-              actionHeld: 'no_move',
-              voiceFallback: null,
-            };
-          },
-        },
-      };
-      const clock = { now: NOW };
-      Object.defineProperty(timed, 'now', { get: () => clock.now });
-      const day = 24 * 60 * 60 * 1000;
-      await handleInboundSms(fake.db, inbound(transport, 'hi'), timed);
-      await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), timed);
-      await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), timed);
-      await handleInboundSms(fake.db, inbound(transport, '1'), timed);
-      clock.now = new Date(NOW.getTime() + day);
-      const names = await handleInboundSms(fake.db, inbound(transport, "I'll take them"), timed);
-      expect(names.status).toBe('first_touch');
-      expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
-      clock.now = new Date(NOW.getTime() + 2 * day);
-      const offered = await handleInboundSms(
-        fake.db,
-        inbound(transport, 'she starts daycare in September'),
-        timed,
-      );
-      expect(offered.status).toBe('first_touch');
-      expect(transport.bodies().at(-1)).toBe(offer);
-      expect(transport.bodies().at(-1)).not.toContain('calendar');
-      expect(transport.bodies().at(-1)).not.toContain(EMAIL_ASK_BY_LANGUAGE.en);
-      clock.now = new Date(NOW.getTime() + 3 * day);
-      const calendar = await handleInboundSms(fake.db, inbound(transport, 'sounds good'), timed);
-      expect(calendar.status).toBe('first_touch');
-      const activity = find.startsWith('1. Swim') ? 'Swim' : 'Storytime';
-      expect(transport.bodies().at(-1)).toBe(
-        `Want me to check ${activity} against your calendar? This link is just for you. I can see your events and never change them.`,
-      );
-      expect(transport.bodies().at(-1)).not.toBe(offer);
-      expect(transport.bodies().at(-1)).not.toContain(EMAIL_ASK_BY_LANGUAGE.en);
-    },
-  );
-
-  it('asks names the same day after logistics, and does not answer with the note', async () => {
-    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
-    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
-    const note = notedAfterLogistics(false, 'en');
-    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), deps);
-    await handleInboundSms(fake.db, inbound(transport, '1'), deps);
-    const ok = await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
-    expect(ok.status).toBe('first_touch');
-    expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
-    expect(transport.bodies()).not.toContain(note);
-  });
-
-  it.each([
-    { label: 'English', text: "what's on this weekend?" },
-    { label: 'Chinese', text: '你好，周末有什么' },
-  ])('hands a $label aside to the coach, in the words the parent wrote', async ({ text }) => {
-    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
-    const seen: string[] = [];
-    const signupStepReader: SignupStepReader = {
-      async read(input) {
-        seen.push(input.text);
-        return { answers: false };
-      },
-    };
-    const { fake, transport, deps } = harness({
-      extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY],
-    });
-    const withReader: IntakeDeps = { ...deps, signupStepReader };
-    const offer = signupOffer('no_date', {
-      day: 'then',
-      env: { COLD_START_LADDER_COPY_LOCKED: 'true' },
-    }).body;
-    await handleInboundSms(fake.db, inbound(transport, 'hi'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, '1'), withReader);
-    const names = await handleInboundSms(fake.db, inbound(transport, 'ok'), withReader);
-    expect(names.status).toBe('first_touch');
-    expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
-    const aside = await handleInboundSms(fake.db, inbound(transport, text), withReader);
-    expect(aside).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
-    expect(seen).toEqual([text]);
-    expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
-    expect(transport.bodies()).not.toContain(offer);
-    expect(await loadOpenSession(fake.db, PHONE)).toBeNull();
-    const coach = await loadCronSkill('coach-channel-sms');
-    expect(coach.instructions).toContain('reply in the language the parent wrote in');
-  });
-
-  it('keeps the sign-up offer when the reader says the text answers the step', async () => {
-    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
-    const signupStepReader: SignupStepReader = {
-      async read() {
-        return { answers: true };
-      },
-    };
-    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
-    const withReader: IntakeDeps = { ...deps, signupStepReader };
-    const offer = signupOffer('no_date', {
-      day: 'then',
-      env: { COLD_START_LADDER_COPY_LOCKED: 'true' },
-    }).body;
-    await handleInboundSms(fake.db, inbound(transport, 'hi'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, '1'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, 'ok'), withReader);
-    const answered = await handleInboundSms(
-      fake.db,
-      inbound(transport, 'Call me Dana'),
-      withReader,
-    );
-    expect(answered.status).toBe('first_touch');
-    expect(transport.bodies().at(-1)).toBe(offer);
-  });
-
-  it('hands the text to the coach when the read fails', async () => {
-    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
-    const signupStepReader: SignupStepReader = {
-      async read() {
-        return null;
-      },
-    };
-    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
-    const withReader: IntakeDeps = { ...deps, signupStepReader };
-    await handleInboundSms(fake.db, inbound(transport, 'hi'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, '1'), withReader);
-    await handleInboundSms(fake.db, inbound(transport, 'ok'), withReader);
-    const failed = await handleInboundSms(
-      fake.db,
-      inbound(transport, "what's on this weekend?"),
-      withReader,
-    );
-    expect(failed).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
-    expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
   });
 
   function linqCardFetch(abortSetups: number) {
@@ -941,7 +309,6 @@ describe('cold-start discovery session', () => {
 
 describe('friend voice onboarding', () => {
   beforeEach(() => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
   });
 
@@ -949,7 +316,6 @@ describe('friend voice onboarding', () => {
     const { fake, transport, deps } = harness({ voice: true });
     await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
     expect(transport.bodies()).toEqual(["Hey, it's Hale. What's your postal code?"]);
-    expect(transport.bodies()[0]).not.toBe(FIRST_TOUCH_SMS_BY_LANGUAGE.en);
     expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
   });
 
@@ -957,7 +323,6 @@ describe('friend voice onboarding', () => {
     const { fake, transport, deps } = harness({ extractions: [EMPTY], voice: true });
     await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
     expect(transport.bodies()).toEqual(["What are your kids' names?"]);
-    expect(transport.bodies().join('\n')).not.toContain(FIRST_TOUCH_EMPTY_BY_LANGUAGE.en);
   });
 
   it('takes the kids names, then asks their ages, one ask per message', async () => {
@@ -983,7 +348,6 @@ describe('friend voice onboarding', () => {
     expect(transport.bodies()).toHaveLength(1);
     expect(last).toContain('What should I call you?');
     expect(last).not.toContain('Reply with the number you want.');
-    expect(last).not.toContain(FIRST_TOUCH_EMPTY_BY_LANGUAGE.en);
     expect(last.match(/\?/g)).toHaveLength(1);
   });
 
@@ -1129,7 +493,7 @@ describe('friend voice onboarding', () => {
   });
 
   it('sends nothing canned when the reply cannot be written', async () => {
-    const { fake, transport, deps } = harness({ extractions: [EMPTY] });
+    const { fake, transport, deps } = harness({ extractions: [EMPTY], voice: false });
     const outcome = await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
     expect(outcome).toEqual({ status: 'first_touch_unsent', reason: 'voice_unavailable' });
     expect(transport.bodies()).toEqual([]);
@@ -1183,24 +547,6 @@ describe('friend voice onboarding', () => {
     await handleInboundSms(fake.db, inbound(transport, 'is this free?'), deps);
     const body = transport.bodies().at(-1) ?? '';
     expect(body).toContain('The price is on villagehale.com.');
-    expect(body.trim().endsWith("What are your kids' names?")).toBe(true);
-    expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
-  });
-
-  it('answers who-is-this in the model voice with the company named, and steers back', async () => {
-    const { fake, transport, deps } = harness({ voice: true });
-    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
-    const result = await handleInboundSms(
-      fake.db,
-      inbound(transport, 'wait who is this? is this free?'),
-      deps,
-    );
-    expect(result.status).toBe('first_touch');
-    const body = transport.bodies().at(-1) ?? '';
-    expect(body).toContain('Village Hale Technologies');
-    expect(body).toContain('villagehale.com');
-    expect(body).not.toBe(IDENTITY_ACCOUNTABILITY_LINE);
-    expect(body).not.toMatch(/\bSTOP\b/);
     expect(body.trim().endsWith("What are your kids' names?")).toBe(true);
     expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_ages');
   });
@@ -1364,17 +710,33 @@ describe('friend voice onboarding', () => {
     expect(calendar).toContain('/connect?t=');
     expect(calendar).toContain('to=gcal');
   });
-  it('answers a first-text question and sends the safety line before any ask', async () => {
+  it('routes a crisis through the model reader and sends its reply before any ask', async () => {
+    // #868: no token list and no fixed crisis line. The turn's reader routes the
+    // crisis and writes the reply; the fixture stands in for the model.
+    const crisisReader = (intent: 'crisis_emergency' | 'crisis_mental', reply: string) => ({
+      read: async () => ({ intent, confirmation: reply }),
+    });
     const { fake, transport, deps } = harness({ voice: true });
+    deps.optOutReader = crisisReader('crisis_emergency', 'Emergency reply (test fixture).');
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
-    expect(transport.bodies()).toEqual([EMERGENCY_REPLY]);
-    expect(transport.bodies()[0]).not.toMatch(/postal/i);
+    expect(transport.bodies()).toEqual(['Emergency reply (test fixture).']);
 
     const { fake: fake2, transport: transport2, deps: deps2 } = harness({ voice: true });
-    const mental = await handleInboundSms(fake2.db, inbound(transport2, '988'), deps2);
+    deps2.optOutReader = crisisReader('crisis_mental', 'Crisis line reply (test fixture).');
+    const mental = await handleInboundSms(
+      fake2.db,
+      inbound(transport2, 'i cant do this anymore'),
+      deps2,
+    );
     expect(mental.status).toBe('first_touch');
-    expect(transport2.bodies()).toEqual([MENTAL_CRISIS_REPLY]);
+    expect(transport2.bodies()).toEqual(['Crisis line reply (test fixture).']);
+
+    // A crisis whose reply came back empty still ends the turn: no onboarding ask.
+    const { fake: fake3, transport: transport3, deps: deps3 } = harness({ voice: true });
+    deps3.optOutReader = crisisReader('crisis_emergency', '');
+    await handleInboundSms(fake3.db, inbound(transport3, 'fire'), deps3);
+    expect(transport3.bodies()).toEqual([]);
   });
 
   it('always replies on a place miss, including a place outside coverage', async () => {
@@ -1443,7 +805,6 @@ describe('friend voice onboarding', () => {
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
     const kids = fake.rows(schema.children);
     expect(kids.map((row) => row.name)).toEqual(['Maya']);
-    expect(transport.bodies().join('\n')).not.toContain(YEAR_OPEN_LEAD);
     await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
     expect(transport.bodies().at(-1)).toContain(
       'Dana, want me to watch school and camp email for the dates?',
@@ -1642,14 +1003,6 @@ describe('friend voice onboarding', () => {
     expect(body).toContain('postal code');
     expect(body).not.toContain('Reply STOP');
     expect(body.trim().endsWith('?')).toBe(true);
-  });
-
-  it('keeps the locked greeting when friend voice is not exactly on', async () => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'true');
-    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', '');
-    const { fake, transport, deps } = harness();
-    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
-    expect(transport.bodies()).toEqual([HALE_GREETING_EN]);
   });
 
   it('retries once, then sends nothing and pages #ops when the model cannot write the turn', async () => {
@@ -1890,5 +1243,55 @@ describe('friend voice onboarding', () => {
       expect(transport.bodies()).toHaveLength(before);
       expect(row.sittingReminderSentAt).toBeNull();
     });
+  });
+});
+
+describe('#868 opt-out reader decides every turn, and a failed read holds the sender', () => {
+  const reader = (intent: 'stop' | 'start' | 'none', confirmation: string) => ({
+    read: async () => ({ intent, confirmation }),
+  });
+  const recorder = () => {
+    const calls: string[] = [];
+    return {
+      calls,
+      port: {
+        hold: async (hash: string) => void calls.push(`hold:${hash.length > 0}`),
+        release: async (hash: string) => void calls.push(`release:${hash.length > 0}`),
+      },
+    };
+  };
+
+  it('a STOP the reader reads as none is ordinary conversation: no word list', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    deps.optOutReader = reader('none', '');
+    const result = await handleInboundSms(fake.db, inbound(transport, 'STOP'), deps);
+    expect(result.status).not.toBe('stopped');
+  });
+
+  it('any wording of stop revokes and sends the model confirmation', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    deps.optOutReader = reader('stop', 'Stop confirmation (test fixture).');
+    const result = await handleInboundSms(fake.db, inbound(transport, 'pls leave me alone'), deps);
+    expect(result.status).toBe('stopped');
+    expect(transport.bodies()).toEqual(['Stop confirmation (test fixture).']);
+  });
+
+  it('a read that fails (after its retry) holds the sender', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const held = recorder();
+    deps.optOutReader = { read: async () => null };
+    deps.optOutHold = held.port;
+    await handleInboundSms(fake.db, inbound(transport, 'unreadable for now'), deps);
+    expect(held.calls).toContain('hold:true');
+    expect(held.calls).not.toContain('release:true');
+  });
+
+  it('a read that succeeds releases the hold', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const held = recorder();
+    deps.optOutReader = reader('none', '');
+    deps.optOutHold = held.port;
+    await handleInboundSms(fake.db, inbound(transport, 'hello again'), deps);
+    expect(held.calls).toEqual(['release:true']);
   });
 });

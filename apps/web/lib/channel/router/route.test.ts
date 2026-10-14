@@ -8,12 +8,13 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
-import { EMERGENCY_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
@@ -488,6 +489,7 @@ function harness(
       questions: options.questions ?? fakeQuestions([]),
       replyResolver:
         options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+      calendarOffers: calendarOffersIdle,
       disambiguation: fakeDisambiguation(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
@@ -763,7 +765,7 @@ describe('routing order', () => {
  *   AHEAD of the coach, which is the entire point.
  */
 describe('VIL-333 identity challenge', () => {
-  it('sends the locked disclosure and does not wake the coach or the off-domain screen', async () => {
+  it('sends the model-written disclosure and does not wake the coach or the off-domain screen', async () => {
     const lane = fakeLane({ status: 'in_domain', fallback: null });
     const coach = fakeCoach();
     const h = harness({
@@ -771,6 +773,14 @@ describe('VIL-333 identity challenge', () => {
       offDomain: lane,
       coach,
     });
+    const asked: unknown[] = [];
+    h.deps.turnReader = { read: async () => ({ intent: 'identity', confirmation: '' }) };
+    h.deps.saidLine = {
+      async write(input) {
+        asked.push(input);
+        return 'Disclosure (test fixture) villagehale.com aloha@villagehale.com';
+      },
+    };
 
     const result = await routeChannelMessage(h.deps, job());
 
@@ -778,8 +788,22 @@ describe('VIL-333 identity challenge', () => {
     expect(coach.calls).toBe(0);
     expect(lane.calls).toBe(0);
     expect(h.transport.bodies()).toEqual([
-      'This is Hale from Village Hale Technologies Inc. (villagehale.com). Barton Dong runs it (aloha@villagehale.com). Reply STOP anytime and we stop.',
+      'Disclosure (test fixture) villagehale.com aloha@villagehale.com',
     ]);
+    expect(asked).toMatchObject([
+      { purpose: 'identity', mustInclude: ['villagehale.com', 'aloha@villagehale.com'] },
+    ]);
+  });
+
+  it('sends nothing when the disclosure cannot be written (no canned fallback)', async () => {
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'who is this??' }, coach });
+    h.deps.turnReader = { read: async () => ({ intent: 'identity', confirmation: '' }) };
+    h.deps.saidLine = { write: async () => null };
+    const result = await routeChannelMessage(h.deps, job());
+    expect(result).toMatchObject({ status: 'handled', handler: 'identity_challenge' });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(coach.calls).toBe(0);
   });
 });
 
@@ -1790,32 +1814,27 @@ describe('the outage smoke alarm', () => {
     };
   }
 
-  it('sends the fixed safety line, verbatim, instead of the honesty template', async () => {
+  it('sends no fixed line during an outage crisis; it pages #ops urgently instead', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('smoke_alarm_fired');
-    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY]);
-    expect(h.transport.bodies()[0]).toBe('Call 911 now.');
-    expect(h.transport.bodies()[0]).not.toContain('811');
-    expect(h.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
-    expect(h.transport.bodies()).not.toContain(failureReply());
+    expect(h.transport.bodies()).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, where: 'model_outage' }),
+      expect.stringContaining('URGENT'),
+    );
+    log.mockRestore();
   });
 
-  /** It is a reply like any other: ledgered, audited (rule #6), and in the thread the
-   * parent can read back. A siren that skipped the books would be the one message Hale
-   * sent that nothing recorded. */
-  it('ledgers, audits and threads it like every other reply', async () => {
+  it('writes no outbound row for it: nothing was sent', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
     await routeChannelMessage(h.deps, job());
 
-    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
-    expect(out).toHaveLength(1);
-    expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
-    const assistant = messageRows(h.fake).filter((r) => r.role === 'assistant');
-    expect(assistant.map((r) => r.content)).toEqual([EMERGENCY_REPLY]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toHaveLength(0);
   });
 
   it('records the alarm against the inbound message so a queue retry cannot re-ring it', async () => {
@@ -1831,9 +1850,11 @@ describe('the outage smoke alarm', () => {
     // does so routinely. The alarm's own claim is now the SECOND line of defence — the
     // turn ledger stops the re-drive before the coach is ever woken, because the safety
     // line was this text's answer.
-    const retry = await routeChannelMessage(h.deps, job());
-    expect(retry.status).toBe('already_answered');
-    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY]);
+    // Nothing answered the first time, so the re-drive meets the outage again and is
+    // deferred (it may throw for the drain to retry); the claim keeps it to one page.
+    const retry = await routeChannelMessage(h.deps, job()).catch(() => null);
+    expect(retry?.status).not.toBe('smoke_alarm_fired');
+    expect(h.transport.bodies()).toEqual([]);
     expect(claim.fired).toHaveLength(1);
   });
 
@@ -1850,7 +1871,8 @@ describe('the outage smoke alarm', () => {
     );
 
     expect(second.status).toBe('smoke_alarm_fired');
-    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY, EMERGENCY_REPLY]);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(claim.fired).toHaveLength(2);
   });
 
   // ── the non-triggers ───────────────────────────────────────────────────────

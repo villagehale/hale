@@ -1142,6 +1142,13 @@
       "when": 1781556208000,
       "tag": "0166_agent_runs_cache_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1781556210000,
+      "tag": "0170_opt_out_read_holds",
+      "breakpoints": true
     }
   ]
 }

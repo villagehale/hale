@@ -1,5 +1,4 @@
 import type { MessageTransport } from '~/lib/channel/transport-address';
-import type { IntakeKeyword } from './keywords';
 
 /**
  * VIL-237 · M2 — the raw two-way SMS transport, deliberately smaller than the loop's
@@ -56,7 +55,7 @@ export interface InboundMessage {
    * CASL failure this field exists to avoid. What it buys is that a parent who asked
    * to be left alone gets one confirmation rather than two.
    */
-  providerAnsweredKeyword?: IntakeKeyword | null;
+  providerAnsweredKeyword?: 'stop' | 'start' | 'help' | null;
 }
 
 /** What one `send` carries. `mediaUrls`, when present, must be non-empty absolute

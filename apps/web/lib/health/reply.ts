@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull, like } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import { normalizeKeyword } from '~/lib/channel/intake/keywords';
+import { normalizeToken } from '~/lib/channel/normalize-token';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { writeFact } from '~/lib/memory/facts';
 import { pipelineClient } from '~/lib/pipeline/client';
@@ -32,8 +32,7 @@ import { checkpointToldKeyPrefix, loadToldCheckpointRefs } from './told';
  *             (lib/health/offer.ts) — not an inference from the last checkpoint this
  *             family happened to be told about.
  *
- * Matching is EXACT on the normalized body, the same discipline as the CASL keywords
- * (lib/channel/intake/keywords.ts) and for a sharper reason: "not done yet" contains
+ * Matching is EXACT on the normalized body, and for a sharp reason: "not done yet" contains
  * "done", and a substring match would file the opposite of what the parent said and
  * then go quiet — the single worst failure this feature has.
  */
@@ -75,7 +74,7 @@ const BOOKING_VERBS = new Set(['book it', 'draft it']);
  * family gets once every few months.
  */
 export function matchHealthReply(body: string): HealthReplyIntent | null {
-  const word = normalizeKeyword(body);
+  const word = normalizeToken(body);
   if (DONE_WORDS.has(word)) return 'done';
   if (BOOKING_VERBS.has(word) || readAffirmative(body) === 'yes') return 'booking';
   return null;

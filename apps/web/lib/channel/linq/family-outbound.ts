@@ -1,7 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
-import { CO_PARENT_ASK_BY_LANGUAGE } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -156,8 +155,6 @@ function skippedRefusal(familyId: string, err: unknown): FamilyOutboundDelivery 
 
 function isCoparentAsk(body: string): boolean {
   return (
-    body.includes(CO_PARENT_ASK_BY_LANGUAGE.en) ||
-    body.includes(CO_PARENT_ASK_BY_LANGUAGE.fr) ||
     body.includes("Want the other parent on the kids' year") ||
     body.includes("l'autre parent sur l'ann") ||
     body.includes(`send: ${LINQ_GROUP_TRIGGER_PHRASE.en}`) ||

@@ -12,7 +12,7 @@
 // never silently spend.
 
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -191,10 +191,72 @@ if (process.env.EVAL_PRINT_TELEMETRY) {
 
 // --- lazy client (never built in --cached-only) -----------------------------
 
+/**
+ * Shared spend ledger (#868 recording). With HALE_LEDGER and HALE_MAX_USD set, every live
+ * call through lazyAnthropic is refused BEFORE it is sent if the ledger total plus this
+ * request's worst case (input estimate + max_tokens, all at list price) would pass the
+ * cap, and its real usage is appended after. One file across every eval process.
+ */
+function ledgerRead(path) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return { capUsd: Number(process.env.HALE_MAX_USD), totalUsd: 0, calls: [] };
+  }
+}
+
+function priceOf(model) {
+  const p = PRICE[model];
+  if (!p) throw new Error(`ledger: no price for ${model}; refusing an unpriced live call`);
+  return p;
+}
+
+function cappedCreate(create) {
+  const path = process.env.HALE_LEDGER;
+  const cap = Number(process.env.HALE_MAX_USD);
+  if (!path || !Number.isFinite(cap)) return create;
+  return async (request, ...rest) => {
+    const p = priceOf(request.model);
+    const inChars = JSON.stringify([
+      request.system ?? '',
+      request.messages,
+      request.tools ?? [],
+    ]).length;
+    const worst = ((inChars / 3) * p.input + (request.max_tokens ?? 4096) * p.output) / 1e6;
+    const before = ledgerRead(path);
+    if (before.totalUsd + worst > cap) {
+      throw new Error(
+        `ledger: cap $${cap} would be passed (spent $${before.totalUsd.toFixed(4)} + worst $${worst.toFixed(4)}) - stopped`,
+      );
+    }
+    const response = await create(request, ...rest);
+    const u = response.usage ?? {};
+    const usd =
+      (((u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)) * p.input +
+        (u.output_tokens ?? 0) * p.output) /
+      1e6;
+    const after = ledgerRead(path);
+    after.capUsd = cap;
+    after.totalUsd += usd;
+    after.calls.push({
+      at: new Date().toISOString(),
+      model: request.model,
+      usd,
+      tag: process.env.HALE_LEDGER_TAG ?? null,
+    });
+    writeFileSync(path, JSON.stringify(after, null, 2));
+    return response;
+  };
+}
+
 export function lazyAnthropic() {
   let client;
   return () => {
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    if (!client) {
+      // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
+      client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, fetch: globalThis.fetch });
+      client.messages.create = cappedCreate(client.messages.create.bind(client.messages));
+    }
     return client;
   };
 }

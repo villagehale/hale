@@ -27,6 +27,10 @@
     "file": "calendar-invite-note.md",
     "sha256": "c6506cf2c2843859d080ad490726448896c10b6f9592e3d11b47b12cd1b6b38d"
   },
+  "calendar-offer-read.md": {
+    "file": "calendar-offer-read.md",
+    "sha256": "aea480fe0eb977faef4e918c9dde6778a6605eadede342a542e385ff7f0c676e"
+  },
   "capability-table.md": {
     "file": "capability-table.md",
     "sha256": "cddbfec3d736e5e46e2fcf4a97167ce2f6d3b22e4a3e92328b859e10cfcc9a6d"
@@ -147,10 +151,6 @@
     "file": "intake-official-ground.md",
     "sha256": "b6d7a4653d427c12edbcb7f3db63fae4abafdd99b95f563ba982e40d72cccd61"
   },
-  "intake-voice.md": {
-    "file": "intake-voice.md",
-    "sha256": "c5fdc928d94454b2b82d2dfd8fe7f6836aab9833cf816818a892b76b4d4c416b"
-  },
   "interest-passport-voice.md": {
     "file": "interest-passport-voice.md",
     "sha256": "2d3a751c0e6ac252aaea2c12c4f4d0eabad3e9bc645d557271524d06d229106a"
@@ -175,13 +175,21 @@
     "file": "nudge-voice.md",
     "sha256": "0058da39817bb85138bf334ab1b2e4f17cea042fb2de46cba4a82af95471a11c"
   },
+  "offer-receipt.md": {
+    "file": "offer-receipt.md",
+    "sha256": "d37d130c73cfce347b741fa8b924471f2c159c37db3e2e7ccc0fc26cda597328"
+  },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
     "sha256": "18e9a6845972e3f3ea08eb7d7fa1b9e6e5451b7d518038df79ae441f1b9f6607"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "2f6c6bb234225bd759fce4a10ca19a42e00ef7bc84251106e26233fdf6b2f80a"
+    "sha256": "75c8300668b8f45e2420a7734326769a98b01d256d5ff90c58abad095dd8a17c"
+  },
+  "opt-out-read.md": {
+    "file": "opt-out-read.md",
+    "sha256": "615ded7cfd504d54e24bfb0ed0a0c469da5c5ae72704c381def8aad6489475d1"
   },
   "parse-civic-hours.md": {
     "file": "parse-civic-hours.md",
@@ -226,6 +234,10 @@
   "reply-resolver.md": {
     "file": "reply-resolver.md",
     "sha256": "83fec3c09426b2c2a8b811ee00266fe2f12a0ff5b2a26752644a181e95a8890c"
+  },
+  "said-line.md": {
+    "file": "said-line.md",
+    "sha256": "32e74c164a0dfd08889892e2961186f1e2d1f89094da04369a67b6b27d16f31c"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",

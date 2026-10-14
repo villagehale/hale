@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import { normalizeKeyword } from '~/lib/channel/intake/keywords';
+import { normalizeToken } from '~/lib/channel/normalize-token';
 import type { createFamilyEvent } from '~/lib/loop/queries';
 import { partyWhen, redactTeenNames } from './card';
 import {
@@ -76,7 +76,7 @@ const CANCEL_WORDS = new Set([
 /** A phone keyboard types a curly apostrophe; the two sets above use a straight one.
  * (The affirmative vocabulary folds its own; this is for the party-specific phrases.) */
 function normalizeBody(body: string): string {
-  return normalizeKeyword(body.replace(/[‘’ʼ`]/g, "'"));
+  return normalizeToken(body.replace(/[‘’ʼ`]/g, "'"));
 }
 
 /**
@@ -182,11 +182,7 @@ export async function handlePartyCreate(
   return {
     status: 'recorded',
     familyEventId,
-    reply: partyRecorded(
-      partyWhen(party.startsAt, input.timeZone),
-      party.title,
-      party.location,
-    ),
+    reply: partyRecorded(partyWhen(party.startsAt, input.timeZone), party.title, party.location),
   };
 }
 
@@ -316,10 +312,7 @@ export async function loadPendingPartyOffer(
       inviteId: schema.partyInvites.id,
     })
     .from(schema.familyEvents)
-    .leftJoin(
-      schema.partyInvites,
-      eq(schema.partyInvites.familyEventId, schema.familyEvents.id),
-    )
+    .leftJoin(schema.partyInvites, eq(schema.partyInvites.familyEventId, schema.familyEvents.id))
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),

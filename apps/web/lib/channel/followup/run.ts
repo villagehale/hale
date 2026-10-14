@@ -383,7 +383,13 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
     daycareAsked: 0,
     composeDeferred: 0,
     refusedAtSend: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0, coparent_ask: 0 },
+    held: {
+      not_enrolled: 0,
+      opt_out_unread: 0,
+      no_watch_consent: 0,
+      quiet_hours: 0,
+      coparent_ask: 0,
+    },
     skipped: {
       opted_out: 0,
       already_claimed: 0,

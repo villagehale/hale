@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { adultLearnDoor, adultLearnIntakeReply, isAdultLearnAsk } from './adult-learn';
-import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
 
 describe('adult-learn · the kids-only door', () => {
   it('reproduces the Designer-locked line byte-for-byte when the city slot holds Brampton', () => {
@@ -86,7 +90,7 @@ describe('adult-learn · the kids-only door', () => {
       pendingAsk: COLD_START_ASK,
       postal: null,
     });
-    expect(first).toBe(`${adultLearnDoor(null)} ${COLD_START_ASK}`);
+    expect(String(first).startsWith(adultLearnDoor(null))).toBe(true);
     expect(first).not.toMatch(/\b(Sept|Sep|Aug|Nov|Dec)\b/);
     expect(smsEncoding(first as string)).toBe('gsm7');
     expect(smsSegments(first as string)).toBeLessThanOrEqual(2);
@@ -96,7 +100,7 @@ describe('adult-learn · the kids-only door', () => {
       pendingAsk: WATCH_OFFER_ASK,
       postal: null,
     });
-    expect(mid).toBe(`${adultLearnDoor(null)} Still want me watching?`);
+    expect(String(mid).startsWith(adultLearnDoor(null))).toBe(true);
     expect(
       adultLearnIntakeReply({ parentWords: 'hi', pendingAsk: COLD_START_ASK, postal: null }),
     ).toBeNull();

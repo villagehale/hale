@@ -11,7 +11,7 @@ import {
   routeInboundText,
 } from '~/lib/channel/inbound-route';
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { loadOpenSession } from '~/lib/channel/intake/session';
 import {
   lineStatusKnown,
@@ -478,8 +478,9 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return json(coparent.body);
   }
 
-  const optOut = matchKeyword(message.text);
-  if (optOut?.keyword !== 'stop') {
+  // #868: stop/start read by the model in any wording; one cached read for this turn.
+  const optOut = await optOutIntentOf(message.text);
+  if (optOut !== 'stop') {
     const shared = await takeMultiFamilyTurn(deps.database, {
       chatId: message.chatId,
       senderHandle: message.senderHandle,
@@ -500,8 +501,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
   }
 
   if (!linqGroupOnboardingV2Enabled() && (await shouldHoldGroupStranger(deps.database, message))) {
-    const keyword = matchKeyword(message.text);
-    if (keyword?.keyword === 'stop') {
+    if (optOut === 'stop') {
       deps.log.info({ outcome: 'group_opt_out' }, 'linq inbound: group opt-out, no reply');
       await deps.countOutcome('ignored');
       return json({ outcome: 'group_opt_out' });
@@ -525,8 +525,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     others,
   });
   if (mapped.status !== 'same_family') {
-    const keyword = matchKeyword(message.text);
-    if (keyword?.keyword === 'stop') {
+    if (optOut === 'stop') {
       deps.log.info({ outcome: 'group_opt_out' }, 'linq inbound: group opt-out, no reply');
       await deps.countOutcome('ignored');
       return json({ outcome: 'group_opt_out' });
@@ -540,8 +539,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return json({ outcome, hold: held });
   }
 
-  const keyword = matchKeyword(message.text);
-  if (keyword) return routeClaimedGroup(deps, message);
+  if (optOut) return routeClaimedGroup(deps, message);
 
   const trigger = matchLinqGroupTrigger(message.text);
   if (trigger) return claimGroupFromTrigger(deps, message, mapped, trigger);
@@ -625,6 +623,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
   if (linqGroupOnboardingV2Enabled()) {
     const turn = decideGroupTurn({
       text: message.text,
+      optOut: await optOutIntentOf(message.text),
       kidNames:
         mapped.status === 'same_family' ? await kidFirstNames(deps.database, mapped.familyId) : [],
     });

@@ -646,6 +646,11 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       const timeZone = await reader.timeZone(familyId);
       refuseMismatchedWeekday(input, timeZone, 'propose_calendar_add');
       const startsAt = zonedLocalInstant(input.date, input.time, timeZone);
+      // A start that has already passed is not an offer (VIL-410). The model reads the
+      // refusal and can say so; nothing is drafted.
+      if (startsAt.getTime() <= now.getTime()) {
+        throw new Error('That occasion has already started, so it cannot be drafted.');
+      }
       claimDraftBudget();
 
       const matched = matchOfferedTitle(args.offeredThisTurn?.() ?? [], input.title);

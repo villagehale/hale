@@ -3,8 +3,8 @@ import { eq, sql } from 'drizzle-orm';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
 import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
+import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { liveMemberMayTalk } from '~/lib/channel/linq/group-members';
@@ -185,7 +185,7 @@ export async function routeInboundText(
     };
 
     // Media is answered here, but never before the CASL keywords: see the module note.
-    if (media > 0 && !matchKeyword(inbound.body)) {
+    if (media > 0 && (await optOutIntentOf(inbound.body)) === null) {
       return replyMediaUnsupported(deps.database, inbound, intake);
     }
 
@@ -226,8 +226,7 @@ export async function routeInboundText(
  * whose only trace is a 200 (rule #11).
  *
  * The refusal is also the one of the three that is ACTIONABLE, and the action is not in
- * this codebase: the provider's localized keyword set has to hold every word Hale prints
- * (intake/keywords.ts). So it is logged at error level beside the enqueue failure, the
+ * this codebase: the provider's localized opt-out set has to hold the words parents use. So it is logged at error level beside the enqueue failure, the
  * other outcome that means a parent is owed something Hale has not delivered.
  */
 function keywordOutcome(
@@ -237,6 +236,14 @@ function keywordOutcome(
 ): InboundRouteOutcome {
   if (ack === 'provider_answered') return 'keyword_provider_answered';
   if (ack === 'sent') return 'intake';
+  if (ack === 'voice_unsent') {
+    // The opt-out reader revoked the channel; its confirmation was empty, so nothing went out.
+    deps.log.error(
+      { providerMessageId: inbound.providerId },
+      'inbound: opt-out revoked, model confirmation unsent',
+    );
+    return 'intake_unsent';
+  }
   deps.log.error(
     { providerMessageId: inbound.providerId },
     'inbound: re-enrolled this number and the provider permanently refused the acknowledgment — its opt-out list still holds a number our ledger now says is reachable',

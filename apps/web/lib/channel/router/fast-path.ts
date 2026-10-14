@@ -1,5 +1,4 @@
 import { matchPhrase, normalizeReply } from '~/lib/channel/affirmative';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
 
 /**
  * VIL-220 · C1 — the approval grammar. No model, ever.
@@ -23,9 +22,9 @@ import { matchKeyword } from '~/lib/channel/intake/keywords';
  *   prefix would execute a calendar write the parent never confirmed.
  *
  *   NO OVERLAP WITH CASL. 'cancel' is a natural English refusal AND a carrier-
- *   recognised STOP synonym, so it is deliberately absent from the shared NO set; the
- *   `matchKeyword` guard below is structural rather than a comment, so a future edit to
- *   either vocabulary cannot quietly turn an unsubscribe into an approval decline.
+ *   recognised STOP synonym, so it is deliberately absent from the shared NO set. Stops
+ *   never reach this router: the intake machine's opt-out reader (#868) reads every
+ *   turn first and revokes there.
  */
 
 export type FastPathVerb = 'yes' | 'no' | 'undo';
@@ -50,13 +49,9 @@ export const MAX_LISTED_APPROVALS = 3;
 /**
  * The command this body IS, or null when it is conversation.
  *
- * Anything the CASL matcher claims is refused outright: those words are handled before
- * a message ever reaches this router, and a second reading of them here could only ever
- * disagree with the first.
+ * A stop or start never gets here: the opt-out reader handled it before the router.
  */
 export function matchFastPath(body: string): FastPathCommand | null {
-  if (matchKeyword(body)) return null;
-
   // Filler is stripped BEFORE the ordinal is read (normalizeReply does it), so
   // "yes 2 please" and "yes 2" are the same command — a trailing "please" is not part
   // of the number.

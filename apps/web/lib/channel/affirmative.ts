@@ -103,13 +103,12 @@ const AFFIRMATIVE = new Set([
 /**
  * The refusal family. 'cancel' is NOT here, and never may be: it is a natural English
  * refusal AND a carrier-recognised STOP synonym, so a NO set containing it would turn an
- * unsubscribe into an approval decline. The CASL matcher is consulted before this one for
- * the same reason.
+ * unsubscribe into an approval decline. The opt-out reader (#868) reads every turn before
+ * this one for the same reason.
  *
  * NEITHER ARE ITS TRANSLATIONS — annule, annuler, arrête, 取消 — and the rule is stronger
- * for them, not weaker. `matchKeyword` now holds `arret`, `arrete` and `arretez` but not
- * the others, so a parent texting "annuler" is still not claimed upstream the way "stop"
- * is; if this set claimed it, a request to be left alone would be answered as a
+ * for them, not weaker. The opt-out reader reads a stop in any wording and language
+ * upstream; if this set claimed one too, a request to be left alone would be answered as a
  * declined calendar change and the family would keep hearing from us. Leaving them unread
  * is not silence — an unmatched body goes to the coach, which answers in the parent's
  * language and can ask which they meant.

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The text conveys all required elements for connector_links purpose: it says what each link connects (calendar appointments, Gmail messages), clearly states both are optional (\"C'est optionnel\"), specifies how long links work (15 minutes), provides both links whole and intact, is in French as requested, uses only the given facts, and reads naturally like a parent communicating with another parent."
+  }
+}

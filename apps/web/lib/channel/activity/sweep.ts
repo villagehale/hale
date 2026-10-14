@@ -164,7 +164,7 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
     due: 0,
     sent: 0,
     sentEmptyHanded: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
     unsendable: 0,
     cancelled: 0,
     deferred: 0,
