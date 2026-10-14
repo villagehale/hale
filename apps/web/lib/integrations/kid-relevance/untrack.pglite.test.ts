@@ -374,7 +374,7 @@ describe('untrackItem', () => {
     ]);
   });
 
-  it('keeps a hint to one plain line of a few words', async () => {
+  it('keeps a hint as one plain line', async () => {
     const first = await mirror('one-off', NEXT_WEEK, 'Harbour Inn check-in');
     await untrack({ kind: 'family_event', id: first }, 'a hotel\nstay\u0007');
     const second = await mirror('another', NEXT_WEEK, 'Quarterly review');
@@ -383,7 +383,7 @@ describe('untrackItem', () => {
       `a work thing ${'with detail '.repeat(10)}`,
     );
     expect((await parentVerdicts()).map((row) => [row.itemKey, row.hint]).sort()).toEqual([
-      ['another', null],
+      ['another', `a work thing ${'with detail '.repeat(10)}`.trim()],
       ['one-off', 'a hotel stay'],
     ]);
   });

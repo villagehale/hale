@@ -117,9 +117,6 @@ function dobFor(ageMonths) {
 function whyNotStored(contract, reason, item) {
   const trimmed = reason.trim();
   if (trimmed.length === 0) return 'empty';
-  if (trimmed.length > contract.KID_REASON_MAX_CHARS) {
-    return `too long (${trimmed.length} characters)`;
-  }
   if (contract.repeatsAny(trimmed, [item.title])) {
     return `repeats the title ${JSON.stringify(item.title)}`;
   }

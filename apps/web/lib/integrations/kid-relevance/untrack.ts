@@ -3,7 +3,7 @@ import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { SuppressReason } from '~/lib/loop/reminders/schedule';
 import { seriesKeyForEvent } from './judge';
-import { KID_HINT_MAX_CHARS, type KidRelevanceSource } from './skill-contract';
+import type { KidRelevanceSource } from './skill-contract';
 
 /**
  * "That's mine" (VIL-226 item 3, for the VIL-413 router). The parent's word that a
@@ -405,11 +405,11 @@ async function textsSeen(
   return [];
 }
 
-/** The kind as one plain line, unless it is empty, long, or carries the item's own title
+/** The kind as one plain line, unless it is empty or carries the item's own title
  * or place. */
 function safeKind(kind: string | null, texts: readonly string[]): string | null {
   const trimmed = (kind ?? '').replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim();
-  if (trimmed.length === 0 || trimmed.length > KID_HINT_MAX_CHARS) return null;
+  if (trimmed.length === 0) return null;
   const folded = trimmed.toLowerCase();
   const leaks = texts.some((text) => {
     const own = text.trim().toLowerCase();

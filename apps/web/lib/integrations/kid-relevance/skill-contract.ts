@@ -34,17 +34,6 @@ export const KID_JUDGE_ITEMS_PER_CALL = Math.floor(
 );
 
 /**
- * The longest reason stored for a kid verdict. The recorded eval's longest kid reason is
- * 85 characters (2026-10-12; its longest reason, 126, is an `unsure` one, which is never
- * stored); a longer one is dropped at storage, never at the wire, so a verbose answer
- * still counts as a verdict.
- */
-export const KID_REASON_MAX_CHARS = 120;
-
-/** The longest not-mine hint kept: the kind of thing it was, in a few words. */
-export const KID_HINT_MAX_CHARS = 48;
-
-/**
  * Lowercased, unaccented words only, so "Wren Swim," and "wren swim" compare equal, and
  * so do "José" and "Jose". NFKC first folds width and compatibility forms.
  */
@@ -101,7 +90,7 @@ export function sharesAnyWord(text: string, own: readonly (string | null)[]): bo
 }
 
 /**
- * The reason as stored, unless it is empty, long, repeats the item's title, or carries any
+ * The reason as stored, unless it is empty, repeats the item's title, or carries any
  * naming word of its place or sender: a surname or a venue's first word alone still says
  * where or who. The judge stores this; the eval reports how many of its reasons survive it.
  */
@@ -110,7 +99,7 @@ export function storedReason(
   item: Pick<KidRelevanceItem, 'title' | 'place' | 'sender'>,
 ): string | null {
   const trimmed = reason.trim();
-  if (trimmed.length === 0 || trimmed.length > KID_REASON_MAX_CHARS) return null;
+  if (trimmed.length === 0) return null;
   return repeatsAny(trimmed, [item.title]) || sharesAnyWord(trimmed, [item.place, item.sender])
     ? null
     : trimmed;

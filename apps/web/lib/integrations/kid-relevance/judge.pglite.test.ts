@@ -268,7 +268,7 @@ describe('judgeKidRelevance', () => {
     expect(row).toMatchObject({ verdict: 'kid', childId: null, reason: 'a school fundraiser' });
   });
 
-  it('stores no reason that repeats the title, place or sender, or runs long', async () => {
+  it('stores no reason that repeats the title, place or sender, and keeps a long one', async () => {
     await db.database.delete(schema.children).where(eq(schema.children.id, children[1]?.id ?? ''));
     children = children.slice(0, 1);
     const { client } = scriptedClient(
@@ -276,7 +276,7 @@ describe('judgeKidRelevance', () => {
         'Wren swim': { verdict: 'kid', reason: 'Wren Swim, a lesson' },
         Gymnastics: { verdict: 'kid', reason: 'a class at maple grove  POOL' },
         'Rhyme time': { verdict: 'kid', reason: 'a library session from Willowbank Library' },
-        // Long, and shares no words with its title: only the length bound drops it.
+        // Long, and shares no words with its title or place: no length bound drops it.
         Drop: { verdict: 'kid', reason: `a class ${'and more '.repeat(20)}` },
         'J.': { verdict: 'kid', reason: 'a jumping class for a toddler' },
       }),
@@ -294,7 +294,7 @@ describe('judgeKidRelevance', () => {
       ['key-a', null],
       ['key-b', null],
       ['key-c', null],
-      ['key-d', null],
+      ['key-d', `a class ${'and more '.repeat(20)}`.trim()],
       // "J." is not a word of this reason, so the reason stays.
       ['key-e', 'a jumping class for a toddler'],
     ]);
