@@ -243,15 +243,6 @@ describe('friend-voice judge', () => {
     ).toEqual({ ok: true });
   });
 
-  it('rejects French with the ASCII gaps', () => {
-    const ages = blank({ step: 'ages', language: 'fr', parentWords: 'H2X', placeLabel: 'H2X' });
-    expect(judgeFriendReply('Quel age ont les enfants?', ages)).toEqual({
-      ok: false,
-      reason: 'french',
-    });
-    expect(judgeFriendReply('Quel âge ont les enfants?', ages)).toEqual({ ok: true });
-  });
-
   it('rejects STOP and a connector named on the wrong step', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
     expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({

@@ -508,9 +508,6 @@ function priceTalk(text: string, input: FriendVoiceInput): string[] {
   return given.some((line) => PRICE_WORD.test(line)) ? [] : ['price'];
 }
 
-/** ASCII stand-ins for accented words. A following letter (é in adapté) is not a gap. */
-const FRENCH_ASCII_GAP = /\b(?:pres|age|adapt|prenoms?|ecole|ca|numero|reponds)(?![\p{L}])/iu;
-
 /** A connector spoken of as already on, before the parent has tapped its link. */
 const CONNECTED_CLAIM =
   /^\s*(?:all )?done\b|\b(?:you['’]re|you are|we['’]re|we are) (?:all )?set\b|\ball set\b|\b(?:is|['’]s) (?:now )?(?:set|done|live)\b|\b(?:got|have|has|is|are|now|already|i['’]ve)\b[^.?!]{0,25}\b(?:connected|linked|hooked up|synced|set up|access to)\b|\bi['’]m (?:now )?(?:connected|watching)\b/i;
@@ -1292,7 +1289,6 @@ export type FriendJudgeFailure =
   | 'banned'
   | 'compliance'
   | 'invented'
-  | 'french'
   | 'link'
   | 'registration_claim'
   | 'identity'
@@ -1371,16 +1367,6 @@ export function judgeFriendReply(
   if (/https?:\/\//i.test(trimmed)) {
     const allowed = options.link && trimmed.includes(options.link);
     if (!allowed) return { ok: false, reason: 'invented' };
-  }
-
-  if (input.language === 'fr') {
-    if (FRENCH_ASCII_GAP.test(trimmed)) return { ok: false, reason: 'french' };
-    if (input.address === 'tu' && /\b(vous|votre|vos)\b/i.test(trimmed)) {
-      return { ok: false, reason: 'french' };
-    }
-    if (input.address === 'vous' && /\b(tu|toi|ton|ta|tes)\b/i.test(trimmed)) {
-      return { ok: false, reason: 'french' };
-    }
   }
 
   // "The link" is true only when a link rides this bubble, or when the card is
