@@ -1,6 +1,6 @@
 -- #868 · a sender whose opt-out read failed twice is held from proactive and queued
--- outbound until a read succeeds. Additive (rule #9). Numbered 0169: 0166-0168 are
--- taken by #862, #861 and VIL-131.
+-- outbound until a read succeeds. Additive (rule #9). Numbered 0170: 0166 #862, 0167 #861,
+-- 0168 VIL-131, 0169 #855 (kid_relevance_verdicts).
 CREATE TABLE IF NOT EXISTS "opt_out_read_holds" (
 	"phone_hash" text PRIMARY KEY NOT NULL,
 	"held_at" timestamp with time zone NOT NULL
