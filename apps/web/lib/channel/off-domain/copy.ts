@@ -306,7 +306,7 @@ export const PROVIDER_ACCESS_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = 
  * carries none because Health Care Connect is reached by a phone number, so a URL would
  * buy nothing against the risk of a mistyped link. Here the directory IS the answer, and
  * naming a tool without its address is the shape of help a parent cannot act on. The
- * precedent is WATCH_OFFER, which carries the privacy link at the consent moment for the
+ * precedent was the old watch offer, which carries the privacy link at the consent moment for the
  * same reason: an authoritative third-party address, at a decision point, one per
  * message, no scheme (shorter, and every phone links a bare domain anyway).
  *

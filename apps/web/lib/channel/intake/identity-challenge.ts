@@ -7,7 +7,7 @@ import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
  * The live miss (2026-08-28) was a police-officer demand for a name and address.
  * Hale answered with an improvised "I'm an AI" sentence and then pivoted back to
  * the watch ask. The disclosure is a promise, so the reply is the locked string
- * in {@link IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE} and the turn ends there.
+ * in the model-written disclosure (IDENTITY_FACTS) and the turn ends there.
  *
  * HIGH PRECISION ON PURPOSE. A parent asking for a pool address, a teacher's
  * name, or who won something is not challenging Hale. The patterns below require

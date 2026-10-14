@@ -53,7 +53,7 @@ import {
  *
  *   AN EMERGENCY NEVER REACHES A MODEL. `namesAnEmergency` is checked first, before the
  *   client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` — the
- *   machine then sends {@link EMERGENCY_REPLY} (`Call 911 now.`), with no return-to-script
+ *   machine then sends the model-written crisis reply (#868: routed and written by the turn reader), with no return-to-script
  *   tacked onto it. Intake has never had the screened safety lane the router has
  *   (off-domain/lane.ts), so this is the whole of it, and it works during a provider
  *   outage because it is a substring test.
@@ -171,7 +171,7 @@ export type IntakeAnswerOutcome =
   | { status: 'safety' }
   /**
    * Caregiver mental crisis. Carries NO body — the machine sends
-   * {@link MENTAL_CRISIS_REPLY} (988 / 911), never the child-health 811 line.
+   * a model-written crisis reply (988 / 911), never the child-health 811 line.
    */
   | { status: 'mental_crisis' }
   | { status: 'unavailable'; reason: IntakeAnswerFallback };

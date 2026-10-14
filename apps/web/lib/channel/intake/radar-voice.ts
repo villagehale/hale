@@ -17,7 +17,7 @@ export { townLabel };
  * SMS segments. The invariant that matters is that the DETERMINISTIC render always fits,
  * so the fallback is never itself over budget.
  *
- * Three, not two, since the onboarding script v2: {@link WATCH_OFFER} now carries the
+ * Three, not two, since the onboarding script v2: the old watch offer now carries the
  * privacy URL (the disclosure moved from the greeting to the consent moment), which took
  * the appended tail from 46 septets to 119 — and the richest deterministic render, a
  * weekend pick PLUS a registration line with a resident note, is 205 septets on its own.
