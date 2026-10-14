@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto Blue Jays final 2026 record 79-83, 5th in AL East",
+        "from": "settled"
+      },
+      {
+        "states": "Blue Jays did not make the 2026 postseason",
+        "from": "The Blue Jays did not make the 2026 postseason."
+      },
+      {
+        "states": "no Blue Jays game found on Sunday Oct 11, 2026",
+        "from": "The results found no Blue Jays game on Oct 11, and I found no score for one."
+      }
+    ],
+    "answer": "Assuming you mean the Blue Jays: I didn't find a game for them last night, Sunday. Their season is over. They finished 79-83, 5th in the AL East, and missed the playoffs."
+  },
+  "latencyMs": 6013
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by the research notes: Vancouver BC is cloudy with a high of 14°C and showers late in the evening (Environment Canada), and Vancouver WA has a high of 64°F, turns cloudy in the afternoon and stays dry (Wunderground). The question didn't say which Vancouver, and the answer handles that well by giving both forecasts rather than stalling. It's short, casual and in English. The closing 'which do you mean' is a little redundant after giving both, but harmless.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

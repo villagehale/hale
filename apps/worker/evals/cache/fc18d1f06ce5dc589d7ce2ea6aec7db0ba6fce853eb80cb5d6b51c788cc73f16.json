@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The facts match research_notes: the YouGov March 2023 poll found about 59% of Americans like or love it, and that is the newest poll found. The reply takes a light side (\"my pick is with the 59%. Eat the pizza.\") rather than sitting on the fence. It is casual, friend-like and in English. \"Newest poll I found\" is slightly search-flavored, but it reads naturally.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

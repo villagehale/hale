@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by research_notes: short-term safety at 5 mg or less, the headache and grogginess side effects, the unclear long-term picture, the preliminary non-peer-reviewed AHA study, the later contrary analysis, the advice against chronic use, the supplement regulation in the US, the interactions and the pregnancy gap. Nothing is invented. The 5 mg figure describes the studies rather than prescribing a dose. The doctor-or-pharmacist pointer on interactions is appropriate care, so there is no safety miss. The register is the weak spot: it reads like a dense research summary ('A later summary of a 2026 analysis') more than a friend's casual text, though it does answer directly and never offers a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

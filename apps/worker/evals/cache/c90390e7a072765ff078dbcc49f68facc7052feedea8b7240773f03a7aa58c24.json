@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Ontario Structured Psychotherapy Program gives adults free, publicly funded cognitive-behavioural therapy for depression and anxiety-related concerns",
+        "from": "gives adults free, publicly funded cognitive-behavioural therapy for depression and anxiety-related concerns"
+      },
+      {
+        "states": "No Ontario health card or primary care provider needed; self-referral accepted",
+        "from": "No Ontario health card or primary care provider is needed, and self-referrals are accepted."
+      },
+      {
+        "states": "Referral through ontariohealth.ca/osp",
+        "from": "find the local network at ontariohealth.ca/osp and fill out the referral form"
+      },
+      {
+        "states": "Not suitable for everyone; does not cover unstructured talk therapy",
+        "from": "It is not suitable for everyone, such as people with complex needs or conditions it doesn't treat. One OSP site lists what it does not cover: DBT, crisis or housing support, substance use counselling, relationship or family counselling, and unstructured talk therapy."
+      },
+      {
+        "states": "Centre for Training in Psychotherapy $45 per session with supervised student therapist, old listing",
+        "from": "Centre for Training in Psychotherapy: $45 per session with a supervised student therapist. These fees and waits are old and may have changed."
+      },
+      {
+        "states": "Fika Low-Fee Therapy Program $65 per session, online only",
+        "from": "Fika Low-Fee Therapy Program, on Psychology Today: $65 per session, with a free 15-minute consult. That listing shows both Toronto and Stoney Creek addresses and says it is online only."
+      },
+      {
+        "states": "Nothing confirms any listed clinic is currently taking new clients",
+        "from": "Nothing confirms that any listed clinic is currently taking new clients."
+      }
+    ],
+    "answer": "Good news, there's a free option in Toronto. The Ontario Structured Psychotherapy Program gives adults free, publicly funded CBT for depression and anxiety. You don't need a health card and you can refer yourself at ontariohealth.ca/osp. It isn't for everyone and doesn't cover unstructured talk therapy, so if that's what you want, low-cost clinics are another route. The Centre for Training in Psychotherapy listed $45 a session with a supervised student, and Fika offers online therapy at $65 a session with a free 15-minute consult. Those prices come from older listings and may have changed, and I can't confirm any of these clinics is taking new clients right now."
+  },
+  "latencyMs": 9098
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes. BC's cloudy, 14°C, showers from late evening and 11°C low come from Environment Canada. Washington's dry, 64°F high and 47°F low come from Wunderground. 'Mostly cloudy' fairly summarizes clouds and sun early, then cloudy. Giving both Vancouvers handles the ambiguity without making the parent reply. The reply is brief, direct and in the question's language, and it is the answer itself. It is a little clipped and list-like, but it reads as a text back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

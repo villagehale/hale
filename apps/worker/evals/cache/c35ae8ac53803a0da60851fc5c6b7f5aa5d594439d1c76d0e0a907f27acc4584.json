@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The facts check out: the 2023 YouGov poll at about 59% matches the research notes. The reply does pick a side, \"Totally ok,\" which is good. It then softens into fence-sitting (\"If you hate it, that's fine too\"), which watchFor flags as the wrong move for a \"settle it\" text. The tone is casual but reads a bit flat and diplomatic rather than playful.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

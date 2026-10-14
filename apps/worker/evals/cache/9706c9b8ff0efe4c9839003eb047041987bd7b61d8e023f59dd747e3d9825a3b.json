@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "IM8 Daily Ultimate Essentials (the powder) is well made and third-party tested, with NSF Certified for Sport",
+        "from": "Quality control looks solid. Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "Critics say several ingredient doses are too low (the adaptogen and mushroom complex totals only 200 mg)",
+        "from": "Innerbody ... several underdosed ingredients ... getsupplementreviews.com agrees that some blends are underdosed. The adaptogen and mushroom complex totals only 200 mg."
+      },
+      {
+        "states": "No independent clinical evidence supports its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "About $89 a month on subscription, about $112 for a one-time 30-serving box",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription, per getsupplementreviews.com and Live it Up"
+      },
+      {
+        "states": "Reishi and grape seed can interact with blood thinners and blood pressure medication",
+        "from": "getsupplementreviews.com noted ... reishi and grape seed can interact with blood thinners and blood pressure medication."
+      },
+      {
+        "states": "Taste and value opinions are split; many reviewers like the berry taste and convenience",
+        "from": "Several reviewers praise the taste, calling it berry-flavored, not grassy. Praise centers on convenience and energy. Taste opinions are split."
+      }
+    ],
+    "answer": "I'd call it overrated for most people. I'm assuming you mean the Daily Ultimate Essentials powder. It's well made and third-party tested, and plenty of people like the taste and how easy it is. But critics say a lot of the doses are too low, there's no independent clinical evidence for the benefits it claims, and at about $89 a month on subscription it's pricey for what you get. If you take blood thinners or blood pressure meds, check with a doctor or pharmacist first, because reishi and grape seed can interact with them."
+  },
+  "latencyMs": 10942
+}

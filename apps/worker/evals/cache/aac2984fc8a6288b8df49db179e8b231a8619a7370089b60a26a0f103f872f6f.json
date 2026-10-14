@@ -1,0 +1,49 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Overrated for most people (opinion)",
+        "from": "settled"
+      },
+      {
+        "states": "Well made and third-party tested",
+        "from": "Quality control looks solid. Both formulas are third-party tested"
+      },
+      {
+        "states": "Tastes decent to most people",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "Several ingredients underdosed versus effective ranges",
+        "from": "its ingredient doses fall short of effective ranges"
+      },
+      {
+        "states": "One of the pricier all-in-one supplements",
+        "from": "called it one of the most expensive all-in-one supplements on the market"
+      },
+      {
+        "states": "About $89 a month on subscription, by some listings",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription, per getsupplementreviews.com and Live it Up."
+      },
+      {
+        "states": "No independent clinical evidence for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "Enthusiastic reviews are mostly personal experiences",
+        "from": "Enthusiastic reviews are mostly personal experiences"
+      },
+      {
+        "states": "Doubling up on vitamin A, zinc or niacin can push past upper limits",
+        "from": "doubling up on vitamin A, zinc or niacin creates real upper limit concerns"
+      },
+      {
+        "states": "Reishi and grape seed can interact with blood thinners and blood pressure medication",
+        "from": "reishi and grape seed can interact with blood thinners and blood pressure medication"
+      }
+    ],
+    "answer": "Overrated for most people, I'd say. It's well made and tested, and most folks find it tastes decent, so it's not junk. But several ingredients are dosed below what studies use, it's one of the pricier all-in-ones (around $89 a month on subscription by some listings), and I couldn't find independent clinical evidence for its benefit claims. The rave reviews are mostly personal experiences. If you like the convenience and can afford it, fine, but I wouldn't pay that for the science. Heads up: doubling up on vitamin A, zinc or niacin can push you past safe upper limits, and reishi and grape seed can interact with blood thinners and blood pressure medication. If you take any of those, check with a doctor or pharmacist first, and don't stack it with other supplements without checking."
+  },
+  "latencyMs": 35533
+}

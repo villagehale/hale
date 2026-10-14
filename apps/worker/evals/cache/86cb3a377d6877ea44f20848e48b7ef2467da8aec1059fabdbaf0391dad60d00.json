@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No TSX trading today, Monday Oct 12, 2026, which is the Canadian Thanksgiving long weekend",
+        "from": "No trading today. Monday, Oct 12 is the Canadian Thanksgiving long weekend."
+      },
+      {
+        "states": "Last close before today was Friday Oct 9 at 35,664.62, up 519.24 points (+1.48%)",
+        "from": "Last close before today (Friday, Oct 9): The S&P/TSX Composite closed at 35,664.62, up 519.24 points (+1.48%), per MSN Money."
+      },
+      {
+        "states": "Trading resumes Tuesday Oct 13",
+        "from": "One report says Canada's stock market returned from the Thanksgiving long weekend on Tuesday, October 13."
+      }
+    ],
+    "answer": "Markets are closed today for Thanksgiving, so there's no TSX trading. Last close was Friday at 35,664.62, up 519.24 points (+1.48%). Trading's back Tuesday."
+  },
+  "latencyMs": 4989
+}

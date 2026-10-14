@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The search was unavailable, and the answer says plainly that it can't check tomorrow's forecast. It states no weather from memory and correctly doesn't ask for a city. The tone is mostly casual, but the closing \"Maybe try again in a bit and I'll look it up for you\" leans slightly toward an assistant offering a service. Correct overall, with that minor tone ding.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

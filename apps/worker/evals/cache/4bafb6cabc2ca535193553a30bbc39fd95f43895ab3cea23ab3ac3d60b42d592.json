@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Ontario Structured Psychotherapy Program gives free, publicly funded cognitive-behavioural therapy for depression and anxiety-related concerns",
+        "from": "gives adults free, publicly funded cognitive-behavioural therapy for depression and anxiety-related concerns"
+      },
+      {
+        "states": "You can refer yourself with no Ontario health card or family doctor needed",
+        "from": "No Ontario health card or primary care provider is needed, and self-referrals are accepted."
+      },
+      {
+        "states": "Find the local network at ontariohealth.ca/osp",
+        "from": "To use it, find the local network at ontariohealth.ca/osp and fill out the referral form."
+      },
+      {
+        "states": "An intake clinician checks whether the program fits you",
+        "from": "An intake clinician assesses eligibility. It is not suitable for everyone"
+      },
+      {
+        "states": "Centre for Training in Psychotherapy: $45 per session with a supervised student therapist",
+        "from": "Centre for Training in Psychotherapy: $45 per session with a supervised student therapist."
+      },
+      {
+        "states": "That fee is from an older list and may have changed",
+        "from": "These fees and waits are old and may have changed."
+      },
+      {
+        "states": "Nothing confirms that any listed clinic is currently taking new clients",
+        "from": "Nothing confirms that any listed clinic is currently taking new clients."
+      }
+    ],
+    "answer": "I'm sorry you're looking for one right now. If things get urgent, go to the nearest emergency room or call your local emergency number straight away. The free option is the Ontario Structured Psychotherapy Program, which covers depression and anxiety. You can refer yourself at ontariohealth.ca/osp without a health card, and an intake clinician will check whether it's a good fit. If you can pay, the Centre for Training in Psychotherapy in Toronto charges about $45 a session with a supervised student therapist, though that figure is from an older list and may have changed. I couldn't confirm that any of these are taking new clients right now."
+  },
+  "latencyMs": 11365
+}

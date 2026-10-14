@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Essentials powder is third-party tested and well made",
+        "from": "Quality control looks solid. Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "Tastes decent for most people",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "Some ingredient doses fall short of effective ranges",
+        "from": "otherwise its ingredient doses fall short of effective ranges"
+      },
+      {
+        "states": "One of the most expensive all-in-one supplements on the market",
+        "from": "called it one of the most expensive all-in-one supplements on the market"
+      },
+      {
+        "states": "About $89 a month on subscription, per one listing",
+        "from": "about $89 a month on subscription, per getsupplementreviews.com and Live it Up"
+      },
+      {
+        "states": "No independent clinical evidence for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      }
+    ],
+    "answer": "I'd say overrated for most people. The powder is well made, tested, and tastes decent to most folks, so it's not junk. But several of the ingredients are dosed below what studies use, it's one of the pricier all-in-ones out there (around $89 a month on subscription by one listing), and I couldn't find independent clinical evidence that it does much beyond a basic multivitamin. The good reviews are mostly personal experiences, so if you like the convenience and can afford it, fine, but I wouldn't pay that for the science."
+  },
+  "latencyMs": 27791
+}

@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "2023 YouGov poll: 22% of Americans love pineapple on pizza and 37% like it, about 59% like or love it",
+        "from": "YouGov poll, March 2023: 22% of Americans love pineapple on pizza, 37% like it"
+      },
+      {
+        "states": "2017 Slice app survey: 54% said pineapple does not belong on pizza",
+        "from": "Slice app survey, 2017: 54% of respondents said pineapple does not belong on pizza"
+      }
+    ],
+    "answer": "Yes, it's ok. I'm firmly on the yes side. It's a split one, though. A 2023 YouGov poll had about 59% of Americans liking or loving it, but a 2017 Slice survey had 54% saying it doesn't belong on pizza. Taste wins here, so eat what you like."
+  },
+  "latencyMs": 16323
+}

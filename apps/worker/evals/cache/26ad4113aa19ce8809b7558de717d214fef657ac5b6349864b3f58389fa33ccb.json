@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday, Oct 13, Toronto: high of 25°C with humidex 32",
+        "from": "High of 25, with a humidex of 32."
+      },
+      {
+        "states": "Daytime sun and cloud, becoming a mix in the afternoon",
+        "from": "Becoming a mix of sun and cloud in the afternoon"
+      },
+      {
+        "states": "40 percent chance of showers late in the afternoon into the evening, with a risk of thunderstorms",
+        "from": "40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon. 40 percent chance of showers in the evening, with a risk of a thunderstorm."
+      },
+      {
+        "states": "Overnight low of 15°C",
+        "from": "Low of 15."
+      },
+      {
+        "states": "Wind from the southwest at 20 km/h, gusting to 40",
+        "from": "Wind from the southwest at 20 km/h, gusting to 40."
+      },
+      {
+        "states": "Forecast issued 11:00 AM EDT Tuesday, Oct 13",
+        "from": "The version the search returned was issued at 11:00 AM EDT on Tuesday, Oct 13"
+      }
+    ],
+    "answer": "Tomorrow in Toronto is warm: high of 25, feels like 32. Sun and cloud through the day, then a 40% chance of showers and a risk of thunderstorms late afternoon into the evening. Low of 15 overnight. Wind southwest at 20 km/h, gusts to 40. That's from the 11 AM forecast."
+  },
+  "latencyMs": 5148
+}

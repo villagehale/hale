@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tomorrow is Tuesday, Oct 13",
+        "from": "Research notes: weather for tomorrow, Tuesday Oct 13, 2026"
+      },
+      {
+        "states": "Vancouver, BC: cloudy, high around 14°C on Tuesday",
+        "from": "Environment Canada's forecast for Tuesday is cloudy with a high of 14°C"
+      },
+      {
+        "states": "Vancouver, BC: showers from late evening Tuesday, low around 11°C overnight",
+        "from": "Environment Canada's forecast for Tuesday night is a few showers beginning late in the evening, with a low of 11°C"
+      },
+      {
+        "states": "Vancouver, WA: dry, mostly cloudy, high around 64°F",
+        "from": "Wunderground (Hough station) gives a high of 64°F, a mix of clouds and sun early, then cloudy in the afternoon. Precipitation chance is 1%."
+      },
+      {
+        "states": "Vancouver, WA: low around 47°F overnight, mostly cloudy",
+        "from": "The low is 47°F with mostly cloudy skies."
+      }
+    ],
+    "answer": "Tomorrow's Tuesday. Vancouver, BC: cloudy, high around 14°C, showers from late evening, low around 11°C overnight. Vancouver, WA: dry, mostly cloudy, high around 64°F, low around 47°F."
+  },
+  "latencyMs": 7682
+}

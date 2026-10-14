@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct. Hale can't know what the parent ate, and it says so plainly without guessing. It reads like a casual text from a friend, in English, with light humour. Nothing is invented and no current facts are stated. 'You'll have to remember that one yourself' is a little curt, but it's a friendly ribbing, not a deflect, since there's nothing to look up.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "urls": [
+    "https://www.mouwasat.com/en/blogs/warning-signs-after-a-head-injuries-in-kids-and-when-to-go-to-the-er",
+    "https://www.sutterhealth.org/health/head-injuries-and-children-when-to-take-your-child-to-the-doctor",
+    "https://www.emergencyphysicians.org/article/pediatrics/child-head-injury",
+    "https://www.childrensmn.org/blog/child-bumped-head-when-to-worry/",
+    "https://www.emergencyphysicians.org/article/know-when-to-go/head-injury",
+    "https://www.flintrehab.com/vomiting-after-head-injury/",
+    "https://www.fevercoach.us/post/child-hit-head-fever-er-signs",
+    "https://www.bumpandbabymatters.com/blog/head-injury-triage-guide-for-caregivers-what-to-do-when-your-child-falls",
+    "https://greenbergandstein.com/blog/when-to-go-to-a-hospital-for-a-child-head-injury/",
+    "https://www.urmc.rochester.edu/news/publications/health-matters/can-you-sleep-with-a-concussion",
+    "https://www.rch.org.au/kidsinfo/fact_sheets/head_injury/",
+    "https://kidshealth.org/en/parents/sleep-concussion.html",
+    "https://www.massgeneralbrigham.org/en/about/newsroom/articles/signs-concussion-child",
+    "https://uamshealth.com/medical-myths/is-it-safe-to-sleep-if-you-have-a-concussion/",
+    "https://www.bumpandbabymatters.com/blog/head-injury-triage-guide-for-caregivers-what-to-do-when-your-child-falls",
+    "https://www.pediatricgroup.com/head_injury",
+    "https://www.luriechildrens.org/en/blog/what-to-do-if-a-child-hits-their-head/",
+    "https://mooremyoworx.com/can-you-sleep-with-a-concussion/"
+  ],
+  "notes": "Research notes (searches run on Monday, Oct 12, 2026). The question does not give the child's age, how far or onto what surface they fell, whether they passed out, or how they are acting now. Those details change the answer.\n\n**Sleep after a head injury**\n- Sleep itself is generally not harmful. Keeping a child awake after a head injury is a myth, and rest is important for healing. Kidshealth says doctors used to recommend regularly waking kids after a concussion, but now recommend letting them rest and sleep as needed.\n- This only applies when the child is otherwise doing well. Lurie Children's says it's usually safe for children to sleep after hitting their head, but they should be monitored closely for the first few hours for difficulty waking, confusion or vomiting.\n- UAMS says a child can sleep if awake and holding a conversation, and not developing other symptoms such as dilated pupils or trouble walking.\n\n**Vomiting after the injury**\n- Several sources count vomiting after a head injury as a reason to get medical care.\n  - Children's Minnesota lists vomiting after the injury, especially more than once, as a reason to go to the ER.\n  - The Rochester (URMC) article quotes a doctor: \"If your child is vomiting or is having difficulty speaking or walking, go to the emergency department to be evaluated.\"\n  - A pediatric group's advice says to call their office if vomiting occurs 2 or more times, and to seek emergency care for vomiting repeatedly.\n  - The American College of Emergency Physicians says to seek care if a child vomits repeatedly in a brief period (e.g., more than once or twice within an hour) after a head injury, and notes vomiting is more common in young children.\n- One source gives some reassurance. In a study of over 40,000 children with mild head trauma, nearly 15% vomited, but only 0.2% of those with vomiting alone had a clinically important brain injury. This source is older (about 971 days) and is about vomiting with no other symptoms.\n\n**Height of the fall**\n- Royal Children's Hospital (Australia) says to call an ambulance immediately if a child injured their head at high speed or from a high fall. The results do not say whether a top-bunk fall counts as a \"high fall.\"\n- Sutter Health says if there is any question about the severity of the injury, take the child to the nearest emergency department right away.\n\n**Other signs that mean emergency care**\n- Sources agree on these: loss of consciousness, seizure, a headache that is severe or getting worse, confusion or unusual behavior, trouble walking or balance problems, slurred speech, weakness or numbness, unequal pupils, blood or clear fluid from the nose or ears, neck pain, and extreme sleepiness or being hard to wake.\n- Royal Children's Hospital says to call an ambulance immediately if you have trouble waking your child.\n\n**Monitoring period**\n- Sutter Health recommends monitoring any child with a head injury, even a minor one, for the first 24 to 48 hours.\n\n**What the results do not settle**\n- No source says an hour-long nap is fine after a fall followed by two episodes of vomiting. The sources treat repeated vomiting as a warning sign that calls for medical evaluation. They treat sleep as safe only when there are no other warning signs.\n- Several sources also say any child who might have a concussion should be checked by a doctor or the ER. Kidshealth says so directly: any child who might have a concussion should be checked out by their doctor or at the emergency room.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 12314
+}

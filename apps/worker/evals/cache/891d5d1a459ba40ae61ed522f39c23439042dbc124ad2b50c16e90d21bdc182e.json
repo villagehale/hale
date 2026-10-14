@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "live is missing_detail, and the reply correctly asks which country it's in without naming a broadcaster from memory. That rights differ by country is common knowledge. It's brief and in the right language, but 'so I need that to point you to the right place' reads a little like an assistant, not a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}
