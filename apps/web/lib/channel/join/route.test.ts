@@ -1,24 +1,25 @@
 import { type Database, schema } from '@hale/db';
-import type { FamilyRole } from '~/lib/channel/role-scope';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
+import { greeting } from '~/lib/channel/intake/copy';
 import {
+  type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  type FakeDb,
   fakeAckComposer,
+  fakeNoOpenQuestions,
   fakeRadar,
   fakeSilentAnswerComposer,
-  fakeNoOpenQuestions,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
-import { CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
-import { greeting } from '~/lib/channel/intake/copy';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import type { FamilyRole } from '~/lib/channel/role-scope';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { askWriter } from '~/lib/testing/consent-double';
 import { joinTokenHash } from './code';
 import { JOIN_LINK_TTL_MS } from './invites';
 
@@ -94,6 +95,19 @@ function harness(): Harness {
       openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
+      consent: {
+        read: async ({ text }) => {
+          const folded = text.trim().toLowerCase();
+          if (['yes', 'oui', 'yes please', 'sounds good', 'yeah'].includes(folded)) {
+            return { verdict: 'yes' as const, target: 'none' as const };
+          }
+          if (['no', 'non', 'nope', 'no thanks'].includes(folded)) {
+            return { verdict: 'no' as const, target: 'none' as const };
+          }
+          return { verdict: 'neither' as const, target: 'none' as const };
+        },
+      },
+      consentAsk: askWriter(),
       now,
     }),
   };
@@ -120,9 +134,7 @@ async function seedFamily(
     .returning({ id: schema.families.id });
   const familyId = family?.id as string;
   const parentUserId = user?.id as string;
-  await fake.db
-    .insert(schema.familyMembers)
-    .values({ familyId, userId: parentUserId, role });
+  await fake.db.insert(schema.familyMembers).values({ familyId, userId: parentUserId, role });
   await fake.db.insert(schema.parentChannels).values({
     userId: parentUserId,
     familyId,
@@ -148,7 +160,10 @@ function auditActions(fake: FakeDb): string[] {
 
 /** The token as the parent was actually handed it, off the wire. */
 function mintedCode(transport: FakeTransport): string {
-  const match = transport.bodies().join(' ').match(/join-[0-9a-f]{32}/);
+  const match = transport
+    .bodies()
+    .join(' ')
+    .match(/join-[0-9a-f]{32}/);
   if (!match) throw new Error(`no join link was texted: ${transport.bodies().join(' | ')}`);
   return match[0];
 }
@@ -235,9 +250,7 @@ describe('minting the link · "add my partner", no number', () => {
       granted: true,
       consentScope: 'family_role:co_parent',
     });
-    expect((grants[0]?.evidence as Record<string, unknown>).verbatimReply).toBe(
-      'add my partner',
-    );
+    expect((grants[0]?.evidence as Record<string, unknown>).verbatimReply).toBe('add my partner');
     expect(auditActions(h.fake)).toContain('co_parent_join_link_minted');
 
     // The instruction that started it is ledgered verbatim; nothing Hale wrote is.
@@ -245,9 +258,7 @@ describe('minting the link · "add my partner", no number', () => {
     expect(messages.filter((m) => m.direction === 'in').map((m) => m.body)).toEqual([
       'add my partner',
     ]);
-    expect(messages.filter((m) => m.direction === 'out').every((m) => m.body === null)).toBe(
-      true,
-    );
+    expect(messages.filter((m) => m.direction === 'out').every((m) => m.body === null)).toBe(true);
   });
 
   it('refuses to mint a link for a member who is not a parent', async () => {
@@ -414,9 +425,9 @@ describe('a link that is no longer good · never an error to the person holding 
     expect(second).toEqual({ status: 'greeted' });
     expect(h.transport.sent.slice(before).map((s) => s.body)).toEqual([greeting(null, 'en')]);
     // Exactly one co-parent was ever created.
-    expect(inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent')).toHaveLength(
-      1,
-    );
+    expect(
+      inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent'),
+    ).toHaveLength(1);
     expect(
       inserts(h.fake, schema.parentChannels).filter(
         (r) => r.phoneE164Hash === phoneBlindIndex(BYSTANDER_PHONE),
@@ -435,9 +446,9 @@ describe('a link that is no longer good · never an error to the person holding 
 
     expect(late).toEqual({ status: 'greeted' });
     expect(h.transport.sent.at(-1)?.body).toBe(greeting(null, 'en'));
-    expect(inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent')).toHaveLength(
-      0,
-    );
+    expect(
+      inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent'),
+    ).toHaveLength(0);
   });
 
   /**
@@ -491,11 +502,7 @@ describe('a link that is no longer good · never an error to the person holding 
   it('drops an unknown token rather than storing a capability string on the session', async () => {
     const h = harness();
 
-    const stranger = await text(
-      h,
-      PARTNER_PHONE,
-      arrival('join-deadbeefdeadbeefdeadbeefdeadbeef'),
-    );
+    const stranger = await text(h, PARTNER_PHONE, arrival('join-deadbeefdeadbeefdeadbeefdeadbeef'));
 
     expect(stranger).toEqual({ status: 'greeted' });
     expect(h.transport.sent.at(-1)?.body).toBe(greeting(null, 'en'));

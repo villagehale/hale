@@ -141,6 +141,8 @@ export async function runInferenceForFamily(
         promptTokens: result.usage.promptTokens,
         completionTokens: result.usage.completionTokens,
         costUsd: agentRunCostUsd(modelUsed, result.usage),
+        cacheReadTokens: result.usage.cacheReadTokens,
+        cacheWriteTokens: result.usage.cacheCreationTokens,
         latencyMs: Date.now() - startedAt,
         status: 'completed',
         langfuseTraceId: trace.traceId,

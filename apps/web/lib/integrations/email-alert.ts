@@ -121,7 +121,6 @@ export const EMAIL_ALERT_OUTCOMES = [
   'no_received_at',
   'gate_refused:not_enrolled',
   'gate_refused:no_watch_consent',
-  'gate_refused:frequency_cap',
   'gate_refused:quiet_hours',
   'classifier_failed',
   'no_send_target',
@@ -1041,7 +1040,7 @@ export async function alertParentForGmailSweep(
   }
 
   if (input.backfill === true) {
-    // A backfill is not a text. Every envelope this pass was handed is recorded.
+    // A backfill is not a text. Every dated envelope this pass was handed is recorded.
     const { skipped, considered } = datedEnvelopes(envelopes);
     const outcomes: EmailAlertResult[] = [...skipped];
     if (considered.length > 0) {

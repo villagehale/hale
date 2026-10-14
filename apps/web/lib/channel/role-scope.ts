@@ -15,18 +15,22 @@ import { deriveStage } from '@hale/types';
  * (`outbound-gate.ts`), and the two compose rather than overlap — they answer
  * different questions and neither substitutes for the other:
  *
- *   outbound-gate  — MAY a message leave at all? (enrolment, consent, cap, quiet hours)
+ *   outbound-gate  — MAY a message leave at all? (enrolment, consent, quiet hours)
  *   role-scope     — HOW MUCH of the household may THIS recipient see?
  *
- * So the caregiver content senders that follow M6 must call BOTH: a volume budget for
+ * So the caregiver content senders that follow M6 must call BOTH: the outbound gate for
  * whether the message may leave, and this file for how much of the household it may
- * carry. A sender that passes the budget and skips this one sends a grandmother a
+ * carry. A sender that passes the gate and skips this one sends a grandmother a
  * teenager's week.
  *
- * The first sender rides the LOOP: the caregiver event reminders go through the A2
- * dispatch (channel/dispatch.ts), whose quiet hours, live-consent gate, ledger and
- * audit are per RECIPIENT and therefore already meter a caregiver. It does not add a
- * `ProactiveSendKind`. There is no numeric cap on how many messages leave.
+ * WHICH PIPE depends on which sender rides it, and the first sender rides the
+ * LOOP: the caregiver event reminders go through the A2 dispatch (channel/dispatch.ts),
+ * whose quiet hours + live-consent gate + ledger + audit are per
+ * RECIPIENT and therefore already meter a caregiver. It does not add a
+ * `ProactiveSendKind`, and adding one would have given it a second, differently shaped
+ * meter for the same texts. A future caregiver sender on the F14 outbound-gate
+ * path (outbound-gate.ts) has no count. The rule is one pipe per sender, not one
+ * meter per role. Same-item dedupe is what stops a second copy.
  *
  * The M6 invite exchange itself does NOT route through the gate, and the reason is
  * structural rather than an exemption: every check the gate makes is about an ENROLLED

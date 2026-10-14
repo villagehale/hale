@@ -10,6 +10,7 @@ import {
   loadOpenInviteByPhone,
 } from '~/lib/channel/caregiver/invites';
 import {
+  type CaregiverDeps,
   type CaregiverOutcome,
   type CoParentOutcome,
   type LapsedInviteOutcome,
@@ -194,6 +195,7 @@ import {
   saveSession,
   transcriptHasOutbound,
 } from './session';
+import { type SignupStepReader, openSignupStep } from './signup-step';
 import { isQuestionOrNewFind, isSoftLadderAck } from './soft-ack';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn, releaseIntakeTurn } from './turn-claim';
@@ -266,6 +268,18 @@ export interface IntakeDeps {
    * closed — an off-script question silently becoming a re-ask — and its own "there was
    * nothing to answer" is a named outcome, so absence has no meaning left to carry. */
   answerComposer: IntakeAnswerComposer;
+  /**
+   * Whether a mid-signup text answers the open step. The model reads it, in
+   * any wording and any language. Absent is `not_configured` and the ladder
+   * continues. A failed read, or a read that says this is not an answer,
+   * closes the session so the door can hand the parent's own words to the
+   * coach, which replies in the language they wrote in.
+   */
+  signupStepReader?: SignupStepReader;
+  /** Reads a consent reply during intake. Absence is named and assents to nothing. */
+  consent?: import('~/lib/channel/consent-reply').ConsentReader;
+  /** Writes a consent ask during intake. Absence is named and sends nothing. */
+  consentAsk?: import('~/lib/channel/consent-ask').ConsentAskWriter;
   /** What to call this parent, after a real radar win (PR #689). Intake's consent
    * tail does not call it: a name ask on the assent acknowledgment is the bot voice
    * this turn exists to stop. The dep stays required so a missing composer is a
@@ -440,6 +454,17 @@ interface Inbound {
   providerAnsweredKeyword?: IntakeKeyword | null;
 }
 
+/** The caregiver lane's ports, taken off intake's deps. The names differ on purpose. */
+function caregiverPorts(deps: IntakeDeps): CaregiverDeps {
+  return {
+    transport: deps.transport,
+    threadMessage: deps.threadMessage,
+    openQuestions: deps.openQuestions,
+    consent: deps.consent,
+    ask: deps.consentAsk,
+  };
+}
+
 export async function handleInboundSms(
   database: Database,
   inbound: Inbound,
@@ -549,7 +574,7 @@ export async function handleInboundSms(
     // starting an intake and they would be asked for their children's names.
     const invite = await loadOpenInviteByPhone(database, phoneE164, now);
     if (invite?.state === 'awaiting_caregiver_reply') {
-      return handleInviteReply(database, { invite, phoneE164, inbound, now }, deps);
+      return handleInviteReply(database, { invite, phoneE164, inbound, now }, caregiverPorts(deps));
     }
 
     const existing = await resolveVerifiedChannelByPhone(database, phoneE164);
@@ -559,7 +584,7 @@ export async function handleInboundSms(
       const outcome = await handleKnownNumberInbound(
         database,
         { owner: existing, phoneE164, inbound, now },
-        deps,
+        caregiverPorts(deps),
       );
       return outcome ?? { status: 'ignored', reason: 'no_open_conversation' };
     }
@@ -577,7 +602,11 @@ export async function handleInboundSms(
       const lapsed = await loadLapsedInviteByPhone(database, phoneE164, now);
       if (lapsed) {
         return claimedTurn(database, inbound, now, () =>
-          handleLapsedInviteReply(database, { invite: lapsed, phoneE164, inbound, now }, deps),
+          handleLapsedInviteReply(
+            database,
+            { invite: lapsed, phoneE164, inbound, now },
+            caregiverPorts(deps),
+          ),
         );
       }
     }
@@ -1446,6 +1475,7 @@ async function pursueNewHouseholdGroup(
     parentPhoneE164: string;
     now: Date;
     inboundBody: string;
+    ask?: import('~/lib/channel/consent-ask').ConsentAskWriter;
   },
   send: (body: string) => Promise<void>,
 ): Promise<void> {
@@ -1453,6 +1483,7 @@ async function pursueNewHouseholdGroup(
     const outcome = await openChosenHouseholdGroup(database, {
       ...args,
       namedPhone: parseCoParentNumberReply(args.inboundBody),
+      ask: args.ask,
     });
     if (outcome.status === 'invite_started') await send(outcome.reply);
   } catch (err) {
@@ -2383,7 +2414,7 @@ function withColdStart(
   };
 }
 
-/** Names on the reply after logistics, or the next reply when that day is already spent. */
+/** Names on the reply after logistics. A count is not a reason to wait. */
 async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> {
   const { database, session, inbound, now, deps, language, familyId, progress, judged } = turn;
   const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
@@ -2429,9 +2460,9 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
     askKey: 'names',
   });
   if (!gate.allow) {
-    // The day is already spent. A note here used to stay the reply on every
-    // later text ("ok", a Chinese message). Close instead and hand this text
-    // to the coach. Do not record it here: the handoff inserts that row.
+    // Declined, paused, already asked, or stop-asking. A note here used to stay
+    // the reply on every later text ("ok", a Chinese message). Close instead
+    // and hand this text to the coach. Do not record it here: the handoff inserts that row.
     console.info({ reason: gate.reason, ask: 'names' }, 'cold-start names: held');
     await closeColdStartForCoach(database, session, inbound, now);
     return { status: 'ignored', reason: 'no_open_conversation' };
@@ -2541,6 +2572,30 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
     now,
   );
   return { status: 'first_touch', step: 'find_sent' };
+}
+
+/**
+ * The open step has already been asked. A configured reader that says this
+ * text does not answer it — or that cannot read it — is a handoff. No reader
+ * is named `not_configured` and the ladder continues.
+ */
+async function signupStepAnswers(turn: ColdStartTurn): Promise<boolean> {
+  const reader = turn.deps.signupStepReader;
+  const step = openSignupStep(turn.progress);
+  if (!reader) {
+    console.info({ skipped: 'not_configured', step }, 'signup step: reader not configured');
+    return true;
+  }
+  const reading = await reader.read({ step, text: turn.inbound.body });
+  if (!reading) {
+    console.info({ skipped: 'unreadable', step }, 'signup step: handing the text to the coach');
+    return false;
+  }
+  if (!reading.answers) {
+    console.info({ step }, 'signup step: not an answer, handing the text to the coach');
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -2933,6 +2988,7 @@ async function friendColdTurn(
       parentPhoneE164: session.phoneE164,
       now,
       inboundBody: inbound.body,
+      ask: deps.consentAsk,
     },
     async (body) => {
       await sendAndRecord(database, ctx, body, deps, recorded.transcript);
@@ -2975,7 +3031,6 @@ async function friendColdTurn(
       now,
       sendClass: ask,
       askKey: ask,
-      onboardingSequence: true,
     });
     let carried = false;
     if (gate.allow) {
@@ -3327,6 +3382,10 @@ async function runColdStartTurn(
   };
   if (progress.step === 'names' || progress.step === 'follow') {
     if (!progress.nameLineSent) return offerColdStartNames(turn);
+    if (!(await signupStepAnswers(turn))) {
+      await closeColdStartForCoach(database, session, inbound, now);
+      return { status: 'ignored', reason: 'no_open_conversation' };
+    }
     return offerColdStartFollow(turn);
   }
 
@@ -4165,7 +4224,7 @@ async function provision(
   await offerFounderWelcome(
     database,
     { newFamilyId: familyId, sourceCode: session.sourceCode, now },
-    defaultFounderPingPorts(deps.transport),
+    defaultFounderPingPorts(deps.transport, deps.consentAsk),
   );
 
   await saveSession(

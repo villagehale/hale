@@ -22,13 +22,11 @@ export const FOUNDER_PING_TEMPLATE_KEY = 'founder_welcome:ping';
 export const FOUNDER_NOTE_TEMPLATE_KEY = 'founder_welcome:note';
 
 /**
- * What the founder is told. NOTHING ABOUT THE FAMILY (rule #1): not a parent's name, not
- * a child's, not an age, not a number. The poster is the only fact in it, and it is a
- * fact about a piece of paper on a wall.
+ * What the founder is told is written per send (consent-ask, kind founder_ping).
+ * NOTHING ABOUT THE FAMILY (rule #1): not a parent's name, not a child's, not an
+ * age, not a number. The poster is the only fact in it, and it is a fact about a
+ * piece of paper on a wall. There is no fixed sentence.
  */
-export function founderPing(location: string): string {
-  return `A new family just joined from the ${location} poster. Reply YES and I'll send them your welcome note.`;
-}
 
 /** What the family gets, in his words. */
 export function founderNote(location: string): string {
@@ -50,7 +48,7 @@ export const FOUNDER_NOTE_DECLINED_ACK = 'No problem - I have closed that one ou
 export const FOUNDER_NOTE_UNREACHABLE_ACK =
   'I could not reach that family, so the note did not go. Closing that one out.';
 
-/** The wire ate it. The offer stays OPEN — unlike the line above, there is something left
- * to try — so the line says what to do next rather than closing the loop. */
-export const FOUNDER_NOTE_FAILED_ACK =
-  'The note did not get out just now. Still open - reply YES to try again.';
+/**
+ * The wire ate it. The offer stays OPEN. What the founder is told is written per
+ * send (consent-ask, kind founder_retry). There is no fixed sentence.
+ */

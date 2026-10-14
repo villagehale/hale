@@ -48,10 +48,15 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'proactive_cadence_sent',
     'proactive_cadence_skipped',
     'proactive_nudge_sent',
+    'evening_check_in_sent',
   ],
   // VIL-226. The send finalizer the nudge sweep and the hourly review share writes the
   // verb its caller names.
-  'apps/web/lib/channel/proactive/finalize.ts': ['proactive_cadence_sent', 'proactive_nudge_sent'],
+  'apps/web/lib/channel/proactive/finalize.ts': [
+    'proactive_cadence_sent',
+    'proactive_nudge_sent',
+    'evening_check_in_sent',
+  ],
   // One helper writes every passport verb. The "both kids" copy in actions.ts
   // also writes interest_stamp_confirmed as a literal.
   'apps/web/lib/passport/store.ts': [
@@ -206,13 +211,6 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // per-event link), and the first mint says which one the caller made.
   'apps/web/lib/loop/ics-feed.ts': ['ics_feed_shared', 'ics_event_link_minted'],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
-  // One send, two meanings: the evening question, or the notice that Hale is stepping
-  // down to weekly after three silent evenings (VIL-353). The verb is picked from the
-  // same boolean that picked the copy, so the two can never disagree.
-  'apps/web/lib/channel/checkin/sweep.ts': [
-    'evening_check_in_sent',
-    'evening_check_in_stepped_down',
-  ],
   // CANARY_ANSWERED_ACTION — a constant precisely because the cron's
   // verification reads the same value back (channel/canary/run.ts); a literal
   // here would let the two halves drift apart silently.

@@ -569,18 +569,14 @@ describe('alertParentForCalendarChanges', () => {
   });
 
   it('names each gate hold separately and records it under its own suppression status', async () => {
-    for (const reason of ['not_enrolled', 'no_watch_consent', 'frequency_cap'] as const) {
+    for (const reason of ['not_enrolled', 'no_watch_consent'] as const) {
       await expect(sweep(harness({ verdict: { allowed: false, reason } }))).resolves.toEqual([
         `gate_refused:${reason}`,
       ]);
     }
     const rows = await ledgerRows();
-    expect(rows.map((r) => r.status).sort()).toEqual([
-      'suppressed_cap',
-      'suppressed_consent',
-      'suppressed_consent',
-    ]);
-    expect(rows.map((r) => r.dedupeKey)).toEqual([null, null, null]);
+    expect(rows.map((r) => r.status).sort()).toEqual(['suppressed_consent', 'suppressed_consent']);
+    expect(rows.map((r) => r.dedupeKey)).toEqual([null, null]);
   });
 
   it('a provider refusal fails the claimed row in place and keeps the key spent', async () => {
@@ -601,30 +597,9 @@ describe('alertParentForCalendarChanges', () => {
     expect(rows[0]).toMatchObject({ status: 'failed', errorCode: 'no_send_target' });
   });
 
-  it('texts every change in the window, soonest included, with none dropped for a count', async () => {
-    const h = harness();
-    const changes = Array.from({ length: 7 }, (_, i) => ({
-      ...TIMED,
-      eventId: `ev-${i}`,
-      start: { dateTime: `2026-09-${String(18 + i).padStart(2, '0')}T20:15:00.000Z` },
-      end: { dateTime: `2026-09-${String(18 + i).padStart(2, '0')}T21:00:00.000Z` },
-    }));
-
-    const outcomes = await sweep(h, { changes });
-
-    expect(outcomes).toEqual(Array.from({ length: 7 }, () => 'sent'));
-    const keys = new Set((await ledgerRows()).map((r) => r.dedupeKey));
-    expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-0', TIMED.updated))).toBe(true);
-    expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-6', TIMED.updated))).toBe(true);
-  });
-
-  it('never lets stale edits to events already OVER spend the sweep', async () => {
-    // The shape that made this real: with singleEvents=true, renaming a weekly class
-    // returns every instance of the series with a fresh `updated`, the past ones
-    // included. Capped before the window is judged — and sorted soonest-first, which puts
-    // the finished ones at the front — five September Tuesdays that already happened take
-    // all five slots, and tomorrow's class is never offered again, because syncCalendar
-    // advanced the syncToken the moment it read the page.
+  it('does not let events already over take the place of one still ahead', async () => {
+    // With singleEvents=true, renaming a weekly class returns every instance, the past
+    // ones included. Those are outside the window. Tomorrow's class is still said.
     const h = harness();
     const stale = Array.from({ length: 5 }, (_, i) => ({
       ...TIMED,
@@ -1137,9 +1112,8 @@ describe('one edit to a series is one text', () => {
 
   it('collapses TWO instances of one series into one text, and leaves ONE alone', async () => {
     // The floor is SERIES_MIN_INSTANCES = 2: a second change about the same class in one
-    // sweep is the same news said twice, and one text costs one of the five slots instead
-    // of two. A lone instance is below the floor and stays an ordinary single — which is
-    // what a cancelled Tuesday inside a live term reduces to.
+    // sweep is the same news said twice. A lone instance is below the floor and stays an
+    // ordinary single — which is what a cancelled Tuesday inside a live term reduces to.
     const h = harness();
     const pair = instances().slice(0, 2);
     await expect(sweep(h, { changes: pair })).resolves.toEqual(['sent', 'collapsed_into_series']);
@@ -1154,8 +1128,7 @@ describe('one edit to a series is one text', () => {
     );
   });
 
-  it('sends the series and the other changes in the same sweep', async () => {
-    // A weekly class collapses to one text. The other changes in the sweep still go.
+  it('sends one text for a series and still sends the other changes', async () => {
     const h = harness();
     const others = Array.from({ length: 4 }, (_, i) => ({
       ...TIMED,
@@ -1348,10 +1321,10 @@ describe('a change the gate held is offered again', () => {
 
   it('gives up on a hold older than three days, by name', async () => {
     await expect(
-      sweep(harness({ verdict: { allowed: false, reason: 'frequency_cap' } }), {
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
         changes: [AHEAD],
       }),
-    ).resolves.toEqual(['gate_refused:frequency_cap']);
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
 
     const tooLate = harness();
     const past = await sweepBoth(tooLate, {
@@ -1364,7 +1337,7 @@ describe('a change the gate held is offered again', () => {
   });
 
   it('is still owed one day inside the limit — the control for the expiry above', async () => {
-    await sweep(harness({ verdict: { allowed: false, reason: 'frequency_cap' } }), {
+    await sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
       changes: [AHEAD],
     });
 
@@ -1386,7 +1359,7 @@ describe('a change the gate held is offered again', () => {
       start: { dateTime: '2026-09-26T20:15:00.000Z' },
       end: { dateTime: '2026-09-26T21:00:00.000Z' },
     };
-    const refused = { verdict: { allowed: false, reason: 'frequency_cap' } } as const;
+    const refused = { verdict: { allowed: false, reason: 'quiet_hours' } } as const;
     await sweep(harness(refused), { changes: [OLD] });
     await sweep(harness(refused), { changes: [RECENT], now: afterDays(2) });
     expect(await snapshotOf(OLD.eventId)).toMatchObject({ heldLocation: 'Main Gym' });
@@ -1424,9 +1397,7 @@ describe('a change the gate held is offered again', () => {
     expect(afterwards.transport.sent).toEqual([]);
   });
 
-  it('puts the oldest debt first, and sends the debts and the new news in one sweep', async () => {
-    // Four debts, four fresh changes. There is no per-sweep count: the debts go first
-    // and every fresh change goes in the same sweep.
+  it('puts the oldest debt first, then the new changes', async () => {
     for (let i = 0; i < 4; i += 1) {
       await sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
         now: new Date(NOW.getTime() + i * 1000),
@@ -1746,9 +1717,7 @@ describe('the text itself', () => {
 });
 
 describe('the gate registration', () => {
-  it('counts calendar alerts on their OWN budget, three a day', () => {
-    // Kills PROACTIVE_CATEGORY.calendar_alert = 'email_alert', which would let a busy
-    // calendar spend the inbox's budget.
+  it('files calendar alerts on their own ledger category', () => {
     expect(PROACTIVE_CATEGORY.calendar_alert).toBe('calendar_alert');
   });
 });

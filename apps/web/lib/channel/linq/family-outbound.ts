@@ -38,7 +38,6 @@ export type FamilyOutboundTarget =
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SETTLE_MS = 10 * 60 * 1000;
-const SYNC_LINE_MAX = 3;
 const QUIET_START = '21:00:00';
 const QUIET_END = '08:00:00';
 
@@ -471,9 +470,9 @@ export async function noteGroupSyncConversation(
 }
 
 /**
- * Send the waiting decisions whose 1:1 has been quiet. One bubble, at most
- * three lines, never a second bubble for the same sitting. Quiet hours hold
- * the bubble; the rows stay queued. A row about a child who is 13+ by now is
+ * Send the waiting decisions whose 1:1 has been quiet. One bubble, every due
+ * line, never a second bubble for the same sitting. Quiet hours hold the
+ * bubble; the rows stay queued. A row about a child who is 13+ by now is
  * withheld: marked flushed and never said.
  */
 export async function flushGroupDecisionSyncs(
@@ -545,7 +544,6 @@ export async function flushGroupDecisionSyncs(
     const speech = await familySpeech(database, familyId, rows[0]?.parentUserId ?? '');
     const lines: string[] = [];
     for (const row of rows) {
-      if (lines.length >= SYNC_LINE_MAX) break;
       const name = speech.name ?? (speech.language === 'fr' ? 'Un parent' : 'A parent');
       if (row.decision === 'picked' && row.day && row.time) {
         lines.push(

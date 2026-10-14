@@ -337,6 +337,9 @@ describe('a weekday-care answer, through the router', () => {
       transport: new FakeReplyTransport(),
       offDomain: { consider: async () => ({ status: 'in_domain', fallback: null }) },
       replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
+      weekdayCareReader: {
+        read: async () => ({ status: 'read' as const, care: 'home' as const, provider: null }),
+      },
       coach: {
         async respond() {
           coach.calls += 1;

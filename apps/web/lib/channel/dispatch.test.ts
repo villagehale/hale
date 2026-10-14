@@ -18,7 +18,7 @@ import type { LoopMessage, RenderedContent, VoiceOutcome } from './types';
  * VIL-213 · A2 dispatch policy. Deterministic (no LLM) → plain Vitest with Fakes +
  * an injected clock. Proves the AC: policy is per delivery leg (the parent's
  * exchange channel), a ledger row per outcome (suppression OR send), per-channel
- * dedupe + caps, time_sensitive bypass, and the email CASL dual-write.
+ * dedupe, time_sensitive bypass, and the email CASL dual-write.
  */
 
 const TORONTO = 'America/Toronto';

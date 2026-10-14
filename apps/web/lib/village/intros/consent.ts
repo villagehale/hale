@@ -44,9 +44,10 @@ export function proposalScope(proposalId: string): string {
  * A JSONB addition to a column that already exists, so no migration.
  */
 export interface ConsentReading {
-  readBy: 'keyword' | 'reply-resolver';
+  readBy: 'keyword' | 'reply-resolver' | 'consent-reply';
   /** Null for a keyword — a typed token has no confidence, it either matched or it did
-   * not. Never folded into a default (rule #11): the absence means something. */
+   * not. Never folded into a default (rule #11): the absence means something.
+   * `keyword` is historical: new rows are `reply-resolver` or `consent-reply`. */
   confidence: 'high' | 'medium' | 'low' | null;
 }
 
@@ -162,10 +163,7 @@ export async function recordProposalConsent(
  * The newest row wins, and it only counts as a grant when it is a grant that was never
  * revoked. Both withdrawal conventions are handled by that one rule.
  */
-export async function discoverabilityGranted(
-  database: Database,
-  userId: string,
-): Promise<boolean> {
+export async function discoverabilityGranted(database: Database, userId: string): Promise<boolean> {
   const [latest] = await database
     .select({
       granted: schema.consentRecords.granted,
@@ -191,10 +189,7 @@ export async function discoverabilityGranted(
  *
  * Any row on this scope — grant or decline — is proof the question was put.
  */
-export async function discoverabilityAsked(
-  database: Database,
-  userId: string,
-): Promise<boolean> {
+export async function discoverabilityAsked(database: Database, userId: string): Promise<boolean> {
   const [row] = await database
     .select({ id: schema.consentRecords.id })
     .from(schema.consentRecords)

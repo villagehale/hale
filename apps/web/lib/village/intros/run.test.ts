@@ -137,7 +137,7 @@ function harness(
   const gate: OutboundGatePorts = {
     channelEnrolled: async () => overrides.hold !== 'not_enrolled',
     watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
-    countProactiveSends: async () => overrides.recentSends ?? 0,
+    countProactiveSends: async () => 0,
     proactiveSentSince: async () => true,
     parentTimeZone: async () => (overrides.hold === 'quiet_hours' ? 'America/Toronto' : 'UTC'),
   };
@@ -465,17 +465,6 @@ describe('phase 1 - the discoverability ask', () => {
       expect(result.held[reason]).toBe(2);
     },
   );
-
-  it('asks when the families already had many proactive texts', async () => {
-    const h = harness({
-      families: [family({ familyId: A }), family({ familyId: B })],
-      recentSends: 99,
-    });
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-    expect(result.held.frequency_cap).toBe(0);
-    expect(result.asked).toBe(2);
-    expect(h.transport.sent).toHaveLength(2);
-  });
 });
 
 describe('phase 2 - matching and the coarse card', () => {

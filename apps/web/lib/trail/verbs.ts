@@ -445,6 +445,7 @@ export const AUDIT_VERBS = [
   'coach_plan_check_in_sent',
   // ── the evening check-in (VIL-353) ──────────────────────────────────────
   'evening_check_in_sent',
+  'evening_check_in_queued',
   'evening_check_in_stepped_down',
   'evening_check_in_stopped',
   'evening_check_in_answered',
@@ -1565,7 +1566,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   // 'awaiting' because the question is genuinely outstanding until the morning: the
   // trail should show an evening Hale asked about and nobody answered as exactly that.
   evening_check_in_sent: { sentence: 'Hale asked how your day went', family: 'awaiting' },
-  // Hale's own ladder moving, said out loud to the parent in the same breath.
+  // The sweep handed an evening to the decider. Nothing has reached the phone yet.
+  evening_check_in_queued: {
+    sentence: 'Hale set an evening check-in aside for a decision',
+    family: 'note',
+  },
+  // The old silence ladder. Nothing writes this anymore. The sentence stays so a row
+  // from before the ladder was removed still renders.
   evening_check_in_stepped_down: {
     sentence: 'Hale moved to a weekly check-in',
     family: 'note',

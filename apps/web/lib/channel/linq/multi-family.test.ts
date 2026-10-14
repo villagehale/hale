@@ -1,13 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { linqMultiFamilyGroupsEnabled } from './config';
 import {
-  MULTI_FAMILY_ASK_DAILY_MAX,
-  MULTI_FAMILY_FAMILY_SEND_DAILY_MAX,
-  MULTI_FAMILY_GROUP_SEND_DAILY_MAX,
   MULTI_FAMILY_PARENT_COPY,
   classifySharedGroupIntent,
-  judgeFamilyAskBudget,
-  judgeFamilySendCap,
   replyStaysInThread,
   sharedThreadContext,
 } from './multi-family';
@@ -60,51 +55,5 @@ describe('shared thread copy', () => {
     expect(context.email).toEqual([]);
     expect(context.children).toEqual([]);
     expect(context.signups).toEqual([]);
-  });
-});
-
-describe('per-family ask budget and send caps', () => {
-  const now = new Date('2026-10-02T15:00:00.000Z');
-  const familyA = 'family-a';
-  const familyB = 'family-b';
-
-  it('counts asks against the family that was asked', () => {
-    const rows = Array.from({ length: MULTI_FAMILY_ASK_DAILY_MAX }, () => ({
-      familyId: familyA,
-      kind: 'ask' as const,
-      createdAt: now,
-    }));
-    expect(judgeFamilyAskBudget({ now, rows }, familyA)).toEqual({
-      allow: false,
-      reason: 'ask_budget',
-    });
-    expect(judgeFamilyAskBudget({ now, rows }, familyB)).toEqual({ allow: true });
-  });
-
-  it('counts sends per family and stops the whole chat at the group cap', () => {
-    const familyFull = Array.from({ length: MULTI_FAMILY_FAMILY_SEND_DAILY_MAX }, () => ({
-      familyId: familyA,
-      kind: 'send' as const,
-      createdAt: now,
-    }));
-    expect(judgeFamilySendCap({ now, rows: familyFull }, familyA).allow).toBe(false);
-    expect(judgeFamilySendCap({ now, rows: familyFull }, familyB)).toEqual({ allow: true });
-
-    const groupFull = [
-      ...Array.from({ length: 4 }, () => ({
-        familyId: familyA,
-        kind: 'send' as const,
-        createdAt: now,
-      })),
-      ...Array.from({ length: MULTI_FAMILY_GROUP_SEND_DAILY_MAX - 4 }, () => ({
-        familyId: familyB,
-        kind: 'send' as const,
-        createdAt: now,
-      })),
-    ];
-    expect(judgeFamilySendCap({ now, rows: groupFull }, familyB)).toEqual({
-      allow: false,
-      reason: 'group_send_cap',
-    });
   });
 });

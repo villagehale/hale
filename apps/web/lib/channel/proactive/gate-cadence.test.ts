@@ -17,9 +17,9 @@ vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
 });
 
 /**
- * VIL-226 · what the cadence flag changes at the gate. Live reads the counters as
- * context, not a hold. Shadow and live start quiet hours at 20:00 for a Florida or
- * Oklahoma number. Unset changes nothing, and reads no phone.
+ * VIL-226 · what the cadence flag changes at the gate. A count is never a hold, in
+ * any mode. Shadow and live start quiet hours at 20:00 for a Florida or Oklahoma
+ * number. Unset changes nothing, and reads no phone.
  */
 
 const FAMILY = 'fam-1';
@@ -65,29 +65,34 @@ const nudge = (now: Date) => ({
   now,
 });
 
-describe('there is no numeric cap under the cadence flag', () => {
-  it('lets the nudge through while the flag is unset, and still requires consent', async () => {
-    vi.stubEnv('PROACTIVE_CADENCE', undefined);
-    await expect(assertProactiveSendAllowed(nudge(MIDDAY), ports())).resolves.toEqual({
-      allowed: true,
-      optOut: 'short',
-    });
+describe('a count is never a hold', () => {
+  it.each(['off', 'shadow', 'live'] as const)(
+    'lets a nudge past any count when cadence is %s',
+    async (mode) => {
+      vi.stubEnv('PROACTIVE_CADENCE', mode === 'off' ? undefined : mode);
+      let counted = 0;
+      const gate = ports({
+        countProactiveSends: async () => {
+          counted += 1;
+          return 100;
+        },
+      });
+      await expect(assertProactiveSendAllowed(nudge(MIDDAY), gate)).resolves.toEqual({
+        allowed: true,
+        optOut: 'short',
+      });
+      expect(counted).toBe(0);
+    },
+  );
+
+  it('keeps consent when live, and still does not count', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
     await expect(
       assertProactiveSendAllowed(nudge(MIDDAY), ports({ watchConsentGranted: async () => false })),
     ).resolves.toEqual({ allowed: false, reason: 'no_watch_consent' });
   });
 
-  it('lets the nudge through in shadow and when live is requested', async () => {
-    for (const mode of ['shadow', 'live'] as const) {
-      vi.stubEnv('PROACTIVE_CADENCE', mode);
-      await expect(assertProactiveSendAllowed(nudge(MIDDAY), ports())).resolves.toEqual({
-        allowed: true,
-        optOut: 'short',
-      });
-    }
-  });
-
-  it('lets an unrouted kind through when live is requested', async () => {
+  it('lets an unrouted kind past any count while a requested live still runs as shadow', async () => {
     routing.complete = false;
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     await expect(

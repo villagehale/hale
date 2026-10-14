@@ -386,7 +386,7 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     queued: 0,
     shadowUnqueued: 0,
     failed: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0 },
     skips: {},
   };
 }
@@ -673,10 +673,14 @@ async function runForFamily(
   const recipients = await deps.loadRecipients(database, family.familyId);
   if (recipients.length === 0) return emptyTally({ held: ['not_enrolled'] });
 
-  // EVERY RECIPIENT IS GATED BEFORE ANYBODY IS SENT TO. Enrollment, watch consent,
-  // and quiet hours are known before a compose. There is no count of how many
-  // nudges the household already had. A parent inside quiet hours waits; the other
-  // parent is sent on this tick. The dedupe key stops a second copy of the same nudge.
+  // EVERY RECIPIENT IS GATED BEFORE ANYBODY IS SENT TO. The gate is enrolment, watch
+  // consent, and quiet hours. A count does not hold anyone. Same-item dedupe, keyed
+  // per recipient, is what stops a second copy of this nudge.
+  //
+  // On a tick where one parent is allowed and the other is inside their own quiet
+  // hours, the first is sent and the second is held `quiet_hours`. The next tick,
+  // outside those hours, can still send the second: nothing was spent that would
+  // refuse them.
   const allowed: Array<{ recipient: FamilyTextRecipient; optOut: OptOutForm }> = [];
   const held: ProactiveHoldReason[] = [];
   for (const recipient of recipients) {

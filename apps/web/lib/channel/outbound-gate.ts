@@ -18,8 +18,14 @@ import { quietStartForPhone } from './proactive/quiet';
  * and this is it.
  *
  * EVERY future proactive send class routes through `assertProactiveSendAllowed` —
- * add the kind to {@link ProactiveSendKind}, and it inherits the checks. A caller
- * that reaches a transport without an `allowed: true` verdict is a bug, not a shortcut.
+ * add the kind to {@link ProactiveSendKind}, {@link URGENCY_ALLOWED} and
+ * {@link PROACTIVE_CATEGORY}. A caller that reaches a transport without an
+ * `allowed: true` verdict is a bug, not a shortcut.
+ *
+ * There is no count cap. Opt-out, quiet hours, same-item dedupe, Linq 429 handling
+ * and line-health are the code rails. Whether to send, and how often, is the
+ * model's decision. A household past the unusual-volume line in proactive/volume.ts
+ * pages #ops; the send is not held.
  *
  * The checks run IN THIS ORDER, and the order is the design:
  *
@@ -42,7 +48,8 @@ import { quietStartForPhone } from './proactive/quiet';
 
 /**
  * Every class of message Hale may send UNPROMPTED. The union is the registry, so a new
- * class cannot be added without picking it a budget and an urgency stance below.
+ * class cannot be added without an urgency stance and a ledger category. No class
+ * has a count.
  *
  * `registration_sequence` (VIL-242 · M7) is the second class, and it is the first one
  * the parent SUBSCRIBED to: approving the shortlist Hale drafted for a specific
@@ -72,9 +79,8 @@ export type ProactiveSendKind =
    * parent has to act on — a cancelled class, a moved practice, a form due Friday.
    *
    * The parent CONNECTED the mailbox, which is consent to be watched, not consent to be
-   * texted about whatever a classifier finds interesting: the volume is set by how much
-   * mail arrives, so this class is the one where a classifier that drifts turns a
-   * mailbox into a feed. Hence a real counter below rather than a null.
+   * texted about whatever a classifier finds interesting. How often to send is the
+   * model's decision. Same-item dedupe is what stops one mail from becoming many texts.
    */
   | 'email_alert'
   /**
@@ -82,9 +88,8 @@ export type ProactiveSendKind =
    *
    * The sibling of `email_alert` and deliberately not the same class: this one needs no
    * classifier, because the calendar is the parent's OWN and every change on it is a
-   * change they are entitled to hear about. What it shares is the failure mode — the
-   * volume is set by how much the household's week moves, and a September that re-syncs
-   * forty edits is the week where a text per edit is the uninstall.
+   * change they are entitled to hear about. Same-item dedupe is the rail under a
+   * connector that re-seeds and reports forty edits as new.
    */
   | 'calendar_alert'
   /**
@@ -92,9 +97,8 @@ export type ProactiveSendKind =
    *
    * THE HIGHEST-FREQUENCY PROACTIVE CLASS IN THE PRODUCT, and the only one whose whole
    * design is a rhythm rather than an event. Its real volume rail is the parent's own
-   * cadence and the stop-answering ladder (channel/checkin/cadence.ts); the counter below
-   * is the rail under a SWEEP that goes wrong, which for a class that runs nightly is the
-   * one that would be felt fastest.
+   * cadence and the stop-answering ladder (channel/checkin/cadence.ts), plus the
+   * same-evening dedupe key. There is no count.
    */
   | 'evening_check_in'
   /**
@@ -108,22 +112,16 @@ export type ProactiveSendKind =
    * A booking email said the family is going somewhere with the children, and a week
    * before they go Hale texts a couple of things that are on there.
    *
-   * THE LOWEST-FREQUENCY PROACTIVE CLASS IN THE PRODUCT, and the counter below is not the
-   * bound — the bound is the trip, held by a claim keyed on the trip id. What the counter
-   * is for is the OTHER failure: a detection pass that starts writing trips it should not
-   * would otherwise produce a text per phantom trip, and one a week is the most that bug
-   * can cost before it stops.
+   * THE LOWEST-FREQUENCY PROACTIVE CLASS IN THE PRODUCT. The bound is the trip, held by
+   * a claim keyed on the trip id. There is no count beside that claim.
    */
   | 'travel_brief'
   /**
    * VIL-382 · a duty question in the co-parent group.
    *
-   * The Sunday overview is folded into the weekly bubble and does not spend this
-   * counter. What this counter bounds is a night-before confirmation or a
-   * parent-asked "who's got pickup", each of which is its own group bubble. Two
-   * a day matches the group ceiling (family-outbound's hard day max). The tighter
-   * discretionary rail, one a day and three a week, is that group's bubble kind,
-   * not a second number here.
+   * The Sunday overview is folded into the weekly bubble. A night-before confirmation
+   * or a parent-asked "who's got pickup" is its own group bubble. This class has no
+   * count of its own.
    */
   | 'duty_ask'
   /**
@@ -142,15 +140,16 @@ export type ProactiveSendKind =
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
-export type ProactiveHoldReason =
-  | 'not_enrolled'
-  | 'no_watch_consent'
-  | 'frequency_cap'
-  | 'quiet_hours';
+export type ProactiveHoldReason = 'not_enrolled' | 'no_watch_consent' | 'quiet_hours';
+
+/** A gate hold, or a group send waiting because the co-parent ask stays 1:1. */
+export type DeliveryHoldReason = ProactiveHoldReason | 'coparent_ask';
 
 /**
- * WHICH SUPPRESSION THE LEDGER RECORDS, per hold — dispatch.ts's four statuses, chosen by
- * the gate's four reasons.
+ * WHICH SUPPRESSION THE LEDGER RECORDS, per hold.
+ *
+ * `suppressed_cap` stays on the status union so a historical `channel_messages`
+ * row still parses. No hold reason writes it. A count is not a hold.
  *
  * HOISTED HERE (v5 travel) from two module-private copies. It was a six-line
  * `Record<ProactiveHoldReason, …>` in `integrations/email-alert.ts` and AGAIN in
@@ -159,7 +158,7 @@ export type ProactiveHoldReason =
  * the union it is keyed on, in the direction the imports already run (outbound-gate.ts
  * imports `ledger`, never the other way), next to `acceptedStatus`'s mirror there.
  *
- * A `Record`, so a fifth hold reason cannot be added without choosing what its receipt
+ * A `Record`, so another hold reason cannot be added without choosing what its receipt
  * says.
  */
 export type ProactiveHoldStatus =
@@ -173,7 +172,6 @@ export function holdStatus(reason: ProactiveHoldReason): ProactiveHoldStatus {
 
 const HOLD_STATUS: Record<ProactiveHoldReason, ProactiveHoldStatus> = {
   quiet_hours: 'suppressed_quiet_hours',
-  frequency_cap: 'suppressed_cap',
   not_enrolled: 'suppressed_consent',
   no_watch_consent: 'suppressed_consent',
 };
@@ -199,6 +197,19 @@ export type ProactiveSendVerdict =
   | { allowed: true; optOut: OptOutForm }
   | { allowed: false; reason: ProactiveHoldReason };
 
+/**
+ * Which classes may claim `urgent` and cross quiet hours.
+ *
+ * The quiet-hours rule reads "a proactive message is never urgent by construction",
+ * and that holds for everything Hale decides to send on its own. A registration
+ * sequence is the exception the sentence anticipated: the parent asked for a message
+ * timed to a municipal clock they do not control, and the two legs that claim urgency
+ * are WORTHLESS late — a battle plan deferred to 08:00 arrives after a 06:30 open, and
+ * a 15-minute warning that waits never fires at all.
+ *
+ * Fail-closed and per CLASS, never per caller: a `nudge` that sets `urgent` is still
+ * held, so the exemption cannot be widened by a flag at a call site.
+ */
 const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   nudge: false,
   registration_sequence: true,
@@ -326,7 +337,12 @@ export interface OutboundGatePorts {
   channelEnrolled(parentUserId: string): Promise<boolean>;
   /** proactive_watch consent, as it stands NOW. */
   watchConsentGranted(parentUserId: string): Promise<boolean>;
-  /** Proactive sends of this class that actually reached the FAMILY since `since`. */
+  /**
+   * Proactive sends of this class that actually reached the FAMILY since `since`.
+   *
+   * The gate does not read this. Callers still supply it. Unusual volume is an #ops
+   * alert in proactive/review.ts, not a hold here.
+   */
   countProactiveSends(familyId: string, kind: ProactiveSendKind, since: Date): Promise<number>;
   /**
    * Whether ANY proactive class has reached THIS PARENT since `since`.
@@ -361,10 +377,13 @@ export interface ProactiveSendRequest {
 /**
  * Establish whether ONE unprompted message may be sent, right now, to this parent.
  *
- * Returns a verdict rather than throwing: all four holds are ordinary, expected states
- * that the caller must record differently (a cap hold is a healthy week; a
+ * Returns a verdict rather than throwing: the holds are ordinary, expected states
+ * that the caller must record differently (a quiet-hours hold is a healthy night; a
  * not-enrolled hold is a departed family), and turning routine policy into exception
  * control flow would make the common path the error path.
+ *
+ * A count is not a hold. Historical ledger rows may still say `suppressed_cap`;
+ * this function does not write one.
  */
 export async function assertProactiveSendAllowed(
   request: ProactiveSendRequest,
@@ -409,7 +428,7 @@ export async function assertProactiveSendAllowed(
  * compliance gap nobody would see. Logged rather than swallowed, and never with the
  * recipient's id in the message.
  *
- * Read only after the four holds have passed — a held message is not a send, and the gate
+ * Read only after the holds have passed — a held message is not a send, and the gate
  * looks at nothing it is not entitled to act on.
  */
 async function optOutForm(

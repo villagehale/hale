@@ -4,6 +4,7 @@ import {
   computeTtfa,
   formatFunnelScoreboard,
   type FunnelScoreboard,
+  percentileNearestRank,
   type IntakeMessageRow,
   type NudgeRow,
   type ReplyRow,
@@ -54,6 +55,20 @@ function intakeRows(args: {
   }
   return rows;
 }
+
+describe('percentileNearestRank', () => {
+  const oneToTwenty = Array.from({ length: 20 }, (_, i) => i + 1);
+
+  it('takes sorted[ceil(p * n) - 1], whatever order the values arrive in', () => {
+    const shuffled = [...oneToTwenty].reverse();
+    expect(percentileNearestRank(shuffled, 0.95)).toBe(19);
+    expect(percentileNearestRank(shuffled, 0.5)).toBe(10);
+  });
+
+  it('has no percentile of nothing', () => {
+    expect(percentileNearestRank([], 0.95)).toBeNull();
+  });
+});
 
 describe('computeTtfa — first text → radar reply', () => {
   it('measures to the first outbound sent AFTER provisioning, not to the greeting', () => {

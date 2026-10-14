@@ -11,7 +11,7 @@ import { travelBriefEnabledFor } from './flag';
  *
  * Two stages and only the second costs anything. {@link looksLikeBooking} is a
  * deterministic two-token filter over the envelope the connector sweep already holds, so
- * the inbox is free; the extraction runs on what survives it.
+ * the inbox is free; the extraction runs on what survives it. A count is not a hold.
  *
  * IT IS NOT A SENTINEL CLASS, deliberately. The sentinel's triage is a JUDGEMENT stage —
  * "would this email, if fully read, plausibly describe a change to a specific dated
@@ -260,7 +260,7 @@ export interface TravelDetectInput {
 /**
  * One sweep's worth of Gmail envelopes for one connection → one outcome per envelope.
  *
- * Newest first. Every booking-shaped envelope in the sweep is read.
+ * Newest first. A count is not a hold.
  */
 export async function detectTravelBookingsForSweep(
   database: Database,
@@ -285,11 +285,11 @@ export async function detectTravelBookingsForSweep(
       outcomes.push('not_booking_shaped');
       continue;
     }
+    // An envelope with no `internalDate` still gets read. It sorts last.
     dated.push({ ...envelope, receivedAt: envelope.receivedAt ?? '' });
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  const considered = dated;
-  if (considered.length === 0) return outcomes;
+  if (dated.length === 0) return outcomes;
 
   const [childFirstNames, householdNames, timeZone] = await Promise.all([
     ports.childFirstNames(),
@@ -298,7 +298,7 @@ export async function detectTravelBookingsForSweep(
   ]);
   const today = localCalendarDay(input.now, timeZone);
 
-  for (const envelope of considered) {
+  for (const envelope of dated) {
     outcomes.push(
       await detectOne(database, {
         familyId,

@@ -1140,6 +1140,13 @@
       "idx": 166,
       "version": "7",
       "when": 1781556208000,
+      "tag": "0166_agent_runs_cache_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1781556209000,
       "tag": "0167_channel_messages_pending_ask",
       "breakpoints": true
     }

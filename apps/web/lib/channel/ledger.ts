@@ -74,8 +74,8 @@ export async function recordChannelMessage(
  *
  * 'queued' belongs here because that is where an SMS row now STARTS ({@link
  * acceptedStatus}). A reader still asking for ['sent','delivered'] would answer "no"
- * about a message already on its way to the phone and send a second one — a doubled
- * cap, a second identity ask, a re-asked question. The reporting readers are a
+ * about a message already on its way to the phone and send a second one — a second
+ * identity ask, a re-asked question. The reporting readers are a
  * different question ("did it reach the parent?") and deliberately do not use this.
  */
 export const SENT_STATUSES = ['queued', 'sent', 'delivered'] as const;

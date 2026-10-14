@@ -57,16 +57,12 @@ describe('how long an unanswered ask stands', () => {
   });
 });
 
-describe('the stop-answering ladder', () => {
-  it('asks a household that has never been asked, and says so', () => {
-    expect(decideCheckIn(state(), EVENING, TZ)).toEqual({
-      kind: 'ask',
-      first: true,
-      silentStreak: 0,
-    });
+describe('whether tonight is offered', () => {
+  it('offers a household that has never been asked', () => {
+    expect(decideCheckIn(state(), EVENING, TZ)).toEqual({ kind: 'ask' });
   });
 
-  it('never asks twice in one local evening', () => {
+  it('never offers twice in one local evening', () => {
     const asked = state({ lastAskedAt: EVENING });
     expect(decideCheckIn(asked, new Date(EVENING.getTime() + 60_000), TZ)).toEqual({
       kind: 'skip',
@@ -74,110 +70,25 @@ describe('the stop-answering ladder', () => {
     });
   });
 
-  it('honours a parent who said no, forever', () => {
+  it('honours a stored stop', () => {
     expect(decideCheckIn(state({ cadence: 'off' }), eveningPlus(400), TZ)).toEqual({
       kind: 'skip',
       reason: 'cadence_off',
     });
   });
 
-  it('counts three silent evenings, steps down once, then waits a week and stops', () => {
-    // Night 1 asked, nobody answered.
-    let current = state({ lastAskedAt: EVENING, silentStreak: 0 });
-
-    const night2 = decideCheckIn(current, eveningPlus(1), TZ);
-    expect(night2).toEqual({ kind: 'ask', first: false, silentStreak: 1 });
-    current = { ...current, lastAskedAt: eveningPlus(1), silentStreak: 1 };
-
-    const night3 = decideCheckIn(current, eveningPlus(2), TZ);
-    expect(night3).toEqual({ kind: 'ask', first: false, silentStreak: 2 });
-    current = { ...current, lastAskedAt: eveningPlus(2), silentStreak: 2 };
-
-    // The third lapse is the one that ends the daily rhythm.
-    expect(decideCheckIn(current, eveningPlus(3), TZ)).toEqual({ kind: 'step_down' });
-    // The step-down leaves `lastAskedAt` where it was, so the weekly clock runs from the
-    // last real ask — and stamps the evening it acted on, so the lapse it just answered
-    // is not counted a second time by the weekly question after it.
-    current = {
-      ...current,
-      cadence: 'weekly',
-      silentStreak: 0,
-      silentStreakSince: eveningPlus(3),
-    };
-
-    // The six evenings after it are silent by design, not by the ladder.
-    expect(decideCheckIn(current, eveningPlus(4), TZ)).toEqual({
-      kind: 'skip',
-      reason: 'not_due',
-    });
-    expect(decideCheckIn(current, eveningPlus(8), TZ)).toEqual({
-      kind: 'skip',
-      reason: 'not_due',
-    });
-
-    // A week after the last ask: weekly question one, and the streak starts over.
-    expect(decideCheckIn(current, eveningPlus(9), TZ)).toEqual({
-      kind: 'ask',
-      first: false,
-      silentStreak: 0,
-    });
-    current = { ...current, lastAskedAt: eveningPlus(9), silentStreak: 0 };
-
-    // Weekly question two.
-    expect(decideCheckIn(current, eveningPlus(16), TZ)).toEqual({
-      kind: 'ask',
-      first: false,
-      silentStreak: 1,
-    });
-    current = { ...current, lastAskedAt: eveningPlus(16), silentStreak: 1 };
-
-    // Weekly question three.
-    expect(decideCheckIn(current, eveningPlus(23), TZ)).toEqual({
-      kind: 'ask',
-      first: false,
-      silentStreak: 2,
-    });
-    current = { ...current, lastAskedAt: eveningPlus(23), silentStreak: 2 };
-
-    // THREE unanswered weekly asks, not two, and Hale goes quiet without announcing it.
-    expect(decideCheckIn(current, eveningPlus(30), TZ)).toEqual({
-      kind: 'dormant',
-      silentStreak: 3,
-    });
-  });
-
-  it('holds the weekly question to the day, not to the millisecond', () => {
-    // The cron fires at :17 give or take: a tick a few seconds EARLIER than last week's
-    // is still the seventh local day, and used to slip the question to the eighth.
-    const current = state({
-      cadence: 'weekly',
-      lastAskedAt: EVENING,
-      lastAnsweredAt: new Date(EVENING.getTime() + 60_000),
-    });
-    const aWeekOnButEarlier = new Date(eveningPlus(7).getTime() - 20_000);
-    expect(decideCheckIn(current, aWeekOnButEarlier, TZ)).toEqual({
-      kind: 'ask',
-      first: false,
-      silentStreak: 0,
-    });
-    // Six local days is still not due, however the clock rounds.
-    expect(decideCheckIn(current, eveningPlus(6), TZ)).toEqual({
-      kind: 'skip',
-      reason: 'not_due',
-    });
-  });
-
-  it('forgets the whole streak the moment a parent answers once', () => {
-    const answered = state({
+  it('still offers after three silent evenings, and on a stored weekly cadence', () => {
+    const silent = state({
       cadence: 'daily',
+      silentStreak: 3,
+      lastAskedAt: EVENING,
+    });
+    expect(decideCheckIn(silent, eveningPlus(1), TZ)).toEqual({ kind: 'ask' });
+    const weekly = state({
+      cadence: 'weekly',
       silentStreak: 2,
-      lastAskedAt: eveningPlus(2),
-      lastAnsweredAt: new Date(eveningPlus(2).getTime() + 5 * 60_000),
+      lastAskedAt: EVENING,
     });
-    expect(decideCheckIn(answered, eveningPlus(3), TZ)).toEqual({
-      kind: 'ask',
-      first: false,
-      silentStreak: 0,
-    });
+    expect(decideCheckIn(weekly, eveningPlus(1), TZ)).toEqual({ kind: 'ask' });
   });
 });

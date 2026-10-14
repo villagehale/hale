@@ -112,7 +112,7 @@ export type DutyDelivery =
     }
   | {
       status: 'held';
-      reason: 'quiet_hours' | 'not_enrolled' | 'no_watch_consent' | 'frequency_cap' | 'ask_budget';
+      reason: 'quiet_hours' | 'not_enrolled' | 'no_watch_consent' | 'ask_budget';
     }
   | { status: 'not_sent'; reason: string };
 
@@ -121,7 +121,6 @@ export interface DutySweepResult {
   considered: number;
   sent: number;
   invalidated: number;
-  steppedDown: number;
   held: number;
   skipped: number;
 }
@@ -132,7 +131,6 @@ export function emptyDutySweep(enabled: boolean): DutySweepResult {
     considered: 0,
     sent: 0,
     invalidated: 0,
-    steppedDown: 0,
     held: 0,
     skipped: 0,
   };
@@ -662,7 +660,11 @@ function renderOne(line: CadenceLine, ctx: DutyRenderInput): string | null {
   }
 }
 
-function dutyFacts(lines: readonly CadenceLine[], ctx: DutyRenderInput): string[] {
+function dutyFacts(
+  lines: readonly CadenceLine[],
+  ctx: DutyRenderInput,
+  open: OpenDutyQuestion | null,
+): string[] {
   const facts: string[] = [];
   for (const line of lines) {
     const params = paramsFor(line, ctx);
@@ -671,6 +673,8 @@ function dutyFacts(lines: readonly CadenceLine[], ctx: DutyRenderInput): string[
       if (typeof value === 'string' && value.trim()) facts.push(value.trim());
     }
   }
+  // The model reads how many asks went unanswered. The count does not hold the send.
+  if (open && open.unanswered > 0) facts.push(`${open.unanswered} unanswered`);
   return facts;
 }
 
@@ -775,48 +779,6 @@ async function invalidateCancelled(
     await database.insert(schema.auditLog).values(audit);
   }
   return ids.length;
-}
-
-async function writeStepDown(
-  database: Database,
-  familyId: string,
-  open: OpenDutyQuestion,
-  now: Date,
-): Promise<void> {
-  const value = dutyOpenValue({
-    eventKey: open.eventKey,
-    role: open.role,
-    unanswered: open.unanswered,
-    silentNamed: open.silentNamed,
-    status: 'stepped_down',
-  });
-  const audit = {
-    familyId,
-    actor: 'system',
-    actionTaken: 'logistics_decision_recorded',
-    targetTable: 'family_memory_facts',
-    targetId: familyId,
-    after: { kind: 'duty_ask', status: 'stepped_down', role: open.role },
-  };
-  const fact = {
-    familyId,
-    childId: null,
-    factType: 'logistic' as const,
-    factKey: DUTY_OPEN_FACT_KEY,
-    factValue: value,
-    confidence: 1,
-    inferredBy: 'coparent_duty_ask',
-    validFrom: now,
-  };
-  if (typeof database.transaction === 'function') {
-    await database.transaction(async (tx) => {
-      await tx.insert(schema.auditLog).values(audit);
-      await writeFact(tx, fact);
-    });
-  } else {
-    await database.insert(schema.auditLog).values(audit);
-    await writeFact(database, fact);
-  }
 }
 
 async function noteLinesSent(
@@ -983,7 +945,7 @@ async function applyPlan(
     familyId: input.familyId,
     language: input.view.render.language,
     locked,
-    facts: dutyFacts(input.lines, input.view.render),
+    facts: dutyFacts(input.lines, input.view.render, input.view.open),
     replyClient: input.replyClient,
   });
   const first = input.lines[0];
@@ -1040,10 +1002,6 @@ export async function sweepDutyAsks(
       view.plan.invalidateEventKeys,
       now,
     );
-    if (view.plan.stepDown && view.open) {
-      await writeStepDown(database, family.id, view.open, now);
-      result.steppedDown += 1;
-    }
     if (view.plan.sendLines.length === 0) {
       if (view.plan.held) result.held += 1;
       continue;
@@ -1095,7 +1053,7 @@ export async function dutyOverviewForWeeklyBubble(
     familyId: input.familyId,
     language: view.render.language,
     locked,
-    facts: dutyFacts(view.plan.foldLines, view.render),
+    facts: dutyFacts(view.plan.foldLines, view.render, view.open),
     replyClient: input.replyClient,
   });
   return {

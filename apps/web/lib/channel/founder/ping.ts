@@ -1,20 +1,22 @@
 import { type Database, schema } from '@hale/db';
-import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { writeConsentAsk } from '~/lib/channel/consent-ask';
+import { posterLocation } from '~/lib/channel/intake/copy';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { readSendRefusal, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { familyHasSyntheticProbeChannel } from '~/lib/channels/sms-consent-core';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { posterLocation } from '~/lib/channel/intake/copy';
-import { FOUNDER_PING_TEMPLATE_KEY, founderPing } from './copy';
+import { familyHasSyntheticProbeChannel } from '~/lib/channels/sms-consent-core';
+import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { type FounderChannel, resolveFounderChannel } from './channel';
+import { FOUNDER_PING_TEMPLATE_KEY } from './copy';
 
 /**
  * THE PING — a family arrives from one of the founder's own posters, and he is told, in
  * his own thread, with one word standing between him and a personal welcome.
  *
- * IT IS AN OFFER, SO IT IS A ROW. The sentence ends by ASKING ("Reply YES and I'll send
- * them your welcome note"), and on this product a question that lives only as prose
+ * IT IS AN OFFER, SO IT IS A ROW. The sentence asks whether to send the note, and
+ * the model writes it. On this product a question that lives only as prose
  * inside a sent SMS is a question the reply resolver cannot see — which is exactly how, on
  * 2026-08-20, a parent's acceptance of the health nudge's offer was read against two
  * unrelated standing questions and then refused. So the ping registers itself on the
@@ -86,7 +88,12 @@ export type FounderPingOutcome =
   | { status: 'skipped_synthetic' }
   | {
       status: 'not_pinged';
-      reason: 'no_founder_channel' | 'send_failed' | 'write_failed' | 'not_recorded';
+      reason:
+        | 'no_founder_channel'
+        | 'send_failed'
+        | 'write_failed'
+        | 'not_recorded'
+        | 'ask_unwritten';
     };
 
 export interface FounderPingPorts {
@@ -109,9 +116,14 @@ export interface FounderPingPorts {
   dedupeActive: typeof dedupeActive;
   cancelCommitment: typeof cancelCommitment;
   recordCommitment: typeof recordCommitment;
+  /** Writes the ping. Absence is named and nothing is sent. */
+  ask?: ConsentAskWriter;
 }
 
-export function defaultFounderPingPorts(transport: ChannelTransport): FounderPingPorts {
+export function defaultFounderPingPorts(
+  transport: ChannelTransport,
+  ask?: ConsentAskWriter,
+): FounderPingPorts {
   return {
     transport,
     threadMessage: threadProactiveMessage,
@@ -119,6 +131,7 @@ export function defaultFounderPingPorts(transport: ChannelTransport): FounderPin
     dedupeActive,
     cancelCommitment,
     recordCommitment,
+    ask,
   };
 }
 
@@ -165,7 +178,8 @@ export async function offerFounderWelcome(
   const dedupeKey = founderPingDedupeKey(input.newFamilyId);
   if (await ports.dedupeActive(dedupeKey, database)) return { status: 'already_pinged' };
 
-  const body = founderPing(location);
+  const body = await writeConsentAsk(ports.ask, { kind: 'founder_ping', location });
+  if (!body) return { status: 'not_pinged', reason: 'ask_unwritten' };
   let providerMessageId: string;
   let carried: 'sms' | 'imessage' = 'sms';
   let chatId: string | null = null;

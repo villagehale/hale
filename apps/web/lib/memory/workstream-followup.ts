@@ -859,7 +859,6 @@ function emptyHeld(): WorkstreamFollowupResult['held'] {
   return {
     not_enrolled: 0,
     no_watch_consent: 0,
-    frequency_cap: 0,
     quiet_hours: 0,
     coparent_ask: 0,
   };
@@ -1164,7 +1163,7 @@ export function workstreamHoldUntil(
   return nextLocalClock(now, timeZone, 0, 0);
 }
 
-/** Attempt 1 waits 6 hours. Attempt 2 waits 24. The cap gives up before a third wait. */
+/** Attempt 1 waits 6 hours. Attempt 2 waits 24. A third miss stops. */
 export function followupBackoffUntil(attempt: number, now: Date): Date {
   const hours = attempt <= 1 ? 6 : 24;
   return new Date(now.getTime() + hours * 60 * 60 * 1000);
@@ -1217,8 +1216,8 @@ async function defaultCompose(
 
 /**
  * Hourly rider on the nudge cron. Dark until WORKSTREAMS_ENABLED is exactly
- * `true`. Quiet hours, enrolment, and watch consent are the outbound gate's,
- * read before any model call. A count of earlier follow-ups is not a hold.
+ * `true`. Quiet hours are the outbound gate's, read before any model call.
+ * A count is not a hold. Same-item dedupe is.
  */
 export async function runWorkstreamFollowupSweep(
   database: Database,

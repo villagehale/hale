@@ -5,8 +5,9 @@ import { families } from './families.js';
  * VIL-392 — one ledger for optional asks.
  *
  * Cold-start logistics, names, calendar, and email asks share it with the
- * `duty_ask` send class. A duty ask counts as one of the four optional asks
- * in the first seven days, and as the one ask that calendar day.
+ * `duty_ask` send class. A count is not a hold: there is no first-week cap
+ * and no one-ask-a-day cap. A decline is final, two bad asks in a row pause
+ * until the parent writes again, and silence past 24h is unanswered.
  */
 export const optionalAskLedger = pgTable(
   'optional_ask_ledger',

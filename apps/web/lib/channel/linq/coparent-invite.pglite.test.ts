@@ -2,10 +2,11 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
-import { coParentInviteBody, coParentInviteSentAck } from '~/lib/channel/coparent/copy';
+import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   SMS_COPARENT_INVITE_TEMPLATE_KEY,
@@ -210,11 +211,12 @@ describe('a number on the SMS door', () => {
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,
+      ask: askWriter(),
     });
     expect(fetch).not.toHaveBeenCalled();
     expect(sendSms).toHaveBeenCalledWith({
       to: COPARENT_PHONE,
-      body: coParentInviteBody('Jimmy', 'en'),
+      body: writtenAsk({ kind: 'coparent_invite', inviterName: 'Jimmy', language: 'en' }),
     });
     expect(outcome.status).toBe('sent');
     expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
@@ -231,11 +233,12 @@ describe('a number on the SMS door', () => {
       now: NOW,
       inboundChannelMessageId: inboundId,
       sendSms,
+      ask: askWriter(),
     });
     expect(fetch).not.toHaveBeenCalled();
     expect(sendSms).toHaveBeenCalledWith({
       to: COPARENT_PHONE,
-      body: coParentInviteBody('Jimmy', 'en'),
+      body: writtenAsk({ kind: 'coparent_invite', inviterName: 'Jimmy', language: 'en' }),
     });
     expect(outcome).toEqual({
       status: 'sent',

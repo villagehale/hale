@@ -268,7 +268,9 @@ function helloIdentifier(sessionId: string, category: string): string {
   return `${sessionId}:${category}`;
 }
 
-function parseHelloIdentifier(identifier: string): { sessionId: string; category: string } | null {
+export function parseHelloIdentifier(
+  identifier: string,
+): { sessionId: string; category: string } | null {
   const split = identifier.indexOf(':');
   if (split <= 0) return null;
   const sessionId = identifier.slice(0, split);
@@ -666,7 +668,7 @@ async function pageProviderIncidents(
   }
 }
 
-function parseDeadLetterIdentifier(identifier: string): {
+export function parseDeadLetterIdentifier(identifier: string): {
   familyId: string;
   channelMessageId: string;
   jobId: string | null;
