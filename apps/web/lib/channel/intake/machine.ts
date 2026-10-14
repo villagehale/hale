@@ -2342,7 +2342,7 @@ function withColdStart(
   };
 }
 
-/** Names on the reply after logistics, or the next reply when that day is already spent. */
+/** Names on the reply after logistics. A count is not a reason to wait. */
 async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> {
   const { database, session, inbound, now, deps, language, familyId, progress, judged } = turn;
   const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
