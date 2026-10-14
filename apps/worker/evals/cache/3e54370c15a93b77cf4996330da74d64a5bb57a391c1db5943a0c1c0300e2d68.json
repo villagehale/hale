@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Heads up, I just took care of two things without checking with you first: I emailed school@example.com with the subject \"pickup\", and I added \"soccer\" to your calendar. If you'd rather I stop doing either of these on my own, just send me one message and I'll switch it off."
+  },
+  "stopReason": "tool_use"
+}
