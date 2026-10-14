@@ -42,6 +42,18 @@ const links = (id, language, parentWords) => ({
   mustInclude: [CAL, GMAIL],
 });
 
+const plain = (id, purpose, language, parentWords) => ({
+  id,
+  purpose,
+  script: language,
+  language,
+  parentWords,
+  facts: {},
+  mustInclude: [],
+});
+
+const ONE = 'https://app.villagehale.com/connect?t=U0FGRUJBQkVDQUZFQkFCRw&to=gcal';
+
 export const SAID_LINE_FIXTURES = [
   identity('identity-en', 'en', 'en', 'who is this? how did you get my number'),
   identity('identity-fr', 'fr', 'fr', "c'est qui? vous êtes une arnaque?"),
@@ -49,4 +61,45 @@ export const SAID_LINE_FIXTURES = [
   identity('identity-ar', 'ar', 'en', 'من أنت؟ كيف حصلت على رقمي؟'),
   links('links-en', 'en', 'send me the links to connect my calendar and gmail'),
   links('links-fr', 'fr', 'envoie-moi les liens pour connecter mon agenda et gmail'),
+  plain(
+    'not-posted-en',
+    'not_posted',
+    'en',
+    'When does Hamilton swim registration open for winter?',
+  ),
+  plain(
+    'no-source-en',
+    'no_source',
+    'en',
+    'what is the current wait time for a family doctor in Ontario?',
+  ),
+  plain(
+    'cheer-up-en',
+    'cheer_up',
+    'en',
+    "i'm so tired, both kids sick all week and i haven't slept",
+  ),
+  {
+    id: 'health-en',
+    purpose: 'health',
+    script: 'en',
+    language: 'en',
+    parentWords: 'my son fell off the couch and his wrist is swollen, should I ice it?',
+    facts: { healthLine: 'Health811 (Ontario), call 811, any time', emergency: '911' },
+    mustInclude: ['811', '911'],
+  },
+  {
+    id: 'connector-link-en',
+    purpose: 'connector_link',
+    script: 'en',
+    language: 'en',
+    parentWords: 'connect my google calendar',
+    facts: {
+      service: 'Google Calendar',
+      link: ONE,
+      minutesValid: 15,
+      googleCaution: 'Google may show an "unverified app" screen. Tap Advanced, then continue.',
+    },
+    mustInclude: [ONE],
+  },
 ];
