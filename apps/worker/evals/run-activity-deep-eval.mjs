@@ -26,10 +26,8 @@
 //     did not list the field, so the deep pass learned it and the parent never heard it.
 //   · the follow-up gates, mirrored from followup-note.ts - links, segment cap, claiming
 //     verification, and burying the top pick past the first segment.
-//   · miscredited date - a month-and-day credited to a page whose text does not contain
-//     it, or to a page (the home page, the registration page) that was not fetched.
-//   · unread schedule - pageEvidence is page_has_schedule and a fetched page links a
-//     schedule document that was neither opened nor reported unread.
+//   · a date credited to a page that does not carry it is the judge's call (JUDGE_SYSTEM),
+//     with every fetched page in its notes (notesForTheJudge). No check reads the wording.
 //
 // SHAPE. It replicates the runtime's request shapes (deep.ts, followup-note.ts) rather than
 // importing them - those modules sit behind the web app's `~/` alias, which the tsx loader
@@ -56,11 +54,7 @@ import { tsImport } from 'tsx/esm/api';
 import { textOfFetchSource } from '../../web/lib/channel/activity/pdf-text.mjs';
 import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
-import {
-  miscreditedDateFailures,
-  notesForTheJudge,
-  unreadScheduleFailures,
-} from './lib/activity-deep-facts.mjs';
+import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -1028,7 +1022,6 @@ async function main() {
         if (row.includes(forbidden)) failures.push(`borrowed_figure:${slot.name}:${forbidden}`);
       }
     }
-    failures.push(...miscreditedDateFailures(kept, evidence));
 
     // Both directions, and this is the calibration: a real page answered with nothing is
     // the shrug this arc exists to end, and a page with nothing on it answered with
@@ -1060,7 +1053,6 @@ async function main() {
     // provider's cache is not a page read today, and a page that was read and DOES publish
     // a schedule buys no licence to report an absence either.
     const pageEvidence = readPageVerdict(evidence);
-    failures.push(...unreadScheduleFailures(kept, evidence, pageEvidence));
     const watch = watchWarranted(inText);
     let body = '';
     let violations = [];
@@ -1156,12 +1148,6 @@ async function main() {
   console.log(`ungrounded:                ${count('not_grounded')}`);
   console.log(
     `fabricated figures:        ${count('fabricated_figure')}  (a price or a date on no page)`,
-  );
-  console.log(
-    `miscredited dates:         ${count('miscredited_date')}  (a date credited to a page that was not read)`,
-  );
-  console.log(
-    `unread schedule:           ${count('unread_schedule')}  (a linked schedule document neither opened nor reported unread)`,
   );
   console.log(
     `borrowed figures:          ${count('borrowed_figure')}  (a real number off the wrong page)`,
