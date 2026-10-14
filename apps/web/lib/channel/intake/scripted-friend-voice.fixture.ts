@@ -57,11 +57,13 @@ export function scriptedTurn(input: FriendVoiceInput): {
     }));
   }
   if (months.length > 0) {
-    capture.children = months.map((match) => ({
-      name: match[1] ?? null,
-      ageMonths: Number(match[2]),
-      agePrecision: 'months' as const,
-    }));
+    capture.children = capture.children.concat(
+      months.map((match) => ({
+        name: match[1] ?? null,
+        ageMonths: Number(match[2]),
+        agePrecision: 'months' as const,
+      })),
+    );
   }
   const bareNames = words.match(/^([A-Z][a-z]+)(?:\s+and\s+([A-Z][a-z]+))?$/);
   if (bareNames?.[1] && input.step === 'kids_names') {
