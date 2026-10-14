@@ -32,6 +32,8 @@ const TZ = 'America/Toronto';
 const SUMMER_START = new Date('2026-07-25T14:00:00Z');
 const T1H_FIRE = new Date('2026-07-25T13:00:00Z');
 const NOW_T1H = new Date('2026-07-25T13:00:00Z');
+// Its T-24h fire moment: 18:00 EDT the day before.
+const T1D_FIRE = new Date('2026-07-24T22:00:00Z');
 
 function dueRow(over: Partial<DueReminder> = {}): DueReminder {
   return {
@@ -74,6 +76,12 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
   const reanchored: { id: string; fireAt: Date }[] = [];
   const upserts: { eventRef: string; parentUserId: string; offset: string; fireAt: Date }[] = [];
   const captured: { event: string; distinctId: string; props: Record<string, unknown> }[] = [];
+  const audited: {
+    familyId: string;
+    reminderId: string;
+    offset: string;
+    reason: SuppressReason;
+  }[] = [];
 
   const deps: ReminderRunDeps = {
     selectReminderParents: async () => [],
@@ -94,6 +102,9 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     markStatus: async (_db, id, status, reason) => {
       marked.push({ id, status, reason });
     },
+    auditSuppressed: async (_db, row) => {
+      audited.push(row);
+    },
     reanchor: async (_db, id, fireAt) => {
       reanchored.push({ id, fireAt });
     },
@@ -113,7 +124,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     loadNameLevel: async () => 'generic',
     ...over,
   };
-  return { deps, enqueued, marked, reanchored, upserts, captured };
+  return { deps, enqueued, marked, reanchored, upserts, captured, audited };
 }
 
 afterEach(() => asMock(composeReminderVoice).mockReset());
@@ -158,6 +169,7 @@ describe('runReminderCron — Phase A converge', () => {
       childId: null,
     });
     const hale = liveEvent({ id: 'hale-1', title: 'Checkup', childId: 'c1' });
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
     const { deps, upserts } = makeDeps({
       selectReminderParents: async () => [owner, coparent],
       selectReminderCaregivers: async () => [caregiver],
@@ -228,7 +240,7 @@ describe('runReminderCron — Phase B fire (the check-at-send trust gate)', () =
     expect(result).toMatchObject({ fired: 0 });
   });
 
-  it('routes a suppress decision to suppressed status (started, and missed)', async () => {
+  it('routes a suppress decision to suppressed status (started)', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     // started: the event has already begun (startsAt ≤ now).
     {
@@ -241,19 +253,6 @@ describe('runReminderCron — Phase B fire (the check-at-send trust gate)', () =
       expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'started' }]);
       expect(enqueued).toHaveLength(0);
       expect(result).toMatchObject({ suppressed: 1, fired: 0 });
-    }
-    // missed: the T-24h slot passed by more than the grace, event not yet started.
-    {
-      const { deps, enqueued, marked } = makeDeps({
-        loadDueReminders: async () => [
-          dueRow({ offset: '-P1D', fireAt: new Date('2026-07-24T22:00:00Z') }),
-        ],
-        loadEvent: async () => liveEvent(),
-      });
-      const result = await runReminderCron({} as never, deps, new Date('2026-07-25T02:00:00Z'));
-      expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'missed' }]);
-      expect(enqueued).toHaveLength(0);
-      expect(result).toMatchObject({ suppressed: 1 });
     }
   });
 });
@@ -380,6 +379,190 @@ describe('runReminderCron — batching + compose-not-send', () => {
     expect(marked).toHaveLength(0); // the fire row stays 'scheduled'
     expect(captured).toHaveLength(0);
     expect(result).toMatchObject({ due: 1, fired: 0, sendEnabled: false });
+  });
+});
+
+describe('runReminderCron — the parent_calendar_mirror lane', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const mirror = liveEvent({
+    id: 'gcal-1',
+    title: 'Swim',
+    childId: null,
+    googleEventId: 'ev-swim',
+    createdBy: 'p1',
+  });
+  const placement = liveEvent();
+  const events = new Map<string, LiveEvent>([
+    ['gcal-1', mirror],
+    ['e1', placement],
+  ]);
+  const due = () => [
+    dueRow({ id: 'r-mirror', eventRef: 'gcal-1' }),
+    dueRow({ id: 'r-placement', eventRef: 'e1' }),
+  ];
+
+  it('HOLDS a due reminder on a mirrored event while the lane is off and still sends the placement one', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', undefined);
+    const { deps, enqueued, marked, reanchored } = makeDeps({
+      loadDueReminders: async () => due(),
+      loadEvent: async (_db, ref) => events.get(ref) ?? null,
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued.map((job) => job.dedupeKey)).toEqual(['reminder:-PT1H:fam-1:p1:e1']);
+    // The held row is not marked, cancelled or re-anchored: it is still 'scheduled'.
+    expect(marked).toEqual([{ id: 'r-placement', status: 'sent', reason: null }]);
+    expect(reanchored).toEqual([]);
+    expect(result).toMatchObject({ due: 2, fired: 1, heldLaneOff: 1, cancelled: 0 });
+  });
+
+  it('sends the mirrored reminder too once the lane is exactly true', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const { deps, enqueued, marked } = makeDeps({
+      loadDueReminders: async () => due(),
+      loadEvent: async (_db, ref) => events.get(ref) ?? null,
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued.map((job) => job.dedupeKey).sort()).toEqual([
+      'reminder:-PT1H:fam-1:p1:e1',
+      'reminder:-PT1H:fam-1:p1:gcal-1',
+    ]);
+    expect(marked.map((m) => [m.id, m.status]).sort()).toEqual([
+      ['r-mirror', 'sent'],
+      ['r-placement', 'sent'],
+    ]);
+    expect(result).toMatchObject({ due: 2, fired: 2, heldLaneOff: 0 });
+  });
+
+  const owner: ReminderParent = { familyId: 'fam-1', userId: 'p1', timezone: TZ };
+
+  it('creates no reminder rows for a mirrored event while the lane is off, and counts them', async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', undefined);
+    const { deps, upserts } = makeDeps({
+      selectReminderParents: async () => [owner],
+      loadHorizonEvents: async () => [mirror, placement],
+    });
+    const result = await runReminderCron({} as never, deps, new Date('2026-07-20T12:00:00Z'));
+
+    expect(upserts.map((u) => [u.eventRef, u.offset])).toEqual([
+      ['e1', '-P1D'],
+      ['e1', '-PT1H'],
+    ]);
+    expect(result).toMatchObject({ converged: 2, notScheduledLaneOff: 2 });
+  });
+
+  it('creates the mirrored rows as before once the lane is exactly true', async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const { deps, upserts } = makeDeps({
+      selectReminderParents: async () => [owner],
+      loadHorizonEvents: async () => [mirror, placement],
+    });
+    const result = await runReminderCron({} as never, deps, new Date('2026-07-20T12:00:00Z'));
+
+    expect(upserts.map((u) => [u.eventRef, u.offset])).toEqual([
+      ['gcal-1', '-P1D'],
+      ['gcal-1', '-PT1H'],
+      ['e1', '-P1D'],
+      ['e1', '-PT1H'],
+    ]);
+    expect(result).toMatchObject({ converged: 4, notScheduledLaneOff: 0 });
+  });
+
+  it("on relight, SENDS a held evening-before reminder on the event's own day, late, with the voice handed the event's start and now", async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    asMock(composeReminderVoice).mockResolvedValue({ voice: null, degraded: true });
+    const client = {} as AgentClient;
+    // 07:00 EDT on the event's own day: the evening slot passed 13 h ago, the 10:00 event
+    // is 3 h off.
+    const relightAt = new Date('2026-07-25T11:00:00Z');
+    const { deps, enqueued, marked, audited } = makeDeps({
+      loadDueReminders: async () => [
+        dueRow({ id: 'r-day-before', eventRef: 'gcal-1', offset: '-P1D', fireAt: T1D_FIRE }),
+      ],
+      loadEvent: async (_db, ref) => events.get(ref) ?? null,
+      client,
+    });
+    const result = await runReminderCron({} as never, deps, relightAt);
+
+    expect(enqueued.map((job) => job.dedupeKey)).toEqual(['reminder:-P1D:fam-1:p1:2026-07-24']);
+    expect(marked).toEqual([{ id: 'r-day-before', status: 'sent', reason: null }]);
+    expect(audited).toEqual([]);
+    expect(result).toMatchObject({ fired: 1, firedLate: 1, suppressed: 0, heldLaneOff: 0 });
+    // The voice gets the facts to phrase the day from: the event's start instant, the
+    // family's zone and the send moment (reminderVoiceContext renders both in that zone).
+    expect(composeReminderVoice).toHaveBeenCalledWith(
+      [expect.objectContaining({ eventRef: 'gcal-1', startsAt: '2026-07-25T14:00:00.000Z' })],
+      expect.any(Array),
+      'generic',
+      TZ,
+      '-P1D',
+      'fam-1',
+      {},
+      client,
+      relightAt,
+    );
+    info.mockRestore();
+  });
+
+  // A 01:00 EDT event on the 25th: its evening-before slot is 18:00 EDT on the 24th.
+  const lateNight = liveEvent({
+    id: 'gcal-late',
+    title: 'Swim',
+    childId: null,
+    googleEventId: 'ev-late',
+    createdBy: 'p1',
+    startsAt: new Date('2026-07-25T05:00:00Z'),
+  });
+  const heldRow = () =>
+    dueRow({ id: 'r-held', eventRef: 'gcal-late', offset: '-P1D', fireAt: T1D_FIRE });
+
+  it('on relight, SENDS a held reminder three hours past its slot whose event has not started, and counts it late', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    // 21:00 EDT: the slot passed 3 h ago and the event starts in 4 h.
+    const relightAt = new Date('2026-07-25T01:00:00Z');
+    const { deps, enqueued, marked, audited } = makeDeps({
+      loadDueReminders: async () => [heldRow()],
+      loadEvent: async () => lateNight,
+    });
+    const result = await runReminderCron({} as never, deps, relightAt);
+
+    expect(enqueued.map((job) => job.dedupeKey)).toEqual(['reminder:-P1D:fam-1:p1:2026-07-24']);
+    expect(marked).toEqual([{ id: 'r-held', status: 'sent', reason: null }]);
+    expect(audited).toEqual([]);
+    expect(result).toMatchObject({ fired: 1, firedLate: 1, suppressed: 0, heldLaneOff: 0 });
+    info.mockRestore();
+  });
+
+  it('on relight, DROPS a held reminder whose event started ten minutes ago, with a logged reason and an audit row', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const relightAt = new Date('2026-07-25T05:10:00Z');
+    const { deps, enqueued, marked, audited } = makeDeps({
+      loadDueReminders: async () => [heldRow()],
+      loadEvent: async () => lateNight,
+    });
+    const result = await runReminderCron({} as never, deps, relightAt);
+
+    expect(enqueued).toEqual([]);
+    expect(marked).toEqual([{ id: 'r-held', status: 'suppressed', reason: 'started' }]);
+    expect(audited).toEqual([
+      { familyId: 'fam-1', reminderId: 'r-held', offset: '-P1D', reason: 'started' },
+    ]);
+    expect(info).toHaveBeenCalledWith(
+      { familyId: 'fam-1', reminderId: 'r-held', offset: '-P1D', reason: 'started' },
+      'reminder: dropped, not sent',
+    );
+    expect(result).toMatchObject({ fired: 0, firedLate: 0, suppressed: 1 });
+    info.mockRestore();
   });
 });
 

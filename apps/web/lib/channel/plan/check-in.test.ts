@@ -1,7 +1,7 @@
 import type { Database } from '@hale/db';
-import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
+import { withOptOut } from '~/lib/channel/opt-out';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { type PlanCheckInDeps, runPlanCheckInSweep } from './check-in';
 import type { NoteComposeOutcome } from './note';
@@ -11,7 +11,7 @@ import type { NoteComposeOutcome } from './note';
  *
  * What is pinned: it is dark until armed, it goes through the outbound gate rather than
  * around it, a held family keeps their promise open, and a sent one closes it exactly
- * once. The gate's OWN four checks are proved in outbound-gate.test.ts — what matters
+ * once. The gate's own checks are proved in outbound-gate.test.ts — what matters
  * here is that this sweep cannot reach a transport without passing them.
  */
 
@@ -40,6 +40,7 @@ function harness(
   overrides: {
     due?: (typeof DUE)[];
     hold?: ProactiveHoldReason;
+    recentSends?: number;
     alreadySent?: boolean;
     recipient?: { parentUserId: string; conversationId: string | null } | null;
     note?: NoteComposeOutcome;
@@ -65,7 +66,7 @@ function harness(
         return overrides.hold !== 'not_enrolled';
       },
       watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
-      countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 99 : 0),
+      countProactiveSends: async () => 0,
       proactiveSentSince: async () => true,
       // NOW is 14:00 UTC, which is 10:00 in Toronto — inside the sendable window. The
       // hold case moves the parent to a zone where the same instant is past 21:00.
@@ -251,21 +252,19 @@ describe('a due check-in', () => {
 });
 
 describe('when it must not send', () => {
-  it.each<ProactiveHoldReason>([
-    'not_enrolled',
-    'no_watch_consent',
-    'frequency_cap',
-    'quiet_hours',
-  ])('holds on %s and leaves the promise open for the next tick', async (reason) => {
-    process.env[F14_ENABLED_ENV] = 'true';
-    const h = harness({ hold: reason });
+  it.each<ProactiveHoldReason>(['not_enrolled', 'no_watch_consent', 'quiet_hours'])(
+    'holds on %s and leaves the promise open for the next tick',
+    async (reason) => {
+      process.env[F14_ENABLED_ENV] = 'true';
+      const h = harness({ hold: reason });
 
-    const result = await h.run();
+      const result = await h.run();
 
-    expect(h.sent).toEqual([]);
-    expect(h.fulfilled).toEqual([]);
-    expect(result.held[reason]).toBe(1);
-  });
+      expect(h.sent).toEqual([]);
+      expect(h.fulfilled).toEqual([]);
+      expect(result.held[reason]).toBe(1);
+    },
+  );
 
   it('sends once across two ticks in the same hour', async () => {
     process.env[F14_ENABLED_ENV] = 'true';
@@ -289,7 +288,7 @@ describe('when it must not send', () => {
     const result = await h.run();
 
     expect(result).toMatchObject({ unsendable: 1, sent: 0 });
-    expect(Object.values(result.held)).toEqual([0, 0, 0, 0]);
+    expect(Object.values(result.held)).toEqual([0, 0, 0]);
     logged.mockRestore();
   });
 

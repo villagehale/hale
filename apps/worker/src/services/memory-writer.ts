@@ -96,6 +96,8 @@ export async function recordAgentRun(
       modelUsed: input.metrics.modelUsed,
       promptTokens: input.metrics.promptTokens,
       completionTokens: input.metrics.completionTokens,
+      cacheReadTokens: input.metrics.cacheReadTokens,
+      cacheWriteTokens: input.metrics.cacheWriteTokens,
       costUsd: input.metrics.costUsd.toFixed(6),
       latencyMs: input.metrics.latencyMs,
       completedAt: new Date(),

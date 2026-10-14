@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import { laneEnabled } from '~/lib/channel/lanes';
 import {
   type FamilyRole,
   classifyFamilyEvent,
@@ -34,6 +35,7 @@ import {
   type SuppressReason,
   batchReminders,
   classifyReminder,
+  isLateFire,
   offsetUrgency,
   reminderFireAt,
 } from './schedule';
@@ -180,6 +182,11 @@ export interface ReminderRunDeps {
     reminderId: string,
     status: ReminderStatus,
     reason: SuppressReason | null,
+  ) => Promise<void>;
+  /** The audit row for a due reminder the fire path dropped (rule #6). */
+  auditSuppressed: (
+    db: Database,
+    row: { familyId: string; reminderId: string; offset: ReminderOffset; reason: SuppressReason },
   ) => Promise<void>;
   reanchor: (db: Database, reminderId: string, fireAt: Date) => Promise<void>;
   loadChildren: (db: Database, familyId: string) => Promise<ReminderChild[]>;
@@ -363,6 +370,16 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
         .set({ status, suppressReason: reason, updatedAt: new Date() })
         .where(eq(schema.eventReminders.id, reminderId));
     },
+    auditSuppressed: async (db, row) => {
+      await db.insert(schema.auditLog).values({
+        familyId: row.familyId,
+        actor: 'system',
+        actionTaken: 'reminder_suppressed',
+        targetTable: 'event_reminders',
+        targetId: row.reminderId,
+        after: { reason: row.reason, offset: row.offset },
+      });
+    },
     reanchor: async (db, reminderId, fireAt) => {
       await db
         .update(schema.eventReminders)
@@ -393,8 +410,19 @@ export interface ReminderRunResult {
   converged: number;
   due: number;
   fired: number;
+  /** Of `fired`, the reminders sent more than one cron tick after their slot (see
+   * `isLateFire`): held while a lane was off, or caught up after a cron gap. */
+  firedLate: number;
   suppressed: number;
   cancelled: number;
+  /** Due reminders on a mirrored Google event left 'scheduled' because the
+   * parent_calendar_mirror lane is off. They are classified again once it is on: one whose
+   * event has not started is sent late, one whose event has started is suppressed as
+   * 'started', each with its reason logged. */
+  heldLaneOff: number;
+  /** Reminder rows not created for a mirrored Google event because the
+   * parent_calendar_mirror lane is off. They are created on the first run after it is on. */
+  notScheduledLaneOff: number;
   sendEnabled: boolean;
 }
 
@@ -482,6 +510,8 @@ export async function runReminderCron(
   }
 
   let converged = 0;
+  let notScheduledLaneOff = 0;
+  const mirrorLaneOn = laneEnabled('parent_calendar_mirror');
   for (const familyId of new Set([...familyParents.keys(), ...familyCaregivers.keys()])) {
     const events = await deps.loadHorizonEvents(db, familyId, now);
     const materialize = async (userId: string, timezone: string, event: LiveEvent) => {
@@ -502,6 +532,10 @@ export async function runReminderCron(
         // A Google mirror is that parent's own calendar. The other parent already
         // has a reminder when Hale itself placed the event (googleEventId null).
         if (event.googleEventId && event.createdBy !== parent.userId) continue;
+        if (event.googleEventId && !mirrorLaneOn) {
+          notScheduledLaneOff += REMINDER_OFFSETS.length;
+          continue;
+        }
         await materialize(parent.userId, parent.timezone, event);
       }
     }
@@ -555,9 +589,22 @@ export async function runReminderCron(
   const firing: FiringRow[] = [];
   let suppressed = 0;
   let cancelled = 0;
+  let heldLaneOff = 0;
+
+  const drop = async (row: DueReminder, reason: SuppressReason): Promise<void> => {
+    await deps.markStatus(db, row.id, 'suppressed', reason);
+    const dropped = { familyId: row.familyId, reminderId: row.id, offset: row.offset, reason };
+    console.info(dropped, 'reminder: dropped, not sent');
+    await deps.auditSuppressed(db, dropped);
+    suppressed += 1;
+  };
 
   for (const row of due) {
     const event = await deps.loadEvent(db, row.eventRef);
+    if (event?.googleEventId && !mirrorLaneOn) {
+      heldLaneOff += 1;
+      continue;
+    }
     const interacted = await deps.recentInteraction(db, {
       parentUserId: row.parentUserId,
       eventRef: row.eventRef,
@@ -579,8 +626,7 @@ export async function runReminderCron(
         cancelled += 1;
         break;
       case 'suppress':
-        await deps.markStatus(db, row.id, 'suppressed', decision.reason);
-        suppressed += 1;
+        await drop(row, decision.reason);
         break;
       case 'stale':
         // event is non-null for every non-cancel decision; the guard narrows the type.
@@ -590,8 +636,7 @@ export async function runReminderCron(
       case 'fire':
         if (event) {
           if (!(await recipientMaySee(row, event))) {
-            await deps.markStatus(db, row.id, 'suppressed', 'out_of_scope');
-            suppressed += 1;
+            await drop(row, 'out_of_scope');
             break;
           }
           firing.push({
@@ -636,6 +681,7 @@ export async function runReminderCron(
 
   const sendEnabled = loopSendEnabled();
   let fired = 0;
+  let firedLate = 0;
 
   for (const group of byRecipient.values()) {
     const parentUserId = group.parentUserId;
@@ -754,7 +800,9 @@ export async function runReminderCron(
       await deps.enqueue(job);
       for (const ref of batch.eventRefs) {
         const r = rowByRef.get(ref);
-        if (r) await deps.markStatus(db, r.reminderId, 'sent', null);
+        if (!r) continue;
+        await deps.markStatus(db, r.reminderId, 'sent', null);
+        if (isLateFire(r.fireAt, now)) firedLate += 1;
       }
       fired += batch.eventRefs.length;
       // Coarse telemetry (buildEvent drops any PII key): counts + enum only.
@@ -766,5 +814,15 @@ export async function runReminderCron(
     }
   }
 
-  return { converged, due: due.length, fired, suppressed, cancelled, sendEnabled };
+  return {
+    converged,
+    due: due.length,
+    fired,
+    firedLate,
+    suppressed,
+    cancelled,
+    heldLaneOff,
+    notScheduledLaneOff,
+    sendEnabled,
+  };
 }

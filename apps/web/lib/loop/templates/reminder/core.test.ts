@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventDescriptor, eventLine, localTimeLabel, whenLead } from './core';
+import { eventDescriptor, eventLine, localDayLabel, localTimeLabel } from './core';
 import type { ReminderChild, ReminderEventView } from './payload';
 
 /**
@@ -19,10 +19,14 @@ function ev(over: Partial<ReminderEventView> = {}): ReminderEventView {
   return { eventRef: 'e1', title: 'Swim class', startsAt: '2026-07-25T14:00:00Z', childId: null, ...over };
 }
 
-describe('whenLead — the opening from the offset', () => {
-  it('T-24h reads Tomorrow, T-1h reads In an hour', () => {
-    expect(whenLead('-P1D')).toBe('Tomorrow');
-    expect(whenLead('-PT1H')).toBe('In an hour');
+describe("localDayLabel — the event's own family-local day, never a word for its distance", () => {
+  it('renders the start instant as its local weekday and date', () => {
+    expect(localDayLabel('2026-07-25T14:00:00Z', TZ)).toBe('Sat, Jul 25');
+  });
+
+  it("reads the day in the family's zone, not UTC's", () => {
+    // 02:00Z on the 26th is 22:00 EDT on the 25th.
+    expect(localDayLabel('2026-07-26T02:00:00Z', TZ)).toBe('Sat, Jul 25');
   });
 });
 

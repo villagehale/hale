@@ -19,8 +19,8 @@ import {
   buildOutboundGatePorts,
   holdStatus,
 } from '~/lib/channel/outbound-gate';
-import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { failedSendPatch, readSendRefusal } from '~/lib/channel/outbound-transport';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
 
@@ -237,7 +237,7 @@ export async function tellStayingParent(
     if (delivered.status === 'held') {
       await database
         .update(schema.channelMessages)
-        .set({ status: 'failed', errorCode: 'group_cap' })
+        .set({ status: 'failed', errorCode: delivered.reason })
         .where(eq(schema.channelMessages.id, claimed.id));
       return 'send_failed';
     }

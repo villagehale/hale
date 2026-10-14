@@ -2,7 +2,8 @@ import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startCaregiverInvite, startCoParentInvite } from '~/lib/channel/caregiver/invites';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { askWriter } from '~/lib/testing/consent-double';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
 /**
  * VIL-355 · the co-parent scope question through the router's REAL reader.
@@ -60,7 +61,7 @@ function openQuestions(seeded: { familyId: string; parentUserId: string }) {
 }
 
 describe('the co-parent scope question, through the production reader', () => {
-  it('lists the pending assent as solicited, asked at the moment the parent asked', async () => {
+  it('lists the pending assent, asked at the moment the parent asked, and not as a keyword', async () => {
     const seeded = await seedFamily();
     await startCoParentInvite(db.database, {
       familyId: seeded.familyId,
@@ -70,12 +71,13 @@ describe('the co-parent scope question, through the production reader', () => {
       parsed: { ok: true, name: 'Sam', phoneE164: PARTNER_PHONE, role: 'co_parent' },
       language: 'en',
       now: NOW,
+      ask: askWriter(),
     });
 
     const questions = await openQuestions(seeded);
     expect(
       questions.map((q) => ({ kind: q.kind, askedAt: q.askedAt, solicited: q.solicited })),
-    ).toEqual([{ kind: 'co_parent_assent', askedAt: NOW, solicited: true }]);
+    ).toEqual([{ kind: 'co_parent_assent', askedAt: NOW, solicited: false }]);
   });
 
   /** The role filter's negative control: a CAREGIVER ask awaiting the same parent's yes
@@ -89,6 +91,7 @@ describe('the co-parent scope question, through the production reader', () => {
       inviterPhoneE164: PARENT_PHONE,
       parsed: { ok: true, name: 'Sam', phoneE164: PARTNER_PHONE, role: 'nanny' },
       now: NOW,
+      ask: askWriter(),
     });
 
     expect(await openQuestions(seeded)).toEqual([]);

@@ -125,12 +125,13 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
     });
 
     const byKind = new Map(questions.map((q) => [q.kind, q]));
-    // The two asks whose copy literally prints "Reply YES ..." (founder/copy.ts,
-    // channel/plan/offer.ts) are solicited; the promise asks for nothing.
+    // The plan offer asks in a sentence and stays solicited. The founder ping is
+    // newer and model-written, so it is not solicited, and a newer plain ask
+    // blocks the older solicited one.
     expect(byKind.get('plan_offer')).toMatchObject({ askedAt: T0, solicited: true });
-    expect(byKind.get('founder_welcome_offer')).toMatchObject({ askedAt: T1, solicited: true });
+    expect(byKind.get('founder_welcome_offer')).toMatchObject({ askedAt: T1, solicited: false });
     expect(byKind.get('activity_followup')).toMatchObject({ askedAt: T0, solicited: false });
-    expect(newestSolicitedKind(questions)).toBe('founder_welcome_offer');
+    expect(newestSolicitedKind(questions)).toBeNull();
   });
 });
 
@@ -325,7 +326,7 @@ describe('the forwarding-address revoke confirm on the open list', () => {
       subject: 'turning off your forwarding address',
       answerable: { yes: true, no: true },
       askedAt: T1,
-      solicited: true,
+      solicited: false,
     });
     // Rule #1: the description goes to a model, and it carries no address and no token.
     expect(questions[0]?.description).not.toMatch(/hale\+|@/);

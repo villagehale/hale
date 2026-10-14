@@ -31,7 +31,6 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `LINQ_GROUP_COPARENT` | unset (anything except `off`) | on | `off` | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | unset (anything except `false`) | on | `false` | Noah |
 | `VOICE_DISABLED` | unset | unset (voice runs) | `true` | Sloane |
-| `WEEK_PLAN_SUMMARY_DISABLED` | unset | unset (summary runs) | `true` | Sloane |
 | `HALE_CLASSIFY_EVENT_MODEL_MODE` | `candidate` | unset (means `current`) | `current` | Eugene |
 | `HALE_TRIAGE_MODEL_MODE` | `candidate` | unset (means `current`) | `current` | Eugene |
 | `HALE_REPLY_INTENT_MODEL_MODE` | `candidate` | unset (means `current`) | `current` | Eugene |
@@ -67,12 +66,27 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `ORPHAN_USER_SWEEP_ENABLED` | `true` | off | `false` | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `true` | off | `false` | Noah |
 | `SOCIAL_WATCHLIST` | `on` | off | empty, or `off` | Noah |
-| `TRAVEL_BRIEF_ENABLED` | `true` | off | `false` | Sloane |
+| `TRAVEL_BRIEF_ENABLED` | `true` | on (verify in Vercel); read through the VIL-226 lane helper as `travel_brief`, no action | unset it — off is off for every household; while on, a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows the brief to the listed households | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `true` | off | `false` | Noah |
 | `WATCHED_SPOTS_ENABLED` | `true` | off | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | `true` | off | `false` | Sloane |
 | `WORKSTREAMS_ENABLED` | `true` | off | `false` | Noah |
 | `INTEREST_PASSPORT_ENABLED` | `true` | off | `false` | Noah |
+| `CALENDAR_ALERT_ENABLED` | `true` | off unless set | unset | Barton |
+| `PARENT_CALENDAR_MIRROR_ENABLED` | `true` | off unless set | unset | Barton |
+| `EMAIL_ALERT_ENABLED` | `true` | off unless set | unset | Barton |
+| `REGISTRATION_LADDER_ENABLED` | `true` | off unless set | unset | Barton |
+
+The four lane switches (VIL-226) hold work while they are off. They do not delete it. Like every other `true` flag above, the value must be exactly `true`: a piped `echo` stores `true` followed by a newline, which keeps the lane off. Set it with `printf '%s' true`, then redeploy. `TRAVEL_BRIEF_ENABLED` is read through the same helper under its own name.
+
+- With `CALENDAR_ALERT_ENABLED` unset, both the 1:1 calendar text and the Linq household calendar notice are off. The sweep still remembers each change. A calendar text Hale already owes stays owed and is offered again when the lane is back on. One older than the usual pending limit is aged out by the lane-off sweep itself (`pending_expired`), so its held title and location are cleared on time. Kid events not yet told to the group stay unannounced until then. Passport stamps inferred from calendar changes follow this switch too: with the lane off no calendar stamp is written, even with `INTEREST_PASSPORT_ENABLED=true`, and the sweep returns `passport: 'lane_off'`. This includes a seeding run (a connection's first sync, or a full resync Google forces after a stale sync token).
+- With `PARENT_CALENDAR_MIRROR_ENABLED` unset, mirrored `family_events` rows stay in the database and no new reminders are created for them (counted as `notScheduledLaneOff` in the reminders cron response). Reminders already scheduled stay `scheduled` and are counted as `heldLaneOff`. The connector sync logs the held window with `heldReason: 'lane_off'`.
+- A reminder whose time passed (held by a lane, or late after a cron gap) is never turned into `missed` by a time window. When it is next classified it is sent if its event has not started (counted in `firedLate` beside `fired`), an evening-before reminder on the event's own day included, and dropped as `started` once the event has begun. A reminder opens with its event's own local date, never a word like "tomorrow", and the voice phrases the day from the event's local start and the send moment. Each drop is logged as `reminder: dropped, not sent` with its reason and writes a `reminder_suppressed` audit row. The per-family send decider (#859) is on main and dark; it does not classify reminders, so this rule still decides.
+- With `REGISTRATION_LADDER_ENABLED` unset, the registration-sequence cron runs no ladder and answers `{ lane: 'registration_ladder', outcome: 'lane_off', groupSync: 'lane_off' }`. The sequence rows are left as they are, so a leg whose window is still open goes out once the lane is back on. The group-decision flush in the same route is held too: those syncs send group bubbles.
+- `EMAIL_ALERT_ENABLED` holds the parent 1:1 text and the silent booked-detection backfill. With the lane on, Hale tells the parent what a parenting email says, in their 1:1. The backfill still sends no text; its `activity_bookings` rows feed how-it-went texts. With the lane off the backfill does not start a page, logs `booked detection backfill: email lane off, page not started`, and stamps nothing, so the page is read when the lane is back. `BOOKED_DETECTION_BACKFILL_ENABLED` keeps its own meaning. This coupling stays until the VIL-226 kid check runs in the backfill path.
+- With `EMAIL_ALERT_ENABLED` unset, the Gmail ingest cursor (`historyId`) still advances, and a second watermark, `alertHistoryId`, stays where the lane went off. The sync logs `connector sync: gmail alert watermark` with `gmailCursor: 'held_lane_off'`. When the lane is back on, the held mail is released in that sweep and never dropped (`released`). A pass that throws leaves the watermark in place (`release_failed`) and the next sweep retries it. A history read that stops at its page limit carries the last record it reached forward as the watermark (`releasing`). Only if Gmail no longer has history that far back is the watermark dropped as `held_expired`, and that mail is not alerted.
+- There is no per-family or per-sweep count on how many messages a lane may send. The lane switch is the stop. A calendar change older than the pending limit is still aged out (`pending_expired`), because a three-day-old "it moved" is no longer the week.
+- Before VIL-226 merges, set `EMAIL_ALERT_ENABLED`, `CALENDAR_ALERT_ENABLED`, `PARENT_CALENDAR_MIRROR_ENABLED` and `REGISTRATION_LADDER_ENABLED` to exactly `true` and redeploy, so nothing that sends today stops. A lane whose value is missing at merge stops that lane with a named `lane_off` outcome until it is set.
 
 Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns those families on while the global flag is off. Two exceptions: `VILLAGE_INTROS_FAMILY_ALLOWLIST` only narrows a flag that is already `true`, and `MEMORY_DIGEST_FAMILY_ALLOWLIST` applies only together with `MEMORY_DIGEST_APPLY=true`. Live contents are unconfirmed, verify in Vercel env.
 
@@ -87,7 +101,7 @@ Allowlists are separate reads. Empty in `.env.example`. A non-empty list turns t
 | `TRAVEL_BRIEF_FAMILY_ALLOWLIST` | `TRAVEL_BRIEF_ENABLED` |
 | `GOOGLE_WRITE_SCOPES_ALLOWLIST` | `GOOGLE_WRITE_SCOPES_ENABLED` (Hale user ids, not family ids; a listed user is armed while the flag is unset) |
 | `VILLAGE_INTROS_FAMILY_ALLOWLIST` | `VILLAGE_INTROS_ENABLED` |
-| `METRICS_EXCLUDED_FAMILY_IDS` | none (drops those families from digest metrics) |
+| `METRICS_EXCLUDED_FAMILY_IDS` | none (required before the first daily #ops post; drops those families from the post and the Monday digest) |
 
 `SIGNUP_BROWSER_RUNTIME` (`local`, `vercel_sandbox`, or `browserbase`) is read only after `SIGNUP_SANDBOX_RUNTIME_ENABLED` is `true`. Unset. Owner: Noah.
 
@@ -129,7 +143,6 @@ These are the flags the brief says are on. Confirm the Vercel value before treat
 | `LINQ_GROUP_COPARENT` | Co-parent seating and calendar notices stay in the Linq group. | Group `channel_messages` with status `failed`. | `off` | Noah |
 | `GCAL_PAST_CLASSIFY_SKIP` | Calendar items that already ended skip the classifier. | A jump in classify volume or Anthropic spend after a calendar connect. | `false` | Noah |
 | `VOICE_DISABLED` | Unset, voice compose runs when `ANTHROPIC_API_KEY` is set. | Odd parent-visible wording on composed sends, and `sms_turn_failed` on those turns. | `true` | Sloane |
-| `WEEK_PLAN_SUMMARY_DISABLED` | Unset, the week-plan summary is composed. Sending still needs `LOOP_SEND_ENABLED`. | Summary text that names the wrong child or the wrong day. | `true` | Sloane |
 
 ### Ready to turn on
 
@@ -150,11 +163,11 @@ Code is merged. The repo still has these off. Flip one at a time, during a week 
 | `LINQ_GROUP_MEMBERS_ENABLED` | A household group can hold more seats. | A seat added with no opt-in from that phone. | `false` | Noah |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | One Linq group can hold more than one family. | A message in the shared thread that names another family's child. | `false` | Noah |
 | `LINQ_POLLS` | After a find with two or more hits, Hale can ask which to look at first. | A poll on an empty find, a conflict, or a receipt. | empty, or `off` | Sloane |
-| `LOOP_SEND_ENABLED` | The weekly plan and calendar reminders are allowed to send. | `channel_messages` for `weekly_plan` and reminders with status `failed`, and new `email_opt_outs`. | `false` | Noah |
+| `LOOP_SEND_ENABLED` | Calendar reminders are allowed to send. | `channel_messages` for reminders with status `failed`, and new `email_opt_outs`. | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | Hale asks once how the household covers weekdays. | A second weekday question to the same family. | `false` | Sloane |
 | `WATCHED_SPOTS_ENABLED` | Hale polls a spot the parent asked to watch. | Spot texts with status `failed`, or a text for a spot the parent did not name. | `false` | Noah |
 | `WORKSTREAMS_ENABLED` | Open workstreams ride the reply context, and a due check-back can send one follow-up. | A follow-up during quiet hours, or a second follow-up to the same family the same day. | `false` | Noah |
-| `INTEREST_PASSPORT_ENABLED` | Family and kid pages show the interest passport. Gmail and Calendar can infer a stamp. A stamp line rides a text that is already going out. | A stamp with no source, a second stamp for the same activity and season, or a text sent only to ask about a stamp. | `false` | Noah |
+| `INTEREST_PASSPORT_ENABLED` | Family and kid pages show the interest passport. Gmail and Calendar can infer a stamp (a Calendar stamp also needs `CALENDAR_ALERT_ENABLED`). A stamp line rides a text that is already going out. | A stamp with no source, a second stamp for the same activity and season, or a text sent only to ask about a stamp. | `false` | Noah |
 | `TRAVEL_BRIEF_ENABLED` | A trip can produce a short brief. The family also has to pass `F14_ENABLED`. | A brief for a family that is dark on F14 (the count should stay `dark`). | `false` | Sloane |
 | `CHECK_IN_ANCHOR_ENABLED` | The evening check-in can name that day's activity. The lane still needs F14. | An evening text that names an activity from a different day. | `false` | Sloane |
 | `ACTIVITY_REVIEWS_ENABLED` | How an activity went is reduced to a verdict. This pass sends nothing. | Verdicts filed for a family that did not answer. | `false` | Noah |
@@ -190,7 +203,7 @@ The first five real families are watched every day until each has been on the th
 
 Each day's note names the five family ids and these counts:
 
-1. `channel_messages` for those families: `failed` versus `sent` and `delivered`, split by category (`duty_ask`, onboarding, `followup`, weekly plan).
+1. `channel_messages` for those families: `failed` versus `sent` and `delivered`, split by category (`duty_ask`, onboarding, `followup`).
 2. `audit_log` rows with `action_taken` = `sms_turn_failed`.
 3. No-reply gaps: an outbound ask with no inbound from that parent for 24 hours.
 4. Latency from the inbound `channel_messages` row to `sms_turn_answered`.

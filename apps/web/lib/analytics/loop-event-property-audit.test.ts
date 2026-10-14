@@ -22,8 +22,6 @@ const ALLOWED_LOOP_EVENT_PROPERTY_KEYS = new Set([
   'category',
   'templateKey',
   'reason',
-  'items',
-  'pending',
   'actionType',
   // The reminder leg's two: the ISO offset enum and a count of events in the batch.
   'offset',
@@ -48,19 +46,6 @@ const TARGETS: AuditTarget[] = [
     file: '../channel/dispatch.ts',
     event: 'loop_message_sent / loop_message_failed',
     pattern: /ports\.capture\(\s*event\s*,\s*msg\.parentUserId\s*,\s*\{([\s\S]*?)\}\s*\)/,
-  },
-  {
-    file: '../loop/send.ts',
-    event: 'loop_plan_sent',
-    pattern: /deps\.capture\(\s*'loop_plan_sent'\s*,\s*parent\.userId\s*,\s*\{([\s\S]*?)\}\s*\)/,
-  },
-  {
-    // The SAME event from the caregiver leg. Its own target because the pattern is keyed
-    // on the distinct id, and a second call site the audit does not know about is exactly
-    // the hole this file exists to close.
-    file: '../loop/send.ts',
-    event: 'loop_plan_sent (caregiver)',
-    pattern: /deps\.capture\(\s*'loop_plan_sent'\s*,\s*seat\.userId\s*,\s*\{([\s\S]*?)\}\s*\)/,
   },
   {
     file: '../loop/reminders/run.ts',

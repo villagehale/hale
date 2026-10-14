@@ -177,6 +177,8 @@ export async function composeVoice<TVoice>(
           promptTokens: result.usage.promptTokens,
           completionTokens: result.usage.completionTokens,
           costUsd: agentRunCostUsd(modelUsed, result.usage),
+          cacheReadTokens: result.usage.cacheReadTokens,
+          cacheWriteTokens: result.usage.cacheCreationTokens,
           latencyMs: Date.now() - startedAt,
           status: voice ? 'completed' : 'failed',
           langfuseTraceId: trace.traceId,

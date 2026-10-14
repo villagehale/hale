@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import {
   matchConnectorDisconnectRequest,
   matchConnectorRequest,
 } from '~/lib/channel/connect/detect';
+import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import {
   type ForwardAddressAsk,
   forwardAddressReply,
-  forwardRevokeAskReply,
   forwardRevokeDeclinedReply,
   forwardRevokeReply,
   matchForwardAddressRequest,
@@ -235,29 +234,10 @@ describe('what Hale texts back', () => {
  * DIFFERENT address the parent has to go and re-enter in their mail filter — so the
  * turn-off half asks rather than acts, and this is the sentence it asks with.
  */
-describe('the confirm ask, and the receipt for a no', () => {
-  it('is one GSM-7 segment in both languages and says what would be lost', () => {
-    for (const language of ['en', 'fr'] as const) {
-      const body = forwardRevokeAskReply(language);
-      expect({ language, encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-        language,
-        encoding: 'gsm7',
-        segments: 1,
-      });
-    }
-    expect(forwardRevokeAskReply('en')).toContain('would be ignored');
-    expect(forwardRevokeAskReply('fr')).toContain('serait ignoré');
-    expect(forwardRevokeAskReply('en')).not.toBe(forwardRevokeAskReply('fr'));
-  });
-
-  it('prints the keyword it is solicited on, in the language it asks in', () => {
-    expect(forwardRevokeAskReply('en')).toContain('Reply YES');
-    expect(forwardRevokeAskReply('fr')).toContain('OUI');
-  });
-
-  it('never claims anything happened - it is a question, not a receipt', () => {
-    expect(forwardRevokeAskReply('en')).not.toMatch(/Done|is off|turned off/);
-    expect(forwardRevokeAskReply('fr')).not.toMatch(/Fait|désactivée/);
+describe('the receipt for a no', () => {
+  it('never claims the address is already off before the parent agrees', () => {
+    expect(forwardRevokeDeclinedReply('en')).not.toMatch(/\bis off\b|turned off/);
+    expect(forwardRevokeDeclinedReply('fr')).not.toMatch(/Fait|désactivée/);
   });
 
   it('answers a NO in one segment, and says the address is still on', () => {

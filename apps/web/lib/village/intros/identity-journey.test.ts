@@ -1,18 +1,29 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeIdentityAsk, FakeIntroVoice } from '~/lib/channel/intake/fakes';
-import { FakeTransport } from '~/lib/channel/intake/transport';
+import type { ConsentReader } from '~/lib/channel/consent-reply';
 import {
   defaultEmailCaptureDeps,
   handleEmailCaptureReply,
 } from '~/lib/channel/email-capture/reply';
 import { defaultNameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
+import { FakeIdentityAsk, FakeIntroVoice } from '~/lib/channel/intake/fakes';
+import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type TestDb, createTestDb, seedChild } from '~/lib/testing/pglite';
 import type { IntroEmailRequest, IntroEmailSender } from './email';
 import { defaultVillageIntroReplyDeps, handleVillageIntroReply } from './reply';
 import { type IntroSweepDeps, defaultIntroSweepDeps, runVillageIntroSweep } from './run';
+
+/** The readings this journey types. The handler no longer parses them. */
+const introConsent: ConsentReader = {
+  read: async ({ text }) => {
+    const folded = text.trim().toLowerCase();
+    if (folded === 'yes intros') return { verdict: 'yes', target: 'discoverability' };
+    if (folded === 'yes intro') return { verdict: 'yes', target: 'proposal' };
+    return { verdict: 'neither', target: 'none' };
+  },
+};
 
 /**
  * THE FOUNDER'S LIVE SCENARIO, end to end, against real Postgres.
@@ -133,7 +144,7 @@ describe('two nameless, address-less families get introduced', () => {
       const outcome = await handleVillageIntroReply(
         database,
         { familyId: side.familyId, parentUserId: side.parentUserId, body: 'YES INTROS', now },
-        defaultVillageIntroReplyDeps(),
+        defaultVillageIntroReplyDeps(introConsent),
       );
       expect(outcome.status).toBe('discoverability_granted');
     }
@@ -150,7 +161,7 @@ describe('two nameless, address-less families get introduced', () => {
       const outcome = await handleVillageIntroReply(
         database,
         { familyId: side.familyId, parentUserId: side.parentUserId, body: 'YES INTRO', now },
-        defaultVillageIntroReplyDeps(),
+        defaultVillageIntroReplyDeps(introConsent),
       );
       expect(['intro_accepted']).toContain(outcome.status);
     }

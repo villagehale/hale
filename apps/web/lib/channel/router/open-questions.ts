@@ -68,11 +68,10 @@ export type OpenQuestionKind =
   | 'checkup_offer'
   | 'activity_followup'
   /**
-   * "A new family just joined from the Georgetown poster. Reply YES and I'll send them
-   * your welcome note." — the founder's own offer, standing in his own thread
-   * (lib/channel/founder/ping.ts). The only question on this list whose YES writes into a
-   * DIFFERENT household than the one answering, which is why it is graded the way it is
-   * below.
+   * The founder's own offer, standing in his own thread (lib/channel/founder/ping.ts).
+   * The only question on this list whose yes writes into a DIFFERENT household than the
+   * one answering, which is why it is graded the way it is below. The ping is
+   * model-written.
    */
   | 'founder_welcome_offer'
   /**
@@ -85,11 +84,11 @@ export type OpenQuestionKind =
    */
   | 'registration_readiness'
   /**
-   * "Reply YES and I'll text them once." — the parent authorising Hale to text the
-   * number they named and seat that person as their co-parent (VIL-355, caregiver/
-   * invites.ts). Its YES is the only one on this list that puts an unsolicited message
-   * on a phone belonging to somebody who has never heard of Hale, which is why the
-   * co-parent start now consults `soleOpenKind` before claiming a bare affirmative.
+   * The parent authorising Hale to text the number they named and seat that person as
+   * their co-parent (VIL-355, caregiver/invites.ts). Its yes is the only one on this
+   * list that puts an unsolicited message on a phone belonging to somebody who has
+   * never heard of Hale. The scope question is model-written, and the answer is a
+   * model read.
    */
   | 'co_parent_assent'
   /**
@@ -157,8 +156,8 @@ export type OpenQuestionKind =
    */
   | 'daycare_followup'
   /**
-   * "Turn off your forwarding address? ... Reply YES to turn it off, or ignore this." —
-   * the confirm in front of a revoke (VIL-352 round 6, email/forward-request.ts).
+   * The confirm in front of a revoke (VIL-352 round 6, email/forward-request.ts).
+   * The question is model-written.
    *
    * THE ONLY YES ON THIS LIST THAT DESTROYS SOMETHING. Every other one writes, sends or
    * discloses; this one nulls a credential, and the parent cannot get it back — a fresh
@@ -288,10 +287,9 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   email_alert_add: { yes: true, no: true },
   // NEITHER POLARITY, the `activity_followup` reading for a different reason: the answer
   // to "how did today go" is a sentence, and a yes-or-no resolver could only ever
-  // mis-read one. The keywords that DO move something (LESS, NO, DAILY) are read by the
-  // handler as exact words, which needs no model. It is LISTED anyway, because the list
-  // is what `soleOpenKind` reads: a question Hale is holding makes a bare affirmative
-  // ambiguous whether or not it is the thing being answered.
+  // mis-read one. Pace is not a keyword. It is LISTED anyway, because the list is what
+  // `soleOpenKind` reads: a question Hale is holding makes a bare affirmative ambiguous
+  // whether or not it is the thing being answered.
   evening_check_in: { yes: false, no: false },
   // NEITHER POLARITY, the `activity_followup` reading for the third time and the
   // strictest of the three: the answer to "how did it go" is a sentence about a morning,
@@ -383,15 +381,16 @@ export interface OpenQuestion {
 }
 
 /**
- * Which classes' asks are an explicit question a bare yes answers. The 2026-08-13
- * doctrine took the printed keywords away from the composed asks. A few fixed asks
- * still name the word: the founder ping ("Reply YES and I'll send them your welcome
- * note", founder/copy.ts) and the forwarding-address revoke. The plan offer, the
- * registration readiness ask, and the email-alert add now ask in a sentence ("Want me
- * to...?") and stay solicited for the same reason: a parent answering with a bare yes is
- * doing what the last message asked. On 2026-08-28 (ads-week audit) that yes fell to an
- * older open question instead. Per CLASS, never per caller, the same way the outbound
- * gate types urgency — a solicited flag at a call site could not widen this.
+ * Which classes' asks are an explicit question a bare yes answers. The plan offer,
+ * the registration readiness ask, and the email-alert add ask in a sentence ("Want me
+ * to...?") and stay solicited: a parent answering with a bare yes is doing what the
+ * last message asked. On 2026-08-28 (ads-week audit) that yes fell to an older open
+ * question instead. Per CLASS, never per caller, the same way the outbound gate types
+ * urgency — a solicited flag at a call site could not widen this.
+ *
+ * The founder ping, the co-parent scope question, and the forwarding-address revoke
+ * are written by the model and name no token. Marking them solicited would hand a
+ * bare yes to a question whose words are no longer a keyword instruction.
  */
 const SOLICITED: Record<OpenQuestionKind, boolean> = {
   approval: false,
@@ -400,11 +399,11 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   plan_offer: true,
   checkup_offer: false,
   activity_followup: false,
-  founder_welcome_offer: true,
+  founder_welcome_offer: false,
   // The readiness leg asks 'Want me to know when that is done?' (registration/sequence/copy.ts).
   registration_readiness: true,
-  // The scope question prints "Reply YES and I'll text them once." (coparent/copy.ts).
-  co_parent_assent: true,
+  // The scope question is model-written and names no token.
+  co_parent_assent: false,
   // The alert asks "Want me to add it to your week?" and it is the last
   // thing Hale said (integrations/email-alert.ts). A BOOKING alert ends differently —
   // "Want it on your calendar?" — and the flag's value is still correct, because
@@ -412,12 +411,9 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // covers sure/ok/sounds good/oui. The comment is the evidence for the value, so it has
   // to name both endings rather than only the one it was written for.
   email_alert_add: true,
-  // FALSE, and the entry matters more here than anywhere else on this list. The FIRST ask
-  // a family ever gets prints LESS and NO, but every ask after it prints nothing at all —
-  // and this flag is per CLASS. Marking it solicited would hand `newestSolicitedKind` the
-  // newest question in the product on most evenings, so a bare YES meant for an approval
-  // draft would be claimed by a diary entry. None of the words this lane reads is an
-  // affirmative anyway.
+  // FALSE. The evening check-in prints no keyword. Marking it solicited would hand
+  // `newestSolicitedKind` the newest question in the product on most evenings, so a bare
+  // YES meant for an approval draft would be claimed by a diary entry.
   evening_check_in: false,
   // FALSE, for the evening check-in's reason exactly: the composed ask prints no keyword
   // (`not_one_question` is a refusal and the voice writes a question, not a menu), and
@@ -433,13 +429,10 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // The ask prints no keyword; the composer is forbidden a second sentence, let alone
   // an instruction.
   daycare_followup: false,
-  // TRUE — the confirm prints 'Reply YES to turn it off, or ignore this.' verbatim
-  // (email/forward-request.ts). What it buys is PROTECTION rather than reach: while this
-  // ask is the newest solicited one, every OTHER lane's `soleOpenKind` goes false, so no
-  // neighbour claims a bare affirmative out from under a pending revoke. It buys this
-  // lane nothing, because its own handler requires every open question to be this one —
-  // a revoke must not win a race it only won by being the most recent thing Hale said.
-  forward_address_revoke: true,
+  // FALSE. The confirm is model-written and names no token. The handler still
+  // requires every open question to be this one, so a bare yes is not a revoke
+  // unless the consent reader says so and nothing else is open.
+  forward_address_revoke: false,
 };
 
 /**

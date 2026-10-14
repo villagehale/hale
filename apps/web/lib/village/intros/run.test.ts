@@ -1,18 +1,18 @@
 import type { Database } from '@hale/db';
-import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OutboundGatePorts, ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { FakeIdentityAsk, FakeIntroVoice, echoIntroAsk } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { IntroEmailRequest, IntroEmailResult, IntroEmailSender } from './email';
+import { withOptOut } from '~/lib/channel/opt-out';
+import type { OutboundGatePorts, ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { INTRO_SOFT_CLOSE } from './copy';
+import type { IntroEmailRequest, IntroEmailResult, IntroEmailSender } from './email';
 import {
-  VILLAGE_INTROS_ALLOWLIST_ENV,
-  VILLAGE_INTROS_ENABLED_ENV,
   type IntroSweepChild,
   type IntroSweepDeps,
   type IntroSweepFamily,
   type SweepProposal,
+  VILLAGE_INTROS_ALLOWLIST_ENV,
+  VILLAGE_INTROS_ENABLED_ENV,
   runVillageIntroSweep,
 } from './run';
 
@@ -99,24 +99,27 @@ interface Harness {
   classKeyCalls: Array<Array<{ familyId: string; parentUserId: string }>>;
 }
 
-function harness(overrides: {
-  families?: IntroSweepFamily[];
-  discoverable?: Set<string>;
-  alreadyAsked?: Set<string>;
-  children?: Record<string, IntroSweepChild[]>;
-  /** The live course keys each family holds. A family absent from here is absent from the
-   * reader's map too, which is what the prod reader returns for a family with no watch. */
-  classKeys?: Record<string, string[]>;
-  proposals?: SweepProposal[];
-  pairedBefore?: Set<string>;
-  synthetic?: Set<string>;
-  hold?: ProactiveHoldReason | null;
-  anchor?: { id: string; title: string; startsAt: Date } | null;
-  emailResult?: IntroEmailResult;
-  nameLevel?: 'first_name' | 'relation' | 'generic';
-  identityAsk?: FakeIdentityAsk;
-  introVoice?: FakeIntroVoice;
-} = {}): Harness {
+function harness(
+  overrides: {
+    families?: IntroSweepFamily[];
+    discoverable?: Set<string>;
+    alreadyAsked?: Set<string>;
+    children?: Record<string, IntroSweepChild[]>;
+    /** The live course keys each family holds. A family absent from here is absent from the
+     * reader's map too, which is what the prod reader returns for a family with no watch. */
+    classKeys?: Record<string, string[]>;
+    proposals?: SweepProposal[];
+    pairedBefore?: Set<string>;
+    synthetic?: Set<string>;
+    hold?: ProactiveHoldReason | null;
+    recentSends?: number;
+    anchor?: { id: string; title: string; startsAt: Date } | null;
+    emailResult?: IntroEmailResult;
+    nameLevel?: 'first_name' | 'relation' | 'generic';
+    identityAsk?: FakeIdentityAsk;
+    introVoice?: FakeIntroVoice;
+  } = {},
+): Harness {
   const transport = new FakeTransport();
   const emails: IntroEmailRequest[] = [];
   const proposalsCreated: Array<Record<string, unknown>> = [];
@@ -134,7 +137,7 @@ function harness(overrides: {
   const gate: OutboundGatePorts = {
     channelEnrolled: async () => overrides.hold !== 'not_enrolled',
     watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
-    countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 99 : 0),
+    countProactiveSends: async () => 0,
     proactiveSentSince: async () => true,
     parentTimeZone: async () => (overrides.hold === 'quiet_hours' ? 'America/Toronto' : 'UTC'),
   };
@@ -387,7 +390,10 @@ describe('phase 1 - the discoverability ask', () => {
 
   it('never asks a family that is alone in its FSA', async () => {
     const h = harness({
-      families: [family({ familyId: A, areaCoarse: 'M4K' }), family({ familyId: B, areaCoarse: 'L6H' })],
+      families: [
+        family({ familyId: A, areaCoarse: 'M4K' }),
+        family({ familyId: B, areaCoarse: 'L6H' }),
+      ],
     });
     expect((await runVillageIntroSweep(DB, h.deps, NOW)).asked).toBe(0);
     expect(h.transport.sent).toEqual([]);
@@ -447,23 +453,25 @@ describe('phase 1 - the discoverability ask', () => {
     expect((await runVillageIntroSweep(DB, h.deps, NOW)).asked).toBe(0);
   });
 
-  it.each<[ProactiveHoldReason]>([
-    ['not_enrolled'],
-    ['no_watch_consent'],
-    ['frequency_cap'],
-  ])('sends nothing when the outbound gate holds for %s', async (reason) => {
-    const h = harness({
-      families: [family({ familyId: A }), family({ familyId: B })],
-      hold: reason,
-    });
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-    expect(h.transport.sent).toEqual([]);
-    expect(result.held[reason]).toBe(2);
-  });
+  it.each<[ProactiveHoldReason]>([['not_enrolled'], ['no_watch_consent']])(
+    'sends nothing when the outbound gate holds for %s',
+    async (reason) => {
+      const h = harness({
+        families: [family({ familyId: A }), family({ familyId: B })],
+        hold: reason,
+      });
+      const result = await runVillageIntroSweep(DB, h.deps, NOW);
+      expect(h.transport.sent).toEqual([]);
+      expect(result.held[reason]).toBe(2);
+    },
+  );
 });
 
 describe('phase 2 - matching and the coarse card', () => {
-  const optedIn = { discoverable: new Set([`user-${A}`, `user-${B}`]), alreadyAsked: new Set([`user-${A}`, `user-${B}`]) };
+  const optedIn = {
+    discoverable: new Set([`user-${A}`, `user-${B}`]),
+    alreadyAsked: new Set([`user-${A}`, `user-${B}`]),
+  };
 
   it('creates one paired proposal and texts BOTH sides the same shape of card', async () => {
     const h = harness({ families: [family({ familyId: A }), family({ familyId: B })], ...optedIn });
@@ -649,7 +657,10 @@ describe('phase 2 - matching and the coarse card', () => {
 });
 
 describe('phase 3 - resolving a pair', () => {
-  const optedIn = { discoverable: new Set([`user-${A}`, `user-${B}`]), alreadyAsked: new Set([`user-${A}`, `user-${B}`]) };
+  const optedIn = {
+    discoverable: new Set([`user-${A}`, `user-${B}`]),
+    alreadyAsked: new Set([`user-${A}`, `user-${B}`]),
+  };
 
   it('sends ONE intro email once both sides said yes, and audits BOTH families', async () => {
     const h = harness({
@@ -697,9 +708,7 @@ describe('phase 3 - resolving a pair', () => {
     const h = harness({
       families: [family({ familyId: A }), family({ familyId: B })],
       ...optedIn,
-      proposals: [
-        proposal({ familyAAskedAt: NOW, familyBAskedAt: NOW, familyAReply: 'yes' }),
-      ],
+      proposals: [proposal({ familyAAskedAt: NOW, familyBAskedAt: NOW, familyAReply: 'yes' })],
     });
     const result = await runVillageIntroSweep(DB, h.deps, NOW);
     expect(result.introduced).toBe(0);
@@ -755,7 +764,12 @@ describe('phase 3 - resolving a pair', () => {
       families: [family({ familyId: A }), family({ familyId: B })],
       ...optedIn,
       proposals: [
-        proposal({ status: 'declined', familyAAskedAt: NOW, familyBAskedAt: NOW, familyBReply: 'no' }),
+        proposal({
+          status: 'declined',
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          familyBReply: 'no',
+        }),
       ],
     });
     await runVillageIntroSweep(DB, declined.deps, NOW);
@@ -787,7 +801,12 @@ describe('phase 3 - resolving a pair', () => {
       families: [family({ familyId: A }), family({ familyId: B })],
       ...optedIn,
       proposals: [
-        proposal({ status: 'declined', familyAAskedAt: NOW, familyAReply: 'no', familyBAskedAt: null }),
+        proposal({
+          status: 'declined',
+          familyAAskedAt: NOW,
+          familyAReply: 'no',
+          familyBAskedAt: null,
+        }),
       ],
     });
     await runVillageIntroSweep(DB, h.deps, NOW);
@@ -951,7 +970,11 @@ describe('phase 3 - the identity gap-fill', () => {
 
     const asked = h.audits.filter((a) => a.actionTaken === 'village_intro_identity_asked');
     expect(asked).toEqual([
-      { familyId: B, actionTaken: 'village_intro_identity_asked', after: { missing: ['name', 'email'] } },
+      {
+        familyId: B,
+        actionTaken: 'village_intro_identity_asked',
+        after: { missing: ['name', 'email'] },
+      },
     ]);
     expect(JSON.stringify(asked)).not.toContain(A);
   });

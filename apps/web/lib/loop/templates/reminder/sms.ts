@@ -2,7 +2,7 @@ import { smsSegments } from '~/lib/channel/sms-segments';
 import type { RenderedContent, VoiceOutcome } from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { gsmSafe } from '../weekly-plan/core';
-import { eventLine, whenLeadFor } from './core';
+import { eventLine, reminderLead } from './core';
 import type { ReminderPayload } from './payload';
 
 /**
@@ -89,9 +89,9 @@ function trimmedFirstLine(lead: string, lines: readonly string[], deepLink: stri
  *      resolver claims family-wide (docs/voice.md rule 11). reminder-voice.md says nothing
  *      about the wire, so this is the only place it is true.
  *  (c) THE DETERMINISTIC LEAD STILL LEADS — STRUCTURALLY, WHICH IS WHY THERE IS NO THIRD
- *      CHECK HERE. `whenLeadFor` IS the fact this message carries — "Tomorrow", "In an
- *      hour" — and voice.line is not guaranteed to carry it, so the voice is APPENDED to
- *      the rendered body, which already opens with the lead. "The offset went missing" is
+ *      CHECK HERE. `reminderLead` IS the fact this message carries — the events' own
+ *      local day — and voice.line is not guaranteed to carry it, so the voice is APPENDED
+ *      to the rendered body, which already opens with the lead. "The day went missing" is
  *      therefore not a state this code has: a check for it would compare this function's
  *      own concatenation against its own prefix, and could only ever fail for a caller
  *      that passed a lead the body never had. The property is asserted where it can
@@ -118,9 +118,8 @@ export function renderReminderSms(
   payload: ReminderPayload,
   level: ChildNameLevel,
   now: Date,
-  familyId: string,
 ): RenderedContent {
-  const lead = whenLeadFor(payload.offset, familyId, payload.events[0]?.startsAt, payload.timeZone);
+  const lead = reminderLead(payload.events, payload.timeZone);
   const lines = payload.events.map((event) =>
     eventLine(event, payload.children, level, now, payload.timeZone),
   );

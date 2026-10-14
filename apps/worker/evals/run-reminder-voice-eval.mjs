@@ -39,6 +39,8 @@
 //     checkup. That is a 13+ child's private detail invented out of nothing (rule #1).
 //   · a one-template corpus — five reminders that are one sentence with the nouns
 //     swapped. A busy family gets several of these a week.
+//   · a wrong day — "tomorrow" about today, on a reminder sent late on the event's own
+//     day. The day is a fact the line phrases from `now` and each event's `day`.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,7 +66,7 @@ const FACTS_LINT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'loop', 'voice', 'f
 /** Mirrors VOICE_MAX_TOKENS in reminder-voice.ts. */
 const MAX_TOKENS = 150;
 
-/** Five reminders, at least three ways of opening one. A parent with a full week gets
+/** Six reminders, at least three ways of opening one. A parent with a full week gets
  * several of these days apart, so this is the corpus where repetition is actually SEEN —
  * unlike the once-ever surfaces, where convergence is only a doctrine problem. */
 const MIN_DISTINCT_OPENERS = 3;
@@ -128,9 +130,11 @@ const JUDGE_SYSTEM = [
   'The email around this line is already built and is NOT yours to score: it prints each',
   'event and its time in large type directly beneath the line. So the line adds warmth',
   'and nothing else. It is the only part a person wrote.',
-  'You are given `offset` ("-P1D" is the evening before, "-PT1H" is about an hour out),',
-  'the already-redacted `events` the writer could see, the line, and watchFor -',
-  'fixture-specific notes.',
+  'You are given `offset` ("-P1D" is the evening-before reminder, "-PT1H" is about an hour',
+  'out), `now` (the local day and time it is sent), the already-redacted `events` the writer',
+  'could see (each with its local `day`), the line, and watchFor - fixture-specific notes.',
+  'An evening-before reminder can be sent late, on the event\'s own day: a line that calls',
+  'the day wrongly (tomorrow when `now.day` is the event\'s `day`) is a LOW score.',
   'A 5 is one short calm sentence that a friend who keeps your calendar would send:',
   'it frames what is coming without restating the time, it sounds like a person rather',
   'than a notification, and it stops.',
@@ -217,6 +221,11 @@ async function main() {
           failures.push(`resolves the generic item into ${JSON.stringify(word)} (rule #1)`);
         }
       }
+      for (const word of fixture.wrongDayWords ?? []) {
+        if (new RegExp(`\\b${word}\\b`, 'i').test(line)) {
+          failures.push(`calls the day wrongly: ${JSON.stringify(word)} (now.day is the event's day)`);
+        }
+      }
     }
 
     const verdict =
@@ -224,6 +233,7 @@ async function main() {
         ? null
         : await judge(fixture.id, {
             offset: fixture.context.offset,
+            now: fixture.context.now,
             events: fixture.context.events,
             line,
             watchFor: fixture.watchFor,
@@ -258,6 +268,7 @@ async function main() {
     r.failures.some((f) => f.startsWith('restates a clock time')),
   );
   const resolvedGeneric = results.filter((r) => r.failures.some((f) => f.startsWith('resolves')));
+  const wrongDays = results.filter((r) => r.failures.some((f) => f.startsWith('calls the day')));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
 
   console.log('\n--- corpus metrics ---');
@@ -268,6 +279,7 @@ async function main() {
     `restated clock times:    ${clockTimes.length}  (0 required - the shell prints it big, right below)`,
   );
   console.log(`resolved generics:       ${resolvedGeneric.length}  (0 required - rule #1)`);
+  console.log(`wrong days:              ${wrongDays.length}  (0 required - never tomorrow about today)`);
   for (const line of variationLines(variation)) console.log(line);
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
 

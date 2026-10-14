@@ -52,7 +52,7 @@ describe('isSyntheticProbeNumber', () => {
   it('recognises the operator probe range and nothing beside it', () => {
     expect(isSyntheticProbeNumber('+14375550142')).toBe(true);
     // A real Toronto 437 number outside the 555 exchange is a person.
-    expect(isSyntheticProbeNumber('+14376550142')).toBe(false);
+    expect(isSyntheticProbeNumber('+14370000142')).toBe(false);
     // Another area code's 555 exchange is not the probe range.
     expect(isSyntheticProbeNumber('+14165550142')).toBe(false);
   });

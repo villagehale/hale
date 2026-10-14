@@ -2,12 +2,12 @@ import { inspect } from 'node:util';
 import type { RegistrationWindow } from '@hale/db';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
-import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
+import { FakeTransport } from '~/lib/channel/intake/transport';
+import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { GO_LEAD_MINUTES } from './schedule.js';
+import type { FetchPage } from '~/lib/registration/verify-sweep';
 import {
   type LiveSequence,
   type SequenceFamily,
@@ -15,8 +15,8 @@ import {
   defaultSequenceRunDeps,
   runRegistrationSequenceCron,
 } from './run.js';
+import { GO_LEAD_MINUTES } from './schedule.js';
 import type { SequenceChild } from './shortlist.js';
-import type { FetchPage } from '~/lib/registration/verify-sweep';
 
 /**
  * VIL-242 · M7 — the registration sequence sweep.
@@ -285,7 +285,9 @@ function db() {
 }
 
 function auditActions(writes: Harness['writes']): string[] {
-  return writes.filter((w) => w.table === schema.auditLog).map((w) => String(w.payload.actionTaken));
+  return writes
+    .filter((w) => w.table === schema.auditLog)
+    .map((w) => String(w.payload.actionTaken));
 }
 
 afterEach(() => {
@@ -545,7 +547,7 @@ describe('the legs', () => {
 
     // The same leg, a different sentence: this one invites an approval, in the thread.
     // Recording a debt against it would report a broken promise Hale never made.
-    expect(h.transport.bodies()[0]).toContain("Want me to run the morning with you?");
+    expect(h.transport.bodies()[0]).toContain('Want me to run the morning with you?');
     expect(h.promised).toEqual([]);
   });
 
@@ -559,7 +561,7 @@ describe('the legs', () => {
     expect(h.promised).toEqual([]);
   });
 
-  it('closes the coach\'s registration WATCH with the go leg that kept it (VIL-293)', async () => {
+  it("closes the coach's registration WATCH with the go leg that kept it (VIL-293)", async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ sequences: [live()] });
 
@@ -664,7 +666,10 @@ describe('the legs', () => {
     // date would send them the go leg a week after they could have registered.
     const resident = live({
       areaCoarse: 'L4B',
-      window: win({ residentOpenAt: new Date('2026-09-08T10:30:00.000Z'), residentPriorityDays: 7 }),
+      window: win({
+        residentOpenAt: new Date('2026-09-08T10:30:00.000Z'),
+        residentPriorityDays: 7,
+      }),
     });
     const h = harness({ sequences: [resident] });
 
@@ -683,7 +688,10 @@ describe('the legs', () => {
     // L3P is Markham, not Richmond Hill: no head start, so nothing is due on the 8th.
     const nonResident = live({
       areaCoarse: 'L3P',
-      window: win({ residentOpenAt: new Date('2026-09-08T10:30:00.000Z'), residentPriorityDays: 7 }),
+      window: win({
+        residentOpenAt: new Date('2026-09-08T10:30:00.000Z'),
+        residentPriorityDays: 7,
+      }),
     });
     const h = harness({ sequences: [nonResident] });
     const result = await runRegistrationSequenceCron(
@@ -766,19 +774,14 @@ describe('the legs', () => {
       dedupeKey: 'registration_sequence:fam-1:w-1:heads_up:user-1',
     });
     expect(
-      h.writes
-        .filter((w) => w.table === schema.auditLog)
-        .map((w) => String(w.payload.actionTaken)),
+      h.writes.filter((w) => w.table === schema.auditLog).map((w) => String(w.payload.actionTaken)),
     ).toContain('registration_sequence_leg_sent');
   });
 
   it('lets one family’s bad data fail without silencing the next family', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({
-      sequences: [
-        live(),
-        live({ sequenceId: 'seq-2', familyId: 'fam-2', parentUserId: 'user-2' }),
-      ],
+      sequences: [live(), live({ sequenceId: 'seq-2', familyId: 'fam-2', parentUserId: 'user-2' })],
     });
     const boom: SequenceRunDeps = {
       ...h.deps,
@@ -1174,8 +1177,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
       ],
       [
         'age_ineligible',
-        async () =>
-          coursePage({ MinAge: 9, MaxAge: 12, AgeRestrictions: '9 to 12 y 11m' }),
+        async () => coursePage({ MinAge: 9, MaxAge: 12, AgeRestrictions: '9 to 12 y 11m' }),
         '9 to 12 y 11m',
       ],
     ];
@@ -1508,7 +1510,6 @@ describe('a town that published a date and no hour (VIL-347)', () => {
     expect(result.held).toEqual({
       not_enrolled: 0,
       no_watch_consent: 0,
-      frequency_cap: 0,
       quiet_hours: 0,
     });
   });
@@ -1525,10 +1526,7 @@ describe('a town that published a date and no hour (VIL-347)', () => {
 
     expect(result.sent).toBe(2);
     expect(result.skipped.open_time_unpublished).toBe(0);
-    expect(h.transport.sent.map((sent) => sent.to)).toEqual([
-      '+14165550100',
-      '+16475550199',
-    ]);
+    expect(h.transport.sent.map((sent) => sent.to)).toEqual(['+14165550100', '+16475550199']);
     for (const body of h.transport.bodies()) expect(body).toContain('7:00');
   });
 
@@ -1577,10 +1575,7 @@ describe('the ladder reaches both parents, on their own numbers', () => {
     const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
 
     expect(result.sent).toBe(2);
-    expect(h.transport.sent.map((sent) => sent.to)).toEqual([
-      '+14165550100',
-      '+16475550199',
-    ]);
+    expect(h.transport.sent.map((sent) => sent.to)).toEqual(['+14165550100', '+16475550199']);
     // One key each. `channel_messages.dedupe_key` is UNIQUE, so a family-scoped key
     // here is not a duplicate text — it is the second insert throwing.
     expect([...h.dedupeKeys]).toEqual([

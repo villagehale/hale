@@ -1,7 +1,6 @@
 import {
   ALREADY_INVITED,
   CANNOT_TEXT_THAT_NUMBER,
-  CAREGIVER_ANSWER_PROMPT,
   CAREGIVER_DECLINE_ACK,
   OWN_NUMBER,
   TOO_MANY_INVITES,
@@ -66,11 +65,11 @@ export function inviterNameIsAffordable(inviterName: string | null): inviterName
  * not as a list of content classes. Both halves have to be there: a parent who reads
  * only "they see your week" has not been told that this person can say yes to Hale.
  */
-export function coParentScopeConfirm(name: string, language: ReplyLanguage): string {
-  return language === 'fr'
-    ? `Ajouter ${name} comme co-parent veut dire qu'ils voient tout ce que je vous montre - toute votre semaine, chaque enfant - et qu'ils peuvent approuver des choses avec moi. Répondez OUI et je leur écris une fois. Ils doivent dire oui aussi.`
-    : `Adding ${name} as your co-parent means they see everything I show you - your whole week, every child, all of it - and they can approve things with me. Reply YES and I'll text them once. They have to say yes too.`;
-}
+/**
+ * What Hale asks the parent before the number is texted is written per send
+ * (consent-ask, kind coparent_scope). It states both powers — the whole read
+ * surface and the ability to approve — in `language`. There is no fixed sentence.
+ */
 
 /**
  * THE ONE MESSAGE. Who asked (by name — see {@link inviterNameIsAffordable}), what Hale
@@ -81,11 +80,11 @@ export function coParentScopeConfirm(name: string, language: ReplyLanguage): str
  * together: this file has full FR parity and a register change applied to one language is
  * a product that sounds like two.
  */
-export function coParentInviteBody(inviterName: string, language: ReplyLanguage): string {
-  return language === 'fr'
-    ? `Bonjour - ${inviterName} vous a ajouté comme co-parent sur Hale. Je garde le fil de la semaine de leur famille. Dites oui et vous verrez toute leur semaine et pourrez m'écrire n'importe quand. Répondez OUI pour accepter. Répondez ARRET à tout moment.`
-    : `Hi - ${inviterName} added you as their co-parent on Hale. I keep their family's week straight. Say yes and you'll see their whole week and can text me anything, anytime. Reply YES to accept. Reply STOP anytime.`;
-}
+/**
+ * The first text a co-parent receives is written per send (consent-ask, kind
+ * coparent_invite). It names who asked, what agreeing gets them, and the carrier
+ * opt-out (STOP, or ARRET in French). There is no fixed sentence.
+ */
 
 /** Said to the parent once the invite is on its way. */
 export function coParentInviteSentAck(name: string, language: ReplyLanguage): string {
@@ -117,11 +116,10 @@ export const CO_PARENT_DECLINE_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = 
   fr: 'Pas de souci - je ne vous écrirai plus.',
 };
 
-/** The one nudge an invitee gets when their reply was neither yes nor a keyword. */
-export const CO_PARENT_ANSWER_PROMPT_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: CAREGIVER_ANSWER_PROMPT,
-  fr: 'Répondez OUI pour accepter, ou ARRET si vous ne voulez pas.',
-};
+/**
+ * A nudge when the reply was neither yes nor no is written per send
+ * (consent-ask, kind coparent_nudge). There is no fixed sentence.
+ */
 
 /**
  * The parent has no name on file, so Hale cannot say who sent the text.

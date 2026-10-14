@@ -77,7 +77,7 @@ describe('captureServerEvent', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const first = await captureServerEvent('signup_completed', DISTINCT_ID, { method: 'email' });
-    const second = await captureServerEvent('loop_plan_sent', DISTINCT_ID);
+    const second = await captureServerEvent('reminder_sent', DISTINCT_ID);
 
     expect(first).toBe('not_configured');
     expect(second).toBe('not_configured');

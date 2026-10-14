@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 
 /**
  * ASKING FOR THE FORWARDING ADDRESS, IN THE THREAD — the door that opens the door
@@ -51,7 +51,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  *
  * THE TWO HALVES ARE NOT SYMMETRICAL ANY MORE, and that is round 6 (D17). The asking half
  * still ACTS — it mints and hands over an address, which a parent can simply ignore. The
- * turn-off half no longer does: it opens a confirm question ({@link forwardRevokeAskReply})
+ * turn-off half no longer does: it opens a confirm question (consent-ask, kind forward_revoke)
  * and the revoke happens only when that question is answered yes. Revoking is
  * hard-to-reverse — a new token is a DIFFERENT address the parent has to go and re-enter
  * in their mail filter — and D17's rule for hard-to-reverse is an unambiguous go.
@@ -346,25 +346,12 @@ export function forwardRevokeReply(language: ReplyLanguage, outcome: ForwardRevo
 }
 
 /**
- * THE CONFIRM ASK — the whole of round 6 in one sentence (D17).
+ * THE CONFIRM ASK is written per send (consent-ask, kind forward_revoke).
  *
- * It says the COST before it asks for the go, because that is the half a parent cannot
- * work out for themselves: nulling the token does not bounce anything, it makes mail sent
- * to the old address resolve no family and stop. It prints "Reply YES" verbatim, which is
- * why this kind is `solicited` on the open-question list — and it offers SILENCE as the
- * other answer rather than a keyword, because the safe outcome must be the free one.
- *
- * It promises nothing in the past tense. A question that reads like a receipt is the
- * failure this replaces.
+ * It says the cost before it asks for the go: nulling the token does not bounce
+ * anything, it makes mail sent to the old address resolve no family and stop.
+ * There is no fixed sentence and no token to recite. Silence is still a no.
  */
-const REVOKE_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: 'Turn off your forwarding address? Mail sent to it would be ignored from then on. Reply YES to turn it off, or ignore this.',
-  fr: 'Désactiver votre adresse de transfert? Le courrier qui y arrive serait ignoré. Répondez OUI pour la désactiver, ou ignorez ce message.',
-};
-
-export function forwardRevokeAskReply(language: ReplyLanguage): string {
-  return REVOKE_ASK_BY_LANGUAGE[language];
-}
 
 /**
  * THE NO, ANSWERED — and it is answered rather than passed over for a reason that is not

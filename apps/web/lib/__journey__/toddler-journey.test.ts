@@ -62,6 +62,7 @@ import {
 } from '~/lib/registration/sequence/run';
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
+import { askWriter } from '~/lib/testing/consent-double';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -477,6 +478,19 @@ async function runToddlerJourney(): Promise<Journey> {
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
+    consent: {
+      read: async ({ text }) => {
+        const folded = text.trim().toLowerCase();
+        if (['yes', 'oui', 'yes please', 'sounds good', 'yeah'].includes(folded)) {
+          return { verdict: 'yes' as const, target: 'none' as const };
+        }
+        if (['no', 'non', 'nope', 'no thanks'].includes(folded)) {
+          return { verdict: 'no' as const, target: 'none' as const };
+        }
+        return { verdict: 'neither' as const, target: 'none' as const };
+      },
+    },
+    consentAsk: askWriter(),
     now: INTAKE_AT,
   };
 
@@ -520,9 +534,9 @@ async function runToddlerJourney(): Promise<Journey> {
               .reverse(),
         },
         {
-          // SEAM: the frequency cap counts this FAMILY's delivered proactive sends of
-          // this class. Unscoped, the fake would count every intake message too and
-          // hold the very first nudge.
+          // SEAM: countProactiveSends still reads this family's delivered nudge rows.
+          // The gate does not hold on that count. Unscoped, the fake would count
+          // every intake message too.
           table: schema.channelMessages,
           rows: () =>
             fake
@@ -547,7 +561,7 @@ async function runToddlerJourney(): Promise<Journey> {
         return real.watchConsentGranted(id);
       },
       countProactiveSends: async (fid, kind, since) => {
-        gateCalls.push('frequency_cap');
+        gateCalls.push('send_count');
         return real.countProactiveSends(fid, kind, since);
       },
       // A brand-new family: nothing proactive has reached them yet, so the nudge below is
@@ -1034,23 +1048,17 @@ describe("3 · watch consent is recorded in the parent's own words", () => {
 // ── stage 4 · the 48h sweep looks, and has nothing to say ────────────────────
 
 describe('4 · the 48h sweep passes the gate and stays quiet', () => {
-  it('fires for this family and passes all four outbound-gate checks in order', () => {
+  it('fires for this family and passes the outbound-gate checks in order', () => {
     // The 18-month checkpoint is all this family's week holds at 48h (stage 5 shows the
     // matcher still finds it), and Hale sends no health checkpoint reminder: quiet.
     expect(journey.nudge).toMatchObject({ enabled: true, evaluated: 1, sent: 0, quiet: 1 });
     expect(journey.nudge.held).toEqual({
       not_enrolled: 0,
       no_watch_consent: 0,
-      frequency_cap: 0,
       quiet_hours: 0,
     });
     // Every check ran, against the rows intake wrote — not a stub that said yes.
-    expect(journey.gateCalls.slice(0, 4)).toEqual([
-      'enrolled',
-      'watch_consent',
-      'frequency_cap',
-      'quiet_hours',
-    ]);
+    expect(journey.gateCalls.slice(0, 3)).toEqual(['enrolled', 'watch_consent', 'quiet_hours']);
   });
 
   it('sends nothing, spends none of the weekly budget, and records that it looked', () => {
@@ -1091,8 +1099,6 @@ describe('4c · a withdrawn watch consent holds the next sweep', () => {
     // family, the same slot logic, the same live channel — and no send.
     expect(journey.afterWithdrawal).toMatchObject({ enabled: true, evaluated: 1, sent: 0 });
     expect(journey.afterWithdrawal.held.no_watch_consent).toBe(1);
-    // First failure wins, so nothing past the consent check was even looked at.
-    expect(journey.afterWithdrawal.held.frequency_cap).toBe(0);
   });
 });
 
