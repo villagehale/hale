@@ -21,7 +21,7 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import { HALE_IDENTITY, NAMES_HALE_COMPANY, isIdentityChallenge } from './identity-challenge';
+import { HALE_IDENTITY, NAMES_HALE_COMPANY } from './identity-challenge';
 import {
   ONBOARDING_ORDER,
   type OnboardingCapture,
@@ -169,6 +169,8 @@ export interface FriendVoiceInput {
   /** 1:1 is tu. A group thread is vous. */
   address: 'tu' | 'vous';
   introduce: boolean;
+  /** The turn reader read this inbound as "who is this / is this real" (#868). */
+  identityAsked?: boolean;
   parentWords: string;
   recentTurns: readonly FriendTurn[];
   placeLabel: string | null;
@@ -695,7 +697,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       coparentGroup: input.coparentGroup ?? null,
       // Who runs Hale is for when they ask; otherwise the founder's name is
       // one more name the model could take for the parent's.
-      identity: input.introduce || isIdentityChallenge(input.parentWords) ? HALE_IDENTITY : null,
+      identity: input.introduce || input.identityAsked ? HALE_IDENTITY : null,
       access:
         input.step === 'email' || input.step === 'calendar'
           ? { true: ACCESS_FACTS[input.step], untrue: ACCESS_UNTRUE }
@@ -1333,7 +1335,7 @@ export function judgeFriendReply(
   if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
   if (REGISTRATION_CLAIM.test(trimmed)) return { ok: false, reason: 'registration_claim' };
   // Who is behind this number is a disclosure: when they asked, the company is named.
-  if (isIdentityChallenge(input.parentWords) && !NAMES_HALE_COMPANY.test(trimmed)) {
+  if (input.identityAsked && !NAMES_HALE_COMPANY.test(trimmed)) {
     return { ok: false, reason: 'identity' };
   }
   // Asked about price: Hale does not quote one, it points to the site.

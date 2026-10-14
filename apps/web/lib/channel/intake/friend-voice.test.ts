@@ -301,6 +301,7 @@ describe('friend-voice judge', () => {
       step: 'kids_names',
       placeLabel: 'Burlington',
       parentWords: 'wait who is this? is this free?',
+      identityAsked: true,
     });
     expect(
       judgeFriendReply(

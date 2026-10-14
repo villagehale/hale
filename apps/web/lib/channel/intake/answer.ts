@@ -10,7 +10,6 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
-import { isIdentityChallenge } from './identity-challenge';
 import {
   groundCurrentSource,
   isCheerUpAsk,
@@ -371,7 +370,6 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // is the same door for any caller of the composer.
       // #868: the disclosure is written by the model in the machine's seam (which
       // holds the writer). Here a challenge is simply not a question to answer.
-      if (isIdentityChallenge(input.parentWords)) return { status: 'nothing_to_answer' };
 
       // VIL-323: adult-learn is a Designer-locked kids-only door, not a model "I
       // don't do that" and not a city clock. Checked before rec-morning so

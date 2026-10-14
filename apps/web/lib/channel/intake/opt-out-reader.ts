@@ -24,9 +24,15 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 
 const MAX_TOKENS = 400;
 
-export type OptOutIntent = 'stop' | 'start' | 'crisis_emergency' | 'crisis_mental' | 'none';
+export type OptOutIntent =
+  | 'stop'
+  | 'start'
+  | 'crisis_emergency'
+  | 'crisis_mental'
+  | 'identity'
+  | 'none';
 
-const INTENTS = ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'none'] as const;
+const INTENTS = ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'identity', 'none'] as const;
 
 export interface OptOutReading {
   intent: OptOutIntent;
@@ -67,14 +73,20 @@ export function acceptOptOutReading(
 ): OptOutReading | null {
   if (value.verbatim !== text) return null;
   const confirmation = value.confirmation.trim();
-  if (value.intent === 'none') return { intent: 'none', confirmation: '' };
+  if (value.intent === 'none' || value.intent === 'identity') {
+    return { intent: value.intent, confirmation: '' };
+  }
   return { intent: value.intent, confirmation };
 }
 
-export function createOptOutReader(client: AgentClient): OptOutReader {
+export function createOptOutReader(
+  clientOrResolver: AgentClient | (() => AgentClient),
+): OptOutReader {
   return {
     async read(input) {
       try {
+        const client =
+          typeof clientOrResolver === 'function' ? clientOrResolver() : clientOrResolver;
         const skill = await loadCronSkill('opt-out-read');
         const { value } = await forceToolJson({
           client,
@@ -118,9 +130,36 @@ export function readTurnOnce(
   if (!reader || input.text.trim().length === 0) return Promise.resolve(null);
   const cached = turnReads.get(turn);
   if (cached) return cached;
-  const read = reader.read(input);
+  const read = readTextOnce(reader, input);
   turnReads.set(turn, read);
   return read;
+}
+
+/** Seams that see only the words (the friend voice, its judge) share the turn's read
+ * by text for a minute, so one inbound is still one model call (#868). */
+const textReads = new Map<string, { at: number; read: Promise<OptOutReading | null> }>();
+const TEXT_READ_TTL_MS = 60_000;
+
+export function readTextOnce(
+  reader: OptOutReader | null | undefined,
+  input: { text: string; language: ReplyLanguage | null },
+): Promise<OptOutReading | null> {
+  if (!reader || input.text.trim().length === 0) return Promise.resolve(null);
+  const now = Date.now();
+  for (const [key, entry] of textReads) {
+    if (now - entry.at > TEXT_READ_TTL_MS) textReads.delete(key);
+  }
+  const key = input.text;
+  const hit = textReads.get(key);
+  if (hit) return hit.read;
+  const read = reader.read(input);
+  textReads.set(key, { at: now, read });
+  return read;
+}
+
+/** The model read this turn as "who is texting me / is this real" (#868: no regex). */
+export function isIdentityReading(reading: OptOutReading | null): boolean {
+  return reading?.intent === 'identity';
 }
 
 export function isCrisisReading(

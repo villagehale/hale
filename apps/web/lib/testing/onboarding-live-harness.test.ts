@@ -5,7 +5,6 @@ import type {
   FriendVoiceComposer,
   FriendVoiceInput,
 } from '~/lib/channel/intake/friend-voice';
-import { isIdentityChallenge } from '~/lib/channel/intake/identity-challenge';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
@@ -145,7 +144,7 @@ function scripted(input: FriendVoiceInput): FriendComposed {
     };
   } else return { reply: 'Anytime. I am here when you need me.', capture };
 
-  const aside = isIdentityChallenge(words)
+  const aside = input.identityAsked
     ? 'This is Hale, from Village Hale Technologies Inc. (villagehale.com); the plan details are on the site. '
     : '';
   return { reply: `${aside}${ask}`, capture };
@@ -210,6 +209,13 @@ describe('live onboarding replay harness (scripted model)', () => {
   it('walks the founder script end to end and a correct conversation passes every rule', async () => {
     const lines: string[] = [];
     const report = await runOnboardingReplay(db.database, {
+      // Scripted turn reader: the founder script's one who-is-this line reads as identity.
+      optOutReader: {
+        read: async ({ text }) => ({
+          intent: text === 'wait who is this? is this free?' ? 'identity' : 'none',
+          confirmation: '',
+        }),
+      },
       friendVoice: composer,
       kidItems: oracle,
       print: (line) => {

@@ -45,7 +45,7 @@ const TOOL_SCHEMA = {
   properties: {
     intent: {
       type: 'string',
-      enum: ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'none'],
+      enum: ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'identity', 'none'],
     },
     verbatim: { type: 'string' },
     confirmation: { type: 'string' },

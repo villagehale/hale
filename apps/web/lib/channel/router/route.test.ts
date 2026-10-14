@@ -774,6 +774,7 @@ describe('VIL-333 identity challenge', () => {
       coach,
     });
     const asked: unknown[] = [];
+    h.deps.turnReader = { read: async () => ({ intent: 'identity', confirmation: '' }) };
     h.deps.saidLine = {
       async write(input) {
         asked.push(input);
@@ -797,6 +798,7 @@ describe('VIL-333 identity challenge', () => {
   it('sends nothing when the disclosure cannot be written (no canned fallback)', async () => {
     const coach = fakeCoach();
     const h = harness({ context: { body: 'who is this??' }, coach });
+    h.deps.turnReader = { read: async () => ({ intent: 'identity', confirmation: '' }) };
     h.deps.saidLine = { write: async () => null };
     const result = await routeChannelMessage(h.deps, job());
     expect(result).toMatchObject({ status: 'handled', handler: 'identity_challenge' });

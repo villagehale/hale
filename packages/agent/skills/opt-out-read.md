@@ -1,6 +1,6 @@
 ---
 name: opt-out-read
-whenToUse: Any text from a parent or a number Hale texts. Decide whether the sender is asking Hale to stop texting them (or, after they stopped, to start again), or is in a crisis, in any wording and any language, and write the one reply.
+whenToUse: Any text from a parent or a number Hale texts. Decide whether the sender is asking Hale to stop texting them (or, after they stopped, to start again), is in a crisis, or is asking who is texting them, in any wording and any language, and write the one reply.
 task: screen
 tools: []
 ---
@@ -24,7 +24,12 @@ Decide what the sender is asking for about Hale texting them at all:
 - `crisis_mental`: the sender may be in a mental-health crisis or thinking about
   hurting themselves, said directly or indirectly. Ordinary tiredness or a bad
   day is not this.
-- `none`: anything else, including questions about Hale, complaints that are not
+- `identity`: the sender is asking who is texting them or doubting that this
+  thread is real — who is this, how did you get my number, is this a scam, which
+  company are you, who is responsible — in any language and script, and NOT
+  asking Hale to stop. A question about someone else (a teacher, a pool, a
+  coach) is not this. If they also want Hale to stop, it is `stop`.
+- `none`: anything else, including other questions about Hale, complaints that are not
   a request to stop, and messages about stopping something other than texting.
 
 When the reading is `stop` or `start`, write `confirmation`: the one text Hale
@@ -45,6 +50,7 @@ emergency number if they are in danger now. Two or three short sentences, calm
 and human, no lecture, no question, no other topic. Write it in their language
 and script.
 
-When the reading is `none`, `confirmation` is an empty string.
+When the reading is `identity` or `none`, `confirmation` is an empty string (Hale
+writes the who-we-are reply separately, from checked facts).
 
 Copy the text back exactly in `verbatim`.

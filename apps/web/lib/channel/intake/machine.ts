@@ -119,7 +119,13 @@ import {
   onboardingMissing,
   storedFromCapture,
 } from './onboarding-turn';
-import { type OptOutReader, isCrisisReading, readTurnOnce } from './opt-out-reader';
+import {
+  type OptOutReader,
+  isCrisisReading,
+  isIdentityReading,
+  readTextOnce,
+  readTurnOnce,
+} from './opt-out-reader';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
@@ -1003,7 +1009,14 @@ async function offScriptReply(
 ): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
   // A crisis was already routed by the turn's reader before this seam (#868). The
   // identity disclosure is the whole turn, written by the model from the facts.
-  const identity = await identityChallengeReply(args.parentWords, deps.saidLine);
+  const identity = await identityChallengeReply(
+    args.parentWords,
+    deps.saidLine,
+    await readTextOnce(deps.optOutReader, {
+      text: args.parentWords,
+      language: replyLanguage(args.parentWords),
+    }),
+  );
   if (identity.challenge) {
     return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
@@ -1200,9 +1213,18 @@ async function friendSpeak(
 ) {
   deps.keepTyping?.();
   const { pageScope, ...speak } = options ?? {};
+  // #868: whether they asked who Hale is comes from the turn's model read, not a regex.
+  const identityAsked =
+    input.identityAsked ??
+    isIdentityReading(
+      await readTextOnce(deps.optOutReader, {
+        text: input.parentWords,
+        language: input.language,
+      }),
+    );
   return speakFriend(
     deps.friendVoice,
-    { ...input, recentTurns: turnsFromTranscript(transcript) },
+    { ...input, identityAsked, recentTurns: turnsFromTranscript(transcript) },
     pageScope ? { ...speak, page: pageOncePerDay(deps.limiter, pageScope) } : speak,
   );
 }

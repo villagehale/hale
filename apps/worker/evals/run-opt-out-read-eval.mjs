@@ -42,7 +42,7 @@ const TOOL_SCHEMA = {
   properties: {
     intent: {
       type: 'string',
-      enum: ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'none'],
+      enum: ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'identity', 'none'],
     },
     verbatim: { type: 'string' },
     confirmation: { type: 'string' },
@@ -77,7 +77,9 @@ async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
   const preflight = process.argv.includes('--preflight');
   const skill = await loadSkill();
-  const replyRows = OPT_OUT_FIXTURES.filter((f) => f.expect !== 'none').length;
+  const replyRows = OPT_OUT_FIXTURES.filter(
+    (f) => f.expect !== 'none' && f.expect !== 'identity',
+  ).length;
   const subjectCalls = OPT_OUT_FIXTURES.length;
   const judgeCalls = replyRows * JUDGE_SAMPLES_MEDIAN;
   if (preflight) {
@@ -132,8 +134,8 @@ async function main() {
       console.info(`FAIL  ${f.id}  intent=${intent} expected=${f.expect}`);
       continue;
     }
-    if (f.expect === 'none') {
-      console.info(`PASS  ${f.id}  intent=none`);
+    if (f.expect === 'none' || f.expect === 'identity') {
+      console.info(`PASS  ${f.id}  intent=${intent}`);
       continue;
     }
     const verdict = await judge(f.id, {

@@ -20,6 +20,7 @@ import {
 } from '~/lib/channel/intake/fakes';
 import type { FriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import type { OptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import type { RadarPayload } from '~/lib/channel/intake/radar';
 import { FakeTransport, type InboundMessage } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -220,6 +221,8 @@ export function liveRadarPayload(): RadarPayload {
 export interface LiveReplayPorts {
   friendVoice: FriendVoiceComposer;
   kidItems: KidItemClassifier;
+  /** The turn reader (stop/start/crisis/identity). Absent: nothing is read. */
+  optOutReader?: OptOutReader;
   /** Where each outbound bubble is printed verbatim. Default: nowhere. */
   print?: (line: string) => void;
   now?: Date;
@@ -270,6 +273,7 @@ export async function runOnboardingReplay(
     resolveCenter: async () => ({ lat: 43.6471, lng: -79.9303 }),
     discoveryTrigger: () => {},
     friendVoice: ports.friendVoice,
+    optOutReader: ports.optOutReader,
     now,
   };
   const turns: LiveTurn[] = [];

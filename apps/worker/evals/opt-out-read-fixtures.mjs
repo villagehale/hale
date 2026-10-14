@@ -52,4 +52,28 @@ export const OPT_OUT_FIXTURES = [
     language: 'fr',
     expect: 'none',
   },
+  // #868: the identity question is read by the model in any language, not matched.
+  {
+    id: 'en-identity',
+    text: 'who is this? how did you get my number',
+    language: 'en',
+    expect: 'identity',
+  },
+  { id: 'fr-identity', text: "c'est qui? c'est une arnaque?", language: 'fr', expect: 'identity' },
+  { id: 'zh-identity', text: '你是谁？你怎么有我的电话号码？', language: 'zh', expect: 'identity' },
+  { id: 'ar-identity', text: 'من أنت؟ كيف حصلت على رقمي؟', language: 'ar', expect: 'identity' },
+  {
+    id: 'zh-identity-scam',
+    text: '这是诈骗吗？你们是哪家公司？',
+    language: 'zh',
+    expect: 'identity',
+  },
+  {
+    id: 'ar-identity-company',
+    text: 'هل هذه رسالة احتيال؟ ما اسم شركتكم؟',
+    language: 'ar',
+    expect: 'identity',
+  },
+  { id: 'zh-not-identity', text: '游泳老师叫什么名字？', language: 'zh', expect: 'none' },
+  { id: 'ar-not-identity', text: 'ما هو عنوان المسبح؟', language: 'ar', expect: 'none' },
 ];

@@ -34,6 +34,7 @@ import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
+import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
@@ -362,6 +363,8 @@ export interface ChannelRouterDeps {
   calendarOffers: CalendarOfferPorts;
   /** #868: writes the lines that used to be fixed (identity disclosure). Absent → nothing sent. */
   saidLine?: SaidLineWriter;
+  /** #868: the turn reader; decides an identity challenge in any language. */
+  turnReader?: OptOutReader;
   /**
    * The menu Hale last put in front of this parent, and its memory (disambiguation.ts).
    * Non-nullable (rule #11) for the reason the two readers above it are: a router with no
@@ -972,7 +975,11 @@ async function routeChannelMessageInner(
   // it. Ahead of the handlers so "who are you" is not read as consent, and ahead
   // of the coach so a model cannot re-pitch. A menu pick above still wins: "2"
   // is an answer to a list Hale printed, not a challenge.
-  const identity = await identityChallengeReply(turn.body, deps.saidLine);
+  const identity = await identityChallengeReply(
+    turn.body,
+    deps.saidLine,
+    await readTextOnce(deps.turnReader, { text: turn.body, language: replyLanguage(turn.body) }),
+  );
   if (identity.challenge) {
     // #868: the model writes the disclosure. A failed write sends nothing.
     if (identity.body) {
