@@ -4,6 +4,7 @@ import { createTestDb } from '~/lib/testing/pglite';
 import { holdSender, isSenderHeld, releaseSender } from './opt-out-hold';
 
 describe('#868 failed-read hold', () => {
+  // PGlite's first boot under the full CI suite has crossed the 5s test timeout.
   it('holds a sender until a read succeeds', async () => {
     const db = (await createTestDb()).database;
     const now = new Date('2026-10-14T20:00:00Z');
@@ -14,7 +15,7 @@ describe('#868 failed-read hold', () => {
     expect(await isSenderHeld(db, 'hash-b')).toBe(false);
     await releaseSender(db, 'hash-a');
     expect(await isSenderHeld(db, 'hash-a')).toBe(false);
-  });
+  }, 30_000);
 
   it('the outbound gate holds every proactive kind, urgent or not, while held', async () => {
     const ports: OutboundGatePorts = {
