@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slots are scored. The single slot is grounded in the search snippet and says so: Parent & Tot lessons, 4 months to 3 years, toddler-appropriate, run by the Town of Halton Hills. When, price and registration are correctly left null because no page was opened and no snippet carried them. The slot makes no negative claim that a schedule is not posted, and no figures are invented. The sourceUrl points to a page that refused the fetch. The ageFit note says the page could not be opened, so this is not presented as a page read, though citing a URL that was never read is slightly loose. Overall this is the correct snippet-grounded result.",
+    "score": 5
+  }
+}

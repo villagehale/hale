@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slot is scored. It is snippet-grounded: Parent & Tot at Gellert, ages 4 months to 3 years, matching the toddler stage. when, price and registration are all null because no page was opened, and nothing is invented. The ageFit field openly says the facts come from a search snippet and that the schedule page could not be opened. It makes no claim that the schedule is not posted. The sourceUrl points to the Gellert page, which returned url_not_accessible. That cites a page that was not read, but it identifies the operator's own page the snippet came from, and the caveat is explicit. Overall this is the right shape of answer.",
+    "score": 5
+  }
+}

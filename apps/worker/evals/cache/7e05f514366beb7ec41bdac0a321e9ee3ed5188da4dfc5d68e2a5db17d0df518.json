@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slots are scored. The one slot is grounded in a search snippet and says so plainly in ageFit. It names the real program and age band (4 months to 3 years, which fits a toddler), cites the Town of Halton Hills, and leaves when, price and registration null rather than inventing them. Nothing is borrowed from elsewhere and the slots make no 'not posted' claim. One weakness: sourceUrl points at a page that was never opened (url_not_accessible), which looks like a read citation, though the ageFit caveat discloses this. pages_read is not shown, so it cannot be checked.",
+    "score": 5
+  }
+}

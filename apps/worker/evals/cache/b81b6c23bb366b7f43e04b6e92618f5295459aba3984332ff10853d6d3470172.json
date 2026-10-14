@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are traceable to pages that were actually read. Tiny Gym's age band (1 and walking to 3, with a parent) and the Term 1 and Term 2 dates (Sept 14-Nov 1 and Nov 2-Dec 20, 2026) match the programs page and the opened PDF exactly. The registration date (Wed July 22, 2026, 8:00am online) is cited to the homepage and carried into the message. No price is invented; the page says pricing sits behind the registration login. No figures are borrowed from other programs. The slots honestly say the PDF grid could not be matched to weekdays. The pageEvidence is page_has_schedule, and the message correctly owns the gap in the first person ('I could not pin down the day or the price') rather than claiming nothing is posted. Watch is true, so 'I'll keep watching and text you' is a real commitment and is correct. The message leads with Tiny Gym by name, attributes the facts with 'their site says', and is plain ASCII with no link or question. It fits in about two segments. Minor nit: it runs three sentences, though the third is the required watch line.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and matches the programme page exactly: 12 months to 4 years, Tuesdays and Thursdays 9:30-11:00, Sept 8 to Dec 11. It is cited to the right URL. Price is correctly null and does not borrow $185 or $95 from the rentals page. Registration is null, which is correct because the page prints no registration date. The message leads with the program by name, attributes the facts ('their site says') and is two plain-ASCII sentences with no link and no question. The price gap is framed in the first person ('I could not pin down the price'), as page_has_schedule requires. The watch is TRUE, so the first-person 'I'll keep watching and text you' is backed by a real commitment. Nothing is presented as verified.",
+    "score": 5
+  }
+}
