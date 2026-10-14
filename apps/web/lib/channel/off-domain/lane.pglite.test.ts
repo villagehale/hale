@@ -79,6 +79,7 @@ function scripted() {
                 their_place: 'not_needed',
                 current_fact: 'the forecast',
                 needs_search: 'yes',
+                sensitive: 'no',
               });
             }
             return structured({
@@ -89,6 +90,7 @@ function scripted() {
               their_place: 'needed',
               current_fact: 'the forecast',
               needs_search: 'missing_detail',
+              sensitive: 'no',
             });
           }
           seen.compose.push(content);
