@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is missing_detail, and the reply asks for the city in a few casual words without stating any forecast from memory. That is the correct answer here, it's brief, it reads like a friend texting, and it isn't a deflect.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

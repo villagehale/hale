@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the research notes for Denver, CO tomorrow: high 65°F, about 15 below Monday's 80, partly sunny, a 30% shower chance after 3 p.m. Tuesday evening, overnight lows in the 30s to low 40s, and gusts to 17 mph. Calling the wind 'light' while folding in the 17 mph gust is a minor simplification, not a wrong fact. It answers directly with no deflect, but it reads more like a weather bulletin ('Expect partly sunny skies...') than a casual text from a friend.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

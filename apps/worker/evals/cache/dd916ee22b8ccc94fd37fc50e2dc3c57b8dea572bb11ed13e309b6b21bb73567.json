@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer is in Chinese and makes a real pick, Messi, while acknowledging Maradona and Pelé. Every specific is supported by research_notes: the SI 55-player list, IFFHS 2025 placing him first, his full set of national-team titles, and the lack of any official verdict. Rendering IFFHS as '国际足联历史统计联合会' is a common Chinese media translation and does not misstate who the body is. It reads like a friend's take, if a little citation-heavy.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact is supported by the research notes: a mostly dry, cloudy day, a 20% chance around 6–7pm, and showers with a possible thunderstorm starting overnight. The reply answers the 3pm pickup question directly in a brief, casual way and says nothing about the family. It doesn't say 'dry at 3' outright, but 'mostly dry during the day' covers it.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

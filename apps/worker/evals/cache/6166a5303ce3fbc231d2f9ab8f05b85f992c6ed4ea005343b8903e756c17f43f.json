@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact is supported by the research notes: no game last night, the season ended Sept 27 with a 5-1 home win over the Reds, a 79-83 finish, and no playoffs. It answers directly and briefly in the question's language. The opening 'Assuming you mean...' is a little stiff, and 'So no game to win for now' is a mild filler close, but it still reads like a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

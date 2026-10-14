@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is unavailable. The reply says plainly that it can't check the forecast right now and gives no forecast from memory. It doesn't ask which city, which is right here. It's casual and reads like a friend texting, maybe a touch apologetic but fine.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is unavailable. The answer says plainly that it can't check right now and states no result from memory. It's brief, casual and in English, and reads like a friend texting back, with no assistant-style offer and no deflect to an app. Nothing touches health or safety.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Lima is correct, settled knowledge. It's brief, a direct answer, casual, and it doesn't drag in the pending weather question. That's exactly a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

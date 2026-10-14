@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact is backed by research_notes: no game Sunday, and a 6-3 win over Colorado on Saturday. The opening is brief and casual, like a friend texting. But it closes with \"Want me to check anything else for you?\", an assistant offering a service rather than a friend texting back, so it scores below 4.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 3
-  }
-}

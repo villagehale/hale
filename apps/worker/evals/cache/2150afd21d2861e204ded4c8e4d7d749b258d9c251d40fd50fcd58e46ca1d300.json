@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Takes a clear side (yes) with a light, casual tone, so no fence-sitting. No factual claims at risk, and it's in the same language as the question. Reads like a friend, though slightly wordy and a bit less playful than ideal.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

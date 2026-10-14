@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply asks for the country, which is correct when live is missing_detail. It states no broadcaster or other current fact. The tone is a bit formal (\"so I need that first\") but still reads as a short text back rather than an assistant offering a service. No invented specifics. Not a health question.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

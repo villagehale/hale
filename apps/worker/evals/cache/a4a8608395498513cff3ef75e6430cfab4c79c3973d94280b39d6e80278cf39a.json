@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure (65°F high, partly sunny, a 30% rain chance after 3 pm rising into the evening, NNE winds of 6-10 mph gusting to 17, lows in the low 40s and 30s) matches the NWS-based research notes for Denver, Colorado, tomorrow. The answer is direct and in English, with no deflect. It reads more like a recited forecast than a casual friend's text: it packs in wind detail and uses a formal 'Expect…', which costs a point on tone.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

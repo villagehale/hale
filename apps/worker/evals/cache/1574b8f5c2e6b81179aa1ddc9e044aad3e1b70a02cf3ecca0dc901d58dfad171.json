@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct: 22-7=15, 15/3=5. It states the answer up front with a one-line method, brief and casual like a friend's text. The short explanation stops well short of a worked lesson.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

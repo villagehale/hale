@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the research notes. The TSX is closed for Thanksgiving, and Friday closed at 35,664.62, up 519 points or about 1.5%. The jobs-surprise reason and tomorrow's 9:30 ET reopening are both in the notes. 'Tomorrow' is correctly Tuesday Oct 13. The reply is brief, casual and actually answers the question, like a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

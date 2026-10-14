@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the research notes for Denver tomorrow: partly sunny, a high of about 65°F (15 degrees cooler than today), a 30% rain chance after 3 p.m. with showers possible in the evening, and lows in the low 40s and 30s. Nothing is invented and it answers directly for the right city. The tone is friendly and ends with a casual 'Bring a jacket,' but the middle reads a little like a forecast bulletin ('Expect partly sunny skies…') rather than a quick text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

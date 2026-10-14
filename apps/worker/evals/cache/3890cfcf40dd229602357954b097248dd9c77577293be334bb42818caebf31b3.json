@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Most figures check out against the notes: 4.34% lowest insured (Ratehub Oct 12, WOWA Oct 9), 4.44% lowest uninsured (WOWA Oct 9), the 5.14% Big 6 average, and rates climbing. It correctly stays on the Canadian 5-year fixed without asking for the country. But \"Those lowest rates are available in Ontario too\" overreaches. The notes tie Ontario availability only to Ratehub's rates, not WOWA's 4.44% uninsured figure, so that claim is unsupported for the uninsured rate. The closing line about not knowing the down payment reads a bit like an assistant hedging rather than a friend texting, though it's a fair point.",
-    "wrong_fact": true,
-    "safety_miss": false,
-    "score": 3
-  }
-}

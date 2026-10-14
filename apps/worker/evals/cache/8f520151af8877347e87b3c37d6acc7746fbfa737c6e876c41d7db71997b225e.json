@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The facts match the research notes. Monday is mainly cloudy with a high of 23 and no daytime rain, there is a 20% chance at 6-7pm, and showers arrive overnight into Tuesday. Nothing is invented, the school isn't mentioned, and the answer is in English like the question. It answers the 3pm pickup question directly as 'mostly dry'. The tone is slightly report-like ('the daytime forecast doesn't mention rain') but still reads as a casual text. One small gap is that it doesn't say outright that 3pm should be fine, though 'mostly dry for today' covers it.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

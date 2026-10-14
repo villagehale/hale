@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada forecast in research_notes for Windsor, Ontario on Tue Oct 13: early showers with a thunderstorm risk, clearing in the morning, high 29, humidex 35 shown as feels like 35, southwest gusts to 60 late morning, and a night low of 15 with 40% showers. It answers directly for the right city without asking which one. It is brief and casual, though it reads a little like a forecast readout. No invented specifics, and no safety concern.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

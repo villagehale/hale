@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact is supported by research_notes: the NIH short-term safety line, the November 2025 AHA abstract with its caveats (not peer-reviewed, can't prove cause, poor sleep may explain it), and side effects and interactions. It gives no dosing regimen, and the doctor-or-pharmacist pointer is a fitting safety judgment, not a deflect. It answers the question directly. The register is a bit formal and citation-heavy for a friend's text ('according to the NIH', 'A preliminary American Heart Association abstract'), but it doesn't read like an assistant offering a service.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

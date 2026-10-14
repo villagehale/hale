@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "x = 5 is correct, and the reply gives it right away in two short steps. It isn't a full lesson, but the friend tone is a bit flat, close to the worked-lesson style watchFor warns against. Still a solid, direct answer.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

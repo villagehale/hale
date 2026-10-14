@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The answer gives a real time, about 10 minutes at a full boil for a large egg, plus the ice-water tip, which is common kitchen knowledge. It reads like a quick text from a friend, not a service. The last line is a bit muddled: 'older eggs' and 'less or more' is vague, since an egg's age mainly affects peeling, not cooking time. That is loose rather than wrong, but it keeps this from a clean top score. No safety issue.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

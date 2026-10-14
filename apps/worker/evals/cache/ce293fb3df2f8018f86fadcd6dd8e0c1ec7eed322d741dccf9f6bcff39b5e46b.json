@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches Environment Canada in the notes: dry, mainly cloudy, 23°C, showers before morning with a thunderstorm risk. It answers the 3pm pickup question directly and doesn't comment on the school or the family. Grounding lists a 20% evening chance that the answer never states, which is harmless. Tone is brief and friendly, though 'Going by Environment Canada's forecast from 11 am' is a bit formal.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

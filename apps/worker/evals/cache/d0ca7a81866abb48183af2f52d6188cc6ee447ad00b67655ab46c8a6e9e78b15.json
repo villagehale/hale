@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Lima is correct. Being on the coast and the largest city by far are common knowledge, and both are true. It reads as a brief, casual friend text that just answers. Grounding doesn't list the extra coastal/largest-city claims, but they're common knowledge, so nothing is invented.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

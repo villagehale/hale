@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The forecast matches the Environment Canada notes: showers ending near noon, thunderstorm risk, 10–20 mm, SW 20 gusting 40, a high of 24 and a low of 12 with a 60% chance overnight, and a cooler Wednesday at 19. 'Clear out' slightly glosses over the 60% afternoon shower chance, but it is not wrong. It answers the Toronto follow-up directly and reads like a casual text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}
