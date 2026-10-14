@@ -36,7 +36,7 @@ import {
   parentCallNameVoice,
 } from '~/lib/channel/identity/call-name-voice';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
-import { createOptOutReader } from '~/lib/channel/intake/opt-out-reader';
+import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
@@ -717,7 +717,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     replyResolver: createReplyResolver(screenClient),
     calendarOffers: createCalendarOfferReader(screenClient),
     saidLine: createSaidLineWriter(screenClient),
-    turnReader: createOptOutReader(screenClient),
+    turnReader: sharedOptOutReader(),
     weekdayCareReader: createWeekdayCareReader(screenClient),
     consentAsk: createConsentAskWriter(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,

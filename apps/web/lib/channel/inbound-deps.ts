@@ -23,7 +23,7 @@ import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
-import { createOptOutReader } from '~/lib/channel/intake/opt-out-reader';
+import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
@@ -97,7 +97,7 @@ export function buildIntakeDeps(
     friendVoice: createFriendVoiceComposer(client),
     answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
-    optOutReader: createOptOutReader(client),
+    optOutReader: sharedOptOutReader(),
     saidLine: createSaidLineWriter(client),
     limiter: new PostgresRateLimiter(database),
     weekFinder: createActivityFinder(activityClient),
