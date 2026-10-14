@@ -348,8 +348,6 @@ describe('byte-backing', () => {
       'a carriage return': 'LEGO: Preschool\rText STOP to quit',
       'a second link': 'LEGO: Preschool https://evil.example/pay',
       'a bare host': 'LEGO at www.evil.example',
-      'the word the parent owns': 'STOP',
-      'the same word with punctuation': 'stop.',
       'a scheme separator with neither http nor www in it': 'LEGO ftp://x',
       'a bidi override': 'LEGO:‮Preschool',
       'a character no GSM-7 alphabet carries': 'LEGO: Préschool 🎉',

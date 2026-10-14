@@ -4,7 +4,7 @@ import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
@@ -96,7 +96,7 @@ export async function considerGroupCoparent(
 ): Promise<GroupCoparentEffect> {
   if (!linqGroupCoparentEnabled()) return { type: 'none' };
   // STOP, HELP, and START stay on the door that already answers them.
-  if (matchKeyword(message.text)) return { type: 'none' };
+  if ((await optOutIntentOf(message.text)) !== null) return { type: 'none' };
 
   const senderPhone = normalizePhoneE164(message.senderHandle);
   if (!senderPhone) return { type: 'none' };
@@ -198,7 +198,7 @@ export async function steerNotedCoparentOneToOne(
   ports: GroupCoparentPorts,
 ): Promise<GroupCoparentEffect> {
   if (!linqGroupCoparentEnabled()) return { type: 'none' };
-  if (matchKeyword(message.text)) return { type: 'none' };
+  if ((await optOutIntentOf(message.text)) !== null) return { type: 'none' };
   const senderPhone = normalizePhoneE164(message.senderHandle);
   if (!senderPhone) return { type: 'none' };
   if (await resolveVerifiedChannelByPhone(database, senderPhone)) return { type: 'none' };

@@ -3,16 +3,16 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
  * #868 · the model reads an opt-out from any wording (Barton, 2026-10-11).
  *
  * No word list and no fixed reply: the `opt-out-read` skill decides stop / start /
- * none and writes the confirmation in the sender's language. The carrier-required
- * STOP keyword path in machine.ts still revokes first; this reader catches every
- * other way a person says it. A failed or unusable read returns null, and the
- * caller treats null as "not an opt-out" only because the keyword path already ran.
+ * none and writes the confirmation in the sender's language, for every word a person
+ * uses, STOP included: keywords.ts is gone. A failed read returns null after an
+ * urgent log, because nothing else will catch that stop.
  * The verbatim echo is a structural guard: a model that paraphrased the text did
  * not read it, so its verdict is dropped.
  *
@@ -102,9 +102,11 @@ export function createOptOutReader(
         });
         return acceptOptOutReading(value, input.text);
       } catch (err) {
+        // With no keyword list behind it, a failed read is a stop nobody saw. Urgent,
+        // so a person reads the turn (#868); the text itself is never logged.
         console.error(
-          { err: err instanceof Error ? err.name : 'unknown' },
-          'opt-out reader: read failed',
+          { urgent: true, err: err instanceof Error ? err.name : 'unknown' },
+          'URGENT: opt-out reader failed - a stop may be unread, page #ops now',
         );
         return null;
       }
@@ -167,4 +169,31 @@ export function isCrisisReading(
   reading: OptOutReading | null,
 ): reading is OptOutReading & { intent: 'crisis_emergency' | 'crisis_mental' } {
   return reading?.intent === 'crisis_emergency' || reading?.intent === 'crisis_mental';
+}
+
+/**
+ * #868 · the one reader every surface shares when it was not handed its own: the intake
+ * machine, the email doors, the Linq group door, the roster. keywords.ts is gone, so
+ * "is this a stop or a start" is always this model read, cached per text by
+ * {@link readTextOnce} so the router, intake and a door cost one call between them.
+ */
+let shared: OptOutReader | null = null;
+
+export function sharedOptOutReader(): OptOutReader {
+  shared ??= createOptOutReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  return shared;
+}
+
+/** Tests install a scripted reader here; null restores the real one. */
+export function setSharedOptOutReader(reader: OptOutReader | null): void {
+  shared = reader;
+}
+
+/** 'stop' / 'start' when the model read that, else null (a failed read is null). */
+export async function optOutIntentOf(
+  text: string,
+  reader: OptOutReader | null = null,
+): Promise<'stop' | 'start' | null> {
+  const reading = await readTextOnce(reader ?? sharedOptOutReader(), { text, language: null });
+  return reading?.intent === 'stop' || reading?.intent === 'start' ? reading.intent : null;
 }

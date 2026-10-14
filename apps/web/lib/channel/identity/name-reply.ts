@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { IDENTITY_ASK_TEMPLATE_KEYS } from './asked';
 import { composeNameCapturedReceipt, defaultCallNameComposer } from './call-name-voice';
@@ -123,10 +123,6 @@ const NOT_A_NAME: ReadonlySet<string> = new Set([
  * integration — the same shape `soleEmailAddress` is tested at.
  */
 export function soleGivenName(body: string): string | null {
-  // A carrier keyword was already answered upstream (STOP/HELP/START); reading one again
-  // here could only ever disagree with the first answer.
-  if (matchKeyword(body)) return null;
-
   const trimmed = body.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_NAME_CHARS) return null;
   if (LINK_SHAPE.test(trimmed) || trimmed.includes('@') || /\d/.test(trimmed)) return null;
@@ -197,6 +193,8 @@ export async function handleNameCaptureReply(
 ): Promise<NameCaptureOutcome> {
   const name = soleGivenName(input.body);
   if (!name) return { status: 'declined_to_claim' };
+  // "Stop" or "start" in any wording is not a name (#868: the reader, not a word list).
+  if ((await optOutIntentOf(input.body)) !== null) return { status: 'declined_to_claim' };
 
   if (!(await deps.wasAsked(database, input.familyId))) return { status: 'declined_to_claim' };
 

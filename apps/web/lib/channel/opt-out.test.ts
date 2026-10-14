@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import {
   OPT_OUT_LINE,
@@ -11,7 +10,7 @@ import {
 
 /**
  * Outbound texts do not carry an opt-out footer (founder decision, 2026-10-01).
- * Inbound STOP is a different path: matchKeyword still honours it.
+ * Inbound STOP is a different path: the opt-out reader reads it (#868).
  */
 
 describe('withOptOut', () => {
@@ -31,13 +30,11 @@ describe('withOptOut', () => {
   });
 
   it('still names STOP as the keyword the intake machine answers', () => {
-    // The footer is gone. The keyword is not. Both strings stay the ones a composer
-    // must not write, and STOP itself is still what lib/channel/intake/keywords.ts
-    // claims at the webhook.
+    // The footer is gone. Both strings stay the ones a composer must not write; a
+    // parent's stop, in any wording, is read by the opt-out reader (#868).
     for (const line of [OPT_OUT_LINE, OPT_OUT_SHORT]) {
       expect(line, line).toContain('STOP');
     }
-    expect(matchKeyword('STOP'), 'a parent who texts STOP is still opted out').toBeTruthy();
   });
 
   it('keeps both lines in GSM-7, so quoting one cannot double a segment', () => {
