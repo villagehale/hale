@@ -131,7 +131,9 @@ export function recMorningIntakeReply(input: {
     city: input.city,
   });
   if (sms === null) return null;
-  const joined = [sms, recMorningReturnLine(input.pendingAsk)].filter((part) => part.length > 0).join(' ');
+  const joined = [sms, recMorningReturnLine(input.pendingAsk)]
+    .filter((part) => part.length > 0)
+    .join(' ');
   if (joined.length > INTAKE_MAX_REPLY_CHARS) {
     throw new Error(
       `rec-morning intake reply is ${joined.length} chars, cap is ${INTAKE_MAX_REPLY_CHARS}`,

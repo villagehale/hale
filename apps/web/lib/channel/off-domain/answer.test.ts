@@ -1,9 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  CHEER_UP_REPLY,
-  NO_CURRENT_SOURCE_YET,
-} from '~/lib/channel/intake/live-lookup';
+import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from '~/lib/channel/intake/live-lookup';
 import { MAX_ANSWER_SEGMENTS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
 import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from './copy';
 

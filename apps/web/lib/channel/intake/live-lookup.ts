@@ -21,7 +21,6 @@ const GROUND_MAX_TOKENS = 2048;
 
 export const NO_CURRENT_SOURCE_YET = 'I do not have a current source yet.';
 
-
 /**
  * Warm parent, not a clinician. Reviewed copy — a model does not write a
  * method, a diagnosis, or "I'm a therapist."

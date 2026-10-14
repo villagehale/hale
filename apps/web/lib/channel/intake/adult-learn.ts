@@ -1,5 +1,5 @@
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { recMorningReturnLine } from '~/lib/channel/rec-morning/copy';
+import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { townLabel } from './radar-voice';
 
 const INTAKE_MAX_REPLY_CHARS = 300;
