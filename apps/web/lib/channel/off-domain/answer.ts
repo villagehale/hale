@@ -21,6 +21,7 @@ import {
   generalAnswerUserMessage,
   hurtIllOrDanger,
   needsSearch,
+  preSendReadApplies,
   questionIsSensitive,
   questionSanitizeUserMessage,
   sanitizeJsonSchema,
@@ -709,13 +710,13 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
       ).value;
     try {
       let value = await draftOnce(composeRequest);
-      // Phase 3 — READ IT AGAINST THE NOTES. Only a reply written from notes has notes to
-      // be read against, and a safety door is not a draft. The reader's verdict is the
+      // Phase 3 — READ IT AGAINST THE NOTES. A reply written from notes is read against them,
+      // and one written when nothing could be checked is read for counts from memory; a
+      // safety door is not a draft. The reader's verdict is the
       // model's; a failed or unreadable read sends the first draft, and a redraft is sent
       // as written: one more draft, never a loop.
       if (
-        search === 'searched' &&
-        findings.notes !== '' &&
+        preSendReadApplies(search, findings.notes) &&
         hurtIllOrDanger(value.hurt_ill_or_danger) === null
       ) {
         let reason: string | null = null;
@@ -727,6 +728,7 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
             userMessage: generalAnswerCheckUserMessage({
               question,
               today,
+              search,
               notes: findings.notes,
               draft: value.answer,
             }),

@@ -1257,8 +1257,7 @@ async function main() {
       });
     let composed = await draftOnce(`general-answer:${drawTag(fixture.id, draw)}`, composeRequest);
     if (
-      found.search === 'searched' &&
-      (found.notes ?? '') !== '' &&
+      request.preSendReadApplies(found.search, found.notes ?? '') &&
       request.hurtIllOrDanger(composed.value.hurt_ill_or_danger) === null
     ) {
       const read = await cachedToolCall({
@@ -1269,7 +1268,8 @@ async function main() {
         userMessage: request.generalAnswerCheckUserMessage({
           question: found.question,
           today: EVAL_TODAY,
-          notes: found.notes,
+          search: found.search,
+          notes: found.notes ?? '',
           draft: String(composed.value.answer ?? ''),
         }),
         toolName: 'verdict',

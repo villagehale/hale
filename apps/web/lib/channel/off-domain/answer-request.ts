@@ -310,15 +310,24 @@ export const checkJsonSchema = {
 export function generalAnswerCheckUserMessage(input: {
   question: string;
   today: string;
+  search: LiveSearch;
   notes: string;
   draft: string;
 }): string {
   return JSON.stringify({
     question: input.question,
     today: input.today,
-    research_notes: input.notes,
+    live: liveAsTold(input.search),
+    ...(input.search === 'searched' ? { research_notes: input.notes } : {}),
     draft: input.draft,
   });
+}
+
+/** Which drafts the pre-send read sees: one written from notes, and one written when
+ * nothing could be checked (where a count from memory is the risk). */
+export function preSendReadApplies(search: LiveSearch, notes: string): boolean {
+  if (search === 'searched') return notes !== '';
+  return liveAsTold(search) === 'unavailable';
 }
 
 /** FAIL TOWARD SENDING THE FIRST DRAFT: only an explicit `redraft` with a reason sends it
