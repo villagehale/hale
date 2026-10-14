@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { connectorNoun } from '~/lib/channel/connect/copy';
 import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
-import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, certainLanguageHint, replyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -40,8 +40,18 @@ export interface SaidLineInput {
   /** The parent's own words, when the line answers a text. */
   parentWords?: string | null;
   facts: Record<string, string | number | null>;
-  /** Strings that must appear verbatim (links, numbers, addresses). */
+  /** Strings that must appear verbatim (numbers, addresses). Never a URL: see links. */
   mustInclude?: readonly string[];
+  /**
+   * Links by slot name. The model never sees or types a URL (#868): it writes the
+   * placeholder `[[name]]` where each link goes, and code puts the exact URL in.
+   */
+  links?: Readonly<Record<string, string>>;
+}
+
+/** The placeholder the model writes for a link slot. */
+export function linkSlot(name: string): string {
+  return `[[${name}]]`;
 }
 
 export interface SaidLineWriter {
@@ -63,24 +73,32 @@ const outputJsonSchema = {
 export function saidLineUserMessage(input: SaidLineInput): string {
   return JSON.stringify({
     purpose: input.purpose,
-    language: input.language,
+    // A hint only when certain; the parent's words decide the reply's language (#868).
+    languageHint: certainLanguageHint(input.language),
     parentWords: input.parentWords ?? null,
     facts: input.facts,
     mustInclude: input.mustInclude ?? [],
+    linkSlots: Object.keys(input.links ?? {}).map(linkSlot),
   });
 }
 
-const URL_RE = /https?:\/\/\S+/g;
-
-/** Structural checks only: non-empty, every required fact verbatim, no other link. */
+/**
+ * Structural checks only: non-empty, every required fact verbatim, each link slot
+ * exactly once, and no URL typed by the model at all. Then code fills the slots
+ * with the exact URLs, so a link can never be mistyped (#868).
+ */
 export function acceptSaidLine(text: string, input: SaidLineInput): string | null {
-  const body = text.trim();
+  let body = text.trim();
   if (body.length === 0) return null;
   const required = input.mustInclude ?? [];
   if (!required.every((fact) => body.includes(fact))) return null;
-  const links = body.match(URL_RE) ?? [];
-  const allowed = required.filter((fact) => /^https?:\/\//.test(fact));
-  if (links.some((link) => !allowed.some((fact) => link.startsWith(fact)))) return null;
+  if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
+  for (const [name, url] of Object.entries(input.links ?? {})) {
+    const slot = linkSlot(name);
+    if (body.split(slot).length !== 2) return null;
+    body = body.replace(slot, url);
+  }
+  if (/\[\[[^\]]*\]\]/.test(body)) return null;
   return body;
 }
 
@@ -139,11 +157,11 @@ export async function writeConnectorLink(
     language: input.language,
     facts: {
       service: connectorNoun(language, input.provider),
-      link: input.url,
+      link: linkSlot('link'),
       minutesValid: LINK_MINUTES,
       googleCaution: googleUnverifiedAppLine(language),
     },
-    mustInclude: [input.url],
+    links: { link: input.url },
   });
 }
 
@@ -206,11 +224,11 @@ export async function writeConnectorLinks(
     purpose: 'connector_links',
     language: input.language,
     facts: {
-      calendarLink: input.calendarUrl,
-      gmailLink: input.gmailUrl,
+      calendarLink: linkSlot('calendarLink'),
+      gmailLink: linkSlot('gmailLink'),
       minutesValid: LINK_MINUTES,
       why: 'so Hale can spot daycare and school notices',
     },
-    mustInclude: [input.calendarUrl, input.gmailUrl],
+    links: { calendarLink: input.calendarUrl, gmailLink: input.gmailUrl },
   });
 }

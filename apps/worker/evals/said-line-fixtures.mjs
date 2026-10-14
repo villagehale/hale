@@ -33,13 +33,15 @@ const links = (id, language, parentWords) => ({
   script: language,
   language,
   parentWords,
+  // writeConnectorLinks: the model sees only slots; code fills the URLs (#868).
   facts: {
-    calendarLink: CAL,
-    gmailLink: GMAIL,
+    calendarLink: '[[calendarLink]]',
+    gmailLink: '[[gmailLink]]',
     minutesValid: 15,
     why: 'so Hale can spot daycare and school notices',
   },
-  mustInclude: [CAL, GMAIL],
+  mustInclude: [],
+  links: { calendarLink: CAL, gmailLink: GMAIL },
 });
 
 const plain = (id, purpose, language, parentWords) => ({
@@ -96,10 +98,11 @@ export const SAID_LINE_FIXTURES = [
     parentWords: 'connect my google calendar',
     facts: {
       service: 'Google Calendar',
-      link: ONE,
+      link: '[[link]]',
       minutesValid: 15,
       googleCaution: 'Google may show an "unverified app" screen. Tap Advanced, then continue.',
     },
-    mustInclude: [ONE],
+    mustInclude: [],
+    links: { link: ONE },
   },
 ];

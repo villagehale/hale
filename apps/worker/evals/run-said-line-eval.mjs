@@ -83,24 +83,28 @@ function laneModel(task, ids) {
 function userMessage(f) {
   return JSON.stringify({
     purpose: f.purpose,
-    language: f.language,
+    languageHint: f.language === 'fr' ? 'fr' : null,
     parentWords: f.parentWords ?? null,
     facts: f.facts,
     mustInclude: f.mustInclude ?? [],
+    linkSlots: Object.keys(f.links ?? {}).map((name) => `[[${name}]]`),
   });
 }
 
-const URL_RE = /https?:\/\/\S+/g;
-
-/** acceptSaidLine in said-line.ts. */
-function factsHold(text, f) {
-  const body = (text ?? '').trim();
-  if (body.length === 0) return false;
-  const required = f.mustInclude ?? [];
-  if (!required.every((fact) => body.includes(fact))) return false;
-  const allowed = required.filter((fact) => /^https?:\/\//.test(fact));
-  const found = body.match(URL_RE) ?? [];
-  return found.every((link) => allowed.some((fact) => link.startsWith(fact)));
+/** acceptSaidLine in said-line.ts: facts verbatim, no typed URL, each slot once, then
+ * code fills the slots. Returns the filled text, or null. */
+function acceptText(text, f) {
+  let body = (text ?? '').trim();
+  if (body.length === 0) return null;
+  if (!(f.mustInclude ?? []).every((fact) => body.includes(fact))) return null;
+  if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
+  for (const [name, url] of Object.entries(f.links ?? {})) {
+    const slot = `[[${name}]]`;
+    if (body.split(slot).length !== 2) return null;
+    body = body.replace(slot, url);
+  }
+  if (/\[\[[^\]]*\]\]/.test(body)) return null;
+  return body;
 }
 
 async function main() {
@@ -157,11 +161,12 @@ async function main() {
         cost,
       })
     )?.value;
-    const text = out?.text ?? '';
-    if (!factsHold(text, f)) {
+    const raw = out?.text ?? '';
+    const text = acceptText(raw, f);
+    if (text === null) {
       failed += 1;
-      console.info(`FAIL  ${f.id}  facts: a required string is missing or a link was added`);
-      console.info(`      text: ${JSON.stringify(text)}`);
+      console.info(`FAIL  ${f.id}  facts: a fact or link slot is missing, or a URL was typed`);
+      console.info(`      text: ${JSON.stringify(raw)}`);
       continue;
     }
     const verdict = await judge(f.id, {

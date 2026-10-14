@@ -24,16 +24,21 @@ describe('said-line · code checks the facts, the model writes the words', () =>
     expect(acceptSaidLine('   ', health)).toBeNull();
   });
 
-  it('refuses a link that was not a required fact', () => {
+  it('fills link slots with the exact URL and refuses any URL the model typed', () => {
+    const url = 'https://hale.example/connect?t=a';
     const links: SaidLineInput = {
-      purpose: 'connector_links',
-      language: 'en',
-      facts: { minutes: 15 },
-      mustInclude: ['https://hale.example/connect?t=a'],
+      purpose: 'connector_link',
+      language: null,
+      facts: { link: '[[link]]', minutesValid: 15 },
+      links: { link: url },
     };
-    expect(
-      acceptSaidLine('Calendar: https://hale.example/connect?t=a and https://evil.example', links),
-    ).toBeNull();
-    expect(acceptSaidLine('Calendar: https://hale.example/connect?t=a', links)).not.toBeNull();
+    expect(acceptSaidLine('Tap to connect:\n[[link]]\nGood for 15 minutes.', links)).toBe(
+      `Tap to connect:\n${url}\nGood for 15 minutes.`,
+    );
+    // Retyped (even correctly), missing, doubled, or an unknown slot: refused.
+    expect(acceptSaidLine(`Tap: ${url}`, links)).toBeNull();
+    expect(acceptSaidLine('Tap to connect.', links)).toBeNull();
+    expect(acceptSaidLine('[[link]] and [[link]]', links)).toBeNull();
+    expect(acceptSaidLine('[[link]] [[other]]', links)).toBeNull();
   });
 });
