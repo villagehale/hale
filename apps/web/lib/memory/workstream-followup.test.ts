@@ -107,9 +107,10 @@ describe('workstream follow-up sweep', () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  it('holds when the family already had a follow-up today', async () => {
+  it('does not hold a follow-up because one already went today', async () => {
     vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
-    const compose = vi.fn();
+    const compose = vi.fn(async () => ({ ok: false as const, reason: 'empty' as const }));
+    const stamp = vi.fn(async () => undefined);
     const result = await runWorkstreamFollowupSweep({} as Database, {
       now: () => NOW,
       listDue: async () => [due],
@@ -119,9 +120,13 @@ describe('workstream follow-up sweep', () => {
       dedupeActive: async () => false,
       buildGate: () => gate('America/Toronto', 1),
       compose,
+      pendingDeferral: async () => null,
+      stamp,
     });
-    expect(result.held.frequency_cap).toBe(1);
-    expect(compose).not.toHaveBeenCalled();
+    expect(result.held.frequency_cap).toBe(0);
+    expect(compose).toHaveBeenCalledOnce();
+    expect(result.skipped.nothing_to_say).toBe(1);
+    expect(stamp).toHaveBeenCalledOnce();
   });
 
   it('sends nothing and pages #ops when the model fails twice', async () => {
