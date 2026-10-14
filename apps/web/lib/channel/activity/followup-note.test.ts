@@ -235,56 +235,9 @@ describe('a message may not say Hale could not get at a fact AND that it awaits 
 });
 
 describe('the mechanical gates', () => {
-  it('refuses a link, an over-long body and a non-GSM7 character', () => {
+  it('refuses a link', () => {
     const withLink = `${PICK.name} runs Saturdays - see haltonhillsgym.ca`;
-    expect(followUpViolations(withLink, grounding({ subject: 's' })).join(' ')).toContain(
-      'link',
-    );
-
-    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
-    expect(followUpViolations(long, grounding({ subject: 's' })).join(' ')).toContain(
-      'segments',
-    );
-  });
-
-  /**
-   * THE OVER-LONG REFUSAL SAYS WHAT TO DROP, because it is the only place in this lane
-   * that has MEASURED anything. The skill used to carry the rule ("cut the SECOND find")
-   * and the model had to guess when it applied; guessing costs a whole find, so it
-   * guessed early and dropped a complete second find into a message with room for it.
-   */
-  it('the over-long refusal names the cut - the last find whole, never the leading find', () => {
-    const second: ActivityPick = { ...PICK, name: 'Preschool Drop-In Gym' };
-    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
-
-    const twoFinds = followUpViolations(long, grounding({ picks: [PICK, second] })).join(' ');
-    expect(twoFinds).toContain('Drop the LAST find whole');
-
-    // POSITIVE CONTROL, and the reason the sentence is conditional: with one find there
-    // is no find to drop, and telling the model to drop it is telling it to go quiet.
-    const oneFind = followUpViolations(long, grounding()).join(' ');
-    expect(oneFind).not.toContain('Drop the LAST find whole');
-    expect(oneFind).toContain('never the facts');
-  });
-
-  /**
-   * AND THE CUT MAY NOT BE PAID FOR OUT OF A DIFFERENT GATE. The first version of the
-   * length correction ended "keep the rest as they are", and the composer read that as
-   * licence: it kept both finds whole and deleted the continuation sentence instead, then
-   * failed `statesTheReturn` twice more and sent a kept promise that never said Hale was
-   * still on it. A correction satisfiable by breaking another gate is a loop into silence.
-   */
-  it('the over-long refusal protects the continuation sentence when a row exists', () => {
-    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
-
-    expect(followUpViolations(long, grounding({ watch: true })).join(' ')).toContain(
-      'never the sentence saying Hale will keep watching',
-    );
-    // POSITIVE CONTROL - with no row written there is no such sentence to protect, and
-    // demanding one is the unbacked promise this lane refuses in the other direction.
-    expect(followUpViolations(long, grounding({ watch: false })).join(' ')).not.toContain(
-      'keep watching',
-    );
+    expect(followUpViolations(withLink, grounding({ subject: 's' })).join(' ')).toContain('link');
   });
 
   it('refuses an empty body outright', () => {

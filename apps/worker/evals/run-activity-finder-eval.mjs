@@ -19,7 +19,7 @@
 // rather than importing it, for the reason the medical eval replicates: that module sits
 // behind the web app's `~/` alias, which the tsx loader here cannot resolve. The SKILL body
 // and the model routing ARE imported live from packages/agent, so a skill edit or a
-// re-tiering re-keys the cache and shows up as a miss. `smsSegments` is imported real.
+// re-tiering re-keys the cache and shows up as a miss.
 //
 // THE REPLICA INCLUDES THE TOOL LIST, and that is not decoration. The lane now hands
 // `web_fetch` to any subject that NAMES A PLACE (groundTools/namesAVenue), and this harness
@@ -63,7 +63,7 @@
 //     publish times and prices (a refused fact is Hale not knowing, never a page being empty).
 //   · unbacked promise / silent watch - the text and the ledger disagree about whether
 //     Hale is coming back.
-//   · links a URL / unsendable - Hale never texts a link, and the follow-up is two segments.
+//   · links a URL / unsendable - Hale never texts a link, and an empty follow-up is unsendable.
 // Everything else is the judge's bar (JUDGE_MIN): are these real, local, age-fitting things
 // a parent could turn up to, and is the message honest about where the facts came from?
 
@@ -98,14 +98,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const ACTIVITY_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 const TRAVEL_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'travel', 'query.ts');
 
 // Mirrors the lane's own constants (activity/lane.ts, activity/followup-note.ts).
 const MAX_PICKS = 3;
 const MAX_SEARCHES = 3;
 const MAX_INLINE_FETCHES = 3;
-const MAX_FOLLOWUP_SEGMENTS = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
 const FIRST_SEGMENT_CHARS = 153;
 
@@ -602,28 +600,9 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
-/** Mirrors the length correction's protected list (followup-note.ts). A cut that can be
- * satisfied by deleting the continuation sentence is a recompose loop ending in silence,
- * so what may NOT go is named beside what may. */
-function keepUnderTrim(watch) {
-  return watch
-    ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
-    : 'never the facts of the find you led with';
-}
-
-function followUpViolations(body, picks, smsSegments, pageEvidence, watch) {
+function followUpViolations(body, picks, pageEvidence, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
-  if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
-    violations.push({
-      tag: 'over_segment_cap',
-      reason: `The message is ${smsSegments(body)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
-        picks.length > 1
-          ? `Drop the LAST find whole - ${keepUnderTrim(watch)}.`
-          : `Shorten the wording around the facts, never the facts themselves - ${keepUnderTrim(watch)}.`
-      }`,
-    });
-  }
   if (LINK_SHAPE.test(body)) {
     violations.push({
       tag: 'links_a_url',
@@ -804,7 +783,7 @@ const JUDGE_SYSTEM = [
   'place, plausibly fitting the stage - and at most three of them. The message leads with',
   'the best one by name, says whose information it is ("their site says", "listed as"), and',
   'attributes rather than claiming to have confirmed.',
-  'It is one or two short sentences of plain text with no link and NO QUESTION AT ALL.',
+  'It is plain text with no link and NO QUESTION AT ALL. Do not score it down for length.',
   'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
   'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
   'down; nothing on this path can write one, so a "want me to..." here is a yes with',
@@ -828,9 +807,8 @@ const JUDGE_SYSTEM = [
   "not tie these facts to it; the gap is HALE'S, so where that sentence is wanted it is",
   'first person - "I could not pin down the day or the price" - never "not posted yet".',
   'Score an UNEARNED negative claim low. Score nothing else off this field.',
-  'Two segments is a hard ceiling. Dropping a second or third find WHOLE to fit the best',
-  'one complete is correct and is not withholding; withholding is going quiet about a find',
-  'when there was room, or hedging instead of naming anything at all.',
+  'Length is not a fault. Dropping a find so the text is shorter is withholding; withholding',
+  'is going quiet about a find, or hedging instead of naming anything at all.',
   'A pick whose `when` or `price` is null is CORRECT when the source had not published it -',
   'a real program whose fall times are not up yet, or whose schedule sits behind a',
   'registration login, is a genuine find. Score it a 5 when the message NAMES the gap in',
@@ -840,7 +818,9 @@ const JUDGE_SYSTEM = [
   'Score it low only if the message invents a day, a time or a price the picks do not carry,',
   'or quietly writes around the gap as though the detail were known.',
   'A LOW score is any of: a venue that looks invented or generic ("your local community',
-  'centre"); a directory-style list; a pick for a',
+  'centre"); a directory-style list; a pick whose source is a listings site or an',
+  'aggregator rather than that venue\'s own page (a museum guide or a things-to-do roundup',
+  'is that kind of page; Museums Montréal is an example); a pick for a',
   'different town; a message that presents web-read facts as verified; a message that',
   'WITHHOLDS a find because it is unverified, or hedges instead of naming something (a',
   'parent who got "I will come back to you" was handed nothing - that is the failure this',
@@ -856,7 +836,7 @@ const JUDGE_SYSTEM = [
  *
  * A `composesOwnText` fixture is graded on the FINDS and nothing else, and it needs its
  * own bar rather than the one above: the message criteria there are most of that rubric,
- * and half of them ("leads with the best one by name", "two segments is a hard ceiling")
+ * and half of them ("leads with the best one by name", "plain text with no link")
  * are about a composer this query shape never reaches.
  *
  * What it asks instead is the one question the travel brief turns on, and the one the
@@ -889,7 +869,9 @@ const TRAVEL_JUDGE_SYSTEM = [
   'that appears in the pick but nowhere in what a source would have published.',
   'A LOW score is also: a venue that looks invented or generic ("a local playground"); a',
   'pick in a different city; a directory-style list; a pick whose source is an aggregator or',
-  "a travel-blog listicle rather than the place's own site or its municipality.",
+  "a listings site rather than that venue's own page. A guide or roundup that covers many",
+  'venues is a fault even when the venue is real; Museums Montréal is that kind of page.',
+  "The venue's own organisation, or its municipality, is the source.",
   'Seasonal reality is not a fault: a city in late December where much is closed should come',
   'back with the things that are OPEN, and three of them is better than a longer list.',
   'Reply with ONLY the score tool.',
@@ -1030,7 +1012,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   // THE TRAVEL FIXTURES' SUBJECT IS THE PRODUCT'S, READ FROM THE PRODUCT. A `.mjs`
   // corpus cannot import a TS constant, so the three travel fixtures carry a copy - and a
   // copy that has drifted is a corpus grading a query nobody sends, silently and forever.
@@ -1273,7 +1254,7 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      violations = followUpViolations(body, kept, smsSegments, pageEvidence, watch);
+      violations = followUpViolations(body, kept, pageEvidence, watch);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -1368,7 +1349,7 @@ async function main() {
     `\npages opened (venue fixtures): ${venueFixtures.filter((r) => r.pagesRead > 0).length}/${venueFixtures.length}  (NOT a gate - a refused fetch is a real shape. Watch it: zero means the fetch budget is buying nothing)`,
   );
   console.log(
-    `unsendable:              ${results.filter((r) => r.failures.some((f) => ['empty', 'over_segment_cap'].includes(f))).length}`,
+    `unsendable:              ${results.filter((r) => r.failures.some((f) => f === 'empty')).length}`,
   );
   console.log(`judge below ${JUDGE_MIN}:           ${count('judge')}`);
   const repaired = results.filter((r) => r.firstDraftViolations.length > 0);

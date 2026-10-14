@@ -57,7 +57,7 @@ export const ACTIVITY_FIXTURES = [
     dropsFromQuery: ['121 maple', '4 year'],
     expectPicks: true,
     watchFor:
-      'A municipal recreation staple. Should find the town or a named club, with a session and a registration date. Must not hand back a listings aggregator as the source.',
+      "A municipal recreation staple. Should find the town or a named club, with a session and a registration date. Each venue's source is that venue's own page, not a listings aggregator.",
   },
   {
     id: 'free-drop-in-georgetown',
@@ -162,7 +162,7 @@ export const ACTIVITY_FIXTURES = [
     expectPicks: true,
     composesOwnText: true,
     watchFor:
-      'A non-GTA Canadian city, a toddler, and the four days after Christmas - when a great many programmes are closed and the honest finds are the ones that are open anyway. Picks must be open in that window rather than "runs Tuesdays in the winter session". French-named venues are fine and expected; an English-only listing site as the SOURCE is not.',
+      'A non-GTA Canadian city, a toddler, and the four days after Christmas - when a great many programmes are closed and the honest finds are the ones that are open anyway. Picks must be open in that window rather than "runs Tuesdays in the winter session". French-named venues are fine and expected. Each venue\'s source_name is that venue\'s own page, not an aggregator or a listings site.',
   },
   {
     id: 'travel-visit-ottawa-month-boundary',

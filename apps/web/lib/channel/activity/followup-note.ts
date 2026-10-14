@@ -2,7 +2,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
@@ -46,9 +46,6 @@ import type { ActivityPick } from './lane';
  * that is only as good as its source is still a find, and withholding it is the silence
  * that started all this.
  */
-
-/** One SMS, two segments — the same ceiling every other unprompted message keeps. */
-export const MAX_FOLLOWUP_SEGMENTS = 2;
 
 /** GSM-7 characters in one segment. The budget the top pick has to land inside. */
 const FIRST_SEGMENT_CHARS = 153;
@@ -464,34 +461,6 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   const text = plainText(body);
 
   if (text === '') return ['The message was empty.'];
-  // ONE RULER, AND IT IS THIS ONE. The skill used to teach the model to predict the fit
-  // and pre-drop for it ("when it will not fit, cut the SECOND find"), which is a model
-  // eyeballing segment arithmetic it cannot do: on 2026-08-24 it dropped a complete
-  // second find — a price and a schedule — out of a 263-character message with room for
-  // it, and nothing downstream could tell that answer from one that had only one find.
-  // Fit is measured HERE, and the correction says what to give up, so the model never has
-  // to guess whether it is in the losing case.
-  //
-  // AND IT SAYS WHAT MAY NOT GO, because a correction that names only the cut leaves
-  // everything it did not name looking spare. The first version of this sentence ended
-  // "and keep the rest as they are": handed it, the composer kept both finds intact and
-  // deleted the continuation sentence instead — the one thing `watch` had already written
-  // a row for — then spent its last attempt without putting it back and the promise went
-  // out silent about itself. A length correction that can be satisfied by breaking a
-  // different gate is a recompose loop that ends in silence, so the two things a trim may
-  // never reach are named here, in the same breath as the cut.
-  if (smsSegments(text) > MAX_FOLLOWUP_SEGMENTS) {
-    const keep = grounding.watch
-      ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
-      : 'never the facts of the find you led with';
-    violations.push(
-      `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
-        grounding.picks.length > 1
-          ? `Drop the LAST find whole - ${keep}.`
-          : `Shorten the wording around the facts, never the facts themselves - ${keep}.`
-      }`,
-    );
-  }
   if (smsEncoding(text) !== 'gsm7') {
     violations.push(
       'The message contains a character that doubles the cost to send (a curly quote, a dash, or an emoji). Use plain ASCII.',

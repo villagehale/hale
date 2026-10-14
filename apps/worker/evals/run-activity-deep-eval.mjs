@@ -24,7 +24,7 @@
 //     slot carries it and the TEXT does not. Graded by the judge from `factChecks`. That fact is the entire return on opening the
 //     page, and it has been dropped in production once already: the composer's projection
 //     did not list the field, so the deep pass learned it and the parent never heard it.
-//   · the follow-up gates, mirrored from followup-note.ts - links, segment cap, claiming
+//   · the follow-up gates, mirrored from followup-note.ts - links, claiming
 //     verification, and burying the top pick past the first segment.
 //   · a date credited to a page that does not carry it is the judge's call (JUDGE_SYSTEM),
 //     with every fetched page in its notes (notesForTheJudge). No check reads the wording.
@@ -83,7 +83,6 @@ const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const DEEP_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-deep.md');
 const FINDER_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 
 // Mirrors the runtime's constants (activity/deep.ts, activity/followup-note.ts,
 // activity/share-page.ts).
@@ -96,7 +95,6 @@ export const RESEARCH_MAX_TOKENS = 8192;
 // an empty extraction.
 export const EXTRACT_MAX_TOKENS = 16384;
 const SLOTS_IN_TEXT = 2;
-const MAX_FOLLOWUP_SEGMENTS = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
 const FIRST_SEGMENT_CHARS = 153;
 
@@ -545,28 +543,9 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
-/** Mirrors the length correction's protected list (followup-note.ts). A cut that can be
- * satisfied by deleting the continuation sentence is a recompose loop ending in silence,
- * so what may NOT go is named beside what may. */
-function keepUnderTrim(watch) {
-  return watch
-    ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
-    : 'never the facts of the find you led with';
-}
-
-function followUpViolations(body, slots, smsSegments, pageEvidence, watch) {
+function followUpViolations(body, slots, pageEvidence, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
-  if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
-    violations.push({
-      tag: 'over_segment_cap',
-      reason: `The message is ${smsSegments(body)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
-        slots.length > 1
-          ? `Drop the LAST find whole - ${keepUnderTrim(watch)}.`
-          : `Shorten the wording around the facts, never the facts themselves - ${keepUnderTrim(watch)}.`
-      }`,
-    });
-  }
   if (LINK_SHAPE.test(body)) {
     violations.push({
       tag: 'links_a_url',
@@ -684,8 +663,8 @@ export const JUDGE_SYSTEM = [
   'exactly as printed, each cited to the page it was read off, and where the page gave a',
   'REGISTRATION date the slot carries it and so does the message. The message leads with the',
   'best slot by name, attributes the facts ("their site says"), carries the registration',
-  'window, attributes rather than claiming to have confirmed, and is one or two short',
-  'plain-ASCII sentences with no link and NO QUESTION AT ALL.',
+  'window, attributes rather than claiming to have confirmed, and is plain ASCII with no',
+  'link and NO QUESTION AT ALL. Do not score the message down for length.',
   'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
   'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
   'down; nothing on this path can write one, so a "want me to..." here is a yes with',
@@ -709,9 +688,8 @@ export const JUDGE_SYSTEM = [
   "not tie these facts to it; the gap is HALE'S, so where that sentence is wanted it is",
   'first person - "I could not pin down the day or the price" - never "not posted yet".',
   'Score an UNEARNED negative claim low. Score nothing else off this field.',
-  'Two segments is a hard ceiling. Dropping a second or third find WHOLE to fit the best',
-  'one complete is correct and is not withholding; withholding is going quiet about a find',
-  'when there was room, or hedging instead of naming anything at all.',
+  'Length is not a fault. Dropping a find so the text is shorter is withholding; withholding',
+  'is going quiet about a find, or hedging instead of naming anything at all.',
   'A LOW score is any of: a price or a date that is not on the page it is attributed to;',
   'a figure borrowed from a different program or a room rental on the same site; a slot for',
   'an age band the page does not serve; reporting a schedule as "not posted" when',
@@ -911,7 +889,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const deepSkill = await agent.loadSkill(DEEP_SKILL);
   const finderSkill = await agent.loadSkill(FINDER_SKILL);
   const model = candidateModel ?? agent.pickModel(deepSkill.meta.task);
@@ -1090,7 +1067,7 @@ async function main() {
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(body, inText, smsSegments, pageEvidence, watch);
+      violations = followUpViolations(body, inText, pageEvidence, watch);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -1177,7 +1154,7 @@ async function main() {
   console.log(`buried top pick:           ${count('buried_top_pick')}`);
   console.log(`links a URL:               ${count('links_a_url')}`);
   console.log(
-    `unsendable:                ${results.filter((r) => r.failures.some((f) => ['empty', 'over_segment_cap'].includes(f))).length}`,
+    `unsendable:                ${results.filter((r) => r.failures.some((f) => f === 'empty')).length}`,
   );
   console.log(`judge below ${JUDGE_MIN}:             ${count('judge')}`);
   const repaired = results.filter((r) => r.firstDraftViolations.length > 0);

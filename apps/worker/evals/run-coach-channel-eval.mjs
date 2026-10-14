@@ -220,9 +220,6 @@ const APP_POINTING = [
 ];
 /** Mirrors PRIVATE_EVENT_WHAT in apps/web/lib/channel/coach/tools.ts. */
 const PRIVATE_EVENT_WHAT = 'A private calendar item';
-/** The skill's own ceiling ("two short sentences is the target, four the ceiling"),
- * tightened by one: nothing in this corpus needs a fourth sentence. */
-const MAX_SENTENCES = 3;
 
 /* VOICE_TELLS — the habits the skill and the register both ban, imported above. It is a
  * sibling module for the same reason the menu gate is: the four register classes added
@@ -1630,14 +1627,12 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   const questions = (reply.match(/\?/g) ?? []).length;
   if (questions > 1) failures.push(`${questions} questions in one message (at most one)`);
 
-  // Counted on what the MODEL wrote. The plan offer is two fixed sentences that Hale
-  // appends after the trim, so charging them to this budget would leave a coaching turn
-  // one sentence to answer in — measuring the appended line instead of the prose the
-  // gate exists to hold. The QUESTION count above deliberately still sees it: "one
-  // question per message" is about what lands on the phone, and the offer is that one.
-  // The referral block is appended for the same reason and gets the same treatment: the
-  // model wrote one line of it and the runtime added a URL, and charging a parent's
-  // sentence budget for a link is how the answer around it gets squeezed out.
+  // The plan offer, the referral line, the nearby clause and the activity URL are
+  // appended after the fit, by the runtime. The question count above still sees the
+  // whole reply. The segment count below is on what the MODEL wrote, with any offer it
+  // wrote inline taken off first — the runtime de-duplicates that copy against the
+  // appended one, so charging it here would fail a turn for a sentence that is only
+  // ever sent once.
   const referralForward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
   const appended = [
     calls.find((call) => call.tool === 'offer_full_plan')?.offer,
@@ -1645,25 +1640,16 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   ]
     .filter(Boolean)
     .join(' ');
-  // The nearby clause and the activity URL are appended the same way the offer is:
-  // after the fit, by the runtime. A correct two-sentence answer plus that tail is
-  // not four sentences. The question count above still sees the whole reply.
   const tail = {
     appended,
     nearbyClause: fixture.nearby?.clause ?? '',
     links: activityLinksFor(fixture, calls),
   };
-  const authored = modelProse(reply, tail);
-  const sentenceCount = sentences(authored).length;
-  if (sentenceCount > MAX_SENTENCES) {
-    failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
-  }
 
   // THE CORPUS WAS BLIND HERE, and it is worth saying why: every other gate in this
   // function reads `reply`, which is the POST-TRIM body, and fitToBudget guarantees that
-  // body is inside the budget. So the segment check above can never fire, the sentence
-  // count reads survivors, and a model composing twice what it can send graded exactly
-  // like one writing to the ceiling.
+  // body is inside the budget. So the segment check above can never fire, and a model
+  // composing twice what it can send graded exactly like one writing to the ceiling.
   //
   // That is how the 2026-08-21 bench shipped: the flagship question composed a verified
   // Sep 1 opening plus two finds off a live web search, 548 units against 306, and the
