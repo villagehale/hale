@@ -74,7 +74,11 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import { groupsFromFindBody } from './activity-map';
 import type { IntakeAnswerComposer } from './answer';
-import { findReenrollableChannelOwner, reenrolOnStart } from './channel-state';
+import {
+  findReenrollableChannelOwner,
+  findRevokedChannelOwner,
+  reenrolOnStart,
+} from './channel-state';
 import { coldStartLadderEnabled } from './cold-start/flags';
 import { ageCorrectionFact, kidFirstName } from './cold-start/ladder';
 import { declineOptionalAsk, gateOptionalAsk, recordOptionalAsk } from './cold-start/ledger';
@@ -371,7 +375,7 @@ export type IntakeOutcome =
       // `group_turn_during_intake` (group onboarding v2): a family-group message from a
       // number whose own 1:1 intake is still open. Onboarding is a 1:1 conversation, so
       // nothing of it is answered into the group.
-      reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake';
+      reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake' | 'opted_out';
     }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
@@ -589,6 +593,14 @@ export async function handleInboundSms(
           ),
         );
       }
+    }
+
+    // #868 · an opt-out stops all texting at once. A number whose channel was
+    // revoked (carrier STOP or a model-read opt-out) and not re-enrolled is never
+    // greeted again, 1:1 or in a group, and is not handed to the coach either. Only
+    // START (step 5) brings it back.
+    if (await findRevokedChannelOwner(database, phoneE164)) {
+      return { status: 'ignored', reason: 'opted_out' };
     }
 
     // The pre-session greet is the double-welcome bug's home: no session exists, so

@@ -11,6 +11,7 @@ import {
   noteGroupSyncConversation,
   queueGroupActivityDecision,
 } from './family-outbound';
+import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 
 /**
  * A claimed group is the home channel. No group keeps the caller's door.
@@ -578,7 +579,8 @@ describe('quiet hours and co-parent asks', () => {
     const http = wire();
     const delivered = await deliverFamilyOutbound(db.database, {
       familyId: seeded.familyId,
-      body: 'Want a group chat with the other parent? (test fixture)',
+      // The model writes the ask; code appends the trigger phrase the hold reads.
+      body: `Group chat with the other parent? (test fixture) send: ${LINQ_GROUP_TRIGGER_PHRASE.en}`,
       to: '+14165550100',
       legacy,
       fetch: http.fetch,

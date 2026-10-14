@@ -14,6 +14,7 @@ import {
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LINQ_TYPING_SHOW_DELAY_MS } from '~/lib/channel/linq/presence';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -61,6 +62,7 @@ function harness(): Harness {
   const state = { intakeBuilds: 0 };
   const intake: IntakeDeps = {
     transport,
+    friendVoice: scriptedFriendVoice,
     // A FakeDb has no `conversations` to resolve, and what this file pins is not the
     // thread — the machine's own suite owns that (intake/machine.test.ts).
     threadMessage: async () => 'conv-1',

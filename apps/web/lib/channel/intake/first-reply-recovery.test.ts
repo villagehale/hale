@@ -16,6 +16,7 @@ import {
   type FriendVoiceInput,
   friendVoiceContext,
 } from './friend-voice';
+import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
 import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
 import { FakeTransport } from './transport';
 
@@ -101,6 +102,7 @@ function deps(transport: FakeTransport): FirstReplyRecoveryDeps {
     transport,
     limiter: new FakeRateLimiter(() => SAME_DAY_NOON_ET.getTime()),
     preflight: async () => ({ proceed: true, health: null }),
+    friendVoice: scriptedFriendVoice,
   };
 }
 
@@ -375,6 +377,8 @@ describe('runFirstReplyRecoveryCron', () => {
   });
 
   it('wires the shared outbound leg into the default deps', async () => {
+    // A placeholder key so the client constructs; nothing here calls the model.
+    vi.stubEnv('ANTHROPIC_API_KEY', 'placeholder-not-a-key');
     const { transport } = firstReplyRecoveryDeps(makeFakeDb().db);
     vi.stubEnv('LINQ_API_KEY', '');
     vi.stubEnv('LINQ_FROM_E164', '');

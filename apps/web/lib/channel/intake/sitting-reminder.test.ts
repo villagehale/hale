@@ -4,6 +4,7 @@ import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type FakeDb, makeFakeDb } from './fakes';
+import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
 import {
   FOUNDER_PAIR_SESSION_IDS,
   SITTING_REMINDER_HOUR_LOCAL,
@@ -90,7 +91,7 @@ function seedSession(
 }
 
 function deps(transport: FakeTransport): SittingReminderDeps {
-  return { transport };
+  return { transport, friendVoice: scriptedFriendVoice };
 }
 
 function voiceDeps(transport: FakeTransport): SittingReminderDeps {
@@ -369,7 +370,7 @@ describe('runSittingReminderCron', () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
     seedSession(fake, { state: 'awaiting_place' });
-    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    const result = await runSittingReminderCron(fake.db, { transport }, TORONTO_8AM);
     expect(result.failed).toBe(1);
     expect(result.sent).toBe(0);
     expect(transport.bodies()).toEqual([]);
@@ -469,15 +470,6 @@ describe('runSittingReminderCron', () => {
     expect(result).toEqual({ evaluated: 1, sent: 0, skipped: 1, failed: 0 });
     expect(transport.bodies()).toEqual([]);
     expect(fake.rows(schema.smsIntakeSessions)[0]?.sittingReminderSentAt).toEqual(TORONTO_8AM);
-  });
-
-  it('does not nudge a stuck postal-code session while friend voice is off', async () => {
-    const fake = makeFakeDb();
-    const transport = new FakeTransport();
-    seedSession(fake, { state: 'awaiting_place' });
-    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
-    expect(result.sent).toBe(0);
-    expect(transport.bodies()).toEqual([]);
   });
 
   it('nudges a stuck French ages session in French', async () => {
