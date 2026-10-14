@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { connectorOfferReply } from '~/lib/channel/connect/copy';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -19,6 +18,7 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
+  writeConnectorLink,
   writeConnectorLinks,
 } from '~/lib/channel/voice/said-line';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -228,9 +228,14 @@ async function mintBody(
     return body ? { status: 'minted', body } : { status: 'mint_failed' };
   }
   const minted = await offerConnectorLink(database, { ...owner, provider: args.provider });
-  return minted.status === 'minted'
-    ? { status: 'minted', body: connectorOfferReply(language, args.provider, minted.url) }
-    : minted;
+  if (minted.status !== 'minted') return minted;
+  const body = await writeConnectorLink(saidLine, {
+    language,
+    provider: args.provider,
+    url: minted.url,
+  });
+  // A failed write sends nothing; the minted link simply expires unused.
+  return body ? { status: 'minted', body } : { status: 'mint_failed' };
 }
 
 /** A link is one person's: the family group is never its door. */

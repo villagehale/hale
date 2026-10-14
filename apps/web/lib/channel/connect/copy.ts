@@ -2,20 +2,6 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { failureReply } from '~/lib/channel/router/copy';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import type { ConnectorRevokeOutcome } from './revoke';
-import { withGoogleConnectCaution } from './text-connect';
-
-/**
- * The connector offer — the one deterministic line that hands a parent their sign-in
- * link. Locked copy (scanned by sms-copy-encoding.test.ts): plain hyphens, straight
- * quotes, GSM-7 throughout, and an FR twin per
- * the `_BY_LANGUAGE` convention — written inside GSM-7's French subset (é è à ù yes;
- * â ê î ô û ç no).
- *
- * The register is the Instinct one: short, zero ceremony, no exclamation marks. The
- * fifteen-minute clause is the TTL said out loud — CHANNEL_SIGNIN_TTL_MS is the number
- * this sentence promises. The unverified-app line sits in front of the link, so the
- * segment test holds both twins to two segments and the link stays whole.
- */
 
 /** What each connector is called to a parent, per language. 'Google Agenda' is the
  * product's own French name, not a translation choice. */
@@ -24,22 +10,10 @@ const PROVIDER_NOUN: Record<ReplyLanguage, Record<ConnectorProvider, string>> = 
   fr: { gcal: 'Google Agenda', gmail: 'Gmail', gdrive: 'Google Drive' },
 };
 
-const OFFER_BY_LANGUAGE: Record<ReplyLanguage, (noun: string, url: string) => string> = {
-  en: (noun, url) => `Here you go - tap to connect your ${noun}: ${url} Good for 15 minutes.`,
-  fr: (noun, url) => `Voici - touchez pour connecter votre ${noun}: ${url} Bon pour 15 minutes.`,
-};
-
-/** The whole reply, link included — composed here and nowhere else, so the sentence
- * and the URL cannot be split by any later fitting. */
-export function connectorOfferReply(
-  language: ReplyLanguage,
-  provider: ConnectorProvider,
-  url: string,
-): string {
-  return withGoogleConnectCaution(
-    language,
-    OFFER_BY_LANGUAGE[language](PROVIDER_NOUN[language][provider], url),
-  );
+/** A connector's name to a parent, as a fact for the model-written link text (#868:
+ * the fixed single-provider offer is gone). */
+export function connectorNoun(language: ReplyLanguage, provider: ConnectorProvider): string {
+  return PROVIDER_NOUN[language][provider];
 }
 
 /**

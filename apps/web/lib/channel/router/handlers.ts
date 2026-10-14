@@ -3,7 +3,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { answeredOnTheSameChannel, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
 import type { EveningRequestReader } from '~/lib/channel/checkin/request';
-import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
+import { connectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
   type ConnectOfferTarget,
   connectOfferTarget,
@@ -11,7 +11,7 @@ import {
   matchConnectorRequest,
   matchFreshConnectorFollowUp,
 } from '~/lib/channel/connect/detect';
-import { textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
+import { defaultFreshLinkPorts, textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
@@ -57,6 +57,7 @@ import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morn
 import {
   type SaidLineWriter,
   createSaidLineWriter,
+  writeConnectorLink,
   writeConnectorLinks,
 } from '~/lib/channel/voice/said-line';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
@@ -383,12 +384,12 @@ export function connectorLinkHandler(
         if (!provider) {
           return { claimed: true, outcome: 'group_link_withheld', reply: null };
         }
-        const outcome = await textFreshConnectorLink(database, {
-          familyId: ctx.familyId,
-          parentUserId: ctx.parentUserId,
-          provider,
-          now: ctx.now,
-        });
+        const outcome = await textFreshConnectorLink(
+          database,
+          { familyId: ctx.familyId, parentUserId: ctx.parentUserId, provider, now: ctx.now },
+          // The handler's own writer, so the 1:1 text is written the same way.
+          { ...defaultFreshLinkPorts(), saidLine },
+        );
         if (outcome !== 'sent') {
           log.error(
             { familyId: ctx.familyId, provider: target, outcome },
@@ -447,12 +448,22 @@ export function connectorLinkHandler(
         now: ctx.now,
       });
       switch (outcome.status) {
-        case 'minted':
-          return {
-            claimed: true,
-            outcome: 'sent',
-            reply: connectorOfferReply(language, target, outcome.url),
-          };
+        case 'minted': {
+          // #868: the model writes the text around the one link.
+          const reply = await writeConnectorLink(saidLine, {
+            language,
+            provider: target,
+            url: outcome.url,
+          });
+          if (!reply) {
+            log.error(
+              { familyId: ctx.familyId, provider: target, outcome: 'links_unwritten' },
+              'connector link: link text could not be written - nothing sent',
+            );
+            return { claimed: true, outcome: 'links_unwritten', reply: null };
+          }
+          return { claimed: true, outcome: 'sent', reply };
+        }
         case 'not_enrolled':
           // Ids and the named outcome only, never the body (rule #1). The coach takes
           // the turn, and its skill knows this branch exists.

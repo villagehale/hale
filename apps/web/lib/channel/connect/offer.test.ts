@@ -6,6 +6,7 @@ import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { connectorLinkHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext } from '~/lib/channel/router/route';
+import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -249,7 +250,7 @@ describe('connectorLinkHandler', () => {
   }
 
   it("claims the founder's exact ask and replies with the link", async () => {
-    const verdict = await connectorLinkHandler().handle(
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
       db.database,
       turn('I want you to connect my Google Calendar'),
     );
@@ -258,21 +259,21 @@ describe('connectorLinkHandler', () => {
     expect(verdict.outcome).toBe('sent');
     expect(verdict.reply).toContain('https://app.villagehale.com/connect?t=');
     expect(verdict.reply).toContain('Google Calendar');
-    expect(verdict.reply).toContain('Good for 15 minutes.');
+    expect(verdict.reply).toContain('minutesValid=15');
   });
 
-  it('answers a French ask with the French twin', async () => {
-    const verdict = await connectorLinkHandler().handle(
+  it('asks the model for a French line on a French ask', async () => {
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
       db.database,
       turn('Connecte mon Google Agenda svp'),
     );
     if (!verdict.claimed) throw new Error('expected the handler to claim');
     expect(verdict.reply).toContain('Google Agenda');
-    expect(verdict.reply).toContain('Bon pour 15 minutes.');
+    expect(verdict.reply).toContain('[connector_link/fr]');
   });
 
   it("does NOT mint for a question about the calendar's contents", async () => {
-    const verdict = await connectorLinkHandler().handle(
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
       db.database,
       turn("what's on my calendar this week"),
     );
@@ -314,12 +315,15 @@ describe('connectorLinkHandler', () => {
     'mints a fresh Gmail link for %j instead of telling them what to text',
     async (body) => {
       const conversationId = await threadOffer(GMAIL_OFFER);
-      const verdict = await connectorLinkHandler().handle(db.database, turn(body, conversationId));
+      const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
+        db.database,
+        turn(body, conversationId),
+      );
       if (!verdict.claimed) throw new Error('expected the handler to claim');
       expect(verdict.outcome).toBe('sent');
-      expect(verdict.reply).toContain('tap to connect your Gmail');
+      expect(verdict.reply).toContain('service=Gmail');
       expect(verdict.reply).toContain('to=gmail');
-      expect(verdict.reply).toContain('Good for 15 minutes.');
+      expect(verdict.reply).toContain('minutesValid=15');
       expect(verdict.reply).not.toMatch(/text me the words/i);
       expect(verdict.reply).not.toContain('old-gmail');
       const tokens = await db.database.select().from(schema.channelSigninTokens);
@@ -334,19 +338,19 @@ describe('connectorLinkHandler', () => {
 
   it('mints a fresh calendar link when that was the offer', async () => {
     const conversationId = await threadOffer(CALENDAR_OFFER);
-    const verdict = await connectorLinkHandler().handle(
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
       db.database,
       turn('give me a fresh one', conversationId),
     );
     if (!verdict.claimed) throw new Error('expected the handler to claim');
-    expect(verdict.reply).toContain('tap to connect your Google Calendar');
+    expect(verdict.reply).toContain('service=Google Calendar');
     expect(verdict.reply).toContain('to=gcal');
     expect(verdict.reply).not.toContain('old-gcal');
   });
 
   it('does not mint a fresh link when the last Hale message was not a connect link', async () => {
     const conversationId = await threadOffer('What should I call you?', GMAIL_OFFER);
-    const verdict = await connectorLinkHandler().handle(
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
       db.database,
       turn('new link', conversationId),
     );
@@ -360,7 +364,7 @@ describe('connectorLinkHandler', () => {
       .values({ familyId })
       .returning({ id: schema.conversations.id });
     if (!conversation) throw new Error('expected a conversation');
-    const verdict = await connectorLinkHandler().handle(
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
       db.database,
       turn('it expired', conversation.id),
     );
@@ -370,7 +374,7 @@ describe('connectorLinkHandler', () => {
 
   it('answers a mint failure honestly rather than deferring the turn (mint_failed named)', async () => {
     await db.exec('DROP TABLE channel_signin_tokens');
-    const verdict = await connectorLinkHandler().handle(
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
       db.database,
       turn('connect my google calendar'),
     );
@@ -419,7 +423,7 @@ describe('connectorLinkHandler', () => {
       }),
     );
 
-    const verdict = await connectorLinkHandler().handle(db.database, {
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(db.database, {
       ...turn('connect my google calendar'),
       inboundChannelMessageId: rows[GROUP] as string,
     });
@@ -474,7 +478,7 @@ describe('connectorLinkHandler', () => {
       }),
     );
 
-    const verdict = await connectorLinkHandler().handle(db.database, {
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(db.database, {
       ...turn('give me a fresh one', conversationId),
       inboundChannelMessageId: groupRow,
     });
@@ -509,7 +513,7 @@ describe('connectorLinkHandler', () => {
       }),
     );
 
-    const verdict = await connectorLinkHandler().handle(db.database, {
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(db.database, {
       ...turn('connect my google calendar'),
       inboundChannelMessageId: groupRow,
     });

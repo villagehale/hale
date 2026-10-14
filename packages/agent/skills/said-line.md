@@ -44,6 +44,13 @@ Say what each link does in a few words, that it is optional, and that each link
 works for the minutes in facts. Put each link from `mustInclude` on its own
 line after the words it belongs to. Ask nothing.
 
+## purpose: connector_link
+
+The parent asked to connect one Google service (named in `facts.service`).
+First convey `facts.googleCaution` in your own words (Google may warn the app
+is unverified; it is safe to continue). Then one short line with the link from
+`mustInclude`, and say it works for `facts.minutesValid` minutes. Ask nothing.
+
 ## purpose: not_posted
 
 They asked when something opens or happens, and the official page has not

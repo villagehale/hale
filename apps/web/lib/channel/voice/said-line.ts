@@ -1,8 +1,11 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
+import { connectorNoun } from '~/lib/channel/connect/copy';
+import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -20,6 +23,8 @@ export type SaidLinePurpose =
   | 'crisis_mental'
   | 'identity'
   | 'connector_links'
+  /** One connect link for the one Google service they asked for. */
+  | 'connector_link'
   /** They asked for a date the official page has not posted. */
   | 'not_posted'
   /** They asked for a current fact search could not ground. */
@@ -113,6 +118,33 @@ export function createSaidLineWriter(
       }
     },
   };
+}
+
+/**
+ * One text carrying one connect link, in the model's words (#868: the fixed
+ * single-provider offer is gone). The link is the required fact; the unverified-app
+ * caution rides as a fact the model must convey. Null: the caller sends nothing.
+ */
+export async function writeConnectorLink(
+  writer: SaidLineWriter | null | undefined,
+  input: { language: ReplyLanguage | null; provider: ConnectorProvider; url: string },
+): Promise<string | null> {
+  if (!writer) {
+    console.error('connector link: no line writer - nothing sent');
+    return null;
+  }
+  const language = input.language ?? 'en';
+  return writer.write({
+    purpose: 'connector_link',
+    language: input.language,
+    facts: {
+      service: connectorNoun(language, input.provider),
+      link: input.url,
+      minutesValid: LINK_MINUTES,
+      googleCaution: googleUnverifiedAppLine(language),
+    },
+    mustInclude: [input.url],
+  });
 }
 
 /** Minutes a connect link stays live, said by the model (CHANNEL_SIGNIN_TTL_MS). */
