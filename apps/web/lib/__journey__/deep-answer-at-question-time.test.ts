@@ -90,7 +90,10 @@ const VENUE_TEXT =
 const TOWN_TEXT =
   'Fall registration opens Tuesday, July 22 at 7:00 a.m. for Halton Hills residents.';
 
-describe('the deep answer arrives at question time', () => {
+// A recording waits on live model calls, which outlast the 5s default; replay keeps it.
+const RECORD_TIMEOUT = process.env.HALE_RECORD === '1' ? 180_000 : undefined;
+
+describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }, () => {
   let db: TestDb;
   let database: Database;
   let familyId: string;
