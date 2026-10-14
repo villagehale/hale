@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "will it be raining in toronto",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "whether it will rain in Toronto today",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1698
+}

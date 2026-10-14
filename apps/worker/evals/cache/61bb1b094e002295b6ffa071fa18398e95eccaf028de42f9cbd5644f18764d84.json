@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday 13 October in Windsor: sunny from late morning through the afternoon",
+        "from": "Environment Canada's hourly forecast has sunny skies from late morning through the afternoon"
+      },
+      {
+        "states": "Afternoon high of 29°C at 2–5 pm (Environment Canada)",
+        "from": "with 29°C at 2–5 pm"
+      },
+      {
+        "states": "High of around 29–31°C (Windsorite 29, Global News 30, AccuWeather about 31°C)",
+        "from": "The Windsorite gives a high of 29 with a humidex of 35. Global News has a high of 30 and a low of 15, partly cloudy. AccuWeather has a high of 87°F (about 31°C)"
+      },
+      {
+        "states": "Humidex 35, feels like 35 in the afternoon",
+        "from": "The Windsorite gives a high of 29 with a humidex of 35. The Weather Network has a sunny afternoon at 29°C that feels like 35"
+      },
+      {
+        "states": "Chance of a shower in the morning, about 30–40%, with a thunderstorm risk early, then clearing",
+        "from": "The Weather Network has a chance of a shower in the morning (18°C, 40%). The Windsorite's forecast for the day has a 30 percent chance of showers early in the morning with a risk of a thunderstorm, then clearing in the morning."
+      },
+      {
+        "states": "West wind about 30 km/h gusting to 50 from mid-afternoon into the evening",
+        "from": "Environment Canada's hourly table has west wind of 30 km/h gusting to 50 from mid-afternoon into the evening"
+      },
+      {
+        "states": "Clear evening around 24°C, then showers possible overnight",
+        "from": "The Weather Network has a clear evening at 24°C, then a chance of a shower overnight at 15°C. Its 7-day page says showers are likely overnight, with a risk of a thunderstorm."
+      }
+    ],
+    "answer": "Tomorrow in Windsor looks hot and mostly sunny, with a high around 29 to 31°C and a humidex near 35. It may start with a shower or thunderstorm chance early on, then clear up by late morning. Winds pick up from mid-afternoon into the evening, around 30 km/h with gusts to 50. The evening should be clear, but showers are likely overnight."
+  },
+  "latencyMs": 6321
+}

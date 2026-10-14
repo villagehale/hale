@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by the research notes: the Sienna is the only hybrid-only minivan and gets a segment-best 36 mpg combined, the newest review (5 days old) picks the Carnival Hybrid for most families, and the Odyssey drives most like a car. It makes a real pick with a reason and reads like a casual text in the question's language. Nothing is invented, there is no deflect, and no service offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

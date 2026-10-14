@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer gives 911 directly, and every fact in it is supported by the research notes: one number for police, fire and medical, and calling is free. 'Same as you're used to' just echoes what the parent said. It is brief and casual and actually answers, with no deflecting and no assistant-style offer. Nobody is hurt or in danger.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

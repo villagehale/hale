@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "melatonin in low-to-moderate doses for short periods appears safe and well-tolerated",
+        "from": "melatonin taken in low-to-moderate doses (e.g., 5 mg daily or less) for short periods appears safe and well-tolerated"
+      },
+      {
+        "states": "common side effects are minor and go away once use stops: headache, sleepiness, dizziness, stomach upset, vivid dreams, irritability, low or high blood pressure, depression",
+        "from": "common side effects are minor and resolve once use stops. The most frequent are headache and somnolence (fatigue). Other reported side effects are hypotension, hypertension, dizziness, gastrointestinal upset, vivid dreams, irritability, and depression."
+      },
+      {
+        "states": "long-term effects are not well established, and long-term safety is unclear",
+        "from": "The long-term effects are not well established. One sleep expert, Dr. Michael Grandner, said long-term safety is still unclear"
+      },
+      {
+        "states": "a preliminary study presented at the AHA in November 2025 linked 12 months or more of use in adults with insomnia to higher heart failure risk; it is not peer-reviewed and cannot prove cause",
+        "from": "A preliminary study was presented at the American Heart Association (AHA) Scientific Sessions in November 2025. Adults with insomnia who used melatonin for 12 months or more had about a 90% higher chance of incident heart failure over 5 years compared with matched non-users. The AHA itself says the study cannot prove a cause-and-effect relationship. It also notes that abstracts presented at AHA meetings are not peer-reviewed"
+      },
+      {
+        "states": "a 2026 analysis reported no significant association, so the question remains open",
+        "from": "A later analysis disagrees. A Masters of Longevity summary says a 2026 analysis found no significant association, and the different study designs explain why the question remains open."
+      },
+      {
+        "states": "experts advise against long-term use without a proper reason",
+        "from": "said melatonin should not be taken chronically without a proper indication. A second commentator said patients may wish to seek alternative sleep aids and/or limit the duration of melatonin use."
+      },
+      {
+        "states": "melatonin can interact with blood thinners and antidepressants",
+        "from": "One source lists possible interactions with blood thinners and antidepressants, especially for older adults on several medications. This comes from a commercial sleep-company blog, so it is a weaker source."
+      }
+    ],
+    "answer": "For short-term use, it looks fine for most adults. Studies on low-to-moderate doses over short periods found side effects are mild and go away when you stop: headache, sleepiness, dizziness, upset stomach, vivid dreams. Long-term safety is less clear. A preliminary study presented at the American Heart Association in November 2025 linked a year or more of use in people with insomnia to more heart failure, but it isn't peer-reviewed and can't prove cause. A later 2026 analysis found no significant link, so it's still an open question. Experts advise against long-term use without a good reason. It can also interact with blood thinners and antidepressants, so if you take either, check with a doctor or pharmacist first."
+  },
+  "latencyMs": 8860
+}

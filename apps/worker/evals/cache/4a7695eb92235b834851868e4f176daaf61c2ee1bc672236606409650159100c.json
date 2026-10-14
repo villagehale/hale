@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer names Mark Carney, which matches the research notes. 'Took office March 2025 after Trudeau's government collapsed' is supported by the Britannica note. The grounding entries cite the notes and nothing is marked settled. It answers directly and briefly. The closing 'nothing I found shows anyone else holding the job as of today' reads a little hedgy and report-like, less like a friend's quick text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

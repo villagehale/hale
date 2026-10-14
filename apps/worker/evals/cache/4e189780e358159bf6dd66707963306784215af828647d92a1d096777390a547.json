@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Today (Mon Oct 12): mix of sun and cloud, high 23, no rain in the daytime forecast",
+        "from": "Today is a mix of sun and cloud, with morning fog patches clearing and a high of 23. The daytime forecast mentions no rain."
+      },
+      {
+        "states": "Tonight (Mon night): 60% chance of showers before morning, risk of thunderstorm",
+        "from": "Tonight is mainly cloudy, with a 60 percent chance of showers before morning and a risk of a thunderstorm."
+      },
+      {
+        "states": "Tuesday (Oct 13): 60% chance of showers, per the Oct 12 forecast",
+        "from": "The same Oct 12 Environment Canada page lists a 60% chance of showers for the Tuesday period, with a high of 24."
+      }
+    ],
+    "answer": "Mostly no for today: it should be a mix of sun and cloud, high 23, with no rain in the daytime forecast. Tonight is the risk, about a 60% chance of showers before morning, with a chance of thunderstorms. Tuesday also looks showery, 60% chance in this morning's forecast."
+  },
+  "latencyMs": 5104
+}

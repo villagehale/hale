@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday high of 25°C",
+        "from": "The high is 25°C"
+      },
+      {
+        "states": "Tuesday humidex of 32",
+        "from": "The humidex is 32."
+      },
+      {
+        "states": "Tuesday: mix of sun and cloud, 40 percent chance of showers and a risk of thunderstorms late in the afternoon",
+        "from": "Becoming a mix of sun and cloud in the afternoon, with a 40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon."
+      },
+      {
+        "states": "Tuesday night low of 15°C, with 40% chance of showers and thunderstorm risk in the evening",
+        "from": "Tuesday night is partly cloudy with a 40 percent chance of showers and a thunderstorm risk in the evening, and a low of 15°C."
+      }
+    ],
+    "answer": "Tomorrow in Toronto is warm, with a high of 25°C (around 32 with the humidity). Expect a mix of sun and cloud, but a 40% chance of showers and a risk of thunderstorms late in the afternoon. Tuesday night drops to a low of 15°C, with showers and a thunderstorm risk again in the evening. This is Environment Canada's 11am update."
+  },
+  "latencyMs": 10575
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches research_notes: today is sun and cloud with a high of 23 and no daytime rain, tonight has a 60% chance of showers with a thunderstorm risk, and Tuesday is 60% with a high of 24. The answer says nothing about the family or the school. It does answer the 3pm question, since a dry day means no rain at pickup, but it never says so directly. With its colons and list of figures it reads a little like a forecast bulletin rather than a quick friend's text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

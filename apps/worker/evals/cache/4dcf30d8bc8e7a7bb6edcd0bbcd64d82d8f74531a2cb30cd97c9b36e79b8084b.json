@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Denver, Tuesday Oct 13: partly sunny",
+        "from": "The National Weather Service in Boulder said to expect partly sunny skies Tuesday"
+      },
+      {
+        "states": "Tuesday high about 65°F, with other forecasts 64 to 67°F",
+        "from": "The high is expected to reach 65 degrees; Weather Underground has a high of 64°F; AccuWeather has a high of 67°; 9NEWS has a high of 64"
+      },
+      {
+        "states": "Tuesday wind north-northeast 6 to 10 mph, gusts up to 17 mph later",
+        "from": "North-northeast winds of 6 to 10 mph are expected, becoming east to northeast in the afternoon with gusts up to 17 mph"
+      },
+      {
+        "states": "Rain chance 30% after 3 p.m., rain moving in Tuesday evening",
+        "from": "The weather service gives a 30% chance of rain after 3 p.m.; with rain and showers possibly moving in Tuesday evening"
+      },
+      {
+        "states": "Overnight low mid-40s to 44-46°F with rain showers at times",
+        "from": "Weather Underground gives a low of 46°F with rain showers at times; AccuWeather gives a low of 44°"
+      }
+    ],
+    "answer": "Tuesday in Denver looks mostly sunny and mild, with a high around 65°F and light north-northeast wind. Rain moves in Tuesday evening, around 30% after 3 p.m. and climbing overnight, with lows in the mid-40s."
+  },
+  "latencyMs": 4973
+}

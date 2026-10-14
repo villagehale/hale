@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The facts match research_notes: a 6-3 win at Colorado, ESPN and Yahoo dating it Oct 10, NHL.com clips dating it Oct 11, and no separate game on Sunday. One wrinkle: \"nothing shows a game on Sunday\" sits a little awkwardly next to the NHL.com date, since the notes only rule out a separate Sunday game. It is not a wrong fact. The closing \"Want me to check anything else for you?\" is an assistant offering a service, not a friend texting back, which caps it below 4.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

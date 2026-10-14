@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi is the pick for soccer, per recent 2026 rankings",
+        "from": "Most recent sources name Lionel Messi."
+      },
+      {
+        "states": "Messi is ranked first in Daily Sabah's 2026 ranking, citing his 2022 World Cup win",
+        "from": "Daily Sabah's 2026 ranking puts him first. It cites his 2022 World Cup win"
+      },
+      {
+        "states": "Cristiano Ronaldo is the main soccer rival",
+        "from": "Cristiano Ronaldo is the main rival."
+      },
+      {
+        "states": "The debate is not formally settled",
+        "from": "Several outlets note the debate is not formally settled."
+      },
+      {
+        "states": "Tom Brady is the most common NFL answer, with Jerry Rice the usual alternative",
+        "from": "Tom Brady is the most common answer."
+      },
+      {
+        "states": "Jerry Rice is the usual alternative to Brady in the NFL debate",
+        "from": "This shows Rice and Brown are the usual alternatives."
+      }
+    ],
+    "answer": "Depends which football you mean. For soccer I'd say Messi. Recent rankings put him first, and he won the 2022 World Cup. Ronaldo fans will argue, and it's not formally settled. For American football most people say Tom Brady, with Jerry Rice the usual alternative."
+  },
+  "latencyMs": 6850
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "is melatonin safe for adults",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "yes",
+    "current_fact": "current safety guidance on melatonin use in adults",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1976
+}

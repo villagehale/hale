@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer gives about 12 minutes for large eggs in boiling water. It adds that 10 minutes leaves the yolk a bit soft and that 14–15 minutes makes the eggs rubbery and dry. All of this matches research_notes (Healthline and the summary). The tips that smaller eggs need less time and to cool them in cold water are also supported. It reads like a friend texting back: brief, casual, a real number, no deflect. No safety issue.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

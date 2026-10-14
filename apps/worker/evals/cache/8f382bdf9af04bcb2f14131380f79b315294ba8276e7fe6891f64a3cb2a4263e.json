@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact checks out against the notes: Messi ranked first in recent rankings, the 2022 World Cup win, Ronaldo as the main rival, the debate not formally settled, Brady the common NFL pick and Rice the usual alternative. Nothing is marked settled that could still change. It covers both meanings of football and makes a real pick for each (\"I'd say Messi\"), which is what watchFor asks for. Tone is casual and brief, like a friend texting, with no offers or deflection.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

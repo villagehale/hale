@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "low-to-moderate doses (5 mg daily or less) for short periods appear safe and well tolerated",
+        "from": "melatonin taken in low-to-moderate doses (e.g., 5 mg daily or less) for short periods appears safe and well-tolerated"
+      },
+      {
+        "states": "common short-term side effects are headache and drowsiness (somnolence), and they resolve once use stops",
+        "from": "The most frequent are headache and somnolence (fatigue)"
+      },
+      {
+        "states": "long-term effects are not well established",
+        "from": "The long-term effects are not well established"
+      },
+      {
+        "states": "a preliminary AHA-presented study linked 12+ months of use in adults with insomnia to higher heart failure risk, which is not peer-reviewed and cannot prove cause",
+        "from": "A preliminary study was presented at the American Heart Association (AHA) Scientific Sessions in November 2025. ... The AHA itself says the study cannot prove a cause-and-effect relationship. It also notes that abstracts presented at AHA meetings are not peer-reviewed"
+      },
+      {
+        "states": "a later 2026 analysis found no significant association, so the question remains open",
+        "from": "A later analysis disagrees. A Masters of Longevity summary says a 2026 analysis found no significant association"
+      },
+      {
+        "states": "possible interactions with blood thinners and antidepressants",
+        "from": "One source lists possible interactions with blood thinners and antidepressants"
+      }
+    ],
+    "answer": "For short-term use, it looks fairly safe for most adults. Low doses, around 5 mg or less, taken for a short while have been well tolerated in studies. The common side effects are mild, like headache and feeling drowsy, and they go away when you stop. Long-term safety is less clear. A preliminary study shown at a heart meeting linked a year or more of use to more heart failure, but it's not peer-reviewed and can't prove cause, and a later 2026 analysis found no link, so it's still open. It can also interact with blood thinners and antidepressants, so check with a doctor or pharmacist before taking it, especially if you're on other meds."
+  },
+  "latencyMs": 6613
+}

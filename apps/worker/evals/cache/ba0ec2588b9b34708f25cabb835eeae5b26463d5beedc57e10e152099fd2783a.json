@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://weather.gc.ca/en/location/index.html?coords=43.655%2C-79.383",
+    "https://www.theweathernetwork.com/en/city/ca/ontario/toronto/monthly",
+    "https://weather.gc.ca/en/location/index.html?coords=43.627%2C-79.394",
+    "https://weather.gc.ca/en/forecast/hourly/index.html?coords=43.655%2C-79.383&wbdisable=true",
+    "https://www.timeanddate.com/weather/canada/toronto/ext",
+    "https://www.theweatheroutlook.com/forecast/43d66-n79d39/toronto--ontario--canada",
+    "https://www.thomascook.com/holidays/weather/canada/toronto/forecast/",
+    "https://www.easeweather.com/north-america/canada/ontario/toronto/october",
+    "https://www.weather25.com/north-america/canada/ontario/toronto?page=month&month=October",
+    "https://www.weather25.com/amp/north-america/canada/ontario/toronto?page=tomorrow"
+  ],
+  "notes": "Research notes for Toronto, Ontario, Canada. Today is Monday, Oct 12, 2026, so \"tomorrow\" is Tuesday, Oct 13, 2026.\n\nThe best source is Environment Canada's Toronto forecast. The version the search returned was issued at 11:00 AM EDT on Tuesday, Oct 13, so it describes the day itself.\n\n- **Daytime:** Becoming a mix of sun and cloud in the afternoon, with a 40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon.\n- **Temperature and wind:** Wind from the southwest at 20 km/h, gusting to 40. High of 25, with a humidex of 32.\n- **Evening and night:** Partly cloudy. 40 percent chance of showers in the evening, with a risk of a thunderstorm. Wind from the west at 20 km/h, gusting to 40. Low of 15.\n- **Alerts:** Environment Canada's hourly page showed no alerts in effect. The hourly forecast has showers and thunderstorm risk from about 3 PM to 9 PM, with temperatures of 23–25°C in the afternoon.\n- **Following day (Wed, Oct 14):** A mix of sun and cloud, with a high of 16. That is much cooler than Tuesday.\n\nOther sources broadly agree that Tuesday is warm with some rain, but they differ on the details:\n- The Weather Network showed a thunderstorm risk, 25°C (feels like 32), and about 5 mm of rain.\n- Timeanddate showed isolated thunderstorms with breaks of sun late, at 76°F (about 24°C).\n- Weather25 and EaseWeather gave very different numbers, such as 15°C and 19°C highs. Those are low-quality sources, and the Environment Canada forecast is the most authoritative and most current.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 7615
+}

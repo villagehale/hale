@@ -1,0 +1,28 @@
+{
+  "urls": [
+    "https://www.spaceref.com/weather/ontario/toronto/",
+    "https://www.accuweather.com/en/ca/toronto/m5h/weather-forecast/55488",
+    "https://weather.gc.ca/en/location/index.html?coords=43.655%2C-79.383",
+    "https://www.theweathernetwork.com/en/city/ca/ontario/toronto/hourly",
+    "https://www.theweathernetwork.com/en/city/ca/ontario/toronto/current",
+    "https://www.torontotoday.ca/good-morning/toronto-weather-today-12857952",
+    "https://www.msn.com/en-us/weather/forecast/in-Toronto,Ontario",
+    "https://www.easeweather.com/north-america/canada/ontario/toronto/today",
+    "https://weather.yahoo.com/ca/on/toronto",
+    "https://weather.metoffice.gov.uk/forecast/dpz893tbw",
+    "https://www.accuweather.com/en/ca/toronto/m5h/october-weather/55488",
+    "https://www.accuweather.com/en/ca/new-toronto/m8v/october-weather/1365960",
+    "https://weather.gc.ca/en/location/index.html?coords=43.650681%2C-79.366692",
+    "https://www.weatherbug.com/weather-forecast/10-day-weather/toronto-ontario-ca",
+    "https://en.climate-data.org/north-america/canada/ontario/toronto-53/t/october-10/",
+    "https://www.holiday-weather.com/toronto/averages/october/",
+    "https://www.easeweather.com/north-america/canada/ontario/toronto/future/october",
+    "https://www.weather25.com/north-america/canada/ontario/toronto?page=month&month=October",
+    "https://world-weather.info/forecast/canada/toronto/october-2026/",
+    "https://cs-people.bu.edu/cthay/cs-103/labs/lab4/c/weather/lab4c-weather.html"
+  ],
+  "notes": "**Toronto rain notes, for Monday, Oct 12, 2026.** The question gives no time frame, so these cover today, tonight and the next few days.\n\n**Today and tonight (Environment Canada, forecast issued 6:26 AM EDT Oct 12, Toronto Pearson):**\n- Today is a mix of sun and cloud, with morning fog patches clearing and a high of 23. The daytime forecast mentions no rain.\n- Tonight is mainly cloudy, with a 60 percent chance of showers before morning and a risk of a thunderstorm.\n- The 7:00 AM observation was mostly cloudy, 14°C, humidity 93%.\n\n**Tuesday, Oct 13:**\n- The same Oct 12 Environment Canada page lists a 60% chance of showers for the Tuesday period, with a high of 24.\n- A later Environment Canada update, issued 11:00 AM Oct 13, says 40 percent chance of showers late in the afternoon, with a risk of a thunderstorm.\n- That later update also says 40 percent chance of showers in the evening with a thunderstorm risk.\n\n**Later this week (the Oct 13 Environment Canada update):**\n- Wednesday, Oct 14: a mix of sun and cloud, high 16.\n- Thursday, Oct 15: cloudy by day, with periods of rain Thursday night.\n- Friday, Oct 16: showers, high 14.\n- Saturday, Oct 17 and Sunday, Oct 18: sunny.\n\nThe sources did not fully agree on timing. AccuWeather, in a snapshot dated Oct 13, showed a morning shower and thunderstorm on Tuesday. Environment Canada put the Tuesday showers in the late afternoon.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 12501
+}

@@ -1,0 +1,28 @@
+{
+  "urls": [
+    "https://urbantoronto.ca/database/projects/costco-oakville.58376",
+    "https://www.blogto.com/eat_drink/2024/02/new-costco-location-coming-oakville/",
+    "https://www.oakville.ca/business-development/planning-development/active-development-applications/ward-1-development-and-site-plan-applications/costco-oakville-(wyecroft)-3471-3487-3505-3509-3513-3517-and-3521-wyecroft-road-1635-031-01/",
+    "https://www.insauga.com/new-costco-store-expected-to-open-in-2025-in-oakville-ontario/",
+    "https://yepsavings.com/ca-on-mississauga-&-oakville-s-3180-laird-rd-23",
+    "https://www.costco.com/w/-/CA/ontario/947",
+    "https://www.costco.com/w/-/ca/ontario-showroom-ontario/1700",
+    "https://www.costco.com/warehouse-locations/stoney-creek-ontario-on-1273.html",
+    "https://www.costco.com/w/-/ca/ontario-business-center-ontario/947",
+    "https://www.costco.com/warehouse-locations/barrie-barrie-on-252.html",
+    "https://www.insauga.com/another-new-costco-is-finally-underway-in-ontario/",
+    "https://www.insauga.com/costco-will-open-its-next-ontario-warehouse-in-2027/",
+    "https://www.insauga.com/new-costco-store-expected-to-open-in-2025-in-oakville-ontario/",
+    "https://www.burlingtontoday.com/local-news/construction-update-work-ongoing-for-new-costco-11637926",
+    "https://oakvilledigest.ca/news/oakville-costco-wyecroft-opening-soon/",
+    "https://en.wikipedia.org/wiki/Oakville_Place",
+    "https://en.wikipedia.org/wiki/Bronte_GO_Station",
+    "https://www.cbsnews.com/amp/sacramento/news/elk-grove-costco-opening-date",
+    "https://www.cbsnews.com/sacramento/news/elk-grove-costco-opening-date/",
+    "https://news.yahoo.com/yuba-county-costco-officially-opens-030344789.html?fr=sycsrp_catchall"
+  ],
+  "notes": "**Research notes**\n\n- No `place` was given. The question says only \"Oakville\", so the notes assume Oakville, Ontario. The search didn't check other places called Oakville. The user's position within Oakville is also unknown, so \"closest\" can't be settled exactly.\n- Oakville, Ontario has no open Costco today (Oct 12, 2026). The Oakville Digest (Aug 28, 2026) says an \"Opening Soon\" sign is up at the Costco site on Wyecroft Road near Burloak Drive, and calls it Oakville's first warehouse. It says demolition is done and the target opening is fall 2027.\n- The Oakville Digest is the newest source. Earlier reports agree on the timing. Mayor Rob Burton said final site plan approval was granted and construction was expected to begin in spring, pointing to a likely fall 2027 opening (insauga). BurlingtonToday also reports an opening sometime in 2027. Older 2024 articles that said 2025 are out of date.\n- The new site is at 3471 Wyecroft Rd., on the edge of Burlington and Oakville. It is near Burloak Drive and the QEW.\n- Burlington already has a Costco. BurlingtonToday refers to \"the existing Burlington location\", but the results gave no address or hours for it.\n- A Costco deals site (yepsavings.com, a third-party page) describes the Laird Rd warehouse as serving Mississauga and Oakville. It gives the address as 3180 Laird Rd. This is not an official Costco source.\n- The results also showed a Stoney Creek Costco (1330 South Service Rd, Stoney Creek, ON). It is probably too far to matter for most of Oakville.\n- Not found: official Costco.ca pages for the Burlington, Mississauga or other nearby warehouses. Their addresses, hours and distances from Oakville are not confirmed.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 12107
+}

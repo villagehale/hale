@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "IM8 Essentials is well made: both formulas are third-party tested and NSF Certified for Sport",
+        "from": "Both formulas are third-party tested and NSF Certified for Sport, with certificates published publicly."
+      },
+      {
+        "states": "It can replace a multivitamin, probiotics and certain workout supplements, but many ingredient doses fall short of effective ranges",
+        "from": "It said Essentials could replace a multivitamin, probiotics and certain workout supplements, but otherwise its ingredient doses fall short of effective ranges."
+      },
+      {
+        "states": "Some reviewers say the company's marketing is stronger than the science behind it",
+        "from": "She wrote that IM8 is clever marketing wrapped around science that is far weaker than consumers are led to believe."
+      },
+      {
+        "states": "About $112 for a one-time 30-serving box",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription, per getsupplementreviews.com and Live it Up."
+      },
+      {
+        "states": "About $89 a month on subscription",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription, per getsupplementreviews.com and Live it Up."
+      },
+      {
+        "states": "No independent clinical evidence was found for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      }
+    ],
+    "answer": "Mostly overrated, for me. It's well made and third-party tested, and if it replaces a multivitamin, a probiotic and a couple of other supplements, it can earn its keep. But reviewers who checked the doses found many ingredients below effective amounts, and I couldn't find independent clinical evidence for the benefit claims. It runs about $89 a month on subscription or $112 for a one-time box, so you're paying a lot for that. Only worth it if the convenience is what you're after."
+  },
+  "latencyMs": 7034
+}

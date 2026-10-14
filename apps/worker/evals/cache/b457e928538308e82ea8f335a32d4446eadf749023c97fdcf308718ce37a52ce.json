@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Answered in French with a real pick (oui) and a reason (sweet-savory, goes with ham). It doesn't fence-sit; the 'question de goût' line is just a light aside. It's casual and friend-like, though a touch formal in phrasing. It states no wrong facts.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

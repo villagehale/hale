@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Blue Jays missed the 2026 postseason with a final record of 79-83, 5th in the AL East",
+        "from": "Baseball-Reference lists their final record as 79-83, 5th in the AL East"
+      },
+      {
+        "states": "No Blue Jays game was found for Sunday, Oct 11, 2026, so no game was found for last night",
+        "from": "The results found no Blue Jays game on Oct 11, and I found no score for one."
+      }
+    ],
+    "answer": "Assuming you mean the Blue Jays: I didn't find a game for them last night. They missed the playoffs at 79-83, so their season looks over. I couldn't check the game log for Sunday directly, so that part rests on the results I found."
+  },
+  "latencyMs": 9553
+}
