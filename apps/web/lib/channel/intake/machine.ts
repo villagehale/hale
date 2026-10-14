@@ -2342,7 +2342,7 @@ function withColdStart(
   };
 }
 
-/** Names on the reply after logistics. A prior ask the same day does not hold this one. */
+/** Names on the reply after logistics, or the next reply when that day is already spent. */
 async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> {
   const { database, session, inbound, now, deps, language, familyId, progress, judged } = turn;
   const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
@@ -2388,10 +2388,9 @@ async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> 
     askKey: 'names',
   });
   if (!gate.allow) {
-    // Declined, paused, already asked, or stop-asking. A note here used to stay
-    // the reply on every later text ("ok", a Chinese message). Close instead
-    // and hand this text to the coach. Do not record it here: the handoff
-    // inserts that row.
+    // The day is already spent. A note here used to stay the reply on every
+    // later text ("ok", a Chinese message). Close instead and hand this text
+    // to the coach. Do not record it here: the handoff inserts that row.
     console.info({ reason: gate.reason, ask: 'names' }, 'cold-start names: held');
     await closeColdStartForCoach(database, session, inbound, now);
     return { status: 'ignored', reason: 'no_open_conversation' };

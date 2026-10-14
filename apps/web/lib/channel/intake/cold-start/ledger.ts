@@ -25,7 +25,7 @@ export interface OptionalAskGate {
   askKey: string;
   timeZone?: string;
   env?: Record<string, string | undefined>;
-  /** Name, calendar, and email in one sitting. */
+  /** Name, calendar, and email in one sitting. Skips the one-a-day cap. */
   onboardingSequence?: boolean;
 }
 
