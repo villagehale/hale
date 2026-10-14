@@ -537,8 +537,8 @@ export default async function PrivacyPage({
             an opaque account id, never your name or email. Processed in the United States. On the
             public website, PostHog analytics and session replay load only after the visitor taps
             Accept in the cookie banner. If they choose No thanks, or make no choice, neither loads.
-            Visitors can change that choice at any time with Cookie settings in the site footer. On
-            the marketing site, PostHog is configured to write nothing to your device.
+            Visitors can change that choice at any time with Cookie settings in the site footer.{' '}
+            {'On the marketing site, PostHog is configured to write nothing to your device.'}
           </li>
           <li>
             <strong>Google Ads</strong> — advertising measurement on the marketing site
