@@ -1,7 +1,6 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
-import { STOP_ACK } from '~/lib/channel/intake/copy';
 import {
   type FakeDb,
   FakeExtractor,
@@ -14,6 +13,7 @@ import {
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
+import { SCRIPTED_STOP_CONFIRMATION } from '~/lib/channel/intake/scripted-opt-out-reader.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LINQ_TYPING_SHOW_DELAY_MS } from '~/lib/channel/linq/presence';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -182,7 +182,7 @@ describe('routing', () => {
 
     expect(outcome).toBe('intake');
     // The CASL path ran, not the attachment notice.
-    expect(h.transport.bodies()).toEqual([STOP_ACK]);
+    expect(h.transport.bodies()).toEqual([SCRIPTED_STOP_CONFIRMATION]);
     const revoked = h.fake.writes.filter(
       (w) => w.op === 'update' && w.table === schema.parentChannels,
     );

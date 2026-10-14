@@ -1271,11 +1271,4 @@ describe('reader-only opt-out gate (#868, off by default)', () => {
     expect(result.status).toBe('stopped');
     expect(transport.bodies()).toEqual(['Stop confirmation (test fixture).']);
   });
-
-  it('with the gate off, the carrier keyword still stops first', async () => {
-    const { fake, transport, deps } = harness({ voice: true });
-    deps.optOutReader = reader('none', '');
-    const result = await handleInboundSms(fake.db, inbound(transport, 'STOP'), deps);
-    expect(result.status).toBe('stopped');
-  });
 });

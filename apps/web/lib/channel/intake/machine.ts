@@ -80,8 +80,6 @@ import { type ConnectorOfferLabel, sendYearConnectorCards } from './connector-of
 import {
   INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   type IntakeGap,
-  START_ACK_BY_LANGUAGE,
-  STOP_ACK_BY_LANGUAGE,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
@@ -104,7 +102,6 @@ import {
 } from './friend-voice';
 import { identityChallengeReply } from './identity-challenge';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
-import { type IntakeKeyword, type IntakeKeywordMatch, matchKeyword } from './keywords';
 import { isCheerUpAsk, isLiveLookupAsk } from './live-lookup';
 import { isOfficialPageAsk } from './official-page';
 import {
@@ -125,6 +122,7 @@ import {
   isIdentityReading,
   readTextOnce,
   readTurnOnce,
+  sharedOptOutReader,
 } from './opt-out-reader';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
@@ -402,7 +400,7 @@ interface Inbound {
    * and what it does NOT suppress. Optional here for the same reason it is optional
    * there: a caller written before the provider could answer a keyword means "it
    * answered nothing", which is exactly what absent resolves to. */
-  providerAnsweredKeyword?: IntakeKeyword | null;
+  providerAnsweredKeyword?: ProviderKeyword | null;
 }
 
 /** The caregiver lane's ports, taken off intake's deps. The names differ on purpose. */
@@ -431,44 +429,36 @@ export async function handleInboundSms(
   }
   const phoneHash = phoneBlindIndex(phoneE164);
 
-  // 2. Is this a CASL keyword? A pure string test — no I/O, no spend — read BEFORE the
-  // limit so step 3 cannot drop one. STOP is a legal instruction, not traffic: a parent
-  // who has just texted too fast is exactly the parent about to send it, and throttling
-  // it away would leave them subscribed with no record of having asked to leave.
-  const readerOnly = optOutReaderOnlyEnabled() && Boolean(deps.optOutReader);
-  const match = readerOnly ? null : matchKeyword(inbound.body);
+  // 2. #868 · no keyword list. The opt-out reader reads every turn, in any wording and
+  // any language; a stop is never throttled away (step 3 still reads an over-limit turn).
+  const reader = deps.optOutReader ?? sharedOptOutReader();
 
   // 3. Rate limit, keyed by the BLIND INDEX (the raw number never reaches the limiter
   // table). Over the limit we go SILENT rather than replying "slow down": a reply is
   // itself an outbound SMS, so answering a flood would hand an SMS-pumping attacker
-  // exactly the amplification they came for. Keywords are the one exemption, and they
-  // are still COUNTED — the flood budget is spent either way, only the drop is skipped.
+  // exactly the amplification they came for. The turn is still read, so a stop in any
+  // wording still revokes; nothing else runs over the limit.
   // A family-group turn the Linq door already charged to the chat spends nothing here.
   if (inbound.budget !== 'chat') {
     const decision = await deps.limiter.check(phoneHash, INTAKE_ROUTE, RATE_LIMITS[INTAKE_ROUTE]);
-    if (!decision.allowed && !match) {
-      // Reader-only: no keyword exemption exists, so the turn is still read and a
-      // stop in any wording still revokes. Nothing else runs over the limit.
-      if (readerOnly) {
-        const reading = await readTurnOnce(deps.optOutReader, inbound, {
-          text: inbound.body,
-          language: null,
-        });
-        if (reading?.intent === 'stop') {
-          return handleStop(
-            database,
-            {
-              phoneE164,
-              inbound,
-              session: await loadOpenSession(database, phoneE164),
-              now,
-              language: replyLanguage(inbound.body),
-              providerAnswered: false,
-              confirmation: reading.confirmation,
-            },
-            deps,
-          );
-        }
+    if (!decision.allowed) {
+      const reading = await readTurnOnce(reader, inbound, {
+        text: inbound.body,
+        language: null,
+      });
+      if (reading?.intent === 'stop') {
+        return handleStop(
+          database,
+          {
+            phoneE164,
+            inbound,
+            session: await loadOpenSession(database, phoneE164),
+            now,
+            providerAnswered: inbound.providerAnsweredKeyword === 'stop',
+            confirmation: reading.confirmation,
+          },
+          deps,
+        );
       }
       return { status: 'rate_limited' };
     }
@@ -490,18 +480,12 @@ export async function handleInboundSms(
     return { status: 'duplicate' };
   }
 
-  // 5. The keyword read in step 2, acted on. Deliberately UNCLAIMED: STOP is a legal
-  // instruction, its handling is deterministic-fast and idempotent, and a claim here
-  // would refuse the resend that re-runs a STOP whose first attempt crashed —
-  // trading a rare double courtesy-ack for a CASL instruction that cannot be lost.
-  if (match) {
-    return handleKeyword(database, { match, phoneE164, inbound, session, now }, deps);
-  }
-
-  // 5a. #868 · any other wording of "stop texting me", read by the model. Same
-  // revocation as the carrier keyword, and the model writes the one confirmation.
-  if (deps.optOutReader && inbound.body.trim().length > 0) {
-    const reading = await readTurnOnce(deps.optOutReader, inbound, {
+  // 5. "Stop texting me" or "start again", in any wording, read by the model. Deliberately
+  // UNCLAIMED: a stop is a legal instruction, its handling is idempotent, and a claim here
+  // would refuse the resend that re-runs a stop whose first attempt crashed. The model
+  // writes the one confirmation; an empty one sends nothing (the revocation still runs).
+  if (inbound.body.trim().length > 0) {
+    const reading = await readTurnOnce(reader, inbound, {
       text: inbound.body,
       language: session?.ladderLanguage ?? null,
     });
@@ -513,19 +497,24 @@ export async function handleInboundSms(
           inbound,
           session,
           now,
-          language: session?.ladderLanguage ?? replyLanguage(inbound.body),
-          providerAnswered: false,
+          providerAnswered: inbound.providerAnsweredKeyword === 'stop',
           confirmation: reading.confirmation,
         },
         deps,
       );
     }
-    // Reader-only: a start in any wording re-enrols a number that stopped, with the
-    // model's own confirmation. Not a stopped number with a seat → the turn goes on.
-    if (readerOnly && reading?.intent === 'start') {
+    // A start re-enrols a number that stopped. Not a stopped number with a seat → the
+    // turn goes on as ordinary conversation.
+    if (reading?.intent === 'start') {
       const restarted = await restartFromReader(
         database,
-        { phoneE164, inbound, now, confirmation: reading.confirmation },
+        {
+          phoneE164,
+          inbound,
+          now,
+          confirmation: reading.confirmation,
+          providerAnswered: inbound.providerAnsweredKeyword === 'start',
+        },
         deps,
       );
       if (restarted) return restarted;
@@ -3415,172 +3404,28 @@ async function helpBody(
 }
 
 /**
- * #868 · the reader-only gate. Off (the default, and production today): the carrier
- * keywords in keywords.ts still match first and STOP/START answer with the fixed acks.
- * Exactly 'on': no keyword list — the turn reader decides stop AND start in any
- * wording and writes both confirmations, and an over-limit turn is still read so a
- * stop can never be throttled away. Flip it only after the opt-out-read eval passes
- * on a recording; then keywords.ts and STOP_ACK/START_ACK are deleted
- * (/workspace/pr868-keywords-removal.patch).
+ * #868 · OPT_OUT_READER_ONLY, kept as it was ('on' or off by default). keywords.ts and the
+ * fixed STOP/START replies are gone, so the reader decides stop and start on every turn
+ * whichever way this is set; nothing reads it any more. Left in place on purpose until
+ * Barton decides whether to delete the variable.
  */
 export function optOutReaderOnlyEnabled(): boolean {
   return process.env.OPT_OUT_READER_ONLY === 'on';
 }
 
-async function handleKeyword(
-  database: Database,
-  args: {
-    match: IntakeKeywordMatch;
-    phoneE164: string;
-    inbound: Inbound;
-    session: IntakeSession | null;
-    now: Date;
-  },
-  deps: IntakeDeps,
-): Promise<IntakeOutcome> {
-  const { match, phoneE164, inbound, session, now } = args;
-  // The language comes WITH the keyword rather than from `replyLanguage`, and this is the
-  // one turn where that matters: the body that got here IS the token, so there is no
-  // sentence to read French out of. AIDE would have resolved to English (the detector
-  // deliberately refuses to decide on it — it is also an English noun) and DEBUT is a word
-  // it has never heard of, which is exactly what CTA v2.1 §3.1 forbids.
-  const { keyword, language } = match;
-  // VIL-348 · WHO ANSWERS. The provider's own keyword handling may have matched this
-  // exact word and already replied to the sender; where it did, the inbound says so and
-  // Hale's acknowledgment would be the second confirmation of one instruction. Every
-  // ledger write below runs either way — the provider's opt-out list is not Hale's
-  // consent record, and a STOP that revoked nothing because a carrier answered first is
-  // the CASL failure, not the extra text.
-  const providerAnswered = inbound.providerAnsweredKeyword === keyword;
-
-  if (keyword === 'stop') {
-    return handleStop(
-      database,
-      { phoneE164, inbound, session, now, language, providerAnswered },
-      deps,
-    );
-  }
-
-  if (keyword === 'help') {
-    const ack: KeywordAck = providerAnswered ? 'provider_answered' : 'sent';
-    if (!session) {
-      // No session to transcribe against, but the number may still be an ENROLLED
-      // parent's (intake long over) — their ledger must show this send (rule #6). A
-      // stranger's HELP stays unrecorded by structural necessity, not omission:
-      // channel_messages.family_id is NOT NULL, so there is no row it could occupy.
-      //
-      // The send and its ledger row go TOGETHER or not at all: a suppressed reply that
-      // still wrote an outbound row would put a message in a parent's receipts that
-      // Hale never sent.
-      if (!providerAnswered) {
-        const body = await helpBody(deps, null, language, inbound.body);
-        if (!body) {
-          console.error({ step: 'help' }, 'onboarding: help reply not sent');
-          return { status: 'helped', ack };
-        }
-        await quietStopTyping(deps);
-        const { providerMessageId } = await deps.transport.send({
-          to: phoneE164,
-          body,
-        });
-        const enrolled = await resolveVerifiedChannelByPhone(database, phoneE164);
-        if (enrolled) {
-          await writeChannelMessage(
-            database,
-            { familyId: enrolled.familyId, parentUserId: enrolled.userId },
-            {
-              direction: 'out',
-              body,
-              providerId: providerMessageId,
-              at: now.toISOString(),
-              ...messagingPipe(inbound),
-            },
-            now,
-          );
-        }
-      }
-      return { status: 'helped', ack };
-    }
-    const ctx = sendContext({ session, phoneE164, inbound, now });
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    // Suppressed at THIS call site rather than inside `sendAndRecord`: that helper is
-    // shared with fourteen other turns and has no business learning about keywords. The
-    // inbound is still recorded and the session still closed on this turn's provider id,
-    // so a carrier retry is still a duplicate rather than a second HELP.
-    const help = providerAnswered ? null : await helpBody(deps, session, language, inbound.body);
-    if (!providerAnswered && !help) {
-      console.error({ step: 'help' }, 'onboarding: help reply not sent');
-      await saveSession(
-        database,
-        session,
-        { transcript: recorded.transcript, lastProviderId: inbound.providerId },
-        now,
-      );
-      return { status: 'helped', ack };
-    }
-    const transcript = providerAnswered
-      ? recorded.transcript
-      : (await sendAndRecord(database, ctx, help as string, deps, recorded.transcript)).transcript;
-    await saveSession(database, session, { transcript, lastProviderId: inbound.providerId }, now);
-    return { status: 'helped', ack };
-  }
-
-  // START. If the number was unsubscribed AND its owner still holds a seat, the keyword
-  // itself is express re-consent (see channel-state.ts) — otherwise it opens a fresh
-  // conversation, because a number whose seat is gone has no household to re-enter.
-  const owner = await findReenrollableChannelOwner(database, phoneE164);
-  if (owner) {
-    await reenrolOnStart(database, { ...owner, phoneE164, verbatimReply: inbound.body }, now);
-    if (providerAnswered) return { status: 'restarted', ack: 'provider_answered' };
-    try {
-      const sent = await sendResolvingNewChat(deps.transport, {
-        to: phoneE164,
-        body: START_ACK_BY_LANGUAGE[language],
-      });
-      const pipe = messagingPipe(inbound);
-      const channel = sent.transport === 'imessage' ? 'imessage' : pipe.channel;
-      // The re-enrolment ack is a real outbound to a known family: ledger it (rule #6).
-      // Inside the try with its own send, so a refused ack writes no row claiming one.
-      await writeChannelMessage(
-        database,
-        { familyId: owner.familyId, parentUserId: owner.userId },
-        {
-          direction: 'out',
-          body: START_ACK_BY_LANGUAGE[language],
-          providerId: sent.providerMessageId,
-          at: now.toISOString(),
-          channel,
-          chatId: channel === 'imessage' ? (sent.chatId ?? pipe.chatId) : pipe.chatId,
-        },
-        now,
-      );
-    } catch (error) {
-      // VIL-348 · THE STOP → DEBUT ASYMMETRY, where it actually bites. An opt-out list
-      // that holds STOP but not the word this parent just sent will refuse every send to
-      // this number — 21610 — although Hale has just re-enrolled them. The refusal is
-      // permanent, so there is nothing to retry: 500ing here would only earn a webhook
-      // retry that fails identically, and it would do it AFTER the consent write.
-      //
-      // The outcome says so rather than swallowing it. Hale cannot fix this from here —
-      // the remedy is that the provider's keyword set has to hold every word Hale prints
-      // (keywords.ts) — but a re-enrolment nobody can be told about must not read the
-      // same as one that landed. A TRANSIENT failure still throws and is still retried.
-      const refusal = readSendRefusal(error);
-      if (!refusal?.permanent) throw error;
-      return { status: 'restarted', ack: 'provider_refused' };
-    }
-    return { status: 'restarted', ack: 'sent' };
-  }
-  if (session) {
-    return { status: 'ignored', reason: 'no_open_conversation' };
-  }
-  return greet(database, { phoneE164, inbound, now, joinTag: joinTagFromBody(inbound.body) }, deps);
-}
+/** What the provider says it already answered (always null on today's transports). */
+export type ProviderKeyword = 'stop' | 'start' | 'help';
 
 /** Re-enrolment from the reader's start reading. Null: nothing to re-enrol. */
 async function restartFromReader(
   database: Database,
-  args: { phoneE164: string; inbound: Inbound; now: Date; confirmation: string },
+  args: {
+    phoneE164: string;
+    inbound: Inbound;
+    now: Date;
+    confirmation: string;
+    providerAnswered?: boolean;
+  },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome | null> {
   const owner = await findReenrollableChannelOwner(database, args.phoneE164);
@@ -3590,12 +3435,23 @@ async function restartFromReader(
     { ...owner, phoneE164: args.phoneE164, verbatimReply: args.inbound.body },
     args.now,
   );
+  if (args.providerAnswered) return { status: 'restarted', ack: 'provider_answered' };
   const body = args.confirmation.trim();
   if (body.length === 0) {
     console.error('opt-out reader: start read with no confirmation - re-enrolled, nothing sent');
     return { status: 'restarted', ack: 'sent' };
   }
-  const sent = await sendResolvingNewChat(deps.transport, { to: args.phoneE164, body });
+  let sent: Awaited<ReturnType<typeof sendResolvingNewChat>>;
+  try {
+    sent = await sendResolvingNewChat(deps.transport, { to: args.phoneE164, body });
+  } catch (error) {
+    // VIL-348: an opt-out list that still holds this number refuses the confirmation
+    // permanently (21610) although Hale has re-enrolled them. Named, never a 500 that
+    // would only retry identically after the consent write. A transient failure throws.
+    const refusal = readSendRefusal(error);
+    if (!refusal?.permanent) throw error;
+    return { status: 'restarted', ack: 'provider_refused' };
+  }
   const pipe = messagingPipe(args.inbound);
   const channel = sent.transport === 'imessage' ? 'imessage' : pipe.channel;
   await writeChannelMessage(
@@ -3621,8 +3477,6 @@ async function handleStop(
     inbound: Inbound;
     session: IntakeSession | null;
     now: Date;
-    /** The language of the keyword that got here — ARRET is answered in French. */
-    language: ReplyLanguage;
     /** VIL-348 — the provider matched this STOP and already confirmed it to the sender.
      * Suppresses HALE'S ack and nothing else: every revocation below still runs. */
     providerAnswered: boolean;
@@ -3632,7 +3486,7 @@ async function handleStop(
   },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
-  const { phoneE164, inbound, session, now, language, providerAnswered } = args;
+  const { phoneE164, inbound, session, now, providerAnswered } = args;
 
   // A group STOP the roster answered (roster-stop.ts) never reaches here. One it could
   // not answer — no roster yet, a roster that is not open, an unclaimed chat — takes this
@@ -3677,7 +3531,7 @@ async function handleStop(
   // provider has already sent it, Hale sends nothing and writes no outbound row: a
   // parent who asked to be left alone should not be told twice that they will be.
   if (providerAnswered) return { status: 'stopped', ack: 'provider_answered' };
-  const body = args.confirmation ?? STOP_ACK_BY_LANGUAGE[language];
+  const body = args.confirmation ?? '';
   if (body.trim().length === 0) return { status: 'stopped', ack: 'voice_unsent' };
 
   try {

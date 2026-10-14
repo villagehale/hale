@@ -1,13 +1,16 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  SCRIPTED_START_CONFIRMATION,
+  SCRIPTED_STOP_CONFIRMATION,
+} from '~/lib/channel/intake/scripted-opt-out-reader.fixture';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { LinqSendError, createLinqTextTransport } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { START_ACK_BY_LANGUAGE, STOP_ACK, STOP_ACK_BY_LANGUAGE } from './copy';
 import type { IntakeCollected } from './extract';
 import {
   FakeAnswerComposer,
@@ -390,7 +393,7 @@ describe('intake · CASL keywords', () => {
     const result = await text(fake, transport, deps, 'STOP');
 
     expect(result).toEqual({ status: 'stopped', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toBe(STOP_ACK);
+    expect(transport.bodies().at(-1)).toBe(SCRIPTED_STOP_CONFIRMATION);
     expect(inserts(fake, schema.families)).toHaveLength(0);
   });
 
@@ -429,7 +432,7 @@ describe('intake · CASL keywords', () => {
     );
 
     expect(result).toEqual({ status: 'stopped', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toBe(STOP_ACK);
+    expect(transport.bodies().at(-1)).toBe(SCRIPTED_STOP_CONFIRMATION);
     expect(
       fake.writes.some(
         (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
@@ -490,7 +493,7 @@ describe('intake · CASL keywords', () => {
     await text(fake, transport, deps, 'STOP');
 
     // Positive control: the ack actually left.
-    expect(transport.bodies().at(-1)).toBe(STOP_ACK);
+    expect(transport.bodies().at(-1)).toBe(SCRIPTED_STOP_CONFIRMATION);
     const added = fake.rows(schema.channelMessages).slice(before);
     const ack = added.find((r) => r.direction === 'out' && r.category === 'intake');
     expect(ack).toMatchObject({
@@ -515,7 +518,7 @@ describe('intake · CASL keywords', () => {
     await text(fake, transport, deps, 'START');
 
     // Positive control: the ack actually left.
-    expect(transport.bodies().at(-1)).toBe(START_ACK_BY_LANGUAGE.en);
+    expect(transport.bodies().at(-1)).toBe(SCRIPTED_START_CONFIRMATION);
     const added = fake.rows(schema.channelMessages).slice(before);
     const ack = added.find((r) => r.direction === 'out' && r.category === 'intake');
     expect(ack).toMatchObject({
@@ -554,7 +557,7 @@ describe('intake · CASL keywords', () => {
     const result = await text(fake, transport, deps, 'START');
 
     expect(result.status).not.toBe('restarted');
-    expect(transport.bodies().at(-1)).not.toBe(START_ACK_BY_LANGUAGE.en);
+    expect(transport.bodies().at(-1)).not.toBe(SCRIPTED_START_CONFIRMATION);
     expect(fake.rows(schema.parentChannels).filter((r) => r.revokedAt === null)).toHaveLength(0);
     expect(fake.rows(schema.consentRecords)).toHaveLength(0);
   });
@@ -581,50 +584,8 @@ describe('intake · CASL keywords', () => {
     const result = await text(fake, transport, deps, 'START');
 
     expect(result).toEqual({ status: 'restarted', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toBe(START_ACK_BY_LANGUAGE.en);
+    expect(transport.bodies().at(-1)).toBe(SCRIPTED_START_CONFIRMATION);
     expect(fake.rows(schema.parentChannels).filter((r) => r.revokedAt === null)).toHaveLength(1);
-  });
-
-  it('HELP with no open conversation still ledgers the reply when the number is an enrolled parent (rule #6)', async () => {
-    const { fake, transport, deps } = harness({});
-    // An enrolled household whose intake session is long gone: the no-session HELP
-    // branch used to answer with no ledger row at all.
-    const familyId = '00000000-0000-4000-8000-0000000000f1';
-    const userId = '00000000-0000-4000-8000-0000000000u1';
-    await fake.db.insert(schema.parentChannels).values({
-      userId,
-      familyId,
-      kind: 'sms',
-      phoneE164Encrypted: encryptString(PHONE),
-      phoneE164Hash: phoneBlindIndex(PHONE),
-      verifiedAt: NOW,
-    } as never);
-
-    const result = await text(fake, transport, deps, 'HELP');
-
-    expect(result).toEqual({ status: 'helped', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toEqual(expect.any(String)); // model-written; no fixed copy
-    const ack = fake.rows(schema.channelMessages).find((r) => r.direction === 'out');
-    expect(ack).toMatchObject({
-      familyId,
-      parentUserId: userId,
-      channel: 'sms',
-      category: 'intake',
-      status: 'queued',
-      body: null,
-    });
-    expect(ack?.providerMessageId).toMatch(/^fake-out-/);
-  });
-
-  it('HELP from an unknown number stays unledgered — channel_messages has no family row to hold it', async () => {
-    const { fake, transport, deps } = harness({});
-
-    const result = await text(fake, transport, deps, 'HELP');
-
-    // Positive control: the reply itself still goes out.
-    expect(result).toEqual({ status: 'helped', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toEqual(expect.any(String)); // model-written; no fixed copy
-    expect(fake.rows(schema.channelMessages)).toHaveLength(0);
   });
 
   it('never routes a keyword through the model', async () => {
@@ -649,18 +610,6 @@ describe('intake · CASL keywords', () => {
     // The greeting turn never extracts either — only the details turn does.
     expect(extractor.calls).toHaveLength(0);
     expect(intentReader.calls).toHaveLength(0);
-  });
-
-  it('HELP answers with the capability line without ending the conversation', async () => {
-    const { fake, transport, deps } = harness({});
-    await text(fake, transport, deps, 'hi');
-    const helped = await text(fake, transport, deps, 'HELP');
-    expect(helped).toEqual({ status: 'helped', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toEqual(expect.any(String)); // model-written; no fixed copy
-
-    // Still mid-intake: the next real answer still provisions.
-    const provisioned = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-    expect(provisioned.status).toBe('provisioned');
   });
 
   it('START after a STOP re-enrols on the keyword itself, keeping the revoked row', async () => {
@@ -748,7 +697,7 @@ describe('intake · guards', () => {
     const result = await text(fake, transport, deps, 'ARRET');
 
     expect(result).toEqual({ status: 'stopped', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
+    expect(transport.bodies().at(-1)).toBe(SCRIPTED_STOP_CONFIRMATION);
     const revoke = fake.writes.find(
       (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
     );
@@ -808,7 +757,7 @@ describe('intake · the French CASL keywords', () => {
     const result = await text(fake, transport, deps, 'ARRÊT');
 
     expect(result).toEqual({ status: 'stopped', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
+    expect(transport.bodies().at(-1)).toBe(SCRIPTED_STOP_CONFIRMATION);
     // The legal half: the same revocation and the same withdrawal record an English STOP
     // writes. A French unsubscribe that only answered politely would be the CASL failure.
     const revoke = fake.writes.find(
@@ -821,21 +770,6 @@ describe('intake · the French CASL keywords', () => {
     expect(withdrawal).toBeDefined();
   });
 
-  it('answers AIDE with the French capability line and HELP with the English one', async () => {
-    const fr = harness({});
-    await text(fr.fake, fr.transport, fr.deps, 'hi');
-    expect(await text(fr.fake, fr.transport, fr.deps, 'AIDE')).toEqual({
-      status: 'helped',
-      ack: 'sent',
-    });
-    expect(fr.transport.bodies().at(-1)).toEqual(expect.any(String)); // model-written; no fixed copy
-
-    const en = harness({});
-    await text(en.fake, en.transport, en.deps, 'hi');
-    await text(en.fake, en.transport, en.deps, 'HELP');
-    expect(en.transport.bodies().at(-1)).toEqual(expect.any(String)); // model-written; no fixed copy
-  });
-
   it('re-enrols on DEBUT after an ARRET, and welcomes the parent back in French', async () => {
     const { fake, transport, deps } = harness({});
     await text(fake, transport, deps, 'hi');
@@ -845,7 +779,7 @@ describe('intake · the French CASL keywords', () => {
     const restarted = await text(fake, transport, deps, 'DEBUT');
 
     expect(restarted).toEqual({ status: 'restarted', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toBe(START_ACK_BY_LANGUAGE.fr);
+    expect(transport.bodies().at(-1)).toBe(SCRIPTED_START_CONFIRMATION);
     // Re-consent is the keyword itself, and the record has to hold what was actually sent.
     const consents = inserts(fake, schema.consentRecords).filter(
       (c) => c.consentType === 'sms_service_messages' && c.granted === true,
@@ -1180,45 +1114,10 @@ describe('intake · the provider answered the keyword first (VIL-348)', () => {
     const result = await handleInboundSms(fake.db, transport.inbound(PHONE, 'ARRET'), deps);
 
     expect(result).toEqual({ status: 'stopped', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
+    expect(transport.bodies().at(-1)).toBe(SCRIPTED_STOP_CONFIRMATION);
     expect(outRows(fake)).toBe(outBefore + 1);
     expect(revoked(fake)).toBeDefined();
     expect(withdrawal(fake)).toBeDefined();
-  });
-
-  it('suppresses only the matching keyword — a STOP tag on an AIDE is not an answer to it', async () => {
-    const { fake, transport, deps } = await enrolled();
-
-    const result = await handleInboundSms(
-      fake.db,
-      transport.inbound(PHONE, 'AIDE', { providerAnsweredKeyword: 'stop' }),
-      deps,
-    );
-
-    expect(result).toEqual({ status: 'helped', ack: 'sent' });
-    expect(transport.bodies().at(-1)).toEqual(expect.any(String)); // model-written; no fixed copy
-  });
-
-  it('stays quiet on an AIDE the provider already answered, and keeps the conversation open', async () => {
-    const { fake, transport, deps } = await enrolled();
-    const sentBefore = transport.sent.length;
-
-    const result = await handleInboundSms(
-      fake.db,
-      transport.inbound(PHONE, 'AIDE', { providerAnsweredKeyword: 'help' }),
-      deps,
-    );
-
-    expect(result).toEqual({ status: 'helped', ack: 'provider_answered' });
-    expect(transport.sent).toHaveLength(sentBefore);
-    // The turn still completed: a carrier retry of this exact message is a duplicate,
-    // not a second HELP.
-    const retry = await handleInboundSms(
-      fake.db,
-      transport.inbound(PHONE, 'AIDE', { providerAnsweredKeyword: 'help' }),
-      deps,
-    );
-    expect(retry).toEqual({ status: 'helped', ack: 'provider_answered' });
   });
 
   it('re-enrols on a DEBUT the provider already answered, and says nothing itself', async () => {

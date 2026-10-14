@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
-import {
-  START_ACK_BY_LANGUAGE,
-  STOP_ACK_BY_LANGUAGE,
-  posterLocation,
-  sourceCodeFromBody,
-  venueForCode,
-} from './copy';
+import { posterLocation, sourceCodeFromBody, venueForCode } from './copy';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 
 /**
@@ -136,19 +129,4 @@ describe('the French script', () => {
    * tokens are read OFF the copy rather than listed beside it — a new line naming a new
    * word is covered the day it is written, which a hand-kept list never is.
    */
-
-  it('confirms the unsubscribe in French and offers the French way back', () => {
-    expect(STOP_ACK_BY_LANGUAGE.fr).toBe(
-      'Terminé - je ne vous texte plus. Répondez DEBUT si vous voulez que je revienne.',
-    );
-    // The way back has to BE a way back: the English twin offers START, so the French one
-    // offers the word a French parent can actually send.
-    expect(matchKeyword('DEBUT')).toEqual({ keyword: 'start', language: 'fr' });
-  });
-
-  it('welcomes a re-subscribing parent back in French', () => {
-    expect(START_ACK_BY_LANGUAGE.fr).toBe(
-      'Vous voilà de retour - je reprends le fil de votre semaine.',
-    );
-  });
 });

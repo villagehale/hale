@@ -13,12 +13,7 @@ import {
   matchForwardAddressRequest,
 } from '~/lib/channel/email/forward-request';
 import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
-import {
-  START_ACK,
-  START_ACK_BY_LANGUAGE,
-  STOP_ACK,
-  STOP_ACK_BY_LANGUAGE,
-} from '~/lib/channel/intake/copy';
+import {} from '~/lib/channel/intake/copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { replyLanguage } from '~/lib/channel/language';
 import {
@@ -187,30 +182,6 @@ describe('outbound SMS copy stays in the GSM-7 alphabet', () => {
     // line, and the copy it is in — "expected 1 to be 0" would send nobody anywhere.
     expect(nonGsm7(relativePath)).toEqual([]);
   });
-});
-
-/**
- * The other composition the file scan cannot see: intake's strings are built from a
- * constant (the privacy URL) and from runtime arguments (the venue name, the child
- * summary), so a clean copy.ts does not by itself prove a clean SENT message. Every
- * intake turn is rendered and judged by the same encoder the segment counter bills on.
- *
- * The whole onboarding script v2 is exercised, because the v2 revision rewrote all of
- * it at once and a re-keyed string is exactly when a curly quote gets pasted in.
- */
-describe('the intake script stays GSM-7 once rendered', () => {
-  const RENDERED: Record<string, string> = {
-    STOP_ACK,
-    START_ACK,
-  };
-
-  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
-    expect(smsEncoding(body)).toBe('gsm7');
-  });
-
-  // The consent ask is the one intake string carrying a link, and a link is the easiest
-  // thing to paste a curly character into. It must also stay ONE segment: it is appended
-  // to the radar payload, where every septet is charged against the same budget.
 });
 
 /**
@@ -431,8 +402,6 @@ describe('the French script stays GSM-7 and inside the English budgets', () => {
   const RENDERED: Record<string, { body: string; maxSegments: number }> = {
     // One segment, for the same reason the English consent ask is: it rides on the end
     // of the radar payload, where every septet comes out of the same budget.
-    START_ACK: { body: START_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
-    STOP_ACK: { body: STOP_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
     ANSWER_UNAVAILABLE_REPLY: { body: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
     SAFETY_REPLY: { body: SAFETY_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
     PROVIDER_ACCESS_REPLY: { body: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },

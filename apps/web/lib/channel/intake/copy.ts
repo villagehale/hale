@@ -1,5 +1,4 @@
 import { isJoinCode } from '~/lib/channel/join/code';
-import type { ReplyLanguage } from '~/lib/channel/language';
 import { isReferralCode } from '~/lib/channel/referral/code';
 
 /**
@@ -471,47 +470,3 @@ export const INTAKE_GMAIL_CARD_TEMPLATE_KEY = 'intake:gmail_card';
  * mints a forwardable link when a parent types that phrase later.
  */
 export const INTAKE_COPARENT_ASK_TEMPLATE_KEY = 'intake:coparent_ask';
-
-/**
- * The CASL keyword replies. STOP gets one final confirmation and then silence; HELP gets
- * the honest capability answer. The unparseable reply during intake no longer shares it:
- * that moment is conversational, not compliance, and has its own words now
- * (the model writes it now — doctrine G7/L2).
- *
- * HELP SHOWS, IT DOES NOT LIST (docs/voice.md rules 1 and 3). The old line — "I keep track
- * of your family's week and text you when something needs doing" — is quoted in
- * coach-channel-sms.md as THE failure it teaches against: "the same question answered with
- * a feature inventory — nothing in it is a thing a parent can type." So the inventory is
- * replaced by two things a parent could actually send, one of them quoted the way they
- * would type it, and the identity clause and the opt-out tail are untouched (both frozen:
- * the CTA policy wants the identification, CASL wants the mechanism).
- */
-export const STOP_ACK =
-  "You're unsubscribed - I won't text you again. Reply START if you ever want me back.";
-export const START_ACK = "You're back - I'll keep an eye on your week again.";
-
-/**
- * The French unsubscribe confirmation — the one twin #491 could not write, because a
- * French STOP acknowledgment can only be reached by a French STOP keyword.
- *
- * FOUNDER REVIEW: these words are new, not a translation of a reviewed line.
- *
- * `Terminé` rather than a translation of "You're unsubscribed": every French rendering
- * of that phrase agrees with the parent's gender (`désabonné`/`désabonnée`), and Hale
- * guesses at neither the parent's gender nor its own anywhere in this file. It also
- * deliberately does NOT reuse `C'est fait`, which opens the consent acknowledgment — the
- * two events are opposites and should not share an opening.
- *
- * It offers DEBUT rather than START because the parent reading it just wrote French, and
- * an escape hatch in the other language is the same broken promise the whole French half
- * of this file exists to end. Both words work; this one is the one they will reach for.
- */
-export const STOP_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: STOP_ACK,
-  fr: 'Terminé - je ne vous texte plus. Répondez DEBUT si vous voulez que je revienne.',
-};
-
-export const START_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: START_ACK,
-  fr: 'Vous voilà de retour - je reprends le fil de votre semaine.',
-};
