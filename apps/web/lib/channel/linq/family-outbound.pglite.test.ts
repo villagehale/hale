@@ -1,7 +1,6 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CO_PARENT_ASK } from '~/lib/channel/intake/copy';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type TestDb, createTestDb, seedChild } from '~/lib/testing/pglite';
 import { queueActivityDecisionFromReply } from './activity-decision';
@@ -579,7 +578,7 @@ describe('quiet hours and co-parent asks', () => {
     const http = wire();
     const delivered = await deliverFamilyOutbound(db.database, {
       familyId: seeded.familyId,
-      body: CO_PARENT_ASK,
+      body: 'Want a group chat with the other parent? (test fixture)',
       to: '+14165550100',
       legacy,
       fetch: http.fetch,

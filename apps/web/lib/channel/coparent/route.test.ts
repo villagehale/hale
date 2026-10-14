@@ -13,6 +13,7 @@ import {
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { JOIN_ACCEPTED_ACK, joinWelcome } from '~/lib/channel/join/copy';
 import type { OpenQuestion } from '~/lib/channel/router/open-questions';
@@ -95,6 +96,7 @@ function harness(
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
       consent: {
@@ -911,7 +913,7 @@ describe('co-parent invite · a yes that arrives after the 72h bound', () => {
       'hi, I heard about you from a friend',
     );
 
-    expect(outcome).toEqual({ status: 'greeted' });
+    expect(outcome).toMatchObject({ status: 'first_touch' });
     expect(transport.sent.slice(beforeReply).map((s) => s.body)).not.toContain(
       INVITE_EXPIRED_BY_LANGUAGE.en,
     );

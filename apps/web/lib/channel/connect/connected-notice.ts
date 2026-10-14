@@ -387,10 +387,9 @@ async function sendReceipt(
 }
 
 /**
- * The next onboarding beat rides the receipt. Friend voice on: Gmail first,
+ * The next onboarding beat rides the receipt. Gmail first,
  * so its receipt carries the calendar card, and the calendar receipt carries
  * the schedule ask (or the co-parent ask when there is nothing to schedule).
- * Flag off keeps the older order: the Gmail card after the calendar receipt.
  */
 async function continueAfterReceipt(
   database: Database,

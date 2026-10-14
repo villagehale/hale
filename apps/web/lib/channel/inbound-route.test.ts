@@ -673,7 +673,6 @@ describe('iMessage first-touch door', () => {
 
 describe('a first text that got no reply', () => {
   beforeEach(() => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
   });
 
@@ -762,7 +761,7 @@ describe('an opt-out stops all outbound texting immediately', () => {
     const h = harness();
     enrol(h.fake);
     const said: string[] = [];
-    const intake = h.deps.intake();
+    const intake = h.deps.intake('sms');
     intake.optOutReader = {
       read: async ({ text }) => {
         said.push(text);
@@ -784,7 +783,9 @@ describe('an opt-out stops all outbound texting immediately', () => {
   it('an empty model confirmation still revokes and sends nothing', async () => {
     const h = harness();
     enrol(h.fake);
-    h.deps.intake().optOutReader = { read: async () => ({ intent: 'stop', confirmation: '' }) };
+    h.deps.intake('sms').optOutReader = {
+      read: async () => ({ intent: 'stop', confirmation: '' }),
+    };
 
     await routeInboundText(h.deps, inbound({ body: 'done with this', providerId: 'SMx2' }), 0);
 

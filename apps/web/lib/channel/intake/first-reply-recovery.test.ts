@@ -3,13 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { KNOWN_VENUE_HELLO } from './cold-start/copy';
-import {
-  FIRST_TOUCH_SMS_BY_LANGUAGE,
-  HALE_GREETING_EN,
-  SITTING_SESSION_REMINDER,
-  greeting,
-} from './copy';
 import { type FakeDb, makeFakeDb } from './fakes';
 import {
   type FirstReplyRecoveryDeps,
@@ -169,10 +162,7 @@ describe('runFirstReplyRecoveryCron', () => {
 
     const first = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
     expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
-    expect(transport.bodies()[0]).not.toBe(HALE_GREETING_EN);
-    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
-    expect(transport.bodies()).not.toContain(SITTING_SESSION_REMINDER);
+    expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
     expect(transport.sent[0]?.to).toBe(PHONE);
   });
 
@@ -189,7 +179,7 @@ describe('runFirstReplyRecoveryCron', () => {
         },
         {
           direction: 'out',
-          body: greeting(null, 'en'),
+          body: 'An earlier hello (test fixture).',
           providerId: 'SMout',
           at: SAME_DAY_NOON_ET.toISOString(),
         },
@@ -227,7 +217,7 @@ describe('runFirstReplyRecoveryCron', () => {
     const second = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
 
     expect(second).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0, deferred: 0 });
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
+    expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
   });
 
   it('uses the ladder venue hello when the session already has a venue', async () => {
@@ -236,9 +226,7 @@ describe('runFirstReplyRecoveryCron', () => {
     seedSession(fake, { sourceCode: 'LIBRARY' });
 
     await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
-    expect(transport.bodies()).toEqual([KNOWN_VENUE_HELLO.en]);
-    expect(transport.bodies()[0]).not.toBe(greeting('library', 'en'));
-    expect(transport.bodies()).not.toContain(SITTING_SESSION_REMINDER);
+    expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
     expect(fake.rows(schema.smsIntakeSessions)[0]).toMatchObject({
       familyId: null,
       state: 'awaiting_ages',
@@ -305,7 +293,7 @@ describe('runFirstReplyRecoveryCron', () => {
     const morning = await runFirstReplyRecoveryCron(fake.db, deps(transport), open);
     expect(firstReplyRecoveryQuiet(open)).toBe(false);
     expect(morning).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
+    expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
     expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toEqual(open);
   });
 
@@ -333,11 +321,10 @@ describe('runFirstReplyRecoveryCron', () => {
 
     const answered = await runFirstReplyRecoveryCron(fake.db, deps(transport), morning);
     expect(answered).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
-    expect(transport.bodies()).toEqual([FIRST_TOUCH_SMS_BY_LANGUAGE.en]);
+    expect(transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
   });
 
   it('puts the elapsed wait on the model brief, and leaves a two-minute text unmarked', async () => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     const inputs: FriendVoiceInput[] = [];
     const voice: FriendVoiceComposer = {
       async compose(input) {
@@ -391,8 +378,8 @@ describe('runFirstReplyRecoveryCron', () => {
     const { transport } = firstReplyRecoveryDeps(makeFakeDb().db);
     vi.stubEnv('LINQ_API_KEY', '');
     vi.stubEnv('LINQ_FROM_E164', '');
-    await expect(transport.send({ to: PHONE, body: greeting(null, 'en') })).rejects.toThrow(
-      /not_configured/,
-    );
+    await expect(
+      transport.send({ to: PHONE, body: 'An earlier hello (test fixture).' }),
+    ).rejects.toThrow(/not_configured/);
   });
 });

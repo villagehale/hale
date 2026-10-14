@@ -11,7 +11,6 @@ import {
   speakFriend,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
-import { onboardingFriendVoiceEnabled } from './friend-voice-flag';
 import { YEAR_OPEN_LEAD, YEAR_OPEN_LEAD_FR } from './year-open';
 
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
@@ -32,20 +31,6 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
     ...over,
   };
 }
-
-describe('ONBOARDING_FRIEND_VOICE_ENABLED', () => {
-  it('is on only for the exact word on, after trim', () => {
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: 'on' })).toBe(true);
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: '  on  ' })).toBe(true);
-  });
-
-  it('stays off when unset, and for true, 1, and ON', () => {
-    expect(onboardingFriendVoiceEnabled({})).toBe(false);
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: 'true' })).toBe(false);
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: 'ON' })).toBe(false);
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: '1' })).toBe(false);
-  });
-});
 
 describe('friend voice brief', () => {
   it('gives the elapsed time for a several-hours-old text and does not flag a two-minute one', () => {

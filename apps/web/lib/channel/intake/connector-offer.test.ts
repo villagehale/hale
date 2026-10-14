@@ -302,6 +302,7 @@ describe('the year-open connector cards', () => {
         phoneE164: PHONE,
         language: 'en',
         now,
+        voice: { gcal: 'Calendar prose (test fixture).', gmail: 'Gmail prose (test fixture).' },
         ...(ridesReply ? { ridesReply } : {}),
       },
       offerPorts,
@@ -319,11 +320,7 @@ describe('the year-open connector cards', () => {
     expect(transport.bodies()).toHaveLength(2);
     const calendar = transport.bodies()[0] as string;
     const gmail = transport.bodies()[1] as string;
-    expect(calendar).toContain('Connect your calendar:');
-    expect(calendar).toContain('I never see your password');
     expect(calendar).not.toContain('Gmail');
-    expect(gmail).toContain('Gmail:');
-    expect(gmail).toContain('ignore this to skip');
     expect((calendar.match(/https:\/\/\S+/g) ?? []).length).toBe(1);
     expect((gmail.match(/https:\/\/\S+/g) ?? []).length).toBe(1);
     expect(threaded.map((turn) => turn.body)).toEqual([calendar, gmail]);
@@ -376,7 +373,6 @@ describe('the year-open connector cards', () => {
 
     expect(outcome).toEqual({ calendar: 'send_failed', gmail: 'sent' });
     expect(real.bodies()).toHaveLength(1);
-    expect(real.bodies()[0]).toContain('Gmail:');
   });
 
   it('sends friend-voice prose with the minted calendar link attached', async () => {

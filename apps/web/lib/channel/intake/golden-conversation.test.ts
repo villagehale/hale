@@ -19,18 +19,7 @@ import {
 import { LINQ_GROUP_TRIGGER_PHRASE } from '~/lib/channel/linq/group';
 import { LINQ_TYPING_REFRESH_MS } from '~/lib/channel/linq/presence';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { DISCOVERY_NEXT_STEP, KNOWN_VENUE_HELLO } from './cold-start/copy';
-import {
-  COLD_START_ASK,
-  FIRST_TOUCH_AGES_BY_LANGUAGE,
-  FIRST_TOUCH_EMPTY_BY_LANGUAGE,
-  FIRST_TOUCH_GROUP_FR,
-  FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
-  FIRST_TOUCH_SMS_BY_LANGUAGE,
-  HALE_GREETING_EN,
-  HELP_REPLY,
-  SITTING_SESSION_REMINDER,
-} from './copy';
+import { COLD_START_ASK } from './copy';
 import {
   type FakeDb,
   FakeExtractor,
@@ -60,26 +49,7 @@ const NOW = new Date('2026-07-30T12:00:00.000Z');
 const FROM = '+15555550100';
 const FIND_MESSAGE = '1. Swim at the rec centre - Saturday\n2. Story time - Tuesday';
 
-const CANNED = [
-  FIRST_TOUCH_SMS_BY_LANGUAGE.en,
-  FIRST_TOUCH_SMS_BY_LANGUAGE.fr,
-  FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en,
-  FIRST_TOUCH_AGES_BY_LANGUAGE.en,
-  FIRST_TOUCH_AGES_BY_LANGUAGE.fr,
-  FIRST_TOUCH_EMPTY_BY_LANGUAGE.en,
-  FIRST_TOUCH_EMPTY_BY_LANGUAGE.fr,
-  FIRST_TOUCH_GROUP_FR,
-  HALE_GREETING_EN,
-  COLD_START_ASK,
-  SITTING_SESSION_REMINDER,
-  YEAR_OPEN_LEAD,
-  YEAR_OPEN_LEAD_FR,
-  KNOWN_VENUE_HELLO.en,
-  DISCOVERY_NEXT_STEP.en,
-  DISCOVERY_NEXT_STEP.fr,
-  HELP_REPLY,
-  googleUnverifiedAppLine('en'),
-];
+const CANNED = [COLD_START_ASK, YEAR_OPEN_LEAD, YEAR_OPEN_LEAD_FR, googleUnverifiedAppLine('en')];
 
 type Mark = 'typing-start' | 'typing-stop' | 'send' | 'card' | 'search';
 
@@ -427,7 +397,6 @@ function conversation(options?: {
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
-  vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
   vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_FROM_E164', FROM);

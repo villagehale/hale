@@ -136,7 +136,6 @@ describe('GET /api/cron/drain', () => {
   });
 
   it('runs the first-reply leg every scheduled minute with the friend-voice composer', async () => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
     const { GET } = await import('./route');
     runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
@@ -151,7 +150,6 @@ describe('GET /api/cron/drain', () => {
   });
 
   it('asks the provider pre-flight with the same client before the leg speaks', async () => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
     const held = {
       proceed: false,

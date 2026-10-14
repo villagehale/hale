@@ -134,6 +134,7 @@ describe('offerConnectorLink', () => {
         language: 'en',
         now: NOW,
         ridesReply: true,
+        voice: { gcal: 'Calendar prose (test fixture).', gmail: 'Gmail prose (test fixture).' },
       },
       { transport, threadMessage: async () => 'conversation-id' },
     );
