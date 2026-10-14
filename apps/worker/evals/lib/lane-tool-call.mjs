@@ -18,7 +18,7 @@ export function laneToolCacheKey({
 }) {
   const fields = agent.laneRequestFields(lane);
   const toolChoice =
-    lane.model === agent.SONNET55_MODEL ? { type: 'auto' } : { type: 'tool', name: toolName };
+    lane.model === agent.SONNET_MODEL ? { type: 'auto' } : { type: 'tool', name: toolName };
   const canonical = JSON.stringify({
     fields,
     system,
@@ -47,7 +47,7 @@ export async function cachedLaneToolCall({
 }) {
   const fields = agent.laneRequestFields(lane);
   const toolChoice =
-    lane.model === agent.SONNET55_MODEL ? { type: 'auto' } : { type: 'tool', name: toolName };
+    lane.model === agent.SONNET_MODEL ? { type: 'auto' } : { type: 'tool', name: toolName };
   const key = laneToolCacheKey({
     agent,
     lane,
