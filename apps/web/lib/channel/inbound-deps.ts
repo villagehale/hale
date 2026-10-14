@@ -1,4 +1,3 @@
-import { createOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
@@ -25,6 +24,7 @@ import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { createOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';

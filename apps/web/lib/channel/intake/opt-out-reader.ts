@@ -1,9 +1,9 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type { ReplyLanguage } from '~/lib/channel/language';
 
 /**
  * #868 · the model reads an opt-out from any wording (Barton, 2026-10-11).

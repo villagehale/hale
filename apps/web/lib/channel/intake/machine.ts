@@ -107,7 +107,6 @@ import {
 import { identityChallengeReply } from './identity-challenge';
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
-import type { OptOutReader } from './opt-out-reader';
 import { type IntakeKeyword, type IntakeKeywordMatch, matchKeyword } from './keywords';
 import {
   cheerUpIntakeReply,
@@ -128,6 +127,7 @@ import {
   onboardingMissing,
   storedFromCapture,
 } from './onboarding-turn';
+import type { OptOutReader } from './opt-out-reader';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
