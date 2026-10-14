@@ -401,7 +401,7 @@ describe('a 1:1 decision syncs the group', () => {
     expect(http.linqUrls()).toEqual([GROUP_MESSAGES]);
   });
 
-  it('holds through quiet hours and the daily ceiling, then retries a failed send once', async () => {
+  it('holds through quiet hours, then retries a failed send once', async () => {
     const seeded = await seed(GROUP);
     const quiet = new Date('2026-09-25T02:30:00.000Z');
     await queueGroupActivityDecision(db.database, {
@@ -423,49 +423,6 @@ describe('a 1:1 decision syncs the group', () => {
     const sent = await flushGroupDecisionSyncs(db.database, { now: morning, fetch: http.fetch });
     expect(sent.sent).toBe(1);
     expect(http.bodies()).toContain('Quick sync: Barton passed on art for Maya.');
-
-    await db.database.insert(schema.channelMessages).values([
-      {
-        familyId: seeded.familyId,
-        parentUserId: seeded.parentUserId,
-        channel: 'imessage',
-        direction: 'out',
-        category: 'nudge',
-        templateKey: 'proactive_nudge:weekly',
-        providerChatId: GROUP,
-        status: 'sent',
-        sentAt: morning,
-        createdAt: morning,
-      },
-      {
-        familyId: seeded.familyId,
-        parentUserId: seeded.parentUserId,
-        channel: 'imessage',
-        direction: 'out',
-        category: 'nudge',
-        templateKey: 'proactive_nudge:weekly',
-        providerChatId: GROUP,
-        status: 'sent',
-        sentAt: morning,
-        createdAt: morning,
-      },
-    ]);
-    await queueGroupActivityDecision(db.database, {
-      familyId: seeded.familyId,
-      parentUserId: seeded.parentUserId,
-      originChatId: PERSONAL,
-      decision: {
-        decision: 'picked',
-        activity: 'music',
-        kid: 'Maya',
-        day: 'Thursday',
-        time: '5:00',
-      },
-      now: new Date(morning.getTime() - 11 * 60 * 1000),
-    });
-    const capped = await flushGroupDecisionSyncs(db.database, { now: morning, fetch: http.fetch });
-    expect(capped.held).toBe(1);
-    expect(http.linqUrls()).toEqual([GROUP_MESSAGES]);
 
     const failing = vi.fn(async () => {
       throw new Error('linq down');
@@ -585,26 +542,8 @@ describe('a 1:1 decision syncs the group', () => {
   });
 });
 
-describe('group caps', () => {
+describe('quiet hours and co-parent asks', () => {
   const QUIET = new Date('2026-09-25T02:30:00.000Z');
-
-  async function prior(
-    seeded: { familyId: string; parentUserId: string },
-    input: { templateKey: string; category: 'nudge' | 'calendar_alert'; createdAt: Date },
-  ) {
-    await db.database.insert(schema.channelMessages).values({
-      familyId: seeded.familyId,
-      parentUserId: seeded.parentUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: input.category,
-      templateKey: input.templateKey,
-      providerChatId: GROUP,
-      status: 'sent',
-      sentAt: input.createdAt,
-      createdAt: input.createdAt,
-    });
-  }
 
   it('holds a discretionary send in quiet hours and still sends rec-morning', async () => {
     const seeded = await seed(GROUP);
@@ -631,57 +570,6 @@ describe('group caps', () => {
       bubbleKind: 'rec_morning',
     });
     expect(morning).toMatchObject({ status: 'sent', chatId: GROUP });
-    expect(legacy.sent).toEqual([]);
-  });
-
-  it('holds a second discretionary bubble the same day and a third proactive bubble', async () => {
-    const seeded = await seed(GROUP);
-    await prior(seeded, {
-      templateKey: 'linq:group_kid_event',
-      category: 'calendar_alert',
-      createdAt: NOW,
-    });
-    const legacy = new FakeTransport();
-    const http = wire();
-    const second = await deliverFamilyOutbound(db.database, {
-      familyId: seeded.familyId,
-      body: "Tomorrow: Barton has Maya's swim at 4:00.",
-      to: '+14165550100',
-      legacy,
-      fetch: http.fetch,
-      now: NOW,
-      bubbleKind: 'discretionary',
-    });
-    expect(second).toEqual({
-      status: 'held',
-      reason: 'group_cap',
-      until: new Date(NOW.getTime() + 24 * 60 * 60 * 1000 + 1),
-    });
-    await prior(seeded, {
-      templateKey: 'proactive_nudge:weekly',
-      category: 'nudge',
-      createdAt: NOW,
-    });
-    await prior(seeded, {
-      templateKey: 'proactive_nudge:weekly',
-      category: 'nudge',
-      createdAt: NOW,
-    });
-    const weekly = await deliverFamilyOutbound(db.database, {
-      familyId: seeded.familyId,
-      body: 'This week.',
-      to: '+14165550100',
-      legacy,
-      fetch: http.fetch,
-      now: NOW,
-      bubbleKind: 'weekly_followup',
-    });
-    expect(weekly).toEqual({
-      status: 'held',
-      reason: 'group_cap',
-      until: new Date(NOW.getTime() + 24 * 60 * 60 * 1000 + 1),
-    });
-    expect(http.linqUrls()).toEqual([]);
     expect(legacy.sent).toEqual([]);
   });
 

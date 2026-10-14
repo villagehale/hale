@@ -116,14 +116,6 @@ function sendPorts(send: DutySendPorts['send']): DutySendPorts {
       parentTimeZone: async () => 'America/Toronto',
     }),
     send,
-    spend: async () => ({
-      discretionaryDay: 0,
-      discretionaryWeek: 0,
-      ceilingToday: 0,
-      discretionaryDayAt: [],
-      discretionaryWeekAt: [],
-      ceilingTodayAt: [],
-    }),
   };
 }
 
@@ -462,7 +454,6 @@ describe('duty ask sweep', () => {
       familyId: family.familyId,
       now: SUNDAY_EVENING,
       bubbleLeaving: false,
-      ports,
     });
     if (!('plan' in view)) throw new Error('expected a plan');
     expect(view.plan.sendLines.some((row) => row.mode === 'night_before')).toBe(true);
@@ -475,7 +466,6 @@ describe('duty ask sweep', () => {
         now: SUNDAY_EVENING,
         dedupeKey: `duty-solo-${family.familyId}`,
         templateKey: 'linq:group_duty_night_before',
-        bubbleKind: 'discretionary',
         sendsActive: true,
       },
       ports,
@@ -509,7 +499,6 @@ describe('duty ask sweep', () => {
         now: SUNDAY_EVENING,
         dedupeKey: `duty-ph-${family.familyId}`,
         templateKey: 'linq:group_duty_night_before',
-        bubbleKind: 'discretionary',
         sendsActive: true,
       },
       ports,
@@ -546,7 +535,6 @@ describe('duty ask sweep', () => {
         now: SUNDAY_EVENING,
         dedupeKey: `duty-send-${family.familyId}`,
         templateKey: 'linq:group_duty_night_before',
-        bubbleKind: 'discretionary',
         sendsActive: true,
       },
       ports,

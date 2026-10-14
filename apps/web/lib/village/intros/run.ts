@@ -335,7 +335,7 @@ export interface IntroSweepResult {
    * not cover, which is a bug and not a state (rule #11). */
   notAllowlisted: number;
   closed: number;
-  held: Record<ProactiveHoldReason, number>;
+  held: Record<ProactiveHoldReason | 'coparent_ask', number>;
   skipped: Record<IntroSkipReason, number>;
   /** Synthetic probe families dropped before ANY phase ran (rule #11: counted, never a
    * silent exclusion). Non-zero is a live probe running — routine, not a bug. */
@@ -357,7 +357,7 @@ function emptyResult(enabled: boolean): IntroSweepResult {
     identityAsked: 0,
     notAllowlisted: 0,
     closed: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0, coparent_ask: 0 },
     skipped: { no_fsa: 0, no_matchable_child: 0 },
     skippedSynthetic: 0,
     failed: 0,
@@ -373,7 +373,7 @@ function weekdayIn(instant: Date, timeZone: string): string {
 
 interface SendOutcome {
   sent: boolean;
-  held?: ProactiveHoldReason;
+  held?: ProactiveHoldReason | 'coparent_ask';
   /** The scope rail refused (see {@link introScope}). Never silent, and counted. */
   skipped?: 'not_allowlisted';
 }
@@ -452,7 +452,7 @@ async function sendIntroSms(
     to,
     legacy: deps.transport,
   });
-  if (delivered.status === 'held') return { sent: false, held: 'frequency_cap' };
+  if (delivered.status === 'held') return { sent: false, held: delivered.reason };
   if (delivered.status === 'skipped') {
     console.warn(
       { familyId: input.familyId, code: delivered.reason },

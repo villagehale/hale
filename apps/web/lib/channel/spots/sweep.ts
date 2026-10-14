@@ -310,7 +310,7 @@ type SpotFate =
   | { kind: 'quiet' }
   | { kind: 'raced' }
   | { kind: 'closed_before_send' }
-  | { kind: 'held'; reason: ProactiveHoldReason }
+  | { kind: 'held'; reason: ProactiveHoldReason | 'coparent_ask' }
   | { kind: 'refused' }
   | { kind: 'sent' }
   | { kind: 'failed' };
@@ -344,7 +344,7 @@ export interface WatchedSpotsSweepSummary {
    * count: nothing broke, and a non-zero here means the TEMPLATE is asserting something. */
   refused: number;
   failed: number;
-  held: Record<ProactiveHoldReason, number>;
+  held: Record<ProactiveHoldReason | 'coparent_ask', number>;
   released: Record<WatchedSpotReleaseReason, number>;
   skipped: {
     wallBudget: number;
@@ -370,7 +370,7 @@ function emptySummary(enabled: boolean): WatchedSpotsSweepSummary {
     awaitingReceipt: 0,
     refused: 0,
     failed: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0, coparent_ask: 0 },
     released: {
       notified: 0,
       expired: 0,
@@ -904,7 +904,7 @@ async function sendSpotOpen(
     legacy: deps.transport,
     shareGroupCap: false,
   });
-  if (delivered.status === 'held') return { kind: 'held', reason: 'frequency_cap' };
+  if (delivered.status === 'held') return { kind: 'held', reason: delivered.reason };
   if (delivered.status === 'skipped') {
     console.warn({ spotId: spot.id, code: delivered.reason }, 'watched spots: outbound skipped');
     if (delivered.reason === 'not_configured') {

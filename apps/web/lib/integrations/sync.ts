@@ -172,11 +172,12 @@ export interface SyncConnectionResult {
  *
  * - `advanced`: lane on and nothing held, the ordinary run.
  * - `held_lane_off`: lane off; the alert watermark stays where the lane went off.
- * - `releasing`: lane back on; the oldest slice of held mail (at most the alert sweep's own
- *   bound) was handed to the alert pass, and the rest is still held for the next run.
- * - `released`: lane back on; the last held slice was handed over and nothing is held.
- * - `release_failed`: the alert pass threw on the held slice; the watermark and the held
- *   ids are left exactly where they were, and the next run hands the same slice over.
+ * - `releasing`: lane back on; the drained held mail was handed to the alert pass.
+ *   Gmail's history read stopped at its page limit, so the rest stays held for the next run.
+ *   A count of messages is not what stops the pass.
+ * - `released`: lane back on; the held mail was handed over and nothing is held.
+ * - `release_failed`: the alert pass threw; the watermark and the held ids stay where
+ *   they were, and the next run hands the same mail over.
  * - `held_expired`: lane back on, but Gmail no longer has history from the held watermark
  *   (or this run re-seeded); the watermark is dropped and that mail is not alerted.
  *
@@ -213,8 +214,8 @@ interface ProviderResult {
     seeding: boolean;
     envelopes: GmailAlertEnvelope[];
     cursor: GmailCursorOutcome;
-    /** One slice of held mail, for the alert pass only, and the cursor to save once that
-     * pass has handled it. `nextMetadata` above still carries the old hold. */
+    /** Held mail for the alert pass, and the cursor to save once that pass has handled
+     * it. `nextMetadata` above still carries the old hold. */
     release?: { envelopes: GmailAlertEnvelope[]; nextMetadata: Record<string, unknown> };
   };
   /** Calendar only: the raw changes of this run, INCLUDING the cancelled items the ingest

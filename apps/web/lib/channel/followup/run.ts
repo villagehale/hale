@@ -370,7 +370,7 @@ export interface FollowupSweepResult {
    * here is the voice inventing state, and that must never read as a quiet tick.
    */
   refusedAtSend: number;
-  held: Record<ProactiveHoldReason, number>;
+  held: Record<ProactiveHoldReason | 'coparent_ask', number>;
   skipped: Record<FollowupSkipReason, number>;
   failed: number;
 }
@@ -383,7 +383,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
     daycareAsked: 0,
     composeDeferred: 0,
     refusedAtSend: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0, coparent_ask: 0 },
     skipped: {
       opted_out: 0,
       already_claimed: 0,
@@ -399,7 +399,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
 
 type SendOutcome =
   | { status: 'sent' }
-  | { status: 'held'; reason: ProactiveHoldReason }
+  | { status: 'held'; reason: ProactiveHoldReason | 'coparent_ask' }
   | { status: 'already_claimed' }
   | { status: 'already_discussed' }
   | { status: 'compose_deferred'; reason: ComposeDeferral }
@@ -504,7 +504,7 @@ async function sendFollowup(
     now: input.now,
     bubbleKind: 'discretionary',
   });
-  if (delivered.status === 'held') return { status: 'held', reason: 'frequency_cap' };
+  if (delivered.status === 'held') return { status: 'held', reason: delivered.reason };
   if (delivered.status === 'skipped') {
     console.warn(
       { familyId: input.familyId, code: delivered.reason },

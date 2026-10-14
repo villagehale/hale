@@ -1,27 +1,34 @@
 import { join } from 'node:path';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FakeTransport } from '~/lib/channel/intake/transport';
+import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
+import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
+import type { HandlerContext } from '~/lib/channel/router/route';
+import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type FollowupSweepDeps,
   defaultFollowupSweepDeps,
   runFollowupSweep,
 } from '~/lib/channel/followup/run';
 import { createFollowupVoice } from '~/lib/channel/followup/voice';
-import { FakeTransport } from '~/lib/channel/intake/transport';
-import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
-import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
-import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
+import {
+  type EmailAlertPorts,
+  alertParentForGmailSweep,
+} from '~/lib/integrations/email-alert';
+import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { pipelineClient } from '~/lib/pipeline/client';
-import type { FamilyChildRef } from '~/lib/sentinel';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
-import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import type { FamilyChildRef } from '~/lib/sentinel';
 import { recordedModel } from '~/lib/testing/recorded-model';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
 /**
  * A REGISTRATION RECEIPT, END TO END — the receipt arrives, the text goes, the parent says
@@ -86,6 +93,7 @@ const BODY =
 /** The receipt lands on the Monday it was sent. */
 const RECEIPT_AT = new Date('2026-07-20T13:00:00.000Z');
 /** Inside the reminder converger's 8-day horizon of the Aug 1 first session. */
+const HORIZON_AT = new Date('2026-07-26T13:00:00.000Z');
 /** The morning after the first class — inside ACTIVITY_FOLLOWUP_MIN/MAX_AGE_DAYS. */
 const MORNING_AFTER = new Date('2026-08-02T14:00:00.000Z');
 
@@ -213,6 +221,42 @@ function alertPorts(transport: FakeTransport): EmailAlertPorts {
   };
 }
 
+/** One inbound turn, read by the SHIPPED open-question reader over this family's real
+ * rows — the reader whose answer decides whether a bare YES is unambiguous. */
+async function yesFromCoParent(at: Date): Promise<HandlerContext> {
+  const [inbound] = await db.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId,
+      parentUserId: coParentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      createdAt: at,
+    })
+    .returning({ id: schema.channelMessages.id });
+  const open = await defaultOpenQuestionReader().open(db.database, {
+    familyId,
+    parentUserId: coParentUserId,
+    now: at,
+  });
+  return {
+    familyId,
+    parentUserId: coParentUserId,
+    conversationId: crypto.randomUUID(),
+    body: 'YES',
+    send: async () => ({ providerMessageId: 'prov-yes', channel: 'sms' as const }),
+    now: at,
+    // The BARE-WORD path: with exactly one offer standing the word is unambiguous by
+    // construction, which is the property `email-alert-offer.pglite.test.ts` pins. No
+    // resolver reading is needed and none is faked.
+    resolved: null,
+    openQuestions: async () => open,
+    inboundChannelMessageId: inbound?.id as string,
+  };
+}
+
 function sweepDeps(transport: FakeTransport): FollowupSweepDeps {
   return {
     ...defaultFollowupSweepDeps(),
@@ -231,9 +275,10 @@ function sweepDeps(transport: FakeTransport): FollowupSweepDeps {
 }
 
 describe('a registration receipt becomes a class Hale checks back on', () => {
-  it('records the receipt and asks how it went, without texting about the email', async () => {
+  it('runs the whole arc: the text, the YES, the reminders, and the ask on the right phone', async () => {
     // ── 1. THE RECEIPT ARRIVES ───────────────────────────────────────────────
-    // The REAL sweep, the REAL sentinel, a recorded model. The parent is not texted.
+    // The REAL sweep, the REAL sentinel, a recorded model. If triage answers false this
+    // stops here with no text at all, which is the failure this file exists to catch.
     const transport = new FakeTransport();
     const outcomes = await alertParentForGmailSweep(
       db.database,
@@ -250,8 +295,21 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
       alertPorts(transport),
     );
 
-    expect(outcomes).toEqual([{ alert: 'backfill_suppressed', booking: 'recorded', going: null }]);
-    expect(transport.sent).toEqual([]);
+    expect(outcomes).toEqual([{ alert: 'sent', booking: 'recorded', going: 'going_dark' }]);
+    expect(transport.sent).toHaveLength(1);
+    const text = transport.sent[0]?.body ?? '';
+    // The provider is the subject, the first session is named, and the one question is
+    // the CTA. The model chose the title; the frame is Hale's.
+    expect(text).toContain("City of Brookfield Recreation says you're in for Preschool Swim Level 2");
+    expect(text).toContain('first one Saturday, Aug 1 at 9:00 a.m.');
+    expect(text).toContain('Want it on your calendar?');
+    // The receipt's own details have no column and never reach the wire.
+    expect(text).not.toContain('RC-88214');
+    expect(text).not.toContain('96.00');
+    expect(text).not.toContain('4412');
+    expect(text).not.toContain('Tremblay');
+    // ...and it went to the mailbox's owner.
+    expect(transport.sent[0]?.to).toBe(CO_PARENT_PHONE);
 
     const [booking] = await db.database
       .select()
@@ -276,14 +334,58 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
       expect(stored).not.toContain(secret);
     }
 
-    await expect(
-      db.database
-        .select()
-        .from(schema.emailAlertOffers)
-        .where(eq(schema.emailAlertOffers.familyId, familyId)),
-    ).resolves.toEqual([]);
+    const [offer] = await db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.familyId, familyId));
+    expect(offer).toMatchObject({ kind: 'booking_confirmation', parentUserId: coParentUserId });
 
-    // ── 2. THE MORNING AFTER THE FIRST CLASS ─────────────────────────────────
+    // ── 2. THE PARENT SAYS YES ───────────────────────────────────────────────
+    const verdict = await emailAlertAddHandler().handle(
+      db.database,
+      await yesFromCoParent(new Date(RECEIPT_AT.getTime() + 60_000)),
+    );
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+
+    const [placed] = await db.database
+      .select()
+      .from(schema.familyEvents)
+      .where(eq(schema.familyEvents.familyId, familyId));
+    // `parent` is the ONE source both the reminder scheduler and the weekly-plan composer
+    // read, which is why the offer writes it.
+    expect(placed).toMatchObject({ title: 'Preschool Swim Level 2', source: 'parent' });
+    // ...and the booking now points at it, so the follow-up reader knows which of the two
+    // readers owns the ask.
+    const [stamped] = await db.database
+      .select()
+      .from(schema.activityBookings)
+      .where(eq(schema.activityBookings.familyId, familyId));
+    expect(stamped?.eventId).toBe(placed?.id);
+
+    // ── 3. THE REMINDERS APPEAR, ONCE THE CLASS IS INSIDE THE HORIZON ────────
+    // Through the SHIPPED deps: the source filter lives inside `loadHorizonEvents`, and
+    // no fake of it can be asked whether the real filter admits this row.
+    await runReminderCron(db.database, defaultReminderRunDeps(), HORIZON_AT);
+    const reminders = await db.database
+      .select()
+      .from(schema.eventReminders)
+      .where(
+        and(
+          eq(schema.eventReminders.familyId, familyId),
+          eq(schema.eventReminders.eventRef, placed?.id as string),
+        ),
+      );
+    // TWO OFFSETS, FOR BOTH PARENTS - and the contrast with step 4 is the point. A
+    // reminder is about the FAMILY's own calendar row, so it reaches the household; the
+    // "how did it go?" ask is about a mailbox Hale read, so it reaches one phone.
+    const byParent = new Map<string, string[]>();
+    for (const row of reminders) {
+      byParent.set(row.parentUserId, [...(byParent.get(row.parentUserId) ?? []), row.offset]);
+    }
+    expect([...byParent.keys()].sort()).toEqual([primaryUserId, coParentUserId].sort());
+    for (const offsets of byParent.values()) expect(offsets.sort()).toEqual(['-P1D', '-PT1H']);
+
+    // ── 4. THE MORNING AFTER THE FIRST CLASS ─────────────────────────────────
     vi.stubEnv('FOLLOWUP_ASKS_FAMILY_ALLOWLIST', familyId);
     const askTransport = new FakeTransport();
     const result = await runFollowupSweep(db.database, sweepDeps(askTransport), MORNING_AFTER);
@@ -307,9 +409,13 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
       .from(schema.auditLog)
       .where(eq(schema.auditLog.familyId, familyId));
     expect(audit.map((row) => row.actionTaken)).toEqual(
-      expect.arrayContaining(['activity_booking_recorded', 'followup_activity_asked']),
+      expect.arrayContaining([
+        'email_alert_sent',
+        'activity_booking_recorded',
+        'email_alert_event_added',
+        'followup_activity_asked',
+      ]),
     );
-    expect(audit.map((row) => row.actionTaken)).not.toContain('email_alert_sent');
     // Rule #1 across the whole trail: nothing in audit_log is a copy of the email.
     const trail = JSON.stringify(audit.map((row) => row.after));
     for (const leak of ['RC-88214', '96.00', 'Preschool Swim Level 2', 'brookfield']) {

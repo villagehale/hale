@@ -676,7 +676,7 @@ async function runForFamily(
   // EVERY RECIPIENT IS GATED BEFORE ANYBODY IS SENT TO. Enrollment, watch consent,
   // and quiet hours are known before a compose. There is no count of how many
   // nudges the household already had. A parent inside quiet hours waits; the other
-  // parent is sent on this tick.
+  // parent is sent on this tick. The dedupe key stops a second copy of the same nudge.
   const allowed: Array<{ recipient: FamilyTextRecipient; optOut: OptOutForm }> = [];
   const held: ProactiveHoldReason[] = [];
   for (const recipient of recipients) {

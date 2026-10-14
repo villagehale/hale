@@ -1044,9 +1044,14 @@ describe('4 · the 48h sweep passes the gate and stays quiet', () => {
       frequency_cap: 0,
       quiet_hours: 0,
     });
-    // Every check ran, against the rows intake wrote — not a stub that said yes.
-    // A count of earlier texts is not one of the checks.
+    // Enrolment, watch consent, and quiet hours ran against the rows intake wrote.
+    // Those are the only checks.
     expect(journey.gateCalls.slice(0, 3)).toEqual(['enrolled', 'watch_consent', 'quiet_hours']);
+    expect([...new Set(journey.gateCalls)].sort()).toEqual([
+      'enrolled',
+      'quiet_hours',
+      'watch_consent',
+    ]);
   });
 
   it('sends nothing, spends none of the weekly budget, and records that it looked', () => {

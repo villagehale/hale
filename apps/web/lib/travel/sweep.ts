@@ -514,9 +514,9 @@ async function briefOne(
     if (delivered.status === 'held') {
       await database
         .update(schema.channelMessages)
-        .set({ status: 'failed', errorCode: 'group_cap' })
+        .set({ status: 'failed', errorCode: delivered.reason })
         .where(eq(schema.channelMessages.id, claimed.id));
-      console.warn({ tripId: trip.id }, 'travel brief: group cap reached');
+      console.warn({ tripId: trip.id, reason: delivered.reason }, 'travel brief: held');
       return;
     }
     if (delivered.status === 'skipped') {

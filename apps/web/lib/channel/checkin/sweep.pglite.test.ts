@@ -295,8 +295,10 @@ describe('who the sweep actually selects, and what it may call their children', 
     expect(counted.duplicate).toBe(1);
     expect(counted.held.frequency_cap).toBe(0);
 
+    // 3. the same ledger stop when the count reader is forced to zero.
     const deduped = await runEveningCheckInSweep(db.database, prodDeps(sent), tenMinutesOn);
     expect(deduped.duplicate).toBe(1);
+    expect(deduped.held.frequency_cap).toBe(0);
 
     expect(sent).toHaveLength(1);
   });

@@ -634,9 +634,9 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
   it('is imported by every file that records a hold — the control for the scan above', () => {
     // Absence proves nothing on its own: the scan would also pass if no file used the
     // mapping at all. These still record a hold, and they take the status from the one copy.
-    // The email lane does not: a parenting email is recorded and the parent is not texted.
     const web = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
     for (const file of [
+      'lib/integrations/email-alert.ts',
       'lib/integrations/calendar-alert.ts',
       'lib/channel/coparent/departure-notice.ts',
       'lib/travel/sweep.ts',

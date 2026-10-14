@@ -137,9 +137,10 @@ describe('connectorSyncDeps — the email alert wiring', () => {
     expect(outcomes).toEqual([{ alert: 'seeding_run', booking: null, going: null }]);
   });
 
-  it('does not text, even when a channel row already exists for this message', async () => {
-    // A pre-placed channel row used to be the send dedupe. It is not a message, and it
-    // must not be read as one.
+  it('keys the dedupe read on THIS connection and THIS message id', async () => {
+    // The claim is written by the send path; here it is pre-placed, so the only way to
+    // reach `already_sent` is for the wiring to have built the very same key from
+    // connection.id + envelope.messageId.
     const conn = connection();
     await db.database.insert(schema.channelMessages).values({
       familyId: family.familyId,
@@ -159,11 +160,7 @@ describe('connectorSyncDeps — the email alert wiring', () => {
       seeding: false,
       envelopes: [envelope('m1')],
     });
-    // A channel row is not a text, and it does not stop the booking pass. Booked
-    // detection is off, so the pass names that and does not call the classifier.
-    expect(outcomes).toEqual([
-      { alert: 'backfill_suppressed', booking: 'booked_dark', going: null },
-    ]);
+    expect(outcomes).toEqual([{ alert: 'already_sent', booking: null, going: null }]);
   });
 });
 
@@ -186,7 +183,7 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
     expect(sweep).toEqual({ changes: ['seeding_run'], reoffers: [] });
   });
 
-  it("keys the dedupe read on THIS connection, THIS event and Google's own stamp", async () => {
+  it('keys the dedupe read on THIS connection, THIS event and Google\'s own stamp', async () => {
     // Pre-placed, so the only way to reach `already_sent` is for the wiring to have built
     // the very same key from connection.id + eventId + updated.
     const conn = connection({ provider: 'gcal' });
