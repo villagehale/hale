@@ -1070,9 +1070,12 @@ export function assembleFriendBody(
   return body;
 }
 
+/** Question marks in every script the parent may write in: ? (Latin), ？ (CJK full-width), ؟ (Arabic). */
+const QUESTION_MARKS = new Set(['?', '\uFF1F', '\u061F']);
+
 function questionMarks(text: string): number {
   const prose = text.replace(/https?:\/\/\S+/g, '');
-  return [...prose].filter((char) => char === '?').length;
+  return [...prose].filter((char) => QUESTION_MARKS.has(char)).length;
 }
 
 function questionsBeyondFacts(body: string, facts: readonly string[]): number {
@@ -1324,7 +1327,7 @@ export function judgeFriendReply(
     return { ok: false, reason: 'question' };
   }
   // The question may sit anywhere in the prose, but never above a list it asks about.
-  if (asked === 1 && /\?[\s\S]*\n\s*\d+\.\s/u.test(trimmed))
+  if (asked === 1 && /[?\uFF1F\u061F][\s\S]*\n\s*\d+\.\s/u.test(trimmed))
     return { ok: false, reason: 'question' };
   if (NAME_ASK.test(trimmed) && !NAME_STEPS.has(input.step)) {
     return { ok: false, reason: 'question' };

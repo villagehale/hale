@@ -774,3 +774,29 @@ describe('repairedProse', () => {
     expect(trimmed.endsWith('Want to connect?')).toBe(true);
   });
 });
+
+describe('#868 question marks in any script', () => {
+  it('counts the CJK and Arabic question marks as the one ask', () => {
+    const base = {
+      step: 'place',
+      language: 'en',
+      address: 'tu',
+      introduce: true,
+      recentTurns: [],
+      placeLabel: null,
+      agesLabel: null,
+      ageMonths: [],
+      findLines: [],
+      listKind: 'none',
+      activity: null,
+      day: null,
+      parentName: null,
+    } as const;
+    expect(
+      judgeFriendReply('你好！我是Hale。你住在哪个邮编？', { ...base, parentWords: '你好' }),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('مرحبا! أنا Hale. ما هو رمزك البريدي؟', { ...base, parentWords: 'مرحبا' }),
+    ).toEqual({ ok: true });
+  });
+});
