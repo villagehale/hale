@@ -120,7 +120,11 @@ async function main() {
         tag: `opt-out-read:${f.id}`,
         model,
         system: skill.instructions,
-        userMessage: JSON.stringify({ text: f.text, threadLanguage: f.language }),
+        // optOutUserMessage: a hint only when certain (French), else null.
+        userMessage: JSON.stringify({
+          text: f.text,
+          languageHint: f.language === 'fr' ? 'fr' : null,
+        }),
         toolName: 'opt_out',
         toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
         toolSchema: TOOL_SCHEMA,

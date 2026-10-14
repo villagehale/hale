@@ -8,7 +8,7 @@ import {
   ahaWhenLabel,
 } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import {
@@ -643,7 +643,8 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     : null;
   return {
     step: input.step,
-    language: input.language,
+    // A hint only when certain; the parent's words decide the reply's language (#868).
+    languageHint: certainLanguageHint(input.language),
     address: input.address,
     introduce: input.introduce,
     parentWords: input.parentWords,

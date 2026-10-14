@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { acceptOptOutReading, optOutUserMessage } from './opt-out-reader';
+import {
+  type OptOutReader,
+  acceptOptOutReading,
+  optOutUserMessage,
+  readTextOnce,
+} from './opt-out-reader';
 
 describe('opt-out reader guards (structural, no model)', () => {
   it('drops a reading whose echo does not match the text', () => {
@@ -22,10 +27,24 @@ describe('opt-out reader guards (structural, no model)', () => {
     ).toEqual({ intent: 'none', confirmation: '' });
   });
 
-  it('sends the text and thread language only', () => {
+  it('sends the text and a language hint only when certain', () => {
     expect(JSON.parse(optOutUserMessage({ text: 'لا تراسلني', language: null }))).toEqual({
       text: 'لا تراسلني',
-      threadLanguage: null,
+      languageHint: null,
     });
+  });
+
+  it('reads one text once, even when the router and intake hold different readers', async () => {
+    const calls: string[] = [];
+    const reader = (): OptOutReader => ({
+      read: async (input) => {
+        calls.push(input.text);
+        return { intent: 'none', confirmation: '' };
+      },
+    });
+    const text = `single-read ${Math.random()}`;
+    await readTextOnce(reader(), { text, language: 'en' });
+    await readTextOnce(reader(), { text, language: null });
+    expect(calls).toEqual([text]);
   });
 });

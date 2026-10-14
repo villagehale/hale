@@ -224,6 +224,16 @@ function words(body: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * #868: what a MODEL is told about language. The detector is not the source of truth:
+ * it only proves French (positive markers) and otherwise defaults to English, which is
+ * a guess for a Chinese or Arabic text. So the model gets a hint only when it is
+ * certain, and the parent's own words decide the language and script of the reply.
+ */
+export function certainLanguageHint(language: ReplyLanguage | null | undefined): 'fr' | null {
+  return language === 'fr' ? 'fr' : null;
+}
+
 /** The language Hale's fixed copy should go out in for THIS message. English unless the
  * message proves otherwise — see the two bars above. */
 export function replyLanguage(body: string): ReplyLanguage {

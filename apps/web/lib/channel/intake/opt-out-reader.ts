@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -62,7 +62,8 @@ const outputJsonSchema = {
 
 /** The user-turn payload. Shared with the eval, which replays this request shape. */
 export function optOutUserMessage(input: { text: string; language: ReplyLanguage | null }): string {
-  return JSON.stringify({ text: input.text, threadLanguage: input.language });
+  // A hint only when certain; the sender's words decide the reply's language (#868).
+  return JSON.stringify({ text: input.text, languageHint: certainLanguageHint(input.language) });
 }
 
 /** Structural checks only: echo must match. A crisis reading with no reply is kept
