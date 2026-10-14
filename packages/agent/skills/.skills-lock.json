@@ -215,6 +215,10 @@
     "file": "reply-resolver.md",
     "sha256": "83fec3c09426b2c2a8b811ee00266fe2f12a0ff5b2a26752644a181e95a8890c"
   },
+  "signup-step-reply.md": {
+    "file": "signup-step-reply.md",
+    "sha256": "7aa0d3ce6b3e3220479a2cda575ce047ee1cf99ee3e3333525de1a11594fc160"
+  },
   "triage-child-event.md": {
     "file": "triage-child-event.md",
     "sha256": "ce3f8ff46de970ba2df1937720f9ed57bd65aacea13c70dc33726f603de5cbb4"

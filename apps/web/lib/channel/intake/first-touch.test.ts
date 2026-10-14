@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY } from '~/lib/channel/off-domain/copy';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   EMAIL_ASK_BY_LANGUAGE,
@@ -36,6 +37,7 @@ import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 import { loadOpenSession } from './session';
+import type { SignupStepReader } from './signup-step';
 import { runSittingReminderCron } from './sitting-reminder';
 import { type ChannelTransport, FakeTransport, type InboundMessage } from './transport';
 import { YEAR_OPEN_LEAD } from './year-open';
@@ -738,10 +740,6 @@ describe('cold-start discovery session', () => {
     vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
     const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
     const note = notedAfterLogistics(false, 'en');
-    const follow = signupOffer('no_date', {
-      day: 'then',
-      env: { COLD_START_LADDER_COPY_LOCKED: 'true' },
-    }).body;
     await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), deps);
@@ -750,10 +748,93 @@ describe('cold-start discovery session', () => {
     expect(ok.status).toBe('first_touch');
     expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
     expect(transport.bodies()).not.toContain(note);
-    const chinese = await handleInboundSms(fake.db, inbound(transport, '你好，周末有什么'), deps);
-    expect(chinese.status).toBe('first_touch');
-    expect(transport.bodies().at(-1)).toBe(follow);
-    expect(transport.bodies().filter((body) => body === note)).toEqual([]);
+  });
+
+  it.each([
+    { label: 'English', text: "what's on this weekend?" },
+    { label: 'Chinese', text: '你好，周末有什么' },
+  ])('hands a $label aside to the coach, in the words the parent wrote', async ({ text }) => {
+    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
+    const seen: string[] = [];
+    const signupStepReader: SignupStepReader = {
+      async read(input) {
+        seen.push(input.text);
+        return { answers: false };
+      },
+    };
+    const { fake, transport, deps } = harness({
+      extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY],
+    });
+    const withReader: IntakeDeps = { ...deps, signupStepReader };
+    const offer = signupOffer('no_date', {
+      day: 'then',
+      env: { COLD_START_LADDER_COPY_LOCKED: 'true' },
+    }).body;
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, '1'), withReader);
+    const names = await handleInboundSms(fake.db, inbound(transport, 'ok'), withReader);
+    expect(names.status).toBe('first_touch');
+    expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
+    const aside = await handleInboundSms(fake.db, inbound(transport, text), withReader);
+    expect(aside).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    expect(seen).toEqual([text]);
+    expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
+    expect(transport.bodies()).not.toContain(offer);
+    expect(await loadOpenSession(fake.db, PHONE)).toBeNull();
+    const coach = await loadCronSkill('coach-channel-sms');
+    expect(coach.instructions).toContain('reply in the language the parent wrote in');
+  });
+
+  it('keeps the sign-up offer when the reader says the text answers the step', async () => {
+    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
+    const signupStepReader: SignupStepReader = {
+      async read() {
+        return { answers: true };
+      },
+    };
+    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
+    const withReader: IntakeDeps = { ...deps, signupStepReader };
+    const offer = signupOffer('no_date', {
+      day: 'then',
+      env: { COLD_START_LADDER_COPY_LOCKED: 'true' },
+    }).body;
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, '1'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, 'ok'), withReader);
+    const answered = await handleInboundSms(
+      fake.db,
+      inbound(transport, 'Call me Dana'),
+      withReader,
+    );
+    expect(answered.status).toBe('first_touch');
+    expect(transport.bodies().at(-1)).toBe(offer);
+  });
+
+  it('hands the text to the coach when the read fails', async () => {
+    vi.stubEnv('COLD_START_LADDER_COPY_LOCKED', 'true');
+    const signupStepReader: SignupStepReader = {
+      async read() {
+        return null;
+      },
+    };
+    const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA, EMPTY, EMPTY] });
+    const withReader: IntakeDeps = { ...deps, signupStepReader };
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, Leo is 1'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, '1'), withReader);
+    await handleInboundSms(fake.db, inbound(transport, 'ok'), withReader);
+    const failed = await handleInboundSms(
+      fake.db,
+      inbound(transport, "what's on this weekend?"),
+      withReader,
+    );
+    expect(failed).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    expect(transport.bodies().at(-1)).toBe(NAMES_ASK_BY_LANGUAGE.en);
   });
 
   function linqCardFetch(abortSetups: number) {

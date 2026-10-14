@@ -200,6 +200,7 @@ import {
   saveSession,
   transcriptHasOutbound,
 } from './session';
+import { type SignupStepReader, openSignupStep } from './signup-step';
 import { isQuestionOrNewFind, isSoftLadderAck } from './soft-ack';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
@@ -272,6 +273,14 @@ export interface IntakeDeps {
    * closed — an off-script question silently becoming a re-ask — and its own "there was
    * nothing to answer" is a named outcome, so absence has no meaning left to carry. */
   answerComposer: IntakeAnswerComposer;
+  /**
+   * Whether a mid-signup text answers the open step. The model reads it, in
+   * any wording and any language. Absent is `not_configured` and the ladder
+   * continues. A failed read, or a read that says this is not an answer,
+   * closes the session so the door can hand the parent's own words to the
+   * coach, which replies in the language they wrote in.
+   */
+  signupStepReader?: SignupStepReader;
   /** What to call this parent, after a real radar win (PR #689). Intake's consent
    * tail does not call it: a name ask on the assent acknowledgment is the bot voice
    * this turn exists to stop. The dep stays required so a missing composer is a
@@ -2503,6 +2512,30 @@ async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome>
 }
 
 /**
+ * The open step has already been asked. A configured reader that says this
+ * text does not answer it — or that cannot read it — is a handoff. No reader
+ * is named `not_configured` and the ladder continues.
+ */
+async function signupStepAnswers(turn: ColdStartTurn): Promise<boolean> {
+  const reader = turn.deps.signupStepReader;
+  const step = openSignupStep(turn.progress);
+  if (!reader) {
+    console.info({ skipped: 'not_configured', step }, 'signup step: reader not configured');
+    return true;
+  }
+  const reading = await reader.read({ step, text: turn.inbound.body });
+  if (!reading) {
+    console.info({ skipped: 'unreadable', step }, 'signup step: handing the text to the coach');
+    return false;
+  }
+  if (!reading.answers) {
+    console.info({ step }, 'signup step: not an answer, handing the text to the coach');
+    return false;
+  }
+  return true;
+}
+
+/**
  * Close a cold-start session without answering, so the inbound door can hand
  * this text to the coach. The message is not recorded here.
  */
@@ -3281,6 +3314,10 @@ async function runColdStartTurn(
   };
   if (progress.step === 'names' || progress.step === 'follow') {
     if (!progress.nameLineSent) return offerColdStartNames(turn);
+    if (!(await signupStepAnswers(turn))) {
+      await closeColdStartForCoach(database, session, inbound, now);
+      return { status: 'ignored', reason: 'no_open_conversation' };
+    }
     return offerColdStartFollow(turn);
   }
 

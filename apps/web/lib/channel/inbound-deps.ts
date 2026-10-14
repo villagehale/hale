@@ -15,6 +15,7 @@ import {
   departureNoticeReaders,
 } from '~/lib/channel/coparent/departure-notice';
 import { createIdentityAskVoice } from '~/lib/channel/identity/ask-voice';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { createIntakeAnswerComposer } from '~/lib/channel/intake/answer';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
@@ -23,6 +24,7 @@ import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
+import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
 import { createLinqTextTransport } from '~/lib/channel/linq/transport';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
@@ -35,7 +37,6 @@ import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 
 /**
  * VIL-214 · A3 — the production wiring for the inbound webhook. The one place the
@@ -82,6 +83,7 @@ export function buildIntakeDeps(
     openQuestions: (db2, input) => defaultOpenQuestionReader().open(db2, input),
     extractor: createIntakeExtractor(client),
     intentReader: createReplyIntentReader(client),
+    signupStepReader: createSignupStepReader(() => client),
     radar: createRadarComposer({
       database,
       weather: createOpenMeteoWeather(),
@@ -95,9 +97,7 @@ export function buildIntakeDeps(
     limiter: new PostgresRateLimiter(database),
     // The week search stays unwired until friend voice is on. Off, the ladder
     // still sends the locked empty line (the current production behaviour).
-    ...(onboardingFriendVoiceEnabled()
-      ? { weekFinder: createActivityFinder(activityClient) }
-      : {}),
+    ...(onboardingFriendVoiceEnabled() ? { weekFinder: createActivityFinder(activityClient) } : {}),
   };
 }
 
