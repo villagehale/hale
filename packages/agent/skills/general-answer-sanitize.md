@@ -98,7 +98,7 @@ something other than this, carry the ordinary question inside it and nothing els
 Add nothing. A detail that is in neither the parent's message nor a `pending`
 question it completes does not belong in `question`.
 
-## `needs_search` - does a correct answer depend on something current?
+## `needs_search` - does a correct answer rest on a fact to check?
 
 First write `missing_detail`. Some questions about the world can only be answered
 for one particular place or thing: a forecast is for a city, and who broadcasts
@@ -135,17 +135,18 @@ Then `needs_search`:
 - `missing_detail` - a correct answer cannot be given without what you wrote in
   `missing_detail`. When that is their place and Hale has it, Hale looks the
   question up for that place. Otherwise no lookup is made, and Hale asks for it.
-- `yes` - a correct answer depends on something current: a result or a score, a
-  forecast, a price, a schedule, where something is showing or streaming, who holds
-  an office or a title today, what is newest or best right now, anything that
-  happened recently. A count or a record that can still grow is current too - titles,
-  trophies, goals, the career of someone still playing - and so is an opinion that
-  would be argued from one.
-- `no` - the answer is settled knowledge, arithmetic, an opinion that rests on
-  nothing still changing, a creative ask, or something about the parent's own life
-  that no search could know.
+- `yes` - the answer rests on any fact about the world: a result or a score, a
+  forecast, a price, a schedule, a number, a ranking, a date, who holds an office
+  or a title, how to do something, whether something is safe, or anything a
+  friend would want to check before saying it. Hale answers questions of fact the
+  way someone who just looked it up would, so a fact you believe you know is still
+  a `yes`: what you remember can be out of date or wrong. An opinion argued from
+  facts is a `yes` too.
+- `no` - nothing in a good answer is a fact to check: small talk, a feeling, a
+  creative ask, working out a sum, or something about the parent's own life or the
+  family's own notes that no search could know.
 - `unsure` - you cannot tell. Hale treats `unsure` exactly as `yes`, so choose it
-  whenever a stale answer would be a wrong one.
+  whenever you are not sure the answer holds no fact to check.
 
 Judge the MEANING, in whatever language they wrote. There is no list of words that
 makes a question current.

@@ -104,7 +104,9 @@ answer that states nothing specific has an empty list.
   When several pages in the notes answer the same thing, go by the newest one they
   date, and call a page newer or latest only as the notes' dates show it.
   What the notes do not cover you have not looked up: give the part they do answer,
-  and say plainly which part the search did not turn up.
+  and say plainly which part the search did not turn up. When the notes say the
+  sources disagree and nothing settles it, say plainly that it is not confirmed
+  rather than picking one.
   Nothing specific goes in that the notes do not carry: no place, road, number or
   name of your own, and no delay, traffic or border the notes do not mention.
   A recent result — whether they played, the score, who won —
