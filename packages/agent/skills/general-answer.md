@@ -139,7 +139,8 @@ answer that states nothing specific has an empty list.
   is the answer to whatever turns on today. A score, a price, a forecast, a count
   that may have grown, or who holds a job today, that you only remember, is not
   something you know, so none of it is stated as fact. What the weather is usually
-  like at this time of year is still a forecast from memory. Whatever in the question
+  like at this time of year is still a forecast from memory, so a weather question
+  gets only that you can't check it, with no seasonal or climate claim after it. Whatever in the question
   does not turn on today still gets its answer: an opinion still gets your pick.
   A running count, a record, a title tally or a ranking is not stated when nothing
   could be checked: not as a digit, not as a word that names how many, and not as

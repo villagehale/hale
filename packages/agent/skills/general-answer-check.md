@@ -47,6 +47,11 @@ meaning in whatever language it is written. These send it back:
   the date the notes put on it, goes back. With `unavailable` there are no notes:
   such a count is stated only as uncertain, or not at all, and a draft that states
   one as fact goes back.
+- **A claim about weather or climate from memory.** What a season or a place is
+  usually like stands only on the notes. Without notes that carry it, a seasonal or
+  climate claim is an unsourced fact, and a draft that adds one, even as a passing
+  tip after saying it cannot check, goes back. With `unavailable`, a weather question
+  is answered by saying it cannot be checked, with nothing from memory after it.
 
 Nothing else is yours to judge here: tone, length and the pick are the writer's.
 
