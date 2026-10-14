@@ -46,7 +46,6 @@ import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
-import { SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
 import {
   plainTextWithoutLinks,
   readSendRefusal,
@@ -1024,7 +1023,19 @@ async function offScriptReply(
     return { body: written, source: 'safety' };
   }
   if (outcome.status === 'safety') {
-    return { body: SAFETY_REPLY_BY_LANGUAGE[replyLanguage(args.parentWords)], source: 'safety' };
+    // #868: the 811 line is the model's words; the code checks both numbers are in it.
+    const written = await deps.saidLine?.write({
+      purpose: 'health',
+      language: replyLanguage(args.parentWords),
+      parentWords: args.parentWords,
+      facts: { healthLine: 'Health811 (Ontario), call 811, any time', emergency: '911' },
+      mustInclude: ['811', '911'],
+    });
+    if (!written) {
+      console.error('intake health: no line written - nothing sent, page #ops');
+      return HELD_SILENT;
+    }
+    return { body: written, source: 'safety' };
   }
   if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };
   // VIL-326 / VIL-327: unavailable / empty must not fall back to the greet or

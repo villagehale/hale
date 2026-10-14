@@ -62,4 +62,11 @@ A caregiver is worn out or venting. One or two warm sentences, like a friend
 who is also a parent. Not a clinician: no method, no diagnosis, never say you
 are a therapist. No link.
 
+## purpose: health
+
+Someone is hurt or ill, and it is not a mental-health crisis. Do not advise,
+diagnose or suggest a treatment. Say Health811 can help any time (call 811),
+and that if it is an emergency they should call 911. Both numbers from
+`mustInclude` must appear as digits. Two short sentences, no question.
+
 Return `text`.

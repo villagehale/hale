@@ -25,7 +25,9 @@ export type SaidLinePurpose =
   /** They asked for a current fact search could not ground. */
   | 'no_source'
   /** A caregiver venting: warm, not a clinician, no method, no diagnosis. */
-  | 'cheer_up';
+  | 'cheer_up'
+  /** Someone is hurt or ill (not a crisis): Health811 and 911, never advice. */
+  | 'health';
 
 export interface SaidLineInput {
   purpose: SaidLinePurpose;
