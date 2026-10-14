@@ -704,3 +704,94 @@ describe('a first text that got no reply', () => {
     expect(h.transport.bodies()).toHaveLength(1);
   });
 });
+
+/**
+ * Sloane, #868: an opt-out stops ALL texting at once. Structural only — no reply
+ * copy is matched. After the opt-out the channel row is revoked, the proactive gate
+ * refuses every class, and no onboarding or group turn from that number sends.
+ */
+describe('an opt-out stops all outbound texting immediately', () => {
+  it('revokes the channel, holds every proactive class, and sends nothing after the confirmation', async () => {
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake);
+
+    await routeInboundText(h.deps, inbound({ body: 'STOP', providerId: 'SMstop' }), 0);
+
+    const revoked = h.fake.writes.filter(
+      (w) => w.op === 'update' && w.table === schema.parentChannels,
+    );
+    expect(revoked.length).toBeGreaterThan(0);
+    // At most one confirmation, in the model's or the carrier's words.
+    const afterStop = h.transport.bodies().length;
+    expect(afterStop).toBeLessThanOrEqual(1);
+
+    // Onboarding turn after the opt-out: nothing goes out.
+    await routeInboundText(
+      h.deps,
+      inbound({ body: "what's on this weekend?", providerId: 'SMafter1' }),
+      0,
+    );
+    // Group turn from the same number: nothing goes out.
+    await routeInboundText(
+      h.deps,
+      { ...inbound({ body: 'hey all', providerId: 'SMafter2', budget: 'chat' }), isGroup: true },
+      0,
+    );
+    expect(h.transport.bodies().length).toBe(afterStop);
+
+    // Proactive: a revoked channel is not enrolled, so every class is held.
+    const { assertProactiveSendAllowed } = await import('./outbound-gate');
+    const ports = {
+      // Enrolment follows the revocation the STOP turn actually wrote.
+      channelEnrolled: async () => revoked.length === 0,
+      watchConsentGranted: async () => true,
+      countProactiveSends: async () => 0,
+      proactiveSentSince: async () => false,
+      parentTimeZone: async () => 'America/Toronto',
+    };
+    for (const kind of ['nudge', 'plan_checkin', 'calendar_reminder'] as const) {
+      const verdict = await assertProactiveSendAllowed(
+        { familyId, parentUserId: userId, kind: kind as never, now: NOW, urgent: true },
+        ports,
+      );
+      expect(verdict.allowed).toBe(false);
+    }
+  });
+
+  it('the model reads an opt-out in any wording, revokes, and its own confirmation is the only text', async () => {
+    const h = harness();
+    enrol(h.fake);
+    const said: string[] = [];
+    const intake = h.deps.intake();
+    intake.optOutReader = {
+      read: async ({ text }) => {
+        said.push(text);
+        return { intent: 'stop', confirmation: `model:${text.length}` };
+      },
+    };
+
+    await routeInboundText(h.deps, inbound({ body: 'pls leave me alone', providerId: 'SMx1' }), 0);
+
+    expect(said).toEqual(['pls leave me alone']);
+    const revoked = h.fake.writes.filter(
+      (w) => w.op === 'update' && w.table === schema.parentChannels,
+    );
+    expect(revoked.length).toBeGreaterThan(0);
+    // The one confirmation is exactly what the reader wrote — nothing fixed is added.
+    expect(h.transport.bodies()).toEqual(['model:18']);
+  });
+
+  it('an empty model confirmation still revokes and sends nothing', async () => {
+    const h = harness();
+    enrol(h.fake);
+    h.deps.intake().optOutReader = { read: async () => ({ intent: 'stop', confirmation: '' }) };
+
+    await routeInboundText(h.deps, inbound({ body: 'done with this', providerId: 'SMx2' }), 0);
+
+    const revoked = h.fake.writes.filter(
+      (w) => w.op === 'update' && w.table === schema.parentChannels,
+    );
+    expect(revoked.length).toBeGreaterThan(0);
+    expect(h.transport.bodies()).toEqual([]);
+  });
+});

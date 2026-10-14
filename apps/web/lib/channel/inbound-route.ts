@@ -237,6 +237,14 @@ function keywordOutcome(
 ): InboundRouteOutcome {
   if (ack === 'provider_answered') return 'keyword_provider_answered';
   if (ack === 'sent') return 'intake';
+  if (ack === 'voice_unsent') {
+    // The opt-out reader revoked the channel; its confirmation was empty, so nothing went out.
+    deps.log.error(
+      { providerMessageId: inbound.providerId },
+      'inbound: opt-out revoked, model confirmation unsent',
+    );
+    return 'intake_unsent';
+  }
   deps.log.error(
     { providerMessageId: inbound.providerId },
     'inbound: re-enrolled this number and the provider permanently refused the acknowledgment — its opt-out list still holds a number our ledger now says is reachable',

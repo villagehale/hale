@@ -1,3 +1,4 @@
+import { createOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
@@ -97,6 +98,7 @@ export function buildIntakeDeps(
     friendVoice: createFriendVoiceComposer(client),
     answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
+    optOutReader: createOptOutReader(client),
     limiter: new PostgresRateLimiter(database),
     weekFinder: createActivityFinder(activityClient),
   };

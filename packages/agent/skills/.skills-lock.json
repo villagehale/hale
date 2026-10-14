@@ -191,6 +191,10 @@
     "file": "onboarding-friend.md",
     "sha256": "2f6c6bb234225bd759fce4a10ca19a42e00ef7bc84251106e26233fdf6b2f80a"
   },
+  "opt-out-read.md": {
+    "file": "opt-out-read.md",
+    "sha256": "3225e1860e4a14e47df8201b9b28e189df411c545a450c2e68a05a4856b5b85b"
+  },
   "parse-civic-hours.md": {
     "file": "parse-civic-hours.md",
     "sha256": "be461fbaa85e727b98416b88bd3b11e12d27a7b4d3da6a05960204694ab79da4"

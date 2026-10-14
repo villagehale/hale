@@ -107,6 +107,7 @@ import {
 import { identityChallengeReply } from './identity-challenge';
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
+import type { OptOutReader } from './opt-out-reader';
 import { type IntakeKeyword, type IntakeKeywordMatch, matchKeyword } from './keywords';
 import {
   cheerUpIntakeReply,
@@ -212,6 +213,12 @@ export interface IntakeDeps {
    * leaves it off gets the named fallback inside {@link speakFriend}.
    */
   friendVoice?: FriendVoiceComposer;
+  /**
+   * #868 · the model reads an opt-out from any wording. Read after the carrier STOP
+   * keyword (which still revokes first) and before any onboarding or group turn.
+   * Absent in tests that do not exercise it.
+   */
+  optOutReader?: OptOutReader;
   /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
    * Required, never nullable (rule #11): withholding it would restore the exact bug it
    * closed — an off-script question silently becoming a re-ask — and its own "there was
@@ -280,7 +287,7 @@ export interface IntakeDeps {
   now?: Date;
 }
 
-export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused';
+export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused' | 'voice_unsent';
 
 export type IntakeOutcome =
   /**
@@ -470,6 +477,30 @@ export async function handleInboundSms(
   // trading a rare double courtesy-ack for a CASL instruction that cannot be lost.
   if (match) {
     return handleKeyword(database, { match, phoneE164, inbound, session, now }, deps);
+  }
+
+  // 5a. #868 · any other wording of "stop texting me", read by the model. Same
+  // revocation as the carrier keyword, and the model writes the one confirmation.
+  if (deps.optOutReader && inbound.body.trim().length > 0) {
+    const reading = await deps.optOutReader.read({
+      text: inbound.body,
+      language: session?.ladderLanguage ?? null,
+    });
+    if (reading?.intent === 'stop') {
+      return handleStop(
+        database,
+        {
+          phoneE164,
+          inbound,
+          session,
+          now,
+          language: session?.ladderLanguage ?? replyLanguage(inbound.body),
+          providerAnswered: false,
+          confirmation: reading.confirmation,
+        },
+        deps,
+      );
+    }
   }
 
   // 5b. Group onboarding v2 — onboarding is this number's 1:1 conversation. A message they
@@ -3449,6 +3480,9 @@ async function handleStop(
     /** VIL-348 — the provider matched this STOP and already confirmed it to the sender.
      * Suppresses HALE'S ack and nothing else: every revocation below still runs. */
     providerAnswered: boolean;
+    /** Model-written confirmation (opt-out reader). Empty sends nothing; the
+     * revocation above it has already run. */
+    confirmation?: string;
   },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
@@ -3497,11 +3531,13 @@ async function handleStop(
   // provider has already sent it, Hale sends nothing and writes no outbound row: a
   // parent who asked to be left alone should not be told twice that they will be.
   if (providerAnswered) return { status: 'stopped', ack: 'provider_answered' };
+  const body = args.confirmation ?? STOP_ACK_BY_LANGUAGE[language];
+  if (body.trim().length === 0) return { status: 'stopped', ack: 'voice_unsent' };
 
   try {
     const sent = await sendResolvingNewChat(deps.transport, {
       to: phoneE164,
-      body: STOP_ACK_BY_LANGUAGE[language],
+      body,
     });
     // The ack is the last outbound this family will get, and it must be on the record
     // like every other (rule #6). Only when an OWNER exists: a guest's or invitee's
@@ -3515,7 +3551,7 @@ async function handleStop(
         { familyId: owner.familyId, parentUserId: owner.userId },
         {
           direction: 'out',
-          body: STOP_ACK_BY_LANGUAGE[language],
+          body,
           providerId: sent.providerMessageId,
           at: now.toISOString(),
           channel,
