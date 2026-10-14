@@ -66,7 +66,7 @@ function harness(
         return overrides.hold !== 'not_enrolled';
       },
       watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
-      countProactiveSends: async () => overrides.recentSends ?? 0,
+      countProactiveSends: async () => 0,
       proactiveSentSince: async () => true,
       // NOW is 14:00 UTC, which is 10:00 in Toronto — inside the sendable window. The
       // hold case moves the parent to a zone where the same instant is past 21:00.
@@ -266,17 +266,6 @@ describe('when it must not send', () => {
     },
   );
 
-  it('sends when the family already had many proactive texts', async () => {
-    process.env[F14_ENABLED_ENV] = 'true';
-    const h = harness({ recentSends: 99 });
-
-    const result = await h.run();
-
-    expect(result.held.frequency_cap).toBe(0);
-    expect(h.sent).toHaveLength(1);
-    expect(h.fulfilled).toHaveLength(1);
-  });
-
   it('sends once across two ticks in the same hour', async () => {
     process.env[F14_ENABLED_ENV] = 'true';
     const h = harness({ alreadySent: true });
@@ -299,7 +288,7 @@ describe('when it must not send', () => {
     const result = await h.run();
 
     expect(result).toMatchObject({ unsendable: 1, sent: 0 });
-    expect(Object.values(result.held)).toEqual([0, 0, 0, 0]);
+    expect(Object.values(result.held)).toEqual([0, 0, 0]);
     logged.mockRestore();
   });
 

@@ -37,8 +37,7 @@ import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
  * from one change in isolation could not be answered at all. Three follow-ups off #650
  * were all that one gap:
  *   - a moved event read "is on your calendar for <new time>" — nothing held the OLD time;
- *   - one edit to a weekly class arrived as one change per instance and spent the whole
- *     per-sweep budget on itself — nothing grouped them;
+ *   - one edit to a weekly class arrived as one change per instance — nothing grouped them;
  *   - a change refused by quiet hours was never offered again — nothing remembered that
  *     Hale still owed the text.
  *
@@ -128,7 +127,6 @@ export const CALENDAR_ALERT_OUTCOMES = [
   'no_parent_user',
   'gate_refused:not_enrolled',
   'gate_refused:no_watch_consent',
-  'gate_refused:frequency_cap',
   'gate_refused:quiet_hours',
   'no_send_target',
   'send_failed',
@@ -190,8 +188,9 @@ export const CALENDAR_ALERT_WINDOW_DAYS = 14;
 export const CALENDAR_ALERT_PENDING_MAX_DAYS = 3;
 
 /** A group of this many instances of one series, in one sweep, is one text: two changes
- * about the same class are the same news said twice. Below it — a lone instance, which is what a single cancelled session
- * inside a live term reduces to — the change is an ordinary single. */
+ * about the same class are the same news said twice. Below it — a lone instance, which is
+ * what a single cancelled session inside a live term reduces to — the change is an ordinary
+ * single. */
 const SERIES_MIN_INSTANCES = 2;
 
 export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
@@ -199,15 +198,12 @@ export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
 /**
  * The endings that mean "not yet", as opposed to "no".
  *
- * These three are the whole of the pending mechanism: the text was worth sending, Hale
+ * Quiet hours are the hold this sweep re-offers. The text was worth sending, Hale
  * declined to send it THIS minute, and the syncToken has already moved past the change —
  * so unless the sweep writes down that it still owes one, the news is gone for good. A
  * consent refusal is deliberately not here: `not_enrolled` is not a wait, it is an answer.
  */
-const HELD_OUTCOMES = new Set<CalendarAlertOutcome>([
-  'gate_refused:quiet_hours',
-  'gate_refused:frequency_cap',
-]);
+const HELD_OUTCOMES = new Set<CalendarAlertOutcome>(['gate_refused:quiet_hours']);
 
 /**
  * Keyed on the CONNECTION, the event and Google's `updated` stamp.
@@ -559,13 +555,6 @@ async function sendOffer(
     // refused — and, for a hold that is a "not yet", half of a promise: the caller writes
     // the other half into the memory, so the syncToken moving past this change no longer
     // means nobody will ever offer it again.
-    //
-    // Not one per text OWED: a change the per-sweep cap held before the gate ever saw it
-    // is already owed by the time it is offered, and its refusal writes no row at all. The
-    // ledger is the surface a parent reads, and the sweep's own answer is where every
-    // ending is named and counted (rule #11) — a receipt that says "we did not text you"
-    // for a text the cap deferred is noise on the first surface and adds nothing to the
-    // second.
     //
     // A re-offer the gate refuses again is the SAME suppressed text, and a row per attempt
     // would be forty-odd of them per held text per quiet-hours night on the surface a
@@ -1244,8 +1233,7 @@ function previousWhen(previous: PriorStart, span: EventSpan, timeZone: string): 
  * `Swim lessons moved: 6 sessions now Tuesdays 5:00-5:45 p.m. starting Sep 22.`
  *
  * With `singleEvents=true` one edit to a weekly class is one change per instance, so the
- * only alternative to this sentence is six texts — or, once the per-sweep cap bites, five
- * texts and a silently dropped Tuesday. The count is the instances still AHEAD in this
+ * only alternative to this sentence is six texts. The count is the instances still AHEAD in this
  * batch, because the ones already behind are not sessions anybody is going to.
  *
  * The weekday-and-clock shape is claimed only when every instance really does share one.

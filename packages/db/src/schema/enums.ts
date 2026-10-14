@@ -179,7 +179,7 @@ export const consentTypeEnum = pgEnum('consent_type', [
   'co_parent_access_grant',
   // Village intros v1 · the parent's decision about being INTRODUCED to another Hale
   // household. Two scopes ride this one type and they are different acts: the standing
-  // "you may look for a match for us" (revocable at any time by texting NO INTROS), and
+  // "you may look for a match for us" (revocable at any time, in the parent's own words), and
   // the per-proposal "yes, introduce us to this one". Neither is a watch consent (that
   // is permission to be TEXTED unprompted) and neither is an autonomous action class
   // (that is permission to ACT on the family's behalf) — this is permission to DISCLOSE
@@ -551,8 +551,7 @@ export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
   // you on it" was on 2026-08-20. Closed by the activity follow-up sweep, which owes the
   // family either the finds or an honest "I looked and could not find it".
   'activity_followup',
-  // "A new family just joined from the Georgetown poster. Reply YES and I'll send them
-  // your welcome note." — the one commitment on this ledger whose SUBJECT is a household
+  // The founder's welcome offer — the one commitment on this ledger whose SUBJECT is a household
   // other than the one the promise was made to, which is why `subject_family_id` exists.
   // It is an offer with the same shape as plan_offer and checkup_offer and it is here for
   // the same reason: a question that lives only as prose inside a sent SMS is a question

@@ -22,7 +22,7 @@ import { replyLanguage } from '~/lib/channel/language';
 import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { channelRouterDeps } from '~/lib/channel/router/wiring';
-import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
+import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { loadAgentContext } from '~/lib/coach/context';
 import { pipelineClient } from '~/lib/pipeline/client';
@@ -231,8 +231,9 @@ async function inbound(body: string, at: Date): Promise<string> {
 }
 
 /**
- * GATE 2c-bis's own composition: the production `weekdayCareAnswerTarget`, the grammar,
- * and the one writer. Exactly what the router calls, minus the router.
+ * GATE 2c-bis's own composition: the production `weekdayCareAnswerTarget` and the
+ * one writer. A finder ask is search-scoped and returns before any care read.
+ * The reader below cannot call a model.
  */
 async function answer(body: string, at: Date): Promise<'recorded' | 'not_recorded'> {
   const inboundChannelMessageId = await inbound(body, at);
@@ -243,7 +244,9 @@ async function answer(body: string, at: Date): Promise<'recorded' | 'not_recorde
     now: at,
   });
   if (target.status !== 'open' || 'scope' in target) return 'not_recorded';
-  const reading = readWeekdayCare(body);
+  const reading = await createWeekdayCareReader(() => {
+    throw new Error('weekday-care journey does not call a model');
+  }).read(body);
   if (reading.status !== 'read') return 'not_recorded';
   await recordWeekdayCare(db.database, {
     familyId,
@@ -330,8 +333,7 @@ describe('the weekday-care arc', () => {
     // 10:00 Toronto on MONDAY 2026-08-10 — the tick before the Tuesday session, not a
     // second Friday. The day matters: {@link TUESDAY_KEY} is 08-11, and any tick after
     // it would be refused as `weekday_date_past` rather than reaching the find at all.
-    // The nudge's own 7-day cap is not what this date is buying — `openGate` stubs
-    // `countProactiveSends` to 0, so the cap plays no part in this journey either way.
+    // A count is not what this date is buying. The gate does not hold on one.
     // What the find needed was the ANSWER: the Tuesday session was in this family's feed
     // the whole time and the weekend rule was discarding it.
     const theMondayAfter = new Date('2026-08-10T14:00:00.000Z');

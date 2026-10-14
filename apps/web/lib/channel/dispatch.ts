@@ -25,8 +25,9 @@ import type {
  * 'push' ledger rows keep their persisted enum value.
  *
  * Policy is evaluated PER LEG through this single point, and every leg writes its
- * own ledger row. Dedupe + caps are per (parent, category, CHANNEL) so a re-drain
- * can't double-send a leg.
+ * own ledger row. Dedupe is per (parent, category, CHANNEL) so a re-drain can't
+ * double-send a leg. A count is not a hold. `suppressed_cap` stays on the status
+ * union so an older ledger row still reads.
  *
  * Pure orchestrator over injected ports so the policy is tested against Fakes with
  * no live provider.

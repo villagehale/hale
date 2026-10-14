@@ -7,6 +7,7 @@ import {
   type OutboundGatePorts,
   PROACTIVE_CATEGORY,
   PROACTIVE_QUIET_HOURS,
+  type ProactiveSendKind,
   assertProactiveSendAllowed,
   holdStatus,
 } from './outbound-gate.js';
@@ -16,11 +17,11 @@ import {
  *
  * Expectations are derived from the gate's contract, not from its implementation:
  *
- *   - the four checks run in a FIXED order, and the first failure is the verdict — a
- *     family that pressed STOP is never counted, never consented-against, never
- *     quiet-hour-checked, because none of that is any of our business once they left;
+ *   - the checks run in a FIXED order, and the first failure is the verdict — a
+ *     family that pressed STOP is never consented-against and never quiet-hour-checked,
+ *     because none of that is any of our business once they left;
  *   - "enrolled" is the LIVE channel state, never a consent-ledger read;
- *   - the cap is per FAMILY per rolling 7 days, so a second parent cannot double it;
+ *   - a count is never a hold, and the gate does not read one;
  *   - quiet hours are the parent's own wall clock, which means the same UTC instant is
  *     quiet in July and not quiet in January.
  */
@@ -112,27 +113,10 @@ describe('assertProactiveSendAllowed', () => {
     });
   });
 
-  it('does not hold a nudge because earlier nudges were already sent', async () => {
-    await expect(callGate(MIDDAY, { recentSends: 99 }).verdict).resolves.toEqual({
-      allowed: true,
-      optOut: 'short',
-    });
-  });
-
-  it('does not read the send count', async () => {
-    let seen = false;
-    const verdict = await assertProactiveSendAllowed(
-      { familyId: FAMILY, parentUserId: PARENT, kind: 'nudge', now: MIDDAY },
-      {
-        ...ports().ports,
-        async countProactiveSends() {
-          seen = true;
-          return 99;
-        },
-      },
-    );
-    expect(verdict).toEqual({ allowed: true, optOut: 'short' });
-    expect(seen).toBe(false);
+  it('does not hold on a high count, and does not read the counter', async () => {
+    const { calls, verdict } = callGate(MIDDAY, { recentSends: 99 });
+    await expect(verdict).resolves.toEqual({ allowed: true, optOut: 'short' });
+    expect(calls).not.toContain('cap');
   });
 
   it('holds inside quiet hours in the parent’s own zone', async () => {
@@ -187,9 +171,9 @@ describe('assertProactiveSendAllowed', () => {
 /**
  * VIL-242 · M7 — the registration-sequence class, and the two exemptions it carries.
  *
- * Both exemptions are scoped to this class BY CONSTRUCTION, and the tests below exist to
- * prove the scoping rather than the exemption: a class that can opt out of the cap and
- * the clock is exactly the kind of thing that leaks to its neighbours.
+ * The urgency exemption is scoped to this class BY CONSTRUCTION, and the tests below
+ * exist to prove the scoping: a class that can opt out of the clock is exactly the
+ * kind of thing that leaks to its neighbours. No class has a count.
  */
 describe('the registration-sequence class', () => {
   function callSequenceGate(now: Date, state: Partial<FakeState> = {}, urgent = false) {
@@ -285,7 +269,7 @@ describe('gate ordering', () => {
     expect(calls).toEqual(['enrolled']);
   });
 
-  it('never reaches the cap count for a family that did not consent', async () => {
+  it('never reads the clock for a family that did not consent', async () => {
     const { calls, verdict } = callGate(MIDDAY, { consented: false });
     await verdict;
     expect(calls).toEqual(['enrolled', 'consent']);
@@ -444,10 +428,9 @@ describe('the watched-spot proactive classes', () => {
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
 
-  it('counts both kinds under ONE ledger category, on ONE budget', () => {
-    // Kills the mutation that gives spot_open_instant its own category: a household
-    // holding several watches would then get 4 held + 4 instant openings in a day, and
-    // the cap the two classes exist to share would read as half spent.
+  it('counts both kinds under ONE ledger category', () => {
+    // The two watched-spot kinds are the same message. Two categories would split one
+    // household's trail in two.
     expect(PROACTIVE_CATEGORY.spot_open).toBe('spot_open');
     expect(PROACTIVE_CATEGORY.spot_open_instant).toBe('spot_open');
   });
@@ -511,14 +494,30 @@ describe('the watched-spot proactive classes', () => {
     expect(PROACTIVE_CATEGORY.email_alert).toBe('email_alert');
   });
 
-  it('does not hold an opening because earlier ones were already sent', async () => {
-    await expect(
-      assertProactiveSendAllowed(
-        { familyId: FAMILY, parentUserId: PARENT, kind: 'spot_open', now: MIDDAY },
-        ports({ recentSends: 4 }).ports,
-      ),
-    ).resolves.toEqual({ allowed: true, optOut: 'short' });
-  });
+  it.each([
+    'email_alert',
+    'calendar_alert',
+    'spot_open',
+    'spot_open_instant',
+    'travel_brief',
+    'duty_ask',
+    'evening_check_in',
+    'village_intro',
+    'followup',
+    'plan_check_in',
+  ] as const satisfies readonly ProactiveSendKind[])(
+    'does not hold %s on a high count',
+    async (kind) => {
+      const fake = ports({ recentSends: 99 });
+      await expect(
+        assertProactiveSendAllowed(
+          { familyId: FAMILY, parentUserId: PARENT, kind, now: MIDDAY },
+          fake.ports,
+        ),
+      ).resolves.toEqual({ allowed: true, optOut: 'short' });
+      expect(fake.calls).not.toContain('cap');
+    },
+  );
 });
 
 describe('the travel brief class', () => {
@@ -599,12 +598,11 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
   /**
    * It was a module-private `Record` in `integrations/email-alert.ts` and AGAIN in
    * `integrations/calendar-alert.ts`; the travel sweep needed a third, so it was hoisted
-   * here instead. A `Record` over `ProactiveHoldReason`, so a fifth hold reason cannot be
+   * here instead. A `Record` over `ProactiveHoldReason`, so another hold reason cannot be
    * added without choosing what its receipt says.
    */
   it('maps every hold reason to the suppression the ledger records', () => {
     expect(holdStatus('quiet_hours')).toBe('suppressed_quiet_hours');
-    expect(holdStatus('frequency_cap')).toBe('suppressed_cap');
     expect(holdStatus('not_enrolled')).toBe('suppressed_consent');
     expect(holdStatus('no_watch_consent')).toBe('suppressed_consent');
   });

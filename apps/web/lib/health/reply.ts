@@ -118,11 +118,7 @@ export interface HealthReplyDeps {
    * all, and a marker has no expiry. The offer row is minted only by the message that
    * actually asked, and it lapses on its own week.
    */
-  loadOpenOffer(
-    database: Database,
-    familyId: string,
-    now: Date,
-  ): Promise<OpenCheckupOffer | null>;
+  loadOpenOffer(database: Database, familyId: string, now: Date): Promise<OpenCheckupOffer | null>;
   /**
    * Close the offer once the parent has been told their draft exists. REQUIRED (rule
    * #11): an accepted offer that stays open is a question the resolver keeps asking and
@@ -150,6 +146,8 @@ export interface HealthReplyDeps {
       sourceAnswer: string;
     },
   ): Promise<{ actionId: string }>;
+  /** Writes the receipt. Absence is named and the draft still exists. */
+  ask?: import('~/lib/channel/consent-ask').ConsentAskWriter;
 }
 
 export async function handleHealthCheckpointReply(
@@ -166,7 +164,7 @@ export async function handleHealthCheckpointReply(
      * word match; the exact words still win when they are there, because the handler
      * that reads them runs first and this field is only set once they have declined.
      */
-    resolved?: 'booking' | 'done' | null,
+    resolved?: 'booking' | 'done' | null;
   },
   deps: HealthReplyDeps,
 ): Promise<HealthReplyOutcome> {
@@ -369,10 +367,7 @@ async function loadHandledFacts(
 }
 
 /** Every checkpoint this family has told us is handled. */
-async function loadDoneCheckpointRefs(
-  database: Database,
-  familyId: string,
-): Promise<Set<string>> {
+async function loadDoneCheckpointRefs(database: Database, familyId: string): Promise<Set<string>> {
   return new Set((await loadHandledFacts(database, familyId)).map((row) => row.ref));
 }
 

@@ -57,17 +57,6 @@ afterEach(async () => {
   await db.exec('truncate table families, users cascade');
 });
 
-/**
- * Postgres stamps `created_at` with the real wall clock while the sweep runs on an
- * injected one, so a ledger row written under a fake evening looks minutes old rather
- * than months. In production those two clocks are the same instant — this puts them back
- * together, so the frequency cap's window is measured against the evening the message
- * actually went out rather than against the moment the test ran.
- */
-async function alignLedgerToSendClock(): Promise<void> {
-  await db.exec('update channel_messages set created_at = sent_at where sent_at is not null');
-}
-
 async function seedFamily(input: {
   primaryTz: string;
   coParentTz?: string;
@@ -138,15 +127,11 @@ async function seedEvent(input: {
 }
 
 /**
- * The real deps, with only the four things a test cannot have: the phone network, the
- * consent/enrolment state the gate reads from tables this test does not seed, and the
- * registration ladder. Selection, the children read, the dedupe key, the ledger write and
- * the prefs write are all production code.
+ * The real deps, with only what a test cannot have: the consent and enrolment state the
+ * gate reads from tables this test does not seed, and the registration ladder. Selection,
+ * the children read, and the candidate write are production code. The sweep does not text.
  */
-function prodDeps(
-  sent: Array<{ to: string; body: string }>,
-  options: { realCap?: boolean } = {},
-): EveningCheckInDeps {
+function prodDeps(options: { realCap?: boolean } = {}): EveningCheckInDeps {
   return {
     ...defaultEveningCheckInDeps(),
     buildGate: (database) => ({
@@ -157,14 +142,15 @@ function prodDeps(
       ...(options.realCap === true ? {} : { countProactiveSends: async () => 0 }),
     }),
     readinessStanding: async () => null,
-    resolveSendablePhone: async () => '+14165550100',
-    transport: {
-      send: async (input) => {
-        sent.push(input);
-        return { providerMessageId: `prov-${sent.length}` };
-      },
-    },
   };
+}
+
+async function candidateFor(familyId: string) {
+  const [row] = await db.database
+    .select()
+    .from(schema.proactiveCandidates)
+    .where(eq(schema.proactiveCandidates.familyId, familyId));
+  return row;
 }
 
 describe('who the sweep actually selects, and what it may call their children', () => {
@@ -186,65 +172,49 @@ describe('who the sweep actually selects, and what it may call their children', 
     await seedFamily({ primaryTz: 'America/Toronto', stage: 'pending_invite' });
     await seedFamily({ primaryTz: 'America/Toronto', scheduledDeletionAt: new Date() });
 
-    const sent: Array<{ to: string; body: string }> = [];
-    const first = await runEveningCheckInSweep(db.database, prodDeps(sent), TORONTO_EVENING);
-    expect({ inSlot: first.inSlot, asked: first.asked }).toEqual({ inSlot: 1, asked: 1 });
-    expect(sent).toHaveLength(1);
-    // The four-year-old is named; the fourteen-year-old is not, and the sentence reads as
-    // though she were the only child on file (rule #1).
-    expect(sent[0]?.body).toContain('with Mia?');
-    expect(sent[0]?.body).not.toContain('Noah');
-
-    const [ask] = await db.database
-      .select()
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.familyId, toronto.familyId));
-    expect(ask?.parentUserId).toBe(toronto.primaryUserId);
-    expect(ask?.category).toBe('evening_check_in');
-    expect(ask?.templateKey).toBe(CHECK_IN_ASK_TEMPLATE_KEY);
-
-    await alignLedgerToSendClock();
-    expect(ask?.dedupeKey).toBe(`evening_check_in:${toronto.familyId}:2026-07-05`);
+    const first = await runEveningCheckInSweep(db.database, prodDeps(), TORONTO_EVENING);
+    expect({ inSlot: first.inSlot, queued: first.queued }).toEqual({ inSlot: 1, queued: 1 });
+    const offer = await candidateFor(toronto.familyId);
+    // The four-year-old is a fact the writer may name. The fourteen-year-old is not.
+    expect(offer?.what).toContain('Mia');
+    expect(offer?.what).not.toContain('Noah');
+    expect(offer?.parentUserId).toBe(toronto.primaryUserId);
+    expect(offer?.kind).toBe('evening_check_in');
+    expect(offer?.templateKey).toBe(CHECK_IN_ASK_TEMPLATE_KEY);
+    expect(offer?.dedupeKey).toBe(`evening_check_in:${toronto.familyId}:2026-07-05`);
+    expect(offer?.what).not.toMatch(/\b(?:reply|text|send)\s+[A-Z]{2,}\b/);
 
     // Three hours later it is the Vancouver household's evening, and only theirs.
-    const later = await runEveningCheckInSweep(db.database, prodDeps(sent), VANCOUVER_EVENING);
-    expect({ inSlot: later.inSlot, asked: later.asked }).toEqual({ inSlot: 1, asked: 1 });
-    const [second] = await db.database
-      .select()
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.familyId, vancouver.familyId));
+    const later = await runEveningCheckInSweep(db.database, prodDeps(), VANCOUVER_EVENING);
+    expect({ inSlot: later.inSlot, queued: later.queued }).toEqual({ inSlot: 1, queued: 1 });
+    const second = await candidateFor(vancouver.familyId);
     expect(second?.parentUserId).toBe(vancouver.primaryUserId);
   });
 
-  it('asks again the next evening — the nightly cap is not what holds the nightly question', async () => {
+  it('offers again the next evening — queueing is not a send, so the cap does not hold it', async () => {
     await seedFamily({ primaryTz: 'America/Toronto' });
-    const sent: Array<{ to: string; body: string }> = [];
     const first = await runEveningCheckInSweep(
       db.database,
-      prodDeps(sent, { realCap: true }),
+      prodDeps({ realCap: true }),
       TORONTO_EVENING,
     );
-    expect(first.asked).toBe(1);
-    await alignLedgerToSendClock();
+    expect(first.queued).toBe(1);
 
-    // The same slot, exactly 24h on — the worst case the cap's window has to clear, since
-    // two consecutive evenings can be no further apart than this.
+    // The same slot, exactly 24h on. The dedupe key is the local date, so tonight's
+    // row does not hold tomorrow's question. A count is not a hold.
     const nextEvening = new Date(TORONTO_EVENING.getTime() + 24 * 3_600_000);
     const second = await runEveningCheckInSweep(
       db.database,
-      prodDeps(sent, { realCap: true }),
+      prodDeps({ realCap: true }),
       nextEvening,
     );
-    expect({ asked: second.asked, capped: second.held.frequency_cap }).toEqual({
-      asked: 1,
-      capped: 0,
+    expect({ queued: second.queued, quiet: second.held.quiet_hours }).toEqual({
+      queued: 1,
+      quiet: 0,
     });
-    expect(sent).toHaveLength(2);
   });
 
   it('puts the least recently asked household at the front of the hour', async () => {
-    // Inserted in the OPPOSITE order to the one the sweep must use, so a select that
-    // leaned on the table's own order would send these two the other way round.
     const askedLastNight = await seedFamily({ primaryTz: 'America/Toronto' });
     await db.database.insert(schema.familyCheckInPrefs).values({
       familyId: askedLastNight.familyId,
@@ -252,9 +222,8 @@ describe('who the sweep actually selects, and what it may call their children', 
     });
     const neverAsked = await seedFamily({ primaryTz: 'America/Toronto' });
 
-    const sent: Array<{ to: string; body: string }> = [];
     const order: string[] = [];
-    const deps = prodDeps(sent);
+    const deps = prodDeps();
     const { selectFamilies } = deps;
     deps.selectFamilies = async (database) => {
       const rows = await selectFamilies(database);
@@ -266,41 +235,52 @@ describe('who the sweep actually selects, and what it may call their children', 
     expect(order).toEqual([neverAsked.familyId, askedLastNight.familyId]);
   });
 
-  it('is stopped two ways from asking twice in one evening', async () => {
-    const { familyId } = await seedFamily({ primaryTz: 'America/Toronto' });
-    const sent: Array<{ to: string; body: string }> = [];
-    await runEveningCheckInSweep(db.database, prodDeps(sent), TORONTO_EVENING);
-    expect(sent).toHaveLength(1);
-    await alignLedgerToSendClock();
+  it('is stopped two ways from offering twice in one evening, and a prior send is not a third', async () => {
+    const seeded = await seedFamily({ primaryTz: 'America/Toronto' });
+    await runEveningCheckInSweep(db.database, prodDeps(), TORONTO_EVENING);
+    expect(await candidateFor(seeded.familyId)).toBeDefined();
 
     const tenMinutesOn = new Date(TORONTO_EVENING.getTime() + 10 * 60_000);
 
-    // 1. the prefs row this evening's ask wrote.
-    const again = await runEveningCheckInSweep(
-      db.database,
-      prodDeps(sent, { realCap: true }),
-      tenMinutesOn,
-    );
-    expect(again.skipped.asked_today).toBe(1);
+    // 1. The candidate's dedupe key. Queueing does not stamp last_asked_at.
+    const again = await runEveningCheckInSweep(db.database, prodDeps(), tenMinutesOn);
+    expect(again.duplicate).toBe(1);
 
-    // 2. with that row gone, the ledger dedupe key. A count of earlier texts is not a stop.
+    // 2. A send that already landed tonight. The ask clock is the send, not the queue.
+    await db.database
+      .delete(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, seeded.familyId));
+    await db.database.insert(schema.familyCheckInPrefs).values({
+      familyId: seeded.familyId,
+      lastAskedAt: tenMinutesOn,
+    });
+    const asked = await runEveningCheckInSweep(db.database, prodDeps(), tenMinutesOn);
+    expect(asked.skipped.asked_today).toBe(1);
+
+    // A count of tonight's send is not a hold. With the ask clock cleared, the
+    // same evening can be offered again.
     await db.database
       .delete(schema.familyCheckInPrefs)
-      .where(eq(schema.familyCheckInPrefs.familyId, familyId));
-    const counted = await runEveningCheckInSweep(
+      .where(eq(schema.familyCheckInPrefs.familyId, seeded.familyId));
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.primaryUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'evening_check_in',
+      templateKey: CHECK_IN_ASK_TEMPLATE_KEY,
+      status: 'sent',
+      dedupeKey: `evening_check_in:sent:${seeded.familyId}`,
+      createdAt: tenMinutesOn,
+      sentAt: tenMinutesOn,
+    });
+    const afterSend = await runEveningCheckInSweep(
       db.database,
-      prodDeps(sent, { realCap: true }),
+      prodDeps({ realCap: true }),
       tenMinutesOn,
     );
-    expect(counted.duplicate).toBe(1);
-    expect(counted.held.frequency_cap).toBe(0);
-
-    // 3. the same ledger stop when the count reader is forced to zero.
-    const deduped = await runEveningCheckInSweep(db.database, prodDeps(sent), tenMinutesOn);
-    expect(deduped.duplicate).toBe(1);
-    expect(deduped.held.frequency_cap).toBe(0);
-
-    expect(sent).toHaveLength(1);
+    expect(afterSend.queued).toBe(1);
+    expect(afterSend.held.quiet_hours).toBe(0);
   });
 });
 
@@ -327,10 +307,12 @@ describe('what the evening question may name', () => {
   const YESTERDAY = new Date('2026-07-04T20:00:00.000Z');
 
   async function anchorCounts() {
-    const sent: Array<{ to: string; body: string }> = [];
-    const result = await runEveningCheckInSweep(db.database, prodDeps(sent), TORONTO_EVENING);
-    expect(result.asked).toBe(1);
-    return { anchor: result.anchor, body: sent[0]?.body ?? '' };
+    const result = await runEveningCheckInSweep(db.database, prodDeps(), TORONTO_EVENING);
+    expect(result.queued).toBe(1);
+    const [row] = await db.database
+      .select({ what: schema.proactiveCandidates.what })
+      .from(schema.proactiveCandidates);
+    return { anchor: result.anchor, what: row?.what ?? '' };
   }
 
   /** A household that has been asked before, so tonight is a pooled question. */
@@ -353,37 +335,29 @@ describe('what the evening question may name', () => {
       childId: seeded.childIds.Mia as string,
     });
 
-    const { anchor, body } = await anchorCounts();
+    const { anchor, what } = await anchorCounts();
     expect(anchor.anchored).toBe(1);
-    expect(body).toContain('swim');
+    expect(what).toContain('swim');
 
-    // THE TEMPLATE KEY DOES NOT CHANGE. A new key for the anchored form would make every
-    // anchored evening's answer unattributable, and the ladder would count a silence for
-    // a question the parent answered.
-    const [ask] = await db.database
-      .select()
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.familyId, seeded.familyId));
-    expect(ask?.templateKey).toBe(CHECK_IN_ASK_TEMPLATE_KEY);
+    const offer = await candidateFor(seeded.familyId);
+    expect(offer?.templateKey).toBe(CHECK_IN_ASK_TEMPLATE_KEY);
 
-    // The immutable row counts the anchored evening and carries no calendar content:
-    // audit_log is PIPEDA-exportable and has none of the teen redaction a memory read has.
     const [row] = await db.database
       .select()
       .from(schema.auditLog)
       .where(eq(schema.auditLog.familyId, seeded.familyId));
-    expect(row?.actionTaken).toBe('evening_check_in_sent');
-    expect(row?.after).toEqual({ cadence: 'daily', anchored: true });
+    expect(row?.actionTaken).toBe('evening_check_in_queued');
+    expect(row?.after).toEqual({ anchored: true });
     expect(JSON.stringify(row)).not.toContain('swim');
 
-    await alignLedgerToSendClock();
+    // A queue is not a question. The standing ask appears when the review sends.
     expect(
       await eveningCheckInQuestion(db.database, {
         familyId: seeded.familyId,
         parentUserId: seeded.primaryUserId,
         now: new Date(TORONTO_EVENING.getTime() + 20 * 60_000),
       }),
-    ).not.toBeNull();
+    ).toBeNull();
   });
 
   it("will not name a 13-year-old's row, and does not say one exists — with the sibling case as the control", async () => {
@@ -401,9 +375,9 @@ describe('what the evening question may name', () => {
     const teen = await anchorCounts();
     expect(teen.anchor.private_event).toBe(1);
     expect(teen.anchor.anchored).toBe(0);
-    expect(teen.body).not.toContain('orthodontist');
-    expect(teen.body).not.toContain(PRIVATE_EVENT_WHAT);
-    expect(teen.body).toContain('the kids');
+    expect(teen.what).not.toContain('orthodontist');
+    expect(teen.what).not.toContain(PRIVATE_EVENT_WHAT);
+    expect(teen.what).toBe('how the day went');
 
     await db.exec('truncate table families, users cascade');
     const sibling = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
@@ -415,7 +389,7 @@ describe('what the evening question may name', () => {
     });
     const control = await anchorCounts();
     expect(control.anchor.anchored).toBe(1);
-    expect(control.body).toContain('orthodontist');
+    expect(control.what).toContain('orthodontist');
   });
 
   it('will not name a sensitive row even for an under-13', async () => {
@@ -427,10 +401,10 @@ describe('what the evening question may name', () => {
       childId: seeded.childIds.Mia as string,
       sensitive: true,
     });
-    const { anchor, body } = await anchorCounts();
+    const { anchor, what } = await anchorCounts();
     expect(anchor.private_event).toBe(1);
-    expect(body).not.toContain('allergy');
-    expect(body).not.toContain(PRIVATE_EVENT_WHAT);
+    expect(what).not.toContain('allergy');
+    expect(what).not.toContain(PRIVATE_EVENT_WHAT);
   });
 
   it('leaves what Hale itself placed to the follow-up lane', async () => {
@@ -444,14 +418,14 @@ describe('what the evening question may name', () => {
       childId: seeded.childIds.Mia as string,
       source: 'placement',
     });
-    const { anchor, body } = await anchorCounts();
+    const { anchor, what } = await anchorCounts();
     expect(anchor.placement_lane).toBe(1);
-    expect(body).not.toContain('gymnastics');
+    expect(what).not.toContain('gymnastics');
     const [row] = await db.database
       .select()
       .from(schema.auditLog)
       .where(eq(schema.auditLog.familyId, seeded.familyId));
-    expect(row?.after).toEqual({ cadence: 'daily', anchored: false });
+    expect(row?.after).toEqual({ anchored: false });
 
     // POSITIVE CONTROL, a household over: the absence above fails open on its own, and
     // the only difference here is the provenance column. Same child, same title, same
@@ -467,15 +441,15 @@ describe('what the evening question may name', () => {
     });
     const control = await anchorCounts();
     expect(control.anchor.anchored).toBe(1);
-    expect(control.body).toContain('gymnastics');
+    expect(control.what).toContain('gymnastics');
   });
 
   it('will not name a family-wide row with no child on it', async () => {
     const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
     await seedEvent({ familyId: seeded.familyId, title: 'Therapy', startsAt: AFTERNOON });
-    const { anchor, body } = await anchorCounts();
+    const { anchor, what } = await anchorCounts();
     expect(anchor.no_child).toBe(1);
-    expect(body).not.toContain('Therapy');
+    expect(what).not.toContain('Therapy');
 
     // POSITIVE CONTROL: the same row with a child on it IS named, so the silence above is
     // the childId subtraction and not the anchor lane failing to run.
@@ -489,7 +463,7 @@ describe('what the evening question may name', () => {
     });
     const control = await anchorCounts();
     expect(control.anchor.anchored).toBe(1);
-    expect(control.body).toContain('Therapy');
+    expect(control.what).toContain('Therapy');
   });
 
   it('ignores a cancelled row, a row from yesterday, and a row that has not happened yet', async () => {
@@ -514,10 +488,10 @@ describe('what the evening question may name', () => {
       startsAt: TONIGHT,
       childId,
     });
-    const { anchor, body } = await anchorCounts();
+    const { anchor, what } = await anchorCounts();
     expect(anchor.no_event_today).toBe(1);
     for (const title of ['cancelled swim', 'yesterday soccer', 'bedtime story hour']) {
-      expect(body, title).not.toContain(title);
+      expect(what, title).not.toContain(title);
     }
   });
 
@@ -531,10 +505,10 @@ describe('what the evening question may name', () => {
       startsAt: LATE_AFTERNOON,
       childId,
     });
-    const { anchor, body } = await anchorCounts();
+    const { anchor, what } = await anchorCounts();
     expect(anchor.anchored).toBe(1);
-    expect(body).toContain('gymnastics');
-    expect(body).not.toContain('swim');
+    expect(what).toContain('gymnastics');
+    expect(what).not.toContain('swim');
   });
 
   it('refuses a title it cannot spell, and one that will not fit', async () => {
@@ -547,7 +521,7 @@ describe('what the evening question may name', () => {
     });
     const unspellable = await anchorCounts();
     expect(unspellable.anchor.not_gsm7).toBe(1);
-    expect(unspellable.body).toContain('Mia');
+    expect(unspellable.what).toContain('Mia');
 
     await db.exec('truncate table families, users cascade');
     const long = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
@@ -559,7 +533,7 @@ describe('what the evening question may name', () => {
     });
     const oversized = await anchorCounts();
     expect(oversized.anchor.over_segment).toBe(1);
-    expect(oversized.body).toContain('Mia');
+    expect(oversized.what).toContain('Mia');
   });
 
   it("is off unless the flag is exactly 'true' — a trailing newline is not", async () => {
@@ -573,8 +547,8 @@ describe('what the evening question may name', () => {
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true\n';
     const off = await anchorCounts();
     expect(off.anchor.flag_off).toBe(1);
-    expect(off.body).not.toContain('swim');
-    expect(off.body).toContain('Mia');
+    expect(off.what).not.toContain('swim');
+    expect(off.what).toContain('Mia');
   });
 
   it('never names the table it reads through', async () => {
@@ -667,24 +641,24 @@ describe('the evening anchor and the composed follow-up, in one tick', () => {
       TORONTO_EVENING,
     );
 
-    // The two lanes write different `channel_messages` categories. Neither is held
-    // because the other already sent.
-    const checkInSent: Array<{ to: string; body: string }> = [];
+    // A count is not a hold. The follow-up that just went out does not stop the
+    // evening offer. The two lanes still name different activities.
     const checkIn = await runEveningCheckInSweep(
       db.database,
-      prodDeps(checkInSent, { realCap: true }),
+      prodDeps({ realCap: true }),
       TORONTO_EVENING,
     );
 
-    expect({ followup: followup.activityAsked, checkIn: checkIn.asked }).toEqual({
+    expect({ followup: followup.activityAsked, checkIn: checkIn.queued }).toEqual({
       followup: 1,
       checkIn: 1,
     });
-    // TWO MESSAGES ABOUT TWO EVENTS, which is the correct outcome, and never two about one.
+    const offer = await candidateFor(seeded.familyId);
+    // Two events, two lanes, and the evening lane queues facts rather than a sentence.
     expect(followupSent[0]?.body).toContain('gymnastics');
     expect(followupSent[0]?.body).not.toContain('swim');
-    expect(checkInSent[0]?.body).toContain('swim');
-    expect(checkInSent[0]?.body).not.toContain('gymnastics');
+    expect(offer?.what).toContain('swim');
+    expect(offer?.what).not.toContain('gymnastics');
     expect(checkIn.anchor.anchored).toBe(1);
   });
 

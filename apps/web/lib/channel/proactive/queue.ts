@@ -86,6 +86,27 @@ export interface CandidateDraft {
 
 export type HandOff = 'send' | 'queued' | 'send_shadow_unqueued';
 
+/**
+ * Queue one evening check-in for the proactive decider, in every cadence mode.
+ *
+ * The check-in has no fixed text to fall back to, so `off` must not mean "send the
+ * old line". The hourly review is what sends. While the flag is off, that review
+ * still decides and sends this kind (review.ts); other kinds stay on their own path.
+ */
+export async function queueCheckInForDecider(
+  database: Database,
+  draft: CandidateDraft,
+): Promise<'queued' | 'duplicate'> {
+  const inserted = await database
+    .insert(schema.proactiveCandidates)
+    .values({ ...draft, status: 'queued' })
+    .onConflictDoNothing({
+      target: [schema.proactiveCandidates.familyId, schema.proactiveCandidates.dedupeKey],
+    })
+    .returning({ id: schema.proactiveCandidates.id });
+  return inserted.length === 0 ? 'duplicate' : 'queued';
+}
+
 export async function handOffProactive(
   database: Database,
   drafts: readonly CandidateDraft[],

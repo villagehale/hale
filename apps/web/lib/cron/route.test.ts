@@ -137,7 +137,6 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
       considered: 0,
       sent: 0,
       invalidated: 0,
-      steppedDown: 0,
       held: 0,
       skipped: 0,
     });

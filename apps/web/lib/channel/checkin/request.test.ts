@@ -1,39 +1,73 @@
-import { describe, expect, it } from 'vitest';
-import { asksHaleForSomething } from './request';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { handleEveningCheckInReply } from './reply';
+import {
+  createEveningRequestReader,
+  eveningReplyIsRequest,
+  toEveningRequestReading,
+} from './request';
 
-describe('telling Hale about the day vs asking Hale for something', () => {
-  it('refuses to claim a request, with or without a question mark', () => {
-    const asks = [
-      'add swim to the calendar saturday 10am',
-      'Fine - can you find a swim class on Saturdays?',
-      'good day. please book the march break camp',
-      'remind me about the forms tomorrow',
-      'what time is the open house',
-      'Sign us up for the Tuesday one',
-      'peux tu trouver un cours de natation',
-      'Book us into the thursday class',
-    ];
-    for (const body of asks) expect(asksHaleForSomething(body), body).toBe(true);
+describe('toEveningRequestReading', () => {
+  it('keeps a boolean and drops anything else', () => {
+    expect(toEveningRequestReading({ asks: true })).toEqual({ asks: true });
+    expect(toEveningRequestReading({ asks: false })).toEqual({ asks: false });
+    expect(toEveningRequestReading({ asks: 'true' })).toBeNull();
+    expect(toEveningRequestReading({})).toBeNull();
+  });
+});
+
+describe('eveningReplyIsRequest', () => {
+  it('hands a failed read to the coach', () => {
+    expect(eveningReplyIsRequest(null)).toBe(true);
+    expect(eveningReplyIsRequest({ asks: true })).toBe(true);
+    expect(eveningReplyIsRequest({ asks: false })).toBe(false);
+  });
+});
+
+describe('an injected reader decides, in any script', () => {
+  const cases = [
+    ['帮我找周六的游泳课', true],
+    ['ساعدني أجد درس سباحة يوم السبت', true],
+    ['Park after daycare and both asleep by 7.', false],
+  ] as const;
+
+  it.each(cases)('reads %s as asks=%s', async (text, asks) => {
+    const reader = { read: async (_input: { text: string }) => ({ asks }) };
+    expect(eveningReplyIsRequest(await reader.read({ text }))).toBe(asks);
+  });
+});
+
+describe('createEveningRequestReader', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it('reads the question mark on its own, with no opener and no phrase behind it', () => {
-    // Every fixture above carries an opener or a phrase as well, so deleting the '?'
-    // rule left them all green. These four are caught by the punctuation and nothing
-    // else — a parent asking the shortest question they can type.
-    for (const body of ['Swim tomorrow?', 'Mia in the tuesday one?', 'Camp?', 'Et le camp?']) {
-      expect(asksHaleForSomething(body), body).toBe(true);
-    }
+  it('names a missing client and does not log the parent text', async () => {
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const reader = createEveningRequestReader(() => {
+      throw new Error('no key');
+    });
+    const text = '帮我找周六的游泳课';
+    await expect(reader.read({ text })).resolves.toBeNull();
+    expect(JSON.stringify(logged.mock.calls)).toContain('client_unavailable');
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(text);
   });
+});
 
-  it('leaves an ordinary evening alone', () => {
-    const evenings = [
-      'Park after daycare and both asleep by 7. Rare win.',
-      'Rough one, meltdown at dinner',
-      'Swim was a hit, Leo wants to go back',
-      'Nothing much, pyjama day',
-      'Both of them ate dinner without a fight, call it a win',
-      'Bonne journee, on a fait du velo',
-    ];
-    for (const body of evenings) expect(asksHaleForSomething(body), body).toBe(false);
+describe('handleEveningCheckInReply with an injected reader', () => {
+  it('is covered by the pglite file for the store, and a missing reader declines', async () => {
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const outcome = await handleEveningCheckInReply({} as never, {
+      familyId: 'f',
+      parentUserId: 'p',
+      body: '帮我找周六的游泳课',
+      askedAt: new Date(),
+      timeZone: 'America/Toronto',
+      inboundChannelMessageId: 'm',
+      now: new Date(),
+    });
+    expect(outcome).toEqual({ status: 'declined_to_claim' });
+    expect(JSON.stringify(logged.mock.calls)).toContain('not_configured');
+    expect(JSON.stringify(logged.mock.calls)).not.toContain('游泳');
+    logged.mockRestore();
   });
 });

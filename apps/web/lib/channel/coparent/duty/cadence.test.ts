@@ -134,31 +134,7 @@ describe('duty cadence windows', () => {
   });
 });
 
-describe('duty cadence step-down', () => {
-  it('steps down after three unanswered asks and does not ask again', () => {
-    const open = {
-      eventKey: 'swim',
-      role: 'pickup' as const,
-      unanswered: 3,
-      silentNamed: true,
-      status: 'open' as const,
-    };
-    const plan = planDutyCadence(
-      ctx({
-        bubbleLeaving: true,
-        open,
-        occasions: [occasion({ eventKey: 'swim' })],
-      }),
-    );
-    expect(plan.stepDown).toEqual({ eventKey: 'swim', role: 'pickup' });
-    expect(plan.foldLines.map((row) => row.mode)).toEqual(['week_overview']);
-    expect(plan.sendLines).toEqual([]);
-    const again = planDutyCadence(
-      ctx({ open: { ...open, status: 'stepped_down' }, bubbleLeaving: true }),
-    );
-    expect(again.stepDown).toBeNull();
-  });
-
+describe('a silent parent', () => {
   it('names a silent parent once, and only on a bubble that is already leaving', () => {
     const open = {
       eventKey: 'swim',

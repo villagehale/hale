@@ -214,7 +214,7 @@ describe('a 1:1 decision syncs the group', () => {
     expect(http.linqUrls()).toEqual([]);
   });
 
-  it('posts one bubble of at most three lines, including a pass, and drops the rest', async () => {
+  it('posts one bubble with every due line, including a pass', async () => {
     const seeded = await seed(GROUP);
     const http = wire();
     const decisions = [
@@ -248,7 +248,7 @@ describe('a 1:1 decision syncs the group', () => {
     expect(body).toContain('Quick sync: Barton picked swim for Maya, Tuesday at 4:00.');
     expect(body).toContain('Quick sync: Barton passed on art for Maya.');
     expect(body).toContain('Quick sync: Barton picked music for Leo, Wednesday at 5:00.');
-    expect(body).not.toContain('dance');
+    expect(body).toContain('Quick sync: Barton picked dance for Leo, Thursday at 6:00.');
     expect(body).not.toMatch(/booked/i);
     const waiting = await db.database
       .select({

@@ -21,7 +21,7 @@ import {
 /**
  * A verified Google push runs the existing connector sync for that connection.
  *
- * It does not ingest the notification. The alert path, quiet hours, per-sweep caps,
+ * It does not ingest the notification. The alert path, quiet hours,
  * title/time/location copy and seeding rules all live inside that sync; this module
  * only decides whether it may start. The Gmail notice's historyId is decoded so a
  * body that is not a mailbox notice is refused, and then discarded — the incremental

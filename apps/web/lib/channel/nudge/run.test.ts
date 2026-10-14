@@ -583,11 +583,10 @@ describe('runNudgeCron — the outbound gate', () => {
     expect(h.transport.sent).toHaveLength(0);
   });
 
-  it('sends to a family already nudged this week', async () => {
+  it('sends even when a count says the family was already nudged this week', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ windows: [win()], recentSends: 1 });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    expect(result.held.frequency_cap).toBe(0);
     expect(result.sent).toBe(1);
     expect(h.transport.sent).toHaveLength(1);
   });
@@ -948,10 +947,10 @@ describe('the nudge reaches both parents, on their own numbers', () => {
   });
 
   /**
-   * Both parents hear the nudge. The next tick in the same slot is the dedupe key,
-   * not a count of how many texts the household already had.
+   * Same-item dedupe, keyed per recipient, is what stops the second tick. A count
+   * of the first tick's sends does not hold either parent.
    */
-  it('sends both parents, and the same slot does not send again', async () => {
+  it('dedupes both parents on the next tick, and a count holds neither', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({
       windows: [win()],
@@ -965,7 +964,6 @@ describe('the nudge reaches both parents, on their own numbers', () => {
 
     const second = await runNudgeCron(db(), h.deps, new Date('2026-07-31T14:30:00.000Z'));
     expect(second.sent).toBe(0);
-    expect(second.held.frequency_cap).toBe(0);
     expect(second.deduped).toBe(2);
     expect(h.transport.sent).toHaveLength(2);
   });

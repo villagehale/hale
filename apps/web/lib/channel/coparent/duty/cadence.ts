@@ -8,14 +8,14 @@ import type { DutyRole } from './model';
  * bubble. The night-before confirmation may open one bubble, and only inside
  * 17:00–21:00 local, which ends where quiet hours begin. A parent who asks
  * "who's got pickup Thursday?" is answered in the group. One open question
- * per group. After three unanswered asks, stop.
+ * per group. How many of those went unanswered is history for the model.
+ * This file does not stop because of that count.
  *
  * Quiet hours are decided by the caller with the outbound gate's window so
  * this file does not grow a second clock. A count is not a hold.
  */
 
 export const REASK_WITHIN_MS = 48 * 60 * 60 * 1000;
-export const UNANSWERED_STEP_DOWN = 3;
 export const NIGHT_BEFORE_START_MIN = 17 * 60;
 
 export type DutyAskMode =
@@ -97,7 +97,6 @@ export interface CadencePlan {
   foldLines: CadenceLine[];
   /** Lines for the one bubble this tick may open. Empty when nothing sends. */
   sendLines: CadenceLine[];
-  stepDown: { eventKey: string; role: DutyRole } | null;
   /** Cancelled events whose recorded duty must be closed. No text. */
   invalidateEventKeys: string[];
   held: 'quiet_hours' | 'open_question' | null;
@@ -191,7 +190,7 @@ function byStart(a: DutyOccasion, b: DutyOccasion): number {
   return a.startsAt.getTime() - b.startsAt.getTime();
 }
 
-/** which_kid, both_claimed, reask_48h, night_before. Overview, a direct answer, and the silent nudge do not. */
+/** Questions. An overview, a direct answer, and the silent line are not. */
 const ASK_BUDGET = new Set<DutyAskMode>(['which_kid', 'both_claimed', 'reask_48h', 'night_before']);
 
 /** Suppressed for 30 days after "stop asking". Overview and parent_initiated stay. */
@@ -281,11 +280,6 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
   ];
   const live = ctx.occasions.filter(speakable).slice().sort(byStart);
   const open = ctx.open;
-  const stepped = open?.status === 'stepped_down';
-  const stepDown =
-    open && !stepped && open.unanswered >= UNANSWERED_STEP_DOWN
-      ? { eventKey: open.eventKey, role: open.role }
-      : null;
 
   let held: CadencePlan['held'] = null;
   let question: CadenceLine | null = null;
@@ -295,7 +289,7 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
     if (match) {
       const specific = questionLine(match, ctx);
       const opens = !match.hasOwner || match.needsWhichKid || match.conflict;
-      if (opens && open && !stepped && !sameSlot(open, match)) {
+      if (opens && open && !sameSlot(open, match)) {
         held = 'open_question';
       } else if (
         (specific?.mode === 'which_kid' || specific?.mode === 'both_claimed') &&
@@ -304,11 +298,11 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
         question = specific;
       } else if (match.hasOwner) {
         question = line('parent_initiated', match, { opensQuestion: false });
-      } else if (!stepDown) {
+      } else {
         question = line('parent_initiated', match, { opensQuestion: true });
       }
     }
-  } else if (!stepDown && !stepped) {
+  } else {
     const pool = open ? live.filter((row) => sameSlot(open, row)) : live;
     for (const occasion of pool) {
       const next = questionLine(occasion, ctx);
@@ -350,16 +344,9 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
 
   // A re-ask never opens a bubble. If a confirmation is already leaving, the
   // re-ask rides that one bubble — still the only open question.
-  if (
-    sendLines.length > 0 &&
-    !question?.opensQuestion &&
-    !stepDown &&
-    !stepped &&
-    !(open && open.unanswered >= UNANSWERED_STEP_DOWN)
-  ) {
-    const blocked = open && !stepped;
+  if (sendLines.length > 0 && !question?.opensQuestion) {
     const reask = live.find((row) => {
-      if (blocked && !sameSlot(open, row)) return false;
+      if (open && !sameSlot(open, row)) return false;
       if (row.hasOwner || row.reasked || row.needsWhichKid || row.conflict) return false;
       return eventWithinMs(ctx.now, row.startsAt, REASK_WITHIN_MS);
     });
@@ -375,7 +362,6 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
   const namingBubble = (ctx.bubbleLeaving && !ctx.quiet) || sendLines.length > 0;
   if (
     open &&
-    !stepped &&
     !open.silentNamed &&
     !heldByStopAsking(ctx, 'silent_parent') &&
     open.unanswered >= 1 &&
@@ -404,5 +390,5 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
     }
   }
 
-  return { foldLines, sendLines, stepDown, invalidateEventKeys, held };
+  return { foldLines, sendLines, invalidateEventKeys, held };
 }

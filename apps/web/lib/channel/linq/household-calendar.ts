@@ -54,8 +54,9 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * flag defaults on; `LINQ_GROUP_COPARENT=off` is the kill switch. Mail is
  * never spoken here.
  *
- * Proactive group speech is one bubble: at most one a day and three a week,
- * never during quiet hours. A cancellation, a weekly recap, and an unprompted
+ * Proactive group speech is one bubble per pass, chosen by priority. Quiet
+ * hours still hold on the send. A daily or weekly count is not a hold. A
+ * cancellation, a weekly recap, and an unprompted
  * both-free suggestion are not bubbles.
  *
  * VIL-377, Design locked 2026-09-26: when LINQ_POLLS is on, a conflict is the
@@ -112,9 +113,8 @@ export interface HouseholdNotice {
   kind: 'kid_event' | 'conflict' | 'handoff' | 'followup' | 'who_takes';
   dedupeKey: string;
   /**
-   * `activity_followup` has no frequency counter, so an SMS calendar alert
-   * cannot eat the group's own 1/day and 3/week cap. Quiet hours and consent
-   * still apply. The group's cap is counted on the template keys below.
+   * `activity_followup` has no frequency counter. Quiet hours and consent
+   * still apply. There is no daily or weekly count on this path.
    */
   gateKind: 'activity_followup';
   category: 'calendar_alert' | 'followup';

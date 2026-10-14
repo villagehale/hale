@@ -11,7 +11,6 @@ import {
 import { CONNECTOR_CONNECTED_TEXT, CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
 import {
   forwardAddressReply,
-  forwardRevokeAskReply,
   forwardRevokeDeclinedReply,
   forwardRevokeReply,
   matchForwardAddressRequest,
@@ -70,7 +69,6 @@ import {
   approvedReceipt,
   declinedReceipt,
   failureReply,
-  partialFailureReply,
   whichOneReply,
 } from '~/lib/channel/router/copy';
 import { emailAlertOfferReplies } from '~/lib/integrations/email-alert-offer';
@@ -667,14 +665,6 @@ describe('the forwarding address reply stays GSM-7 and carries the whole address
     });
   });
 
-  it.each(['en', 'fr'] as const)('the %s confirm ask is one segment', (language) => {
-    const body = forwardRevokeAskReply(language);
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 1,
-    });
-  });
-
   it.each(['en', 'fr'] as const)('the %s declined receipt is one segment', (language) => {
     const body = forwardRevokeDeclinedReply(language);
     expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
@@ -869,8 +859,6 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
 describe('nothing Hale texts sends a parent to the app', () => {
   const RENDERED: Record<string, string> = {
     failureReply: failureReply(),
-    'partialFailureReply (1)': partialFailureReply(1),
-    'partialFailureReply (2)': partialFailureReply(2),
     'whichOneReply (overflow)': whichOneReply(
       ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email', 'add_to_routine'],
       true,
