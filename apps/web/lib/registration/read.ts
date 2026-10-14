@@ -82,11 +82,13 @@ export function createRegistrationReader(
         const timeZone =
           target.timeZone ??
           (quote && pageText.includes(quote) ? (extracted.timeZone ?? null) : null);
-        const reading = normalizeExtractedRegistration(
-          { ok: true, extracted, pageText },
-          { ...source, timeZone },
+        const reading = validateReadingClock(
+          normalizeExtractedRegistration(
+            { ok: true, extracted, pageText },
+            { ...source, timeZone },
+          ),
         );
-        // A portal town's unlabelled city-wide date cannot establish its public tier.
+        // Keep a corroborated date for answers without claiming it applies to everyone.
         if (
           reading.status === 'verified' &&
           (target.residentTiers ||
@@ -96,14 +98,13 @@ export function createRegistrationReader(
           !/\b(?:non[- ]?resident|public|general)\s+registration\b/i.test(extracted.evidence ?? '')
         ) {
           return {
-            ...source,
-            timeZone,
-            reader: 'ai',
-            status: 'unverified',
-            reason: 'eligibility_unverified',
+            ...reading,
+            dates: reading.dates.map((date) =>
+              date.kind === 'general_open' ? { ...date, kind: 'unclassified_open' as const } : date,
+            ),
           };
         }
-        return validateReadingClock(reading);
+        return reading;
       } catch {
         return { ...source, reader: 'ai', status: 'unreadable', reason: 'extract_failed' };
       }
@@ -158,6 +159,15 @@ export function registrationDate(
     reading.dates.find((date) => date.kind === 'general_open') ??
     null
   );
+}
+
+/** A corroborated page fact, never an eligible date for scheduling a reminder. */
+export function unclassifiedRegistrationDate(
+  reading: LiveRegistrationReading,
+): LiveRegistrationDate | null {
+  return reading.status === 'verified'
+    ? (reading.dates.find((date) => date.kind === 'unclassified_open') ?? null)
+    : null;
 }
 
 /** Date-only anchors are scheduling markers, not a published midnight opening. */

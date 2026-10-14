@@ -92,6 +92,26 @@ describe('toSmsReply', () => {
     expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
   });
 
+  it.each(['omitted', 'included', 'long'])(
+    'protects a verified registration source when the model link is %s',
+    (kind) => {
+      const sourceUrl =
+        'https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx';
+      const answer = 'Resident registration opens Nov 24, 2026 (America/Toronto).';
+      const raw =
+        kind === 'included'
+          ? `${answer} ${sourceUrl}`
+          : kind === 'long'
+            ? `${answer} ${'Please check the official page for the latest information. '.repeat(8)}`
+            : answer;
+      const reply = toSmsReply(raw, { children: [], now: NOW, sourceUrl });
+      expect(reply).toContain('Nov 24, 2026');
+      expect(reply.endsWith(sourceUrl)).toBe(true);
+      expect(reply.split(sourceUrl)).toHaveLength(2);
+      expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    },
+  );
+
   it('strips markdown the phone would render literally', () => {
     const raw = '**Two swims** this week:\n\n- Mon 4:30\n- Thu 5:15\n\nWhich one?';
 

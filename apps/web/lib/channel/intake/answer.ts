@@ -13,6 +13,7 @@ import {
   type RegistrationReader,
   createRegistrationReader,
   registrationDate,
+  unclassifiedRegistrationDate,
 } from '~/lib/registration/read';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
@@ -378,7 +379,8 @@ async function groundOfficialPages(
         },
         new Date(),
       );
-      if (registrationDate(reading, false)) return { status: 'grounded', reading };
+      if (registrationDate(reading, false) || unclassifiedRegistrationDate(reading))
+        return { status: 'grounded', reading };
     } catch {
       // A refused source is not evidence of an unpublished date.
     }

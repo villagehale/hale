@@ -209,6 +209,25 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).toContain(url);
     expect(outcome.body).not.toMatch(/2026|9:00|not posted/i);
   });
+  it('grounds an unclassified date from the supplied page without claiming public access', async () => {
+    const url = 'https://www.markham.ca/registration';
+    const reader: RegistrationReader = async (target, checkedAt) => {
+      const reading = await published(target, checkedAt);
+      if (reading.status !== 'verified') throw new Error('expected verified fixture');
+      reading.dates[0]!.kind = 'unclassified_open';
+      return reading;
+    };
+    const outcome = await createIntakeAnswerComposer({} as never, reader).compose({
+      ...INPUT,
+      parentWords: `When does swim registration open? ${url}`,
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') throw new Error('expected answer');
+    expect(outcome.body).toContain('2026-10-20 at 09:00 America/New_York');
+    expect(outcome.body).toContain('eligibility');
+    expect(outcome.body).toContain(url);
+    expect(outcome.body).not.toMatch(/couldn't verify|you can register|open to everyone/i);
+  });
 
   it('a supplied course URL is read directly, without a new search', async () => {
     const url = 'https://example.org/registration';

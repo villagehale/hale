@@ -6,6 +6,7 @@ import {
   type RegistrationTarget,
   createRegistrationReader,
   readRegistrationWindows,
+  registrationDate,
   registrationHasOpened,
 } from './read';
 import type { CycleIdentity, ExtractedWindow } from './verify-window';
@@ -173,15 +174,24 @@ describe('live registration reader', () => {
       ),
     ).toBe(false);
   });
-  it('does not promote a portal town’s unlabelled city date to its public tier', async () => {
+  it('retains a portal town’s verified date without promoting unknown eligibility to public access', async () => {
     const reader = createRegistrationReader({
       fetchBody: async () => text,
       extract: async () => extraction,
     });
-    expect(await reader({ ...target, residentTiers: true }, now)).toMatchObject({
-      status: 'unverified',
-      reason: 'eligibility_unverified',
+    const reading = await reader({ ...target, residentTiers: true }, now);
+    expect(reading).toMatchObject({
+      status: 'verified',
+      dates: [{ kind: 'unclassified_open', date: '2026-10-20', time: '09:00' }],
     });
+    expect(registrationDate(reading, false)).toBeNull();
+    expect(registrationDate(reading, true)).toBeNull();
+    const window = {
+      ...target,
+      municipality: 'markham',
+      district: null,
+    } as unknown as RegistrationSourceState;
+    expect(await readRegistrationWindows([window], reader, now, 'L3R')).toEqual([]);
   });
   it('keeps known-host eligibility checks when intake supplies only a generic URL target', async () => {
     const reader = createRegistrationReader({
@@ -194,7 +204,7 @@ describe('live registration reader', () => {
           { ...target, municipality: host, sourceUrl: `https://${host}/registration` },
           now,
         ),
-      ).toMatchObject({ status: 'unverified', reason: 'eligibility_unverified' });
+      ).toMatchObject({ status: 'verified', dates: [{ kind: 'unclassified_open' }] });
     }
     expect(
       await reader(

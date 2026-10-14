@@ -108,8 +108,6 @@ export interface WeekendPick {
   /** What this pick IS. The id is for us; the title/venue are the only renderable parts. */
   candidateRef: { id: string; title: string; venueName: string | null };
   day: WeekendDay;
-  /** Source date retained for strict forthcoming-map filtering, never inferred from a weekday. */
-  eventDate?: string | null;
   /** The kids it fits, by the names the parent gave. Empty when they named nobody. */
   kidNames: string[];
   /** EVERY fact the composer may state about this pick. If it is not here, it is not
@@ -663,7 +661,6 @@ function toWeekendPick(placed: Placed, children: readonly RadarChild[]): Weekend
       venueName: placed.candidate.venueName,
     },
     day: placed.day,
-    eventDate: placed.candidate.eventDate,
     kidNames: namesOf(children, placed.coverage),
     whyFacts: whyFactsFor(placed),
     ...accessFor(placed.candidate),

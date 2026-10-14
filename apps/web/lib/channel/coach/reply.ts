@@ -73,6 +73,8 @@ export interface SmsReplyArgs {
   referral?: string;
   /** A read watch's source, protected from trimming even when its date is unverified. */
   sourceUrl?: string;
+  /** Current read's date and eligibility warning survive trimming beside another action. */
+  registrationCaveat?: string;
   /**
    * Pages for activities this turn offered. Appended only when the reply names the
    * activity. The model does not write the URL.
@@ -312,12 +314,8 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     // log counts the screen miss; the body never reaches it (rule #1).
     console.error('channel coach: model composed a safety referral; sent what it wrote');
   }
-  // The protected tail. Both sources are model-composed and both were accepted by the
-  // tool that gated them, so both are appended after the fit rather than trimmed with
-  // the answer. They are JOINED rather than made exclusive because "which one wins" is
-  // not a judgement this function is in a position to make — and a turn that somehow
-  // registered both is a turn where the parent must see both, or be promised something
-  // that is not in the message.
+  // Tool-accepted offers and current registration caveats must survive trimming.
+  // Keep them together: composing both must never hide either.
   //
   // Redacted with the answer, not after it: the referral line is composed by the model
   // and is the one piece of outbound text a parent forwards to somebody outside the
@@ -326,7 +324,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // A plan offer or a referral still crowds the count out. An activity URL does not:
   // the count is about that find, and the URL is that find's page, so both go out.
   const protectedTail = redactTeenNames(
-    [args.planOffer, args.referral, args.sourceUrl]
+    [args.planOffer, args.referral, args.sourceUrl, args.registrationCaveat]
       .map((part) => part?.trim() ?? '')
       .filter((part) => part !== '')
       .join(' '),

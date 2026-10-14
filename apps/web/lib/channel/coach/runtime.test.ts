@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RegisteredTool, Skill } from '@hale/agent';
+import { type RegisteredTool, type Skill, invokeTool } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
@@ -25,6 +25,24 @@ const PARENT = '22222222-2222-4222-8222-222222222222';
 const CONVERSATION = '33333333-3333-4333-8333-333333333333';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
 const LINK = 'https://app.villagehale.com';
+const WATCH = {
+  id: '44444444-4444-4444-8444-444444444444',
+  town: 'King',
+  programs: 'Winter 2027',
+  sourceUrl: 'https://www.king.ca/recreation',
+  optIn: 'opted_in' as const,
+  outcome: null,
+};
+
+function readThenAnswer(answer: string, ids = [WATCH.id]): ChannelCoachPorts['runAgent'] {
+  return async (args) => {
+    const tool = args.tools.find((tool) => tool.name === 'read_registration_page');
+    if (!tool) throw new Error('registration read tool missing');
+    for (const watchId of ids)
+      await invokeTool(tool, { watchId }, args.toolContext, args.guardDeps);
+    return answering(answer)(args);
+  };
+}
 
 /** 16y at NOW → teenager, derived from the @hale/types boundary, not from output. */
 const TEEN = { name: 'Nora', gender: 'girl', dateOfBirth: '2010-03-04' };
@@ -75,7 +93,8 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
       return { question: input.question, transcript: input.transcript } as never;
     },
     loadChildren: async () => [TEEN],
-    loadRegistrationWindows: async () => [],
+    loadRegistrationWatches: async () => [],
+    readRegistrationWatch: async () => null,
     buildTools: () => [] as RegisteredTool[],
     // Nothing nearby by default: the surface flag is off for months, so silence is the
     // ordinary answer and the cases that exercise it override this.
@@ -99,39 +118,67 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
 }
 
 describe('channelCoachRuntime', () => {
-  it('loads live registration facts only on a relevant turn and appends their policy', async () => {
+  it('loads watch metadata on every turn, without reading pages before the model chooses', async () => {
     let reads = 0;
+    let lists = 0;
     let instructions = '';
     const p = ports({
-      loadRegistrationWindows: async () => {
+      loadRegistrationWatches: async () => {
+        lists++;
+        return [WATCH];
+      },
+      readRegistrationWatch: async () => {
         reads++;
-        return [];
+        return null;
       },
       runAgent: async (args) => {
         instructions = args.skill.instructions;
+        expect(args.context).toHaveProperty('registrationWatches', [WATCH]);
+        expect(args.context).not.toHaveProperty('registrationWindows');
+        expect(args.skill.meta.tools).toContain('read_registration_page');
+        expect(reads).toBe(0);
         return answering('Thanks.')(args);
       },
     });
-    await channelCoachRuntime(p).respond(turn('How do I help with bedtime?'), []);
+    const ordinary = await channelCoachRuntime(p).respond(turn('How do I help with bedtime?'), []);
+    expect(ordinary.reply).toBe('Thanks.');
     await channelCoachRuntime(p).respond(turn('Cancel Thursday swim'), []);
     expect(reads).toBe(0);
-    expect(instructions).toBe(SKILL.instructions);
+    expect(lists).toBe(2);
     await channelCoachRuntime(p).respond(turn('When does registration open?'), []);
-    expect(reads).toBe(1);
+    expect(reads).toBe(0);
+    expect(lists).toBe(3);
     expect(instructions).toContain('Registration live truth');
   });
-  it('a date follow-up to a registration discussion also reads live, not the old transcript', async () => {
-    let reads = 0;
-    const p = ports({
-      loadTranscript: async () => [{ role: 'assistant', content: 'Registration opens Sep 1.' }],
-      loadRegistrationWindows: async () => {
-        reads++;
-        return [];
-      },
-    });
-    await channelCoachRuntime(p).respond(turn('What time now?'), []);
-    expect(reads).toBe(1);
-  });
+  it.each(['When do registrations open?', 'When can I enroll?', 'What time now?'])(
+    'lets the model read a tracked page for %s without a keyword gate',
+    async (question) => {
+      let reads = 0;
+      const p = ports({
+        loadTranscript: async () => [{ role: 'assistant', content: 'Registration opens Sep 1.' }],
+        loadRegistrationWatches: async () => [WATCH],
+        readRegistrationWatch: async (familyId, watchId) => {
+          expect(familyId).toBe(FAMILY);
+          expect(watchId).toBe(WATCH.id);
+          reads++;
+          return {
+            town: WATCH.town,
+            programs: WATCH.programs,
+            opensFor: '2026-11-24 (opening time not published) America/Toronto',
+            residentsFirst: false,
+            generalOpens: null,
+            ageApproximate: false,
+            watching: true,
+            sourceUrl: WATCH.sourceUrl,
+          };
+        },
+        runAgent: readThenAnswer('Registration opens Nov 24, 2026 (America/Toronto).'),
+      });
+      const result = await channelCoachRuntime(p).respond(turn(question), []);
+      expect(reads).toBe(1);
+      expect(result.reply).toContain(WATCH.sourceUrl);
+    },
+  );
   it('answers a turn with the post-processed reply', async () => {
     const { reply } = await channelCoachRuntime(ports()).respond(turn(), []);
 
@@ -141,20 +188,19 @@ describe('channelCoachRuntime', () => {
   it('a held registration answer retains the source even when the model omits its link', async () => {
     const sourceUrl = 'https://www.king.ca/recreation';
     const p = ports({
-      loadRegistrationWindows: async () => [
-        {
-          town: 'King',
-          programs: 'Winter 2027',
-          opensFor: 'Current date could not be verified. Do not use a cached date.',
-          residentsFirst: false,
-          generalOpens: null,
-          ageApproximate: false,
-          watching: true,
-          reminderState: 'paused',
-          sourceUrl,
-        },
-      ],
-      runAgent: answering(
+      loadRegistrationWatches: async () => [WATCH],
+      readRegistrationWatch: async () => ({
+        town: 'King',
+        programs: 'Winter 2027',
+        opensFor: 'Current date could not be verified. Do not use a cached date.',
+        residentsFirst: false,
+        generalOpens: null,
+        ageApproximate: false,
+        watching: true,
+        reminderState: 'paused',
+        sourceUrl,
+      }),
+      runAgent: readThenAnswer(
         "I couldn't verify the current date. Date reminders are paused while I check again.",
       ),
     });
@@ -165,6 +211,119 @@ describe('channelCoachRuntime', () => {
     expect(reply).toContain("couldn't verify");
     expect(reply).toContain(sourceUrl);
     expect(reply).not.toMatch(/\b(?:2026|2027|midnight|09:00)\b/);
+  });
+
+  it.each([false, true])(
+    'preserves eligibility on overflow without hiding another draft (draft=%s)',
+    async (drafted) => {
+      const sourceUrl =
+        'https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information';
+      const p = ports({
+        buildTools: (_turn, onDraft) => {
+          if (drafted) onDraft('another-action');
+          return [];
+        },
+        loadRegistrationWatches: async () => [WATCH],
+        readRegistrationWatch: async () => ({
+          town: 'Markham',
+          programs: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
+          opensFor: 'No opening date confirmed for this household (eligibility unconfirmed).',
+          residentsFirst: false,
+          generalOpens: null,
+          unclassifiedOpens: '2026-08-11 at 06:30 America/Toronto',
+          ageApproximate: false,
+          watching: true,
+          reminderState: 'paused',
+          sourceUrl,
+        }),
+        runAgent: readThenAnswer(
+          `Swim change drafted for approval. The page lists 2026-08-11 at 06:30 America/Toronto for Fall Programs, Swim Lessons and Winter Break Camps. ${'Please check the details. '.repeat(5)} Resident/non-resident eligibility is unconfirmed. Date reminders are paused.`,
+        ),
+      });
+      const { reply } = await channelCoachRuntime(p).respond(turn('When can I register?'), []);
+      expect(reply).toContain('2026-08-11 at 06:30 America/Toronto');
+      if (drafted) {
+        expect(reply).toContain('Swim change drafted for approval.');
+        expect(reply).toContain('Markham:');
+        expect(reply).toContain('resident/non-resident eligibility unconfirmed.');
+        expect(reply).toContain(sourceUrl);
+        return;
+      }
+      expect(reply).toContain('resident/non-resident eligibility unconfirmed');
+      expect(reply).toContain('Date reminders paused.');
+      expect(reply).toContain(sourceUrl);
+      expect(reply).not.toContain('...');
+      expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    },
+  );
+
+  it.each(['active', 'awaiting_confirmation'] as const)(
+    'a verified registration answer retains its source when the watch is %s',
+    async (reminderState) => {
+      const sourceUrl =
+        'https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx';
+      const p = ports({
+        loadRegistrationWatches: async () => [{ ...WATCH, sourceUrl }],
+        readRegistrationWatch: async () => ({
+          town: 'Richmond Hill',
+          programs: 'Winter 2026-2027',
+          opensFor: '2026-11-24 (opening time not published) America/Toronto',
+          residentsFirst: true,
+          generalOpens: null,
+          ageApproximate: false,
+          watching: reminderState === 'active',
+          reminderState,
+          sourceUrl,
+        }),
+        runAgent: readThenAnswer(
+          'Resident registration opens Nov 24, 2026 (America/Toronto). Opening time not published.',
+        ),
+      });
+      const { reply } = await channelCoachRuntime(p).respond(
+        turn('Could you recheck the official page for resident registration?'),
+        [],
+      );
+      expect(reply).toContain('Nov 24, 2026');
+      expect(reply.endsWith(sourceUrl)).toBe(true);
+      expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    },
+  );
+
+  it('retains all live registration sources once, not just the first watch', async () => {
+    const sourceUrls = ['https://www.king.ca/recreation', 'https://www.richmondhill.ca/recreation'];
+    const p = ports({
+      loadRegistrationWatches: async () =>
+        sourceUrls.map((sourceUrl, index) => ({
+          ...WATCH,
+          id: `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+          sourceUrl,
+        })),
+      readRegistrationWatch: async (_familyId, watchId) => ({
+        town: 'tracked course',
+        programs: 'Winter 2027',
+        opensFor: '2026-11-24 (opening time not published) America/Toronto',
+        residentsFirst: false,
+        generalOpens: null,
+        ageApproximate: false,
+        watching: true,
+        reminderState: 'active',
+        sourceUrl: sourceUrls[Number(watchId.slice(-1))],
+      }),
+      runAgent: readThenAnswer(
+        'These registrations open Nov 24, 2026 (America/Toronto).',
+        sourceUrls.map(
+          (_url, index) => `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+        ),
+      ),
+    });
+    const { reply } = await channelCoachRuntime(p).respond(
+      turn('When does registration open for these courses?'),
+      [],
+    );
+    for (const sourceUrl of sourceUrls) {
+      expect(reply.split(sourceUrl)).toHaveLength(2);
+    }
+    expect(reply).not.toContain('undefined');
   });
 
   /**
@@ -353,7 +512,7 @@ describe('channelCoachRuntime', () => {
     });
 
     await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(
-      'channel coach: agent truncated before speaking (1 re-ask)',
+      'channel coach: agent truncated without a complete answer (1 re-ask)',
     );
     expect(p.recorded).toEqual([
       expect.objectContaining({ agentName: 'coach-channel-sms', status: 'failed' }),

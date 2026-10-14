@@ -2,7 +2,7 @@ import { join } from 'node:path';
 vi.mock('~/lib/registration/page', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/registration/page')>()),
   createRegistrationPageFetch: () => async () =>
-    'Tiny Gym, Cartwheels Gym Centre: walking to 3.5 years, Sundays, fall block. Halton Hills, Ontario, Canada. Ongoing program.',
+    'Tiny Gym, Cartwheels Gym Centre: ages 1-3, Sundays 9:30. Fall programs.',
 }));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool, pickLane } from '@hale/agent';
@@ -131,7 +131,7 @@ const TOWN_PAGE = 'https://haltonhills.example/recreation/registration';
 /** What the two legs that opened pages actually read. The refutation checks the merge's
  * quotes against THESE STRINGS, so a fabricated fact cannot survive the journey. */
 const VENUE_TEXT =
-  'Tiny Gym, Cartwheels Gym Centre. Halton Hills, Ontario, Canada. Ongoing program. Fall block runs Sept 14 to Oct 26.\nTiny Gym | Sun | 9:30-10:15 AM | walking to 3.5 years\nTiny Gym (10 wks) .......... $124.00';
+  'Fall block runs Sept 14 to Oct 26.\nTiny Gym | Sun | 9:30-10:15 AM | walking to 3.5 years\nTiny Gym (10 wks) .......... $124.00';
 const TOWN_TEXT =
   'Fall registration opens Tuesday, July 22 at 7:00 a.m. for Halton Hills residents.';
 
@@ -213,10 +213,6 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
                     price: null,
                     source_name: 'Cartwheels Gym Centre',
                     source_url: VENUE_PAGE,
-                    location_quote: 'Halton Hills, Ontario, Canada',
-                    relevance: 'current',
-                    relevance_quote: 'Ongoing program',
-                    when_quote: 'Sundays, fall block',
                   },
                 ],
               }),
@@ -332,9 +328,9 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
                 age_fit: 'walking to 3.5 years',
                 // Merged ACROSS TWO LEGS: the grid line is the venue's, the fee line is
                 // the venue's fee table, and the registration date is the town's portal.
-                when: 'Sun | 9:30-10:15 AM',
+                when: 'Sundays 9:30-10:15, Sept 14 to Oct 26',
                 when_quote: 'Tiny Gym | Sun | 9:30-10:15 AM',
-                price: '$124.00',
+                price: '$124 for the 10-week term',
                 // The poisoned run attributes a figure that is on NO page it read.
                 price_quote: options.poison
                   ? '$310.00 per term'
@@ -346,9 +342,6 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
                 registration_source: TOWN_PAGE,
                 source_name: 'Cartwheels Gym Centre',
                 source_url: VENUE_PAGE,
-                location_quote: 'Halton Hills, Ontario, Canada',
-                relevance: 'current',
-                relevance_quote: 'Ongoing program',
               },
             ],
           };
@@ -389,7 +382,6 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
 
   const GELLERT_TEXT = [
     'Swimming Lessons - Town of Halton Hills',
-    'Halton Hills, Ontario, Canada. Ongoing program. Parent and Tot 1, 2, 3, Gellert Community Centre. Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years.',
     'Halton Hills taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
     GELLERT_FEES,
     FILLER,
@@ -414,7 +406,6 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     const text = options.silentPage
       ? [
           'Swimming Lessons - Town of Halton Hills',
-          'Halton Hills, Ontario, Canada. Ongoing program. Parent and Tot 1, 2, 3, Gellert Community Centre. Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years.',
           'Registration for Fall Recreation Programs opens on Tuesday, September 1.',
           'Our fall lesson schedule will be posted here when it is ready.',
           FILLER,
@@ -501,9 +492,6 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
                   : 'Halton Hills taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
                 source_name: 'Town of Halton Hills',
                 source_url: GELLERT_PAGE,
-                location_quote: 'Halton Hills, Ontario, Canada',
-                relevance: 'current',
-                relevance_quote: 'Ongoing program',
               },
             ],
           };
@@ -557,7 +545,8 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
           tools: [],
         },
       }),
-      loadRegistrationWindows: async () => [],
+      loadRegistrationWatches: async () => [],
+      readRegistrationWatch: async () => null,
       loadTranscript: async () => [],
       loadContext: async (input) => ({
         parentName: null,

@@ -71,9 +71,6 @@ const rowSchema = z.object({
   registration_source: z.string().nullish(),
   source_name: z.string().nullish(),
   source_url: z.string().nullish(),
-  location_quote: z.string().nullish(),
-  relevance: z.enum(['current', 'unknown', 'past', 'wrong_location', 'outside_window']).nullish(),
-  relevance_quote: z.string().nullish(),
 });
 
 export type SynthesisRow = z.infer<typeof rowSchema>;
@@ -118,17 +115,11 @@ const synthesisJsonSchema: Anthropic.Tool.InputSchema = {
           registration_source: { type: 'string' },
           source_name: { type: 'string' },
           source_url: { type: 'string' },
-          location_quote: { type: 'string' },
-          relevance: {
-            type: 'string',
-            enum: ['current', 'unknown', 'past', 'wrong_location', 'outside_window'],
-          },
-          relevance_quote: { type: 'string' },
         },
         // The schedule facts and their quotes are omitted for the reason ActivityPick
         // states: a required field a page never published is one the model can only
         // satisfy by inventing or by dropping the whole find, and it chooses dropping.
-        required: ['name', 'age_fit', 'source_name', 'source_url', 'location_quote', 'relevance'],
+        required: ['name', 'age_fit', 'source_name', 'source_url'],
       },
     },
   },
@@ -171,7 +162,6 @@ export function synthesisUserMessage(query: ActivityQuery, fanOut: FanOutResult)
     ...(query.town ? { town: query.town } : {}),
     ...(query.stage ? { stage: query.stage } : {}),
     ...(query.window ? { window: query.window } : {}),
-    as_of: new Date().toISOString().slice(0, 10),
     legs: fanOut.legs.map(legPayload),
   });
 }

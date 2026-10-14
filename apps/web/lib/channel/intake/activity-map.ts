@@ -1,7 +1,6 @@
 import { STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { activityRecommendationKey } from '~/lib/village/live';
 import { type WeekendPick, asciiCopy } from './radar-decide';
@@ -160,7 +159,7 @@ export interface ActivityMap {
 }
 
 function webLine(pick: ActivityPick): string {
-  const when = pick.when || pick.eventDate ? ` - ${pick.when || pick.eventDate}` : '';
+  const when = pick.when ? ` - ${pick.when}` : '';
   const price = pick.price ? ` - ${pick.price}` : '';
   return asciiCopy(`${pick.name} (${pick.ageFit})${when}${price}`);
 }
@@ -190,7 +189,7 @@ function categoryQuery(
     .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
   const deidentified = deidentifyActivityQuery({
     subject: category.subject,
-    window: 'this week',
+    window: 'this year',
     municipality,
     stage: stageFromAgeInMonths(Math.min(...ages)),
     householdNames,
@@ -221,34 +220,17 @@ export async function collectActivityMap(input: {
   areaCoarse: string | null;
   civic: readonly WeekendPick[];
   familyId: string;
-  now?: Date;
-  timeZone?: string;
 }): Promise<ActivityMap> {
-  const today = dayKeyOf(input.now ?? new Date(), input.timeZone ?? DEFAULT_TIMEZONE);
-  const weekEnd = new Date(`${today}T00:00:00Z`);
-  weekEnd.setUTCDate(weekEnd.getUTCDate() + ((7 - weekEnd.getUTCDay()) % 7));
-  const through = weekEnd.toISOString().slice(0, 10);
-  const futureDate = (date: string | null | undefined): boolean => {
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-    const parsed = new Date(`${date}T00:00:00Z`);
-    return (
-      Number.isFinite(parsed.getTime()) &&
-      parsed.toISOString().slice(0, 10) === date &&
-      date > today &&
-      date <= through
-    );
-  };
   const ages = input.children
     .map((child) => child.ageMonths)
     .filter((age): age is number => age !== null);
   const categories = categoriesForAges(ages);
-  const civic = input.civic.filter((pick) => futureDate(pick.eventDate) && pick.verifiedUrl);
   const civicGroup: ActivityMapGroup | null =
-    civic.length > 0
+    input.civic.length > 0
       ? {
           category: 'free_public',
-          lines: civic.slice(0, MAX_MAP_ITEMS_PER_GROUP).map(civicLine),
-          titles: civic
+          lines: input.civic.slice(0, MAX_MAP_ITEMS_PER_GROUP).map(civicLine),
+          titles: input.civic
             .slice(0, MAX_MAP_ITEMS_PER_GROUP)
             .map((pick) => pick.candidateRef.title.trim()),
         }
@@ -271,9 +253,7 @@ export async function collectActivityMap(input: {
         const found = await input.finder?.find(query);
         if (!found || !found.found) return empty;
         anyUsed = true;
-        const picks = found.picks
-          .filter((pick) => futureDate(pick.eventDate) && pick.sourceUrl)
-          .slice(0, MAX_MAP_ITEMS_PER_GROUP);
+        const picks = found.picks.slice(0, MAX_MAP_ITEMS_PER_GROUP);
         return {
           category: category.id,
           lines: picks.map(webLine),
@@ -299,7 +279,8 @@ export async function collectActivityMap(input: {
     if (!group.picks) continue;
     group.picks = group.picks.filter((pick) => {
       const key = activityRecommendationKey(pick);
-      if (!key || seen.has(key)) return false;
+      if (!key) return true;
+      if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });

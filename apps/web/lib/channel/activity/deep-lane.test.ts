@@ -25,7 +25,7 @@ const QUERY: ActivityQuery = {
 
 const VENUE_URL = 'https://cartwheelsgymcentre.example/programs';
 const VENUE_TEXT =
-  'Tiny Gym, Cartwheels Gym Centre. Kinderfun, Cartwheels Gym Centre. Halton Hills, Ontario, Canada. walking to 3.5 years. Ongoing program. Tiny Gym Sundays 9:30-10:15, Sept 14 to Oct 26. $124 per term. Registration has been open since July 22.';
+  'Tiny Gym Sundays 9:30-10:15, Sept 14 to Oct 26. $124 per term. Registration has been open since July 22.';
 
 function leg(angle: DeepAngle, overrides: Partial<AngleLeg> = {}): AngleLeg {
   return {
@@ -55,9 +55,6 @@ function backedRow(overrides: Partial<SynthesisRow> = {}): SynthesisRow {
     registration_quote: 'Registration has been open since July 22',
     source_name: 'Cartwheels Gym Centre',
     source_url: VENUE_URL,
-    location_quote: 'Halton Hills, Ontario, Canada',
-    relevance: 'current',
-    relevance_quote: 'Ongoing program',
     ...overrides,
   };
 }
@@ -86,20 +83,8 @@ describe('runDeepLane', () => {
     const lane = deps(
       [
         leg('venue_site'),
-        leg('municipal', {
-          status: 'failed',
-          pagesRead: 0,
-          pages: [],
-          notes: '',
-          reason: 'research_failed: timed out',
-        }),
-        leg('registration', {
-          status: 'unread',
-          pagesRead: 0,
-          pagesRefused: 2,
-          pages: [],
-          notes: '',
-        }),
+        leg('municipal', { status: 'failed', pagesRead: 0, pages: [], notes: '', reason: 'research_failed: timed out' }),
+        leg('registration', { status: 'unread', pagesRead: 0, pagesRefused: 2, pages: [], notes: '' }),
       ],
       { status: 'synthesised', rows: [backedRow()] },
     );
@@ -119,24 +104,27 @@ describe('runDeepLane', () => {
   });
 
   it('drops the rows the refutation breaks and counts them in the evidence', async () => {
-    const lane = deps([leg('venue_site'), leg('municipal'), leg('registration')], {
-      status: 'synthesised',
-      rows: [
-        backedRow(),
-        // Cited to a page no leg opened - the #529 citation defect.
-        backedRow({ source_url: 'https://invented.example/schedule' }),
-        // A fee that is nowhere in the notes.
-        backedRow({
-          name: 'Kinderfun, Cartwheels Gym Centre',
-          price: '$310 per term',
-          price_quote: '$310 per term',
-          when: null,
-          when_quote: null,
-          registration: null,
-          registration_quote: null,
-        }),
-      ],
-    });
+    const lane = deps(
+      [leg('venue_site'), leg('municipal'), leg('registration')],
+      {
+        status: 'synthesised',
+        rows: [
+          backedRow(),
+          // Cited to a page no leg opened - the #529 citation defect.
+          backedRow({ source_url: 'https://invented.example/schedule' }),
+          // A fee that is nowhere in the notes.
+          backedRow({
+            name: 'Kinderfun, Cartwheels Gym Centre',
+            price: '$310 per term',
+            price_quote: '$310 per term',
+            when: null,
+            when_quote: null,
+            registration: null,
+            registration_quote: null,
+          }),
+        ],
+      },
+    );
 
     const run = await runDeepLane(lane, QUERY);
 
@@ -147,13 +135,7 @@ describe('runDeepLane', () => {
   });
 
   it('never calls the merge when no angle opened a page, and says UNREAD', async () => {
-    const unread = {
-      status: 'unread' as const,
-      pagesRead: 0,
-      pagesRefused: 2,
-      pages: [],
-      notes: '',
-    };
+    const unread = { status: 'unread' as const, pagesRead: 0, pagesRefused: 2, pages: [], notes: '' };
     const lane = deps(
       [leg('venue_site', unread), leg('municipal', unread), leg('registration', unread)],
       { status: 'synthesised', rows: [backedRow()] },

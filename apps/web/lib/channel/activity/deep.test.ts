@@ -8,8 +8,8 @@ import {
   createDeepResearcher,
   toDeepSlots,
 } from './deep';
-import type { ActivityQuery } from './deidentify';
 import { FETCH_FRESHNESS_MS } from './evidence';
+import type { ActivityQuery } from './deidentify';
 
 /**
  * THE DEEP PASS — the leg that opens the venue's pages instead of reading snippets.
@@ -37,12 +37,7 @@ const SLOT = {
   price: '$124 per term',
   registration: 'Registration open since July 22',
   source_name: 'Cartwheels Gym Centre',
-  source_url: 'https://x.ca/p',
-  location_quote: 'Halton Hills, Ontario, Canada',
-  relevance: 'current' as const,
-  relevance_quote: 'Ongoing program',
-  when_quote: 'Sundays 9:30-10:15, Sept 14 to Oct 26',
-  price_quote: '$124 per term',
+  source_url: 'https://cartwheelsgymcentre.com/programs.php',
 };
 
 function message(content: unknown[]): Anthropic.Message {
@@ -70,10 +65,7 @@ function researchTurn(opts: {
         type: 'web_fetch_result',
         url,
         retrieved_at: new Date(Date.now() - (opts.retrievedAgoMs ?? 60_000)).toISOString(),
-        content: {
-          type: 'document',
-          source: { type: 'text', data: `${JSON.stringify(SLOT)} Ongoing program` },
-        },
+        content: { type: 'document', source: { type: 'text', data: 'Sundays 9:30 - 10:15' } },
       },
     });
   }
@@ -142,7 +134,7 @@ describe('toDeepSlots', () => {
       price: '$124 per term',
       registration: 'Registration open since July 22',
       sourceName: 'Cartwheels Gym Centre',
-      sourceUrl: 'https://x.ca/p',
+      sourceUrl: 'https://cartwheelsgymcentre.com/programs.php',
       source: 'web',
     });
   });
@@ -415,7 +407,6 @@ describe('createDeepResearcher', () => {
     const sent = JSON.stringify(requests[0]?.messages);
     expect(JSON.parse(JSON.parse(sent)[0].content)).toEqual({
       mode: 'deep_research',
-      as_of: new Date().toISOString().slice(0, 10),
       subject: 'Cartwheels Gym Centre',
       town: 'Halton Hills',
       stage: 'toddler',

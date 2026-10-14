@@ -14,7 +14,7 @@ import {
 vi.mock('~/lib/registration/page', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/registration/page')>()),
   createRegistrationPageFetch: () => async () =>
-    'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. Halton Hills, Ontario, Canada. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks. Ongoing program. Gym 0 Gym 1 Gym 2 Gym 3 Gym 4',
+    'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks.',
 }));
 
 /**
@@ -79,11 +79,6 @@ const WHOLE_PICK = {
   price: '$142 for 12 weeks',
   source_name: 'Halton Hills Gymnastics Centre',
   source_url: 'https://venue.example/0',
-  location_quote: 'Halton Hills, Ontario, Canada',
-  relevance: 'current' as const,
-  relevance_quote: 'Ongoing program',
-  when_quote: 'Saturdays 9:15am, fall session from Sept 13',
-  price_quote: '$142 for 12 weeks',
 };
 
 interface Seen {
@@ -217,7 +212,7 @@ describe('an ungrounded find never ships', () => {
         }),
       }),
     );
-    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'unverified_picks' });
+    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
   });
   it('fails NAMED when the search returned no results, and never composes', async () => {
     const restore = quiet();

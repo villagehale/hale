@@ -1,6 +1,10 @@
 import { nameAnywhere } from '~/lib/channel/coach/reply';
 import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
-import { registrationDate, registrationWhen } from '~/lib/registration/read';
+import {
+  registrationDate,
+  registrationWhen,
+  unclassifiedRegistrationDate,
+} from '~/lib/registration/read';
 import type { ExtractedChild } from './extract';
 
 export const NOT_POSTED_YET = "I couldn't verify the current date.";
@@ -36,6 +40,13 @@ export function officialPageFallbackReply(pendingAsk: string, sourceUrl?: string
 
 export function officialPageReply(reading: LiveRegistrationReading, pendingAsk: string): string {
   const date = registrationDate(reading, false);
+  const unclassified = unclassifiedRegistrationDate(reading);
+  if (unclassified)
+    return withSource(
+      `The page lists registration ${registrationWhen(reading, unclassified)}; resident/non-resident eligibility is unconfirmed. I can't confirm this applies to you.`,
+      pendingAsk,
+      reading.sourceUrl,
+    );
   return date
     ? withSource(`The page says ${registrationWhen(reading, date)}.`, pendingAsk, reading.sourceUrl)
     : officialPageFallbackReply(pendingAsk, reading.sourceUrl);

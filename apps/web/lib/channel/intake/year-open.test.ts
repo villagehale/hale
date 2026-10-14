@@ -16,7 +16,7 @@ describe('yearOpenQuery', () => {
     expect(YEAR_OPEN_SUBJECT).toContain('examples not a limit');
     expect(namesAVenue(YEAR_OPEN_SUBJECT)).toBe(false);
     expect(query.query.stage).toBe('toddler');
-    expect(query.query.town).toBe('Halton Hills, Ontario, Canada');
+    expect(query.query.town).toBe('Halton Hills');
     expect(query.query.window).toBe('this year');
     expect(query.query.subject).not.toMatch(/toddler|baby|teenager|preschool/);
     expect(JSON.stringify(query.query)).not.toContain('Seb');

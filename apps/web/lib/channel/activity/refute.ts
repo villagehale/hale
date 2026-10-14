@@ -1,6 +1,5 @@
 import { plainText } from '~/lib/channel/coach/reply';
 import type { DeepSlot } from './deep';
-import { guardActivityPick } from './pick-evidence';
 import { type PageEvidence, normaliseForMatch, preparePage, quoteIsBackedBy } from './quote-match';
 import type { SynthesisRow } from './synthesis';
 
@@ -71,11 +70,14 @@ export type SlotRefusalReason =
   | 'bad_citation'
   | 'uncited_page'
   | 'incomplete_row'
-  | 'irrelevant_row'
   | 'no_backed_fact';
 
 /** Why one fact inside a surviving row was dropped. */
-export type FactRefusalReason = 'no_quote' | 'quote_too_short' | 'quote_absent' | 'source_not_read';
+export type FactRefusalReason =
+  | 'no_quote'
+  | 'quote_too_short'
+  | 'quote_absent'
+  | 'source_not_read';
 
 export interface RefutationResult {
   /** The rows that survived, in the shape the composer and the share page already read. */
@@ -174,7 +176,6 @@ function tryFact(
 export function refuteSlots(
   rows: readonly SynthesisRow[],
   pages: ReadonlyArray<{ url: string; text: string }>,
-  query?: { town: string | null; window: string | null; asOf: string },
 ): RefutationResult {
   const byPage = new Map<string, PageEvidence>();
   for (const page of pages) {
@@ -193,7 +194,6 @@ export function refuteSlots(
     bad_citation: 0,
     uncited_page: 0,
     incomplete_row: 0,
-    irrelevant_row: 0,
     no_backed_fact: 0,
   };
   const factReasons: Record<FactRefusalReason, number> = {
@@ -210,8 +210,7 @@ export function refuteSlots(
     slotsRefused += 1;
   };
 
-  for (const proposed of rows) {
-    let row = proposed;
+  for (const row of rows) {
     const sourceUrl = citation(row.source_url);
     if (sourceUrl === null) {
       refuse('bad_citation');
@@ -227,23 +226,6 @@ export function refuteSlots(
     if (name === '' || ageFit === '' || sourceName === '') {
       refuse('incomplete_row');
       continue;
-    }
-    if (query) {
-      const guarded = guardActivityPick(
-        {
-          ...row,
-          source_url: pageKey(sourceUrl),
-          when_source: row.when_source ? pageKey(row.when_source) : null,
-          price_source: row.price_source ? pageKey(row.price_source) : null,
-        },
-        pages.map((page) => ({ ...page, url: pageKey(page.url) })),
-        query,
-      );
-      if (!guarded) {
-        refuse('irrelevant_row');
-        continue;
-      }
-      row = { ...row, when: guarded.when, price: guarded.price };
     }
 
     const when = tryFact(row.when, row.when_quote, row.when_source, sourceUrl, byPage);

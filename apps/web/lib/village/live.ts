@@ -103,11 +103,7 @@ export async function findFamilyActivities(
   const towns = area ? resolveMunicipalities(area) : [];
   const storedCity = families?.city?.trim() || '';
   const city = storedCity && scrubResidualPii(storedCity).trim() === storedCity ? storedCity : null;
-  const storedProvince = families?.province?.trim() || '';
-  const province =
-    scrubResidualPii(storedProvince).trim() === storedProvince ? storedProvince : null;
-  if (towns.length !== 1 && (!city || (!province && !city.includes(','))))
-    return { picks: [], reason: 'no_area' };
+  if (towns.length !== 1 && !city) return { picks: [], reason: 'no_area' };
   const youngest = [...eligible].sort(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
   )[0]!;
@@ -124,7 +120,7 @@ export async function findFamilyActivities(
   // A stored city is coarse context, not a postal code or precise home address.
   const found = await (options.finder ?? createActivityFinder(activityClient)).find({
     ...query.query,
-    town: query.query.town ?? (city ? [city, province].filter(Boolean).join(', ') : null),
+    town: query.query.town ?? city,
     stages: [...new Set(eligible.map((child) => deriveStage(child.dateOfBirth, now)))],
   });
   if (found.found) {

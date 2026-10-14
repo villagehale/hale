@@ -4,12 +4,7 @@ import type { DeepFailure, DeepResult } from './deep';
 import type { ActivityQuery } from './deidentify';
 import type { FollowUpEvidence } from './deliver';
 import { readPageVerdict } from './evidence';
-import {
-  type AngleResearcher,
-  type FanOutResult,
-  createAngleResearcher,
-  runFanOut,
-} from './fanout';
+import { type AngleResearcher, type FanOutResult, createAngleResearcher, runFanOut } from './fanout';
 import { type RefutationResult, refuteSlots } from './refute';
 import { type SynthesisOutcome, type Synthesiser, createSynthesiser } from './synthesis';
 
@@ -121,7 +116,10 @@ function evidenceOf(
  * the hourly sweep keeps it with its own single-leg pass — an hour later, with a different
  * instrument, which is a better second attempt than the same one twice.
  */
-export async function runDeepLane(deps: DeepLaneDeps, query: ActivityQuery): Promise<DeepLaneRun> {
+export async function runDeepLane(
+  deps: DeepLaneDeps,
+  query: ActivityQuery,
+): Promise<DeepLaneRun> {
   const fanOut = await runFanOut(deps.researcher, query);
 
   if (fanOut.legsRead === 0) {
@@ -173,10 +171,7 @@ export async function runDeepLane(deps: DeepLaneDeps, query: ActivityQuery): Pro
   // published facts (fanout.ts `MAX_PAGE_NOTE_CHARS`, and the 2026-08-24 run where it
   // refused fifty-three of them).
   const pages = fanOut.legs.flatMap((leg) => [...leg.pages]);
-  const refutation = refuteSlots(merged.rows, pages, {
-    ...query,
-    asOf: new Date().toISOString().slice(0, 10),
-  });
+  const refutation = refuteSlots(merged.rows, pages);
 
   return {
     result: {

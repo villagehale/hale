@@ -132,6 +132,91 @@ function harness(reading: LiveRegistrationReading, target: Awaited<ReturnType<ty
 }
 
 describe('live registration storage → cron → outbound', () => {
+  it('exposes the verified page date to Coach but pauses reminders when eligibility is unknown', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const target = await watch('coach-unknown-eligibility');
+    const reading = page(target.url, '2026-10-18');
+    if (reading.status !== 'verified') throw new Error('expected verified fixture');
+    reading.dates[0]!.kind = 'unclassified_open';
+    vi.spyOn(registrationReaderModule, 'createRegistrationReader').mockReturnValue(
+      async () => reading,
+    );
+    const context = await productionChannelCoachPorts(db.database).readRegistrationWatch(
+      target.familyId,
+      target.sequenceId,
+      NOW,
+    );
+    expect(context).toMatchObject({
+      unclassifiedOpens: '2026-10-18 at 09:00 America/New_York',
+      residentOpens: null,
+      generalOpens: null,
+      residentsFirst: false,
+      reminderState: 'paused',
+      minuteReminderAvailable: false,
+      sourceUrl: target.url,
+    });
+    expect(context?.opensFor).toContain('eligibility');
+    expect(await row(target.sequenceId)).toMatchObject({
+      lastReading: { status: 'verified', dates: [{ kind: 'unclassified_open' }] },
+      pendingChange: { kind: 'eligibility_unverified' },
+      courseOpensAt: new Date('2026-10-20T13:00:00Z'),
+    });
+  });
+
+  it('cron sends one eligibility caveat with the live date and URL, never an opening reminder', async () => {
+    const target = await watch('cron-unknown-eligibility');
+    const reading = page(target.url, '2026-10-18');
+    if (reading.status !== 'verified') throw new Error('expected verified fixture');
+    reading.dates[0]!.kind = 'unclassified_open';
+    const h = harness(reading, target);
+    h.deps.live!.claimDue = async () => [target.sequenceId];
+    h.deps.live!.read = async () => reading;
+    expect((await runRegistrationSequenceCron(db.database, h.deps, NOW)).failed).toBe(0);
+    expect(h.transport.sent).toHaveLength(1);
+    const body = h.transport.bodies()[0]!;
+    expect(body).toContain('2026-10-18 at 09:00 America/New_York');
+    expect(body).toContain('eligibility');
+    expect(body).toContain('Date reminders are paused');
+    expect(body).toContain(target.url);
+    expect(body).not.toMatch(
+      /2026-10-20|couldn't verify a current registration date|can register/i,
+    );
+    await runRegistrationSequenceCron(db.database, h.deps, NOW);
+    await runRegistrationSequenceCron(db.database, h.deps, new Date('2026-10-18T12:45:00Z'));
+    expect(h.transport.sent).toHaveLength(1);
+    expect((await row(target.sequenceId)).pausedAt).not.toBeNull();
+  });
+
+  it('lists every watch without dates or page reads, and scopes on-demand reads to its family', async () => {
+    const target = await watch('coach-metadata');
+    for (let index = 0; index < 8; index++) {
+      await claimRegistrationWatch(db.database, {
+        familyId: target.familyId,
+        parentUserId: target.parentUserId,
+        sourceUrl: `https://example.org/metadata-${index}`,
+        now: NOW,
+      });
+    }
+    const read = vi.fn(async (target: registrationReaderModule.RegistrationTarget) =>
+      page(target.sourceUrl),
+    );
+    vi.spyOn(registrationReaderModule, 'createRegistrationReader').mockReturnValue(read);
+    const ports = productionChannelCoachPorts(db.database);
+    const watches = await ports.loadRegistrationWatches(target.familyId);
+    expect(watches).toHaveLength(9);
+    expect(read).not.toHaveBeenCalled();
+    expect(JSON.stringify(watches)).not.toMatch(/courseOpensAt|lastReading|2026-10-20/);
+    const last = watches[8];
+    if (!last) throw new Error('expected ninth watch');
+    const other = await seedFamily(db.database, 'other family');
+    expect(await ports.readRegistrationWatch(other.familyId, last.id, NOW)).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+    expect(await ports.readRegistrationWatch(target.familyId, last.id, NOW)).toMatchObject({
+      sourceUrl: last.sourceUrl,
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
   it('a scheduled check catches 20th → 18th before the old reminder is due, then sends the new ladder', async () => {
     const at = new Date('2026-10-12T14:00:00Z');
     const target = await watch('before-old-due', true, at);
@@ -217,16 +302,17 @@ describe('live registration storage → cron → outbound', () => {
       vi.spyOn(registrationReaderModule, 'createRegistrationReader').mockReturnValue(async () =>
         page(target.url, '2026-10-22'),
       );
-      const context = await productionChannelCoachPorts(db.database).loadRegistrationWindows(
+      const context = await productionChannelCoachPorts(db.database).readRegistrationWatch(
         target.familyId,
+        target.sequenceId,
         NOW,
       );
-      expect(context).toContainEqual(
-        expect.objectContaining({
-          opensFor: '2026-10-22 at 09:00 America/New_York',
-          reminderState: 'paused',
-        }),
-      );
+      expect(context).toMatchObject({
+        opensFor: '2026-10-22 at 09:00 America/New_York',
+        residentOpens: null,
+        generalOpens: '2026-10-22 at 09:00 America/New_York',
+        reminderState: 'paused',
+      });
       expect(await row(target.sequenceId)).toMatchObject({
         lastReadAt: NOW,
         courseUrl: target.url,
@@ -236,6 +322,70 @@ describe('live registration storage → cron → outbound', () => {
       });
     },
   );
+  it.each([false, true])(
+    "keeps both live eligibility tiers distinct from this family's resident status (%s)",
+    async (resident) => {
+      const target = await watch(`coach-tiers-${resident}`);
+      await db.database
+        .update(schema.families)
+        .set({ areaCoarse: resident ? 'L4B' : 'L7M' })
+        .where(eq(schema.families.id, target.familyId));
+      const sourceContext = registrationSourceFixture({
+        municipality: 'richmond_hill',
+        programDomain: 'rec_program',
+        cycleLabel: 'Winter 2026-2027',
+        openAt: new Date('2026-11-26T17:00:00Z'),
+        residentOpenAt: new Date('2026-11-26T17:00:00Z'),
+        sourceUrl: target.url,
+      });
+      await db.database
+        .update(schema.registrationSequences)
+        .set({ sourceContext, windowId: sourceContext.id })
+        .where(eq(schema.registrationSequences.id, target.sequenceId));
+      const reading = page(target.url, '2026-12-01', null, 'America/Toronto');
+      if (reading.status !== 'verified') throw new Error('expected verified fixture');
+      reading.dates.unshift({
+        kind: 'resident_open',
+        date: '2026-11-24',
+        time: null,
+        evidence: ['Resident registration: November 24, 2026'],
+      });
+      vi.spyOn(registrationReaderModule, 'createRegistrationReader').mockReturnValue(
+        async () => reading,
+      );
+      const context = await productionChannelCoachPorts(db.database).readRegistrationWatch(
+        target.familyId,
+        target.sequenceId,
+        NOW,
+      );
+      expect(context).toMatchObject({
+        residentsFirst: resident,
+        opensFor: `${resident ? '2026-11-24' : '2026-12-01'} (opening time not published) America/Toronto`,
+        residentOpens: '2026-11-24 (opening time not published) America/Toronto',
+        generalOpens: '2026-12-01 (opening time not published) America/Toronto',
+      });
+      vi.mocked(registrationReaderModule.createRegistrationReader).mockReturnValue(async () => ({
+        sourceUrl: target.url,
+        checkedAt: NOW,
+        timeZone: 'America/Toronto',
+        reader: 'ai',
+        status: 'unreadable',
+        reason: 'fetch_failed',
+      }));
+      const held = await productionChannelCoachPorts(db.database).readRegistrationWatch(
+        target.familyId,
+        target.sequenceId,
+        NOW,
+      );
+      expect(held).toMatchObject({
+        residentOpens: null,
+        generalOpens: null,
+        reminderState: 'paused',
+      });
+      expect(held?.opensFor).not.toMatch(/2026-11-24|2026-12-01/);
+    },
+  );
+
   it('moves only matching open plan and watch deadlines, using their distinct clocks', async () => {
     const target = await watch('promise-deadlines');
     const oldAnchor = new Date('2026-10-20T13:00:00Z');
@@ -646,6 +796,47 @@ describe('live registration storage → cron → outbound', () => {
 });
 
 describe('course link entry', () => {
+  it('keeps an unclassified date in the course-link reply and proposal, without promising scheduled reminders', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const family = await seedFamily(db.database, 'link eligibility');
+    const url = 'https://example.org/unknown-eligibility';
+    const reading = page(url, '2026-10-18');
+    if (reading.status !== 'verified') throw new Error('expected verified fixture');
+    reading.dates[0]!.kind = 'unclassified_open';
+    let summary = '';
+    const handler = registrationLinkHandler({
+      reader: () => async () => reading,
+      draft: async (_database, input) => {
+        summary = input.summary;
+        return action(family.familyId, false);
+      },
+      approve: async () => {
+        throw new Error('a bare link is not approval');
+      },
+    });
+    const response = await handler.handle(db.database, {
+      ...family,
+      body: url,
+      now: NOW,
+      conversationId: randomUUID(),
+      inboundChannelMessageId: null,
+      resolved: null,
+      openQuestions: async () => [],
+      send: async () => ({ channel: 'sms', channelMessageId: null, providerMessageId: 'test' }),
+    });
+    expect(response.claimed).toBe(true);
+    if (!response.claimed) throw new Error('expected claimed link');
+    expect(response.reply).toContain('2026-10-18 at 09:00 America/New_York');
+    expect(response.reply).toContain('eligibility');
+    expect(response.reply).toContain(url);
+    expect(summary).toContain('eligibility');
+    expect(summary).not.toMatch(
+      /Approve to receive a reminder a week ahead|fifteen minutes before/i,
+    );
+    const [saved] = await loadLiveSequences(db.database, undefined, family.familyId);
+    expect(saved?.pausedAt).not.toBeNull();
+    expect(saved?.courseOpensAt).toBeNull();
+  });
   it.each(['America/New_York', 'Europe/London'])(
     'creates an unapproved watch for a public %s course, without a window',
     async (zone) => {

@@ -13,6 +13,7 @@ import {
   registrationHasOpened,
   registrationDate,
   registrationWhen,
+  unclassifiedRegistrationDate,
   type RegistrationReader,
 } from '../read';
 import { loadPreparingSequence } from './prepare-reply';
@@ -135,6 +136,7 @@ export function registrationLinkHandler(
         ctx.now,
       );
       const date = registrationDate(reading, false);
+      const unclassified = unclassifiedRegistrationDate(reading);
       if (date && registrationHasOpened(reading, date, ctx.now)) {
         // The existing PerfectMind spot flow owns courses already open.
         if (sanitizeSpotUrl(sourceUrl).ok) return { claimed: false };
@@ -175,11 +177,13 @@ export function registrationLinkHandler(
           );
         const fact = date
           ? `The page says ${registrationWhen(reading, date)}.`
-          : reading.status === 'unverified' && reading.reason === 'unknown_time_zone'
-            ? 'Please resend the link with the venue timezone (for example America/New_York or Europe/London).'
-            : reading.status === 'unverified'
-              ? 'I could not verify a published registration date yet.'
-              : 'I could not read the registration page right now.';
+          : unclassified
+            ? `The page lists ${registrationWhen(reading, unclassified)}; resident/non-resident eligibility is unconfirmed. I can't confirm this applies to you. Date reminders are paused.`
+            : reading.status === 'unverified' && reading.reason === 'unknown_time_zone'
+              ? 'Please resend the link with the venue timezone (for example America/New_York or Europe/London).'
+              : reading.status === 'unverified'
+                ? 'I could not verify a published registration date yet.'
+                : 'I could not read the registration page right now.';
         let actionId = watch?.actionId ?? null;
         const previous = actionId
           ? (
@@ -203,7 +207,9 @@ export function registrationLinkHandler(
             familyId: ctx.familyId,
             parentUserId: ctx.parentUserId,
             sourceUrl,
-            summary: `${fact} Approve to receive a reminder a week ahead and the evening before${date?.time ? ', plus fifteen minutes before opening' : '; no minute-specific reminder unless the page publishes an opening time'}. Dates are checked on the page before sending. Hale never registers or pays for you.`,
+            summary: unclassified
+              ? `${fact} Approve to keep watching; date reminders stay paused until an applicable date is verified. Dates are checked on the page before sending. Hale never registers or pays for you.`
+              : `${fact} Approve to receive a reminder a week ahead and the evening before${date?.time ? ', plus fifteen minutes before opening' : '; no minute-specific reminder unless the page publishes an opening time'}. Dates are checked on the page before sending. Hale never registers or pays for you.`,
           });
           const attached = await database.transaction(async (tx) => {
             const [updated] = await tx

@@ -48,6 +48,7 @@ import {
   createRegistrationReader,
   registrationDate,
   registrationWhen,
+  unclassifiedRegistrationDate,
 } from '~/lib/registration/read';
 import { refreshRegistrationWatch } from '~/lib/registration/sequence/refresh';
 import { loadLiveSequences, registrationTargetFor } from '~/lib/registration/sequence/run';
@@ -67,7 +68,8 @@ import {
   augmentCoachSkillForGoogleDrafts,
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
-import type { RegistrationWindowContext } from './registration-context';
+import type { RegistrationWatchContext, RegistrationWindowContext } from './registration-context';
+import { READ_REGISTRATION_PAGE, readRegistrationPageTool } from './registration-tool';
 import { type ReplyChild, ReplyNeedsShorter, redactTeenNames, replyCharacterRoom, toSmsReply } from './reply';
 import { shortenOverBudgetReply } from './shorten';
 import {
@@ -131,8 +133,8 @@ const MAX_STEPS = 6;
  * to every turn is room the model finds something to do with.
  *
  * So the room goes to the turn that PROVED it needed it: `runAgent` re-asks a step that
- * hit the ceiling before saying anything, once, with thinking OFF at this same budget
- * (packages/agent/src/agent.ts `isTruncatedBeforeSpeaking`, model.ts `withoutThinking`)
+ * hit the ceiling without a complete answer, once, with thinking OFF at this same budget
+ * (packages/agent/src/agent.ts `needsTruncationRetry`, model.ts `withoutThinking`)
  * — the one request shape on which 400 is a reply ceiling again, because no field on
  * Sonnet 5 bounds the thinking half. Ordinary turns keep the ceiling — and their
  * prompt-cache keys — untouched.
@@ -171,10 +173,12 @@ export interface ChannelCoachPorts {
   /** Every child of the family, un-redacted — the redactor needs the real names to
    * find them in the answer, and it is the only consumer. */
   loadChildren(familyId: string): Promise<ReplyChild[]>;
-  /** The municipal registration windows this family can still act on, and whether the
-   * ladder is armed for them — Hale's flagship job, made visible to a turn that is
-   * being asked about it (see registration-context.ts). */
-  loadRegistrationWindows(familyId: string, now: Date): Promise<RegistrationWindowContext[]>;
+  loadRegistrationWatches(familyId: string): Promise<RegistrationWatchContext[]>;
+  readRegistrationWatch(
+    familyId: string,
+    watchId: string,
+    now: Date,
+  ): Promise<RegistrationWindowContext | null>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -260,29 +264,25 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
-      const [loadedSkill, transcript, children] = await Promise.all([
+      const [loadedSkill, transcript, children, registrationWatches] = await Promise.all([
         ports.loadSkill(turn.parentUserId, turn.familyId),
         ports.loadTranscript(turn.conversationId),
         ports.loadChildren(turn.familyId),
+        ports.loadRegistrationWatches(turn.familyId),
       ]);
-      const registrationQuestion =
-        /\b(register|registration|signup|sign.?up)\b|报名/i.test(turn.body) ||
-        (/\b(fall|winter|spring|summer)\b/i.test(turn.body) &&
-          /\b(find|what|activities|classes|programs)\b/i.test(turn.body)) ||
-        (/\b(when|date|time|open)\b|什么时候|几点|日期|时间/i.test(turn.body) &&
-          transcript
-            .slice(-4)
-            .some((message) => /\b(registration|signup|sign.?up)\b|报名/i.test(message.content)));
-      const registrationWindows = registrationQuestion
-        ? await ports.loadRegistrationWindows(turn.familyId, now)
-        : [];
+      const registrationSources = new Set<string>();
+      const registrationReadings = new Set<RegistrationWindowContext>();
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
       let skill =
         turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
-      if (registrationQuestion) {
+      if (registrationWatches.length > 0) {
         const policy = await loadCronSkill('registration-live-truth');
-        skill = { ...skill, instructions: `${skill.instructions}\n\n${policy.instructions}` };
+        skill = {
+          ...skill,
+          meta: { ...skill.meta, tools: [...skill.meta.tools, READ_REGISTRATION_PAGE] },
+          instructions: `${skill.instructions}\n\n${policy.instructions}`,
+        };
       }
 
       const familyContext = await ports.loadContext({
@@ -328,10 +328,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // THE FAMILY GROUP (group onboarding v2). Absent on a 1:1 turn for the reason the
         // key above is: the ordinary turn's prompt bytes and cache prefix stay untouched.
         ...(turn.audience === 'group' ? { audience: 'group' as const } : {}),
-        // The hand-verified municipal open dates this family must act on, soonest
-        // first, each saying whether Hale's ladder is already on it. Empty for a family
-        // outside the covered set — and then the skill has nothing to claim.
-        registrationWindows,
+        registrationWatches,
       };
 
       return traceAgentRun(
@@ -367,6 +364,18 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               gmailNotice = notice;
             },
           );
+          if (registrationWatches.length > 0) {
+            tools.push(
+              readRegistrationPageTool({
+                watches: registrationWatches,
+                read: (watchId) => ports.readRegistrationWatch(turn.familyId, watchId, now),
+                onRead: (reading) => {
+                  if (reading.sourceUrl) registrationSources.add(reading.sourceUrl);
+                  registrationReadings.add(reading);
+                },
+              }),
+            );
+          }
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.
@@ -425,7 +434,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   ? // The ceiling failed, not the model and not the context — a
                     // distinct event from "said nothing for its own reasons", and the
                     // only one of the three a lane-config change can fix (rule #11).
-                    `channel coach: agent truncated before speaking (${result.truncatedRetries} re-ask)`
+                    `channel coach: agent truncated without a complete answer (${result.truncatedRetries} re-ask)`
                   : 'channel coach: agent returned no answer',
             );
           }
@@ -470,8 +479,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                     ),
                     ...offeredThisTurn.links(),
                   ],
-                  sourceUrl: registrationWindows.find((window) => window.reminderState === 'paused')
-                    ?.sourceUrl,
+                  sourceUrl: [...registrationSources].join(' ') || undefined,
+                  registrationCaveat:
+                    [...registrationReadings]
+                      .filter((reading) => reading.unclassifiedOpens)
+                      .map(
+                        (reading) =>
+                          `${reading.town}: ${reading.unclassifiedOpens}; resident/non-resident eligibility unconfirmed.`,
+                      )
+                      .join(' ') || undefined,
                   nearby: nearby ?? undefined,
                   onTrimmed: (overBy: number) => {
                     trimmedOverBy = overBy;
@@ -581,50 +597,67 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
-    loadRegistrationWindows: async (familyId, now) => {
+    loadRegistrationWatches: async (familyId) =>
+      (await loadLiveSequences(database, undefined, familyId)).map((watch) => ({
+        id: watch.sequenceId,
+        town:
+          watch.window?.municipality ?? new URL(registrationTargetFor(watch).sourceUrl).hostname,
+        programs: watch.window?.cycleLabel ?? 'tracked course',
+        sourceUrl: registrationTargetFor(watch).sourceUrl,
+        optIn: watch.optIn,
+        outcome: watch.outcome,
+      })),
+    readRegistrationWatch: async (familyId, watchId, now) => {
+      let watch = (await loadLiveSequences(database, watchId, familyId))[0];
+      if (!watch) return null;
       const reader = createRegistrationReader();
-      const windows: RegistrationWindowContext[] = [];
-      const watches = (await loadLiveSequences(database, undefined, familyId)).slice(0, 8);
-      for (let watch of watches) {
-        const reading = await reader(registrationTargetFor(watch), now);
-        const resident = watch.window
-          ? resolveFamilyOpen(watch.window, watch.areaCoarse).isResidentWindow
-          : false;
-        await refreshRegistrationWatch(database, {
-          sequenceId: watch.sequenceId,
-          reading,
-          resident,
-          now,
-          cachedAnchor: watch.window
-            ? resolveFamilyOpen(watch.window, watch.areaCoarse).opensForFamilyAt
-            : null,
-          parentTimeZone: watch.timeZone,
-        });
-        const updated = (await loadLiveSequences(database, watch.sequenceId, familyId))[0];
-        if (!updated) continue;
-        watch = updated;
-        const date = registrationDate(reading, resident);
-        windows.push({
-          town: watch.window?.municipality ?? new URL(reading.sourceUrl).hostname,
-          programs: watch.window?.cycleLabel ?? 'tracked course',
-          opensFor: date
-            ? registrationWhen(reading, date)
+      const reading = await reader(registrationTargetFor(watch), now);
+      const resident = watch.window
+        ? resolveFamilyOpen(watch.window, watch.areaCoarse).isResidentWindow
+        : false;
+      await refreshRegistrationWatch(database, {
+        sequenceId: watch.sequenceId,
+        reading,
+        resident,
+        now,
+        cachedAnchor: watch.window
+          ? resolveFamilyOpen(watch.window, watch.areaCoarse).opensForFamilyAt
+          : null,
+        parentTimeZone: watch.timeZone,
+      });
+      const updated = (await loadLiveSequences(database, watch.sequenceId, familyId))[0];
+      if (!updated) return null;
+      watch = updated;
+      const date = registrationDate(reading, resident);
+      const residentDate =
+        reading.status === 'verified'
+          ? reading.dates.find((date) => date.kind === 'resident_open')
+          : null;
+      const generalDate = registrationDate(reading, false);
+      const unclassifiedDate = unclassifiedRegistrationDate(reading);
+      return {
+        town: watch.window?.municipality ?? new URL(reading.sourceUrl).hostname,
+        programs: watch.window?.cycleLabel ?? 'tracked course',
+        opensFor: date
+          ? registrationWhen(reading, date)
+          : unclassifiedDate || residentDate
+            ? 'No opening date confirmed for this household (eligibility unconfirmed).'
             : `Current date could not be verified (${reading.status}). Do not use a cached date.`,
-          residentsFirst: resident && date?.kind === 'resident_open',
-          generalOpens: null,
-          ageApproximate: false,
-          watching: f14EnabledFor(familyId) && watch.optIn === 'opted_in',
-          sourceUrl: reading.sourceUrl,
-          reminderState:
-            watch.optIn !== 'opted_in'
-              ? 'awaiting_confirmation'
-              : watch.pausedAt || !date
-                ? 'paused'
-                : 'active',
-          minuteReminderAvailable: date?.time != null,
-        });
-      }
-      return windows;
+        residentsFirst: resident && date?.kind === 'resident_open',
+        residentOpens: residentDate ? registrationWhen(reading, residentDate) : null,
+        generalOpens: generalDate ? registrationWhen(reading, generalDate) : null,
+        unclassifiedOpens: unclassifiedDate ? registrationWhen(reading, unclassifiedDate) : null,
+        ageApproximate: false,
+        watching: f14EnabledFor(familyId) && watch.optIn === 'opted_in',
+        sourceUrl: reading.sourceUrl,
+        reminderState:
+          watch.optIn !== 'opted_in'
+            ? 'awaiting_confirmation'
+            : watch.pausedAt || !date
+              ? 'paused'
+              : 'active',
+        minuteReminderAvailable: date?.time != null,
+      };
     },
     buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered, onGmailNotice) => {
       return buildChannelCoachTools({

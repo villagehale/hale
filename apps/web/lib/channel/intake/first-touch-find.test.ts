@@ -45,7 +45,7 @@ describe('findThisWeek', () => {
     expect(seen).toMatchObject({
       subject: WEEK_FIND_SUBJECT,
       window: 'this week',
-      town: 'Toronto, Ontario, Canada',
+      town: 'Toronto',
       stage: null,
     });
     expect(JSON.stringify(seen)).not.toContain('M5V');

@@ -226,7 +226,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
         };
       }
       call += 1;
-      liveSourceText = `Halton Hills, Ontario, Canada. Ongoing program. ${JSON.stringify(picksByCall[call] ?? [])}`;
+      liveSourceText = JSON.stringify(picksByCall[call] ?? []);
       searched.push(req.messages?.[0]?.content as string);
       return {
         content: [
@@ -311,7 +311,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
                   type: 'document',
                   source: {
                     type: 'text',
-                    data: 'Halton Hills, Ontario, Canada. Ongoing program. Tiny Gym, Cartwheels Gym Centre. walking to 3.5 years, with a parent. Sundays 9:30-10:15, Sept 14 to Oct 26. Kinderfun, Cartwheels Gym Centre. 3 to 5 years. Saturdays 10:30-11:15, Sept 13 to Oct 25. $124 per term. Registration has been open since July 22.',
+                    data: 'Fall block Sept 14 - Oct 26. Tiny Gym Sundays 9:30-10:15, $124 per term. Registration has been open since July 22.',
                   },
                 },
               },
@@ -337,11 +337,6 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
                   registration: 'Registration has been open since July 22',
                   source_name: 'Cartwheels Gym Centre',
                   source_url: 'https://cartwheelsgymcentre.example/programs',
-                  location_quote: 'Halton Hills, Ontario, Canada',
-                  relevance: 'current',
-                  relevance_quote: 'Ongoing program',
-                  when_quote: 'Sundays 9:30-10:15, Sept 14 to Oct 26',
-                  price_quote: '$124 per term',
                 },
                 {
                   name: 'Kinderfun, Cartwheels Gym Centre',
@@ -351,11 +346,6 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
                   registration: 'Registration has been open since July 22',
                   source_name: 'Cartwheels Gym Centre',
                   source_url: 'https://cartwheelsgymcentre.example/programs',
-                  location_quote: 'Halton Hills, Ontario, Canada',
-                  relevance: 'current',
-                  relevance_quote: 'Ongoing program',
-                  when_quote: 'Saturdays 10:30-11:15, Sept 13 to Oct 25',
-                  price_quote: '$124 per term',
                 },
               ],
             }),
@@ -449,7 +439,8 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
           tools: [],
         },
       }),
-      loadRegistrationWindows: async () => [],
+      loadRegistrationWatches: async () => [],
+      readRegistrationWatch: async () => null,
       loadTranscript: async () => [],
       // The context assembly is the app coach's own, tested where it lives; what this
       // journey is about is the verbs, so it is the minimum shape the runtime reads.
@@ -677,10 +668,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
 
     // Rule #1, at the border: the query that left carried a TOWN and a BAND and no child.
     const sent = web.searched[0] ?? '';
-    expect(JSON.parse(sent)).toMatchObject({
-      town: 'Halton Hills, Ontario, Canada',
-      stage: 'toddler',
-    });
+    expect(JSON.parse(sent)).toMatchObject({ town: 'Halton Hills', stage: 'toddler' });
     expect(sent).not.toContain('Noah');
     expect(sent).not.toContain('L7G');
     expect(sent).not.toMatch(/\b18 months\b/);

@@ -97,21 +97,6 @@ const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const ACTIVITY_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
 const TRAVEL_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'travel', 'query.ts');
-register({ tsconfig: join(REPO_ROOT, 'apps', 'web', 'tsconfig.json') });
-const importTs = (path) => import(pathToFileURL(join(REPO_ROOT, path)).href);
-const {
-  composeJsonSchema: PICKS_TOOL_SCHEMA,
-  groundUserMessage,
-  composeUserMessage,
-} = await importTs('apps/web/lib/channel/activity/lane.ts');
-const { guardActivityPick } = await importTs('apps/web/lib/channel/activity/pick-evidence.ts');
-const { createRegistrationPageFetch, registrationPageUrl } = await importTs(
-  'apps/web/lib/registration/page.ts',
-);
-const { stripHtml } = await importTs('apps/web/lib/registration/fetch.ts');
-const { readEvidence: readSourceEvidence } = await importTs(
-  'apps/web/lib/channel/activity/evidence.ts',
-);
 
 // Mirrors the lane's own constants (activity/lane.ts, activity/followup-note.ts).
 const MAX_PICKS = 3;
@@ -121,6 +106,28 @@ const MAX_FOLLOWUP_ATTEMPTS = 3;
 const FIRST_SEGMENT_CHARS = 153;
 
 // ── the lane's request shapes, replicated from lane.ts ───────────────────────
+
+const PICKS_TOOL_SCHEMA = {
+  type: 'object',
+  properties: {
+    picks: {
+      type: 'array',
+      maxItems: MAX_PICKS,
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          age_fit: { type: 'string' },
+          when: { type: 'string' },
+          price: { type: 'string' },
+          source_name: { type: 'string' },
+        },
+        required: ['name', 'age_fit', 'source_name'],
+      },
+    },
+  },
+  required: ['picks'],
+};
 
 const FOLLOWUP_TOOL_SCHEMA = {
   type: 'object',
@@ -140,6 +147,19 @@ const STRICT_PICKS_TOOL_SCHEMA = {
   },
 };
 const STRICT_FOLLOWUP_TOOL_SCHEMA = { ...FOLLOWUP_TOOL_SCHEMA, additionalProperties: false };
+
+function groundUserMessage(q) {
+  return JSON.stringify({
+    subject: q.subject,
+    ...(q.town ? { town: q.town } : {}),
+    ...(q.stage ? { stage: q.stage } : {}),
+    ...(q.window ? { window: q.window } : {}),
+  });
+}
+
+function composeUserMessage(q, researchNotes) {
+  return JSON.stringify({ ...JSON.parse(groundUserMessage(q)), research_notes: researchNotes });
+}
 
 /** Mirrors `followUpUserMessage` in activity/followup-note.ts, INCLUDING `registration` —
  * a field the shallow lane never fills (so it is null here) but which the deep pass reads
@@ -252,6 +272,97 @@ function groundTools(subject, readPages = false) {
     tools.push({ name: 'web_fetch', type: 'web_fetch_20260209', max_uses: MAX_INLINE_FETCHES });
   }
   return tools;
+}
+
+/**
+ * A FILENAME IS NOT SOMETHING A PAGE SAID - mirrors `readableText` (activity/evidence.ts).
+ *
+ * The fetch pipeline returns markdown, and an image comes back as `![](.../Term_dates_
+ * 20262027.png)` - alt text usually empty, the only words in it the ones somebody typed
+ * into a filename. Live, 2026-08-24: the extract put "Term 1, Fall 2026 (see Term dates
+ * 2026-2027 schedule)" on four slots for a venue whose page never prints 2027 anywhere in
+ * its text. The whole figure came out of that filename, and this corpus is where it was
+ * caught - `fabricated_figure:...:2027`, four times in one pass.
+ *
+ * It is dropped rather than flattened to its alt text because both halves are hazards, and
+ * for the same reason: a schedule published as a PICTURE has not been published in a form
+ * anything downstream can read, and a checker that accepts a filename as the page saying
+ * something is a checker that can be beaten with a URL.
+ */
+function readableText(markdown) {
+  return markdown.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
+}
+
+/** How recent a fetch has to be to count as a page read TODAY — mirrors
+ * `FETCH_FRESHNESS_MS` (activity/evidence.ts). */
+const FETCH_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * What the grounding turn searched, opened and wrote down — mirrors `readEvidence`
+ * (activity/evidence.ts).
+ *
+ * `pagesStale` is not decoration. The provider answers a `web_fetch` out of its own cache
+ * — live probe 2026-08-22, three of one turn's four reads carried a `retrieved_at` five
+ * hours old — and a cached read is a page somebody opened ONCE, not a fact about now. The
+ * runtime subtracts it before granting the licence to say what a page does not carry, and
+ * this eval computed `pagesRead > 0` instead: a corpus scoring a claim production would
+ * have refused. `now` is read at call time, the way the runtime reads its clock, and the
+ * count is frozen into the cached record at RECORD time — which is the only clock under
+ * which the reads in it were ever fresh.
+ *
+ * The three counts are kept apart for the reason that module states: a page REFUSED is not
+ * a page that said nothing, and folding them together rebuilds the benchmark defect one
+ * layer down. The page TEXT rides into the notes because that is what production hands the
+ * composer — an eval reading only the model's prose scores a composer standing on a
+ * summary while production's stands on the page.
+ *
+ * A turn given only `web_search` will sometimes write its findings into a call to
+ * `activity_picks`, a tool it was never handed; reading only text blocks scores that real
+ * answer as `empty_research`, so tool arguments count as notes too.
+ */
+function readEvidence(content, now = Date.now()) {
+  let searchResults = 0;
+  let pagesRead = 0;
+  let pagesStale = 0;
+  let pagesRefused = 0;
+  const pages = [];
+  const notes = [];
+
+  for (const block of content) {
+    if (block.type === 'text') {
+      notes.push(block.text);
+    } else if (block.type === 'tool_use') {
+      notes.push(JSON.stringify(block.input));
+    } else if (block.type === 'web_search_tool_result') {
+      if (Array.isArray(block.content)) searchResults += block.content.length;
+    } else if (block.type === 'web_fetch_tool_result') {
+      const result = block.content;
+      if (result?.type !== 'web_fetch_result') {
+        pagesRefused += 1;
+        continue;
+      }
+      pagesRead += 1;
+      const at = Date.parse(result.retrieved_at ?? '');
+      if (!Number.isFinite(at) || now - at > FETCH_FRESHNESS_MS) pagesStale += 1;
+      const text = readableText(result.content?.source?.data ?? '');
+      if (text !== '') {
+        // The pages are also kept APART, because the question "does this page publish a
+        // schedule" is asked of one page at a time and cannot be asked of a joined blob
+        // (evidence.ts: `pages` and `notes` are separate fields for this reason).
+        pages.push({ url: result.url ?? '', text });
+        notes.push(`--- page: ${result.url ?? ''} ---\n${text}`);
+      }
+    }
+  }
+
+  return {
+    searchResults,
+    pagesRead,
+    pagesStale,
+    pagesRefused,
+    pages,
+    notes: notes.join('\n').trim(),
+  };
 }
 
 /**
@@ -799,7 +910,7 @@ function brokenFollowUp(watch) {
 
 async function cachedGround(opts) {
   const { tag, model, system, userMessage, tools, cachedOnly, getClient, cost } = opts;
-  const canonical = JSON.stringify({ model, system, userMessage, tools, freshPageRead: 1 });
+  const canonical = JSON.stringify({ model, system, userMessage, tools });
   const key = cacheKey(tag, canonical);
   const cached = await cacheGet(key);
   if (cached) return cached;
@@ -809,47 +920,25 @@ async function cachedGround(opts) {
     );
     process.exit(1);
   }
-  const response = await getClient()
-    .messages.stream({
-      model,
-      max_tokens: 4096,
-      system,
-      tools,
-      messages: [{ role: 'user', content: userMessage }],
-    })
-    .finalMessage();
+  const response = await getClient().messages.create({
+    model,
+    max_tokens: 4096,
+    system,
+    tools,
+    messages: [{ role: 'user', content: userMessage }],
+  });
   noteUsage(cost, model, response.usage);
-  const evidence = readSourceEvidence(new Date(), response.content);
-  const urls = new Set(evidence.urlsRead);
-  for (const block of response.content) {
-    if (block.type !== 'web_search_tool_result' || !Array.isArray(block.content)) continue;
-    for (const result of block.content)
-      if (result.type === 'web_search_result') urls.add(result.url);
-  }
-  const fetchPage = createRegistrationPageFetch();
-  const pages = (
-    await Promise.all(
-      [...urls].slice(0, MAX_INLINE_FETCHES).map(async (raw) => {
-        try {
-          const url = registrationPageUrl(raw);
-          const text = stripHtml(await fetchPage(url)).slice(0, 20_000);
-          return text.trim() ? { url, text } : null;
-        } catch {
-          return null;
-        }
-      }),
-    )
-  ).filter(Boolean);
+  const evidence = readEvidence(response.content);
   const value = {
     searchCount: evidence.searchResults,
-    pagesRead: pages.length,
-    pagesStale: 0,
+    pagesRead: evidence.pagesRead,
+    pagesStale: evidence.pagesStale,
     pagesRefused: evidence.pagesRefused,
     // The pages themselves, so `readPageVerdict` can ask what they CARRY. The counts alone
     // could only ever answer "did somebody open something", which is the question the old
     // boolean answered and the wrong one.
-    pages,
-    notes: pages.map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n'),
+    pages: evidence.pages,
+    notes: evidence.notes,
     evidence: searchEvidence(response.content),
   };
   await cachePut(key, value);
@@ -870,7 +959,7 @@ async function main() {
   const followupMaxTokensArg = process.argv
     .find((arg) => arg.startsWith('--followup-max-tokens='))
     ?.split('=')[1];
-  const picksMaxTokens = picksMaxTokensArg === undefined ? 2048 : Number(picksMaxTokensArg);
+  const picksMaxTokens = picksMaxTokensArg === undefined ? 1024 : Number(picksMaxTokensArg);
   const followupMaxTokens = followupMaxTokensArg === undefined ? 400 : Number(followupMaxTokensArg);
   if (!Number.isInteger(picksMaxTokens) || picksMaxTokens < 1) {
     throw new Error('--picks-max-tokens must be a positive integer');
@@ -953,7 +1042,6 @@ async function main() {
 
   const results = [];
   for (const fixture of fixtures) {
-    const asOf = ACTIVITY_AS_OF;
     const failures = [];
     const query = {
       subject: fixture.subject,
@@ -978,7 +1066,7 @@ async function main() {
           tag: evalRunTag(`activity-ground:${fixture.id}`),
           model,
           system: skill.instructions,
-          userMessage: groundUserMessage(query, asOf),
+          userMessage: groundUserMessage(query),
           // The wire shape production sends for THIS subject — search-only for a general
           // question, search plus fetch when it names a place (see groundTools).
           tools: groundTools(fixture.subject),
@@ -1008,7 +1096,7 @@ async function main() {
             model,
             lane: subjectLane,
             system: skill.instructions,
-            userMessage: composeUserMessage(query, ground.notes, asOf),
+            userMessage: composeUserMessage(query, ground.notes),
             toolName: 'activity_picks',
             toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
             toolDescription: 'Return the concrete programs the search actually found.',
@@ -1061,7 +1149,6 @@ async function main() {
         })
       ).value;
     }
-
     const { kept, dropped } = normalizePicks(extracted.picks);
     if (dropped.length > 0) failures.push(`half_find:${dropped.length}`);
     if (kept.length > MAX_PICKS) failures.push(`directory:${kept.length}`);

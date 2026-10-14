@@ -41,7 +41,7 @@ describe('buildWeekdayActivityQuery', () => {
     });
     if (!built.ok) throw new Error(built.reason);
     expect(built.query.stage).toBe('child');
-    expect(built.query.town).toBe('Toronto, Ontario, Canada');
+    expect(built.query.town).toBe('Toronto');
     expect(built.query.subject).toBe('after-school activities (swimming)');
     expect(built.query.window).toBe('weekdays in September');
     const json = JSON.stringify(built.query);

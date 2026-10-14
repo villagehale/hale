@@ -3,11 +3,16 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
 import type { LiveRegistrationDate, LiveRegistrationReading } from '../live-reading';
-import { registrationAnchor, registrationDate, registrationWhen } from '../read';
+import {
+  registrationAnchor,
+  registrationDate,
+  registrationWhen,
+  unclassifiedRegistrationDate,
+} from '../read';
 import { openLegWindows } from './schedule';
 
 export interface RegistrationChange {
-  kind: 'earlier' | 'later' | 'unavailable' | 'restored';
+  kind: 'earlier' | 'later' | 'unavailable' | 'restored' | 'eligibility_unverified';
   key: string;
   sourceUrl: string;
   previousAt: string | null;
@@ -43,6 +48,7 @@ export function decideRegistrationRefresh(
   now: Date,
 ) {
   const date = registrationDate(reading, resident);
+  const unclassified = unclassifiedRegistrationDate(reading);
   let candidate: Date | null = null;
   if (date) {
     try {
@@ -66,6 +72,9 @@ export function decideRegistrationRefresh(
           candidate?.toISOString(),
           date?.time,
           reading.timeZone,
+          ...(kind === 'eligibility_unverified' && unclassified
+            ? [unclassified.date, unclassified.time]
+            : []),
         ]),
       )
       .digest('hex')
@@ -77,7 +86,7 @@ export function decideRegistrationRefresh(
       sourceUrl: reading.sourceUrl,
       previousAt: state.anchor?.toISOString() ?? null,
       candidateAt: candidate?.toISOString() ?? null,
-      date: candidate ? date : null,
+      date: candidate ? date : kind === 'eligibility_unverified' ? (unclassified ?? null) : null,
       timeZone: reading.timeZone,
       status: reading.status,
       notified: false,
@@ -90,7 +99,10 @@ export function decideRegistrationRefresh(
       nextCheckAt: hourly,
       anchor: state.anchor,
       paused: true,
-      pending: { ...change('unavailable'), ...(review ? { reviewCandidate: review } : {}) },
+      pending: {
+        ...change(unclassified ? 'eligibility_unverified' : 'unavailable'),
+        ...(review ? { reviewCandidate: review } : {}),
+      },
     };
   // A date-only source does not corroborate the imported midnight scheduling marker.
   if (
@@ -316,7 +328,10 @@ export async function refreshRegistrationWatch(
         paused: decision.paused,
         changeKey: decision.pending?.key ?? null,
         sourceUrl: input.reading.sourceUrl,
-        evidence: registrationDate(input.reading, input.resident)?.evidence ?? [],
+        evidence:
+          registrationDate(input.reading, input.resident)?.evidence ??
+          decision.pending?.date?.evidence ??
+          [],
       },
       occurredAt: input.now,
     });
@@ -328,6 +343,8 @@ export function registrationChangeBody(change: RegistrationChange): string {
   const when = change.date
     ? registrationWhen({ timeZone: change.timeZone } as LiveRegistrationReading, change.date)
     : null;
+  if (change.kind === 'eligibility_unverified')
+    return `The page lists ${when}; resident/non-resident eligibility is unconfirmed. I can't confirm this applies to you. Date reminders are paused. ${change.sourceUrl}`;
   if (change.kind === 'unavailable')
     return `I couldn't verify a current registration date. Date reminders are paused; I'll check again in an hour. ${change.sourceUrl}`;
   if (change.kind === 'later')

@@ -21,7 +21,12 @@ export interface RegistrationReadSource {
   timeZone: string | null;
 }
 
-export type RegistrationDateKind = 'preview' | 'resident_open' | 'member_open' | 'general_open';
+export type RegistrationDateKind =
+  | 'preview'
+  | 'resident_open'
+  | 'member_open'
+  | 'general_open'
+  | 'unclassified_open';
 
 export interface LiveRegistrationDate extends PublishedDate {
   kind: RegistrationDateKind;
@@ -61,7 +66,7 @@ function validPublishedDate({ date, time }: PublishedDate): boolean {
 }
 
 /** A real quote containing a real year is not proof of the model's month/day/hour. */
-export function publishedValueIsQuoted(value: PublishedDate, evidence: string): boolean {
+function publishedValueIsQuoted(value: PublishedDate, evidence: string): boolean {
   const [year, month, day] = value.date.split('-').map(Number);
   const months = [
     'jan(?:uary)?',

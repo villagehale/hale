@@ -44,7 +44,7 @@ describe('family-local recommendation history', () => {
     expect(find).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(find.mock.calls)).not.toContain(pick.sourceUrl);
     expect(JSON.stringify(find.mock.calls)).not.toContain('Private child name');
-    expect(find.mock.calls[0]?.[0].town).toBe('New York, NY');
+    expect(find.mock.calls[0]?.[0].town).toBe('New York');
   });
 
   it('keeps a different date or program and ignores tracking-only URL changes', async () => {

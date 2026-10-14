@@ -9,7 +9,6 @@ import { stripHtml } from '~/lib/registration/fetch';
 import { createRegistrationPageFetch, registrationPageUrl } from '~/lib/registration/page';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
-import { guardActivityPick } from './pick-evidence';
 import { namesRetiredRecPortal } from './retired-portal';
 
 /**
@@ -132,7 +131,7 @@ export const MAX_INLINE_FETCHES = 3;
 const GROUND_MAX_TOKENS = 4096;
 /** Generous on purpose: `forceToolJson` throws on a max_tokens cutoff, and a pick cut in
  * half is a venue name a parent cannot search for. */
-const COMPOSE_MAX_TOKENS = 2048;
+const COMPOSE_MAX_TOKENS = 1024;
 
 /** Where a fact came from. Stamped by CODE, never by a model — see the module note. */
 export type ActivitySource = 'web';
@@ -194,7 +193,6 @@ export type ActivityFailure =
   | 'not_grounded'
   | 'compose_failed'
   | 'no_picks'
-  | 'unverified_picks'
   /**
    * The wall closed before the search came back. The call door that produced this
    * outcome is retired. The member stays its own value rather than a `ground_failed`,
@@ -285,13 +283,6 @@ const composeSchema = z.object({
         source_url: z.string().nullish(),
         when: z.string().nullish(),
         price: z.string().nullish(),
-        when_quote: z.string().nullish(),
-        price_quote: z.string().nullish(),
-        location_quote: z.string().nullish(),
-        relevance: z
-          .enum(['current', 'unknown', 'past', 'wrong_location', 'outside_window'])
-          .nullish(),
-        relevance_quote: z.string().nullish(),
         source_name: z.string().nullish(),
         source_url: z.string().nullish(),
         event_date: z
@@ -305,7 +296,7 @@ const composeSchema = z.object({
   ),
 });
 
-export const composeJsonSchema: Anthropic.Tool.InputSchema = {
+const composeJsonSchema: Anthropic.Tool.InputSchema = {
   type: 'object',
   properties: {
     picks: {
@@ -318,14 +309,6 @@ export const composeJsonSchema: Anthropic.Tool.InputSchema = {
           age_fit: { type: 'string' },
           when: { type: 'string' },
           price: { type: 'string' },
-          when_quote: { type: 'string' },
-          price_quote: { type: 'string' },
-          location_quote: { type: 'string' },
-          relevance: {
-            type: 'string',
-            enum: ['current', 'unknown', 'past', 'wrong_location', 'outside_window'],
-          },
-          relevance_quote: { type: 'string' },
           source_name: { type: 'string' },
           source_url: {
             type: 'string',
@@ -345,7 +328,7 @@ export const composeJsonSchema: Anthropic.Tool.InputSchema = {
         // `when` and `price` are OMITTED from required for the reason ActivityPick states:
         // a required field a page never published is a field the model can only satisfy by
         // inventing or by dropping the whole find, and it chose dropping.
-        required: ['name', 'age_fit', 'source_name', 'source_url', 'location_quote', 'relevance'],
+        required: ['name', 'age_fit', 'source_name', 'source_url'],
       },
     },
   },
@@ -356,29 +339,21 @@ export const composeJsonSchema: Anthropic.Tool.InputSchema = {
  * The search payload — the de-identified query and nothing that could identify the child.
  * Shared with the eval, which replicates this shape.
  */
-export function groundUserMessage(query: ActivityQuery, asOf?: string): string {
+export function groundUserMessage(query: ActivityQuery): string {
   return JSON.stringify({
     subject: query.subject,
     ...(query.town ? { town: query.town } : {}),
     ...(query.stage ? { stage: query.stage } : {}),
     ...(query.stages && query.stages.length > 0 ? { stages: query.stages } : {}),
     ...(query.window ? { window: query.window } : {}),
-    ...(asOf ? { as_of: asOf } : {}),
   });
 }
 
 /** The compose payload: the same de-identified query plus what the search read. It never
  * carries the parent's message — this stage is blind, which is what makes it structurally
  * unable to echo a name back into a pick. */
-export function composeUserMessage(
-  query: ActivityQuery,
-  researchNotes: string,
-  asOf?: string,
-): string {
-  return JSON.stringify({
-    ...JSON.parse(groundUserMessage(query, asOf)),
-    research_notes: researchNotes,
-  });
+export function composeUserMessage(query: ActivityQuery, researchNotes: string): string {
+  return JSON.stringify({ ...JSON.parse(groundUserMessage(query)), research_notes: researchNotes });
 }
 
 /** The one thing any catch may keep. A provider error can echo the request, so the object
@@ -490,7 +465,6 @@ async function runActivityOnce(
   client: () => AgentClient,
   query: ActivityQuery,
 ): Promise<ActivityPick[]> {
-  const asOf = new Date().toISOString().slice(0, 10);
   let resolved: AgentClient;
   try {
     resolved = client();

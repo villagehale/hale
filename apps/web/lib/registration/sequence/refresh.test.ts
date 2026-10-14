@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveRegistrationReading } from '../live-reading';
 import { registrationAnchor } from '../read';
-import { decideRegistrationRefresh } from './refresh';
+import { decideRegistrationRefresh, registrationChangeBody } from './refresh';
 
 const now = new Date('2026-10-10T12:00:00Z');
 // Lifecycle input, not a stubbed model: the evidence gate is tested in live-reading.
@@ -27,6 +27,44 @@ const state = {
 };
 
 describe('registration refresh decisions', () => {
+  it('keeps a verified date informational when eligibility is unknown, without changing the reminder anchor', () => {
+    const current = reading('2026-10-18');
+    if (current.status !== 'verified') throw new Error('expected verified fixture');
+    current.dates[0]!.kind = 'unclassified_open';
+    const result = decideRegistrationRefresh(state, current, false, now);
+    expect(result).toMatchObject({
+      paused: true,
+      anchor: state.anchor,
+      publishedTime: false,
+      nextCheckAt: new Date('2026-10-10T13:00:00Z'),
+      pending: {
+        kind: 'eligibility_unverified',
+        status: 'verified',
+        candidateAt: null,
+        date: { kind: 'unclassified_open', date: '2026-10-18', time: '09:00' },
+      },
+    });
+    const notice = registrationChangeBody(result.pending!);
+    expect(notice).toContain('2026-10-18 at 09:00 America/New_York');
+    expect(notice).toContain('eligibility');
+    expect(notice).toContain('Date reminders are paused');
+    expect(notice).toContain(current.sourceUrl);
+    expect(notice).not.toMatch(
+      /couldn't verify a current registration date|2026-10-20|can register/i,
+    );
+    const changed = { ...current, dates: [{ ...current.dates[0]!, date: '2026-10-19' }] };
+    expect(decideRegistrationRefresh(state, changed, false, now).pending?.key).not.toBe(
+      result.pending?.key,
+    );
+    expect(
+      decideRegistrationRefresh(
+        { ...state, pending: result.pending, pausedAt: now },
+        reading('2026-10-18'),
+        false,
+        now,
+      ),
+    ).toMatchObject({ paused: false, anchor: new Date('2026-10-18T13:00:00Z') });
+  });
   it('does not invent a later-date approval when a legacy midnight becomes a date-only observation', () => {
     const result = decideRegistrationRefresh(
       { ...state, anchor: new Date('2026-10-20T04:00:00Z') },

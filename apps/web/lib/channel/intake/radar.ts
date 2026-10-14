@@ -370,8 +370,6 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       });
       if (input.activityMap) {
         const map = await collectActivityMap({
-          now,
-          timeZone,
           finder: deps.yearFinder
             ? {
                 async find(query) {

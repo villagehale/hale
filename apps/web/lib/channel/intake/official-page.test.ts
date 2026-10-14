@@ -58,6 +58,28 @@ describe('live official registration answers', () => {
     expect(body).toContain(reading.sourceUrl);
     expect(body).not.toMatch(/midnight|noon|12:00|09:00/);
   });
+  it('reports a verified page date with an eligibility caveat, not a failed-date claim', () => {
+    const reading: LiveRegistrationReading = {
+      status: 'verified',
+      reader: 'ai',
+      checkedAt: new Date(),
+      timeZone: 'America/Toronto',
+      sourceUrl: 'https://www.markham.ca/registration',
+      dates: [
+        {
+          kind: 'unclassified_open',
+          date: '2026-08-11',
+          time: '06:30',
+          evidence: ['Register starting Aug. 11 at 6:30 AM'],
+        },
+      ],
+    };
+    const body = officialPageReply(reading, COLD_START_ASK);
+    expect(body).toContain('2026-08-11 at 06:30 America/Toronto');
+    expect(body).toContain('eligibility');
+    expect(body).toContain(reading.sourceUrl);
+    expect(body).not.toMatch(/couldn't verify|you can register|open to everyone/i);
+  });
 });
 describe('official-page · what may be searched', () => {
   it('removes accented household names but preserves the requested ISO date', () => {
