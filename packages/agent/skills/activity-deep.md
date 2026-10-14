@@ -149,8 +149,11 @@ Return what you READ, as structured rows. Never a paragraph, never a guess.
 - **`source_url`** — THE PAGE THIS ROW WAS READ OFF. Not the home page unless you
   opened the home page and the fact is in its text, and not the search result:
   the page that actually printed these facts. A date this page does not contain
-  does not go on the row. A row you cannot point at a page for is a row you
-  invented, and it does not go in the list.
+  does not go on the row. A row has one page, so when the class times are on one
+  page and the registration date is on another (a home page notice that covers
+  every program, say), that date does not ride along on the class rows. It goes on
+  its own row, cited to the page that printed it, with `when` left out. A row you
+  cannot point at a page for is a row you invented, and it does not go in the list.
 
 `pages_read` is every URL you actually opened. Leave it empty if you opened none
 — that is a true and useful thing for Hale to know, and it is far better than a

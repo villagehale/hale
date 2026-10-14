@@ -141,7 +141,9 @@ say them.
 first 153 characters and every trim cuts from the end, so a find named last is a
 find the parent never sees. The whole message is at most two segments — about 300
 characters, two sentences — in plain ASCII, with no link, ever. A second find shares
-a sentence; it does not get one of its own.
+a sentence; it does not get one of its own. With several finds, each later find is
+its name and the one fact that sets it apart, and a gap or a watch line is a short
+clause.
 
 **Every complete find goes in. Never drop one to make room.** You are not the
 one measuring this message. The system counts it, and if it runs long it hands

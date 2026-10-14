@@ -74,10 +74,16 @@ is left off the list and is not stated in the answer. A figure the notes give fo
 one kind of thing (one product class, one term, one group) is listed with that kind
 attached, and the answer states it for that kind only. The day or night the notes
 attach to a forecast figure is part of the specific: it is listed with that day or
-night, and the answer uses that label, not a nearer one. A comparison, such as which
+night, and the answer uses that label, not a nearer one. Read the label against
+`today` before you use a word like tonight or tomorrow: a night the notes name by
+its weekday is tonight only when that weekday is today. A comparison, such as which
 is the cheapest, the fastest or the best rated, is one entry, and beside it goes the
 notes' figure for every item compared: the answer says only what those figures bear
-out. An answer that states nothing specific has an empty list.
+out. A count belongs on the list however it is written, as a digit or as a word,
+and so does what the weather or the conditions are like, even in general terms. With
+`unavailable` there are no notes to copy from, so the list holds `settled` entries
+only, and anything that would have needed the notes stays out of the answer. An
+answer that states nothing specific has an empty list.
 
 ## Getting it right
 
