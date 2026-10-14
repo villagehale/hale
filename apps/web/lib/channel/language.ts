@@ -17,7 +17,7 @@
  * holds nothing, and it is wrong for exactly one turn when it is wrong. What it costs is
  * stated where it bites: the CASL keyword replies are triggered by the English tokens
  * STOP/HELP/START, so a body that IS one of those tokens carries no French evidence and
- * can never route to the French twin (see keywords.ts and the note on HELP_REPLY).
+ * can never route to the French twin (see keywords.ts).
  *
  * IT DEFAULTS TO ENGLISH, always. Answering an anglophone in French is the expensive
  * error — it happens at first contact, it reads as a broken product rather than a

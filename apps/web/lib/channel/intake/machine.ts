@@ -209,8 +209,7 @@ export interface IntakeDeps {
   ackComposer: IntakeAckComposer;
   /**
    * Friend-voice onboarding replies. Required in production wiring. A test that
-   * leaves it off gets the named fallback inside {@link speakFriend}, and only
-   * when ONBOARDING_FRIEND_VOICE_ENABLED is exactly `on`.
+   * leaves it off gets the named fallback inside {@link speakFriend}.
    */
   friendVoice?: FriendVoiceComposer;
   /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
