@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada notes for Toronto on Tue Oct 13: showers ending near noon, then a 60% chance, thunderstorm risk, high of 24 with humidex 28, 10–20 mm of rain, and SW gusts to 40 near noon. Nothing is invented. It answers directly for the right city without asking which one. It's casual enough to pass as a friend's text, though it reads a little like a forecast readout.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

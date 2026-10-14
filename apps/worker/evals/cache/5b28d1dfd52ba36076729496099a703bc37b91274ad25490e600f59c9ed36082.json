@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Gives a direct, standard range (10-12 min at a boil), which is settled kitchen knowledge, plus a useful cold-water tip. It's brief and casual, like a friend texting back. No invented specifics and no service-offer tone.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

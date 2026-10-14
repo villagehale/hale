@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "With live set to missing_detail, the right move is to ask for the city in a few words, and that is what the answer does. It states no current fact and invents nothing. Second sentence 'I'll check tomorrow's weather for it' leans slightly toward an assistant offering a service, but it's still brief and casual, like a friend texting back. It's in the same language as the question. Nothing about safety is involved.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

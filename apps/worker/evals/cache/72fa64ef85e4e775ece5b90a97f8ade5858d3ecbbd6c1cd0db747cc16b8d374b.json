@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "a dark, quiet room, the same wind-down routine each time, and not too long awake before the nap helps at almost any age",
+        "from": "settled"
+      }
+    ],
+    "answer": "Depends a bit on his age, but a few things help at almost any age: a dark, quiet room, the same short wind-down routine every time, and not letting him stay awake too long before the nap. How old is he?"
+  },
+  "latencyMs": 3867
+}

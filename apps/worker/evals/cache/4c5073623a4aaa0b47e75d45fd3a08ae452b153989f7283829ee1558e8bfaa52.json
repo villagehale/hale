@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by the notes: 4.34% insured (Ratehub Oct 12, WOWA Oct 9), 4.44% uninsured (WOWA), the Big 6 average of 5.14% (Nesto), and rates rising in October. It gives the as-of dates and the insured/uninsured split, and the Ontario availability note is supported. One snippet put the lowest uninsured rate at 4.64%, but 4.44% is directly supported. It reads like a friend texting back, though it is a bit dense and stilted ('the insured rate is available in Ontario').",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

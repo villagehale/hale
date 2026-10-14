@@ -1,8 +1,0 @@
-{
-  "value": {
-    "verdict": "flag_for_human",
-    "rationale": "All provided verification tools passed (PII, recipient allowlist, sender allowlist, idempotency), but this is an outbound reply to a pediatric clinic confirming a medical appointment, which counts as a medical communication and requires explicit per-action parent approval regardless of allowlist state. In addition, required verifications were not run: check_calendar_conflict (no confirmation that Tuesday June 23 at 5:30 PM is clear), check_vaccine_schedule (18-month visit claim unverified), check_action_time_window, and check_user_override. Sending a confirmation is also not reversible once the clinic holds the slot.",
-    "remediation": "Run check_calendar_conflict for Tuesday June 23 at 5:30 PM, check_vaccine_schedule for Mira's 18-month visit, check_action_time_window, and check_user_override. Then present the draft to a parent for explicit approval before sending."
-  },
-  "latencyMs": 7246
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the research notes: Denver, partly sunny, a high of 65°F about 15 degrees cooler than today, showers possible Tuesday evening with a 30% chance after 3 p.m., lows in the low 40s, and NNE wind at 6–10 mph gusting to 17. It answers for the right city without asking which one. On tone, it reads more like a recited forecast than a quick text from a friend, and \"Mostly partly sunny\" is clumsy.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

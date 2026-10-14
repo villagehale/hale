@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Message is null, so only the slot is scored. Both fetches were refused, and the single slot rests on the search snippet. It names the real program (Parent & Tot at Gellert, Town of Halton Hills) with an age band that fits a toddler, and leaves when, price and registration null rather than inventing them. The ageFit note discloses that it comes from a snippet only, and the slot makes no claim that the schedule is not posted. The sourceUrl points at the Gellert page that returned url_not_accessible. That is acceptable as attribution to the operator's site, and the slot does not claim the page was read. No pages_read field is present to violate watchFor. This is the correct snippet-grounded answer.",
-    "score": 5
-  }
-}

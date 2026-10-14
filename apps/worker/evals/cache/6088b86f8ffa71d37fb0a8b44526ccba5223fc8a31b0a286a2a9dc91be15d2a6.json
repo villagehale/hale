@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It picks Messi for soccer and Brady for the NFL, which handles the ambiguity well. Every stated fact matches research_notes: 8 vs 5 Ballons d'Or, Ronaldo's case on goals, Brady's 7 Super Bowls and Mahomes as the challenger. No running counts are marked settled. It reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

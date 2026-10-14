@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail, and the answer correctly asks which country without stating any rate from memory. The explanation is accurate and it states no current fact. It is a bit wordier than a quick text, and 'I'll look up the 5 year fixed rate there' leans slightly toward an assistant's offer, but it still reads like a friend asking a needed detail.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

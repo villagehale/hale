@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The BC forecast (mix of sun and cloud, 15°C, UV 3, showers Tuesday night, low 11) matches Environment Canada in the notes. The WA figures (65°F/45°F, dry) match Weather Underground and Timeanddate. Covering both Vancouvers handles the ambiguity neatly. Two small nits: 'no rain expected' glosses over AccuWeather's late shower, and it leaves out the WA frost advisory, which is useful but not a wrong fact. It reads a bit like a forecast readout but is still a direct, casual answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

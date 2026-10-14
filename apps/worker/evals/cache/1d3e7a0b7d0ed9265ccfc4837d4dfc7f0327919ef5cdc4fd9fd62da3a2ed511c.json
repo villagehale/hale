@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (showers ending near noon, 60% chance, thunderstorm risk, high 24°C, southwest gusts to 40 km/h, 10–20 mm, low 12°C) matches the Environment Canada forecast in the notes. It correctly takes 'Toronto' as the answer to the city question and gives tomorrow's forecast directly. It reads more like a recited weather bulletin than a friend's casual text, but it is the answer and has no assistant-style offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

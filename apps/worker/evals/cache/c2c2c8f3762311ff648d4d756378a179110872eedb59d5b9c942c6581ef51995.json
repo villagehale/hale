@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes for Denver, CO tomorrow: the 65°F high, partly sunny, about a 30% shower chance late afternoon into evening, lows from the low 30s to low 40s, a northeast breeze and gusts to 17 mph. It answers directly without asking for the city, and the casual 'Grab a jacket' reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

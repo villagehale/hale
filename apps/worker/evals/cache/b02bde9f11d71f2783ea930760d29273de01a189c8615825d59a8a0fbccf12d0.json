@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "TSX closed today, Monday Oct 12, for Thanksgiving",
+        "from": "The TSX is closed today for Thanksgiving, so there is no trading"
+      },
+      {
+        "states": "trading resumes Tuesday Oct 13 at 9:30 a.m. ET",
+        "from": "Toronto trading resumes on October 13 at 9:30 a.m. ET after the Thanksgiving closure"
+      },
+      {
+        "states": "last close Friday Oct 9: S&P/TSX Composite 35,664.62, up 519.24 points (1.477%)",
+        "from": "The most recent close was Friday, Oct 9, 2026. The S&P/TSX Composite Index closed at 35,664.62, up 519.24 points (1.477%)"
+      }
+    ],
+    "answer": "Markets are closed today for Thanksgiving, so no trading. Last close was Friday: the S&P/TSX Composite finished at 35,664.62, up 519.24 points (1.48%). Trading picks back up tomorrow at 9:30 a.m. ET."
+  },
+  "latencyMs": 2285
+}

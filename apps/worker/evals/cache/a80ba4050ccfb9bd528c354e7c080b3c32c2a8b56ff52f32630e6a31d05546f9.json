@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With search unavailable, the answer plainly says it can't check the forecast. It states no forecast from memory and doesn't ask for a city. Tone is casual and friend-like, though a touch apologetic and wordy. It is correct and fits the fixture.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

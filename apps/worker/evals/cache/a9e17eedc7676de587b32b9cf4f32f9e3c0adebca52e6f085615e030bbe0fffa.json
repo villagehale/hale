@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the research notes: 4.34% insured, from Ratehub dated today and from WOWA naming Frank Mortgage. The 4.44% uninsured rate, the 5.14% Big 6 average and the climbing trend are all supported. It correctly splits insured from uninsured, gives the date, and is about the 5-year fixed in Canada. It reads like a well-informed friend texting back, not a service offer.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct: 911 is the US emergency number, which is settled knowledge, and it's the same as in Canada. It reads like a friend texting back, brief and casual, and the question is ordinary with nobody in danger. The extra line about calling for police, fire or an ambulance is mildly explanatory but harmless.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

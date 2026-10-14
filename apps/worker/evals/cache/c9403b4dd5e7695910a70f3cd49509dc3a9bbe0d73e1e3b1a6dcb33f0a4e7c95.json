@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the Environment Canada notes: mainly cloudy, a high of 23°C, no daytime rain, and showers starting before morning with a risk of a thunderstorm. Nothing is invented, and it says nothing about the school or the family. 'Mostly dry for the day' answers the pickup question, though it never says plainly that 3pm should be dry. The wording reads a bit like a forecast summary rather than a quick text back, but it's still casual enough.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

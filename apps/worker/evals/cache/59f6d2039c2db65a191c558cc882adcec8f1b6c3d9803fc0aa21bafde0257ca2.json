@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "a large egg boiled for about 10 minutes after the water reaches a full boil, then cooled in ice water",
+        "from": "settled"
+      }
+    ],
+    "answer": "About 10 minutes once the water is at a full boil, for a large egg. Lower them in gently, then move them straight into ice water so they peel easier. Smaller or older eggs can take a minute or so less or more."
+  },
+  "latencyMs": 2461
+}

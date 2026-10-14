@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "In French, takes a clear side (yes) with a reason, and no invented facts. It is a real pick, and 'Ça reste une question de goût' is a light caveat rather than fence-sitting. The tone is slightly formal ('tout à fait', 'hérésie') but still reads as a friend's text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

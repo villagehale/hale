@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada forecast in the notes for Windsor, Ontario, Tuesday Oct 13: high 29, humidex 35, a 30% chance of early showers with a thunderstorm risk, clearing in the morning, and southwest wind 20 gusting to 50, rising to 40 gusting to 60. It answers directly for the right city without asking for it. The tone is casual enough, but it reads a bit like a transcribed forecast with the source parenthetical rather than a quick friend's text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

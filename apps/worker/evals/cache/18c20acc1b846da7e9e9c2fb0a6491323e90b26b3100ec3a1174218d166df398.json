@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is null, so only the slots are scored. The single slot is grounded in the search snippet: Parent & Tot swim at Gellert Community Centre, Town of Halton Hills, ages 4 months to 3 years, which fits the toddler stage. Its ageFit says plainly that it comes from a snippet only and that the page could not be opened. when, price and registration are left null rather than invented. No figure is borrowed from another program and nothing claims the schedule is 'not posted'. The sourceUrl is the venue's own page the snippet pointed to, which is a fair attribution. This is the correct snippet-grounded result for two refused fetches.",
-    "score": 5
-  }
-}

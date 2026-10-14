@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is unavailable, and the answer correctly says it can't check the forecast. It states no weather from memory and doesn't ask which city. But the second line sends the parent off to a weather app 'for the most accurate picture', which is a look-it-up pointer. Together with the apologetic 'Sorry... I don't want to guess' phrasing, it reads more like an assistant than a friend's quick text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 3
-  }
-}

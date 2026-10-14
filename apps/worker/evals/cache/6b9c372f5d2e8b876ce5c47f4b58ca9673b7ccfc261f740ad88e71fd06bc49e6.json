@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada forecast in the research notes: 60% showers, thunderstorm risk, 10-20 mm, high 24°C, SW gusts to 40 km/h near noon, and a low of 12°C with showers that night. It correctly takes 'Toronto' as the answer to the city question and gives tomorrow's forecast directly. It is a little forecast-heavy, but still a casual, direct text back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

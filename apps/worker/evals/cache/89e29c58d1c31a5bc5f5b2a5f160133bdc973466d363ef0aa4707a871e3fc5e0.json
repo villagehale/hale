@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure matches the Environment Canada notes for Windsor, Ontario: 30% early showers with thunderstorm risk, high 29, humidex 35, gusts to 60 late morning. 'Clearing by mid-morning' is a close paraphrase of 'clearing in the morning'. It answers directly without asking which city, and reads like a casual friend's text.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Third-party tested and NSF Certified for Sport",
+        "from": "Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "Taste is mostly acceptable to reviewers",
+        "from": "Reviewers broadly agree on the convenience, the third-party testing and the taste, which most find acceptable"
+      },
+      {
+        "states": "Convenient all-in-one formula",
+        "from": "customers praise the convenient all-in-one formula"
+      },
+      {
+        "states": "Doses fall short and many amounts are hidden behind proprietary blends, at a very high cost",
+        "from": "its ingredient doses fall short of effective ranges... proprietary blends... very high cost as cons"
+      },
+      {
+        "states": "Evidence for health claims is limited",
+        "from": "Independent critics say the evidence for its health claims is limited"
+      },
+      {
+        "states": "Worth it mainly if it replaces several supplements you already buy, or for those competing in tested sport or struggling to stay consistent",
+        "from": "Several reviewers say it's worth it only if it replaces several supplements you already buy... competing in tested sport, or struggling to stay consistent"
+      },
+      {
+        "states": "Healthy people on a varied diet generally don't need it",
+        "from": "healthy people eating a varied diet generally don't need supplementation"
+      },
+      {
+        "states": "Reishi and grape seed can interact with blood thinners and blood pressure medication",
+        "from": "ingredients like reishi and grape seed can interact with blood thinners and blood pressure medication"
+      }
+    ],
+    "answer": "Mostly overrated for most people, in my view. It's convenient, third-party tested, and the taste is fine for most. But the doses look thin for what it costs, lots of amounts are hidden behind proprietary blends, and the evidence for its health claims is limited. It makes more sense if it replaces several supplements you already buy, or if you're competing in tested sport or struggling to stay consistent. If you take blood thinners or blood pressure meds, check with a doctor or pharmacist first, since reishi and grape seed can interact with them."
+  },
+  "latencyMs": 7082
+}

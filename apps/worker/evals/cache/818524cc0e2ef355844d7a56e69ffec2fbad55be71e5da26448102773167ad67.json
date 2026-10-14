@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It delivers a short poem about Mondays, which is what was asked, and it makes no factual claims. It's casual and warm, like a friend texting. It's a little prose-like, but it fits the ask.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

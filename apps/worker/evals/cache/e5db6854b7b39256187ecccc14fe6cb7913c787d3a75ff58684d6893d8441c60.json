@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Says plainly it can't check right now and states no score from memory, which is correct when live is unavailable. Casual, brief and friendly. No wrong facts, no safety angle.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every figure (partly sunny, 65°F, 15 below Monday's 80, a 30% chance of rain after 3 p.m. rising into the evening, lows in the 40s and 30s, wind 6–10 mph gusting to 17) matches the research notes for Denver, Colorado, tomorrow. It answers directly without asking which city. The tone reads more like a weather bulletin than a friend's casual text, packed with stats and stiff phrasing, but there is no service offer or deflect.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is in French and makes a real pick (\"je suis pour\") with a light reason about the sweet-salty balance with ham and cheese. It is casual and friendly, and it states no wrong facts. The last line is a touch hedgy but doesn't fence-sit. It reads like a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

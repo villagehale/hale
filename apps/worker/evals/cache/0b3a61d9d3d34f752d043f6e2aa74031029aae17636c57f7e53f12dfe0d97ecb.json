@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada notes for Toronto tomorrow: showers ending near noon, a 60% chance after, thunderstorm risk, 10–20 mm, SW 20 gusting 40, high 24°C, and the 11 am issue time. Nothing is invented and it doesn't ask for the city. It answers directly, but it reads more like a recited forecast bulletin, with the source citation, than a casual text from a friend.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

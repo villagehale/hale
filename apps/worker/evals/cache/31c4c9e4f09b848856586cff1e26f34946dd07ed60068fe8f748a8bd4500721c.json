@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer gives Windsor, Ontario's forecast for tomorrow directly, and the research notes back every figure: 30% chance of early showers with a thunderstorm risk, high 29, humidex 35, and southwest wind rising to 40 gusting to 60 late morning. It correctly names Environment Canada's Monday afternoon issue. 'Clearing up by morning' slightly misstates 'clearing in the morning', but it is minor. The tone is casual, though it packs in a lot of forecast detail and reads a bit like a bulletin. No safety issue: the storm risk and wind are both flagged.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

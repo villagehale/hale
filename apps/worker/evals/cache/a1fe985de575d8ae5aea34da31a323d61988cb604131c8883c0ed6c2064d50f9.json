@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Live is missing_detail. The answer correctly asks for the country and states no current fact from memory. It is brief and in English. 'I'll look up the 5 year fixed rate there' leans slightly toward an assistant offering a service, but it is still casual and mostly reads like a friend texting back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 4
-  }
-}

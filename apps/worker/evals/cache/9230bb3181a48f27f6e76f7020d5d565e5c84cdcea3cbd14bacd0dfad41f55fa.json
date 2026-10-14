@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is unavailable, and the reply correctly says it can't check last night's result and states no score from memory, so nothing in it is wrong. But it then tells the parent to go look it up on the NBA app or ESPN, which is the look-it-up pointer the rubric marks down. The 'I don't want to guess and get it wrong' line also reads a little assistant-like rather than like a quick friend text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

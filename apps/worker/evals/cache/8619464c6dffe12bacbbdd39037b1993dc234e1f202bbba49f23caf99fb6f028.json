@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No Raptors game tonight, Monday Oct 12",
+        "from": "No Raptors game tonight, Monday Oct 12."
+      },
+      {
+        "states": "Last game was Saturday, Oct 10, a win over the Clippers",
+        "from": "Every schedule I found has the team's last game on Saturday, Oct 10 ... The Raptors beat the Clippers on Oct 10 in Vancouver."
+      },
+      {
+        "states": "Next game is a preseason game vs the New York Knicks on Tuesday, Oct 13, at Scotiabank Arena in Toronto, 7:00 PM ET",
+        "from": "The next game is a preseason game against the New York Knicks on Tuesday, Oct 13. It is at Scotiabank Arena in Toronto, with tip-off at 7:00 PM ET."
+      }
+    ],
+    "answer": "Nope, no Raptors game tonight. They beat the Clippers on Saturday. Next up is a preseason game vs the Knicks tomorrow, Tuesday, at 7 PM ET at Scotiabank Arena in Toronto."
+  },
+  "latencyMs": 4631
+}

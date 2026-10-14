@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC, Tuesday Oct 13: a mix of sun and cloud, high 15°C, UV index 3",
+        "from": "Tuesday, 13 Oct: a mix of sun and cloud, high 15, UV index 3 or moderate"
+      },
+      {
+        "states": "Vancouver, BC, Tuesday night: showers, low 11°C",
+        "from": "Tuesday night: showers, low 11."
+      },
+      {
+        "states": "Vancouver, WA, Tuesday Oct 13: high 65°F, low 45°F",
+        "from": "Weather Underground shows Tue 10/13: 65° / 45°."
+      },
+      {
+        "states": "Vancouver, WA, Tuesday Oct 13: 0% chance of precipitation",
+        "from": "Timeanddate shows Tue Oct 13: overcast, 64 / 41 °F, with a 0% chance of precipitation."
+      }
+    ],
+    "answer": "Assuming you mean Vancouver, BC: tomorrow is a mix of sun and cloud, high 15°C, UV index 3. Showers come in Tuesday night, low 11°C. If you meant Vancouver, WA, it's drier: high around 65°F, low about 45°F, and no rain expected."
+  },
+  "latencyMs": 8572
+}

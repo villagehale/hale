@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Toronto Blue Jays did not play on Sunday, Oct 11, and their season is over.",
+        "from": "they did not play last night. Their season is over."
+      },
+      {
+        "states": "The Blue Jays' last game was a 5-1 home win over the Cincinnati Reds on Sunday, Sept 27, 2026.",
+        "from": "ESPN's game page says the Blue Jays' regular season ended on Sunday, Sept 27, 2026, with a 5-1 home win over the Cincinnati Reds."
+      }
+    ],
+    "answer": "If you mean the Blue Jays, they didn't play last night. Their season ended Sept 27 with a 5-1 home win over the Reds, so there's no game to win."
+  },
+  "latencyMs": 4601
+}

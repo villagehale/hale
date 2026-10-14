@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every forecast detail matches the research notes: mainly cloudy, a high of 23°C, no daytime rain, showers overnight with a thunderstorm risk, and 20% at 6–7pm. It leads with the answer and says nothing about the family or the school. It reads more like a weather report than a friend texting, though: it cites two sources by name and never ties back to the 3pm pickup with something like 'you're fine for pickup.' That keeps it from a 5.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Blue Jays did not play last night (Sunday, Oct 11)",
+        "from": "Assuming \"the Jays\" means the Toronto Blue Jays, they did not play last night. Their season is over."
+      },
+      {
+        "states": "The Blue Jays' regular season ended Sunday, Sept 27, 2026, with a 5-1 home win over the Cincinnati Reds",
+        "from": "ESPN's game page says the Blue Jays' regular season ended on Sunday, Sept 27, 2026, with a 5-1 home win over the Cincinnati Reds."
+      }
+    ],
+    "answer": "If you mean the Blue Jays, they didn't play last night. Their season wrapped up Sept 27 with a 5-1 home win over the Reds, and they're out of the playoffs."
+  },
+  "latencyMs": 4355
+}

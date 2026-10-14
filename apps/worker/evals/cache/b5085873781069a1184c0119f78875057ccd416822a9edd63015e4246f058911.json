@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "pineapple on pizza is a matter of taste, so an opinion is given",
+        "from": "settled"
+      }
+    ],
+    "answer": "Franchement, oui, c'est acceptable. L'ananas apporte du sucré et de l'acidité qui vont bien avec le jambon et le fromage, et ça marche très bien dans une Hawaïenne. Si tu n'aimes pas, c'est toujours possible de le mettre à part, mais je ne vois pas de raison de le proscrire."
+  },
+  "latencyMs": 2231
+}

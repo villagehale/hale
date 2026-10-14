@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct, settled fact. Brief, casual, just the answer, which suits a French question since 'Paris' is the same in French. Reads like a friend texting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

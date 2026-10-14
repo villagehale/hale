@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact is backed by the notes: closed for Thanksgiving, Friday's close of 35,664.62, up 519.24 points (1.477%), and trading resuming tomorrow at 9:30 a.m. ET. It's brief and answers the question directly. It reads a bit like a data readout rather than a casual friend text, but it isn't service-like.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

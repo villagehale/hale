@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The single slot is real and cited to the programme page. The day, times and session dates are exactly as printed, and the age band 12 months to 4 years fits a toddler. Price is correctly null: the page prints no fee, and the $185 birthday package and $95 meeting-room rate on the rentals page were not borrowed. The page gives no registration date, so a null registration is correct and the message has nothing to carry. The message leads with the programme by name and attributes the facts with 'their site says'. Under page_has_schedule it uses the earned first-person 'I could not pin down the price' rather than 'not posted yet'. Because watch is true, 'I'll keep watching and text you' reflects a real continuation and is correct. It is two plain-ASCII sentences with no link and no question.",
-    "score": 5
-  }
-}

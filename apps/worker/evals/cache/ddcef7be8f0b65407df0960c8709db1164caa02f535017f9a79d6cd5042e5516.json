@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Monday, Oct 12: mainly cloudy, high of 23°C, no rain in the daytime forecast (Environment Canada, issued 11:00 AM EDT Monday)",
+        "from": "Monday is mainly cloudy with a high of 23°C. The daytime forecast mentions no rain."
+      },
+      {
+        "states": "Monday night: a few showers beginning before morning, with a risk of a thunderstorm (Environment Canada)",
+        "from": "Tonight is mainly cloudy, with a few showers beginning before morning and a risk of a thunderstorm."
+      },
+      {
+        "states": "Monday evening, 6pm and 7pm: 20% chance of precipitation (The Weather Network)",
+        "from": "Monday evening shows a 20% chance of precipitation at 6pm and 7pm"
+      }
+    ],
+    "answer": "Mostly dry during the day. Environment Canada's forecast from this morning has Monday mainly cloudy, high around 23°C, with no rain in the daytime. The rain holds off until tonight, when a few showers are expected to start before morning, with a chance of a thunderstorm. The Weather Network has only a 20% chance of a shower around 6 to 7pm."
+  },
+  "latencyMs": 5042
+}

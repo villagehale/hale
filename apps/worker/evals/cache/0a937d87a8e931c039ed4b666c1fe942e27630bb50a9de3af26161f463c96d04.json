@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "No message was composed, so only the slots are scored. The single slot is grounded in the search snippet: Parent & Tot lessons at Gellert Community Centre in Georgetown, run by the Town of Halton Hills, for ages 4 months to 3 years. That band fits the toddler stage. The when, price and registration fields are correctly null, since no snippet carried dates, times or fees and neither page could be opened. Nothing is invented or borrowed from another program, and the ageFit field says plainly that it comes from a snippet only and that the schedule page could not be opened. The sourceUrl points to the venue's own page that the snippet describes, which is acceptable attribution. The slot makes no claim to have read a page it was turned away from, and no 'not posted' claim appears anywhere. This is the snippet-grounded, null-schedule answer the fixture expects.",
-    "score": 5
-  }
-}

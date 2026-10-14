@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Both slots are faithful to the page. Days, times, the Sept 12 to Nov 28 dates and the 3-5 no-parent age band are exact, and each is cited to the Oakville page. Price is correctly null because the page defers fees to the Recreation Guide, and registration is carried in full. The message names the program, gives both times, attributes with 'their site says', and keeps the Aug 11 7am not-yet-open registration date. With page_has_schedule, the price gap is correctly put in the first person ('I could not pin down the price'). Since watch is true, the first-person keep-watching commitment is backed. It is two plain-ASCII sentences with no link and no question.",
-    "score": 5
-  }
-}

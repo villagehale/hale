@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by the research notes. For Vancouver, BC: mix of sun and cloud, high 15°C, showers Tuesday night, low 11°C (Environment Canada). For Vancouver, WA: about 65°F/45°F and mostly dry (Weather Underground, AccuWeather, Timeanddate). It handles the two-Vancouvers ambiguity by giving both, which answers rather than deflects. It's brief and reads as a casual text back. Leaving out the WA frost advisory isn't a wrong fact, and a plain weather ask carries no real danger to flag.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

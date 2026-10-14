@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (24°C high, 60% showers, thunderstorm risk, 10–20 mm, SW 20 gusting 40 near noon) matches the Environment Canada forecast in the notes for Tuesday Oct 13. It correctly treats 'Toronto' as the city for the earlier tomorrow-weather ask. It's direct and casual, and 'bring an umbrella' reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

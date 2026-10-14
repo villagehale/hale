@@ -1,8 +1,0 @@
-{
-  "value": {
-    "hurt_ill_or_danger": "no",
-    "grounding": [],
-    "answer": "Sorry, I can't check the forecast right now, so I don't want to guess at tomorrow's weather. Check your usual weather app or the forecast on your phone for the most accurate picture."
-  },
-  "latencyMs": 1806
-}

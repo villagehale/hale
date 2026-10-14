@@ -1,8 +1,0 @@
-{
-  "value": {
-    "verdict": "reject",
-    "rationale": "The check_action_time_window tool returned ok:false: the event start time of 03:00 on 2026-06-23 falls inside the family's configured quiet-hours window. This is a clear policy violation under the rejection criteria (outside the family's time window). The idempotency check passed (no duplicate), but a single red tool result mandates rejection. Other verification tools (check_calendar_conflict, check_pii_leak, check_user_override) were not included in the provided results, but the time-window failure is sufficient and decisive.",
-    "remediation": "Reschedule the 'Reminder: order diapers' event to a start time outside the quiet-hours window (e.g., a reasonable daytime hour such as 09:00 on 2026-06-23), then re-run verification including check_calendar_conflict and check_user_override before resubmitting."
-  },
-  "latencyMs": 7213
-}

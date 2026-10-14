@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Strong pass. Every slot traces to a page Hale actually read. The Tiny Gym age band is cited to the programs page, Term 1 (Sept 14-Nov 1) and Term 2 (Nov 2-Dec 20) to the PDF, and the July 22 8am registration to the homepage. No price or day is invented: the page withholds pricing and the PDF grid does not reliably map times to weekdays. The message leads with Tiny Gym by name and attributes with 'their site says'. It carries the registration date. It uses the correct first-person admission ('I could not pin down the day or the price') for page_has_schedule. With watch=true, the first-person 'I'll keep watching' is correct. It has no question, no link, is plain ASCII and fits in two segments. Docked one point for: three sentences rather than one or two; the registration fact not being attributed or tied to Tiny Gym in the slots; and the slot editorialising 'That date has passed' without evidence of today's date.",
-    "score": 4
-  }
-}

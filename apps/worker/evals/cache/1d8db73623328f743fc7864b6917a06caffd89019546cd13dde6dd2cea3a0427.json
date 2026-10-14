@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Leafs have no game Monday, Oct 12",
+        "from": "Daily Faceoff's weekly schedule lists \"No games scheduled\" for Monday, October 12."
+      },
+      {
+        "states": "The Leafs play at Utah Mammoth Tuesday, Oct 13, puck drop 9:00 p.m. EDT",
+        "from": "Their next game is tomorrow, Tuesday, Oct 13, at the Utah Mammoth. Puck drop is 9:00 p.m. EDT at Delta Center in Salt Lake City."
+      }
+    ],
+    "answer": "Nope, no Leafs game tonight. Next one is tomorrow, Tuesday, at Utah. Puck drop is 9:00 p.m. EDT."
+  },
+  "latencyMs": 2861
+}

@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "With the live status at missing_detail, the right move is to ask for the country, and the answer does that and states no current fact. The fact it does give, that rights vary by country, is common knowledge. It reads as a short, casual text back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}

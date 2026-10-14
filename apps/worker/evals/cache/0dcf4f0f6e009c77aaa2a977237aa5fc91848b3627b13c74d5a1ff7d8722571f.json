@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The St. Louis Cardinals won the 2006 World Series over the Detroit Tigers, 4-1",
+        "from": "settled"
+      }
+    ],
+    "answer": "20 years ago was 2006, and the St. Louis Cardinals won the World Series that year, beating the Detroit Tigers 4-1."
+  },
+  "latencyMs": 3716
+}

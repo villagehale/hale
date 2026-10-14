@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto, Tuesday Oct 13: high of 24°C",
+        "from": "Environment Canada forecast: The high is 24°C."
+      },
+      {
+        "states": "Toronto, Tuesday: 60 percent chance of showers",
+        "from": "mainly cloudy with a 60 percent chance of showers"
+      },
+      {
+        "states": "Toronto, Tuesday: risk of thunderstorms morning and afternoon",
+        "from": "There is a risk of a thunderstorm in the morning and afternoon"
+      },
+      {
+        "states": "Toronto, Tuesday: 10 to 20 mm of rain",
+        "from": "a local rainfall amount of 10 to 20 mm"
+      },
+      {
+        "states": "Toronto, Tuesday: southwest wind 20 km/h gusting to 40 near noon",
+        "from": "The wind becomes southwest 20 km/h gusting to 40 near noon."
+      }
+    ],
+    "answer": "Tomorrow looks showery and warm in Toronto. High around 24°C, with a 60% chance of showers and a risk of thunderstorms in the morning and afternoon, maybe 10 to 20 mm of rain. It'll be windy too, southwest around 20 km/h with gusts to 40 near noon. Bring an umbrella."
+  },
+  "latencyMs": 4737
+}

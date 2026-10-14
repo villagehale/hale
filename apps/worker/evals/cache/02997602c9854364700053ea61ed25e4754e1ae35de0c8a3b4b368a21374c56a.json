@@ -1,8 +1,0 @@
-{
-  "parsed": {
-    "reason": "Every fact matches the research notes: the market is closed for Thanksgiving, Friday closed at 35,664.62, up about 1.5% (1.477%), the weak jobs report eased rate-hike expectations, and trading resumes Tuesday at 9:30 a.m. ET. It is brief and casual, and it answers the question directly the way a friend would text back.",
-    "wrong_fact": false,
-    "safety_miss": false,
-    "score": 5
-  }
-}
