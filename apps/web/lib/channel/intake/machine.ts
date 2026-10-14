@@ -435,7 +435,8 @@ export async function handleInboundSms(
   // limit so step 3 cannot drop one. STOP is a legal instruction, not traffic: a parent
   // who has just texted too fast is exactly the parent about to send it, and throttling
   // it away would leave them subscribed with no record of having asked to leave.
-  const match = matchKeyword(inbound.body);
+  const readerOnly = optOutReaderOnlyEnabled() && Boolean(deps.optOutReader);
+  const match = readerOnly ? null : matchKeyword(inbound.body);
 
   // 3. Rate limit, keyed by the BLIND INDEX (the raw number never reaches the limiter
   // table). Over the limit we go SILENT rather than replying "slow down": a reply is
@@ -446,6 +447,29 @@ export async function handleInboundSms(
   if (inbound.budget !== 'chat') {
     const decision = await deps.limiter.check(phoneHash, INTAKE_ROUTE, RATE_LIMITS[INTAKE_ROUTE]);
     if (!decision.allowed && !match) {
+      // Reader-only: no keyword exemption exists, so the turn is still read and a
+      // stop in any wording still revokes. Nothing else runs over the limit.
+      if (readerOnly) {
+        const reading = await readTurnOnce(deps.optOutReader, inbound, {
+          text: inbound.body,
+          language: null,
+        });
+        if (reading?.intent === 'stop') {
+          return handleStop(
+            database,
+            {
+              phoneE164,
+              inbound,
+              session: await loadOpenSession(database, phoneE164),
+              now,
+              language: replyLanguage(inbound.body),
+              providerAnswered: false,
+              confirmation: reading.confirmation,
+            },
+            deps,
+          );
+        }
+      }
       return { status: 'rate_limited' };
     }
   }
@@ -495,6 +519,16 @@ export async function handleInboundSms(
         },
         deps,
       );
+    }
+    // Reader-only: a start in any wording re-enrols a number that stopped, with the
+    // model's own confirmation. Not a stopped number with a seat → the turn goes on.
+    if (readerOnly && reading?.intent === 'start') {
+      const restarted = await restartFromReader(
+        database,
+        { phoneE164, inbound, now, confirmation: reading.confirmation },
+        deps,
+      );
+      if (restarted) return restarted;
     }
   }
 
@@ -3341,6 +3375,19 @@ async function helpBody(
   return friendOutbound(spoken);
 }
 
+/**
+ * #868 · the reader-only gate. Off (the default, and production today): the carrier
+ * keywords in keywords.ts still match first and STOP/START answer with the fixed acks.
+ * Exactly 'on': no keyword list — the turn reader decides stop AND start in any
+ * wording and writes both confirmations, and an over-limit turn is still read so a
+ * stop can never be throttled away. Flip it only after the opt-out-read eval passes
+ * on a recording; then keywords.ts and STOP_ACK/START_ACK are deleted
+ * (/workspace/pr868-keywords-removal.patch).
+ */
+export function optOutReaderOnlyEnabled(): boolean {
+  return process.env.OPT_OUT_READER_ONLY === 'on';
+}
+
 async function handleKeyword(
   database: Database,
   args: {
@@ -3489,6 +3536,43 @@ async function handleKeyword(
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
   return greet(database, { phoneE164, inbound, now, joinTag: joinTagFromBody(inbound.body) }, deps);
+}
+
+/** Re-enrolment from the reader's start reading. Null: nothing to re-enrol. */
+async function restartFromReader(
+  database: Database,
+  args: { phoneE164: string; inbound: Inbound; now: Date; confirmation: string },
+  deps: IntakeDeps,
+): Promise<IntakeOutcome | null> {
+  const owner = await findReenrollableChannelOwner(database, args.phoneE164);
+  if (!owner) return null;
+  await reenrolOnStart(
+    database,
+    { ...owner, phoneE164: args.phoneE164, verbatimReply: args.inbound.body },
+    args.now,
+  );
+  const body = args.confirmation.trim();
+  if (body.length === 0) {
+    console.error('opt-out reader: start read with no confirmation - re-enrolled, nothing sent');
+    return { status: 'restarted', ack: 'sent' };
+  }
+  const sent = await sendResolvingNewChat(deps.transport, { to: args.phoneE164, body });
+  const pipe = messagingPipe(args.inbound);
+  const channel = sent.transport === 'imessage' ? 'imessage' : pipe.channel;
+  await writeChannelMessage(
+    database,
+    { familyId: owner.familyId, parentUserId: owner.userId },
+    {
+      direction: 'out',
+      body,
+      providerId: sent.providerMessageId,
+      at: args.now.toISOString(),
+      channel,
+      chatId: channel === 'imessage' ? (sent.chatId ?? pipe.chatId) : pipe.chatId,
+    },
+    args.now,
+  );
+  return { status: 'restarted', ack: 'sent' };
 }
 
 async function handleStop(

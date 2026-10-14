@@ -1245,3 +1245,37 @@ describe('friend voice onboarding', () => {
     });
   });
 });
+
+describe('reader-only opt-out gate (#868, off by default)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const reader = (intent: 'stop' | 'start' | 'none', confirmation: string) => ({
+    read: async () => ({ intent, confirmation }),
+  });
+
+  it('with the gate on, the word list is not consulted: the reader decides', async () => {
+    vi.stubEnv('OPT_OUT_READER_ONLY', 'on');
+    const { fake, transport, deps } = harness({ voice: true });
+    deps.optOutReader = reader('none', '');
+    const result = await handleInboundSms(fake.db, inbound(transport, 'STOP'), deps);
+    expect(result.status).not.toBe('stopped');
+  });
+
+  it('with the gate on, any wording of stop revokes and sends the model confirmation', async () => {
+    vi.stubEnv('OPT_OUT_READER_ONLY', 'on');
+    const { fake, transport, deps } = harness({ voice: true });
+    deps.optOutReader = reader('stop', 'Stop confirmation (test fixture).');
+    const result = await handleInboundSms(fake.db, inbound(transport, 'pls leave me alone'), deps);
+    expect(result.status).toBe('stopped');
+    expect(transport.bodies()).toEqual(['Stop confirmation (test fixture).']);
+  });
+
+  it('with the gate off, the carrier keyword still stops first', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    deps.optOutReader = reader('none', '');
+    const result = await handleInboundSms(fake.db, inbound(transport, 'STOP'), deps);
+    expect(result.status).toBe('stopped');
+  });
+});
