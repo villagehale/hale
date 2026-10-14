@@ -87,9 +87,13 @@
     "file": "followup-voice.md",
     "sha256": "2b934d020eac24f34924c5d2bfe3c658e095b3f75afa2aa5d119ca0372cdad7b"
   },
+  "general-answer-check.md": {
+    "file": "general-answer-check.md",
+    "sha256": "878927cbc2e57042af93bfb3aee2357a99a85725ce7d14fd7f0a6b31aa146739"
+  },
   "general-answer-sanitize.md": {
     "file": "general-answer-sanitize.md",
-    "sha256": "07ac049abe259507e3708f03d3714c6f6cca8bffe2c52a9f0942ebcd2f75d2b3"
+    "sha256": "1726f7ec6c08082a128214e985ef935df5f5e99c48239a8043c56ef982b0ded8"
   },
   "general-answer-search.md": {
     "file": "general-answer-search.md",
@@ -97,7 +101,7 @@
   },
   "general-answer.md": {
     "file": "general-answer.md",
-    "sha256": "4d59e04ebd38ccd04a367edf0c1cd657d3863c211f0240554570c53ac16abec5"
+    "sha256": "e238f05d36c2f6674107db6b5b34d900e0cbf8236e7eae87b371cf56041fce92"
   },
   "gmail-draft-coach.md": {
     "file": "gmail-draft-coach.md",

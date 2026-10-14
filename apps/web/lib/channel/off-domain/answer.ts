@@ -8,12 +8,16 @@ import { formatLongDate } from '~/lib/format/datetime';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import {
   ANSWER_MAX_TOKENS,
+  CHECK_MAX_TOKENS,
   type HomePlace,
   type LiveSearch,
   type PendingAsk,
   type SafetyKind,
   answerJsonSchema,
   answersPending,
+  checkJsonSchema,
+  generalAnswerCheckUserMessage,
+  generalAnswerRedraftUserMessage,
   generalAnswerUserMessage,
   hurtIllOrDanger,
   needsSearch,
@@ -23,6 +27,7 @@ import {
   scrubDirectIdentifiers,
   searchUserMessage,
   turnsOnTheirPlace,
+  wantsRedraft,
 } from './answer-request';
 import { normalizeLanguage } from './medical';
 import type { Moment } from './moment-reply';
@@ -243,6 +248,9 @@ const sanitizeSchema = z.object({
  * its `grounding` (answer-request.ts); zod drops it here, so no line after this one has
  * it to send, keep or log. The reading is taken loosely, like the sanitizer's. */
 const answerSchema = z.object({ hurt_ill_or_danger: z.unknown(), answer: z.string() });
+
+/** The pre-send reader's verdict, taken loosely: anything but a reasoned `redraft` sends. */
+const checkSchema = z.object({ verdict: z.unknown(), reason: z.unknown() });
 
 /**
  * Today's date as the search and the compose are told it: the weekday and the full date
@@ -589,6 +597,7 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
     sanitize: Skill;
     search: Skill;
     answer: Skill;
+    check: Skill;
   }
 
   /** The client and the three skills, or the name of what is missing. */
@@ -607,6 +616,7 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
         sanitize: await loadCronSkill('general-answer-sanitize'),
         search: await loadCronSkill('general-answer-search'),
         answer: await loadCronSkill('general-answer'),
+        check: await loadCronSkill('general-answer-check'),
       };
     } catch (err) {
       return { missing: 'skill_unavailable', detail: message(err) };
@@ -675,25 +685,74 @@ export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerCom
         : await liveSearch(stage.client, stage.search, question, today, place);
 
     // Phase 2 — COMPOSE (blind: the question and the research, never the raw message).
+    const composeRequest = generalAnswerUserMessage({
+      question,
+      language,
+      today,
+      search,
+      notes: findings.notes,
+      missing,
+    });
+    const draftOnce = async (userMessage: string) =>
+      (
+        await forceToolJson({
+          client: stage.client,
+          lane: pickLane(stage.answer.meta.task),
+          system: stage.answer.instructions,
+          userMessage,
+          toolName: 'answer',
+          toolDescription: 'Return the one brief answer to this question.',
+          inputJsonSchema: answerJsonSchema,
+          schema: answerSchema,
+          maxTokens: ANSWER_MAX_TOKENS,
+        })
+      ).value;
     try {
-      const { value } = await forceToolJson({
-        client: stage.client,
-        lane: pickLane(stage.answer.meta.task),
-        system: stage.answer.instructions,
-        userMessage: generalAnswerUserMessage({
-          question,
-          language,
-          today,
-          search,
-          notes: findings.notes,
-          missing,
-        }),
-        toolName: 'answer',
-        toolDescription: 'Return the one brief answer to this question.',
-        inputJsonSchema: answerJsonSchema,
-        schema: answerSchema,
-        maxTokens: ANSWER_MAX_TOKENS,
-      });
+      let value = await draftOnce(composeRequest);
+      // Phase 3 — READ IT AGAINST THE NOTES. Only a reply written from notes has notes to
+      // be read against, and a safety door is not a draft. The reader's verdict is the
+      // model's; a failed or unreadable read sends the first draft, and a redraft is sent
+      // as written: one more draft, never a loop.
+      if (
+        search === 'searched' &&
+        findings.notes !== '' &&
+        hurtIllOrDanger(value.hurt_ill_or_danger) === null
+      ) {
+        let reason: string | null = null;
+        try {
+          const { value: verdict } = await forceToolJson({
+            client: stage.client,
+            lane: pickLane(stage.check.meta.task),
+            system: stage.check.instructions,
+            userMessage: generalAnswerCheckUserMessage({
+              question,
+              today,
+              notes: findings.notes,
+              draft: value.answer,
+            }),
+            toolName: 'verdict',
+            toolDescription: 'Say whether this draft can be sent as written.',
+            inputJsonSchema: checkJsonSchema,
+            schema: checkSchema,
+            maxTokens: CHECK_MAX_TOKENS,
+          });
+          reason = wantsRedraft(verdict);
+        } catch (err) {
+          console.warn(
+            { reason: failureName(err) },
+            'off-domain answer: the pre-send read failed; sending the first draft',
+          );
+        }
+        if (reason !== null) {
+          console.info(
+            { check: 'redraft' },
+            'off-domain answer: the pre-send read asked for one more draft',
+          );
+          value = await draftOnce(
+            generalAnswerRedraftUserMessage(composeRequest, value.answer, reason),
+          );
+        }
+      }
       return sendable(value, search, findings.urls, leftOpen(search, question, missing));
     } catch (err) {
       return unavailable('model_failed', failureName(err));

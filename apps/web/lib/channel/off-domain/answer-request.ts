@@ -294,6 +294,54 @@ export function generalAnswerUserMessage(input: {
   });
 }
 
+/** The pre-send read: whether a draft written from search notes can go as written. */
+export const CHECK_MAX_TOKENS = 1024;
+
+export const checkJsonSchema = {
+  type: 'object',
+  properties: {
+    verdict: { type: 'string', enum: ['send', 'redraft'] },
+    reason: { type: 'string' },
+  },
+  required: ['verdict', 'reason'],
+  additionalProperties: false,
+} as const;
+
+export function generalAnswerCheckUserMessage(input: {
+  question: string;
+  today: string;
+  notes: string;
+  draft: string;
+}): string {
+  return JSON.stringify({
+    question: input.question,
+    today: input.today,
+    research_notes: input.notes,
+    draft: input.draft,
+  });
+}
+
+/** FAIL TOWARD SENDING THE FIRST DRAFT: only an explicit `redraft` with a reason sends it
+ * back, so a check that fails or reads oddly never holds a reply. */
+export function wantsRedraft(raw: { verdict?: unknown; reason?: unknown }): string | null {
+  if (raw.verdict !== 'redraft') return null;
+  const reason = typeof raw.reason === 'string' ? raw.reason.trim() : '';
+  return reason === '' ? null : reason;
+}
+
+/** The compose request again, with the reader's note and the first draft beside it. */
+export function generalAnswerRedraftUserMessage(
+  base: string,
+  draft: string,
+  reason: string,
+): string {
+  return JSON.stringify({
+    ...(JSON.parse(base) as Record<string, unknown>),
+    first_draft: draft,
+    reader_note: reason,
+  });
+}
+
 /**
  * FAIL TOWARD LOOKING IT UP: only an explicit `no` skips the search. `unsure`, a missing
  * reading and anything off the list all search, because the failure worth avoiding is a

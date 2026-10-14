@@ -111,6 +111,12 @@ city, which country, which team). Otherwise write `none`: a question with the sa
 good answer wherever they are leaves nothing out, and neither does a question about
 their own life.
 
+Leave out of `missing_detail` anything a friend would simply assume: which edition
+of an event is the one on now or next, and the parent's own country or city is
+theirs, so when that is what a correct answer turns on, write `their_place` as
+`needed` and let Hale look it up for the place it has. Hale answers with that best
+reading first, and asks only when nothing usual can stand in.
+
 Then `their_place`. Write `needed` when what is missing is where this parent is,
 their city or their country, as it is when they are looking for a person, a service
 or a store near them: Hale will look the question up for the place it has on
