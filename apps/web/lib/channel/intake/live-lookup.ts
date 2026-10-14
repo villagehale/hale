@@ -21,8 +21,6 @@ const GROUND_MAX_TOKENS = 2048;
 
 export const NO_CURRENT_SOURCE_YET = 'I do not have a current source yet.';
 
-/** After provision: one line back to Hale's job, never more trivia. */
-export const AFTER_PROVISION_RETURN_ASK = 'Anything I can watch for the kids this week?';
 
 /**
  * Warm parent, not a clinician. Reviewed copy — a model does not write a
@@ -150,13 +148,13 @@ function sendableJoined(joined: string, fallback: string): string {
 
 export function joinLiveLookupAnswer(answer: string, pendingAsk: string): string {
   const ask = liveLookupReturnLine(pendingAsk);
-  const fallback = `${NO_CURRENT_SOURCE_YET} ${ask}`;
-  return sendableJoined(`${answer} ${ask}`, fallback);
+  const join = (head: string) => [head, ask].filter((part) => part.length > 0).join(' ');
+  return sendableJoined(join(answer), join(NO_CURRENT_SOURCE_YET));
 }
 
 export function joinAfterProvisionAnswer(answer: string): string {
-  const fallback = `${NO_CURRENT_SOURCE_YET} ${AFTER_PROVISION_RETURN_ASK}`;
-  return sendableJoined(`${answer} ${AFTER_PROVISION_RETURN_ASK}`, fallback);
+  // #868: no fixed return ask after the answer; the next turn asks in the model's words.
+  return sendableJoined(answer, NO_CURRENT_SOURCE_YET);
 }
 
 export function liveLookupReplyFromNotes(notes: string, pendingAsk: string): string {

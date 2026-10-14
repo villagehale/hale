@@ -47,7 +47,7 @@ export function officialPageReturnLine(pendingAsk: string): string {
   // #868: the fixed watch / cold-start asks are gone as pending-ask text. The one
   // live caller passes no pending ask; the friend voice asks the next thing itself.
   void pendingAsk;
-  return 'What did you want to tell me first?';
+  return '';
 }
 
 export function officialPageFallbackReply(pendingAsk: string): string {
@@ -81,8 +81,8 @@ export function extractOfficialAnswer(notes: string): string | null {
 
 export function joinOfficialAnswer(answer: string, pendingAsk: string): string {
   const ask = officialPageReturnLine(pendingAsk);
-  const fallback = `${NOT_POSTED_YET} ${ask}`;
-  const joined = `${answer} ${ask}`;
+  const fallback = [NOT_POSTED_YET, ask].filter((part) => part.length > 0).join(' ');
+  const joined = [answer, ask].filter((part) => part.length > 0).join(' ');
   if (joined.length > INTAKE_MAX_REPLY_CHARS) return fallback;
   if (smsEncoding(joined) !== 'gsm7') return fallback;
   if (/https?:\/\/|www\./i.test(joined)) return fallback;

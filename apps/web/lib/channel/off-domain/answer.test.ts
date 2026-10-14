@@ -1,7 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  AFTER_PROVISION_RETURN_ASK,
   CHEER_UP_REPLY,
   NO_CURRENT_SOURCE_YET,
 } from '~/lib/channel/intake/live-lookup';
@@ -312,7 +311,6 @@ describe('after provision leftover facts · VIL-327', () => {
     expect(outcome.status).toBe('composed');
     if (outcome.status !== 'composed') return;
     expect(outcome.reply).toContain('Argentina');
-    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
     expect(outcome.reply).not.toMatch(/https?:\/\//);
   });
 
@@ -331,7 +329,6 @@ describe('after provision leftover facts · VIL-327', () => {
     expect(outcome.status).toBe('composed');
     if (outcome.status !== 'composed') return;
     expect(outcome.reply).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
   });
 
   it('answers a cheer-up with warmth and a line back to the week', async () => {
@@ -347,7 +344,6 @@ describe('after provision leftover facts · VIL-327', () => {
     expect(outcome.status).toBe('composed');
     if (outcome.status !== 'composed') return;
     expect(outcome.reply).toContain(CHEER_UP_REPLY);
-    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
     expect(outcome.reply).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
   });
 

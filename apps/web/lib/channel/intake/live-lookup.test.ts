@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import {
-  AFTER_PROVISION_RETURN_ASK,
   CHEER_UP_REPLY,
   NO_CURRENT_SOURCE_YET,
   afterProvisionFallbackReply,
@@ -79,15 +78,16 @@ describe('live-lookup · which inbound needs a current source', () => {
 describe('live-lookup · return ask is never COLD_START_ASK', () => {
   it('asks for names, ages, and postal in different words', () => {
     const line = liveLookupReturnLine(COLD_START_ASK);
-    expect(line.trim().endsWith('?')).toBe(true);
     expect(line).not.toBe(COLD_START_ASK);
-    expect(line.endsWith('?')).toBe(true);
+    // #868: no fixed return line at all; the friend voice asks next turn.
+    expect(line).toBe('');
   });
 
   it('paraphrases the watch offer without copying it', () => {
     const line = liveLookupReturnLine(WATCH_OFFER_ASK);
     expect(line).not.toBe(WATCH_OFFER_ASK);
-    expect(line.endsWith('?')).toBe(true);
+    // #868: no fixed return line at all; the friend voice asks next turn.
+    expect(line).toBe('');
   });
 });
 
@@ -95,7 +95,6 @@ describe('live-lookup · no current source when search cannot ground', () => {
   it('is the locked fallback, GSM-7, under 300, no URL, no I do not do that', () => {
     const body = liveLookupFallbackReply(COLD_START_ASK);
     expect(body.startsWith(NO_CURRENT_SOURCE_YET)).toBe(true);
-    expect(body.trim().endsWith('?')).toBe(true);
     expect(body).not.toContain(COLD_START_ASK);
     expect(body).not.toContain("I don't do that");
     expect(body).not.toMatch(/https?:\/\//);
@@ -108,7 +107,6 @@ describe('live-lookup · no current source when search cannot ground', () => {
   it('after provision still returns to the kids / the week, not trivia', () => {
     const body = afterProvisionFallbackReply();
     expect(body.startsWith(NO_CURRENT_SOURCE_YET)).toBe(true);
-    expect(body).toContain(AFTER_PROVISION_RETURN_ASK);
     expect(body).not.toContain(COLD_START_ASK);
     expect(smsEncoding(body)).toBe('gsm7');
     expect(body.length).toBeLessThanOrEqual(300);
@@ -129,7 +127,6 @@ describe('live-lookup · no current source when search cannot ground', () => {
       COLD_START_ASK,
     );
     expect(grounded).toContain('United States president');
-    expect(grounded.trim().endsWith('?')).toBe(true);
     expect(grounded).not.toContain(COLD_START_ASK);
 
     const empty = liveLookupReplyFromNotes('NO CURRENT SOURCE', COLD_START_ASK);
@@ -139,7 +136,6 @@ describe('live-lookup · no current source when search cannot ground', () => {
   it('after provision leftover facts get a return-to-Hale line', () => {
     const body = afterProvisionReplyFromNotes('Argentina won the 2022 World Cup.');
     expect(body).toContain('Argentina');
-    expect(body).toContain(AFTER_PROVISION_RETURN_ASK);
     expect(body).not.toContain(COLD_START_ASK);
   });
 });
@@ -150,14 +146,12 @@ describe('live-lookup · cheer-up is warm and not clinical', () => {
     expect(CHEER_UP_REPLY).toBe("That's a lot to carry. You're doing the hard part.");
     expect(CHEER_UP_REPLY).not.toContain('by showing up');
     expect(intake.startsWith(CHEER_UP_REPLY)).toBe(true);
-    expect(intake.trim().endsWith('?')).toBe(true);
     expect(intake).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
     expect(intake).not.toContain(COLD_START_ASK);
     expect(smsEncoding(intake)).toBe('gsm7');
 
     const after = cheerUpAfterProvisionReply();
     expect(after.startsWith(CHEER_UP_REPLY)).toBe(true);
-    expect(after).toContain(AFTER_PROVISION_RETURN_ASK);
     expect(after).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
   });
 });

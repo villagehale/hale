@@ -112,7 +112,7 @@ export function recMorningReply(
 export function recMorningReturnLine(pendingAsk: string): string {
   // #868: the fixed watch / cold-start asks are gone as pending-ask text.
   void pendingAsk;
-  return 'What did you want to tell me first?';
+  return '';
 }
 
 /**
@@ -131,7 +131,7 @@ export function recMorningIntakeReply(input: {
     city: input.city,
   });
   if (sms === null) return null;
-  const joined = `${sms} ${recMorningReturnLine(input.pendingAsk)}`;
+  const joined = [sms, recMorningReturnLine(input.pendingAsk)].filter((part) => part.length > 0).join(' ');
   if (joined.length > INTAKE_MAX_REPLY_CHARS) {
     throw new Error(
       `rec-morning intake reply is ${joined.length} chars, cap is ${INTAKE_MAX_REPLY_CHARS}`,

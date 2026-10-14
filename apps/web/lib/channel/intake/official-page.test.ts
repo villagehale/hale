@@ -40,7 +40,8 @@ describe('official-page · the return ask is never COLD_START_ASK', () => {
   it('paraphrases the watch offer without copying it', () => {
     const line = officialPageReturnLine(WATCH_OFFER_ASK);
     expect(line).not.toBe(WATCH_OFFER_ASK);
-    expect(line.endsWith('?')).toBe(true);
+    // #868: no fixed return line at all; the friend voice asks next turn.
+    expect(line).toBe('');
   });
 });
 
@@ -48,7 +49,6 @@ describe('official-page · not posted yet when search cannot ground a date', () 
   it('is the locked fallback, GSM-7, under 300, no URL, no I do not do that', () => {
     const body = officialPageFallbackReply(COLD_START_ASK);
     expect(body.startsWith(NOT_POSTED_YET)).toBe(true);
-    expect(String(body).trim().endsWith('?')).toBe(true);
     expect(body).not.toBe(COLD_START_ASK);
     expect(body).not.toContain(COLD_START_ASK);
     expect(body).not.toContain("I don't do that");
@@ -74,7 +74,6 @@ describe('official-page · not posted yet when search cannot ground a date', () 
       COLD_START_ASK,
     );
     expect(grounded).toContain('September 8');
-    expect(String(grounded).trim().endsWith('?')).toBe(true);
     expect(grounded).not.toContain(COLD_START_ASK);
 
     const empty = officialPageReplyFromNotes('Nothing on the municipal page.', COLD_START_ASK);

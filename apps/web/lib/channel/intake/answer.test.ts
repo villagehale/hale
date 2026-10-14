@@ -9,7 +9,7 @@ import {
   readPair,
   refusals,
 } from './answer';
-import { AFTER_PROVISION_RETURN_ASK, CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
+import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
 import { NOT_POSTED_YET } from './official-page';
 
 /** #868: the fixed ask is gone; any pending-ask text is a fixture. */
@@ -166,7 +166,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body.startsWith(cityRecLine('toronto', REC_MORNING_NOW))).toBe(true);
+    expect(outcome.body.startsWith(cityRecLine('toronto', REC_MORNING_NOW) as string)).toBe(true);
     expect(outcome.body).toContain('non-residents Friday Sep 25 at 7 a.m.');
     expect(outcome.body.toLowerCase()).not.toContain('activeto');
     expect(outcome.body.toLowerCase()).not.toContain('unofficial');
@@ -274,7 +274,6 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain(NOT_POSTED_YET);
-    expect(outcome.body.trim().endsWith('?')).toBe(true);
     expect(outcome.body).not.toBe(COLD_START_ASK);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
@@ -319,7 +318,6 @@ describe('intake answer · the emergency tripwire', () => {
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain('September 8');
     expect(outcome.body).toContain('7:00');
-    expect(outcome.body.trim().endsWith('?')).toBe(true);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
     expect(outcome.body).not.toMatch(/https?:\/\//);
@@ -344,7 +342,6 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.body.trim().endsWith('?')).toBe(true);
     expect(outcome.body).not.toBe(COLD_START_ASK);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
@@ -388,7 +385,6 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain('United States president');
-    expect(outcome.body.trim().endsWith('?')).toBe(true);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
     expect(outcome.body).not.toMatch(/https?:\/\//);
@@ -411,7 +407,6 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.body.trim().endsWith('?')).toBe(true);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toMatch(/I'?m a therapist/i);
     expect(outcome.body).not.toMatch(/https?:\/\//);
@@ -434,10 +429,8 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain(CHEER_UP_REPLY);
-    expect(outcome.body.trim().endsWith('?')).toBe(true);
     expect(outcome.body).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
     expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain(AFTER_PROVISION_RETURN_ASK);
   });
 });
 

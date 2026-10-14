@@ -57,7 +57,9 @@ export function adultLearnIntakeReply(input: {
   postal: string | null;
 }): string | null {
   if (!isAdultLearnAsk(input.parentWords)) return null;
-  const joined = `${adultLearnDoor(sessionCity(input.postal))} ${recMorningReturnLine(input.pendingAsk)}`;
+  const joined = [adultLearnDoor(sessionCity(input.postal)), recMorningReturnLine(input.pendingAsk)]
+    .filter((part) => part.length > 0)
+    .join(' ');
   if (joined.length > INTAKE_MAX_REPLY_CHARS) {
     throw new Error(
       `adult-learn intake reply is ${joined.length} chars, cap is ${INTAKE_MAX_REPLY_CHARS}`,
