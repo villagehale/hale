@@ -11,7 +11,6 @@ import {
   setIntentsAction,
   setLocationAction,
   setParentNameAction,
-  setPlanAction,
 } from './children-actions.js';
 
 // The Family-page mutations read the Auth.js session + the db at request time, and
@@ -531,59 +530,6 @@ describe('setLocationAction', () => {
   });
 });
 
-describe('setPlanAction', () => {
-  it('downgrades the plan to free and audits family_plan_updated with before/after', async () => {
-    const { tx, inserts, updates } = makeTx([{ planTier: 'plus' }]);
-    fakeDbHandle = txDb(tx);
-
-    const result = await setPlanAction('free');
-
-    expect(result).toEqual({ status: 'updated' });
-    expect(valuesFor(updates, schema.families)).toEqual({ planTier: 'free' });
-    expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
-      familyId: FAMILY_ID,
-      actor: USER_ID,
-      actionTaken: 'family_plan_updated',
-      targetTable: 'families',
-      targetId: FAMILY_ID,
-      before: { planTier: 'plus' },
-      after: { planTier: 'free' },
-    });
-  });
-
-  it.each(['plus', 'family'])(
-    'refuses a self-serve upgrade to %s: no plan write, and the attempt is audited',
-    async (paidTier) => {
-      const { tx, inserts, updates } = makeTx([{ planTier: 'free' }]);
-      const handle = { ...txDb(tx), insert: tx.insert };
-      fakeDbHandle = handle;
-
-      const result = await setPlanAction(paidTier);
-
-      expect(result).toEqual({ status: 'invalid' });
-      expect(updates).toHaveLength(0);
-      expect(handle.transaction).not.toHaveBeenCalled();
-      expect(inserts).toHaveLength(1);
-      expect(valuesFor(inserts, schema.auditLog)).toEqual({
-        familyId: FAMILY_ID,
-        actor: USER_ID,
-        actionTaken: 'family_plan_change_refused',
-        targetTable: 'families',
-        targetId: FAMILY_ID,
-        after: { requestedPlanTier: paidTier },
-      });
-      expect(revalidatePath).not.toHaveBeenCalled();
-    },
-  );
-
-  it('rejects an unknown plan tier without touching the db', async () => {
-    fakeDbHandle = {};
-    const result = await setPlanAction('enterprise');
-    expect(result).toEqual({ status: 'invalid' });
-    expect(resolveFamilyForUser).not.toHaveBeenCalled();
-  });
-});
-
 describe('setIntentsAction', () => {
   it('writes validated intents (unknown dropped, canonical order) and audits before/after', async () => {
     const { tx, inserts, updates } = makeTx([{ intents: ['planning'] }]);
@@ -658,7 +604,7 @@ describe('setParentNameAction', () => {
 describe('IA split — each mutation revalidates the page that renders it', () => {
   // Family control (children, household location, tailoring intents) is
   // server-rendered on /family — the editor, which the Instinct refresh moved up
-  // from /family/members. Account config (profile name, plan) lives on /settings.
+  // from /family/members. Account config (profile name) lives on /settings.
   // A write must revalidate the page it actually appears on, or the moved surface
   // serves stale cached HTML until a hard reload.
   it('revalidates /family for an added child', async () => {
@@ -699,14 +645,6 @@ describe('IA split — each mutation revalidates the page that renders it', () =
     await setIntentsAction(['activities']);
     expect(revalidatePath).toHaveBeenCalledWith('/family');
     expect(revalidatePath).not.toHaveBeenCalledWith('/settings');
-  });
-
-  it('revalidates /settings for a plan change (account config, not family)', async () => {
-    const { tx } = makeTx([{ planTier: 'plus' }]);
-    fakeDbHandle = txDb(tx);
-    await setPlanAction('free');
-    expect(revalidatePath).toHaveBeenCalledWith('/settings');
-    expect(revalidatePath).not.toHaveBeenCalledWith('/family/members');
   });
 
   it('revalidates /settings for a profile-name change (account config, not family)', async () => {

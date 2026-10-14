@@ -87,7 +87,7 @@ All of these are Vercel Cron routes under `apps/web/app/api/cron`, listed in `ap
 | --- | --- | --- |
 | `/api/cron/drain` | every minute | Drains the queue. Onboarding replies are sent inside the webhook. Replies after onboarding are queued, then drained here. |
 | `/api/cron/inbound-canary` | every 10 minutes | Posts a Linq-signed inbound at the real webhook and checks the previous tick's `channel_messages` row (`provider_message_id` prefix `hale-canary-`). |
-| `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null. |
+| `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null, and pages #ops when the Linq line crosses 70% or 90% of its chat IDs ([linq-chat-capacity.md](linq-chat-capacity.md)). |
 | `/api/cron/intake-sitting-reminder` | hourly | One nudge for a parent who stopped on the place or ages question. |
 
 A cron that returns stamps `cron_heartbeats`. A throw does not. `/api/health/crons` reads that table.
@@ -129,6 +129,8 @@ Migrations are additive. A bad migration is fixed forward. Do not drop columns f
 
 Slack handles only. Page in **#ops**.
 
+A Linq chat-ID capacity page has its own runbook: [linq-chat-capacity.md](linq-chat-capacity.md).
+
 | Who | Handle | Owns |
 | --- | --- | --- |
 | Barton, founder | @barton | Product, and the person to reach on Slack |
@@ -159,6 +161,8 @@ Slack handles only. Page in **#ops**.
 **PostHog.** Event `webhook_route_failed` with `route = linq_inbound` (distinct id `route:linq_inbound`). Events `intake_started` and `intake_completed` for the funnel. The failure event carries the route and the error class.
 
 **Slack #ops.** A thrown webhook posts `Hale ALERT: linq_inbound threw`. The page is at most once per 15 minutes per instance. The inbound canary and cron dead-man also post here. The webhook URL is `OPS_SLACK_WEBHOOK_URL`.
+
+**Daily #ops post.** At 13:14 UTC, `/api/cron/ops-daily` posts one `Hale daily` summary. The 24h block is over every real family (probe-range households, `METRICS_EXCLUDED_FAMILY_IDS` and the founder excluded): reply p50/p95, gaps over 15 minutes, unanswered steps, failed and held sends, failed turns, cache reads and recorded spend. The same post carries the founder counts: W4 retention and open promises as of the window end, and over the trailing 7 days the intake funnel with median time to first answer, medical answers that used the fixed 811/911 line, whether the registration re-verify sweep ran (and the tally that run recorded), plus the database's Linq chat-ID count against the 200 limit. Counts only. Set `METRICS_EXCLUDED_FAMILY_IDS` to the QA family ids before the first post; an empty list counts those households. A post that did not land is retried by `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/ops-daily`; a day already posted answers `already_posted`. It needs `APP_ENCRYPTION_KEY` and throws without it.
 
 ## Linq webhook failure
 

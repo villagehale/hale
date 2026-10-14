@@ -31,10 +31,7 @@ import { isSyntheticProbeNumber, maskPhoneE164, normalizePhoneE164 } from './pho
  * consent row is the parent's own, so the two-parent rule (#5) is not triggered.
  */
 
-// The versioned CASL consent copy + scope live in ./sms-consent-copy (a
-// dependency-free module the client Settings component also reads). Re-exported
-// here so callers/tests get them from the engine module too.
-export { SMS_CONSENT_COPY, SMS_CONSENT_COPY_VERSION, SMS_CONSENT_SCOPE } from './sms-consent-copy';
+export { SMS_CONSENT_SCOPE } from './sms-consent-copy';
 
 const CHANNEL_KIND = 'sms';
 

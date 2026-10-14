@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text matches the \"armed\" occasion perfectly: it establishes that the sender will handle emailing the school going forward without asking (\"以后帮你给学校发邮件这种事，我会直接替你发，不用每次都问你了\"). The voice is casual and friendly, appropriate for a family planner (\"好的\" and the overall tone). It is in Chinese, matching the parent's recent inbound message language. \n\nThe text successfully conveys the three required standing facts: (1) \"订票、报名、付款这些我是不会碰的\" directly communicates never booking, registering, or paying; (2) \"需要回复邮件的时候我也会帮你代为回复\" conveys that the sender will reply to email on the parent's behalf (repliesToEmail: true); (3) \"随时发一条消息给我就能关掉这个设置\" conveys that one message turns this off (stop: one_message).\n\nThe text does not invent a recipient, time, price, place, or link. It uses first person appropriately (\"我会直接替你发\"). It makes no more than one ask (none, actually—it's establishing a service). No numbered lists or templates are present. No word the parent is told to reply with appears. The tone is genuinely conversational, not like a notification or generic service offering.",
+    "score": 5
+  }
+}

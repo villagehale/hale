@@ -117,6 +117,7 @@ describe('one parent, two doors, one conversation', () => {
       // the deployed router makes.
       questions: { open: async () => [] },
       replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
+      weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       recordStatedState: async () => ({ status: 'nothing_stated' }),

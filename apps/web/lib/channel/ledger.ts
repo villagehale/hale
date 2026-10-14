@@ -1,12 +1,12 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { LedgerWrite } from './dispatch';
-import type { ChannelKind, LoopCategory } from './types';
+import type { ChannelKind } from './types';
 
 /**
  * F11 · The Sunday Loop (VIL-213 · A2) — the channel_messages reads/writes the
- * dispatch's ledger port is wired to. A row is written for every outcome; the cap
- * count and the dedupe guard read it back. Outbound only here (direction 'out');
+ * dispatch's ledger port is wired to. A row is written for every outcome; the
+ * dedupe guard reads it back. Outbound only here (direction 'out');
  * inbound rows are A3.
  */
 
@@ -74,37 +74,11 @@ export async function recordChannelMessage(
  *
  * 'queued' belongs here because that is where an SMS row now STARTS ({@link
  * acceptedStatus}). A reader still asking for ['sent','delivered'] would answer "no"
- * about a message already on its way to the phone and send a second one — a doubled
- * cap, a second identity ask, a re-asked question. The reporting readers are a
+ * about a message already on its way to the phone and send a second one — a second
+ * identity ask, a re-asked question. The reporting readers are a
  * different question ("did it reach the parent?") and deliberately do not use this.
  */
 export const SENT_STATUSES = ['queued', 'sent', 'delivered'] as const;
-
-/** How many real sends (not suppressions/failures) of this category on THIS
- * channel went to the parent since `since` — the cap counts what actually left,
- * including a row still waiting for its receipt, per delivery leg so a mirror leg is
- * not capped by the other. */
-export async function countRecentSends(
-  userId: string,
-  category: LoopCategory,
-  channel: ChannelKind,
-  since: Date,
-  database: Database,
-): Promise<number> {
-  const rows = await database
-    .select({ id: schema.channelMessages.id })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.parentUserId, userId),
-        eq(schema.channelMessages.category, category),
-        eq(schema.channelMessages.channel, channel),
-        gte(schema.channelMessages.createdAt, since),
-        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
-      ),
-    );
-  return rows.length;
-}
 
 /**
  * The statuses that CONSUME a dedupe key: any attempt that reached the provider,
@@ -117,6 +91,19 @@ export async function countRecentSends(
  * and deliberate retries, when we build them, will mint their own keys.
  */
 export const CONSUMED_SEND_STATUSES = [...SENT_STATUSES, 'failed'] as const;
+
+/**
+ * Historical marker on a channel_messages row whose dedupe key was claimed
+ * because a combined notice already covered it. New sends do not write this:
+ * a covered key is an audit row, not a second queued text. Counts of real
+ * sends still exclude any row that already carries it.
+ */
+export const COVERED_BY_COMBINED_NOTICE = 'covered_by_combined_notice';
+
+/** True for a ledger row that is a send the parent could read, not a covered claim. */
+export function isRealSendRow() {
+  return sql`coalesce(${schema.channelMessages.errorCode}, '') <> ${COVERED_BY_COMBINED_NOTICE}`;
+}
 
 /** Whether this dedupe key already carries an attempted send — the idempotency
  * guard that makes a re-drain a no-op. Suppressions never carry the key, so a

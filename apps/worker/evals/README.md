@@ -92,7 +92,7 @@ invented, off-stage, confidence-inflated item) is rejected on every routine fixt
 (no API call), while the deterministic discovery fixtures still pass. Gate: real mode exits 0 iff every fixture
 passes; broken mode exits 0 iff at least one is rejected. Token usage per keyed call is logged as the budget instrument.
 
-# Agent-skill eval harness (week-summary + discovery)
+# Agent-skill eval harness (discovery)
 
 The `@hale/agent` skills already have LOOP-MECHANICS tests (a fake client feeding a tool call back, the maxSteps
 stop). Those prove plumbing, not QUALITY. This harness closes the rule #8 gap for the live agent surfaces: it runs the
@@ -102,19 +102,15 @@ agents against real (cached) Claude and gates on checkable properties + a cached
 node --env-file=../../.env evals/run-agent-eval.mjs                 # live pass, then caches
 node --env-file=../../.env evals/run-agent-eval.mjs --broken        # calibration: must FAIL
 node evals/run-agent-eval.mjs --cached-only                         # CI: replay only, never calls the API
-node evals/run-agent-eval.mjs --suite=discovery                     # restrict to one suite (week-summary|discovery)
+node evals/run-agent-eval.mjs --suite=discovery                     # restrict to one suite
 ```
 
 CI command (free, never calls the API): **`pnpm eval:agents`** (root) — delegates to `@hale/worker eval:agents`,
 which runs the `--cached-only` form. A cache miss in `--cached-only` mode FAILS LOUDLY (exit 1) rather than silently
 calling live, so CI can never spend.
 
-Two suites, each calibrated BOTH directions (real cached model PASSES; the `--broken` known-bad generator FAILS):
+One suite, calibrated BOTH directions (real cached model PASSES; the `--broken` known-bad generator FAILS):
 
-- **week-summary** (the weekly-plan composer's voice stage): runs the REAL `runAgent` loop over the REAL
-  `packages/agent/skills/week-summary.md` skill. The skill has no tools; the already-composed week `items` ride in
-  context and the model writes a JSON voice object around them. Gates: non-empty, length-bounded framing, no invented
-  time or link, item lines keyed to real item ids, and a cached Haiku judge for calm and faithfulness (>= 4).
 - **discovery** (web-side village discovery, `apps/web/lib/village/discover.ts`): REPLICATES that file's exact request
   shape — same prompt (`prompts/discovery.md`), same `SONNET_MODEL` (read live from `src/anthropic/client.ts`, the same
   constant `discover.ts`'s `loadCoachModel` reads), same `submit_candidates` tool-forced schema + serialization (the
@@ -124,8 +120,6 @@ Two suites, each calibrated BOTH directions (real cached model PASSES; the `--br
   grounded, so no candidate may assert near-certainty; coverageNote non-empty), no fabricated contact specifics, and a
   cached Haiku judge for local-fit & honesty (>= 4).
 
-IMPORT vs REPLICATE: week-summary IMPORTs the real `runAgent` + `loadSkill` from `packages/agent/src` via the tsx
-loader (the way `tsx watch` runs the worker), so the eval drives the genuine loop and genuine skill instructions.
 Discovery REPLICATES because its web-only modules can't be imported here.
 
 # SMS intake eval harness (VIL-237 · M2 — extraction + reply intent)
@@ -468,5 +462,5 @@ Commit the new `cache/*.json` files alongside the change. PII stays OUT of fixtu
 cache (rule #1): every fixture uses synthetic child names + coarse areas only, and a teenager is surfaced by stage /
 name only — never a real identity or a precise location.
 
-The suites this file still runs are week-summary and discovery. Gate: real mode exits 0 iff every fixture passes;
+The suite this file still runs is discovery. Gate: real mode exits 0 iff every fixture passes;
 broken mode exits 0 iff at least one is rejected.

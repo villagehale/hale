@@ -74,16 +74,14 @@ vi.mock('../services/memory-writer.js', () => ({
   recordAction: (input: Parameters<typeof recordAction>[0]) => recordAction(input),
   recordReviewerVerdict: vi.fn(async () => {}),
   recordReviewerRejection: vi.fn(async () => {}),
-  recordEntitlementGate: vi.fn(async () => {}),
   recordActionGate: (...a: unknown[]) => recordActionGate(...(a as [])),
   recordExecution: vi.fn(async () => {}),
   recordDrop: vi.fn(async () => {}),
   markEventStage: vi.fn(async () => {}),
   loadActionForEvent: vi.fn(async () => null),
-  loadFamilyPlanTier: vi.fn(async () => 'family' as const),
-  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
-  loadActionApprovalHistory: vi.fn(async () => []),
+  autonomyTurnOnDelivered: vi.fn(async () => true),
+  loadAutonomyStanding: vi.fn(async () => []),
   loadCrossParentConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
@@ -168,14 +166,19 @@ describe('runOrchestrator — accepted village item routes to add_to_routine', (
         verdict: ADD_TO_ROUTINE_VERDICT,
       })),
       loadConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
-      recordApproval: vi.fn(async () => ({ claimed: true as const })),
+      recordApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
       recordGate: vi.fn(async () => {}),
       execute,
       log: { info: vi.fn(), warn: vi.fn() },
     };
 
     await executeApprovedAction(
-      { actionId: 'action-1', familyId: villageJob.family_id, approvedBy: 'parent-a' },
+      {
+        actionId: 'action-1',
+        familyId: villageJob.family_id,
+        approvedBy: 'parent-a',
+        policyVersion: 'test-policy',
+      },
       deps,
     );
 

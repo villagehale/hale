@@ -1,7 +1,6 @@
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { writeFact } from '~/lib/memory/facts';
 import {
   type TestDb,
   createTestDb,
@@ -10,13 +9,11 @@ import {
   seedIntegration,
 } from '~/lib/testing/pglite';
 import {
-  DUTY_OPEN_FACT_KEY,
   DUTY_STOP_ASKING_KEY,
   DUTY_STOP_ASKING_MS,
   type DutySendPorts,
   answerParentDutyAsk,
   deliverDutyGroupLine,
-  dutyOpenValue,
   dutyStopAskingActive,
   emailDutyInGroup,
   planFamilyDutyAsks,
@@ -116,14 +113,6 @@ function sendPorts(send: DutySendPorts['send']): DutySendPorts {
       parentTimeZone: async () => 'America/Toronto',
     }),
     send,
-    spend: async () => ({
-      discretionaryDay: 0,
-      discretionaryWeek: 0,
-      ceilingToday: 0,
-      discretionaryDayAt: [],
-      discretionaryWeekAt: [],
-      ceilingTodayAt: [],
-    }),
   };
 }
 
@@ -372,53 +361,6 @@ describe('duty ask sweep', () => {
     ).toBe(true);
   });
 
-  it('steps down after three unanswered asks and does not text', async () => {
-    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Step down');
-    await secondParent(family.familyId, 'Sam');
-    await claimGroup(family.familyId, 'chat-step');
-    await writeFact(db.database, {
-      familyId: family.familyId,
-      childId: null,
-      factType: 'logistic',
-      factKey: DUTY_OPEN_FACT_KEY,
-      factValue: dutyOpenValue({
-        eventKey: 'evt-step',
-        role: 'pickup',
-        unanswered: 3,
-        silentNamed: true,
-        status: 'open',
-      }),
-      confidence: 1,
-      inferredBy: 'test',
-      validFrom: SUNDAY_AFTERNOON,
-    });
-    const send = vi.fn();
-    const result = await sweepDutyAsks(db.database, {
-      now: SUNDAY_AFTERNOON,
-      ports: sendPorts(send),
-    });
-    expect(result.steppedDown).toBe(1);
-    expect(send).not.toHaveBeenCalled();
-    const facts = await db.database
-      .select({
-        factKey: schema.familyMemoryFacts.factKey,
-        factValue: schema.familyMemoryFacts.factValue,
-        validUntil: schema.familyMemoryFacts.validUntil,
-        familyId: schema.familyMemoryFacts.familyId,
-      })
-      .from(schema.familyMemoryFacts)
-      .where(eq(schema.familyMemoryFacts.familyId, family.familyId));
-    const live = facts.find((row) => row.factKey === DUTY_OPEN_FACT_KEY && row.validUntil === null);
-    expect(live?.factValue).toMatchObject({ status: 'stepped_down' });
-    expect(facts.filter((row) => row.factKey === DUTY_OPEN_FACT_KEY).length).toBeGreaterThan(1);
-    const messages = await db.database
-      .select({ id: schema.channelMessages.id })
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.familyId, family.familyId));
-    expect(messages).toEqual([]);
-  });
-
   it('never initiates 1:1 when the family has no Linq group', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
     vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
@@ -462,7 +404,6 @@ describe('duty ask sweep', () => {
       familyId: family.familyId,
       now: SUNDAY_EVENING,
       bubbleLeaving: false,
-      ports,
     });
     if (!('plan' in view)) throw new Error('expected a plan');
     expect(view.plan.sendLines.some((row) => row.mode === 'night_before')).toBe(true);
@@ -475,7 +416,6 @@ describe('duty ask sweep', () => {
         now: SUNDAY_EVENING,
         dedupeKey: `duty-solo-${family.familyId}`,
         templateKey: 'linq:group_duty_night_before',
-        bubbleKind: 'discretionary',
         sendsActive: true,
       },
       ports,
@@ -509,7 +449,6 @@ describe('duty ask sweep', () => {
         now: SUNDAY_EVENING,
         dedupeKey: `duty-ph-${family.familyId}`,
         templateKey: 'linq:group_duty_night_before',
-        bubbleKind: 'discretionary',
         sendsActive: true,
       },
       ports,
@@ -546,7 +485,6 @@ describe('duty ask sweep', () => {
         now: SUNDAY_EVENING,
         dedupeKey: `duty-send-${family.familyId}`,
         templateKey: 'linq:group_duty_night_before',
-        bubbleKind: 'discretionary',
         sendsActive: true,
       },
       ports,

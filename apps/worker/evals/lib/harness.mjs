@@ -561,6 +561,26 @@ const JUDGE_SCHEMA = {
 };
 
 /**
+ * Score first, then a short reason. A forced tool call is emitted in schema order, so
+ * the number is already on the verdict when a long reason runs out of tokens. The
+ * shared schema above stays reason-first. A suite opts into this one.
+ */
+export function scoreFirstJudgeSchema(maxChars) {
+  return {
+    type: 'object',
+    properties: {
+      score: { type: 'integer', minimum: 1, maximum: 5 },
+      reason: {
+        type: 'string',
+        maxLength: maxChars,
+        description: `At most ${maxChars} characters. Do not quote the text.`,
+      },
+    },
+    required: ['score', 'reason'],
+  };
+}
+
+/**
  * HOW MANY TIMES THE JUDGE IS ASKED, when one draw is not a measurement.
  *
  * THREE, and it is the smallest number that HAS a median. A judge is a sampled model and
@@ -633,15 +653,24 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
       // 4096, and the ceiling has now been raised twice by the same failure. At 256 a
       // thorough judge ran out MID-STRING; at 1024 the deep lane's four-slot fixture did
       // the same, live, on 2026-08-24 — its surviving draws argue for 2800+ characters
-      // before they reach a number. `reason` comes BEFORE `score` on purpose (a score
-      // emitted first is a score reasoned backwards from), which makes `score` precisely
-      // the field a truncation eats, so the budget has to clear the longest honest
-      // argument rather than the average one. The key does not include max_tokens, so
-      // raising it leaves every committed verdict valid and only touches calls actually
-      // made — and `isVerdict` above means a draw that still runs out is loud, not a zero.
-      max_tokens: 4096,
+      // before they reach a number. The shared schema puts `reason` BEFORE `score` on
+      // purpose (a score emitted first is a score reasoned backwards from), which makes
+      // `score` precisely the field a truncation eats, so the budget has to clear the
+      // longest honest argument rather than the average one. A suite that passes
+      // `toolSchema` from `scoreFirstJudgeSchema` and `keepTruncatedScore` puts the
+      // number first and keeps a draw whose score already landed. The key does not
+      // include max_tokens, so raising it leaves every committed verdict valid and only
+      // touches calls actually made — and `isVerdict` above means a draw that still
+      // runs out before the number is loud, not a zero.
+      max_tokens: options?.maxTokens ?? 4096,
       system: judgeSystem,
-      tools: [{ name: 'score', description: 'Return the score.', input_schema: JUDGE_SCHEMA }],
+      tools: [
+        {
+          name: 'score',
+          description: 'Return the score.',
+          input_schema: options?.toolSchema ?? JUDGE_SCHEMA,
+        },
+      ],
       tool_choice: { type: 'tool', name: 'score' },
       messages: [{ role: 'user', content: userMessage }],
     };
@@ -653,12 +682,14 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     );
     const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'score');
     if (!toolUse) throw new Error(`judge (${tag}) returned no score tool call`);
-    if (response.stop_reason === 'max_tokens' || !isVerdict(toolUse.input)) {
+    const truncated = response.stop_reason === 'max_tokens';
+    const scored = isVerdict(toolUse.input);
+    if (!scored || (truncated && options?.keepTruncatedScore !== true)) {
       throw new Error(
         `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
       );
     }
-    noteUsage(cost, model, response.usage);
+    if (!response.capBooked) noteUsage(cost, model, response.usage);
     await cachePut(key, { parsed: toolUse.input });
     return toolUse.input;
   }

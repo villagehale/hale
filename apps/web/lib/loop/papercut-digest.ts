@@ -1,9 +1,7 @@
 import { type Database, type ReplySourceValue, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
-import type { Resend } from 'resend';
-import { founderAddress } from '~/lib/auth/founder-signal';
-import { createResendTransport } from '~/lib/channel/resend-transport';
 import { TURN_FAILED_ACTION } from '~/lib/channel/router/wiring';
+import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { escalateDigestSendFailure } from '~/lib/monitoring/provider-health';
 
 /**
@@ -278,27 +276,14 @@ export interface PapercutDigestSender {
   send(body: string): Promise<PapercutSendOutcome>;
 }
 
-const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
-
-/** The founder email leg, on the loop-health digest's exact pattern (founder-signal
- * Resend, internal ops mail, deliberately outside the parent-facing CASL ledger). */
-export function createPapercutDigestSender(client?: Resend): PapercutDigestSender {
+/** The weekly papercut ledger, posted to Slack #ops. */
+export function createPapercutDigestSender(): PapercutDigestSender {
   return {
     async send(body) {
-      const to = founderAddress();
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!to || (!apiKey && !client)) {
-        return { sent: false, reason: 'not_configured' };
-      }
-      const transport = createResendTransport({ apiKey, client });
-      const from = process.env.WELCOME_FROM ?? DEFAULT_FROM;
-      const { error } = await transport.send({
-        from,
-        to,
-        subject: 'Hale · weekly papercuts',
-        text: body,
-      });
-      return error ? { sent: false, reason: 'provider_error' } : { sent: true };
+      const outcome = await postOpsSlack(`Hale · weekly papercuts\n${body}`);
+      if (outcome === 'sent') return { sent: true };
+      if (outcome === 'skipped_not_configured') return { sent: false, reason: 'not_configured' };
+      return { sent: false, reason: 'provider_error' };
     },
   };
 }
@@ -363,7 +348,7 @@ export async function runPapercutDigestCron(
   const send = await deps.sender.send(formatPapercutDigest(summary));
   if (send.sent) return { outcome: 'sent', summary };
   if (send.reason === 'not_configured') {
-    console.error('papercut digest: no founder address/Resend key - digest composed, not sent');
+    console.error('papercut digest: #ops is not configured - digest composed, not sent');
     return { outcome: 'send_skipped_not_configured', summary };
   }
   console.error('papercut digest: provider refused the send');

@@ -240,7 +240,6 @@ describe('ci.yml wiring', () => {
       'eval:memory',
       'eval:memory-writeback',
       'eval:reviewer',
-      'eval:week-summary',
       'eval:agents',
       'eval:village-search',
       'eval:sentinel',
@@ -271,6 +270,7 @@ describe('ci.yml wiring', () => {
       'eval:activity-finder',
       'eval:activity-deep',
       'eval:travel-extract',
+      'eval:autonomy-notice',
     ];
     for (const command of commands) {
       expect(evals, command).toContain(command);

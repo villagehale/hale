@@ -60,7 +60,7 @@ export interface ReminderPayload {
    * deterministic copy", and that was a contract the SMS renderer honoured by throwing a
    * composed sentence away on the surface a parent actually reads. The SMS now folds it in
    * behind a measured gate (sms.ts, `foldReminderVoice`): GSM-7 byte identity, zero
-   * questions, the deterministic offset lead kept in front of it, and the whole message
+   * questions, the deterministic day lead kept in front of it, and the whole message
    * still inside ONE segment — the glance this template promises. Every refusal is named
    * and leaves the renderer on `RenderedContent.voice`, so "the composer degraded" and
    * "the fold refused it" are never the same silence.

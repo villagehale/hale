@@ -10,6 +10,7 @@ const NO_ALERTS = {
   calendarAlerts: [] as const,
   calendarDroppedNoId: 0,
   travelDetections: [] as const,
+  gmailCursor: null,
 };
 
 const FAMILY_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The text perfectly matches the \"armed\" occasion and first-person voice. \"From now on I'll add things to your calendar without checking with you first\" clearly conveys that calendar additions will be handled without asking going forward. The voice is casual and friendly (\"Hey!\" and \"you've okayed it enough times that I've got it\"). The text conveys all required standing facts: \"I'll never book, register, or pay for anything on my own\" covers the three items in `standing.never`, and \"One text from you is all it takes to turn this off anytime\" conveys that one message turns this off (`standing.stop`). The text is specific to the action (calendar additions), asks for nothing, contains no invented recipient, time, price, place, or link, and matches the language of `recentInbound` (\"add it on the calendar\"). It reads like a parent texting another parent, not a template or notification."
+  }
+}

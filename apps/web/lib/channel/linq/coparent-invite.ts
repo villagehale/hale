@@ -7,11 +7,9 @@ import {
   recordCoParentAssent,
   startCoParentInvite,
 } from '~/lib/channel/caregiver/invites';
-import {
-  CO_PARENT_REFUSAL_COPY,
-  coParentInviteBody,
-  coParentInviteSentAck,
-} from '~/lib/channel/coparent/copy';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { writeConsentAsk } from '~/lib/channel/consent-ask';
+import { CO_PARENT_REFUSAL_COPY, coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { latestCoparentGroupMode } from '~/lib/channel/intake/session';
@@ -49,7 +47,7 @@ const NAME_THEN_PHONE =
 /**
  * A number, or a name and then a number, and nothing else.
  *
- * "9059629821" and "Sam 905-962-9821" are the ask's answer. A sentence that
+ * "9055550182" and "Sam 905-555-0182" are the ask's answer. A sentence that
  * merely contains a number is not: the school line in the middle of a question
  * must still reach the coach.
  */
@@ -76,6 +74,8 @@ function inviteeLabel(name: string | null, language: ReplyLanguage): string {
 export interface CoParentNumberDeps {
   /** The SMS door. Unused when this turn arrived on iMessage. */
   sendSms(input: { to: string; body: string }): Promise<{ providerMessageId: string }>;
+  /** Writes the invite. Absence is named and nobody is texted. */
+  ask?: ConsentAskWriter;
 }
 
 export type CoParentNumberOutcome =
@@ -96,7 +96,9 @@ export type CoParentNumberOutcome =
       status: 'refused' | 'unreached';
       reply: string;
       templateKey: typeof COPARENT_NUMBER_HELD_TEMPLATE_KEY;
-    };
+    }
+  /** The invite text could not be written. Nobody was texted. */
+  | { status: 'ask_unwritten'; reply: null };
 
 /**
  * iMessage, flag on, and the stored choice is a new group. A confirmed phone
@@ -110,6 +112,7 @@ async function answerNewGroupChoice(
     parentUserId: string;
     body: string;
     now: Date;
+    ask?: ConsentAskWriter;
   },
   parsed: { phoneE164: string; name: string | null },
 ): Promise<CoParentNumberOutcome> {
@@ -126,6 +129,7 @@ async function answerNewGroupChoice(
     now: input.now,
     inboundBody: input.body,
     namedPhone: parsed,
+    ask: input.ask,
   });
   if (opened.status === 'opened' || opened.status === 'added') {
     return { status: 'group_opened', reply: null, templateKey: 'linq:group_open' };
@@ -152,6 +156,7 @@ export async function deliverCoParentNumberInvite(
     now: Date;
     inboundChannelMessageId: string | null;
     sendSms: CoParentNumberDeps['sendSms'];
+    ask?: ConsentAskWriter;
   },
 ): Promise<CoParentNumberOutcome> {
   const parsed = parseCoParentNumberReply(input.body);
@@ -204,6 +209,14 @@ export async function deliverCoParentNumberInvite(
   }
 
   const name = await parentName(database, input.parentUserId);
+  if (!name) return held(CO_PARENT_REFUSAL_COPY.referrer_unnamed[language]);
+  const inviteText = await writeConsentAsk(input.ask, {
+    kind: 'coparent_invite',
+    inviterName: name,
+    language,
+  });
+  if (!inviteText) return { status: 'ask_unwritten', reply: null };
+
   const started = await startCoParentInvite(database, {
     familyId: input.familyId,
     invitedByUserId: input.parentUserId,
@@ -217,15 +230,16 @@ export async function deliverCoParentNumberInvite(
     },
     language,
     now: input.now,
+    ask: input.ask,
   });
+  if (started.status === 'ask_unwritten') return { status: 'ask_unwritten', reply: null };
   if (started.status === 'refused') {
     return held(CO_PARENT_REFUSAL_COPY[started.reason][language]);
   }
-  if (!name) return held(CO_PARENT_REFUSAL_COPY.referrer_unnamed[language]);
 
   const sms = await input.sendSms({
     to: parsed.phoneE164,
-    body: coParentInviteBody(name, language),
+    body: inviteText,
   });
   await ledgerSmsInvite(database, {
     familyId: input.familyId,
@@ -234,15 +248,17 @@ export async function deliverCoParentNumberInvite(
     providerMessageId: sms.providerMessageId,
   });
 
-  const body = await recordCoParentAssent(database, {
+  const sent = await recordCoParentAssent(database, {
     invite: started.invite,
     inviterName: name,
     language,
     verbatimReply: input.body,
     channelMessageId: input.inboundChannelMessageId,
     now: input.now,
+    ask: input.ask,
+    prepared: inviteText,
   });
-  if (body === null) {
+  if (sent.status !== 'ready') {
     console.warn(
       { familyId: input.familyId },
       'coparent number invite: the SMS send landed and the assent was already claimed',

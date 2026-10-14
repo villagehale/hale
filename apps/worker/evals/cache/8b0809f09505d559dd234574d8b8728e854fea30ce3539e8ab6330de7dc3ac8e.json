@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Just handled two things for you — sent an email to the school about pickup, and added soccer to your calendar. One message from you turns either of these off."
+  },
+  "stopReason": "tool_use"
+}

@@ -996,6 +996,59 @@ async function findLinqDirectChat(input: {
   return readListedDirectChatId(result.payload);
 }
 
+export type LinqChatService = 'iMessage' | 'SMS' | 'RCS' | 'other';
+
+const LINQ_CHAT_SERVICES: ReadonlySet<string> = new Set(['iMessage', 'SMS', 'RCS']);
+
+/** One page of the account's chats, reduced to what a count needs. Handles and
+ * display names never leave the parser (rule #1). */
+export interface LinqChatPage {
+  chats: Array<{ id: string; isGroup: boolean; service: LinqChatService }>;
+  nextCursor: string | null;
+}
+
+/** A 2xx whose body is not a chat list. Its own code, so a count can name it. */
+export const LINQ_MALFORMED_CHAT_PAGE = 'malformed_chat_page';
+
+/** Null when the payload is not a chat list or a chat carries no id: a page that
+ * cannot be counted must not be counted short. */
+export function readLinqChatPage(payload: unknown): LinqChatPage | null {
+  if (!isRecord(payload) || !Array.isArray(payload.chats)) return null;
+  const chats: LinqChatPage['chats'] = [];
+  for (const chat of payload.chats) {
+    if (!isRecord(chat) || typeof chat.id !== 'string' || !chat.id) return null;
+    const service =
+      typeof chat.service === 'string' && LINQ_CHAT_SERVICES.has(chat.service)
+        ? (chat.service as LinqChatService)
+        : 'other';
+    chats.push({ id: chat.id, isGroup: chat.is_group === true, service });
+  }
+  const next = payload.next_cursor;
+  return { chats, nextCursor: typeof next === 'string' && next ? next : null };
+}
+
+/**
+ * GET /chats, one page, for the capacity count (VIL-407). Read-only: it puts
+ * nothing on a phone. No `from`/`to`, so it sees every chat the key sees.
+ */
+export async function listLinqChatsPage(input: {
+  limit: number;
+  cursor?: string;
+  fetch?: typeof fetch;
+}): Promise<LinqChatPage> {
+  const params = new URLSearchParams({ limit: String(input.limit) });
+  if (input.cursor) params.set('cursor', input.cursor);
+  const result = await linqRequest({
+    method: 'GET',
+    path: `/chats?${params.toString()}`,
+    fetch: input.fetch,
+  });
+  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  const page = readLinqChatPage(result.payload);
+  if (!page) throw new LinqSendError(LINQ_MALFORMED_CHAT_PAGE, result.status, false);
+  return page;
+}
+
 /**
  * Phone-addressed outbound, the same `ChannelTransport` contract: `to` is a bare E.164.
  *

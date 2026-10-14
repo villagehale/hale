@@ -7,7 +7,6 @@ import {
 } from '../copy';
 import {
   ASK_UNANSWERED_MS,
-  ASK_WINDOW_MS,
   type AskLedgerRow,
   SHARED_STOP_ASKING_KEY,
   judgeAskBudget,
@@ -137,88 +136,12 @@ describe('ask budget', () => {
     expect(SHARED_STOP_ASKING_KEY).toBe(DUTY_STOP_ASKING_KEY);
   });
 
-  it('allows four optional asks and counts a duty ask toward the cap and the day', () => {
-    const duty = row({
-      sendClass: 'duty_ask',
-      askKey: 'duty-1',
-      createdAt: START,
-    });
-    expect(
-      judgeAskBudget(
-        {
-          now: START,
-          familyStartedAt: START,
-          rows: [duty],
-          stopUntil: null,
-          parentWroteSincePause: false,
-        },
-        { sendClass: 'logistics', askKey: 'logistics:swim' },
-      ),
-    ).toEqual({ allow: false, reason: 'ask_budget' });
-
-    const nextDay = new Date(START.getTime() + 24 * 60 * 60 * 1000);
-    const rows = [0, 1, 2, 3].map((index) =>
-      row({
-        askKey: `ask-${index}`,
-        createdAt: new Date(START.getTime() + index * 24 * 60 * 60 * 1000),
-        localDay: localCalendarDay(new Date(START.getTime() + index * 24 * 60 * 60 * 1000)),
-      }),
-    );
-    expect(
-      judgeAskBudget(
-        {
-          now: new Date(START.getTime() + 4 * 24 * 60 * 60 * 1000),
-          familyStartedAt: START,
-          rows,
-          stopUntil: null,
-          parentWroteSincePause: false,
-        },
-        { sendClass: 'calendar', askKey: 'calendar' },
-      ),
-    ).toEqual({ allow: false, reason: 'ask_budget' });
-    expect(nextDay.getTime()).toBeGreaterThan(START.getTime());
-  });
-
-  it('lets the onboarding sequence ask again on a day that already had an ask', () => {
-    const duty = row({
-      sendClass: 'duty_ask',
-      askKey: 'duty-1',
-      createdAt: START,
-    });
-    expect(
-      judgeAskBudget(
-        {
-          now: START,
-          familyStartedAt: START,
-          rows: [duty],
-          stopUntil: null,
-          parentWroteSincePause: false,
-        },
-        { sendClass: 'names', askKey: 'names' },
-        { onboardingSequence: true },
-      ),
-    ).toEqual({ allow: true });
-    expect(
-      judgeAskBudget(
-        {
-          now: START,
-          familyStartedAt: START,
-          rows: [duty],
-          stopUntil: null,
-          parentWroteSincePause: false,
-        },
-        { sendClass: 'names', askKey: 'names' },
-      ),
-    ).toEqual({ allow: false, reason: 'ask_budget' });
-  });
-
   it('treats a declined ask as final and pauses after two bad asks', () => {
     const declined = row({ askKey: 'logistics:swim', outcome: 'declined', createdAt: START });
     expect(
       judgeAskBudget(
         {
           now: new Date(START.getTime() + 2 * 24 * 60 * 60 * 1000),
-          familyStartedAt: START,
           rows: [declined],
           stopUntil: null,
           parentWroteSincePause: false,
@@ -242,7 +165,6 @@ describe('ask budget', () => {
       judgeAskBudget(
         {
           now: later,
-          familyStartedAt: START,
           rows: [first, second],
           stopUntil: null,
           parentWroteSincePause: false,
@@ -254,7 +176,6 @@ describe('ask budget', () => {
       judgeAskBudget(
         {
           now: later,
-          familyStartedAt: START,
           rows: [first, second],
           stopUntil: null,
           parentWroteSincePause: true,
@@ -264,12 +185,11 @@ describe('ask budget', () => {
     ).toBe(true);
   });
 
-  it('blocks on a 30-day stop and stops capping after day 7', () => {
+  it('blocks on a 30-day stop', () => {
     expect(
       judgeAskBudget(
         {
           now: START,
-          familyStartedAt: START,
           rows: [],
           stopUntil: new Date(START.getTime() + 30 * 24 * 60 * 60 * 1000),
           parentWroteSincePause: false,
@@ -277,18 +197,6 @@ describe('ask budget', () => {
         { sendClass: 'email', askKey: 'email' },
       ),
     ).toEqual({ allow: false, reason: 'stop_asking' });
-    expect(
-      judgeAskBudget(
-        {
-          now: new Date(START.getTime() + ASK_WINDOW_MS + 1000),
-          familyStartedAt: START,
-          rows: [0, 1, 2, 3].map((index) => row({ askKey: `old-${index}`, createdAt: START })),
-          stopUntil: null,
-          parentWroteSincePause: true,
-        },
-        { sendClass: 'calendar', askKey: 'calendar-later' },
-      ),
-    ).toEqual({ allow: true });
   });
 });
 

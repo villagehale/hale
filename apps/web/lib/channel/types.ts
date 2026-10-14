@@ -30,7 +30,7 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
 export type ChannelKind = 'email' | 'sms';
 
 /** Outbound loop taxonomy (mirrors loop_prefs categories; inbound 'reply' is A3). */
-export type LoopCategory = 'weekly_plan' | 'reminder' | 'approval' | 'alert';
+export type LoopCategory = 'reminder' | 'approval' | 'alert';
 
 export type MessageUrgency = 'normal' | 'time_sensitive';
 

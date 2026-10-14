@@ -16,6 +16,7 @@ import type {
   PreparingSequence,
 } from '~/lib/registration/sequence/prepare-reply';
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
+import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
@@ -194,6 +195,7 @@ function healthDeps(
       closed.push(input.channelMessageId ?? 'none');
       return { status: 'closed', commitmentIds: ['commitment-1'] };
     },
+    ask: askWriter(),
   };
 }
 
@@ -258,10 +260,7 @@ describe('healthReplyHandler', () => {
     const verdict = await healthReplyHandler(deps).handle(DB, turn('yes'));
 
     expect(deps.drafted).toEqual(['book_checkup']);
-    // The hold is stated in-thread (doctrine: never an app link), with honest
-    // verbs: YES puts it on the week; the clinic call stays the parent's.
-    expect(verdict.claimed && verdict.reply).toMatch(/reply YES/i);
-    expect(verdict.claimed && verdict.reply).toMatch(/nothing's booked/i);
+    expect(verdict.claimed && verdict.reply).toBe(writtenAsk({ kind: 'checkup_drafted' }));
     expect(verdict.claimed && verdict.reply).not.toMatch(/https?:/);
   });
 });
@@ -478,6 +477,12 @@ describe('handler order — registration last', () => {
  */
 describe('the village intro lane and the lanes behind it', () => {
   const introDeps: VillageIntroReplyDeps = {
+    consent: {
+      read: async ({ text }) =>
+        text === 'YES INTRO'
+          ? { verdict: 'yes', target: 'proposal' }
+          : { verdict: 'neither', target: 'none' },
+    },
     recordDiscoverability: async () => {},
     discoverabilityStanding: async () => 'unanswered' as const,
     answerableProposal: async () => null,
@@ -553,7 +558,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, year_retention, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -606,9 +611,6 @@ describe('the shipped order', () => {
       // more than three texts of advice, less than filing a health checkpoint as handled.
       'email_alert_add',
       'coach_plan',
-      // After the plan. A bare yes binds here only when this ask is the sole open
-      // question, and a wrong link is cheaper than a mis-sent plan.
-      'year_retention',
       // Explicit signup sentence only. Ahead of registration so that reader
       // cannot swallow "sign us up", and it never claims a bare yes.
       'authorized_signup',

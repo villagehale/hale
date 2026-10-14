@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text matches the occasion \"armed\" — it clearly states \"From now on I'll add things to your calendar without checking with you each time,\" which is exactly what armed should convey. The voice is casual and friendly (\"Got it!\"), like a parent texting a parent. It correctly identifies the one capability (adding to calendar) and states the limitation (not booking, registering, or paying). It specifies the stop condition with precision: \"One message from you and I'll stop,\" which meets the requirement for a one-message stop fact. The text uses first person (\"I'll add\") and matches the language of the recentInbound (\"add it on the calendar\"). It does not invent any facts beyond what the context provides. However, the statement about not booking, registering, or paying (\"I won't book, register, or pay for anything\") is technically not required by the instructions, which say \"Do not require a line that the sender never books, registers, or pays.\" Including it is not a fault, but it could read slightly like a template. Still, the core message is natural and conversational enough that this does not drop the score significantly. The text successfully conveys all necessary facts for an armed occasion with standing.may.addToCalendar true and standing.stop as one_message.",
+    "score": 5
+  }
+}

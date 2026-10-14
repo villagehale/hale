@@ -96,16 +96,16 @@ export const DEFERRED_PILEUP_WINDOW_MS = 60 * 60 * 1000;
 export const FAILURE_PAGE_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** A claim left at a unix-second stamp for this long is a crashed poster. */
-const STALE_CLAIM_MS = 2 * 60 * 1000;
+export const STALE_CLAIM_MS = 2 * 60 * 1000;
 
 /** count = 1 means Slack accepted. Anything larger is an in-progress stamp. */
-const ALERTED_COUNT = 1;
+export const ALERTED_COUNT = 1;
 const UNALERTED_COUNT = 0;
 
 const MAX_PER_RUN = 50;
 
 /** Fixed window so the unique index dedupes a subject instead of a clock bucket. */
-const CLAIM_EPOCH = new Date(0);
+export const CLAIM_EPOCH = new Date(0);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -260,7 +260,7 @@ function emptyCounts(): FailurePageCounts {
   return { posted: 0, deduped: 0, failed: 0 };
 }
 
-function claimStamp(now: Date): number {
+export function claimStamp(now: Date): number {
   return Math.floor(now.getTime() / 1000);
 }
 
@@ -268,7 +268,9 @@ function helloIdentifier(sessionId: string, category: string): string {
   return `${sessionId}:${category}`;
 }
 
-function parseHelloIdentifier(identifier: string): { sessionId: string; category: string } | null {
+export function parseHelloIdentifier(
+  identifier: string,
+): { sessionId: string; category: string } | null {
   const split = identifier.indexOf(':');
   if (split <= 0) return null;
   const sessionId = identifier.slice(0, split);
@@ -666,7 +668,7 @@ async function pageProviderIncidents(
   }
 }
 
-function parseDeadLetterIdentifier(identifier: string): {
+export function parseDeadLetterIdentifier(identifier: string): {
   familyId: string;
   channelMessageId: string;
   jobId: string | null;

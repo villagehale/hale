@@ -345,7 +345,7 @@ async function sendEmail(input: ExecutorRunInput, deps: ExecutorDeps): Promise<E
       kind: 'email_sent',
       messageId,
       submittedAt: result.submittedAt,
-      recipient: payload.to,
+      recipientDomain: payload.to.slice(payload.to.lastIndexOf('@') + 1).replace(/>$/, ''),
     },
     reversible: false,
     reversalHandle: messageId,

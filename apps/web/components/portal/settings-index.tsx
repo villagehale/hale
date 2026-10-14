@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { signOutAction } from '~/lib/auth-actions';
 import { AppearanceCard } from './appearance';
+import { DisabledRow } from './disabled-row';
 import { PortalHeading } from './heading';
 import { NameEditor } from './name-editor';
 import { portalHref } from './portal-href';
@@ -48,13 +49,7 @@ export function SettingsIndex({
             title="Texts from Hale"
             meta="What Hale sends and when"
           />
-          <Row
-            basePath={basePath}
-            href="/settings/plan"
-            icon={<Sparkles aria-hidden="true" />}
-            title="Plan"
-            meta="Founding family"
-          />
+          <DisabledRow icon={<Sparkles aria-hidden="true" />} title="Plan" meta="Founding family" />
           <Row
             basePath={basePath}
             href="/settings/privacy"
@@ -104,7 +99,7 @@ function Row({
   meta,
   basePath = '',
 }: {
-  href: '/settings/connections' | '/settings/texts' | '/settings/plan' | '/settings/privacy';
+  href: '/settings/connections' | '/settings/texts' | '/settings/privacy';
   icon: ReactNode;
   title: string;
   meta: string;

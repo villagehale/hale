@@ -3,7 +3,7 @@ import type { Route } from 'next';
 
 /**
  * The receipts-room stops. The parent portal is Home, Messages, Family, and
- * Settings. Approvals, the trail, and the week still render by URL.
+ * Settings. History still renders at /trail.
  */
 
 export interface NavItem {

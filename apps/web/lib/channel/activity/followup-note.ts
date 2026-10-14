@@ -75,7 +75,8 @@ export type FollowUpFallback =
   | 'model_unreachable'
   | 'model_failed'
   | 'gates_exhausted'
-  | 'group_cap';
+  | 'quiet_hours'
+  | 'coparent_ask';
 
 export type FollowUpComposeOutcome =
   | { status: 'composed'; message: string }
@@ -300,9 +301,7 @@ function identifyingWords(name: string): string[] {
   return spokenName(name)
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter(
-      (word) => word.length >= 5 && !/^\d+$/.test(word) && !GENERIC_NAME_WORDS.has(word),
-    );
+    .filter((word) => word.length >= 5 && !/^\d+$/.test(word) && !GENERIC_NAME_WORDS.has(word));
 }
 
 /**
@@ -510,7 +509,7 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   // never reach are named here, in the same breath as the cut.
   if (smsSegments(text) > MAX_FOLLOWUP_SEGMENTS) {
     const keep = grounding.watch
-      ? "never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes"
+      ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
       : 'never the facts of the find you led with';
     violations.push(
       `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${

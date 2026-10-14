@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text matches the occasion \"acted\" with first-person past tense (\"Just sent\") describing what was just done. It conveys the action of sending an email on the parent's behalf to the detail provided (school@example.com for pickup). It reads casual and friendly (\"for you!\"). Critically, it clearly conveys the one-message stop fact: \"One text from you and I'll stop doing this on my own\"—exactly the specificity required. The voice is natural parent-to-friend style, not a notification or template. The recent inbound (\"email them for me\") aligns with the email being sent. All required standing facts for an \"acted\" occasion with stop as \"one_message\" are present and clearly stated.",
+    "score": 5
+  }
+}

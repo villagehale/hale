@@ -1,8 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gt, isNotNull, isNull, or } from 'drizzle-orm';
-import { matchPhrase, normalizeReply } from '~/lib/channel/affirmative';
-import { introScope, villageIntrosAllowlist } from './run';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
 import {
   type ConsentReading,
   type DiscoverabilityConsentInput,
@@ -23,21 +21,14 @@ import {
   INTRO_YES_ACK,
   NO_OPEN_INTRO,
 } from './copy';
+import { introScope, villageIntrosAllowlist } from './run';
 
 /**
- * Village intros v1 — the inbound half. A parent's word, read deterministically.
+ * Village intros v1 — the inbound half.
  *
- * NO MODEL, EVER, on this path. Two of these four keywords are consent (rule #4) and
- * one is a REVOCATION, and a revocation a model might paraphrase is not a revocation.
- * It sits in the router's deterministic layer for the same reason "YES 2" does: the
- * only way to guarantee the model never mis-reads a word is for the model never to see
- * it.
- *
- * WHY TWO-WORD KEYWORDS. A bare "yes" belongs to whatever Hale last asked, and Hale
- * asks about several things. INTRO / INTROS says which question is being answered, so
- * the intro loop can run alongside an open approval without either lane stealing the
- * other's answers. The approval grammar declines these strings for free — they are not
- * bare affirmatives — which the router tests assert from the other side.
+ * A model reads what the parent meant, in whatever words they used. A failed read
+ * grants nothing and revokes nothing. Carrier STOP is claimed upstream and never
+ * reaches this lane.
  *
  * WHY THE HANDLER ONLY WRITES. A reply moves the proposal's STATE; the sweep performs
  * the EFFECTS (the intro email, the other side's soft close). Splitting them that way
@@ -118,37 +109,6 @@ export interface IntroKeyword {
   granted: boolean;
 }
 
-/** Heads that mean "no" here but are not in the shared NEGATIVE vocabulary. 'stop'
- * scoped to a noun is a parent narrowing their refusal, not a CASL unsubscribe — bare
- * STOP is claimed by {@link matchKeyword} long before this lane sees it. */
-const EXTRA_REFUSAL_HEADS: ReadonlySet<string> = new Set(['stop']);
-
-/**
- * The intro keyword this body IS, or null when it is anything else.
- *
- * Read as HEAD + NOUN rather than against a list of four literals: parents type "yeah
- * intros" and "nope intro", and every variant missing from a literal list is a decision
- * silently dropped (the VIL-260 lesson). The head goes through the shared affirmative
- * vocabulary, so widening that widens this at the same time.
- */
-export function matchIntroKeyword(body: string): IntroKeyword | null {
-  // A carrier keyword was already answered upstream; a second reading of it here could
-  // only ever disagree with the first.
-  if (matchKeyword(body)) return null;
-
-  const words = normalizeReply(body).split(' ').filter(Boolean);
-  if (words.length !== 2) return null;
-
-  const [head, noun] = words as [string, string];
-  if (noun !== 'intro' && noun !== 'intros') return null;
-
-  const target = noun === 'intros' ? 'discoverability' : 'proposal';
-  const affirmation = matchPhrase(head);
-  if (affirmation === 'yes') return { target, granted: true };
-  if (affirmation === 'no' || EXTRA_REFUSAL_HEADS.has(head)) return { target, granted: false };
-  return null;
-}
-
 export type IntroReplyOutcome =
   | { status: 'declined_to_claim' }
   | { status: 'discoverability_granted'; reply: string }
@@ -170,15 +130,11 @@ export interface IntroReplyInput {
   now: Date;
   /**
    * A decision the router's natural-reply stage already made about THIS message
-   * (lib/channel/router/resolve.ts), when the parent answered in their own words rather
-   * than in one of the four keywords.
+   * (lib/channel/router/resolve.ts). It names the question, so it wins over a fresh
+   * read of the same sentence.
    *
-   * The keyword read still runs first and still wins — `null` is the ordinary case and
-   * the behaviour is byte-for-byte what it was. What this does NOT change is the
-   * evidence: `input.body` is still what lands in the consent ledger, so what is recorded
-   * is the sentence the parent actually sent and not a keyword Hale reverse-engineered.
-   * Under D17 that is the stronger record, because a keyword only ever proves somebody
-   * typed the token they were taught.
+   * `input.body` is still what lands in the consent ledger: the sentence the parent
+   * sent, not a token Hale reverse-engineered.
    */
   resolved?: ResolvedIntroAnswer | null;
 }
@@ -218,6 +174,8 @@ export interface IntroDecision {
 }
 
 export interface VillageIntroReplyDeps {
+  /** Reads the parent's words. Absence is named and grants nothing. */
+  consent?: ConsentReader;
   recordDiscoverability(database: Database, input: DiscoverabilityConsentInput): Promise<void>;
   /** What this parent has ALREADY said about being discoverable. Read before writing, so
    * a repeated answer is recognised as the repeat it is. */
@@ -254,16 +212,19 @@ export async function handleVillageIntroReply(
   input: IntroReplyInput,
   deps: VillageIntroReplyDeps,
 ): Promise<IntroReplyOutcome> {
-  const typed = matchIntroKeyword(input.body);
-  const keyword = typed ?? input.resolved ?? null;
-  if (!keyword) return { status: 'declined_to_claim' };
-  // HOW THIS YES WAS READ, recorded with it. A keyword proves a parent typed the token
-  // Hale taught them; a resolved sentence proves more about what they meant and less about
-  // the mechanism, so the mechanism has to be in the row (rule #6).
-  const reading: ConsentReading =
-    typed !== null
-      ? { readBy: 'keyword', confidence: null }
-      : { readBy: 'reply-resolver', confidence: input.resolved?.confidence ?? null };
+  let keyword: IntroKeyword | null = null;
+  let reading: ConsentReading;
+  if (input.resolved) {
+    keyword = { target: input.resolved.target, granted: input.resolved.granted };
+    reading = { readBy: 'reply-resolver', confidence: input.resolved.confidence };
+  } else {
+    const read = await readConsent(deps.consent, { question: 'intro', text: input.body });
+    if (!read || read.verdict === 'neither' || read.target === 'none') {
+      return { status: 'declined_to_claim' };
+    }
+    keyword = { target: read.target, granted: read.verdict === 'yes' };
+    reading = { readBy: 'consent-reply', confidence: 'high' };
+  }
 
   if (keyword.target === 'discoverability') {
     // ALREADY THEIR ANSWER? Then this is a repeat, not a decision (see
@@ -420,7 +381,11 @@ async function writeDecision(database: Database, decision: IntroDecision): Promi
         // A 'no' ends the pairing outright. A 'yes' only ends the WAITING once the other
         // side has also said yes; the sweep is what turns `both_accepted` into an actual
         // introduction, and stamps closed_at when it has.
-        status: decision.granted ? (decision.bothAccepted ? 'both_accepted' : 'proposed') : 'declined',
+        status: decision.granted
+          ? decision.bothAccepted
+            ? 'both_accepted'
+            : 'proposed'
+          : 'declined',
         updatedAt: decision.now,
       })
       .where(eq(schema.villageIntroProposals.id, decision.proposalId));
@@ -479,8 +444,9 @@ async function cancelOpenProposalsFor(
     .where(and(open, eq(schema.villageIntroProposals.familyBId, familyId)));
 }
 
-export function defaultVillageIntroReplyDeps(): VillageIntroReplyDeps {
+export function defaultVillageIntroReplyDeps(consent?: ConsentReader): VillageIntroReplyDeps {
   return {
+    consent,
     recordDiscoverability: recordDiscoverabilityConsent,
     discoverabilityStanding: readDiscoverabilityStanding,
     /**

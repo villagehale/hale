@@ -111,6 +111,7 @@ describe('executeApprovedAction human-approval claim', () => {
       actionId: seeded.actionId,
       familyId: seeded.familyId,
       approvedBy: seeded.parentUserId,
+      policyVersion: 'test-policy',
     };
 
     // Delivery A claims and parks inside the executor — the exact window in which
@@ -147,6 +148,7 @@ describe('executeApprovedAction human-approval claim', () => {
       actionId: seeded.actionId,
       familyId: seeded.familyId,
       approvedBy: seeded.parentUserId,
+      policyVersion: 'test-policy',
     };
 
     await executeApprovedAction(input, deps);

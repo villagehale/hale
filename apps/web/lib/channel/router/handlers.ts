@@ -1,16 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { imessageUpgradeAskEnabled, prepareYearRetentionAnswer } from '~/lib/billing/upgrade-ask';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import type { CheckInCadence } from '~/lib/channel/checkin/cadence';
-import { CHECK_IN_ACK_TEMPLATE_KEY } from '~/lib/channel/checkin/copy';
-import {
-  answeredOnTheSameChannel,
-  applyCheckInCadence,
-  checkInKeywordReach,
-  handleEveningCheckInReply,
-  readCadenceWord,
-} from '~/lib/channel/checkin/reply';
+import { answeredOnTheSameChannel, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
+import type { EveningRequestReader } from '~/lib/channel/checkin/request';
 import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
   type ConnectOfferTarget,
@@ -23,6 +15,10 @@ import { textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { writeConsentAsk } from '~/lib/channel/consent-ask';
+import type { ConsentReader } from '~/lib/channel/consent-reply';
+import { readConsent } from '~/lib/channel/consent-reply';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { emailInboundConfig } from '~/lib/channel/email/config';
 import {
@@ -37,7 +33,6 @@ import {
   FORWARD_REVOKE_TEMPLATE_KEY,
   forwardAddressReply,
   forwardRevokeAsk,
-  forwardRevokeAskReply,
   forwardRevokeDeclinedReply,
   forwardRevokeReply,
   matchForwardAddressRequest,
@@ -79,9 +74,9 @@ import {
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
-import { checkupDraftedReply, failureReply, healthDoneReply } from './copy';
+import { failureReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
-import { type OpenQuestion, type OpenQuestionKind, soleOpenKind } from './open-questions';
+import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
 
 /**
@@ -163,23 +158,12 @@ function introKeywordFrom(ctx: HandlerContext): ResolvedIntroAnswer | null {
  */
 
 /**
- * Village intros — YES INTROS / NO INTROS / YES INTRO / NO INTRO, and, since 2026-08-13,
- * whatever else the parent actually said.
+ * Village intros. A model reads what the parent meant. A failed read grants nothing
+ * and revokes nothing.
  *
- * NOTHING PRINTS THOSE FOUR PHRASES ANY MORE. The asks are composed and ask their
- * question in English (lib/village/intros/voice.ts). The phrases are still READ, because
- * a parent who learned one must not discover it has been taken away — and reading them
- * here is free, which is why this handler still runs before the model does.
- *
- * FIRST IN THE CHAIN, and the narrowest thing in it: it claims a two-word phrase whose
- * second word is `intro` or `intros` and nothing else, so it cannot starve a handler
- * behind it — none of them recognise those phrases at all (the approval grammar
- * declines them because they are not bare affirmatives).
- *
- * It goes first because one of the four words is a REVOCATION. "NO INTROS" turning off
- * a family's discoverability must not depend on which other handlers happened to
- * decline it that day, and first is the only position where that is true by
- * construction rather than by audit.
+ * FIRST IN THE CHAIN because one answer is a revocation. Turning off a family's
+ * discoverability must not depend on which other handlers declined the turn, and
+ * first is the only position where that is true by construction.
  */
 export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicHandler {
   return {
@@ -571,14 +555,17 @@ export function connectorDisconnectHandler(
  * the inbound email leg has no domain to build an address out of, and a spoken turn, which
  * has no message row to compare channels against.
  */
-export function forwardAddressHandler(log: Pick<Console, 'error'> = console): DeterministicHandler {
+export function forwardAddressHandler(
+  log: Pick<Console, 'error'> = console,
+  ports: { consent?: ConsentReader; ask?: ConsentAskWriter } = {},
+): DeterministicHandler {
   return {
     name: 'forward_address',
     resolves: new Set<OpenQuestionKind>(['forward_address_revoke']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const language = replyLanguage(ctx.body);
 
-      const answer = await readRevokeAnswer(database, ctx, log);
+      const answer = await readRevokeAnswer(database, ctx, log, ports.consent);
       if (answer === 'no') {
         return {
           claimed: true,
@@ -615,10 +602,18 @@ export function forwardAddressHandler(log: Pick<Console, 'error'> = console): De
             reply: forwardRevokeReply(language, 'not_configured'),
           };
         }
+        const ask = await writeConsentAsk(ports.ask, { kind: 'forward_revoke', language });
+        if (!ask) {
+          log.error(
+            { familyId: ctx.familyId, outcome: 'ask_unwritten' },
+            'forward address: the turn-off question could not be written - nothing sent',
+          );
+          return { claimed: true, outcome: 'revoke_ask_unwritten', reply: null };
+        }
         return {
           claimed: true,
           outcome: 'revoke_ask_sent',
-          reply: forwardRevokeAskReply(language),
+          reply: ask,
           // The name the ledger question is derived from. Drop it and the question stops
           // existing, so the parent's YES would go nowhere — which is why the template key
           // has its own assertion in forward-revoke.pglite.test.ts.
@@ -696,10 +691,13 @@ async function readRevokeAnswer(
   database: Database,
   ctx: HandlerContext,
   log: Pick<Console, 'error'>,
+  consent: ConsentReader | undefined,
 ): Promise<'yes' | 'no' | null> {
   const resolved = ctx.resolved?.kind === 'forward_address_revoke' ? ctx.resolved : null;
-  const word = readAffirmative(ctx.body);
-  const polarity = resolved?.polarity ?? (word === 'unclear' ? null : word);
+  const reading = resolved
+    ? { verdict: resolved.polarity }
+    : await readConsent(consent, { question: 'forward_revoke', text: ctx.body });
+  const polarity = reading && reading.verdict !== 'neither' ? reading.verdict : null;
   if (polarity === null) return null;
 
   const ask = resolved
@@ -834,11 +832,9 @@ export function founderWelcomeHandler(deps: FounderReplyDeps): DeterministicHand
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const resolved =
         ctx.resolved?.kind === 'founder_welcome_offer' ? ctx.resolved.polarity : null;
-      if (
-        resolved === null &&
-        readAffirmative(ctx.body) !== 'unclear' &&
-        !soleOpenKind(await ctx.openQuestions(), 'founder_welcome_offer')
-      ) {
+      // Another open question, and the resolver did not name this one. A model
+      // read of a bare agreement must not text a different household.
+      if (resolved === null && !soleOpenKind(await ctx.openQuestions(), 'founder_welcome_offer')) {
         return { claimed: false };
       }
       const outcome = await handleFounderWelcomeReply(
@@ -925,7 +921,7 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
           return {
             claimed: true,
             outcome: outcome.status,
-            reply: checkupDraftedReply(),
+            reply: await writeConsentAsk(deps.ask, { kind: 'checkup_drafted' }),
             // The offer is closed by the message that told the parent it was taken, never
             // before it — a turn that drafted and then failed to reply must be re-drivable
             // against an offer that is still standing (the MEM-10 send-time discipline).
@@ -1056,44 +1052,6 @@ export function emailAlertAddHandler(): DeterministicHandler {
  * something sendable throws {@link PlanDeferred} and the drain redrives it, because a
  * plan that lands late beats an apology that lands on time.
  */
-/**
- * ENG-1 — yes sends the year-retention link, no closes the offer.
- *
- * Flag off never claims. A bare yes claims only when this ask is the sole
- * open question, the same rule as every other offer. No offer row means the
- * word belongs to someone else, even when the open list is empty.
- */
-export function yearRetentionHandler(): DeterministicHandler {
-  return {
-    name: 'year_retention',
-    resolves: new Set<OpenQuestionKind>(['year_retention']),
-    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      if (!imessageUpgradeAskEnabled()) return { claimed: false };
-      const resolved = ctx.resolved?.kind === 'year_retention' ? ctx.resolved.polarity : null;
-      const word = resolved ?? readAffirmative(ctx.body);
-      if (word !== 'yes' && word !== 'no') return { claimed: false };
-      if (!resolved && !soleOpenKind(await ctx.openQuestions(), 'year_retention')) {
-        return { claimed: false };
-      }
-      const outcome = await prepareYearRetentionAnswer(database, {
-        familyId: ctx.familyId,
-        parentUserId: ctx.parentUserId,
-        inboundChannelMessageId: ctx.inboundChannelMessageId,
-        now: ctx.now,
-        polarity: word,
-      });
-      if (!outcome.claimed) return { claimed: false };
-      return {
-        claimed: true,
-        outcome: outcome.outcome,
-        reply: outcome.reply,
-        templateKey: outcome.templateKey,
-        afterSend: outcome.afterSend,
-      };
-    },
-  };
-}
-
 export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
   return {
     name: 'coach_plan',
@@ -1228,9 +1186,8 @@ async function alreadyApprovedReply(
  *
  * The question is listed to the router (open-questions.ts) so that every OTHER handler
  * treats a bare affirmative as ambiguous while Hale is waiting to hear whether it may
- * text somebody's partner. But the answer itself is read one lane earlier, by keyword,
- * before a router turn exists (caregiver/route.ts): authorising an unsolicited text to a
- * stranger in a parent's name is not something a model may decide it heard.
+ * text somebody's partner. The answer itself is read one lane earlier, by the
+ * consent reader (caregiver/route.ts). A failed read texts nobody.
  *
  * WITHOUT AN OWNER the resolver could read a sentence as this kind and find nobody to
  * hand it to — `route.ts` logs that at ERROR as an impossible state, on a path that is
@@ -1266,6 +1223,7 @@ export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHa
         now: ctx.now,
         inboundChannelMessageId: ctx.inboundChannelMessageId,
         sendSms: deps.sendSms,
+        ask: deps.ask,
       });
       if (outcome.status === 'not_pending') return { claimed: false };
       return {
@@ -1531,30 +1489,22 @@ export function recMorningHandler(): DeterministicHandler {
  * it the broadest claimer in the product. Narrow claimers before broad ones, so it runs
  * after all of them and a parent's "done" still reaches the health lane it belongs to.
  *
- * IT READS TWO DIFFERENT KINDS OF MESSAGE, and their permissions are not the same.
+ * A SENTENCE is an answer to a question, so it needs Hale to actually be holding one
+ * (the ledger says so, reply.ts) AND `soleOpenKind` to say no OTHER open question could
+ * have meant these words. Pace is not a keyword this handler owns. The proactive
+ * decider reads it from the parent's own words.
  *
- *   · A TAUGHT WORD (LESS / NO / DAILY) is a decision about the product, and it outlives
- *     the standing question — which closes the moment ANY outbound reaches the parent,
- *     Hale's own thank-you included, so a NO a minute later would otherwise fall to the
- *     coach, which has no cadence tool, and the nightly message would keep coming. How far
- *     it outlives it is `checkInKeywordReach`, and the floor is this lane's own voice: its
- *     ask, its step-down notice or one of its acks being the last thing Hale said to that
- *     parent, inside thirty days.
+ * THE DOOR HAS TO MATCH. The question is a text; an email arriving inside the window
+ * is answering something else (answeredOnTheSameChannel).
  *
- *   · A SENTENCE is an answer to a question, so it needs Hale to actually be holding one
- *     (the ledger says so, reply.ts) AND `soleOpenKind` to say no OTHER open question
- *     could have meant these words. An empty question list is vacuously unambiguous, so
- *     without the first check any sentence at all would be filed as a day note.
+ * IT REFUSES A RESOLVED ANSWER. The kind is listed to the resolver so that a bare YES
+ * near it is treated as ambiguous, but its answer is not a polarity and there is
+ * nothing a resolved yes-or-no could write.
  *
- * BOTH NEED THE DOOR TO MATCH. The question is a text; an email arriving inside the
- * window is answering something else (answeredOnTheSameChannel).
- *
- * IT REFUSES A RESOLVED ANSWER. The kind is listed to the resolver so that a bare YES near
- * it is treated as ambiguous, but its answer is not a polarity and there is nothing a
- * resolved yes-or-no could write. Declining says so truthfully; without an owner at all,
- * route.ts would log a resolution nobody claims at ERROR.
+ * A kept note sends no fixed receipt. `reply` is null: the coach is not handed a
+ * sentence this lane already filed, and Hale does not answer it with a stock line.
  */
-export function eveningCheckInHandler(): DeterministicHandler {
+export function eveningCheckInHandler(reader: EveningRequestReader): DeterministicHandler {
   return {
     name: 'evening_check_in',
     resolves: new Set<OpenQuestionKind>(['evening_check_in']),
@@ -1562,9 +1512,6 @@ export function eveningCheckInHandler(): DeterministicHandler {
       if (ctx.resolved !== null) return { claimed: false };
 
       const questions = await ctx.openQuestions();
-      const cadence = readCadenceWord(ctx.body);
-      if (cadence !== null) return moveEveningCadence(database, ctx, questions, cadence);
-
       const standing = questions.find((question) => question.kind === 'evening_check_in');
       if (!standing || standing.askedAt === null) return { claimed: false };
       if (!soleOpenKind(questions, 'evening_check_in')) return { claimed: false };
@@ -1584,78 +1531,21 @@ export function eveningCheckInHandler(): DeterministicHandler {
         return { claimed: false };
       }
 
-      const outcome = await handleEveningCheckInReply(database, {
-        familyId: ctx.familyId,
-        parentUserId: ctx.parentUserId,
-        body: ctx.body,
-        askedAt: standing.askedAt,
-        timeZone: await readFamilyTimezone(database, ctx.familyId),
-        inboundChannelMessageId: inboundId,
-        now: ctx.now,
-      });
+      const outcome = await handleEveningCheckInReply(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          askedAt: standing.askedAt,
+          timeZone: await readFamilyTimezone(database, ctx.familyId),
+          inboundChannelMessageId: inboundId,
+          now: ctx.now,
+        },
+        reader,
+      );
       if (outcome.status === 'declined_to_claim') return { claimed: false };
-      return {
-        claimed: true,
-        outcome: outcome.status,
-        reply: outcome.reply,
-        templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
-      };
+      return { claimed: true, outcome: outcome.status, reply: null };
     },
-  };
-}
-
-/**
- * LESS, NO or DAILY — outlasting the standing question, but not the conversation.
- *
- * HOW FAR THE WORDS REACH IS `checkInKeywordReach`, and it is the lane's own reader
- * because the answer is a fact about the message ledger, not about this chain. In short:
- * while this lane has the last word to that parent, or the evening it asked about is still
- * open, all three words are its own; afterwards only DAILY is, and only as the way back
- * for a household Hale stopped asking.
- *
- * A BARE NO IS THE ONE THAT HAS TO BE CAREFUL EVEN INSIDE THAT WINDOW, because it is also
- * how a parent declines an approval, an intro and a co-parent invite. It is taken only
- * when no other question is open — the same rule `soleOpenKind` applies to a bare
- * affirmative, drawn here by hand because the evening question is deliberately absent from
- * the list most of the time this runs. LESS and DAILY answer nothing else in the product,
- * so they need no such guard.
- */
-async function moveEveningCadence(
-  database: Database,
-  ctx: HandlerContext,
-  questions: readonly OpenQuestion[],
-  cadence: CheckInCadence,
-): Promise<HandlerVerdict> {
-  const others = questions.filter((question) => question.kind !== 'evening_check_in');
-  if (cadence === 'off' && others.length > 0) return { claimed: false };
-
-  const inboundId = ctx.inboundChannelMessageId;
-  if (inboundId === null) return { claimed: false };
-  const reach = await checkInKeywordReach(database, {
-    familyId: ctx.familyId,
-    parentUserId: ctx.parentUserId,
-    now: ctx.now,
-  });
-  // Never asked, or asked long enough ago that these are just words: they belong to
-  // whatever else is going on, which is where they went before this lane existed.
-  if (reach.reach === 'none') return { claimed: false };
-  if (reach.reach === 'reoffer' && cadence !== 'daily') return { claimed: false };
-  if (!(await answeredOnTheSameChannel(database, reach.askId, inboundId))) {
-    return { claimed: false };
-  }
-
-  const outcome = await applyCheckInCadence(database, {
-    familyId: ctx.familyId,
-    parentUserId: ctx.parentUserId,
-    inboundChannelMessageId: inboundId,
-    cadence,
-    language: replyLanguage(ctx.body),
-    now: ctx.now,
-  });
-  return {
-    claimed: true,
-    outcome: outcome.status,
-    reply: outcome.reply,
-    templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
   };
 }

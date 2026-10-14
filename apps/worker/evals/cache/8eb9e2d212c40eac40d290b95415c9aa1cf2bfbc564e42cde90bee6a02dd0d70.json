@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The text is in English, matching the parent's recent inbound language (\"add it on the calendar\"). It is in first person and matches the armed occasion: \"From now on I'll add things to your calendar without checking with you each time\" conveys that the sender will handle calendar additions going forward without asking. \n\nFact one (what the sender may do): \"I'll add things to your calendar without checking with you each time\" correctly conveys addToCalendar capability.\n\nFact two (standing.never): \"I won't book, register, or pay for anything\" explicitly states all three items the sender will not do.\n\nFact three (standing.stop): \"One message from you and I'll stop\" clearly conveys that a single message stops this behavior.\n\nThe tone is casual and friendly (\"Got it!\"), reads like a parent texting a parent, and does not invent recipients, times, prices, places, or links. It asks for nothing."
+  }
+}

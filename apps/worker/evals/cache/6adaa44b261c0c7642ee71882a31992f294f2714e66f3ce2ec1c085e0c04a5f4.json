@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The text matches the occasion perfectly. It is \"armed\" — saying this behavior will happen automatically from now on without asking. The language is Arabic, matching the `recentInbound` which shows \"رد على بريد المدرسة\" (reply to school email). The voice is casual and friendly: \"تمام!\" (okay!), \"بدون ما أسألك كل مرة\" (without asking you every time), \"خلّيك عارف\" (just so you know). It's in first person: \"راح أرد\" (I will reply), \"ما أحجز، ما أسجّل، وما أدفع\" (I don't book, register, or pay). It conveys all three standing facts: the sender will not book, register, or pay; the sender will reply to email on the parent's behalf; and one message from the parent will turn this off (\"رسالة وحدة منك تكفي\" — one message from you is enough). It asks for nothing. It does not invent recipients, times, prices, places, or links. The tone reads like a friend who is also a parent texting, specific and chill."
+  }
+}

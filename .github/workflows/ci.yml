@@ -170,10 +170,7 @@ jobs:
       - name: Reviewer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reviewer
 
-      - name: Week-summary eval (cached-only)
-        run: pnpm --filter @hale/worker eval:week-summary
-
-      - name: Agent suites eval (week-summary/discovery, cached-only)
+      - name: Agent suites eval (discovery, cached-only)
         run: pnpm --filter @hale/worker eval:agents
 
       - name: Village search intent eval (cached-only)
@@ -274,6 +271,9 @@ jobs:
       # here BEFORE the pass that calls it ships.
       - name: Travel-booking extraction eval (cached-only)
         run: pnpm --filter @hale/worker eval:travel-extract
+
+      - name: Autonomy notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:autonomy-notice
 
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a

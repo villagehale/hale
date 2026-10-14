@@ -37,7 +37,7 @@ describe('the Edge gate covers the authed route group', () => {
 
 describe('isProtectedPath', () => {
   it('gates a sub-path, so no bookmark under a gated route escapes', () => {
-    expect(isProtectedPath('/approvals/8f2c')).toBe(true);
+    expect(isProtectedPath('/trail/8f2c')).toBe(true);
     expect(isProtectedPath('/messages/thread-1')).toBe(true);
   });
 
@@ -47,7 +47,9 @@ describe('isProtectedPath', () => {
     }
   });
 
-  it('leaves /admin ungated, so a missing page is the portal 404 and not a sign-in redirect', () => {
+  it('leaves /approvals and /admin ungated, so a missing page is the portal 404 and not a sign-in redirect', () => {
+    expect(isProtectedPath('/approvals')).toBe(false);
+    expect(isProtectedPath('/approvals/8f2c')).toBe(false);
     expect(isProtectedPath('/admin')).toBe(false);
     expect(isProtectedPath('/admin/anything')).toBe(false);
     expect(isProtectedPath('/admin/ledger/extra')).toBe(false);

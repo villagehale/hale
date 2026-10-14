@@ -6,8 +6,7 @@ import { users } from './users.js';
  * A 1:1 activity decision waiting to be told to the claimed Linq group.
  *
  * One row per decision. The flush waits until the 1:1 has been quiet, then
- * sends at most one bubble (up to three lines) and marks the due rows of
- * that sitting flushed, including lines past the third. A row that is not
+ * sends one bubble with every due line and marks those rows flushed. A row that is not
  * due yet stays queued. Nothing here is a
  * mailbox subject or a non-kid title: the columns are the template slots.
  * `decision` is `picked`, `passed`, or (VIL-383) `duty`. Duty uses the same

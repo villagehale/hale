@@ -12,9 +12,8 @@ import { invokeReviewerTool } from './registry.js';
  * family's own clock — the two can drift, and the first version of this injection
  * passed a value-level test while refusing every draft it was written for.
  *
- * The shape under test is the live Sunday loop's: mint-placements stamps a weekly
- * placement's startsAt at 00:00 family-local (zonedDayStartInstant) and drafts it
- * at the parent's weekly_plan_send_time. A verdict of flag_for_human here is not
+ * The shape under test is an all-day placement: its startsAt is 00:00 family-local
+ * and it is drafted the morning before. A verdict of flag_for_human here is not
  * cosmetic — approve.ts refuses the parent's approval of a flagged draft on both
  * the web button and the SMS YES arc, so the placement can never be accepted.
  */

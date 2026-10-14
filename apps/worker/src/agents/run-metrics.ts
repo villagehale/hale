@@ -10,8 +10,12 @@ import { estimateCostUsd } from '../anthropic/cost.js';
 export interface AgentRunMetrics {
   agentName: AgentName;
   modelUsed: string;
+  /** Fresh input plus cache writes: every token billed at or above the full rate. */
   promptTokens: number;
   completionTokens: number;
+  /** Undefined is stored as NULL: this call did not measure the cache. */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   costUsd: number;
   latencyMs: number;
 }
@@ -26,11 +30,10 @@ export function metricsFromUsage(
   return {
     agentName,
     modelUsed: model,
-    promptTokens:
-      usage.input_tokens +
-      (usage.cache_creation_input_tokens ?? 0) +
-      (usage.cache_read_input_tokens ?? 0),
+    promptTokens: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0),
     completionTokens: usage.output_tokens,
+    cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
     costUsd: estimateCostUsd(model, usage),
     latencyMs,
   };

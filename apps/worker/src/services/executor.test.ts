@@ -128,6 +128,22 @@ describe('runExecutor — B9 outbound idempotency claim', () => {
     expect(skips).toEqual([actionId]);
   });
 
+  it('sends the drafted email as written and records only the recipient domain, never the body', async () => {
+    const provider = vi.fn(async () => ({ messageId: 'pm-3', submittedAt: '2026-06-12T10:01:00Z' }));
+    const { deps } = makeClaimStore();
+    deps.sendEmail = provider;
+
+    const result = await runExecutor({ familyId, approved: approvedEmail() }, deps);
+
+    expect(provider).toHaveBeenCalledWith({ to: 'clinic@example.com', subject: 'hi', body: 'hello' });
+    expect(result.detail).toEqual({
+      kind: 'email_sent',
+      messageId: 'pm-3',
+      submittedAt: '2026-06-12T10:01:00Z',
+      recipientDomain: 'example.com',
+    });
+  });
+
   it('writes sent_at via confirmOutboundSend only on the real send', async () => {
     const provider = vi.fn(async () => ({ messageId: 'pm-9' }));
     const { deps } = makeClaimStore();

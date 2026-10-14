@@ -103,9 +103,6 @@ vi.mock('../services/memory-writer.js', () => ({
   }),
   loadActionForEvent: vi.fn(async () => null),
   // Pre-classify hard-ceiling read — under ceiling so the fresh path runs.
-  loadFamilyPlanTier: vi.fn(async () => 'free' as const),
-  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
-  recordSpendCeilingDrop: vi.fn(async () => {}),
 }));
 
 // Imported AFTER the mocks are registered.

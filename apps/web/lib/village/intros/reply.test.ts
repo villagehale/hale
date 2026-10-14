@@ -1,13 +1,14 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
+import type { ConsentReadingResult } from '~/lib/channel/consent-reply';
 import {
   DISCOVERABILITY_ALREADY_OFF,
-  INTRO_ALREADY_NO,
-  INTRO_ALREADY_YES,
-  INTRO_CLOSED_AFTER_NO,
   DISCOVERABILITY_ALREADY_ON,
   DISCOVERABILITY_OFF,
   DISCOVERABILITY_ON,
+  INTRO_ALREADY_NO,
+  INTRO_ALREADY_YES,
+  INTRO_CLOSED_AFTER_NO,
   INTRO_NO_ACK,
   INTRO_YES_ACK,
   NO_OPEN_INTRO,
@@ -16,71 +17,33 @@ import {
   type AnswerableProposal,
   type IntroDecision,
   type IntroStanding,
+  type VillageIntroReplyDeps,
+  handleVillageIntroReply,
   introStanding,
   proposalStanding,
   repeatedAnswer,
-  type VillageIntroReplyDeps,
-  handleVillageIntroReply,
-  matchIntroKeyword,
 } from './reply';
 
 /**
- * The keyword layer is where a parent's word becomes a decision, so it is tested apart
- * from the database work: these are the exact strings a live test will type, and the
- * ones that must NOT be claimed by this lane at all.
+ * The readings the old keyword fixtures would have produced. The handler no longer
+ * parses them. This map is the injected model.
  */
-describe('matchIntroKeyword', () => {
-  it('reads the two discoverability keywords', () => {
-    expect(matchIntroKeyword('YES INTROS')).toEqual({ target: 'discoverability', granted: true });
-    expect(matchIntroKeyword('NO INTROS')).toEqual({ target: 'discoverability', granted: false });
-  });
-
-  it('reads the two per-intro keywords', () => {
-    expect(matchIntroKeyword('YES INTRO')).toEqual({ target: 'proposal', granted: true });
-    expect(matchIntroKeyword('NO INTRO')).toEqual({ target: 'proposal', granted: false });
-  });
-
-  it('survives how a phone actually sends them', () => {
-    expect(matchIntroKeyword('yes intros')).toEqual({ target: 'discoverability', granted: true });
-    expect(matchIntroKeyword('  Yes, intros please  ')).toEqual({
-      target: 'discoverability',
-      granted: true,
-    });
-    expect(matchIntroKeyword('Yeah intro')).toEqual({ target: 'proposal', granted: true });
-    expect(matchIntroKeyword('nope intros')).toEqual({
-      target: 'discoverability',
-      granted: false,
-    });
-  });
-
-  it('reads STOP INTROS as a revocation, not as a CASL unsubscribe', () => {
-    // Bare STOP is a carrier keyword handled long before this lane; STOP INTROS is a
-    // parent scoping their refusal to one thing, and reading it as anything else either
-    // over-unsubscribes them or ignores them.
-    expect(matchIntroKeyword('STOP INTROS')).toEqual({
-      target: 'discoverability',
-      granted: false,
-    });
-  });
-
-  it('leaves a bare yes or no alone - they belong to whatever Hale last asked', () => {
-    expect(matchIntroKeyword('yes')).toBeNull();
-    expect(matchIntroKeyword('no')).toBeNull();
-    expect(matchIntroKeyword('YES 2')).toBeNull();
-  });
-
-  it('does not claim a sentence that merely mentions intros', () => {
-    expect(matchIntroKeyword('can you tell me more about intros')).toBeNull();
-    expect(matchIntroKeyword('what is an intro')).toBeNull();
-    expect(matchIntroKeyword('intros')).toBeNull();
-  });
-
-  it('does not claim a carrier keyword', () => {
-    expect(matchIntroKeyword('STOP')).toBeNull();
-    expect(matchIntroKeyword('unsubscribe')).toBeNull();
-    expect(matchIntroKeyword('HELP')).toBeNull();
-  });
-});
+function fixtureIntro(text: string): ConsentReadingResult | null {
+  const folded = text.trim().toLowerCase().replace(/[!.,]/g, '').replace(/\s+/g, ' ');
+  const table: Record<string, ConsentReadingResult> = {
+    'yes intros': { verdict: 'yes', target: 'discoverability' },
+    'no intros': { verdict: 'no', target: 'discoverability' },
+    'stop intros': { verdict: 'no', target: 'discoverability' },
+    'nope intros': { verdict: 'no', target: 'discoverability' },
+    'yes, intros please': { verdict: 'yes', target: 'discoverability' },
+    'yes intro': { verdict: 'yes', target: 'proposal' },
+    'yeah intro': { verdict: 'yes', target: 'proposal' },
+    'no intro': { verdict: 'no', target: 'proposal' },
+    我想认识附近的家庭: { verdict: 'yes', target: 'discoverability' },
+    'لا أريد تعارف': { verdict: 'no', target: 'discoverability' },
+  };
+  return table[folded] ?? null;
+}
 
 const DB = {} as Database;
 const NOW = new Date('2026-08-11T15:00:00Z');
@@ -104,6 +67,7 @@ function deps(open: AnswerableProposal | null = null, standing: IntroStanding = 
   const recordDecision = vi.fn(async (_db: Database, _decision: IntroDecision) => {});
   const cancelOpenProposals = vi.fn(async () => {});
   const spies: VillageIntroReplyDeps = {
+    consent: { read: async ({ text }) => fixtureIntro(text) },
     recordDiscoverability,
     discoverabilityStanding: async () => standing,
     answerableProposal: async () => open,
@@ -140,8 +104,7 @@ describe('handleVillageIntroReply', () => {
       granted: true,
       verbatimReply: 'Yes intros!',
       channelMessageId: null,
-      // A typed keyword: no confidence, because it either matched or it did not.
-      reading: { readBy: 'keyword', confidence: null },
+      reading: { readBy: 'consent-reply', confidence: 'high' },
     });
     expect(cancelOpenProposals).not.toHaveBeenCalled();
   });

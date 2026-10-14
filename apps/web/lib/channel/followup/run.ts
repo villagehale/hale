@@ -24,14 +24,14 @@ import {
 import { groupActivityHowItWent } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
+  type DeliveryHoldReason,
   type OutboundGatePorts,
-  type ProactiveHoldReason,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { readDueBookings } from '~/lib/integrations/booking';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
@@ -370,7 +370,7 @@ export interface FollowupSweepResult {
    * here is the voice inventing state, and that must never read as a quiet tick.
    */
   refusedAtSend: number;
-  held: Record<ProactiveHoldReason, number>;
+  held: Record<DeliveryHoldReason, number>;
   skipped: Record<FollowupSkipReason, number>;
   failed: number;
 }
@@ -383,7 +383,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
     daycareAsked: 0,
     composeDeferred: 0,
     refusedAtSend: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0, coparent_ask: 0 },
     skipped: {
       opted_out: 0,
       already_claimed: 0,
@@ -399,7 +399,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
 
 type SendOutcome =
   | { status: 'sent' }
-  | { status: 'held'; reason: ProactiveHoldReason }
+  | { status: 'held'; reason: DeliveryHoldReason }
   | { status: 'already_claimed' }
   | { status: 'already_discussed' }
   | { status: 'compose_deferred'; reason: ComposeDeferral }
@@ -412,14 +412,12 @@ type SendOutcome =
  *
  *   1. CLAIMED?    one indexed read      — have we already asked this exact thing?
  *   2. DISCUSSED?  one scan of what they said — did they already tell us?
- *   3. ALLOWED?    the outbound gate's four reads about the family
+ *   3. ALLOWED?    the outbound gate's reads about the family
  *   4. COMPOSED?   the model call, the only step that costs money
  *   5. SEND + LEDGER
  *
- * THE CLAIM CHECK RUNS FIRST, where the intro sweep runs its gate first, and the
- * departure is deliberate: with a one-per-family-per-day budget, a gate-first order
- * reports an already-sent follow-up as `frequency_cap` — the message's own prior send
- * blocking itself — and hides that idempotency, not policy, is what stopped it.
+ * THE CLAIM CHECK RUNS FIRST. An already-sent follow-up is `already_claimed`.
+ * The gate runs after that, so a duplicate is not counted as a hold.
  *
  * THE COMPOSE RUNS LAST, and a deferral from it writes NOTHING. That is the whole
  * contract behind having no canned fallback: the claim stays unspent, the window stays
@@ -504,7 +502,7 @@ async function sendFollowup(
     now: input.now,
     bubbleKind: 'discretionary',
   });
-  if (delivered.status === 'held') return { status: 'held', reason: 'frequency_cap' };
+  if (delivered.status === 'held') return { status: 'held', reason: delivered.reason };
   if (delivered.status === 'skipped') {
     console.warn(
       { familyId: input.familyId, code: delivered.reason },
@@ -574,8 +572,8 @@ function tally(result: FollowupSweepResult, outcome: SendOutcome): boolean {
  * that has stepped back, on the strength of a connection the other side no longer wants
  * Hale in the middle of.
  *
- * IT RUNS BEFORE THE ACTIVITY STAGE, and that ordering is the whole of "intro wins".
- * The day's single slot in PROACTIVE_CAP goes to whoever asks first.
+ * IT RUNS BEFORE THE ACTIVITY STAGE. The order is "intro first". There is no shared
+ * daily slot. Same-item dedupe is what stops a second copy of either ask.
  */
 async function runIntroFollowups(
   database: Database,

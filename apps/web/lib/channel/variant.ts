@@ -42,7 +42,6 @@ import { localDaysBetween } from '~/lib/channel/checkin/cadence';
  */
 export const POOL_EPOCH = new Date('2026-01-01T00:00:00.000Z');
 
-const DAY_MS = 86_400_000;
 const MIN_POOL_SIZE = 3;
 /** The step a nightly pool takes when it is read on a weekly rhythm. */
 const WEEK_DAYS = 7;
@@ -86,8 +85,8 @@ function poolOffset(poolName: string, familyId: string, size: number): number {
  * Which member of `pool` this family reads on this occasion.
  *
  * `occasion` is an INTEGER that advances by one per send for this pool, and the caller
- * computes it with {@link nightlyOccasion} or {@link weeklyOccasion} — a string date key
- * cannot rotate, which is why neither of those returns one.
+ * computes it with {@link nightlyOccasion} — a string date key cannot rotate, which is
+ * why it does not return one.
  *
  * IT THROWS rather than falling back. An empty or malformed pool is a build error, and a
  * silent fallback is a sentence nobody wrote reaching a parent.
@@ -123,20 +122,4 @@ export function pickVariant<T>(
  */
 export function nightlyOccasion(now: Date, timeZone: string): number {
   return localDaysBetween(POOL_EPOCH, now, timeZone);
-}
-
-/**
- * The occasion for a pool that fires once per family per week, off the week's Monday key
- * (`YYYY-MM-DD`) the weekly artifact is already stored under.
- *
- * No timezone: a Monday key is already a calendar day in the family's week, and two
- * consecutive Mondays are exactly seven days apart in every zone, so the quotient
- * advances by exactly one whatever weekday the epoch happens to be.
- */
-export function weeklyOccasion(mondayKey: string): number {
-  const monday = Date.parse(`${mondayKey}T00:00:00Z`);
-  if (Number.isNaN(monday)) {
-    throw new Error(`variant occasion: '${mondayKey}' is not a YYYY-MM-DD week key`);
-  }
-  return Math.floor((monday - POOL_EPOCH.getTime()) / DAY_MS / WEEK_DAYS);
 }

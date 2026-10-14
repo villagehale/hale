@@ -6,7 +6,6 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
 import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
-import { openYearRetentionQuestion } from '~/lib/billing/upgrade-ask';
 import { recordWeekdayCare } from '~/lib/care/weekday';
 import {
   defaultActivityPromisePorts,
@@ -18,7 +17,13 @@ import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { INVITE_SILENCE_MS, loadPendingAssent } from '~/lib/channel/caregiver/invites';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
+import { createEveningRequestReader } from '~/lib/channel/checkin/request';
+import type { EveningRequestReader } from '~/lib/channel/checkin/request';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
+import { createConsentAskWriter } from '~/lib/channel/consent-ask';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { createConsentReader } from '~/lib/channel/consent-reply';
+import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
 import { productionEmailReply } from '~/lib/channel/email/reply-send';
@@ -43,6 +48,7 @@ import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
+import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { loadOpenCommitment } from '~/lib/commitments/ledger';
@@ -93,7 +99,6 @@ import {
   sequenceReplyHandler,
   villageIntroHandler,
   weekdayCareHandler,
-  yearRetentionHandler,
 } from './handlers';
 import {
   type OpenQuestionReader,
@@ -390,9 +395,21 @@ function refused(error: string): SpineOutcome {
  * handlers.ts for why "yes" resolves the way it does, why registration is late, and why
  * the name capture is the one thing behind it.
  */
-export function defaultHandlers(): DeterministicHandler[] {
+export interface DefaultHandlerPorts {
+  /** Reads an evening reply. Production uses the screen. Tests inject a reading. */
+  eveningRequest?: EveningRequestReader;
+  /** Reads a consent reply. Production uses the screen. Tests inject a reading. */
+  consent?: ConsentReader;
+  /** Writes a consent ask. Production uses the screen. Tests inject the text. */
+  ask?: ConsentAskWriter;
+}
+
+export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicHandler[] {
+  const evening = ports.eveningRequest ?? createEveningRequestReader(screenClient);
+  const consent = ports.consent ?? createConsentReader(screenClient);
+  const ask = ports.ask ?? createConsentAskWriter(screenClient);
   return [
-    villageIntroHandler(defaultVillageIntroReplyDeps()),
+    villageIntroHandler(defaultVillageIntroReplyDeps(consent)),
     approvalHandler(defaultApprovalSpine()),
     emailCaptureHandler(defaultEmailCaptureDeps()),
     connectorLinkHandler(),
@@ -403,8 +420,8 @@ export function defaultHandlers(): DeterministicHandler[] {
     // Beside the connector pair, and free for their reason: all three matchers require a
     // noun no other handler's vocabulary contains, and detect.test.ts / the forwarding
     // matcher's own table assert the three are disjoint over the whole phrase list.
-    forwardAddressHandler(),
-    founderWelcomeHandler(defaultFounderReplyDeps()),
+    forwardAddressHandler(console, { consent, ask }),
+    founderWelcomeHandler({ ...defaultFounderReplyDeps(), consent, ask }),
     // Owns the co-parent scope question and declines every reading of it — see the
     // handler's own note. Listed so the router never resolves a kind nobody owns.
     coParentAssentHandler(),
@@ -416,6 +433,7 @@ export function defaultHandlers(): DeterministicHandler[] {
         const sent = await sendResolvingNewChat(createOutboundTransport(), sms);
         return { providerMessageId: sent.providerMessageId };
       },
+      ask,
     }),
     // Beside it, and for the same reason: it claims nothing, so its POSITION in this
     // chain is free rather than load-bearing. Said out loud so a reader does not have to
@@ -427,12 +445,9 @@ export function defaultHandlers(): DeterministicHandler[] {
     // And its sibling, for the same reason and with the same freedom of position: it
     // owns the daycare check-in's kind and claims nothing.
     daycareFollowupHandler(),
-    healthReplyHandler(defaultHealthReplyDeps()),
+    healthReplyHandler({ ...defaultHealthReplyDeps(), ask }),
     emailAlertAddHandler(),
     planReplyHandler(defaultPlanReplyDeps()),
-    // ENG-1. Claims a bare yes only while the year-retention ask is the open
-    // question. Flag off, the handler returns before it reads anything.
-    yearRetentionHandler(),
     // Explicit "sign us up" only. A bare yes is not a signup. Placed before the
     // registration reader, which also claims messages it cannot read.
     authorizedSignupHandler(),
@@ -446,7 +461,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     // BEHIND EVERY SHAPE MATCHER, because it is the only handler that claims a whole
     // sentence — see its own note. It still runs ahead of the canary, so every decline
     // path above it is exercised before the probe turn.
-    eveningCheckInHandler(),
+    eveningCheckInHandler(evening),
     // LAST, and that placement is the mechanism rather than a tidy tail: the
     // probe turn is only evidence if it runs every handler's decline path
     // first — including the registration reader, which is where every turn
@@ -696,6 +711,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       },
     }),
     replyResolver: createReplyResolver(screenClient),
+    weekdayCareReader: createWeekdayCareReader(screenClient),
+    consentAsk: createConsentAskWriter(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
     // spent by the next inbound. No model and no client: picking one of a handful of
     // options Hale itself printed is a string comparison.
@@ -911,7 +928,6 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       // used to close the question it was asking about (round 7). The last-word rule lives
       // on the bare-word door in handlers.ts, which is the only reader it protects.
       forwardAddressRevoke: (database, input) => forwardRevokeAsk(database, input),
-      yearRetention: (database, input) => openYearRetentionQuestion(database, input),
     },
     options,
   );

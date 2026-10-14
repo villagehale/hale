@@ -69,9 +69,6 @@ vi.mock('../services/memory-writer.js', () => ({
     return { eventId: 'evt-1', duplicate: false };
   }),
   recordDrop: vi.fn(async () => {}),
-  loadFamilyPlanTier: vi.fn(async () => 'free' as const),
-  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
-  recordSpendCeilingDrop: vi.fn(async () => {}),
 }));
 
 const { runOrchestrator } = await import('./index.js');

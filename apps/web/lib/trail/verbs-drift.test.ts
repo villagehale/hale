@@ -48,10 +48,15 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'proactive_cadence_sent',
     'proactive_cadence_skipped',
     'proactive_nudge_sent',
+    'evening_check_in_sent',
   ],
   // VIL-226. The send finalizer the nudge sweep and the hourly review share writes the
   // verb its caller names.
-  'apps/web/lib/channel/proactive/finalize.ts': ['proactive_cadence_sent', 'proactive_nudge_sent'],
+  'apps/web/lib/channel/proactive/finalize.ts': [
+    'proactive_cadence_sent',
+    'proactive_nudge_sent',
+    'evening_check_in_sent',
+  ],
   // One helper writes every passport verb. The "both kids" copy in actions.ts
   // also writes interest_stamp_confirmed as a literal.
   'apps/web/lib/passport/store.ts': [
@@ -118,6 +123,11 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // `action.reviewer.${verdictColumn}`, the executed/failed ternary,
   // `action.gated.${ActionGateReason}`, `event.stage.${StageCheckpoint}`,
   // `event.dropped.${reason}` (written as shorthand from recordDrop).
+  // The turn-on and on-its-own texts share one insert; the verb is the occasion.
+  'apps/web/lib/channel/autonomy/notice.ts': [
+    'autonomy_armed_notice_sent',
+    'autonomy_acted_notice_sent',
+  ],
   'apps/worker/src/services/memory-writer.ts': [
     'event.dropped.low_confidence',
     'event.dropped.unknown_action_type',
@@ -131,8 +141,10 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'action.gated.streak',
     'action.gated.cross_parent_consent',
     'action.gated.teen_redaction',
-    'action.gated.over_allowance',
     'action.gated.autonomy_not_opted_in',
+    'action.gated.lane_off',
+    'action.gated.autonomy_denied_kind',
+    'action.gated.autonomy_notice_pending',
     'event.stage.classified',
     'event.stage.drafted',
     'event.stage.reviewed',
@@ -198,13 +210,6 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // per-event link), and the first mint says which one the caller made.
   'apps/web/lib/loop/ics-feed.ts': ['ics_feed_shared', 'ics_event_link_minted'],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
-  // One send, two meanings: the evening question, or the notice that Hale is stepping
-  // down to weekly after three silent evenings (VIL-353). The verb is picked from the
-  // same boolean that picked the copy, so the two can never disagree.
-  'apps/web/lib/channel/checkin/sweep.ts': [
-    'evening_check_in_sent',
-    'evening_check_in_stepped_down',
-  ],
   // CANARY_ANSWERED_ACTION — a constant precisely because the cron's
   // verification reads the same value back (channel/canary/run.ts); a literal
   // here would let the two halves drift apart silently.
@@ -231,13 +236,6 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   'apps/web/lib/channel/intake/watch-consent.ts': [
     'proactive_watch_granted',
     'proactive_watch_declined',
-  ],
-  // closeOffer takes the verb as a parameter: decline, the year link, or
-  // "already paid". The ask and the group-sync writes are string literals.
-  'apps/web/lib/billing/upgrade-ask.ts': [
-    'upgrade_declined',
-    'upgrade_link_sent',
-    'upgrade_already_paid',
   ],
   'apps/web/lib/integrations/store.ts': ['integration_connected', 'integration_revoked'],
   // The placement and draft services forward the verb they already chose. The

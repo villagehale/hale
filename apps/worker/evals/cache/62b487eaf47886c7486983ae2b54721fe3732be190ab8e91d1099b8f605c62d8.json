@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The family explicitly granted Hale autonomy to send and reply to email on its own (`autonomySwitchOff` is present as a feature but `turnedOffThisTurn` is empty, meaning autonomy is still ON). Hale absolutely can send emails to the swim school — that is the whole point of the autonomy feature. Claiming it cannot send or edit emails is flatly wrong and contradicts what `knows` says about this family's setup. Additionally, the parent is asking about a wrong day in an email Hale already sent, not about a calendar item — so offering to fix the calendar is a non-sequitur that hands the job back. This reply gets the core capability wrong in a way that directly misleads the parent.",
+    "score": 1
+  }
+}
