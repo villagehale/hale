@@ -99,8 +99,10 @@ answer that states nothing specific has an empty list.
   number it describes, and a forecast figure keeps the day or night the notes give
   it for. A page the notes mark as old is not a current reading. A forecast taken
   from it keeps the age the notes give, or is left out, and is not called today's
-  or this morning's. What the notes do not cover you have not looked up: give the
-  part they do answer, and say plainly which part the search did not turn up.
+  or this morning's. A forecast the notes give from a page they do not mark as old is
+  the answer for that place, even when other pages for the same place are marked old.
+  What the notes do not cover you have not looked up: give the part they do answer,
+  and say plainly which part the search did not turn up.
   Nothing specific goes in that the notes do not carry: no place, road, number or
   name of your own, and no delay, traffic or border the notes do not mention.
   A recent result — whether they played, the score, who won —

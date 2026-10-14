@@ -21,7 +21,7 @@
 //     (deep.ts `toDeepSlots`), so without this gate a skill quietly producing them looks
 //     like a skill finding nothing.
 //   · dropped registration - the notes carry a registration date and no slot does, or a
-//     slot carries it and the TEXT does not. That fact is the entire return on opening the
+//     slot carries it and the TEXT does not. Graded by the judge from `factChecks`. That fact is the entire return on opening the
 //     page, and it has been dropped in production once already: the composer's projection
 //     did not list the field, so the deep pass learned it and the parent never heard it.
 //   · the follow-up gates, mirrored from followup-note.ts - links, segment cap, claiming
@@ -662,6 +662,17 @@ function untraceablePages(pagesRead, notes) {
   return pagesRead.filter((url) => !notes.includes(String(url).trim()));
 }
 
+/**
+ * The fixture's required and forbidden facts, handed to the judge as notes. Only present
+ * when the fixture names them, so every other fixture's judge payload is unchanged.
+ */
+function factChecks(fixture) {
+  const checks = {};
+  if (fixture.registrationMustSay) checks.registrationFact = fixture.registrationMustSay;
+  if (fixture.slotsMustNotContain) checks.figuresFromElsewhere = fixture.slotsMustNotContain;
+  return Object.keys(checks).length > 0 ? { factChecks: checks } : {};
+}
+
 export const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE deep research pass Hale ran to keep a promise it',
   'made a parent about what their young child could do locally. Hale searched, opened the',
@@ -707,6 +718,15 @@ export const JUDGE_SYSTEM = [
   '`pageEvidence` does not say `page_has_no_schedule`; an empty result when the page plainly lists something',
   'fitting; a message that drops the registration date the slots carried; a message that',
   'presents page-read facts as verified.',
+  'You may be given `factChecks`. `registrationFact` is the registration date the page',
+  'prints, in the spellings a reader might see: when the slots carry it and the message',
+  'does not, or when no slot carries it although the notes print it, score low.',
+  '`figuresFromElsewhere` are figures that are on the site but belong to something else',
+  '(another program, a membership, a room rental): a slot that states one as its own',
+  'price, time or date scores low. Judge these by meaning, not by exact wording.',
+  'When `pageEvidence` is `page_has_schedule` and a page that was read links a schedule',
+  'document (a PDF) that was not itself opened, the slots or the notes must say that',
+  'document could not be read; going quiet about it scores low.',
   'An EMPTY slot list is CORRECT when the page was read and genuinely has nothing for this',
   'age. Score that a 5 when the message says so plainly and specifically.',
   'When `message` is NULL no text was composed for this pass - production discards a',
@@ -1017,10 +1037,6 @@ async function main() {
     for (const slot of kept) {
       const loose = untraceableFigures(slot, evidence.notes);
       if (loose.length > 0) failures.push(`fabricated_figure:${slot.name}:${loose.join(',')}`);
-      for (const forbidden of fixture.slotsMustNotContain ?? []) {
-        const row = `${slot.when ?? ''} ${slot.price ?? ''} ${slot.registration ?? ''}`;
-        if (row.includes(forbidden)) failures.push(`borrowed_figure:${slot.name}:${forbidden}`);
-      }
     }
 
     // Both directions, and this is the calibration: a real page answered with nothing is
@@ -1030,14 +1046,8 @@ async function main() {
     if (fixture.expectSlots === false && kept.length > 0)
       failures.push(`invented_slots:${kept.length}`);
 
-    // THE FACT THE PAGE-OPEN WAS FOR.
-    const saysRegistration = (text) =>
-      (fixture.registrationMustSay ?? []).some((phrase) => text.includes(phrase));
-    if (fixture.registrationMustSay && kept.length > 0) {
-      if (!kept.some((slot) => saysRegistration(slot.registration ?? ''))) {
-        failures.push(`dropped_registration:${fixture.registrationMustSay[0]}`);
-      }
-    }
+    // THE FACT THE PAGE-OPEN WAS FOR is graded by the judge (`factChecks` below), not by
+    // matching the model's wording.
 
     // ── leg 3: THE FOLLOW-UP TEXT, from the deep slots ───────────────────────
     // The text carries the best two; the rest go on a share page (share-page.ts). Composed,
@@ -1086,17 +1096,7 @@ async function main() {
     }
     failures.push(...violations.map((v) => v.tag));
 
-    // The last hop, and the one that was broken in production: the slot carried the
-    // registration date and the composer's projection did not list the field, so the fact
-    // died between the page and the phone.
-    if (
-      fixture.registrationMustSay &&
-      inText.some((slot) => saysRegistration(slot.registration ?? ''))
-    ) {
-      if (!saysRegistration(body)) {
-        failures.push(`registration_not_in_text:${fixture.registrationMustSay[0]}`);
-      }
-    }
+    // The last hop, the registration fact reaching the text, is the judge's (`factChecks`).
 
     if (!broken) {
       const verdict = await judge(fixture.id, {
@@ -1109,6 +1109,7 @@ async function main() {
         slots: kept,
         message: composesText ? body : null,
         watchFor: fixture.watchFor,
+        ...factChecks(fixture),
       });
       if (verdict.score < JUDGE_MIN) {
         failures.push(`judge:${verdict.score} of ${verdict.samples.join('/')} (${verdict.reason})`);
@@ -1150,9 +1151,6 @@ async function main() {
     `fabricated figures:        ${count('fabricated_figure')}  (a price or a date on no page)`,
   );
   console.log(
-    `borrowed figures:          ${count('borrowed_figure')}  (a real number off the wrong page)`,
-  );
-  console.log(
     `fabricated pages:          ${count('fabricated_page')}  (a URL the turn never opened)`,
   );
   console.log(
@@ -1164,12 +1162,6 @@ async function main() {
   );
   console.log(
     `invented slots:            ${count('invented_slots')}  (stretched to fit an age the page does not serve)`,
-  );
-  console.log(
-    `dropped registration:      ${count('dropped_registration')}  (the fact the page-open paid for)`,
-  );
-  console.log(
-    `registration not in text:  ${count('registration_not_in_text')}  (it reached the slot and died in the projection)`,
   );
   console.log(`claims verification:       ${count('claims_verification')}`);
   console.log(
