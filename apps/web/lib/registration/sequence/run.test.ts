@@ -574,7 +574,7 @@ describe('the legs', () => {
 
   it('refuses a leg whose wire body claims a row that does not exist (VIL-293)', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({ sequences: [live()], unbacked: ['no_registration_watch'] });
+    const h = harness({ sequences: [live()], unbacked: ['no_activity_promise'] });
 
     const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
 

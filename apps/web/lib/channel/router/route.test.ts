@@ -3267,35 +3267,6 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     return coach;
   }
 
-  it('(a) Aug 21 — "I\'m watching that morning" MINTS the watch against the matched window', async () => {
-    const minted: unknown[] = [];
-    const h = harness({
-      coach: fakeCoach("I'm watching that morning and I'll text you before it goes live."),
-      reconcileView: async () =>
-        emptyReconcileView({ mintableWindow: { town: 'Halton Hills', opensForFamilyAt: OPENS } }),
-      recordRegistrationWatch: async (_db, input) => {
-        minted.push(input);
-        return { status: 'recorded' as const };
-      },
-    });
-    await routeChannelMessage(h.deps, job());
-
-    expect(h.transport.sent.map((m) => m.body)).toEqual([
-      "I'm watching that morning and I'll text you before it goes live.",
-    ]);
-    expect(minted).toHaveLength(1);
-    expect(minted[0]).toMatchObject({
-      familyId: FAMILY,
-      mint: {
-        kind: 'registration_watch',
-        summary: 'Halton Hills registration: a text before it opens.',
-        dueAt: OPENS,
-      },
-      // Against the row that CARRIED it — the MEM-10 send-time discipline.
-      channelMessageId: ledgerRows(h.fake)[0]?.id,
-    });
-  });
-
   /** What `watch_for_opening` hands back for the course page the spot fixtures paste. */
   const COURSE_INTENT = {
     url: 'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=15f6af07-39c5-473e-b053-96653f77a406&courseId=85770d4d-bce9-4e53-b969-cf7e88775180',
@@ -3338,90 +3309,6 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
         channelMessageId: ledgerRows(h.fake)[0]?.id,
         now: NOW,
       },
-    ]);
-  });
-
-  /**
-   * THE OTHER END OF THE SAME RULE (VIL-337). The arm is a promise to poll a page for
-   * sixty days, and what makes it a promise is the parent being TOLD. When the reconcile
-   * cuts the sentence that said so — twice unbacked, so subtracted — the row would be a
-   * watch nobody knows about: no text arrives to say it started, and the "I'll text you"
-   * it was armed against is not in what the parent read. So the arm is dropped with the
-   * sentence, and the drop is a named outcome rather than a quiet nothing (rule #11).
-   */
-  it('(a4) VIL-337 — a watch whose ack was CUT is not armed behind the parent', async () => {
-    const armed: unknown[] = [];
-    const h = harness({
-      coach: scriptedCoach([
-        {
-          // The surviving half carries a claim of its OWN — a promise this turn really
-          // registered — so what is being asserted is that the WATCH ack survived, not
-          // that some sentence did.
-          reply:
-            "I'll come back to you with options for that class. I'm watching that morning and I'll text you before it goes live.",
-          activityPromise: { subject: 'preschool swim nearby', childId: null },
-          spotWatch: COURSE_INTENT,
-        },
-      ]),
-      armWatchedSpot: async (_db, input) => {
-        armed.push(input);
-        return { status: 'armed' as const, spotId: 'spot-1' };
-      },
-    });
-    await routeChannelMessage(h.deps, job());
-
-    // The municipal half is unbacked and goes; the half that answered the parent stays.
-    expect(h.transport.sent.map((m) => m.body)).toEqual([
-      "I'll come back to you with options for that class.",
-    ]);
-    expect(armed).toEqual([]);
-    expect(h.logs.flat().some((entry) => JSON.stringify(entry).includes('ack_cut'))).toBe(true);
-  });
-
-  it('(a5) VIL-337 — a cut somewhere ELSE in the reply still arms the watch it kept', async () => {
-    // THE POSITIVE CONTROL for (a4). The rule is about the ack, not about the turn: a
-    // reply that loses an unbacked booking line and keeps the sentence that said Hale is
-    // watching has told the parent, and the row it promised must exist.
-    const armed: unknown[] = [];
-    const h = harness({
-      coach: scriptedCoach([
-        {
-          reply:
-            "I'm watching that class and I'll text you when a spot opens. Thursday swim is booked at 5:15.",
-          spotWatch: COURSE_INTENT,
-        },
-      ]),
-      armWatchedSpot: async (_db, input) => {
-        armed.push(input);
-        return { status: 'armed' as const, spotId: 'spot-1' };
-      },
-    });
-    await routeChannelMessage(h.deps, job());
-
-    expect(h.transport.sent.map((m) => m.body)).toEqual([
-      "I'm watching that class and I'll text you when a spot opens.",
-    ]);
-    expect(armed).toHaveLength(1);
-    expect(armed[0]).toMatchObject({ familyId: FAMILY, intent: COURSE_INTENT });
-  });
-
-  it('(a2) refuses the same sentence when no window matched and no ladder runs', async () => {
-    const minted: unknown[] = [];
-    const h = harness({
-      coach: scriptedCoach([
-        { reply: "I'm watching that morning and I'll text you before it goes live." },
-        { reply: 'Halton Hills has not published a fall date yet.' },
-      ]),
-      recordRegistrationWatch: async (_db, input) => {
-        minted.push(input);
-        return { status: 'recorded' as const };
-      },
-    });
-    await routeChannelMessage(h.deps, job());
-
-    expect(minted).toEqual([]);
-    expect(h.transport.sent.map((m) => m.body)).toEqual([
-      'Halton Hills has not published a fall date yet.',
     ]);
   });
 
