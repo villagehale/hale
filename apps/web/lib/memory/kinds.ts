@@ -11,7 +11,9 @@
  * kind and source travel with each fact. Do not invent a second export shape.
  */
 
-import { copyLanguage } from '~/lib/channel/language';
+// Relative on purpose. The coach eval loads this file through context.ts, and
+// the tsx loader there cannot resolve the web app's `~` alias.
+import { copyLanguage } from '../channel/language';
 
 export const FAMILY_MEMORY_KINDS_ENABLED_ENV = 'FAMILY_MEMORY_KINDS_ENABLED';
 

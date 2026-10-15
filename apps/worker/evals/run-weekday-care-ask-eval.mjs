@@ -85,7 +85,7 @@ const JUDGE_SYSTEM = [
   'Reply with ONLY the score tool.',
 ].join(' ');
 
-function grade(fixture, written, verdict) {
+function grade(_fixture, written, verdict) {
   if ('skipped' in written) return [`refused by the runtime check: ${written.skipped}`];
   const failures = [];
   const body = written.message.toLowerCase();

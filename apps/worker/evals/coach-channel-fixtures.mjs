@@ -500,31 +500,8 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['lookup_week'],
       mustDraft: ['calendar_move'],
       onlyTargets: ['evt-swim-thu'],
-      // The reply must be French — asserted on FUNCTION WORDS, which is the part of a
-      // language a sentence cannot avoid. Content words would be a weaker test: "natation"
-      // and "jeudi" could survive into an otherwise-English reply as quoted fragments,
-      // and quoting the parent's nouns back is exactly what an English reply does.
-      replyLanguage: {
-        label: 'French',
-        anyOf: [
-          /\bje\b/i,
-          /\bà\b/i,
-          /\bde\b/i,
-          /\bpour\b/i,
-          /\best\b/i,
-          /\bton\b/i,
-          /\bta\b/i,
-          /\ble\b/i,
-          /\bla\b/i,
-          /\bles\b/i,
-          /\bdéplac/i,
-          /\bconfirm(?:er|é)\b/i,
-          /\bveux\b/i,
-          /\bd'accord\b/i,
-        ],
-      },
-      // The confirmation is the question itself, in French. affirmative.ts reads
-      // "oui" and the other ordinary answers; the reply must not embed YES.
+      // Language is the judge's, not a function-word list.
+      // The confirmation is the question itself. The reply must not embed YES.
       mustAsk: true,
     },
   },
@@ -1198,10 +1175,6 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['turn_off_autonomy'],
       turnOffWithin: ['send_email', 'reply_to_email'],
       mustNotDraft: true,
-      replyLanguage: {
-        label: 'French',
-        anyOf: [/\bje\b/i, /\bà\b/i, /\bde\b/i, /\bpour\b/i, /\bles\b/i, /\bvous\b/i, /\btu\b/i],
-      },
     },
   },
   {
@@ -1213,7 +1186,6 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['turn_off_autonomy'],
       turnOffWithin: ['send_email', 'reply_to_email'],
       mustNotDraft: true,
-      replyLanguage: { label: 'Chinese', anyOf: [/[\u4e00-\u9fff]/] },
     },
   },
   {
@@ -1225,18 +1197,6 @@ export const COACH_CHANNEL_FIXTURES = [
       mustCall: ['turn_off_autonomy'],
       turnOffWithin: ['send_email', 'reply_to_email'],
       mustNotDraft: true,
-      replyLanguage: {
-        label: 'Spanish',
-        anyOf: [
-          /\bde\b/i,
-          /\bque\b/i,
-          /\blos\b/i,
-          /\bte\b/i,
-          /\bsin\b/i,
-          /\bpara\b/i,
-          /\bantes\b/i,
-        ],
-      },
     },
   },
   {

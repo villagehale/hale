@@ -104,8 +104,7 @@ describe('referralLink', () => {
   });
 
   it('is short enough that the whole forwardable message fits two SMS segments', () => {
-    // 306 GSM-7 characters is the ceiling (MAX_REPLY_SEGMENTS); the link plus the 120
-    // the forward line may use has to leave a parent's own sentence room.
+    // The link stays short so a parent can add their own sentence.
     expect(referralLink(FAMILY).length).toBeLessThan(60);
   });
 });

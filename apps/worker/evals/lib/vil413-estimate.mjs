@@ -12,6 +12,9 @@
  *     voice loads that skill. There is no separate recorded suite; the live
  *     path pays one compose per onboarding step, estimated below as a single
  *     cold prefix plus one reply.
+ *   - Six judge-graded cases (zh, ar, US ZIP, photo, video, crisis) are not
+ *     in the coach corpus. The photo case adds image input tokens. The
+ *     Chinese autonomy fixture inside the coach corpus is a different call.
  *   - VIL-434 deletes the shorten rewrite. Those calls are not in this total.
  *     The old path spent one extra coach-channel-shorten call when a sentence
  *     did not fit two segments. A re-record does not buy that call.
@@ -24,6 +27,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COACH_CHANNEL_FIXTURES } from '../coach-channel-fixtures.mjs';
+import { VIL413_JUDGE_CASES } from '../vil413-judge-fixtures.mjs';
 import { PRICE } from './harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -78,6 +82,19 @@ export function vil413Estimate() {
   const friendInput = friendPrefix * 1.25 + friendUser;
   const friendOutput = friendOut;
 
+  const added = VIL413_JUDGE_CASES.length;
+  const addedCalls = added * SUBJECT_CALLS_PER_FIXTURE;
+  const addedUser = VIL413_JUDGE_CASES.reduce(
+    (sum, item) => sum + tokens(1_200 + (item.imageTokens ?? 0)) * SUBJECT_CALLS_PER_FIXTURE,
+    0,
+  );
+  const addedInput = subjectPrefix * 1.25 + subjectPrefix * 0.1 * (addedCalls - 1) + addedUser;
+  const addedOutput = subjectOut * addedCalls;
+  const addedJudgeCalls = added * JUDGE_SAMPLES;
+  const addedJudgeInput =
+    judgePrefix * 1.25 + judgePrefix * 0.1 * (addedJudgeCalls - 1) + judgeUser * addedJudgeCalls;
+  const addedJudgeOutput = judgeOut * addedJudgeCalls;
+
   const lines = [
     {
       suite: 'coach-channel subject',
@@ -96,6 +113,18 @@ export function vil413Estimate() {
       why: 'onboarding-friend.md now accepts a US ZIP; one cold step',
       calls: 1,
       usd: usd(SUBJECT, friendInput, friendOutput),
+    },
+    {
+      suite: 'vil413 judge cases subject',
+      why: 'zh, ar, US ZIP, photo, video, crisis; photo includes image tokens',
+      calls: addedCalls,
+      usd: usd(SUBJECT, addedInput, addedOutput),
+    },
+    {
+      suite: 'vil413 judge cases judge',
+      why: 'three samples per new case',
+      calls: addedJudgeCalls,
+      usd: usd(JUDGE, addedJudgeInput, addedJudgeOutput),
     },
   ];
   const total = lines.reduce((sum, line) => sum + line.usd, 0);

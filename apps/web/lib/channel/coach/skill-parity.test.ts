@@ -72,7 +72,7 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
       ),
     );
 
-    expect(skill.instructions).toContain('two SMS segments');
+    expect(skill.instructions).toContain('Two short sentences is the target');
     expect(skill.instructions).not.toContain('gets cut off');
     expect(toSmsReply(long, { children: [], now: new Date('2026-10-12T14:07:00.000Z') })).toBe(
       long,

@@ -7,10 +7,10 @@ import { type NamedActivityLink, activityLinkSuffix } from './activity-links';
  * VIL-221 · C2 — everything that happens to the model's answer between the loop
  * returning it and the carrier taking it.
  *
- * The skill already asks for short, plain, ASCII prose (see coach-channel-sms.md), so
- * none of this fires on a well-behaved answer. It exists for the answers that are not,
- * because the model is the one component on this path that cannot be made to behave by
- * construction — and each of the three things below is a real cost when it slips:
+ * The skill asks for short, plain prose in the parent's language (see
+ * coach-channel-sms.md). Accents and other scripts stay. Typographic punctuation
+ * is still folded to the plain mark, because one curly quote flips the carrier
+ * encoding and none of that fires as a cut: a long answer leaves whole.
  *
  *   MARKDOWN is rendered literally by a phone. "**Two swims**" arrives with the
  *   asterisks, which reads as broken software rather than as emphasis.

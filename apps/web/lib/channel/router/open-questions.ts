@@ -407,8 +407,8 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // The alert asks "Want me to add it to your week?" and it is the last
   // thing Hale said (integrations/email-alert.ts). A BOOKING alert ends differently —
   // "Want it on your calendar?" — and the flag's value is still correct, because
-  // `newestSolicitedKind` reads this boolean rather than the string and `readAffirmative`
-  // covers sure/ok/sounds good/oui. The comment is the evidence for the value, so it has
+  // `newestSolicitedKind` reads this boolean rather than the string. The model
+  // reads the parent's answer. The comment is the evidence for the value, so it has
   // to name both endings rather than only the one it was written for.
   email_alert_add: true,
   // FALSE. The evening check-in prints no keyword. Marking it solicited would hand
