@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
 import {
+  NOT_POSTED_YET,
   deidentifyOfficialQuery,
   isOfficialPageAsk,
   officialPageFallbackReply,
@@ -24,10 +25,9 @@ describe('live official registration answers', () => {
       expect(isOfficialPageAsk(words)).toBe(false);
     }
   });
-  it('preserves the pending intake ask without copying the cold-start lock', () => {
-    expect(officialPageReturnLine(COLD_START_ASK)).toBe(OFFICIAL_PAGE_RETURN_ASK);
-    expect(officialPageReturnLine(COLD_START_ASK)).not.toBe(COLD_START_ASK);
-    expect(officialPageReturnLine(WATCH_OFFER_ASK)).toBe('Still want me watching?');
+  it('leaves the next intake ask to the current friend voice', () => {
+    expect(officialPageReturnLine(COLD_START_ASK)).toBe('');
+    expect(officialPageReturnLine(WATCH_OFFER_ASK)).toBe('');
   });
   it('an unreadable source is not a claim that the date is unpublished', () => {
     const body = officialPageFallbackReply(COLD_START_ASK, 'https://example.org/swim');

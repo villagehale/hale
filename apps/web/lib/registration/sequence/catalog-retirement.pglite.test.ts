@@ -7,7 +7,7 @@ import { legDedupeKey, loadLiveSequences } from './run';
 
 describe('registration catalog retirement', () => {
   it('preserves approved watch, outcome clock and delivered identity while dropping unused catalog rows', async () => {
-    const db = await createTestDb('0161_registration_live_watch_storage.sql');
+    const db = await createTestDb('0172_registration_live_watch_storage.sql');
     try {
       const family = await seedFamily(db.database, 'Imported watch');
       const ids = [randomUUID(), randomUUID()];
@@ -52,7 +52,7 @@ describe('registration catalog retirement', () => {
         status: 'sent',
         sentAt: at,
       });
-      await db.applyMigration('0162_drop_registration_catalog.sql');
+      await db.applyMigration('0173_drop_registration_catalog.sql');
       const [stored] = await db.database
         .select()
         .from(schema.registrationSequences)

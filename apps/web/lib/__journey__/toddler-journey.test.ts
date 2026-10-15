@@ -58,6 +58,7 @@ import {
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
 import { askWriter } from '~/lib/testing/consent-double';
+import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -946,9 +947,7 @@ describe('2 · the first reply names something real', () => {
       expect(body).not.toMatch(/registration opens|registration opened/i);
       expect(body).not.toContain('Aug 25');
     }
-    const candidates = journey.fake.rows(schema.villageCandidates);
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.title).toBe('Family Storytime');
+    expect(journey.fake.rows(schema.familyActivityHistory)).toEqual([]);
   });
 
   it('fits the segment budget the whole payload is measured against', () => {

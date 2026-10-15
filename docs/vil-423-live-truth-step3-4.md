@@ -103,7 +103,7 @@ node evals/run-coach-channel-eval.mjs --cached-only
 
 ## Not a release approval
 
-Production still needs the additive `0161_registration_live_watch_storage.sql`
+Production still needs the additive `0172_registration_live_watch_storage.sql`
 migration before this code is rolled out, plus explicit rollout authorization.
 No production end-to-end SMS test was run. Public-page support is not universal:
 redirects, login/JS-only pages or ambiguous source facts are deliberately held;

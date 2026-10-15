@@ -198,7 +198,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // A plan offer or a referral still crowds the count out. An activity URL does not:
   // the count is about that find, and the URL is that find's page, so both go out.
   const protectedTail = redactTeenNames(
-    [args.planOffer, args.referral, args.sourceUrl, args.registrationCaveat]
+    [args.planOffer, args.referral, args.registrationCaveat, args.sourceUrl]
       .map((part) => part?.trim() ?? '')
       .filter((part) => part !== '')
       .join(' '),

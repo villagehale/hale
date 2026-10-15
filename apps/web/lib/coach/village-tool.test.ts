@@ -43,7 +43,7 @@ async function search(
     {},
     { familyId, actor: 'test' },
     { writeAudit: async () => {} },
-  ) as Promise<{ candidates: { title: string; when: string }[]; liveRead: string }>;
+  ) as Promise<{ candidates: { title: string; when: string; url?: string }[]; liveRead: string }>;
 }
 
 describe('search_village uses this operation’s live evidence', () => {
@@ -61,11 +61,13 @@ describe('search_village uses this operation’s live evidence', () => {
     const offers: unknown[] = [];
     const result = await search(familyId, { find }, (rows) => offers.push(...rows));
     expect(result.candidates.map((row) => row.title)).toEqual(['Current swim']);
+    expect(result.candidates[0]?.url).toBe(pick.sourceUrl);
     expect(offers).toEqual([
       expect.objectContaining({
         title: 'Current swim',
         venue: 'Current pool',
         candidateId: expect.any(String),
+        url: pick.sourceUrl,
       }),
     ]);
     expect(JSON.stringify(find.mock.calls)).not.toContain('Private child name');

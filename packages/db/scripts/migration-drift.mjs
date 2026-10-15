@@ -27,9 +27,9 @@ export function requiresCatalogCutover(journal, ledgerHashes, legacyPresent) {
   return journal.some(
     (entry) =>
       [
-        '0162_drop_registration_catalog',
-        '0163_activity_history_only',
-        '0164_retire_civic_catalog',
+        '0173_drop_registration_catalog',
+        '0174_activity_history_only',
+        '0175_retire_civic_catalog',
       ].includes(entry.tag) && !recorded.has(entry.hash),
   );
 }

@@ -38,6 +38,7 @@ import {
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
+import { POLICY_VERSION } from '~/lib/consent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { createFetchBody } from '~/lib/registration/fetch';
@@ -466,9 +467,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
                   activityLinks: [
-                    ...offeredThisTurn.read().flatMap((item) =>
-                      item.url ? [{ title: item.title, url: item.url, venue: item.venue }] : [],
-                    ),
+                    ...offeredThisTurn
+                      .read()
+                      .flatMap((item) =>
+                        item.url ? [{ title: item.title, url: item.url, venue: item.venue }] : [],
+                      ),
                     ...offeredThisTurn.links(),
                   ],
                   sourceUrl: [...registrationSources].join(' ') || undefined,

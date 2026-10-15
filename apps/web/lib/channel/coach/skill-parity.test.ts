@@ -134,7 +134,9 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).toContain('Do not tell them to reply with a keyword');
     expect(skill.instructions).not.toContain('YES to confirm');
     expect(skill.instructions).not.toContain('Reply YES');
-    expect(skill.instructions).toContain('Under 200 characters');
+    expect(skill.instructions).not.toContain('Under 200 characters');
+    expect(skill.instructions).not.toContain('under 120 characters');
+    expect(skill.instructions).toContain('There is no character or segment cap.');
     expect(skill.instructions).not.toContain("what I've got verified");
     expect(skill.instructions).toContain('not them asking that nearby question again');
     expect(skill.instructions).toContain('Do not search instead of asking');

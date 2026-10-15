@@ -29,9 +29,7 @@ export function officialPageReturnLine(pendingAsk: string): string {
 
 function withSource(answer: string, pendingAsk: string, sourceUrl?: string): string {
   const body = `${answer}${sourceUrl ? ` ${sourceUrl}` : ''}`;
-  const joined = `${body} ${officialPageReturnLine(pendingAsk)}`;
-  // Preserve the source intact; a long link may use another SMS segment.
-  return joined.length <= 300 ? joined : body;
+  return [body, officialPageReturnLine(pendingAsk)].filter(Boolean).join(' ');
 }
 
 export function officialPageFallbackReply(pendingAsk: string, sourceUrl?: string): string {

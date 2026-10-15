@@ -1138,7 +1138,9 @@ async function main() {
           tag: evalRunTag(`activity-picks-read:${fixture.id}`),
           model,
           lane: subjectLane,
-          system: skill.instructions,
+          system: skill.instructions
+            .replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '')
+            .trimEnd(),
           userMessage: composeUserMessage(query, ground.notes),
           toolName: 'activity_picks',
           toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,

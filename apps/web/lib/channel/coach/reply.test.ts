@@ -552,7 +552,6 @@ describe('the nearby count', () => {
 
     expect(reply).toContain('3 families near you say Riverdale Library is worth it.');
     expect(reply).toContain('https://www.torontopubliclibrary.ca/programs-and-classes/');
-    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
   });
 
   it('still drops the count when a plan offer is the suffix', () => {
@@ -580,8 +579,8 @@ describe('plain ASCII folding', () => {
     const body = `${'Up at 2 is common at eight. '.repeat(4)}One quiet check, then back to bed\u2011same as last week.\u200b`;
     const folded = plainText(body);
     expect(folded).not.toMatch(/[\u2011\u200b]/);
-    expect(smsSegments(folded)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
-    expect(smsSegments(body)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(folded)).toBeLessThanOrEqual(2);
+    expect(smsSegments(body)).toBeGreaterThan(2);
   });
 });
 

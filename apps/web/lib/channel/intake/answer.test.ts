@@ -171,13 +171,6 @@ describe('intake answer · the emergency tripwire', () => {
   });
 
   it('reads a non-GTA source and keeps its timezone and link', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not have been called');
-        },
-      },
-    } as never;
     const url = 'https://example.org/new-york/swim';
     const outcome = await createIntakeAnswerComposer(officialClient(url), published).compose({
       ...INPUT,
@@ -187,7 +180,7 @@ describe('intake answer · the emergency tripwire', () => {
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain('2026-10-20 at 09:00 America/New_York');
     expect(outcome.body).toContain(url);
-    expect(outcome.body).toContain('Still want me watching?');
+    expect(outcome.body).not.toContain('Still want me watching?');
   });
 
   it('does not serve a date-bearing search snippet when the page read is unverified', async () => {

@@ -7,7 +7,6 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { METRICS_EXCLUDED_FAMILIES_ENV } from '~/lib/loop/metrics-scope';
 import { DEAD_LETTER_PAGE_ROUTE, FIRST_HELLO_PAGE_ROUTE } from '~/lib/monitoring/failure-page';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
-import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   OPS_DAILY_ROUTE,
@@ -359,7 +358,7 @@ describe('aggregateOpsDaily', () => {
     expect(text).toContain('W4: no cohort has finished week 4');
     expect(text).toContain('Promises: ledger empty');
     expect(text).toContain('Medical (7d): no medical answers');
-    expect(text).toContain('Re-verify (7d): did not run');
+    expect(text).toContain('Registration checks (7d): no watch observations');
     expect(text).toContain('Linq chat IDs (DB): 1 of 200');
     expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
   });
@@ -568,19 +567,16 @@ describe('aggregateOpsDaily — the founder counts', () => {
     await derivableIntake(slowB, '+15555550203', 10);
     await intakeSession('+15555550192', IN_TRAILING_WEEK, null);
 
-    await db.database.insert(schema.rateLimits).values({
-      identifier: 'weekly-sweep',
-      route: REGISTRATION_VERIFY_ROUTE,
-      windowStart: new Date('2026-06-08T00:00:00Z'),
-      count: 1,
-    });
-    await db.database.insert(schema.registrationVerifyRuns).values({
-      weekStart: new Date('2026-06-08T00:00:00Z'),
-      checked: 4,
-      confirmed: 3,
-      discrepancies: 1,
-      unverified: 0,
-    });
+    await db.database.insert(schema.registrationSequences).values(
+      Array.from({ length: 4 }, (_, i) => ({
+        familyId: kept.familyId,
+        parentUserId: kept.parentUserId,
+        courseUrl: `https://example.org/registration/${i}`,
+        lastReadAt: IN_TRAILING_WEEK,
+        lastReading: { status: i === 3 ? 'unverified' : 'verified' },
+        pendingChange: i === 0 ? { kind: 'earlier' } : null,
+      })),
+    );
 
     vi.stubEnv(
       METRICS_EXCLUDED_FAMILIES_ENV,
@@ -599,7 +595,7 @@ describe('aggregateOpsDaily — the founder counts', () => {
     expect(excluded.medical).toEqual({ answered: 2, fallbacks: 1 });
     expect(excluded.reverify).toEqual({
       ran: true,
-      outcomes: { checked: 4, confirmed: 3, discrepancies: 1, unverified: 0 },
+      outcomes: { checked: 4, verified: 3, changed: 1, unverified: 1 },
     });
     expect(excluded.linqChatIds).toBe(2);
 
@@ -611,7 +607,7 @@ describe('aggregateOpsDaily — the founder counts', () => {
     expect(text).toContain('Promises: 2 open | 1 overdue (1 family)');
     expect(text).toContain('Medical (7d): 1 of 2 answers used the fixed 811/911 line');
     expect(text).toContain(
-      'Re-verify (7d): ran | checked 4 | confirmed 3 | discrepancies 1 | unverified 0',
+      'Registration checks (7d): checked 4 | verified 3 | changed 1 | unverified 1',
     );
     expect(text).toContain('Linq chat IDs (DB): 2 of 200');
 
@@ -629,15 +625,15 @@ describe('aggregateOpsDaily — the founder counts', () => {
     vi.stubEnv(METRICS_EXCLUDED_FAMILIES_ENV, listed.familyId);
   });
 
-  it('reports a claimed sweep that left no tally as ran, not as a clean week', async () => {
+  it('does not count a historical sweep claim as a current source check', async () => {
     await db.database.insert(schema.rateLimits).values({
       identifier: 'weekly-sweep',
-      route: REGISTRATION_VERIFY_ROUTE,
+      route: 'cron:registration-verify',
       windowStart: new Date('2026-01-05T00:00:00Z'),
       count: 1,
     });
     const day = await aggregateOpsDaily(db.database, new Date('2026-01-12T13:14:00Z'));
-    expect(day.reverify).toEqual({ ran: true, outcomes: null });
-    expect(composeOpsDailyPost(day)).toContain('Re-verify (7d): ran | no tally');
+    expect(day.reverify).toEqual({ ran: false, outcomes: null });
+    expect(composeOpsDailyPost(day)).toContain('Registration checks (7d): no watch observations');
   });
 });

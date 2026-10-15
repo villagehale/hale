@@ -266,13 +266,19 @@ describe('intake · the age the parent stated', () => {
  */
 describe('intake · the first radar needs no discovery catalog', () => {
   it('composes immediately from family context without seeding or queued discovery', async () => {
-    const { fake, transport, deps, steps } = harness({});
+    const { fake, transport, deps, steps, threaded } = harness({});
     await text(fake, transport, deps, 'hi');
     const result = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
     expect(result.status).toBe('provisioned');
     expect(steps).toEqual(['radar:M5V']);
     expect(fake.rows(schema.familyActivityHistory)).toEqual([]);
-    expect(transport.bodies()).toContain('RADAR');
+    if (result.status !== 'provisioned') throw new Error('expected a provisioned family');
+    expect(
+      threaded.some(
+        (message) =>
+          message.familyId === result.familyId && transport.bodies().includes(message.body),
+      ),
+    ).toBe(true);
   });
 
   it('does not compose for a conversation that never provisioned', async () => {

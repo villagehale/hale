@@ -8,7 +8,7 @@ import { registrationSourceFixture } from '~/lib/testing/registration-source';
 import { loadClaimedWindowIds } from './claims';
 import { claimRegistrationWatch, recordRegistrationRead } from './watch-storage';
 
-const MIGRATION = '0161_registration_live_watch_storage.sql';
+const MIGRATION = '0172_registration_live_watch_storage.sql';
 const NOW = new Date('2026-10-10T12:00:00Z');
 let db: TestDb;
 let familyId: string;
@@ -50,8 +50,8 @@ beforeAll(async () => {
   );
   legacyId = legacy.rows[0]?.id ?? '';
   await db.applyMigration(MIGRATION);
-  await db.applyMigration('0162_drop_registration_catalog.sql');
-  await db.applyMigration('0163_activity_history_only.sql');
+  await db.applyMigration('0173_drop_registration_catalog.sql');
+  await db.applyMigration('0174_activity_history_only.sql');
 });
 
 afterAll(async () => {

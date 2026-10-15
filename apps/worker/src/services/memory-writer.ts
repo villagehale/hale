@@ -2,12 +2,12 @@ import { type Database, schema } from '@hale/db';
 import type {
   ActionType,
   ClassifierSuggestion,
+  EventType,
   FamilyStage,
-  PlanTier,
   ReviewerVerdict,
 } from '@hale/types';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';

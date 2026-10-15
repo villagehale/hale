@@ -1,7 +1,21 @@
 # VIL-423 — implementation and verification handoff
 
 2026-10-12. Branch: `codex/vil-423-live-truth`.
-Implementation and local regression gates are complete; fresh live validation below found an activity-recommendation blocker. Production cutover is not authorized or performed.
+Historical implementation and live-validation checkpoints follow; the latest main-integration status is below. Production cutover is not authorized or performed.
+
+## Step 1: integrate current main — 2026-10-15
+
+Replayed all eight VIL-423 commits onto `origin/main` at `e782558e8`, which includes merged #861 and its migration hotfix. The pre-rebase state remains on `backup/vil-423-pre-rebase-20261015-a18f568f`. User-owned Next/dev edits were stashed separately for restoration; landing documents are excluded.
+
+Integration keeps main's shared structured-output implementation and activity-link handoff, together with VIL-423 live watch reads, PDF extraction, source/eligibility caveats and no fixed SMS clipping. Main's new reporting readers now use watch observations rather than the retired registration sweep. Removed catalog paths stay removed; no disputed addenda are restored.
+
+The four unshipped migrations are now `0172_registration_live_watch_storage`, `0173_drop_registration_catalog`, `0174_activity_history_only` and `0175_retire_civic_catalog`. SQL bytes are unchanged. A red/green regression verifies that all four remain pending after main's migration watermark; the main journal prefix is unchanged and ids/tags are unique. Maintenance guards remain enforced. No remote migration has run.
+
+Verified: Web and Worker typechecks, production Web build, Agent tests (157), Worker tests (437; 1 skipped), DB tests (104; 2 skipped), focused Web regression (1,571; 9 skipped), 72 skill hashes and eval-script syntax. Focused/full Web test results are recorded in `.local/vil423-pre-post/rebase-*.log`. Recorded-model cache misses are not waived or rewritten: changed prompt/projection requests need fresh real recordings, which this integration-only step has not purchased. This is not a new live-Finder quality claim or production approval.
+
+**Not fully accepted yet.** Targeted reruns isolate nine replay failures in `deep-answer-at-question-time.test.ts` and `activity-answered.test.ts` to changed activity-follow-up requests missing recordings. One `travel-brief.test.ts` send assertion also remains red: its existing destination is `New York, NY` without country, which the strict geographic admission rejects, and its extraction stand-in still uses the old forced-tool request shape. Do not loosen geographic checks or manufacture recordings to get a green gate. The travel location/caller contract and real replay refresh remain explicit follow-up work. Intake and inline deep-journey fixture integration errors found by the initial full run were fixed and rerun; the final complete-suite result is recorded below.
+
+Final complete Web suite: **10,388 passed, 14 skipped, 10 failed** across 753 files (746 passed, 4 skipped, 3 failed), in 176.27 seconds. All ten failures are the nine replay misses and one travel case above; there are no other failed files in this run. Worker build and Agent typecheck also pass. Changed-file Biome has warnings but no errors; whitespace, prompt hashes and eval syntax pass. Evidence: `.local/vil423-pre-post/rebase-web-final.log`, `rebase-focused-final.log`, `rebase-agent-tests-final.log`, `rebase-worker-tests.log`, `rebase-db-tests-final.log` and `rebase-web-build.log`. No paid model calls, carrier sends, remote migrations, deployment or force-push were performed.
 
 ## Prompt/price push checkpoint — 2026-10-15
 
@@ -435,9 +449,9 @@ VIL423_LIVE_LOCATION_EVAL=true node --env-file=launch.env .corepack/v1/pnpm/9.15
 
 ## Database changes
 
-- `0162_drop_registration_catalog.sql`: copy only watch-owned source metadata into `registration_sequences.source_context`, retain historical window IDs for send dedupe, remove the catalog FK, and drop `registration_windows`.
-- `0163_activity_history_only.sql`: preserve referenced/shared/endorsed/saved/reviewed receipts in `family_activity_history`, switch engagement FKs, then drop `village_candidates` and `village_feed_rank`.
-- `0164_retire_civic_catalog.sql`: detach obsolete FKs and drop civic sessions/venues without deleting introduction proposals, watched sources, review IDs or activity receipts.
+- `0173_drop_registration_catalog.sql`: copy only watch-owned source metadata into `registration_sequences.source_context`, retain historical window IDs for send dedupe, remove the catalog FK, and drop `registration_windows`.
+- `0174_activity_history_only.sql`: preserve referenced/shared/endorsed/saved/reviewed receipts in `family_activity_history`, switch engagement FKs, then drop `village_candidates` and `village_feed_rank`.
+- `0175_retire_civic_catalog.sql`: detach obsolete FKs and drop civic sessions/venues without deleting introduction proposals, watched sources, review IDs or activity receipts.
 - Retirement migrations pass local preservation and reapplication checks. Historical migration files/hashes were not rewritten.
 - The reapplication test checks earlier additive migrations before retirement, then verifies the retirement migrations twice. Replaying obsolete catalog ALTERs after the tables are gone is not a supported rollout order.
 

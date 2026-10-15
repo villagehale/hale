@@ -2,7 +2,7 @@ import { join } from 'node:path';
 vi.mock('~/lib/registration/page', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/registration/page')>()),
   createRegistrationPageFetch: () => async () =>
-    'Tiny Gym, Cartwheels Gym Centre: ages 1-3, Sundays 9:30. Fall programs.',
+    'Tiny Gym, Cartwheels Gym Centre, Halton Hills, Ontario, Canada: ages 1-3, Sundays 9:30. Fall programs.',
 }));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool, pickLane } from '@hale/agent';

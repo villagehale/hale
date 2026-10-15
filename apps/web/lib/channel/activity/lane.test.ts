@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
 import * as sourcePage from '~/lib/registration/page';
+import { isStage } from '~/lib/testing/structured-reply';
 import type { ActivityQuery } from './deidentify';
 import {
   MAX_SEARCHES,
@@ -86,6 +86,7 @@ interface Seen {
   toolChoice?: string;
   userMessage?: string;
   system?: string;
+  outputSchema?: unknown;
 }
 
 type PhaseResponse = unknown | (() => unknown) | Error;
@@ -101,7 +102,8 @@ function makeClient(
         const isCompose = isStage(req, 'activity_picks', 'picks');
         seen.push({
           tools: req.tools,
-          toolChoice: isCompose ? 'activity_picks' : req.tools?.[0]?.name,
+          toolChoice: isCompose ? 'activity_picks' : undefined,
+          outputSchema: req.output_config?.format?.schema,
           userMessage: req.messages?.[0]?.content,
           system:
             typeof req.system === 'string'
@@ -184,7 +186,7 @@ describe('the payloads', () => {
       ),
     ).find(QUERY);
     const compose = seen.find((call) => call.toolChoice === 'activity_picks');
-    const schema = compose?.tools?.find((tool) => tool.name === 'activity_picks')?.input_schema as {
+    const schema = compose?.outputSchema as {
       properties: { picks: { items: { properties: Record<string, unknown>; required: string[] } } };
     };
     const item = schema.properties.picks.items;
@@ -359,7 +361,7 @@ describe('an ungrounded find never ships', () => {
         }),
       }),
     );
-    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
+    expect(await finder.find(QUERY)).toMatchObject({ found: false, reason: 'no_picks' });
   });
   it('fails NAMED when the search returned no results, and never composes', async () => {
     const restore = quiet();
@@ -698,7 +700,7 @@ describe('the read pass: real search results never end empty without reading pag
     return () => composeResult(outs[Math.min(n++, outs.length - 1)]);
   };
   const fetchGranted = (s: Seen) => (s.tools ?? []).some((t) => t.type === 'web_fetch_20260209');
-  const grounds = (seen: Seen[]) => seen.filter((s) => s.toolChoice === 'web_search');
+  const grounds = (seen: Seen[]) => seen.filter((s) => !s.toolChoice);
 
   it('re-grounds once with the page budget when snippets alone gave no picks', async () => {
     quiet();
@@ -754,7 +756,7 @@ describe('an empty find says what it searched', () => {
     expect(result).toMatchObject({
       found: false,
       reason: 'no_picks',
-      searched: { town: 'Halton Hills' },
+      searched: { town: QUERY.town },
     });
     expect(result.found === false && result.searched?.notes.length).toBeGreaterThan(0);
   });

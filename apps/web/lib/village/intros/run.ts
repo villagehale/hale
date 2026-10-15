@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
-import { and, asc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import {
   type IdentityAskVoice,
   type IdentityGap,
@@ -24,7 +24,6 @@ import {
   familyHasSyntheticProbeChannel,
   resolveSendablePhone,
 } from '~/lib/channels/sms-consent-core';
-import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
 import { discoverableUserIds } from './consent';
 import { INTRO_SOFT_CLOSE, stageWord } from './copy';

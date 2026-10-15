@@ -169,6 +169,7 @@ describe('the turn offer ledger, through the production ports', () => {
         title: TITLE,
         venue: 'Riverdale branch',
         candidateId: expect.any(String),
+        url: 'https://example.org/storytime',
         placeId: 'places/riverdale-library',
         civicVenueId: null,
       },

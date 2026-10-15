@@ -125,7 +125,7 @@ import {
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
-import { modelProse, nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
+import { nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
   JUDGE_MIN,
@@ -1953,9 +1953,6 @@ async function main() {
   const subjectLatencies = [];
 
   const skill = await agent.loadSkill(SKILL_PATH);
-  const shortenSkill = await agent.loadSkill(
-    join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-shorten.md'),
-  );
   const registrationPolicy = await agent.loadSkill(
     join(REPO_ROOT, 'packages', 'agent', 'skills', 'registration-live-truth.md'),
   );
@@ -2088,7 +2085,10 @@ async function main() {
       const run = await agent.runAgent({
         skill: augmentCoachSkillForAutonomySwitchOff(
           fixture.registrationWindows
-            ? { ...skill, instructions: `${skill.instructions}\n\n${registrationPolicy.instructions}` }
+            ? {
+                ...skill,
+                instructions: `${skill.instructions}\n\n${registrationPolicy.instructions}`,
+              }
             : skill,
           fixture.autonomy === true,
         ),
@@ -2131,52 +2131,6 @@ async function main() {
         activityLinksFor(fixture, calls),
         fixture.registrationWindows?.find((window) => window.reminderState === 'paused')?.sourceUrl,
       );
-      // One shorter rewrite when no complete sentence fit. The same cached client
-      // keys it: a different system prompt is a different entry, and only a turn
-      // that actually overflowed writes one. The composed gate then grades the
-      // rewrite, which is the text that can be sent.
-      if (reply === null && plainText(run.answer) !== '') {
-        const suffix = redactTeenNames(
-          [offerSentence, referralBlock]
-            .map((part) => part?.trim() ?? '')
-            .filter((part) => part !== '')
-            .join(' '),
-          children,
-          NOW,
-        );
-        const lane = agent.withoutThinking(agent.pickLane(shortenSkill.meta.task));
-        if (!lane) throw new Error('coach-channel-shorten has no thinking-off lane');
-        const response = await client.messages.create({
-          ...agent.laneRequestFields(lane),
-          max_tokens: 200,
-          system: shortenSkill.instructions,
-          messages: [
-            {
-              role: 'user',
-              content: JSON.stringify({
-                ceiling: replyCharacterRoom(suffix),
-                text: plainText(run.answer),
-              }),
-            },
-          ],
-        });
-        const shorter = (response.content ?? [])
-          .filter((block) => block.type === 'text')
-          .map((block) => block.text)
-          .join('')
-          .trim();
-        if (shorter) {
-          composed = shorter;
-          reply = toSmsReply(
-            shorter,
-            children,
-            offerSentence,
-            referralBlock,
-            fixture.nearby,
-            activityLinksFor(fixture, calls),
-          );
-        }
-      }
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.
       toolResults = auditLog.map((entry) => entry.after);

@@ -5,7 +5,7 @@ import { createTestDb, seedFamily } from '~/lib/testing/pglite';
 
 describe('activity history migration', () => {
   it('preserves owned receipts, provenance and engagement IDs, discards the unused catalog', async () => {
-    const db = await createTestDb('0162_drop_registration_catalog.sql');
+    const db = await createTestDb('0173_drop_registration_catalog.sql');
     try {
       const { familyId, parentUserId } = await seedFamily(db.database);
       const other = await seedFamily(db.database, 'Other family');
@@ -42,7 +42,7 @@ describe('activity history migration', () => {
         );
       }
 
-      await db.applyMigration('0163_activity_history_only.sql');
+      await db.applyMigration('0174_activity_history_only.sql');
 
       const receipts = await db.client.query<{
         id: string;

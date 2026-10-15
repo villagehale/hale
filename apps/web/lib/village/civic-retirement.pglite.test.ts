@@ -6,7 +6,7 @@ import { createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { defaultIntroSweepDeps } from './intros/run';
 
 it('drops civic catalogs without deleting introductions, watched sources or review identities', async () => {
-  const db = await createTestDb('0163_activity_history_only.sql');
+  const db = await createTestDb('0174_activity_history_only.sql');
   try {
     const first = await seedFamily(db.database);
     const second = await seedFamily(db.database, 'Other fixture');
@@ -71,8 +71,8 @@ it('drops civic catalogs without deleting introductions, watched sources or revi
       })
       .returning();
 
-    await db.applyMigration('0164_retire_civic_catalog.sql');
-    await db.applyMigration('0164_retire_civic_catalog.sql');
+    await db.applyMigration('0175_retire_civic_catalog.sql');
+    await db.applyMigration('0175_retire_civic_catalog.sql');
     expect(
       (
         await db.client.query(

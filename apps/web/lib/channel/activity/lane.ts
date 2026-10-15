@@ -282,7 +282,6 @@ const composeSchema = z.object({
       z.object({
         name: z.string().nullish(),
         age_fit: z.string().nullish(),
-        source_url: z.string().nullish(),
         when: z.string().nullish(),
         price_evidence: z.string().nullish(),
         price: z.string().nullish(),
@@ -571,7 +570,9 @@ async function runActivityOnce(
         client: resolved,
         lane: pickLane(skill.meta.task),
         // SMS-writing examples belong only to the follow-up composer.
-        system: skill.instructions.replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '').trimEnd(),
+        system: skill.instructions
+          .replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '')
+          .trimEnd(),
         userMessage: composeUserMessage(query, researchNotes),
         toolName: 'activity_picks',
         toolDescription: 'Return the concrete programs the search actually found.',

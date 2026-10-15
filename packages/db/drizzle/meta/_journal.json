@@ -1175,28 +1175,28 @@
       "idx": 171,
       "version": "7",
       "when": 1781556213000,
-      "tag": "0161_registration_live_watch_storage",
+      "tag": "0172_registration_live_watch_storage",
       "breakpoints": true
     },
     {
-      "idx": 161,
+      "idx": 172,
       "version": "7",
-      "when": 1781469802000,
-      "tag": "0162_drop_registration_catalog",
+      "when": 1781556214000,
+      "tag": "0173_drop_registration_catalog",
       "breakpoints": true
     },
     {
-      "idx": 162,
+      "idx": 173,
       "version": "7",
-      "when": 1781469803000,
-      "tag": "0163_activity_history_only",
+      "when": 1781556215000,
+      "tag": "0174_activity_history_only",
       "breakpoints": true
     },
     {
-      "idx": 163,
+      "idx": 174,
       "version": "7",
-      "when": 1781469804000,
-      "tag": "0164_retire_civic_catalog",
+      "when": 1781556216000,
+      "tag": "0175_retire_civic_catalog",
       "breakpoints": true
     }
   ]

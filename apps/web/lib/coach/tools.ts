@@ -1,12 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
-import { deriveStage } from '@hale/types';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import type { Database } from '@hale/db';
 import { z } from 'zod';
-import { selectByActivityQuery } from '~/lib/coach/activity-query';
-import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
-import { formatCalendarDayLabel } from '~/lib/format/datetime';
-import { safeHttpUrl } from '~/lib/format/http-url';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import {
   activityReviewsSurfaceEnabled,
@@ -17,7 +11,6 @@ import {
 } from '~/lib/reviews/aggregate';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { findFamilyActivities, recordActivityOffers } from '~/lib/village/live';
-import { spokenFind } from './spoken-find';
 
 /**
  * The Village read shared by every surface that offers it (VIL-221 · C2).
@@ -31,8 +24,6 @@ import { spokenFind } from './spoken-find';
  * arg is rejected before the handler runs.
  */
 
-const MEMORY_RESULT_LIMIT = 15;
-
 /**
  * The childId stand-in used in every `inputExamples` entry.
  *
@@ -44,25 +35,6 @@ const MEMORY_RESULT_LIMIT = 15;
  * and this all-zero v4 uuid is unmistakably a placeholder rather than a row.
  */
 export const EXAMPLE_CHILD_ID = '00000000-0000-4000-8000-000000000000';
-
-/**
- * The family's children currently in the teenager stage, derived LIVE from DOB
- * (never stored) — the source-side teen filter for `search_village`, which never
- * names a childId and so never trips the guard.
- */
-async function teenChildIdsForFamily(database: Database, familyId: string): Promise<Set<string>> {
-  const children = await database
-    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  return new Set(
-    children.filter((c) => deriveStage(c.dateOfBirth) === 'teenager').map((c) => c.id),
-  );
-}
-
-function isTeenAttributed(childId: string | null, teenChildIds: ReadonlySet<string>): boolean {
-  return childId !== null && teenChildIds.has(childId);
-}
 
 /** One activity Hale may actually put in front of a parent. An offer a parent cannot
  * turn up to is not an offer: the title and the day are always present.
@@ -215,6 +187,7 @@ export function searchVillageTool(
           venue: pick.sourceName,
           when: pick.when ?? 'Current time could not be verified',
           sourceUrl: pick.sourceUrl,
+          url: pick.sourceUrl,
         },
         offer: {
           title: pick.name,
@@ -248,6 +221,7 @@ export function searchVillageTool(
         candidateId: row.id,
         placeId: row.placeId,
         civicVenueId: row.civicVenueId,
+        url: row.sourceUrl ?? undefined,
       }));
       // EXACTLY the rows that went out as `candidates` — never the in-verification
       // count and never a teen-attributed row, which has no venue and no date and must

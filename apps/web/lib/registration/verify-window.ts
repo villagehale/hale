@@ -530,7 +530,6 @@ export async function extractPublishedWindow(
     inputJsonSchema: EXTRACTION_JSON_SCHEMA,
     schema: extractionSchema,
     maxTokens: MAX_TOKENS,
-    strictTool: true,
   });
   return toExtractedWindow(value);
 }

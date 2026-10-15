@@ -427,12 +427,7 @@ describe('channelCoachRuntime', () => {
     expect(reply.startsWith('Sentence number 0')).toBe(true);
   });
 
-  /**
-   * One sentence that does not fit is not cut off. The runtime asks once for a
-   * shorter rewrite and sends that. The rewrite comes from the model; this test
-   * only checks that the call happens and that its text is what leaves.
-   */
-  it('asks for a shorter rewrite when no complete sentence fits', async () => {
+  it('keeps a long complete answer without spending a shorter-rewrite call', async () => {
     const long = `${'Please sit with him through a boring bedtime '.repeat(8)}tonight`;
     const created: unknown[] = [];
     const p = ports({
@@ -450,14 +445,14 @@ describe('channelCoachRuntime', () => {
 
     const { reply } = await channelCoachRuntime(p).respond(turn(), []);
 
-    expect(reply).toBe('Sit with him until he is quiet.');
-    expect(created).toHaveLength(1);
+    expect(reply).toBe(long);
+    expect(created).toHaveLength(0);
     expect(p.recorded).toEqual([
       expect.objectContaining({ agentName: 'coach-channel-sms', status: 'completed' }),
     ]);
   });
 
-  it('fails the turn when the shorter rewrite still does not fit', async () => {
+  it('does not fail a turn solely because the answer is long', async () => {
     const long = `${'Please sit with him through a boring bedtime '.repeat(8)}tonight`;
     const p = ports({
       runAgent: answering(long),
@@ -469,14 +464,10 @@ describe('channelCoachRuntime', () => {
         }) as never,
     });
 
-    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(/budget/i);
-    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(
-      /shorter rewrite/i,
-    );
-    expect(p.recorded).toEqual([
-      expect.objectContaining({ status: 'failed' }),
-      expect.objectContaining({ status: 'failed' }),
-    ]);
+    await expect(channelCoachRuntime(p).respond(turn(), [])).resolves.toMatchObject({
+      reply: long,
+    });
+    expect(p.recorded).toEqual([expect.objectContaining({ status: 'completed' })]);
   });
 
   /** A throw is what the router turns into the honesty template. A runtime that

@@ -18,7 +18,7 @@ describe('course_url length bound', () => {
   });
   it('keeps the new migration and storage bound aligned', () => {
     const source = readFileSync(
-      path.join(ROOT, 'packages/db/drizzle/0161_registration_live_watch_storage.sql'),
+      path.join(ROOT, 'packages/db/drizzle/0172_registration_live_watch_storage.sql'),
       'utf8',
     );
     expect(source).toContain(
