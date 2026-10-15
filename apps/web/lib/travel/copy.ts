@@ -4,7 +4,7 @@ import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
 import { childPhrase } from '~/lib/channel/checkin/copy';
 import { groupTravelBriefOpening } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 
 /**
  * THE ONE TEXT A TRIP GETS, and it is DETERMINISTIC.
@@ -150,7 +150,6 @@ export function travelBriefViolations(body: string, context: TravelBriefContext)
   // could do.
   if (/\d/.test(rest)) violations.push('unbacked_digit');
 
-  if (!isGsm7(body)) violations.push('not_gsm7');
   if (smsSegments(withOptOut(body, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
     violations.push('too_many_segments');
   }

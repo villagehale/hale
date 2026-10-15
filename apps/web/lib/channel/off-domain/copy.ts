@@ -6,9 +6,8 @@
  * (moment-reply.ts). Crisis and emergency stop the ordinary answer first; the model
  * then points to emergency or local help and does not recite a number.
  *
- * What survives here is the provider door (a table keyed by service) and the two
- * substring detectors that decide WHEN the ordinary answer stops. The detectors are
- * not the reply.
+ * What survives here is the provider door (a table keyed by service). Crisis and
+ * emergency are judged by the model lane, not by a word list.
  *
  * NOTHING HERE POINTS AT THE APP. Not as a fallback, not for an overflow. A parent who
  * texted is owed a text back, and "finish this in the app" is the shape of dead end the
@@ -23,65 +22,6 @@
  * intake/copy.ts.
  */
 import { type CopyLanguage, type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
-
-/**
- * The tokens that stop the ordinary answer for a physical emergency — the outage
- * smoke alarm's trigger (router/smoke-alarm.ts) and the lane's, before any search.
- *
- * THE BAR, and nothing else gets on this list: a token belongs only if stopping the
- * ordinary answer for someone who was NOT in an emergency is obviously acceptable,
- * and missing a real one is obviously not. "Fever", "rash" and "hit her head" all
- * fail it — a parent asking about a rash is owed a composed answer, not an emergency
- * stop. The six below pass it: there is no ordinary Tuesday sentence they turn up in.
- *
- * No fuzzy matching, no scoring, no model. The alarm exists for the minutes when the
- * model is unreachable, so anything cleverer than a substring would be a dependency on
- * the thing that just failed. While the model is up, the same tokens stop the ordinary
- * answer and a model writes the reply (moment-reply.ts). While it is down, nothing
- * preset goes out: the outcome is named and the turn waits.
- *
- * WHAT IT DOES NOT CATCH, stated so nobody mistakes it for triage: the list is literal.
- * "isn't breathing" and "stopped breathing" both miss where "not breathing" hits, and a
- * parent who describes an emergency in any other words misses entirely. This is a smoke
- * alarm, not a screen — the screened safety lane (lane.ts) is what covers the phrasing
- * space, and it is available every minute the model is.
- */
-export const EMERGENCY_TOKENS = [
-  'not breathing',
-  'unconscious',
-  'unresponsive',
-  'choking',
-  'seizure',
-  '911',
-] as const;
-
-/**
- * One rule for all six: a token must begin at a word edge, and must not run into a digit.
- *
- * The leading `(?<![\w$])` is what keeps "preseizure" and "$911" out — a token buried in
- * a longer word is not that word, and a dollar sign in front of three digits is a price.
- * The trailing `(?!\d)` is deliberately looser than a word boundary: `\b` would refuse
- * "seizures", and losing a real emergency to a plural is precisely the miss the bar
- * above forbids. It still refuses "9110" and "0911", which are the cases that matter.
- */
-const EMERGENCY_PATTERN = new RegExp(`(?<![\\w$])(?:${EMERGENCY_TOKENS.join('|')})(?!\\d)`, 'i');
-
-/** Whether an inbound text names an emergency unambiguously enough to stop the ordinary
- * answer. Calibrated toward the false positive on purpose — see the bar above. */
-export function namesAnEmergency(body: string): boolean {
-  return EMERGENCY_PATTERN.test(body);
-}
-
-/**
- * VIL-327 — caregiver mental crisis. Stops the ordinary answer. A therapist-find or
- * cheer-up must not match.
- */
-const MENTAL_CRISIS_PATTERN =
-  /\b(?:suicide|suicidal|kill(?:ing)? myself|end my life|self[-\s]?harm|want to die|wanna die|not want to be alive)\b|(?<![\w$])988(?!\d)/i;
-
-export function namesAMentalCrisis(body: string): boolean {
-  return MENTAL_CRISIS_PATTERN.test(body);
-}
 
 /**
  * Whether a model-written body is reaching for a health-line number (skill audit P0 #3).
@@ -199,7 +139,7 @@ export const DIRECT_ACCESS_EYE_REPLY =
 
 /**
  * The eye-care asks that get {@link DIRECT_ACCESS_EYE_REPLY} instead of the registry
- * line. Same shape as {@link EMERGENCY_TOKENS}, and it needs the same kind of bar.
+ * line. A token belongs on it only when the reply is the same four facts.
  *
  * THE BAR: a token belongs only if a parent typing it is asking about the routine eye
  * care an optometrist provides on direct booking. That is what makes "free, annual, no

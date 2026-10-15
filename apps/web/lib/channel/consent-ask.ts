@@ -1,7 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -83,10 +83,9 @@ function unwritten(reason: string, detail?: string): null {
   return null;
 }
 
-/** A draft that can go on the wire: no keyword instruction, GSM-7, two segments. */
+/** A draft that can go on the wire: no keyword instruction. */
 export function acceptConsentAsk(text: string): string | null {
   if (instructsConsentKeyword(text)) return unwritten('instructs_keyword');
-  if (smsEncoding(text) !== 'gsm7') return unwritten('not_gsm7');
   if (smsSegments(text) > MAX_SEGMENTS) return unwritten('over_segment_cap');
   return text;
 }

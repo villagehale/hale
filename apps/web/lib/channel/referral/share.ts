@@ -1,6 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { z } from 'zod';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { referralLink } from './code';
 
 /**
@@ -92,9 +92,6 @@ export function forwardViolations(forward: string): string[] {
       'The line points at an app, a website or an account. Hale is a number their friend texts; there is nothing for them to open, download or sign up for.',
     );
   }
-  if (smsEncoding(text) !== 'gsm7') {
-    violations.push('The line contains a character that doubles the cost to send. Use plain ASCII.');
-  }
   if (smsSegments(text) > 1) {
     violations.push('The line is longer than one SMS segment. Shorten it.');
   }
@@ -118,10 +115,13 @@ export function shareReferralLinkTool(
   return defineTool({
     name: 'share_referral_link',
     description:
-      "Get this family's own link for telling somebody else about Hale — call it whenever a parent asks how to refer, invite, share, or recommend Hale to a friend, or asks whether there is a referral link. `forward` is the line THEY will forward to their friend, in your voice: what Hale is, at most 120 plain-ASCII characters, no link and nothing about this family. The real link is added onto the end of your message for you, so never write a URL yourself and never write the forwarded line twice. Nothing is sent to anyone by this tool — the parent forwards it, and their friend texting in is that friend's own consent.",
+      "Get this family's own link for telling somebody else about Hale — call it whenever a parent asks how to refer, invite, share, or recommend Hale to a friend, or asks whether there is a referral link. `forward` is the line THEY will forward to their friend, in your voice: what Hale is, one short line, no link and nothing about this family. Write it in the parent's language. The real link is added onto the end of your message for you, so never write a URL yourself and never write the forwarded line twice. Nothing is sent to anyone by this tool — the parent forwards it, and their friend texting in is that friend's own consent.",
     inputSchema: z.object({ forward: z.string().min(1) }),
     inputExamples: [
-      { forward: "It's a text line that keeps track of the family week - registrations, plans, the stuff that slips." },
+      {
+        forward:
+          "It's a text line that keeps track of the family week - registrations, plans, the stuff that slips.",
+      },
     ],
     monetary: false,
     // `{shared:true}` and nothing else — the link is assembled by the runtime after the

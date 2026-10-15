@@ -62,7 +62,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'turn-apology.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 
 // ── the composer's request shape, replicated from apology.ts ────────────────
 
@@ -119,11 +118,10 @@ const MAX_APOLOGY_CHARS = 160;
 const LINK_SHAPE = /https?:\/\/|www\./i;
 const INTERNAL_TERMINATOR = /[.!?]["')\]]?\s+\S/;
 
-function refusals(body, smsEncoding) {
+function refusals(body) {
   if (body === '') return ['empty'];
   const found = [];
   if (body.length > MAX_APOLOGY_CHARS) found.push('over_char_cap');
-  if (smsEncoding(body) !== 'gsm7') found.push('not_gsm7');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');
@@ -195,7 +193,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
@@ -230,7 +227,7 @@ async function main() {
         ).value.apology;
 
     const body = flatten(raw);
-    const failures = refusals(body, smsEncoding);
+    const failures = refusals(body);
     if (PROMISED_TIME.test(body)) failures.push('promised_a_time');
     if (PROMISED_RETRY.test(body)) failures.push('promised_a_retry');
     if (APP_POINTER.test(body)) failures.push('points_at_the_app');

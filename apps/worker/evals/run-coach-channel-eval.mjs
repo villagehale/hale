@@ -266,23 +266,6 @@ const GSM7_BASIC = new Set(
 );
 const GSM7_EXTENDED = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
 
-/**
- * Mirrors `smsEncoding` in apps/web/lib/channel/sms-segments.ts.
- *
- * It was MISSING, and `offerViolations` had been calling it since the offer sentence
- * became a tool argument. Every `offer_full_plan` call in this suite therefore came back
- * to the model as "Tool call failed: smsEncoding is not defined", so the plan-offer arc
- * was never actually graded here — the model wrote the offer into its own answer instead
- * and the corpus scored that. Surfaced by the referral gate, which replicates the same
- * check and hit the same ReferenceError on its first live run.
- */
-function smsEncoding(text) {
-  for (const char of text) {
-    if (!GSM7_BASIC.has(char) && !GSM7_EXTENDED.has(char)) return 'ucs2';
-  }
-  return 'gsm7';
-}
-
 function smsSegments(text) {
   let gsm7 = true;
   for (const char of text) {
@@ -404,7 +387,6 @@ function offerViolations(sentence) {
       'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
     );
   }
-  if (smsEncoding(text) !== 'gsm7') violations.push('The offer is not plain ASCII.');
   if (smsSegments(text) > 1) violations.push('The offer is longer than one SMS segment.');
   return violations;
 }
@@ -447,8 +429,6 @@ function forwardViolations(forward) {
       'The line points at an app, a website or an account. Hale is a number their friend texts; there is nothing for them to open, download or sign up for.',
     );
   }
-  if (smsEncoding(text) !== 'gsm7')
-    violations.push('The line contains a character that doubles the cost to send.');
   if (smsSegments(text) > 1) violations.push('The line is longer than one SMS segment.');
   return violations;
 }
@@ -2443,10 +2423,7 @@ async function main() {
   }
 
   const allPass =
-    accuracy === 1 &&
-    fabricating.length === 0 &&
-    missedAction.length === 0 &&
-    voiceOk;
+    accuracy === 1 && fabricating.length === 0 && missedAction.length === 0 && voiceOk;
 
   console.log('\n--- gate ---');
   if (severed) {

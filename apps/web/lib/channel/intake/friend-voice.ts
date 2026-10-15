@@ -538,14 +538,6 @@ const NAME_ASK =
   /what (?:should|can|do|shall) i call you|what['’]?s your name|your name\?|comment (?:je )?(?:dois|peux)[- ]?(?:je )?t['’]appeler|ton (?:pr[ée]nom|nom)\s*\?/i;
 const NAME_STEPS = new Set<FriendStep>(['names', 'name_confirm', 'name_reply', 'find_empty']);
 
-/**
- * Towns and areas across the GTA. A reply may name one only when the facts or
- * the parent did: L7G is Georgetown, not Ajax, and the model does not know that.
- */
-const COVERAGE_AREA = /\b(?:the )?(?:greater )?toronto area\b|\bgreater toronto\b/gi;
-const GTA_PLACE =
-  /\b(toronto|scarborough|etobicoke|north york|east york|mississauga|brampton|caledon|bolton|oakville|burlington|milton|halton hills|georgetown|acton|markham|vaughan|woodbridge|richmond hill|thornhill|aurora|newmarket|stouffville|unionville|pickering|ajax|whitby|oshawa|clarington|bowmanville|courtice|uxbridge|hamilton|guelph|port credit|streetsville)\b/gi;
-
 /** Steps that end with no question. find_show shows; the name ask is the next bubble. */
 const ZERO_QUESTION_STEPS = new Set<FriendStep>(['stop_asking', 'connected', 'ack', 'find_show']);
 
@@ -1360,8 +1352,6 @@ export function judgeFriendReply(
     ...mentionsOutsideSlots(trimmed, PRICE, slots),
     ...weekdaysOutsideSlots(trimmed, [...slots, ...weekdaysOfDates(slots, input.now)]),
     ...priceTalk(trimmed, input),
-    // "The Toronto area" is Hale's coverage, not a guess at where the parent lives.
-    ...mentionsOutsideSlots(trimmed.replace(COVERAGE_AREA, ''), GTA_PLACE, slots),
     ...quotesOutsideSlots(trimmed, slots),
     ...namesOutsideSlots(trimmed, slots),
     ...(PHONE.test(trimmed) ? ['phone number'] : []),

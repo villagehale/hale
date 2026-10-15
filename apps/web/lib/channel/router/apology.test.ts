@@ -23,6 +23,7 @@ const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 describe('what may not be sent as an apology', () => {
   it('passes the shape the skill asks for', () => {
     expect(refusals('That one broke on my end - nothing changed on your side.')).toEqual([]);
+    expect(refusals('That one broke on my end — nothing changed.')).toEqual([]);
     expect(refusals("Sorry, I couldn't get that done and nothing was changed.")).toEqual([]);
   });
 
@@ -30,7 +31,6 @@ describe('what may not be sent as an apology', () => {
     ['nothing at all', '', 'empty'],
     ['two sentences', 'That broke on my end. Nothing was changed.', 'not_one_sentence'],
     ['a question', 'That one broke on my end - want to try again?', 'carries_question'],
-    ['a typographic dash', 'That one broke on my end — nothing changed.', 'not_gsm7'],
     [
       'a link',
       'That one broke on my end, see https://villagehale.com for your week.',

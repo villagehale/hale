@@ -133,7 +133,7 @@ function fillMemory(
   template: string,
   params: Record<string, string | null | undefined>,
   required: readonly string[],
-  language: MemoryKindLanguage,
+  _language: MemoryKindLanguage,
 ): string {
   const bag = new Map<string, string>();
   for (const key of required) {
@@ -147,9 +147,6 @@ function fillMemory(
     return value;
   });
   if (MEMORY_TOKEN.test(rendered)) throw new MemoryKindCopyError('unrendered');
-  if (language === 'fr' && [...rendered].some((char) => char.charCodeAt(0) > 0x7f)) {
-    throw new MemoryKindCopyError('fr_not_ascii');
-  }
   if (MEMORY_BANNED.test(rendered)) throw new MemoryKindCopyError('banned');
   return rendered;
 }

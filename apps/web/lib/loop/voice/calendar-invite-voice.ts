@@ -1,9 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
-import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { findInventedFacts } from './facts-lint';
 
@@ -119,9 +118,6 @@ export function askViolations(text: string): string[] {
   if (text.length > MAX_ASK_CHARS) {
     out.push(`the message was ${text.length} characters; the limit is ${MAX_ASK_CHARS}`);
   }
-  if (smsEncoding(text) !== 'gsm7') {
-    out.push('the message used a character outside plain ASCII (a curly quote, a long dash or an emoji)');
-  }
   // AT MOST one question mark. The first live run wrote the ask as an offer with an
   // instruction — "I can send real calendar invites by email - text me your address"
   // — three times out of three, and it is better copy than the interrogative it was
@@ -132,10 +128,13 @@ export function askViolations(text: string): string[] {
   if (questionMarks > 1) {
     out.push(`the message asked ${questionMarks} questions; ask at most one thing`);
   }
-  if (!/email/i.test(text)) out.push('the message never used the word "email", so it does not ask for one');
+  if (!/email/i.test(text))
+    out.push('the message never used the word "email", so it does not ask for one');
   if (LINK_SHAPE.test(text)) out.push('the message carried a link; there is nothing to link to');
-  if (text.includes('@')) out.push('the message contained an @ address; an example address is invented');
-  if (/\d/.test(text)) out.push('the message contained a digit; there is no number you could know here');
+  if (text.includes('@'))
+    out.push('the message contained an @ address; an example address is invented');
+  if (/\d/.test(text))
+    out.push('the message contained a digit; there is no number you could know here');
   return out;
 }
 
@@ -144,7 +143,10 @@ export function askViolations(text: string): string[] {
  * summary and the formatted time must survive into the message unchanged, so the
  * composer can neither expand a genericized title nor quietly restate a time.
  */
-export function noteViolations(note: { subject: string; body: string }, context: InviteNoteContext): string[] {
+export function noteViolations(
+  note: { subject: string; body: string },
+  context: InviteNoteContext,
+): string[] {
   const out: string[] = [];
   const { subject, body } = note;
 
@@ -160,7 +162,9 @@ export function noteViolations(note: { subject: string; body: string }, context:
   if (subject === '') out.push('the subject was empty');
   if (body === '') out.push('the body was empty');
   if (subject.length > MAX_NOTE_SUBJECT_CHARS) {
-    out.push(`the subject was ${subject.length} characters; the limit is ${MAX_NOTE_SUBJECT_CHARS}`);
+    out.push(
+      `the subject was ${subject.length} characters; the limit is ${MAX_NOTE_SUBJECT_CHARS}`,
+    );
   }
   if (body.length > MAX_NOTE_BODY_CHARS) {
     out.push(`the body was ${body.length} characters; the limit is ${MAX_NOTE_BODY_CHARS}`);
@@ -212,7 +216,10 @@ export function createCalendarVoice(client: () => AgentClient): CalendarVoice {
     render: (value: TValue) => string;
     /** Whitespace-tidy the raw fields before gating. */
     tidyValue: (value: TValue) => TValue;
-  }): Promise<{ status: 'composed'; value: TValue; attempts: number } | { status: 'deferred'; reason: string; attempts: number }> {
+  }): Promise<
+    | { status: 'composed'; value: TValue; attempts: number }
+    | { status: 'deferred'; reason: string; attempts: number }
+  > {
     let resolved: AgentClient;
     try {
       resolved = client();

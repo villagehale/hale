@@ -7,8 +7,6 @@
  * come through here. Those stay fixed.
  */
 
-import { copyLanguage } from '~/lib/channel/language';
-
 export type ReplyCopyLanguage = string;
 export type ReplyCopyRole = 'prose' | 'opening' | 'closing';
 
@@ -35,58 +33,6 @@ export interface ReplyCopyCheck {
   questionAllowed: boolean;
   role: ReplyCopyRole;
 }
-
-export const REPLY_COPY_MAX_CHARS = 320;
-
-const EN_CUES = new Set([
-  'the',
-  'and',
-  'have',
-  'has',
-  'here',
-  'nobody',
-  'tomorrow',
-  'forgot',
-  'say',
-  'who',
-  'done',
-  'nothing',
-  'yet',
-  'what',
-  'your',
-  'changes',
-  'taking',
-  'old',
-  'thing',
-  'near',
-  'think',
-  'so',
-  'if',
-  'that',
-]);
-
-const FR_CUES = new Set([
-  'voici',
-  'pour',
-  'qui',
-  'demain',
-  'rien',
-  'personne',
-  'occupe',
-  'encore',
-  'famille',
-  'dites',
-  'ici',
-  'oublie',
-  'est',
-  'les',
-  'des',
-  'vous',
-  'sont',
-  'ca',
-  'faire',
-  'cest',
-]);
 
 /** Date and place words. They count even at the start of a sentence. */
 const PLACE_WORDS = new Set([
@@ -173,33 +119,6 @@ const BANNED: RegExp[] = [
 
 const POSTAL = /\b[A-Z]\d[A-Z](?:\s?\d[A-Z]\d)?\b/g;
 const WORD = /[A-Za-z][A-Za-z'.-]*/g;
-
-function words(text: string): string[] {
-  return (
-    text
-      .toLowerCase()
-      .replace(/['’]/g, '')
-      .match(/[a-z]+/g) ?? []
-  );
-}
-
-function cueCount(tokens: readonly string[], cues: ReadonlySet<string>): number {
-  let count = 0;
-  for (const token of tokens) if (cues.has(token)) count += 1;
-  return count;
-}
-
-function languageMatches(text: string, language: ReplyCopyLanguage): boolean {
-  const key = copyLanguage(language);
-  // Chinese, Arabic, and every other tag are the model's. A word list cannot grade them.
-  if (!key) return text.trim().length > 0;
-  if (key === 'fr' && [...text].some((char) => char.charCodeAt(0) > 0x7f)) return false;
-  const tokens = words(text);
-  const en = cueCount(tokens, EN_CUES);
-  const fr = cueCount(tokens, FR_CUES);
-  if (key === 'fr') return fr > en && fr > 0;
-  return en > fr && en > 0;
-}
 
 function sentences(text: string): string[] {
   const parts = text
@@ -289,8 +208,6 @@ function inventedName(text: string, facts: readonly string[]): boolean {
 export function validateReplyCopy(text: string, check: ReplyCopyCheck): ReplyCopyFailure | null {
   const trimmed = text.trim();
   if (!trimmed) return 'empty';
-  if (trimmed.length > REPLY_COPY_MAX_CHARS) return 'length';
-  if (!languageMatches(trimmed, check.language)) return 'language';
   if (BANNED.some((pattern) => pattern.test(trimmed))) return 'banned';
   const questions = trimmed.match(/\?/g)?.length ?? 0;
   if (questions > 1) return 'question';

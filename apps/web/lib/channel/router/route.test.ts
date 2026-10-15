@@ -2186,65 +2186,44 @@ describe('the outage smoke alarm', () => {
     };
   }
 
-  it('sends no fixed line during an outage crisis; it pages #ops urgently instead', async () => {
+  it('holds an outage crisis instead of paging from the words', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const result = await routeChannelMessage(h.deps, job());
-
-    expect(result.status).toBe('smoke_alarm_fired');
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
     expect(h.transport.bodies()).toEqual([]);
-    expect(log).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, where: 'model_outage' }),
-      expect.stringContaining('URGENT'),
-    );
-    log.mockRestore();
   });
 
   it('writes no outbound row for it: nothing was sent', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
-    await routeChannelMessage(h.deps, job());
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
 
     expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toHaveLength(0);
   });
 
-  it('records the alarm against the inbound message so a queue retry cannot re-ring it', async () => {
+  it('does not claim a smoke alarm from the words', async () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
 
-    const first = await routeChannelMessage(h.deps, job());
-    expect(first.status).toBe('smoke_alarm_fired');
-    expect(claim.fired).toEqual([job().channel_message_id]);
-
-    // The SAME message, re-driven: at-least-once delivery means the drain can hand this
-    // job back after a mid-turn crash (lib/cron/drain.ts), and the defer arc means it
-    // does so routinely. The alarm's own claim is now the SECOND line of defence — the
-    // turn ledger stops the re-drive before the coach is ever woken, because the safety
-    // line was this text's answer.
-    // Nothing answered the first time, so the re-drive meets the outage again and is
-    // deferred (it may throw for the drain to retry); the claim keeps it to one page.
-    const retry = await routeChannelMessage(h.deps, job()).catch(() => null);
-    expect(retry?.status).not.toBe('smoke_alarm_fired');
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    expect(claim.fired).toEqual([]);
     expect(h.transport.bodies()).toEqual([]);
-    expect(claim.fired).toHaveLength(1);
   });
 
-  /** A different text during the same outage is a different emergency. The claim is
-   * per inbound message, not per family. */
-  it("still rings for the parent's next text", async () => {
+  it("holds the parent's next text the same way", async () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
 
-    await routeChannelMessage(h.deps, job());
-    const second = await routeChannelMessage(
-      h.deps,
-      job({ channel_message_id: '44444444-4444-4444-8444-444444444444' }),
-    );
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    await expect(
+      routeChannelMessage(
+        h.deps,
+        job({ channel_message_id: '44444444-4444-4444-8444-444444444444' }),
+      ),
+    ).rejects.toBeInstanceOf(TurnDeferred);
 
-    expect(second.status).toBe('smoke_alarm_fired');
     expect(h.transport.bodies()).toEqual([]);
-    expect(claim.fired).toHaveLength(2);
+    expect(claim.fired).toEqual([]);
   });
 
   // ── the non-triggers ───────────────────────────────────────────────────────
@@ -2375,10 +2354,10 @@ describe('the outage smoke alarm', () => {
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
-    await routeChannelMessage(h.deps, job());
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
 
     const dump = JSON.stringify(h.logs);
-    expect(dump).toContain('smoke_alarm_fired');
+    expect(dump).toContain('model_unreachable');
     expect(dump).not.toContain('not breathing');
   });
 });

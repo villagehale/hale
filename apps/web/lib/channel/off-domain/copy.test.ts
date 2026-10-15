@@ -6,8 +6,6 @@ import {
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   UNPLACEABLE_PROVIDER_REPLY,
   UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE,
-  namesAMentalCrisis,
-  namesAnEmergency,
   reachesForTheHealthLine,
   referralReply,
 } from './copy';
@@ -23,28 +21,6 @@ import {
  *
  * PENDING FOUNDER REVIEW, all three, plus the two proper nouns called out below.
  */
-describe('mental-crisis tripwire · VIL-327', () => {
-  it('fires on suicide / self-harm and leaves care-find and cheer-up alone', () => {
-    expect(namesAMentalCrisis('I want to die')).toBe(true);
-    expect(namesAMentalCrisis('thinking about suicide')).toBe(true);
-    expect(namesAMentalCrisis('self-harm tonight')).toBe(true);
-    expect(namesAMentalCrisis('I need a therapist')).toBe(false);
-    expect(namesAMentalCrisis('cheer me up')).toBe(false);
-  });
-
-  it('does not treat a therapist-find or a cheer-up as a crisis', () => {
-    expect(namesAMentalCrisis('can you find a therapist near us')).toBe(false);
-    expect(namesAMentalCrisis('988')).toBe(true);
-  });
-});
-
-describe('physical-emergency tripwire · VIL-328', () => {
-  it('stops the ordinary answer on the six tokens and not on a rash', () => {
-    expect(namesAnEmergency('she is not breathing')).toBe(true);
-    expect(namesAnEmergency('she has a rash')).toBe(false);
-  });
-});
-
 describe('the French off-domain lines', () => {
   /**
    * TWO PROPER NOUNS NEED VERIFYING BEFORE THIS SHIPS, and they are asserted verbatim so

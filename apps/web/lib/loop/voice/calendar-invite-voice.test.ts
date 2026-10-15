@@ -76,13 +76,15 @@ describe('askViolations — what may never be texted', () => {
         "I can send real calendar invites by email - text me your address and I'll use it.",
       ),
     ).toEqual([]);
+    expect(
+      askViolations("Want this in your calendar? Text me your email — I'll send invites there."),
+    ).toEqual([]);
   });
 
   it.each([
     ['', 'empty'],
     ['a'.repeat(MAX_ASK_CHARS + 1), 'characters'],
     ['Want your email? I can send invites — say the word?', 'questions'],
-    ["Want this in your calendar? Text me your email — I'll send invites there.", 'plain ASCII'],
     ['Text me your address and I will send invites there.', 'email'],
     ['Want invites by email? See https://villagehale.com', 'link'],
     ['Want invites by email, like you@example.com?', '@ address'],

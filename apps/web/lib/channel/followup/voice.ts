@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -81,7 +81,6 @@ export function refusals(body: string, request: FollowupVoiceRequest): AskRefusa
   const found: AskRefusal[] = [];
   if (body === '') return ['empty'];
   if (body.length > MAX_ASK_CHARS) found.push('over_char_cap');
-  if (smsEncoding(body) !== 'gsm7') found.push('not_gsm7');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 

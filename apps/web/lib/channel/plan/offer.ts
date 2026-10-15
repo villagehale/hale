@@ -1,7 +1,7 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { PLAN_OFFER_TTL_HOURS, PLAN_TOPICS, type PlanTopic, planOfferSummary } from './topics';
@@ -80,11 +80,6 @@ export function offerViolations(sentence: string): string[] {
       'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
     );
   }
-  if (smsEncoding(text) !== 'gsm7') {
-    violations.push(
-      'The offer contains a character that doubles the cost to send. Use plain ASCII.',
-    );
-  }
   if (smsSegments(text) > 1) {
     violations.push('The offer is longer than one SMS segment. Shorten it.');
   }
@@ -103,7 +98,7 @@ export function offerFullPlanTool(onOffer: (offer: PlanOffer) => void): Register
   return defineTool({
     name: 'offer_full_plan',
     description:
-      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters. Ask like a person ("Want me to send it?"). Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
+      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one short question. Ask like a person ("Want me to send it?"). Write it in the language they are using. Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     inputSchema: z.object({
       topic: z.enum(PLAN_TOPICS as [PlanTopic, ...PlanTopic[]]),
       childId: z.string().min(1).optional(),

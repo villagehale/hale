@@ -14,8 +14,6 @@ import {
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   UNPLACEABLE_PROVIDER_REPLY,
-  namesAMentalCrisis,
-  namesAnEmergency,
 } from './copy';
 import {
   type InboundThread,
@@ -101,6 +99,8 @@ function ports(
     pendingRead?: PendingAskRead;
     /** What the composer makes of the next text read beside it. */
     continued?: GeneralAnswerOutcome | NotAReply;
+    /** Stored household language. Templates follow this, not a word list on the text. */
+    language?: () => Promise<string | null>;
   } = {},
 ): Harness {
   const read = overrides.read ?? reading();
@@ -166,7 +166,7 @@ function ports(
         return { status: 'written', reply: `written:${moment}` };
       },
     },
-    language: async () => 'en',
+    language: overrides.language ?? (async () => 'en'),
     recordUnmetIntent: async (input) => {
       harness.recorded.push({
         lane: input.lane,
@@ -835,6 +835,7 @@ describe("today's date", () => {
           innerJoin: () => ({
             where: () => ({ limit: async () => [{ timezone: 'Asia/Tokyo' }] }),
           }),
+          where: () => ({ limit: async () => [{ primaryLanguage: 'en' }] }),
         }),
       }),
       update: () => ({
@@ -1228,7 +1229,6 @@ describe('the screen reads a reply to an open question first', () => {
     lit();
     const text = 'Toronto. also he has had a fever since lunch and keeps pulling at his ear';
     // The premise: neither keyword check in front of the composer knows these words.
-    expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
     const turn = scripted({
       screen: { lane: 'safety_critical', category: 'medical-symptom', reason: 'x' },
     });
@@ -1255,7 +1255,6 @@ describe('the screen reads a reply to an open question first', () => {
   it('sends a reply that is a mental-health crisis through the crisis door', async () => {
     lit();
     const text = 'Toronto. honestly I do not see the point of any of it anymore';
-    expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
     const turn = scripted({
       screen: { lane: 'safety_critical', category: 'mental-health', reason: 'x' },
     });
@@ -1287,7 +1286,6 @@ describe('the screen reads a reply to an open question first', () => {
     'sends a reply the screen reads as %s through the safety door, and never continues the question',
     async (category, text) => {
       lit();
-      expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
       const turn = scripted({ screen: { lane: 'safety_critical', category, reason: 'x' } });
       const { p, run } = laneWith(turn);
 
@@ -1401,7 +1399,6 @@ describe('the screen reads a reply to an open question first', () => {
 
     it('sends a parent in crisis, in words no keyword has, through the mental-health door and not the child-health one', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
-      expect(namesAnEmergency(OWN_CRISIS) || namesAMentalCrisis(OWN_CRISIS)).toBe(false);
       // Positive control: the two doors are not the same door.
       const mentalHealthDoor = await screenedSafetyDoor(OWN_CRISIS, 'mental-health');
       const childHealthDoor = await screenedSafetyDoor(OWN_CRISIS, 'child-safety');
@@ -1433,7 +1430,6 @@ describe('the screen reads a reply to an open question first', () => {
       lit();
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const text = 'Toronto. honestly I want to die';
-      expect(namesAMentalCrisis(text)).toBe(true);
       const childHealthDoor = await screenedSafetyDoor(text, 'child-safety');
       const mentalHealthDoor = await screenedSafetyDoor(text, 'mental-health');
       expect(childHealthDoor).not.toBe(mentalHealthDoor);
@@ -1450,7 +1446,6 @@ describe('the screen reads a reply to an open question first', () => {
       lit();
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const text = `Toronto. ${OWN_CRISIS}`;
-      expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
       const turn = scripted({ screen: GENERAL, composed: read('mental-health') });
       const { run } = laneWith(turn);
 
@@ -1473,7 +1468,6 @@ describe('the screen reads a reply to an open question first', () => {
           logged.push(args);
         });
       }
-      expect(namesAnEmergency(TEXT) || namesAMentalCrisis(TEXT)).toBe(false);
       const turn = scripted({ screen: GENERAL, answersPending: 'nothing_pending', composed: HURT });
       const { p, run } = laneWith(turn, null);
 
@@ -1502,7 +1496,6 @@ describe('the screen reads a reply to an open question first', () => {
       lit();
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const text = 'Toronto. he fell off the top bunk and has thrown up twice';
-      expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
       const turn = scripted({ screen: GENERAL, composed: HURT });
       const { run } = laneWith(turn);
 
@@ -1632,13 +1625,19 @@ describe('the lane answers in the language the question was asked in', () => {
     expect(p.momentSeen[1]).toEqual({ text: english, moment: 'child_health' });
   });
 
-  it('sends the registry line in French to a French provider ask', async () => {
-    const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
+  it('sends the registry line in French when the household language is French', async () => {
+    const p = ports({
+      read: reading({ lane: 'provider_access', category: 'doctor-access' }),
+      language: async () => 'fr',
+    });
 
     const fr = await consider(p, 'Je cherche un medecin de famille pour mes enfants');
     expect(fr).toMatchObject({ reply: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr });
 
-    const en = await consider(p, 'we just moved and need a family doctor');
+    const english = ports({
+      read: reading({ lane: 'provider_access', category: 'doctor-access' }),
+    });
+    const en = await consider(english, 'we just moved and need a family doctor');
     expect(en).toMatchObject({ reply: PROVIDER_ACCESS_REPLY });
   });
 

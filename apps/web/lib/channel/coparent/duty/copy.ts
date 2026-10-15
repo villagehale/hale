@@ -146,7 +146,7 @@ function renderTemplate(
   template: string,
   params: DutyCopyParams,
   required: readonly (keyof DutyCopyParams)[],
-  language: DutyCopyLanguage,
+  _language: DutyCopyLanguage,
 ): string {
   const bag = new Map<string, string>();
   for (const key of required) {
@@ -161,9 +161,6 @@ function renderTemplate(
     return value;
   });
   if (TOKEN_TEST.test(rendered)) throw new DutyCopyError('unrendered');
-  if (language === 'fr' && [...rendered].some((char) => char.charCodeAt(0) > 0x7f)) {
-    throw new DutyCopyError('fr_not_ascii');
-  }
   if (BANNED.test(rendered)) throw new DutyCopyError('banned');
   return rendered;
 }

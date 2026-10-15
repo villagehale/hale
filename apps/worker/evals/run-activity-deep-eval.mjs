@@ -96,8 +96,6 @@ export const RESEARCH_MAX_TOKENS = 8192;
 export const EXTRACT_MAX_TOKENS = 16384;
 const SLOTS_IN_TEXT = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
-const FIRST_SEGMENT_CHARS = 153;
-
 // ── the runtime's request shapes, replicated ─────────────────────────────────
 
 export const DEEP_TOOL_SCHEMA = {
@@ -460,7 +458,7 @@ function identifyingWords(name) {
 function topPickLeads(body, slots) {
   const top = slots[0];
   if (!top) return true;
-  const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  const head = body.toLowerCase();
   // A find is identified by its programme OR by its place: a composite `name` that reduces
   // to a programme stream ("...Preschool and Kinderfun") is not what a parent reads.
   const venue = identifyingWords(top.sourceName ?? top.source_name ?? '');
@@ -540,7 +538,7 @@ function followUpViolations(body, slots, pageEvidence, watch) {
   if (!topPickLeads(body, slots)) {
     violations.push({
       tag: 'buried_top_pick',
-      reason: `The best find (${slots[0]?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
+      reason: `The best find (${slots[0]?.name}) is not named. Lead with it.`,
     });
   }
   if (body.includes('?')) {

@@ -200,9 +200,9 @@ describe('travelBriefViolations', () => {
     expect(travelBriefViolations(body, context)).toContain('asks_a_question');
   });
 
-  it('refuses a character that would halve the segment budget', () => {
+  it('sends a typographic dash', () => {
     const body = brief().replace(' - ', ' — ');
-    expect(travelBriefViolations(body, context)).toContain('not_gsm7');
+    expect(travelBriefViolations(body, context)).not.toContain('not_gsm7');
   });
 });
 

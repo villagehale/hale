@@ -2,7 +2,6 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
-import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
@@ -44,9 +43,6 @@ import type { ActivityPick } from './lane';
  * that is only as good as its source is still a find, and withholding it is the silence
  * that started all this.
  */
-
-/** GSM-7 characters in one segment. The budget the top pick has to land inside. */
-const FIRST_SEGMENT_CHARS = 153;
 
 /** Same reasoning as the plan note's: a model that cannot fix a named mechanical fault in
  * three tries will not fix it on the fourth. */
@@ -202,11 +198,11 @@ function message(err: unknown): string {
 }
 
 /**
- * Whether the best find survives a phone's first screen — and therefore any trim.
+ * Whether the message names the best find.
  *
  * Matched on the pick's NAME rather than on sentence order, because "the top pick leads"
- * is about what a parent SEES, and a body that opens with a clause of preamble and then
- * names the place is fine. What is not fine is the name arriving in segment two.
+ * is about what a parent can tell, and a body that opens with a clause of preamble and then
+ * names the place is fine. Replies are sent whole (VIL-434), so the name may land anywhere.
  *
  * Matched on the name's distinctive WORDS, not the field verbatim and not its phrases.
  * `name` is a composite assembled for a structured payload — "Kinderfun (Toddler Program),
@@ -219,7 +215,7 @@ function message(err: unknown): string {
  * guard.
  *
  * So the question is the one a parent would ask: can I tell WHICH find this is? Two or
- * more of the name's identifying words landing in the first segment is a yes. Programme
+ * more of the name's identifying words anywhere in the message is a yes. Programme
  * nouns are not identifying — a body leading with "a toddler program" has named nothing.
  * (The eval mirrors this rule and mirrors it word for word; it replicates rather than
  * imports, like every other gate here.)
@@ -297,7 +293,7 @@ function identifyingWords(name: string): string[] {
 export function topPickLeads(body: string, picks: readonly ActivityPick[]): boolean {
   const top = picks[0];
   if (!top) return true;
-  const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  const head = body.toLowerCase();
   const venue = identifyingWords(top.sourceName ?? '');
   if (venue.length > 0 && venue.every((word) => head.includes(word))) return true;
   const words = identifyingWords(top.name);
@@ -406,11 +402,6 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   const text = plainText(body);
 
   if (text === '') return ['The message was empty.'];
-  if (smsEncoding(text) !== 'gsm7') {
-    violations.push(
-      'The message contains a character that doubles the cost to send (a curly quote, a dash, or an emoji). Use plain ASCII.',
-    );
-  }
   if (LINK_SHAPE.test(text)) {
     violations.push('The message contains a link or a web address. Never send one.');
   }
@@ -421,9 +412,7 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   }
   if (!topPickLeads(text, grounding.picks)) {
     const top = grounding.picks[0];
-    violations.push(
-      `The best find (${top?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
-    );
+    violations.push(`The best find (${top?.name}) is not named. Lead with it.`);
   }
   // NO OFFER, BECAUSE AN OFFER IS A PROPOSAL AND A PROPOSAL IS A ROW. Nothing in this
   // lane can write one: the sweep has already decided what it will do next and put THAT

@@ -59,7 +59,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'intake-answer.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 
 // ── the composer's request shape, replicated from answer.ts ─────────────────
 
@@ -134,11 +133,10 @@ function flatten(text) {
 }
 
 /** The reasons the composer's `refusals` would keep this pair off the wire. */
-function gateFailures(answer, returnLine, fixture, smsEncoding) {
+function gateFailures(answer, returnLine, fixture) {
   const failures = [];
   const joined = `${answer} ${returnLine}`;
   if (joined.length > MAX_REPLY_CHARS) failures.push('over_char_cap');
-  if (smsEncoding(joined) !== 'gsm7') failures.push('not_gsm7');
   if (LINK_SHAPE.test(joined)) failures.push('carries_link');
   if (answer.includes('?')) failures.push('answer_carries_question');
   if (!returnLine.endsWith('?')) failures.push('return_asks_nothing');
@@ -227,7 +225,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
@@ -281,7 +278,7 @@ async function main() {
       continue;
     }
 
-    failures.push(...gateFailures(answer, returnLine, fixture, smsEncoding));
+    failures.push(...gateFailures(answer, returnLine, fixture));
     for (const pattern of fixture.forbiddenPatterns ?? []) {
       if (pattern.test(`${answer} ${returnLine}`)) failures.push(`forbidden:${pattern.source}`);
     }
