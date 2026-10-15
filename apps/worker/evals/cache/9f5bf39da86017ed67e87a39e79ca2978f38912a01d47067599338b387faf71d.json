@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact in the answer is backed by research_notes: the 6-3 win at Colorado, the Oct 10 date on ESPN and Yahoo, the NHL.com clips dated the 11th, and no separate Sunday game. It handles the date discrepancy honestly instead of overclaiming. The tone is casual and brief, like a friend texting back. Mentioning the sources is a little extra but not service-like.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

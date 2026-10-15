@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lowest 5-year fixed rate in Canada for an insured (under 20% down) mortgage is 4.34%",
+        "from": "Ratehub lists the best high-ratio (insured) 5-year fixed rate in Canada at 4.34%; Wowa gives the same 4.34% as the lowest insured 5-year fixed rate"
+      },
+      {
+        "states": "No Toronto- or Ontario-specific rate was found; the 4.34% figure is national",
+        "from": "The search results don't give a Toronto- or Ontario-specific rate"
+      },
+      {
+        "states": "Uninsured lowest 5-year fixed rate is not confirmed because sources disagree",
+        "from": "Wowa puts the lowest conventional (uninsurable) 5-year fixed rate at 4.44%... its numbers don't agree with each other"
+      },
+      {
+        "states": "Fixed rates have been climbing since early September",
+        "from": "Rates are climbing in October 2026, after all six of the largest banks raised select fixed rates since early September"
+      }
+    ],
+    "answer": "The lowest 5-year fixed rate I found in Canada is 4.34% for an insured mortgage (under 20% down), per Ratehub and Wowa. That's a national figure, not a Toronto one, since I didn't find a Toronto-specific rate. Uninsured rates are higher, but my sources disagree on the lowest one, so I can't confirm that number. Fixed rates have been climbing since early September."
+  },
+  "latencyMs": 6080
+}

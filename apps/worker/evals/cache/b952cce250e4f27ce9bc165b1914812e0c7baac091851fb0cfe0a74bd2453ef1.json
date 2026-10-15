@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Monday daytime is mainly cloudy and dry, with a high of 23°C",
+        "from": "Environment Canada's 11:00 AM EDT forecast calls for mainly cloudy skies and a high of 23°C... That forecast has no rain for the daytime."
+      },
+      {
+        "states": "Rain is likely to start after dark or overnight on Monday night",
+        "from": "Rain is likely to start after dark or overnight."
+      },
+      {
+        "states": "A risk of thunderstorms before morning on Monday night",
+        "from": "a risk of a thunderstorm before morning"
+      },
+      {
+        "states": "The sources differ on when the rain starts and how much falls",
+        "from": "The sources differ on exactly when the rain starts."
+      }
+    ],
+    "answer": "Not during the day. It should be mostly cloudy and dry through the afternoon, around 23°C. Rain is likely to start after dark or overnight, and some forecasts mention a chance of thunderstorms. The forecasts don't agree on the timing or how much rain there will be, so I can't say exactly when it starts."
+  },
+  "latencyMs": 5306
+}

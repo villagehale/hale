@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has three real, specific Oakville picks, each sourced from the venue's own page: Town of Oakville, YMCA of Oakville and Making Waves. All fit the preschool stage. It leads with the town's Preschool Levels A-E by name and attributes the registration date and the price (\"their site says\"). Nothing is invented beyond the picks. It is plain text with no link and no question. Under no_page_read, \"I could not get into their pages today\" is the correct form, and with watch true the first-person \"I'll keep watching and text you\" is earned. The one weakness is that the YMCA line (\"also run them\") is stated flatly rather than attributed, and its missing day and price are covered only by the general gap sentence.",
+    "score": 5
+  }
+}

@@ -833,8 +833,8 @@ function publish(result: PreparedBody): WorkstreamComposeResult {
   return { ok: false, reason: result.reason };
 }
 
-/** Group-level holds are not the per-parent follow-up cap. */
-export type WorkstreamHoldReason = ProactiveHoldReason | 'group_cap' | 'coparent_ask';
+/** Group delivery can also wait on a co-parent ask that stays 1:1. */
+export type WorkstreamHoldReason = ProactiveHoldReason | 'coparent_ask';
 
 export interface WorkstreamFollowupResult {
   enabled: boolean;
@@ -858,10 +858,9 @@ export interface WorkstreamFollowupResult {
 function emptyHeld(): WorkstreamFollowupResult['held'] {
   return {
     not_enrolled: 0,
+    opt_out_unread: 0,
     no_watch_consent: 0,
-    frequency_cap: 0,
     quiet_hours: 0,
-    group_cap: 0,
     coparent_ask: 0,
   };
 }
@@ -1155,10 +1154,6 @@ function nextLocalClock(now: Date, timeZone: string, hour: number, minute: numbe
 /**
  * How long a held send stays quiet when the clock is local. Quiet hours wait
  * until 08:00. A co-parent ask waits until the next local midnight.
- *
- * A group cap does not. That budget is a rolling 24h (and 7d) counted in
- * `family-outbound`, and the hold uses the `until` on the held result: the
- * moment the binding message leaves the window. Midnight was a day late.
  */
 export function workstreamHoldUntil(
   reason: 'quiet_hours' | 'coparent_ask',
@@ -1169,7 +1164,7 @@ export function workstreamHoldUntil(
   return nextLocalClock(now, timeZone, 0, 0);
 }
 
-/** Attempt 1 waits 6 hours. Attempt 2 waits 24. The cap gives up before a third wait. */
+/** Attempt 1 waits 6 hours. Attempt 2 waits 24. A third miss stops. */
 export function followupBackoffUntil(attempt: number, now: Date): Date {
   const hours = attempt <= 1 ? 6 : 24;
   return new Date(now.getTime() + hours * 60 * 60 * 1000);
@@ -1222,8 +1217,8 @@ async function defaultCompose(
 
 /**
  * Hourly rider on the nudge cron. Dark until WORKSTREAMS_ENABLED is exactly
- * `true`. Quiet hours and the follow-up cap are the outbound gate's, read
- * before any model call.
+ * `true`. Quiet hours are the outbound gate's, read before any model call.
+ * A count is not a hold. Same-item dedupe is.
  */
 export async function runWorkstreamFollowupSweep(
   database: Database,
@@ -1382,10 +1377,7 @@ export async function runWorkstreamFollowupSweep(
           familyId: row.familyId,
           workstreamId: row.id,
           checkBackAt: row.checkBackAt,
-          until:
-            delivered.reason === 'group_cap'
-              ? delivered.until
-              : workstreamHoldUntil(delivered.reason, now, timeZone),
+          until: workstreamHoldUntil(delivered.reason, now, timeZone),
           reason: delivered.reason,
           attempt: waiting?.attempt ?? 0,
           now,

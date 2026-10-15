@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "what's the weather in Vancouver tomorrow",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "weather forecast in Vancouver for tomorrow",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1695
+}

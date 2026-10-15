@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every timing claim is backed by the research notes: about 12 minutes for large eggs in boiling water, 10 minutes slightly soft in the center, rubbery past 14–15 minutes, and a cold-water stop. The reply gives a real number up front, doesn't over-qualify, and reads like a casual text from a friend. Safety isn't really a concern here.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

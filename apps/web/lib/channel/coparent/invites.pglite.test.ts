@@ -12,7 +12,8 @@ import {
 } from '~/lib/channel/caregiver/invites';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { askWriter } from '~/lib/testing/consent-double';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
 /**
  * VIL-355 · the co-parent invite's guards against the REAL DDL.
@@ -86,6 +87,7 @@ function start(
     parsed: { ok: true, name: 'Sam', phoneE164, role: 'co_parent' },
     language: 'en',
     now,
+    ask: askWriter(),
   });
 }
 
@@ -275,16 +277,14 @@ describe('what the refusal may say about a number', () => {
 });
 
 describe('the refusal binds BOTH doors', () => {
-  function startCaregiver(
-    seeded: { familyId: string; parentUserId: string },
-    phoneE164: string,
-  ) {
+  function startCaregiver(seeded: { familyId: string; parentUserId: string }, phoneE164: string) {
     return startCaregiverInvite(db.database, {
       familyId: seeded.familyId,
       invitedByUserId: seeded.parentUserId,
       inviterPhoneE164: PARENT_PHONE,
       parsed: { ok: true, name: 'Sam', phoneE164, role: 'nanny' },
       now: NOW,
+      ask: askWriter(),
     });
   }
 
@@ -333,6 +333,7 @@ describe('the parent assent, claimed exactly once', () => {
       verbatimReply: 'yes',
       channelMessageId: null,
       now: NOW,
+      ask: askWriter(),
     });
     // The same stale invite the losing turn is holding.
     const second = await recordCoParentAssent(db.database, {
@@ -342,12 +343,12 @@ describe('the parent assent, claimed exactly once', () => {
       verbatimReply: 'yes',
       channelMessageId: null,
       now: new Date(NOW.getTime() + 1_000),
+      ask: askWriter(),
     });
 
-    expect(first).toBeTypeOf('string');
-    // Null is the loser's answer, and the caller has nothing to send — which is the
-    // point: the body IS the licence to text the stranger.
-    expect(second).toBeNull();
+    expect(first.status).toBe('ready');
+    // The loser has nothing to send — the body is the licence to text the stranger.
+    expect(second).toEqual({ status: 'already_claimed' });
     const grants = await db.database
       .select({ consentType: schema.consentRecords.consentType })
       .from(schema.consentRecords);
@@ -377,8 +378,9 @@ describe('the parent assent, claimed exactly once', () => {
       verbatimReply: 'yes',
       channelMessageId: null,
       now: assentAt,
+      ask: askWriter(),
     });
-    expect(body).toBeTypeOf('string');
+    expect(body.status).toBe('ready');
 
     const stillAnswerable = await loadOpenInviteByPhone(
       db.database,

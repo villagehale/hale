@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every detail is supported by the notes for Windsor, Ontario, tomorrow: early showers with a thunderstorm risk, clearing by late morning, a sunny afternoon, a high of 29–30°C, west gusts to 50 km/h from mid-afternoon, and showers likely overnight. It answers directly without asking for the city. The tone reads more like a weather bulletin than a quick text from a friend, but it is still a plain answer, not a service offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

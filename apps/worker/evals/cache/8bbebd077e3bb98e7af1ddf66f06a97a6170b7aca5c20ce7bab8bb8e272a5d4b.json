@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada forecast in the notes: 25°C high, 40% chance of late-afternoon showers with a thunderstorm risk, SW wind 20 gusting to 40, and a 15°C low with evening showers or storms. It correctly treats 'Toronto' as the answer to the city question and goes straight to tomorrow's forecast. The phrasing reads more like a weather bulletin than a quick friend's text, so it loses a point on tone.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

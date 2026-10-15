@@ -16,7 +16,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { INTENT_FIXTURES, INTENT_QUESTION } from './intake-fixtures.mjs';
-import { cacheGet, cacheKey, cachePut, evalRunTag, lazyAnthropic } from './lib/harness.mjs';
+import {
+  cacheGet,
+  cacheKey,
+  cachePut,
+  evalRunTag,
+  installEvalSpendCap,
+  lazyAnthropic,
+  spendCappedFetch,
+} from './lib/harness.mjs';
 import { REPLY_INTENT_HELD_OUT_FIXTURES } from './reply-intent-held-out-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -80,14 +88,19 @@ async function evaluateFixture({ fixture, instructions, cachedOnly }) {
   if (!apiKey) throw new Error('Set VERCEL_KEY or AI_GATEWAY_API_KEY');
 
   const startedAt = performance.now();
-  const response = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-    signal: AbortSignal.timeout(10_000),
+  const response = await spendCappedFetch({
+    tag: 'jev-intent',
+    request,
+    send: () =>
+      fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(10_000),
+      }),
   });
   const result = await response.json();
   const latencyMs = Math.round(performance.now() - startedAt);
@@ -216,6 +229,7 @@ function printComparison(jevResults, sonnetResults) {
 }
 
 async function main() {
+  installEvalSpendCap();
   const cachedOnly = process.argv.includes('--cached-only');
   const compareSonnet = process.argv.includes('--compare-sonnet');
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
@@ -292,7 +306,7 @@ async function main() {
   );
 
   if (compareSonnet) {
-    const getClient = lazyAnthropic();
+    const getClient = lazyAnthropic('jev-intent');
     const sonnetResults = [];
     for (const fixture of fixtures) {
       const outcome = await evaluateSonnetFixture({

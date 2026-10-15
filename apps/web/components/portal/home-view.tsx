@@ -10,6 +10,7 @@ import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
 import type { FamilyConnectorView } from '~/lib/integrations/load';
 import type { LoadLoopPrefsResult } from '~/lib/settings/loop-prefs';
 import { clockLabel } from './format';
+import { DisabledRow } from './disabled-row';
 import type { ThreadItem } from './messages-board';
 import { portalHref } from './portal-href';
 import styles from './portal.module.css';
@@ -128,9 +129,7 @@ export function PortalHome({
               title="Family"
               meta={kids}
             />
-            <SetupRow
-              basePath={basePath}
-              href="/settings/plan"
+            <DisabledRow
               icon={<Sparkles aria-hidden="true" />}
               title="Plan"
               meta="Founding family"
@@ -203,12 +202,7 @@ function SetupRow({
   meta,
   basePath = '',
 }: {
-  href:
-    | '/settings/connections'
-    | '/settings/texts'
-    | '/family'
-    | '/settings/plan'
-    | '/settings/privacy';
+  href: '/settings/connections' | '/settings/texts' | '/family' | '/settings/privacy';
   icon: ReactNode;
   title: string;
   meta: string;

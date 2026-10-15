@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific matches research_notes: Messi's record eight Ballon d'Ors, the 2022 World Cup, 18 World Cup goals, Brady's seven championships and Brady naming Rice. Nothing is marked settled. It handles the ambiguity well by covering both sports and still picks Messi and Brady, so it is not a survey. The tone is mostly friend-like, but \"the most recent sources have Messi on top\" reads like citing research rather than texting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

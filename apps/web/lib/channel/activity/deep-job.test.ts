@@ -6,8 +6,8 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type { DueCommitment } from '~/lib/commitments/ledger';
 import type { DeepResult } from './deep';
-import { type DeepJobDeps, runDeepResearchJob } from './deep-job';
 import type { DeepSlot } from './deep';
+import { type DeepJobDeps, runDeepResearchJob } from './deep-job';
 
 /**
  * THE QUESTION-TIME JOB, and the one property every case is a variation on:
@@ -65,7 +65,7 @@ const READ: DeepResult = {
   pagesRead: 3,
   pagesStale: 0,
   pagesRefused: 1,
-        pageVerdict: 'page_has_schedule',
+  pageVerdict: 'page_has_schedule',
 };
 
 /**
@@ -189,7 +189,9 @@ function harness(
     delivery: {
       composer: {
         async compose() {
-          return overrides.compose ?? { status: 'composed', message: 'Tiny Gym runs Sundays 9:30.' };
+          return (
+            overrides.compose ?? { status: 'composed', message: 'Tiny Gym runs Sundays 9:30.' }
+          );
         },
       },
       sharePage: async () => ({ status: 'skipped' as const, reason: 'nothing_to_share' as const }),

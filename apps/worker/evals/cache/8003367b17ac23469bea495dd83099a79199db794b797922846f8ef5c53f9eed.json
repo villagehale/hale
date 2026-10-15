@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Low-to-moderate doses (5 mg daily or less) for short periods appear safe and well tolerated",
+        "from": "melatonin taken in low-to-moderate doses (e.g., 5 mg daily or less) for short periods appears safe and well-tolerated"
+      },
+      {
+        "states": "Common side effects are minor, such as headache and sleepiness, and go away when use stops",
+        "from": "common side effects are minor and resolve once use stops. The most frequent are headache and somnolence (fatigue)"
+      },
+      {
+        "states": "Long-term safety is not well established and use should be monitored",
+        "from": "The long-term effects are not well established. One sleep expert, Dr. Michael Grandner, said long-term safety is still unclear, and ongoing use should be monitored."
+      },
+      {
+        "states": "A preliminary AHA study linked 12+ months of use in adults with insomnia to higher heart failure risk, but it is not peer-reviewed and cannot prove cause",
+        "from": "A preliminary study was presented at the American Heart Association (AHA) Scientific Sessions in November 2025. Adults with insomnia who used melatonin for 12 months or more had about a 90% higher chance of incident heart failure over 5 years compared with matched non-users. The AHA itself says the study cannot prove a cause-and-effect relationship. It also notes that abstracts presented at AHA meetings are not peer-reviewed, and the findings are considered preliminary."
+      },
+      {
+        "states": "A later 2026 analysis found no significant association, but only its summary was seen, so the question is still open",
+        "from": "A later analysis disagrees. A Masters of Longevity summary says a 2026 analysis found no significant association, and the different study designs explain why the question remains open. That analysis is a paper in Open Heart (2026). I saw only the summary, not the paper."
+      },
+      {
+        "states": "Supplement content varies widely in the US, since melatonin is a dietary supplement",
+        "from": "In the U.S., melatonin is treated as a dietary supplement by the FDA. The American Academy of Sleep Medicine site notes that supplement content varies widely."
+      },
+      {
+        "states": "Possible interactions with blood thinners and antidepressants, which should be checked with a doctor or pharmacist",
+        "from": "One source lists possible interactions with blood thinners and antidepressants, especially for older adults on several medications. This comes from a commercial sleep-company blog, so it is a weaker source."
+      },
+      {
+        "states": "The search found no specific guidance for pregnancy or particular medical conditions",
+        "from": "The search did not return specific guidance for pregnancy, particular medical conditions, or exact interaction lists from an authoritative source such as NIH or Mayo Clinic."
+      }
+    ],
+    "answer": "Short-term, low doses (5 mg or less a day) look safe for most adults, and the common side effects, like headache and sleepiness, are minor and go away when you stop. Long-term safety isn't well established. A preliminary AHA study (not peer-reviewed) linked a year or more of use in people with insomnia to higher heart failure risk, but it can't prove cause, and a later 2026 analysis found no significant link, though I only saw its summary. Supplement strength varies a lot, and one weaker source flags interactions with blood thinners and antidepressants, so check with a doctor or pharmacist if you take anything else. I couldn't find specific guidance for pregnancy or particular medical conditions."
+  },
+  "latencyMs": 7517
+}

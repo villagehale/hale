@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy for both send_email and reply_to_email was actually turned off this turn, so 'C'est fait' is true rather than an overclaim. The reply answers in Sam's language in one plain sentence with no greeting, sign-off or question, and nothing is invented. One small blemish: 'je ne enverrai' should be elided to 'je n'enverrai'.",
+    "score": 4
+  }
+}

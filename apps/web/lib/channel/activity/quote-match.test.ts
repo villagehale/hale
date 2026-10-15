@@ -192,12 +192,14 @@ describe('pageCarriesSchedule', () => {
  * case it was built for.
  */
 describe('scheduleExcerpt', () => {
-  const HEAD = 'Swimming Lessons - Town of Halton Hills\nRegistration for Fall Recreation Programs opens Tuesday, September 1.';
+  const HEAD =
+    'Swimming Lessons - Town of Halton Hills\nRegistration for Fall Recreation Programs opens Tuesday, September 1.';
   const BOILERPLATE = Array.from(
     { length: 400 },
     () => 'Please shower before entering the pool deck and arrive ten minutes early.',
   ).join('\n');
-  const FEES = 'Halton Hills Taxpayer Fees:\nP&T to Swimmer 3: $86.22 for 9 lessons (30 minute lesson)';
+  const FEES =
+    'Halton Hills Taxpayer Fees:\nP&T to Swimmer 3: $86.22 for 9 lessons (30 minute lesson)';
   const GRID =
     'Program | Day | Time | Dates | code |\nParent and Tot 1, 2, 3 | Mon | 10:00AM - 10:30AM | Oct 05 - Dec 07 | 108969 |';
   const PAGE = [HEAD, BOILERPLATE, FEES, BOILERPLATE, GRID].join('\n');
@@ -226,7 +228,9 @@ describe('scheduleExcerpt', () => {
     const excerpt = scheduleExcerpt(PAGE, 24_000);
 
     expect(excerpt.text).toContain('Swimming Lessons - Town of Halton Hills');
-    expect(excerpt.text).toContain('Registration for Fall Recreation Programs opens Tuesday, September 1.');
+    expect(excerpt.text).toContain(
+      'Registration for Fall Recreation Programs opens Tuesday, September 1.',
+    );
     expect(HEAD.length).toBeLessThan(HEAD_CONTEXT_CHARS);
   });
 
@@ -260,7 +264,9 @@ describe('scheduleExcerpt', () => {
     expect(degenerate.text.length).toBeGreaterThan(23_000);
 
     // And a page with no schedule on it at all still spends its whole budget on the page.
-    const prose = Array.from({ length: 900 }, () => 'Our fall guide will be posted soon.').join('\n');
+    const prose = Array.from({ length: 900 }, () => 'Our fall guide will be posted soon.').join(
+      '\n',
+    );
     const excerpt = scheduleExcerpt(prose, 24_000);
     expect(excerpt.text.length).toBeGreaterThan(23_000);
   });

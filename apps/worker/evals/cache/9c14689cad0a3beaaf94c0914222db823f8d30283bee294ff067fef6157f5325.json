@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer names the Cardinals as 2006 champions over the Tigers, 4-1, and research_notes support all of it. It reads like a brief, casual friend's text and states the answer outright.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

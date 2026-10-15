@@ -2,7 +2,6 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { ASSENT_ACK } from '~/lib/channel/intake/copy';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -35,12 +34,11 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 export const MAX_ASK_CHARS = 160;
 
 /**
- * The `getting_started` ask is APPENDED to {@link ASSENT_ACK} rather than sent on its
- * own, so its budget is whatever is left of the one segment after that sentence and the
- * space joining them. Derived, never typed in: an edit to the ack moves this ceiling
- * with it instead of silently pushing the consent turn into two segments.
+ * The `getting_started` ask once rode on the end of a fixed consent ack. That ack is
+ * gone (#868: no fixed lines), so the ask is a message of its own and gets the
+ * whole segment, same as the intros ask.
  */
-export const MAX_TAIL_ASK_CHARS = MAX_ASK_CHARS - ASSENT_ACK.length - 1;
+export const MAX_TAIL_ASK_CHARS = MAX_ASK_CHARS;
 
 /** Three attempts, then defer. A model told its exact violation twice will not be argued
  * into it on the fourth try, and both callers have a cheaper place to retry. */

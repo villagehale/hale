@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real classes on the page, with the day, times and Sept 12 - Nov 28 session dates exactly as printed. Each cites the Oakville page. No third level is invented. Price is correctly null, since the page defers fees to the Recreation Guide. Both slots carry the Aug 11 registration date. The message leads with the named programs, attributes the facts ('their site says') and states the not-yet-open Aug 11 7am registration. It is plain ASCII, has no link and asks no question. The price gap is owned in the first person ('I could not pin down the price'), which is correct under page_has_schedule. With watch true, 'I'll keep watching and text you' is a legitimate first-person commitment. Minor nits: Saturday is not restated for Preschool B, and the 3-5 age fit is left out of the message, but neither is an error.",
+    "score": 5
+  }
+}

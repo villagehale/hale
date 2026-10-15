@@ -6,11 +6,10 @@
 
 export type LoopChannel = 'email' | 'sms';
 export type ChildNameLevel = 'first_name' | 'relation' | 'generic';
-export type LoopCategory = 'weekly_plan' | 'reminder' | 'approval' | 'alert';
+export type LoopCategory = 'reminder' | 'approval' | 'alert';
 
 export interface LoopPrefsView {
   loopChannel: LoopChannel;
-  catWeeklyPlan: boolean;
   catReminder: boolean;
   catApproval: boolean;
   catAlert: boolean;
@@ -18,7 +17,6 @@ export interface LoopPrefsView {
   quietHoursStart: string;
   quietHoursEnd: string;
   urgentBypassQuietHours: boolean;
-  weeklyPlanSendTime: string;
   childNameLevel: ChildNameLevel;
 }
 
@@ -29,14 +27,12 @@ export interface LoopPrefsView {
  */
 export const DEFAULT_LOOP_PREFS: LoopPrefsView = Object.freeze({
   loopChannel: 'email',
-  catWeeklyPlan: true,
   catReminder: true,
   catApproval: true,
   catAlert: true,
   quietHoursStart: '21:30:00',
   quietHoursEnd: '07:30:00',
   urgentBypassQuietHours: true,
-  weeklyPlanSendTime: '08:00:00',
   childNameLevel: 'generic',
 });
 

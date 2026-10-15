@@ -30,9 +30,15 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
-import { cachedGatewayTextCall, evalRunTag, makeCost, totalUsd } from './lib/harness.mjs';
+import {
+  cachedGatewayTextCall,
+  evalRunTag,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  totalUsd,
+} from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -61,14 +67,6 @@ async function cacheGet(key) {
 async function cachePut(key, value) {
   await mkdir(CACHE_DIR, { recursive: true });
   await writeFile(join(CACHE_DIR, `${key}.json`), JSON.stringify(value, null, 2));
-}
-
-function lazyAnthropic() {
-  let client;
-  return () => {
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    return client;
-  };
 }
 
 // A cache around client.messages.create so a deterministic, fixture-driven loop
@@ -284,6 +282,7 @@ const BROKEN_ANSWER = JSON.stringify({
 });
 
 async function main() {
+  installEvalSpendCap();
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const preflight = process.argv.includes('--preflight');
@@ -297,7 +296,7 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  const getClient = lazyAnthropic('village-search');
   const cost = { ...makeCost(), sonnetIn: 0, sonnetOut: 0, latencies: [] };
 
   const skill = await agent.loadSkill(SKILL_PATH);

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by research_notes: there is no open Oakville Costco yet, the Wyecroft Rd/Burloak site is targeting fall 2027, the Laird Rd warehouse is at 3180 Laird Rd per a third-party site (flagged as such), and Burlington has an existing location. Nothing is invented and the street address is not mentioned. It does give a real answer. Two things keep it from a 5: it hedges a lot about sources, and it ends with 'look those up before you head out', a mild look-it-up tail.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

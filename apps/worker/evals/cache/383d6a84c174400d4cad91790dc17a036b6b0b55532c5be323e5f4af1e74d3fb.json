@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "lowest 5-year fixed insured rate is about 4.34%, as of Oct 12, 2026, available in Ontario",
+        "from": "the best high-ratio 5-year fixed rate in Canada is 4.34%"
+      },
+      {
+        "states": "lowest 5-year fixed uninsured rate is about 4.44%, as of Oct 9, 2026",
+        "from": "The lowest 5-year fixed conventional (uninsured) rate is 4.44%."
+      },
+      {
+        "states": "Big 6 banks average about 5.14% on a 5-year fixed",
+        "from": "the Big 6 banks average 5.14% on a 5-year fixed"
+      },
+      {
+        "states": "mortgage rates are climbing in October 2026",
+        "from": "Canadian mortgage rates are climbing in October 2026"
+      },
+      {
+        "states": "there is no single 5-year fixed rate; it depends on whether the mortgage is insured (under 20% down) or uninsured",
+        "from": "There is no single \"the\" 5-year fixed rate. It depends on the lender and on whether the mortgage is insured (down payment under 20%) or uninsured."
+      }
+    ],
+    "answer": "There's no single 5-year fixed rate. It depends on whether your mortgage is insured (under 20% down) or uninsured. The lowest I can see is about 4.34% for insured, and about 4.44% for uninsured, from listings dated Oct 9 to 12, and the insured rate is available in Ontario. The big banks are higher, averaging around 5.14%, and rates are creeping up this month."
+  },
+  "latencyMs": 5914
+}

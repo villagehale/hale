@@ -9,9 +9,9 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type DueCommitment,
@@ -34,6 +34,7 @@ import {
 } from './deliver';
 import type { PageVerdict } from './evidence';
 import { type FollowUpPick, createFollowUpComposer } from './followup-note';
+import type { EmptySearch } from './lane';
 import { type ActivityFinder, createActivityFinder } from './lane';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
 import { SLOTS_IN_TEXT, defaultActivitySharePorts, mintActivitySharePage } from './share-page';
@@ -164,7 +165,7 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
     due: 0,
     sent: 0,
     sentEmptyHanded: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
     unsendable: 0,
     cancelled: 0,
     deferred: 0,
@@ -342,6 +343,7 @@ async function keepOne(
   let picks: FollowUpPick[] = [];
   let rest: readonly DeepSlot[] = [];
   let researched = false;
+  let searched: EmptySearch | undefined;
   const evidence = noEvidence();
   // WHAT THE PAGES LICENSE, and nothing else licenses a sentence about what a page does
   // not carry (evidence.ts `PageVerdict`). It starts at the most restrictive value and is
@@ -403,6 +405,7 @@ async function keepOne(
       return;
     }
     picks = found.found ? [...found.picks] : [];
+    if (!found.found) searched = found.searched;
   }
   evidence.picks = picks.length;
 
@@ -424,6 +427,7 @@ async function keepOne(
       rest,
       pageEvidence,
       evidence,
+      ...(searched ? { searched } : {}),
     },
     now,
   );

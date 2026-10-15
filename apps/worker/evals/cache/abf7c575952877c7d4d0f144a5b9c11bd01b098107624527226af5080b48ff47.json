@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011Cg38ouVqFfj36QXPPiFQ9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSqAYKEAgSGAI4AUIIdGhpbmtpbmcSDFYuzA0m3Fp5L7jexxoMw4ClIyZweRpUfa/yIjBxfI/23WLuKKlPEqZupdnjP/zkfV3Iy/MoHIDl3DhbzdxbpjYNe9xAV4AaJ/CHE3YqxQXOs3bSutq4oraMN1no9KLQhgbLRSo9SfV7pFahDPAQtA0HHDhOSPYoeFqo3/26ropuz8e/NNJIIVHdqxFDtF94Q+y9bFgdQp6dc32kxDsDXZBneXxOaYu1DffSXAGcO4QK5MGqhyGUAAVh3EZ61zmMb4Z0S1ZHd1OrIDucn+gd3/6h6A4gbhh0cwfvtHEhRWwQvfLiXORsk8aWrEl3wZYy1rfhRLXTiHYyyGd2BIrdryfhFXl8XAr+zdlD53XVsBs99dVKZ0v/W76q/v2ikvxo9k+g+euP5Bt38rhwUmVjiR+KKbxnk404TiYnkVWfx3Z7ywEeI2R8BWJvtlP4jbJJcrVSQaTCOF578cncM00s4xxClAF5EbBlnj11XIjRBvdr2wjUGvjaJnqKiKyb3Ur6QK6kR7YTyqAO3t39vn0EtoyQt/ojjOZyWtQx2DVURDqI0jDH/9/JUXAiPzfNw9kI3W6fgc8CtOseZIbza8+QNckfhALJ6mlSLMUSd3vcL0hCsIPZ4S24cog/i9pBa68XVEAGt+e/YyZxNr8JincIl7ycSZJCaLzOA30/Slku+o6uraqXa2KBbUNcdUkukeyZJ9M6usNWq61okHlcBEKReF/FvccdP4k3J3peKbWQUhmWROTDVZ6EnxEXhNoPTwPeSV+rwckiYBoqxhkF0e8PzLF7nPjdiT7GE5cNHbusNJMK1/uMEdlNgaR0u9T03c4jTfBxSqncHvby++lxG1UjlEh6js83YJ9XVRrXoFL3f0Pa52bdK9csnPhgeK7U0AvgyegPqk1+AKNxnkcBdgeGqX45D2bhgp1uu9oYBBa6QZ0+u9gq2dxniGjWolEEvx44J7yizxwc2EqV2OFthPWtLQB0IkdSMG3iM9ARI5NeW4+gigJBXyfs7yUt2P+4kblUrYrtvCvAH4z4okJbmwNWJ0Dz6eHLGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01TXicHidF3kLZEU9K2NpLqN",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-ada",
+          "offer": "Want me to send the full sleep plan for Ada?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 857,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20754,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 200,
+      "output_tokens_details": {
+        "thinking_tokens": 81
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2257
+}

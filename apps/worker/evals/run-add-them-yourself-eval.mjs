@@ -28,6 +28,7 @@ import { ADD_THEM_YOURSELF_FIXTURES } from './add-them-yourself-fixtures.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -84,7 +85,8 @@ const BROKEN_REPLY = "I'll text them at 647-555-0199 now, see www.example.com";
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('add-them-yourself');
   const cost = makeCost();
 
   const agent = await importTs(AGENT_SRC);

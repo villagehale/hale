@@ -12,6 +12,7 @@ import {
 } from '~/lib/channel/caregiver/invites';
 import { handleLapsedInviteReply } from '~/lib/channel/caregiver/route';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { askWriter } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { INVITE_EXPIRED_BY_LANGUAGE } from './copy';
 
@@ -82,6 +83,7 @@ async function seedAskedInvite(seeded: { familyId: string; parentUserId: string 
     parsed: { ok: true, name: 'Sam', phoneE164: PARTNER_PHONE, role: 'co_parent' },
     language: 'en',
     now: NOW,
+    ask: askWriter(),
   });
   if (started.status !== 'started') throw new Error(`seed failed: ${JSON.stringify(started)}`);
   const pending = await loadPendingAssent(db.database, seeded.parentUserId, ASKED);
@@ -93,6 +95,7 @@ async function seedAskedInvite(seeded: { familyId: string; parentUserId: string 
     verbatimReply: 'yes',
     channelMessageId: null,
     now: ASKED,
+    ask: askWriter(),
   });
   return pending;
 }
@@ -133,7 +136,11 @@ describe('a late answer to an invitation that has lapsed', () => {
     // send the stranger to `greet`.
     expect(await loadOpenInviteByPhone(db.database, PARTNER_PHONE, LATE)).toBeNull();
     const lapsed = await loadLapsedInviteByPhone(db.database, PARTNER_PHONE, LATE);
-    expect(lapsed).toMatchObject({ role: 'co_parent', state: 'expired', familyId: seeded.familyId });
+    expect(lapsed).toMatchObject({
+      role: 'co_parent',
+      state: 'expired',
+      familyId: seeded.familyId,
+    });
   });
 
   it('answers with one honest sentence, seats nobody, and records the outcome', async () => {
@@ -157,9 +164,7 @@ describe('a late answer to an invitation that has lapsed', () => {
     );
 
     expect(outcome).toEqual({ status: 'invite_expired_answered', role: 'co_parent' });
-    expect(transport.sent).toEqual([
-      { to: PARTNER_PHONE, body: INVITE_EXPIRED_BY_LANGUAGE.en },
-    ]);
+    expect(transport.sent).toEqual([{ to: PARTNER_PHONE, body: INVITE_EXPIRED_BY_LANGUAGE.en }]);
     // Not the inviting parent's conversation — a third party's answer is never threaded.
     expect(threaded).toEqual([]);
     // No seat, and the invite is left expired rather than reopened.
@@ -194,7 +199,12 @@ describe('a late answer to an invitation that has lapsed', () => {
       {
         invite: lapsed,
         phoneE164: PARTNER_PHONE,
-        inbound: { providerId: 'SM-late-fr', body: 'oui merci', from: PARTNER_PHONE, receivedAt: LATE },
+        inbound: {
+          providerId: 'SM-late-fr',
+          body: 'oui merci',
+          from: PARTNER_PHONE,
+          receivedAt: LATE,
+        },
         now: LATE,
       },
       deps(transport).deps,
@@ -241,6 +251,7 @@ describe("the parent's own re-issue after a lapse (already true on HEAD — pinn
       parsed: { ok: true, name: 'Sam', phoneE164: PARTNER_PHONE, role: 'co_parent' },
       language: 'en',
       now: new Date(LATE.getTime() + 3_600_000),
+      ask: askWriter(),
     });
 
     expect(again.status).toBe('started');

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "je n'en peux plus, j'ai envie de mourir",
+    "confirmation": "Je suis content que tu me l'aies dit. Appelle ou écris au 3114 (gratuit, 24h/24) ou au 15 si tu es en danger maintenant."
+  },
+  "latencyMs": 1532
+}

@@ -1130,16 +1130,37 @@
       "breakpoints": true
     },
     {
+      "idx": 165,
+      "version": "7",
+      "when": 1781556207000,
+      "tag": "0168_autonomy_notice_category",
+      "breakpoints": true
+    },
+    {
       "idx": 166,
       "version": "7",
-      "when": 1781556206000,
-      "tag": "0167_channel_messages_pending_ask",
+      "when": 1781556208000,
+      "tag": "0166_agent_runs_cache_tokens",
       "breakpoints": true
     },
     {
       "idx": 167,
       "version": "7",
       "when": 1781556209000,
+      "tag": "0167_channel_messages_pending_ask",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1781556210000,
+      "tag": "0170_opt_out_read_holds",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1781556211000,
       "tag": "0169_kid_relevance_verdicts",
       "breakpoints": true
     }

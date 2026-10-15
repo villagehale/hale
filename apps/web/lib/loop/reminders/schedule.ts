@@ -37,10 +37,13 @@ export function offsetUrgency(offset: ReminderOffset): 'normal' | 'time_sensitiv
 export const REMINDER_EVENING_MINUTE = 18 * 60; // 18:00 local
 const HOUR_MS = 60 * 60 * 1000;
 
-// A reminder whose fire_at is more than this behind `now` missed its slot (a cron gap,
-// a late placement) — it is suppressed, never fired stale-late (a 3 AM "reminder" for
-// a slot that passed is exactly the annoyance this engine exists to avoid). One tick.
-export const REMINDER_MISS_GRACE_MS = 90 * 60 * 1000;
+/**
+ * Whether a reminder went out more than one hourly cron tick after its slot — held while
+ * its lane was off, or caught up after a cron gap. Counting only: it decides nothing.
+ */
+export function isLateFire(fireAt: Date, now: Date): boolean {
+  return now.getTime() - fireAt.getTime() > HOUR_MS;
+}
 
 /** The zone's UTC offset (ms) at `instant` — the machine's own zone cancels out of
  * the rendered-string difference. */
@@ -94,6 +97,8 @@ export interface ScheduledReminder {
 
 export type SuppressReason =
   | 'started'
+  /** Written by the retired grace window. Rows that already carry it keep it; nothing
+   * writes it now. */
   | 'missed'
   | 'interacted'
   /**
@@ -124,11 +129,17 @@ export interface ClassifyOptions {
 
 /**
  * The don't-send gate. Ordered so the strongest "never send" wins: a gone/cancelled
- * event beats everything; a moved event is stale; an event that already started (or a
- * slot missed by more than the grace) is suppressed; a fresh in-channel interaction
- * suppresses; a future fire waits; otherwise fire. `event` is the CURRENT live row
- * (null when it no longer exists), re-read at send time — so this holds regardless of
- * whether any recompute hook ran.
+ * event beats everything; a moved event is stale; an event that already started is
+ * suppressed; a fresh in-channel interaction suppresses; a future fire waits; otherwise
+ * fire. `event` is the CURRENT live row (null when it no longer exists), re-read at send
+ * time — so this holds regardless of whether any recompute hook ran.
+ *
+ * HOW LATE a due reminder is decides nothing. One held while its lane was off, or caught
+ * up after a cron gap, is still useful while its event has not started, so it fires —
+ * an evening-before one on the event's own day too: its lead is the event's date and its
+ * voice phrases the day from the event's local start and `now` (reminder-voice.ts).
+ * Once the per-family send decider lands (#824) it owns that "still useful?" call, and
+ * this rule becomes its input.
  */
 export function classifyReminder(
   reminder: ScheduledReminder,
@@ -144,9 +155,6 @@ export function classifyReminder(
 
   if (event.startsAt.getTime() <= now.getTime()) return { action: 'suppress', reason: 'started' };
   if (reminder.fireAt.getTime() > now.getTime()) return { action: 'wait' };
-  if (now.getTime() - reminder.fireAt.getTime() > REMINDER_MISS_GRACE_MS) {
-    return { action: 'suppress', reason: 'missed' };
-  }
   if (opts.recentInteraction) return { action: 'suppress', reason: 'interacted' };
   return { action: 'fire' };
 }

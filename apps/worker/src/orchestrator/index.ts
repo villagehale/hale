@@ -8,18 +8,9 @@ import {
   type ApprovedAction,
   type DraftedAction,
   type FamilyStage,
-  entitlementRequiredFor,
   gcalItemAlreadyEnded,
   gcalPastClassifySkipEnabled,
-  hardCeilingUsd,
-  hasEntitlement,
-  isOverAllowance,
-  isOverHardCeiling,
   mintApprovedAction,
-  monthlyAllowanceUsd,
-  spendCeilingDay,
-  spendCeilingEnforced,
-  spendCeilingWarnText,
   stageFromAgeInMonths,
 } from '@hale/types';
 import { computeActionHash } from '../agents/action-hash.js';
@@ -37,41 +28,48 @@ import {
 } from '../services/executor.js';
 import type { GoogleCalendarPlacement } from '../services/google-calendar-placement.js';
 import {
+  autonomyTurnOnDelivered,
   getMemorySlice,
-  hasAutonomousActionOptIn,
-  loadActionApprovalHistory,
   loadActionForApproval,
   loadActionForEvent,
   loadApprovedVerdictForAction,
+  loadAutonomyStanding,
   loadCrossParentConsent,
   loadFamilyContext,
   loadFamilyCreatedAt,
-  loadFamilyMonthToDateCostUsd,
-  loadFamilyPlanTier,
+  loadHumanApprover,
   loadResumePoint,
   markEventStage,
   recordAction,
   recordActionGate,
   recordDrop,
-  recordEntitlementGate,
   recordEvent,
   recordExecution,
   recordHumanApproval,
   recordReviewerRejection,
   recordReviewerVerdict,
-  recordSpendCeilingDrop,
-  recordSpendCeilingExceeded,
 } from '../services/memory-writer.js';
-import { postWorkerOpsSlack } from '../services/ops-slack.js';
 import {
+  autonomyDeniedForKind,
   commitsParentToEnrollmentBookingOrPayment,
-  streakSatisfiesAutonomy,
   teenRedactionCapApplies,
   withinObservationWindow,
 } from './autonomy-gate.js';
 
 const CONFIDENCE_AUTONOMY_THRESHOLD = 0.85;
 const CONFIDENCE_HUMAN_THRESHOLD = 0.7;
+
+/**
+ * Kill switch for AUTONOMOUS execution only (a human approval is not braked). Off
+ * unless the variable is exactly `true`, untrimmed; off holds the action for approval
+ * with the named outcome `lane_off`. Checked before the execute checkpoint, never on
+ * resume: an `approved_pending_execute` checkpoint may be a human approval's claim.
+ */
+const AUTONOMOUS_EXECUTE_ENV = 'AUTONOMOUS_EXECUTE_ENABLED';
+
+function autonomousExecuteEnabled(): boolean {
+  return process.env[AUTONOMOUS_EXECUTE_ENV] === 'true';
+}
 
 // An accepted village item is a KNOWN, user-initiated intent — the parent tapped
 // "accept" on a surfaced activity. It must NOT be re-derived by the probabilistic
@@ -186,41 +184,6 @@ function classifyEndedCalendarItem(job: IngestedEventPayload): FreshClassificati
 }
 
 /**
- * Family is over the hard ceiling and enforcement is off. Log, write at most
- * one warn audit per UTC day, and page Slack #ops once for that audit. A
- * failure here must not drop the event — that is the bug this path exists to
- * end — so it is caught and the caller continues into classify.
- */
-async function noteUnenforcedCeiling(input: {
-  familyId: string;
-  planTier: string;
-  childCount: number;
-  monthToDateCostUsd: number;
-  ceilingUsd: number;
-}): Promise<void> {
-  const day = spendCeilingDay(new Date());
-  logger.warn(
-    { ...input, day },
-    'orchestrator: family over HARD monthly LLM-cost ceiling — enforcement off, continuing',
-  );
-  try {
-    const noted = await recordSpendCeilingExceeded({
-      familyId: input.familyId,
-      day,
-      detail: { ...input, day, enforced: false },
-    });
-    if (!noted.recorded) return;
-    const slack = await postWorkerOpsSlack(spendCeilingWarnText({ ...input, day }));
-    logger.warn({ familyId: input.familyId, slack }, 'orchestrator: spend-ceiling ops page');
-  } catch (err) {
-    logger.error(
-      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
-      'orchestrator: spend-ceiling warn failed; continuing',
-    );
-  }
-}
-
-/**
  * The collaborators the pipeline cannot build for itself. Today that is one: the
  * calendar-invite sender, which lives in apps/web (the ICS composer + the A2
  * dispatch) and is therefore bound by the web drain rather than resolved here.
@@ -265,7 +228,7 @@ export async function runOrchestrator(
 
   // Terminal stages: a prior pass already finished routing this event. 'reviewed'
   // is terminal here because it now marks ONLY non-execute outcomes (rejection,
-  // entitlement gate, below-autonomy-threshold) — an action that qualified for
+  // a structural gate, below-autonomy-threshold) — an action that qualified for
   // autonomous execution is checkpointed at 'approved_pending_execute' instead,
   // which is RESUMABLE below (FIX 1).
   if (resume && ['reviewed', 'routed', 'actioned', 'ignored', 'failed'].includes(resume.status)) {
@@ -323,40 +286,6 @@ export async function runOrchestrator(
       teenContent: resume.teenContent,
     };
   } else {
-    // HARD monthly LLM-cost ceiling — distinct from the soft over-allowance
-    // autonomy valve below. The cost is always computed. Dropping before classify
-    // happens only when SPEND_CEILING_ENFORCED is the literal 'true' (paid tiers
-    // are not launched, so the default keeps the event). Otherwise we warn once
-    // per family per UTC day, page Slack #ops, and continue. A resume never
-    // reaches this branch, so committed in-flight work is never stranded.
-    // Chat turns do not enter this function: the channel router has no ceiling
-    // check of its own.
-    const ceilingPlanTier = await loadFamilyPlanTier(familyId);
-    const childCount = familyContext.stages.length;
-    const monthToDateCostUsd = await loadFamilyMonthToDateCostUsd(familyId);
-    if (isOverHardCeiling(monthToDateCostUsd, ceilingPlanTier, childCount)) {
-      const ceilingUsd = hardCeilingUsd(ceilingPlanTier, childCount);
-      const ceilingDetail = {
-        familyId,
-        planTier: ceilingPlanTier,
-        childCount,
-        monthToDateCostUsd,
-        ceilingUsd,
-      };
-      if (spendCeilingEnforced()) {
-        logger.warn(
-          ceilingDetail,
-          'orchestrator: family over HARD monthly LLM-cost ceiling — dropping before classify (enforcement on)',
-        );
-        await recordSpendCeilingDrop({
-          familyId,
-          detail: { planTier: ceilingPlanTier, childCount, monthToDateCostUsd, ceilingUsd },
-        });
-        return;
-      }
-      await noteUnenforcedCeiling(ceilingDetail);
-    }
-
     const childNames = familyContext.children.map((c) => c.name);
 
     const isAcceptedVillageItem =
@@ -607,7 +536,7 @@ export async function runOrchestrator(
   await recordReviewerVerdict({ actionId, verdict, reviewerMetrics: reviewed.runMetrics });
 
   // FIX 1: 'reviewed' is marked ONLY for outcomes that do NOT execute (a
-  // rejection, an entitlement gate, or below-autonomy-threshold) — those are
+  // rejection, a structural gate, or below-autonomy-threshold) — those are
   // terminal on resume. The execute path checkpoints 'approved_pending_execute'
   // instead, so a crash in the execute window is re-driven, not dropped.
 
@@ -626,65 +555,18 @@ export async function runOrchestrator(
     return;
   }
 
-  // B18 entitlement gate — sits structurally in front of autonomous execution.
-  // An action whose tier requirements the family's plan does not cover NEVER
-  // goes autonomous; it stays at its drafted_for_approval default (drafting and
-  // review of paid features is allowed on every tier — only EXECUTION is gated).
-  const planTier = await loadFamilyPlanTier(familyId);
-  const requiredEntitlement = entitlementRequiredFor(draft.actionType);
-  const gated =
-    !hasEntitlement(planTier, 'autonomy_l3') ||
-    (requiredEntitlement !== null && !hasEntitlement(planTier, requiredEntitlement));
-  if (gated) {
+  if (autonomyDeniedForKind(draft.actionType)) {
     await markEventStage(familyId, eventId, 'reviewed');
-    const missing = !hasEntitlement(planTier, 'autonomy_l3')
-      ? ('autonomy_l3' as const)
-      : (requiredEntitlement as NonNullable<typeof requiredEntitlement>);
     logger.info(
-      { familyId, actionId, planTier, actionType: draft.actionType, missing },
-      'orchestrator: plan tier lacks required entitlement — drafted for approval (not autonomous)',
-    );
-    await recordEntitlementGate({
-      familyId,
-      actionId,
-      actionType: draft.actionType,
-      planTier,
-      requiredEntitlement: missing,
-    });
-    return;
-  }
-
-  // Per-child fairness valve — sits AFTER the entitlement gate, throttling
-  // AUTONOMY only. A family that has blown past its month-to-date LLM-cost
-  // allowance (scaled by child count so big families aren't unfairly cut off)
-  // does NOT auto-execute; the action stays at its drafted_for_approval default
-  // and a distinct action.gated.over_allowance audit carries an upgrade nudge.
-  // childCount is the raw children-row count (one stage per child); reuses the
-  // familyContext loaded once above rather than a second query.
-  const childCount = familyContext.stages.length;
-  const monthToDateCostUsd = await loadFamilyMonthToDateCostUsd(familyId);
-  if (isOverAllowance(monthToDateCostUsd, planTier, childCount)) {
-    await markEventStage(familyId, eventId, 'reviewed');
-    const allowanceUsd = monthlyAllowanceUsd(planTier, childCount);
-    logger.info(
-      { familyId, actionId, planTier, childCount, monthToDateCostUsd, allowanceUsd },
-      'orchestrator: family over monthly LLM-cost allowance — drafted for approval (autonomy paused)',
+      { familyId, actionId, actionType: draft.actionType },
+      'orchestrator: action kind is never autonomous (booking, registration, paying) — drafted for approval',
     );
     await recordActionGate({
       familyId,
       actionId,
       actionType: draft.actionType,
-      reason: 'over_allowance',
-      detail: {
-        planTier,
-        childCount,
-        monthToDateCostUsd,
-        allowanceUsd,
-        nudge:
-          planTier === 'free'
-            ? 'Upgrade to Plus to raise your monthly automation allowance.'
-            : 'You have reached this month’s automation allowance; Hale will keep drafting for your approval and resume acting on its own next month.',
-      },
+      reason: 'autonomy_denied_kind',
+      detail: {},
     });
     return;
   }
@@ -737,10 +619,10 @@ export async function runOrchestrator(
     return;
   }
 
-  // Rule #4 — the per-action-type 5-streak. Autonomy of an action type unlocks
-  // only after ≥5 consecutive most-recent human-approved completions of it.
-  const approvalHistory = await loadActionApprovalHistory(familyId);
-  if (!streakSatisfiesAutonomy(draft.actionType, approvalHistory)) {
+  // Rule #4 — the per-action-type 5-streak, counted per parent. Autonomy of an action
+  // type unlocks only after one parent's own ≥5 consecutive most-recent approvals of it.
+  const standing = await loadAutonomyStanding(familyId, draft.actionType);
+  if (!standing.some((parent) => parent.streakReached)) {
     await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
       { familyId, actionId, actionType: draft.actionType },
@@ -757,12 +639,13 @@ export async function runOrchestrator(
   }
 
   // G1 (VIL-222) — per-action-type autonomy OPT-IN. The 5-streak proves Hale is
-  // reliable at this action type; this gate proves the parent has explicitly TURNED
-  // IT ON (a standing consent_records opt-in). Both must hold before Hale acts
-  // unprompted (rule #4). Pure tightening: it can only hold an action for approval,
-  // never make a family more autonomous. The AUTO surface that grants this ships in
-  // the C-phase; until then every action is held here (safe by construction).
-  if (!(await hasAutonomousActionOptIn(familyId, draft.actionType))) {
+  // reliable at this action type; this gate proves that same parent's grant for it is
+  // live (a standing consent_records opt-in). One parent must hold both before Hale
+  // acts unprompted (rule #4). Pure tightening: it can only hold an action for
+  // approval, never make a family more autonomous. The grant is written by the
+  // parent's own approval that completes their streak (recordHumanApproval); either
+  // parent's switch-off ends it.
+  if (!standing.some((parent) => parent.streakReached && parent.optedIn)) {
     await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
       { familyId, actionId, actionType: draft.actionType },
@@ -782,7 +665,7 @@ export async function runOrchestrator(
   // parents' data, a co-parent's presence requires an active consent record;
   // missing → never autonomous. No co-parent → single-parent household, proceeds.
   if (isCrossParentActionType(draft.actionType)) {
-    const consent = await loadCrossParentConsent(familyId);
+    const consent = await loadCrossParentConsent(familyId, draft.actionType);
     if (consent.hasCoParent && !consent.coParentConsentGranted) {
       await markEventStage(familyId, eventId, 'reviewed');
       logger.info(
@@ -815,6 +698,40 @@ export async function runOrchestrator(
       actionType: draft.actionType,
       reason: 'parent_commitment',
       detail: { commitsParentToEnrollmentBookingOrPayment: true },
+    });
+    return;
+  }
+
+  if (!autonomousExecuteEnabled()) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, actionType: draft.actionType },
+      'orchestrator: autonomous execute lane off — drafted for approval',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      reason: 'lane_off',
+      detail: { lane: AUTONOMOUS_EXECUTE_ENV },
+    });
+    return;
+  }
+
+  // The turn-on text has to have been delivered before Hale does the kind, including
+  // when quiet hours held it overnight. The lane being on is not that text.
+  if (!(await autonomyTurnOnDelivered(familyId, draft.actionType))) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, actionType: draft.actionType },
+      'orchestrator: turn-on text not delivered — drafted for approval',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      reason: 'autonomy_notice_pending',
+      detail: { consentType: 'autonomous_action_class', consentScope: draft.actionType },
     });
     return;
   }
@@ -854,18 +771,22 @@ async function executeAndRecord(
   googleCalendar?: GoogleCalendarPlacement,
   actorUserId?: string | null,
 ): Promise<void> {
+  const decision = {
+    source: actorUserId ? ('human' as const) : ('autonomous' as const),
+    reason: approved.verdict.rationale,
+  };
   try {
     const execution = await runExecutor(
       { familyId, approved, actorUserId: actorUserId ?? null },
       executorDeps(calendarInvites, googleCalendar),
     );
-    await recordExecution({ actionId, result: execution.detail, ok: execution.ok });
+    await recordExecution({ actionId, result: execution.detail, ok: execution.ok, decision });
     await markEventStage(familyId, eventId, execution.ok ? 'actioned' : 'failed');
     logger.info({ familyId, actionId, ok: execution.ok }, 'orchestrator: action executed');
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown executor error';
     logger.error({ familyId, actionId, err }, 'orchestrator: executor failed');
-    await recordExecution({ actionId, result: { error: message }, ok: false });
+    await recordExecution({ actionId, result: { error: message }, ok: false, decision });
     await markEventStage(familyId, eventId, 'failed');
   }
 }
@@ -915,6 +836,41 @@ async function resumeIntoExecutor(
     return;
   }
 
+  // A checkpoint is either an autonomous pass's or a human approval's claim; only the
+  // autonomous one is held for a denied kind, so a parent's approval is never rewound.
+  const humanApprover = await loadHumanApprover(existing.actionId);
+  if (humanApprover === null && autonomyDeniedForKind(existing.actionType)) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, eventId, actionId: existing.actionId, actionType: existing.actionType },
+      'orchestrator: never-autonomous action kind at approved_pending_execute with no human approval — re-gated on resume (executor not reached)',
+    );
+    await recordActionGate({
+      familyId,
+      actionId: existing.actionId,
+      actionType: existing.actionType,
+      reason: 'autonomy_denied_kind',
+      detail: { resumed: true },
+    });
+    return;
+  }
+
+  if (humanApprover === null && !(await autonomyTurnOnDelivered(familyId, existing.actionType))) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, eventId, actionId: existing.actionId, actionType: existing.actionType },
+      'orchestrator: turn-on text not delivered — re-gated on resume (executor not reached)',
+    );
+    await recordActionGate({
+      familyId,
+      actionId: existing.actionId,
+      actionType: existing.actionType,
+      reason: 'autonomy_notice_pending',
+      detail: { resumed: true },
+    });
+    return;
+  }
+
   const verdict = await loadApprovedVerdictForAction(existing.actionId);
   if (!verdict || verdict.kind !== 'approve') {
     throw new Error(
@@ -944,7 +900,7 @@ async function resumeIntoExecutor(
     approved,
     calendarInvites,
     googleCalendar,
-    null,
+    humanApprover,
   );
 }
 
@@ -991,7 +947,7 @@ export function defaultExecuteApprovedDeps(): ExecuteApprovedDeps {
  * can't become valid).
  *
  * CONSENT BOUNDARY (hard rule #5): a human's approval IS the override for the
- * AUTONOMY gates (streak / 7-day window / confidence / entitlement-for-autonomy) —
+ * AUTONOMY gates (streak / 7-day window / confidence / the execute lane) —
  * that is the entire point of L2 "draft → human approves → execute". Those gates
  * decide whether HALE may act on its own; once a parent says "yes, send it", they
  * no longer apply. Cross-parent consent is NOT an autonomy gate — it is a separate
@@ -1001,10 +957,10 @@ export function defaultExecuteApprovedDeps(): ExecuteApprovedDeps {
  * (audited action.gated.cross_parent_consent), even with a valid human approval.
  */
 export async function executeApprovedAction(
-  input: { actionId: string; familyId: string; approvedBy: string },
+  input: { actionId: string; familyId: string; approvedBy: string; policyVersion: string },
   deps: ExecuteApprovedDeps = defaultExecuteApprovedDeps(),
 ): Promise<void> {
-  const { actionId, familyId, approvedBy } = input;
+  const { actionId, familyId, approvedBy, policyVersion } = input;
 
   const action = await deps.loadAction(actionId);
   if (!action) {
@@ -1030,7 +986,7 @@ export async function executeApprovedAction(
   // CONSENT BOUNDARY note above). Re-checked at approval time, not just at draft
   // time, because the co-parent may have signed up between draft and approval.
   if (isCrossParentActionType(action.actionType)) {
-    const consent = await deps.loadConsent(familyId);
+    const consent = await deps.loadConsent(familyId, action.actionType);
     if (consent.hasCoParent && !consent.coParentConsentGranted) {
       deps.log.warn(
         { familyId, actionId, actionType: action.actionType },
@@ -1078,6 +1034,7 @@ export async function executeApprovedAction(
     eventId: action.eventId,
     actionId,
     approvedBy,
+    policyVersion,
   });
   if (!approval.claimed) {
     if (approval.eventStatus !== 'approved_pending_execute') {
@@ -1093,7 +1050,13 @@ export async function executeApprovedAction(
     );
   } else {
     deps.log.info(
-      { familyId, actionId, approvedBy, actionType: action.actionType },
+      {
+        familyId,
+        actionId,
+        approvedBy,
+        actionType: action.actionType,
+        autonomy: approval.autonomy.outcome,
+      },
       'actions.approved: human-approved action driving into execution',
     );
   }

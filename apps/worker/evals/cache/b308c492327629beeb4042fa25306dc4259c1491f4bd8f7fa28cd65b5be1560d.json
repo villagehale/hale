@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://www.dailyfaceoff.com/teams/toronto-maple-leafs/schedule/2026-10-12",
+    "https://theleafsnation.com/toronto-maple-leafs-schedule/2026-10-14",
+    "https://www.nhl.com/mapleleafs/",
+    "https://www.cbssports.com/nhl/teams/TOR/toronto-maple-leafs/schedule/",
+    "https://www.espn.co.uk/nhl/team/schedule/_/name/tor",
+    "https://tomsguide.com/entertainment/streaming/what-to-watch-tonight-49-new-shows-and-movies-just-added-to-netflix-paramount-hbo-max-and-more-oct-13-2026",
+    "https://mapleleafshotstove.com/2026/10/14/toronto-maple-leafs-vs-utah-mammoth-game-7-projected-lines-preview-tv-info/",
+    "https://mapleleafshotstove.com/2026/10/14/game-review-mammoth-5-vs-maple-leafs-4",
+    "https://www.sportsmediawatch.com/tv-schedules/nhl-tv-schedule/toronto-maple-leafs/",
+    "https://en.wikipedia.org/wiki/2022_Heritage_Classic"
+  ],
+  "notes": "The Leafs do not play on Monday, Oct 12, 2026.\n\n- Daily Faceoff's weekly schedule lists no games for Monday, October 12. LeafsNation's schedule says the same.\n- The team's site shows a Maple Leafs game day at Utah on Oct. 13, 2026, and Auston Matthews practised on Oct. 12.\n- Their next game is Tuesday, Oct 13, at the Utah Mammoth. It starts at 9 p.m. EST on TSN4. Tom's Guide also lists it at 9pm ET on ESPN+.\n- After that, CBS Sports lists Oct 15 vs Buffalo at 7:00 pm at Scotiabank Arena.\n\nSome of the pages I found were published after Oct 12 and already report the Utah game, so the search results run later than the stated date. Those pages are consistent with there being no game on Oct 12.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 9352
+}

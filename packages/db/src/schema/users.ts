@@ -34,7 +34,7 @@ export const users = pgTable(
     timezone: text('timezone').notNull().default('America/Toronto'),
     units: text('units').notNull().default('metric'),
     /** 0=Sunday, 1=Monday — same as localParts / Date.getUTCDay(), never 7.
-     * Product default Sunday so weekly_plan send matches the site (VIL-319 / F11). */
+     * Product default Sunday (VIL-319 / F11). */
     weekStartDay: smallint('week_start_day').notNull().default(0),
     /** External auth provider id (Clerk user id). Auth lives in Clerk; this is the mirror. */
     externalAuthId: text('external_auth_id').unique(),

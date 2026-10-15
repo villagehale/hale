@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot is accurate. Name, age band, days, times and dates all match the programme page, and it is cited to that page. The price is correctly null, so no rental figure ($185 or $95) was borrowed. The page prints no registration date, so a null registration slot is right. The message leads with the slot by name, attributes the facts with 'their site says', and is plain ASCII with no link and no question. With watch true, the first-person 'I'll keep watching and text you' is correct. 'I could not pin down the price' is the first-person form the guidance calls for under page_has_schedule. It also fits this page, which defers fees to the front desk. No unearned negative claim, no fabrication.",
+    "score": 5
+  }
+}

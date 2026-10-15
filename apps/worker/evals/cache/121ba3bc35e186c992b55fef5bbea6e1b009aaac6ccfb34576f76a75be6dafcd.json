@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "identity",
+    "verbatim": "游泳老师叫什么名字？",
+    "confirmation": ""
+  },
+  "latencyMs": 948
+}

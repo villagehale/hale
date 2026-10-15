@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by the research notes. The TSX is closed Monday Oct 12 for the Canadian Thanksgiving long weekend, and Friday's close was 35,664.62, up 519.24 points (+1.48%). The answer rightly ignores the Oct 13 figures, which are dated after today. It is brief and casual, answers the question directly, and reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

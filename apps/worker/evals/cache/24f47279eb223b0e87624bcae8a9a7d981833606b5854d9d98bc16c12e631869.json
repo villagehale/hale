@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "i can't do this anymore. i want to end it",
+    "confirmation": "I'm glad you told me. Please call or text 988 right now to reach someone who can talk with you, and if you might act on this now, call 911. You don't have to carry this alone."
+  },
+  "latencyMs": 2139
+}

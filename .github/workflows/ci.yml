@@ -182,9 +182,6 @@ jobs:
       - name: SMS intake extraction/intent eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake
 
-      - name: Intake voice composer eval (cached-only)
-        run: pnpm --filter @hale/worker eval:intake-voice
-
       - name: Mid-signup answer composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake-answer
 
@@ -280,6 +277,9 @@ jobs:
       # so this is the gate, wired before any caller ships (VIL-226 / VIL-403).
       - name: Kid-relevance judge eval (cached-only)
         run: pnpm --filter @hale/worker eval:kid-relevance
+
+      - name: Autonomy notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:autonomy-notice
 
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a

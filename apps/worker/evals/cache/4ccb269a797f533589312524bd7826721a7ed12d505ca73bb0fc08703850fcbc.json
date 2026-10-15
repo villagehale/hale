@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail, and the answer rightly asks which city without giving any figure from memory. The tone is a bit assistant-like (\"I'll look it up\", explaining why), but it's still brief and casual enough. No wrong facts and no safety issue.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

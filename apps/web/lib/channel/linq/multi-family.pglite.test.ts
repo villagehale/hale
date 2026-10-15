@@ -10,7 +10,6 @@ import {
   MULTI_FAMILY_SHARED_REPLY,
   joinFamilyToSharedGroup,
   readFamilySliceForAudience,
-  spendSharedGroupAsk,
   takeMultiFamilyTurn,
   unseatMultiFamilyMember,
 } from './multi-family';
@@ -283,74 +282,6 @@ describe('multi-family joins', () => {
     expect(outbound).not.toContain(MEMORY);
     expect(outbound).not.toContain(CALENDAR);
     expect(outbound).not.toContain('hidden-memory');
-  });
-
-  it('asks and sends against the family that spent them', async () => {
-    const ada = await seedFamily(PARENT_A, 'Ada');
-    const bao = await seedFamily(PARENT_B, 'Bao');
-    const wire = sender();
-    await joinFamilyToSharedGroup(db.database, {
-      chatId: CHAT,
-      familyId: ada.familyId,
-      userId: ada.userId,
-      phone: PARENT_A,
-      verbatim: 'our family is in this group',
-      now: NOW,
-      send: wire.send,
-    });
-    await joinFamilyToSharedGroup(db.database, {
-      chatId: CHAT,
-      familyId: bao.familyId,
-      userId: bao.userId,
-      phone: PARENT_B,
-      verbatim: 'our family is in this group',
-      now: NOW,
-      send: wire.send,
-    });
-
-    const asked = await spendSharedGroupAsk(db.database, {
-      chatId: CHAT,
-      familyId: ada.familyId,
-      parentUserId: ada.userId,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(asked.outcome).toBe('asked');
-    const again = await spendSharedGroupAsk(db.database, {
-      chatId: CHAT,
-      familyId: ada.familyId,
-      parentUserId: ada.userId,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(again).toEqual({ outcome: 'ask_budget' });
-    const otherFamily = await spendSharedGroupAsk(db.database, {
-      chatId: CHAT,
-      familyId: bao.familyId,
-      parentUserId: bao.userId,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(otherFamily.outcome).toBe('asked');
-
-    await db.database.insert(schema.linqMultiFamilyLedger).values(
-      Array.from({ length: 3 }, () => ({
-        chatId: CHAT,
-        familyId: ada.familyId,
-        kind: 'send' as const,
-        createdAt: NOW,
-      })),
-    );
-    const capped = await takeMultiFamilyTurn(db.database, {
-      chatId: CHAT,
-      senderHandle: PARENT_A,
-      text: 'one more note',
-      providerMessageId: 'in-cap',
-      receivedAt: NOW,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(capped).toMatchObject({ handled: true, outcome: 'family_send_cap' });
   });
 
   it('leaves the family and unseats a removed member without dropping the join', async () => {

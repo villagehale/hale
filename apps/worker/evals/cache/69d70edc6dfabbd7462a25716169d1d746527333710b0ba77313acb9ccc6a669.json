@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "In French, takes a clear side (yes) with a reason. No facts at stake. Tone is a bit formal and wordy ('tout à fait acceptable', 'sucrosité'), less snappy than a friend's text, but it's a real pick, not an assistant offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The sources split and there is no single agreed winner",
+        "from": "There is no single agreed winner. The sources split between the Toyota Sienna, Honda Odyssey, Kia Carnival Hybrid and Chrysler Pacifica."
+      },
+      {
+        "states": "The 2026 Kia Carnival Hybrid is called the best overall minivan for most families by The Weekly Driver, the newest source",
+        "from": "The Weekly Driver (5 days old, the newest source): It calls the 2026 Kia Carnival Hybrid the best overall minivan for most families."
+      },
+      {
+        "states": "The Carnival Hybrid gets 32 mpg combined",
+        "from": "The Hybrid gets 32 mpg combined, and its powertrain warranty is 10 years/100,000 miles."
+      },
+      {
+        "states": "The Carnival Hybrid has a 10-year/100,000-mile powertrain warranty",
+        "from": "The Hybrid gets 32 mpg combined, and its powertrain warranty is 10 years/100,000 miles."
+      },
+      {
+        "states": "Edmunds ranks the Toyota Sienna first",
+        "from": "Its ranking is 1) 2026 Toyota Sienna, 2) 2026 Kia Carnival Hybrid"
+      },
+      {
+        "states": "Car Talk's Ray picks the Sienna",
+        "from": "Ray's personal pick is the Sienna"
+      },
+      {
+        "states": "U.S. News names the Honda Odyssey the best minivan",
+        "from": "It names the 2026 Honda Odyssey the best minivan, with a 9.3/10 score."
+      },
+      {
+        "states": "CarGurus ranks the Chrysler Pacifica first",
+        "from": "It ranks the Chrysler Pacifica #1"
+      }
+    ],
+    "answer": "My pick is the 2026 Kia Carnival Hybrid. The newest review I found, from The Weekly Driver, calls it the best overall minivan for most families, and I agree: it gets 32 mpg combined and has a 10-year/100,000-mile powertrain warranty. Reviewers really do split, though. Edmunds and Car Talk's Ray lean toward the Sienna, U.S. News has the Odyssey on top, and CarGurus ranks the Pacifica first."
+  },
+  "latencyMs": 9296
+}

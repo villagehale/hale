@@ -10,12 +10,12 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { type DueCommitment, loadOpenCommitmentById } from '~/lib/commitments/ledger';
+import { cancelActivityPromise } from './commitment';
 import { type DeepLaneDeps, type DeepLaneRun, defaultDeepLaneDeps, runDeepLane } from './deep-lane';
 import { deidentifyActivityQuery } from './deidentify';
 import { type FollowUpDelivery, deliverFollowUp } from './deliver';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
 import { SLOTS_IN_TEXT } from './share-page';
-import { cancelActivityPromise } from './commitment';
 import { defaultActivityFollowUpDeps, resolveFollowUpRecipient } from './sweep';
 
 /**

@@ -109,6 +109,8 @@ import { fileURLToPath } from 'node:url';
 import { TEENAGER_START_MONTHS, ageInMonths, deriveStage } from '@hale/types';
 import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
+import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
+import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import {
   COACH_CHANNEL_FIXTURES,
   FIXTURE_CHILDREN,
@@ -123,9 +125,7 @@ import {
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
-import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
 import { modelProse, nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
-import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
   JUDGE_MIN,
@@ -137,6 +137,7 @@ import {
   evalRunTag,
   evalSubjectClient,
   evalSubjectRequest,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -170,6 +171,18 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel
 const SPOTS_URL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'url.ts');
 const SPOTS_READ_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'availability.ts');
 const SPOTS_FIXTURES = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'fixtures');
+/** The REAL switch-off verb and the REAL skill listing for it. Imported, never replicated:
+ * neither reaches for a `~/` alias. Only `autonomy` fixtures list it, as the runtime only
+ * lists it for a family with an autonomy grant, so every other fixture's bytes stay put. */
+const AUTONOMY_SWITCH_OFF_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'coach',
+  'autonomy-switch-off-tool.ts',
+);
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
@@ -207,9 +220,6 @@ const APP_POINTING = [
 ];
 /** Mirrors PRIVATE_EVENT_WHAT in apps/web/lib/channel/coach/tools.ts. */
 const PRIVATE_EVENT_WHAT = 'A private calendar item';
-/** The skill's own ceiling ("two short sentences is the target, four the ceiling"),
- * tightened by one: nothing in this corpus needs a fourth sentence. */
-const MAX_SENTENCES = 3;
 
 /* VOICE_TELLS — the habits the skill and the register both ban, imported above. It is a
  * sibling module for the same reason the menu gate is: the four register classes added
@@ -542,9 +552,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     return `${fitted} ${tail}`;
   }
   const suffix = redactTeenNames(
-    [protectedTail, link]
-      .filter((part) => part.trim() !== '')
-      .join(' '),
+    [protectedTail, link].filter((part) => part.trim() !== '').join(' '),
     children,
     NOW,
   );
@@ -1060,6 +1068,17 @@ function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding) {
   };
 }
 
+/** The real switch-off verb over a ledger that records each kind instead of writing it. */
+function recordingSwitchOffTool(turnOffAutonomyTool, calls, parentWords) {
+  return turnOffAutonomyTool({
+    parentWords,
+    revoke: async ({ kind }) => {
+      calls.push({ tool: 'turn_off_autonomy', kind });
+      return { outcome: 'revoked', consentRecordId: 'fixture-consent' };
+    },
+  });
+}
+
 // ── the context the runtime assembles (apps/web/lib/channel/coach/runtime.ts) ──
 // Teen children arrive REDACTED to stage, exactly as loadAgentContext emits them — so
 // the model is never handed the name the reply is checked for.
@@ -1430,7 +1449,18 @@ function dateSourcesFor(fixture, calls) {
   }
   for (const event of FIXTURE_EVENTS) {
     if (isPrivate(event)) continue;
-    sources.push(dateSource(`${event.title} ${event.location ?? ''}`, calendarDate(event.startsAt)));
+    sources.push(
+      dateSource(`${event.title} ${event.location ?? ''}`, calendarDate(event.startsAt)),
+    );
+  }
+  // A drafted move or add owns the date the tool resolved and handed back: the skill tells
+  // the agent to say THAT day, so naming it is recall, not a date borrowed from a find.
+  for (const call of calls) {
+    if (!call.startsAt) continue;
+    const event = FIXTURE_EVENTS.find((row) => row.eventId === call.eventId);
+    if (event && isPrivate(event)) continue;
+    const label = event ? `${event.title} ${event.location ?? ''}` : call.title;
+    sources.push(dateSource(label, calendarDate(call.startsAt)));
   }
   // A drafted move or add owns the date the tool resolved and handed back: the skill tells
   // the agent to say THAT day, so naming it is recall, not a date borrowed from a find.
@@ -1471,6 +1501,15 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   // the model composed.
   for (const tool of expect.mustNotCall ?? []) {
     if (toolNames.has(tool)) failures.push(`called ${tool} with nothing to call it on`);
+  }
+  if (expect.turnOffWithin) {
+    const stray = calls
+      .filter((call) => call.tool === 'turn_off_autonomy')
+      .map((call) => call.kind)
+      .filter((kind) => !expect.turnOffWithin.includes(kind));
+    if (stray.length > 0) {
+      failures.push(`turned off ${stray.join(', ')}, which the text never asked about`);
+    }
   }
 
   if (expect.mustNotDraft && drafts.length > 0) {
@@ -1597,14 +1636,12 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   const questions = (reply.match(/\?/g) ?? []).length;
   if (questions > 1) failures.push(`${questions} questions in one message (at most one)`);
 
-  // Counted on what the MODEL wrote. The plan offer is two fixed sentences that Hale
-  // appends after the trim, so charging them to this budget would leave a coaching turn
-  // one sentence to answer in — measuring the appended line instead of the prose the
-  // gate exists to hold. The QUESTION count above deliberately still sees it: "one
-  // question per message" is about what lands on the phone, and the offer is that one.
-  // The referral block is appended for the same reason and gets the same treatment: the
-  // model wrote one line of it and the runtime added a URL, and charging a parent's
-  // sentence budget for a link is how the answer around it gets squeezed out.
+  // The plan offer, the referral line, the nearby clause and the activity URL are
+  // appended after the fit, by the runtime. The question count above still sees the
+  // whole reply. The segment count below is on what the MODEL wrote, with any offer it
+  // wrote inline taken off first — the runtime de-duplicates that copy against the
+  // appended one, so charging it here would fail a turn for a sentence that is only
+  // ever sent once.
   const referralForward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
   const appended = [
     calls.find((call) => call.tool === 'offer_full_plan')?.offer,
@@ -1612,25 +1649,16 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   ]
     .filter(Boolean)
     .join(' ');
-  // The nearby clause and the activity URL are appended the same way the offer is:
-  // after the fit, by the runtime. A correct two-sentence answer plus that tail is
-  // not four sentences. The question count above still sees the whole reply.
   const tail = {
     appended,
     nearbyClause: fixture.nearby?.clause ?? '',
     links: activityLinksFor(fixture, calls),
   };
-  const authored = modelProse(reply, tail);
-  const sentenceCount = sentences(authored).length;
-  if (sentenceCount > MAX_SENTENCES) {
-    failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
-  }
 
   // THE CORPUS WAS BLIND HERE, and it is worth saying why: every other gate in this
   // function reads `reply`, which is the POST-TRIM body, and fitToBudget guarantees that
-  // body is inside the budget. So the segment check above can never fire, the sentence
-  // count reads survivors, and a model composing twice what it can send graded exactly
-  // like one writing to the ceiling.
+  // body is inside the budget. So the segment check above can never fire, and a model
+  // composing twice what it can send graded exactly like one writing to the ceiling.
   //
   // That is how the 2026-08-21 bench shipped: the flagship question composed a verified
   // Sep 1 opening plus two finds off a live web search, 548 units against 306, and the
@@ -1832,7 +1860,7 @@ const JUDGE_SYSTEM = [
   'not "storytime", "a lantern thing", or a rewrite built from the venue. A',
   'paraphrase of the name is a miss; score it a 2 at most.',
   "A DATE BELONGS TO ONE FIND. The day on an activity is that activity's own",
-  '`when`, and no other row\'s. Putting Aug 8 on a find whose when is Aug 9 is',
+  "`when`, and no other row's. Putting Aug 8 on a find whose when is Aug 9 is",
   'an invention even when Aug 8 is sitting on a different find in the same turn.',
   'Score that a 1.',
   "REGISTRATION WINDOWS ARE HALE'S OWN VERIFIED FACTS. `knows.registrationWindows` is a",
@@ -1978,6 +2006,10 @@ async function main() {
     import.meta.url,
   ));
   const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
+  const { turnOffAutonomyTool, augmentCoachSkillForAutonomySwitchOff } = await tsImport(
+    AUTONOMY_SWITCH_OFF_SRC,
+    import.meta.url,
+  );
   const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
   const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
   const { readSpot } = await tsImport(SPOTS_READ_SRC, import.meta.url);
@@ -1988,8 +2020,9 @@ async function main() {
     notFoundPage: spotPage('markham-course-not-found'),
   };
   const compact = contextInternal.compactTranscript;
-  const getJudgeClient = lazyAnthropic();
-  const getCurrentClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getJudgeClient = lazyAnthropic('coach-channel-judge');
+  const getCurrentClient = lazyAnthropic('coach-channel');
   const getSubjectClient = () => evalSubjectClient(getCurrentClient);
   const cost = makeCost();
   const subjectLatencies = [];
@@ -2106,6 +2139,9 @@ async function main() {
           toolOutputs,
         ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
+        ...(fixture.autonomy
+          ? [recordingSwitchOffTool(turnOffAutonomyTool, calls, fixture.text)]
+          : []),
       ];
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}${nonce}`,
@@ -2117,7 +2153,7 @@ async function main() {
         subjectLatencies,
       );
       const run = await agent.runAgent({
-        skill,
+        skill: augmentCoachSkillForAutonomySwitchOff(skill, fixture.autonomy === true),
         context: turnContext,
         tools,
         client,
@@ -2234,7 +2270,12 @@ async function main() {
       calls.some((call) => call.tool === 'find_activities') ? pick : null,
     ]);
     const invented =
-      reply === null ? [] : [...fabrications(reply, hay), ...borrowedFindDates(reply, dateSourcesFor(fixture, calls))];
+      reply === null
+        ? []
+        : [
+            ...fabrications(reply, hay),
+            ...borrowedFindDates(reply, dateSourcesFor(fixture, calls)),
+          ];
     const verdict =
       broken || reply === null
         ? null
@@ -2293,7 +2334,11 @@ async function main() {
               // drops undefined, so every judge verdict already committed stays valid.
               nearbyCountAppended:
                 fixture.nearby &&
-                nearbyCountWasAppended(reply, fixture.nearby.clause, activityLinksFor(fixture, calls))
+                nearbyCountWasAppended(
+                  reply,
+                  fixture.nearby.clause,
+                  activityLinksFor(fixture, calls),
+                )
                   ? `${fixture.nearby.clause} - composed by Hale from what other households answered and appended by the runtime; the model neither wrote this sentence nor saw it`
                   : undefined,
               // What THIS text's Village read returned, split the way the
@@ -2341,6 +2386,16 @@ async function main() {
                 'watch ONE FULL CLASS for a spot, with `watch_for_opening`, and only on a course-page link the parent pasted in their own message — Hale re-reads that page itself and texts them within about ten minutes of a spot showing. With no link there is nothing to watch, and asking for the link is the right answer rather than a stall',
               ],
               draftCapPerMessage: MAX_DRAFTS_PER_TURN,
+              // `undefined` off the switch-off fixtures, so every committed verdict's key
+              // stays put (JSON.stringify drops it).
+              autonomySwitchOff: fixture.autonomy
+                ? {
+                    fact: 'This family let Hale send and reply to email on its own. `turn_off_autonomy` stops that kind: after it, Hale asks before each one.',
+                    turnedOffThisTurn: calls
+                      .filter((call) => call.tool === 'turn_off_autonomy')
+                      .map((call) => call.kind),
+                  }
+                : undefined,
             },
             week: { summary: FIXTURE_WEEK_SUMMARY, events: redactedWeek() },
             // The thread the model was handed, on the same terms as everything else in
@@ -2431,9 +2486,13 @@ async function main() {
   const menus = results.filter((r) => r.failures.some((f) => f.startsWith('THE MENU')));
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
   const meanScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-  const belowFloor = results.filter(
+  const underFloor = results.filter(
     (r) => typeof r.score === 'number' && r.score < MIN_PER_FIXTURE_VOICE,
   );
+  // A fixture may name a gap the floor would otherwise gate on — printed below with its
+  // reason on every run, never dropped. Only for a gap outside what the fixture controls.
+  const floorWaived = underFloor.filter((r) => r.fixture.expect.voiceFloorWaived);
+  const belowFloor = underFloor.filter((r) => !r.fixture.expect.voiceFloorWaived);
   const voiceOk =
     !broken && !severed && scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0;
   const segments = answered.map((r) => smsSegments(r.reply));
@@ -2478,6 +2537,11 @@ async function main() {
       `BELOW THE FLOOR:              ${belowFloor
         .map((r) => `${r.fixture.id} (${r.score}${r.draws ? ` of ${r.draws.join('/')}` : ''})`)
         .join(', ')}`,
+    );
+  }
+  for (const r of floorWaived) {
+    console.log(
+      `FLOOR WAIVED (named gap):     ${r.fixture.id} (${r.score}${r.draws ? ` of ${r.draws.join('/')}` : ''}) — ${r.fixture.expect.voiceFloorWaived}`,
     );
   }
   if (segments.length) {

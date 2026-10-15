@@ -10,6 +10,7 @@ import {
   loadOpenInviteByPhone,
 } from '~/lib/channel/caregiver/invites';
 import {
+  type CaregiverDeps,
   type CaregiverOutcome,
   type CoParentOutcome,
   type LapsedInviteOutcome,
@@ -21,12 +22,7 @@ import {
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
-import {
-  defaultNameCaptureDeps,
-  handleNameCaptureReply,
-  parentNeedsName,
-  storeModelParentName,
-} from '~/lib/channel/identity/name-reply';
+import { parentNeedsName, storeModelParentName } from '~/lib/channel/identity/name-reply';
 import {
   confirmHeldGivenName,
   loadParentCallName,
@@ -47,22 +43,16 @@ import {
   shareHaleContactCardOnce,
 } from '~/lib/channel/linq/contact-card';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
-import {
-  LINQ_GROUP_LINE_MISSING_TEXT,
-  LINQ_GROUP_TRIGGER_PHRASE,
-  formatLinqLineForParent,
-  linqCoParentAsk,
-} from '~/lib/channel/linq/group';
+import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
-import { offerYearFindPoll } from '~/lib/channel/linq/poll';
-import type { Moment } from '~/lib/channel/off-domain/moment-request';
 import {
   plainTextWithoutLinks,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { projectCivicCandidates } from '~/lib/civic/project';
@@ -78,63 +68,25 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import { groupsFromFindBody } from './activity-map';
 import type { IntakeAnswerComposer } from './answer';
-import { findReenrollableChannelOwner, reenrolOnStart } from './channel-state';
-import { SHARED_STOP_ASKING_KEY } from './cold-start/budget';
 import {
-  DISCOVERY_NEXT_STEP,
-  KNOWN_VENUE_HELLO,
-  discoveryBubble,
-  logisticsBubble,
-  namesAsk,
-  notedAfterLogistics,
-  stopAskingReply,
-} from './cold-start/copy';
+  findReenrollableChannelOwner,
+  findRevokedChannelOwner,
+  reenrolOnStart,
+} from './channel-state';
 import { coldStartLadderEnabled } from './cold-start/flags';
-import { type ColdStartJudgement, judgeColdStartIntent } from './cold-start/intent';
-import {
-  activityFromFind,
-  ageCorrectionFact,
-  ageCorrectionMonths,
-  kidFirstName,
-  mentionsSchoolOrCamp,
-  signupDateKnownForPick,
-} from './cold-start/ladder';
+import { ageCorrectionFact, kidFirstName } from './cold-start/ladder';
 import { declineOptionalAsk, gateOptionalAsk, recordOptionalAsk } from './cold-start/ledger';
-import { planFollowAsk, planPull } from './cold-start/pull';
 import { type ConnectorOfferLabel, sendYearConnectorCards } from './connector-offer';
 import {
-  AMBIGUOUS_CLARIFY_BY_LANGUAGE,
-  ASSENT_ACK_BY_LANGUAGE,
-  COLD_START_ASK_BY_LANGUAGE,
-  CO_PARENT_ASK_BY_LANGUAGE,
-  DECLINE_ACK_BY_LANGUAGE,
-  FIRST_TOUCH_AGES_BY_LANGUAGE,
-  FIRST_TOUCH_EMPTY_BY_LANGUAGE,
-  FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
-  FIRST_TOUCH_SMS_BY_LANGUAGE,
-  HELP_REPLY_BY_LANGUAGE,
   INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   type IntakeGap,
-  REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
-  START_ACK_BY_LANGUAGE,
-  STOP_ACK_BY_LANGUAGE,
-  UNREADABLE_INTAKE_REPLY_BY_LANGUAGE,
-  WATCH_OFFER,
-  WATCH_OFFER_ASK,
-  detailsBlocked,
-  firstInboundWords,
-  greeting,
-  greetingWithArea,
-  isBareFirstHello,
-  looksLikeIntakeDetails,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
 import { deriveDateOfBirth, parseCanadianPostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
-import { findThisWeekWithin, renderWeekFind } from './first-touch-find';
-import { firstTouchLadderEnabled, firstTouchLocationCardEnabled } from './first-touch-flag';
-import { type FirstTouchPlace, placeFromMessage, placeFromVenue } from './first-touch-place';
+import { firstTouchLocationCardEnabled } from './first-touch-flag';
+import { type FirstTouchPlace, placeFromVenue } from './first-touch-place';
 import {
   type FriendChild,
   type FriendFallback,
@@ -144,24 +96,14 @@ import {
   type FriendVoiceResult,
   OPENING_ATTEMPT_TIMEOUT_MS,
   type SpeakOptions,
-  assembleFriendBody,
-  judgeFriendReply,
   pageOncePerDay,
   speakFriend,
   turnsFromTranscript,
 } from './friend-voice';
-import { onboardingFriendVoiceEnabled } from './friend-voice-flag';
 import { identityChallengeReply } from './identity-challenge';
-import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
-import { type IntakeKeyword, type IntakeKeywordMatch, matchKeyword } from './keywords';
-import {
-  cheerUpIntakeReply,
-  isCheerUpAsk,
-  isLiveLookupAsk,
-  liveLookupFallbackReply,
-} from './live-lookup';
-import { isOfficialPageAsk, officialPageFallbackReply } from './official-page';
+import { isCheerUpAsk, isLiveLookupAsk } from './live-lookup';
+import { isOfficialPageAsk } from './official-page';
 import {
   type CoparentGroupMode,
   type OnboardingCapture,
@@ -174,6 +116,16 @@ import {
   onboardingMissing,
   storedFromCapture,
 } from './onboarding-turn';
+import { holdSender, releaseSender } from './opt-out-hold';
+import {
+  type OptOutReader,
+  type OptOutReading,
+  isCrisisReading,
+  isIdentityReading,
+  readTextOnce,
+  readTurnOnce,
+  sharedOptOutReader,
+} from './opt-out-reader';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
@@ -186,7 +138,6 @@ import {
   type IntakeLadderStep,
   type IntakeSession,
   type IntakeState,
-  type SessionPatch,
   type TranscriptEntry,
   createSession,
   linqContactCardShareBlocked,
@@ -194,11 +145,10 @@ import {
   saveSession,
   transcriptHasOutbound,
 } from './session';
-import { isQuestionOrNewFind, isSoftLadderAck } from './soft-ack';
+import type { SignupStepReader } from './signup-step';
 import type { ChannelTransport } from './transport';
-import { claimIntakeTurn, completeIntakeTurn, releaseIntakeTurn } from './turn-claim';
+import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
-import { yearOpenEmptyMessage } from './year-open';
 
 /**
  * VIL-237 · M2 — the conversational SMS intake state machine.
@@ -251,21 +201,38 @@ export interface IntakeDeps {
   extractor: IntakeExtractor;
   intentReader: ReplyIntentReader;
   radar: RadarComposer;
-  /** Writes the acknowledgment half of the one follow-up. Required, never nullable
-   * (rule #11): it owns its own deterministic fallback and always returns a whole
-   * message, so "no composer" would be a silently colder intake with nothing logged. */
-  ackComposer: IntakeAckComposer;
   /**
    * Friend-voice onboarding replies. Required in production wiring. A test that
-   * leaves it off gets the named fallback inside {@link speakFriend}, and only
-   * when ONBOARDING_FRIEND_VOICE_ENABLED is exactly `on`.
+   * leaves it off gets the named fallback inside {@link speakFriend}.
    */
   friendVoice?: FriendVoiceComposer;
+  /**
+   * #868 · the model reads an opt-out from any wording. Read after the carrier STOP
+   * keyword (which still revokes first) and before any onboarding or group turn.
+   * Absent in tests that do not exercise it.
+   */
+  optOutReader?: OptOutReader;
+  /** #868: writes the lines that used to be fixed (identity, a crisis the answer model flagged). */
+  saidLine?: SaidLineWriter;
+  /** #868 · failed-read hold store; defaults to opt_out_read_holds. */
+  optOutHold?: OptOutHoldPort;
   /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
    * Required, never nullable (rule #11): withholding it would restore the exact bug it
    * closed — an off-script question silently becoming a re-ask — and its own "there was
    * nothing to answer" is a named outcome, so absence has no meaning left to carry. */
   answerComposer: IntakeAnswerComposer;
+  /**
+   * Whether a mid-signup text answers the open step. The model reads it, in
+   * any wording and any language. Absent is `not_configured` and the ladder
+   * continues. A failed read, or a read that says this is not an answer,
+   * closes the session so the door can hand the parent's own words to the
+   * coach, which replies in the language they wrote in.
+   */
+  signupStepReader?: SignupStepReader;
+  /** Reads a consent reply during intake. Absence is named and assents to nothing. */
+  consent?: import('~/lib/channel/consent-reply').ConsentReader;
+  /** Writes a consent ask during intake. Absence is named and sends nothing. */
+  consentAsk?: import('~/lib/channel/consent-ask').ConsentAskWriter;
   /** What to call this parent, after a real radar win (PR #689). Intake's consent
    * tail does not call it: a name ask on the assent acknowledgment is the bot voice
    * this turn exists to stop. The dep stays required so a missing composer is a
@@ -317,7 +284,7 @@ export interface IntakeDeps {
   now?: Date;
 }
 
-export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused';
+export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused' | 'voice_unsent';
 
 export type IntakeOutcome =
   /**
@@ -366,7 +333,7 @@ export type IntakeOutcome =
    * next inbound is handled by the same branch as if this turn had not happened.
    *
    * `source` separates the two very different messages that can go out: `composed` is
-   * the answer, `safety` is the moment writer's reply with no signup question after it.
+   * the answer, `safety` is the fixed 811/911 line with no signup question after it.
    */
   | { status: 'question_answered'; source: 'composed' | 'safety' | 'identity' }
   /**
@@ -401,7 +368,7 @@ export type IntakeOutcome =
       // `group_turn_during_intake` (group onboarding v2): a family-group message from a
       // number whose own 1:1 intake is still open. Onboarding is a 1:1 conversation, so
       // nothing of it is answered into the group.
-      reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake';
+      reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake' | 'opted_out';
     }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
@@ -437,7 +404,18 @@ interface Inbound {
    * and what it does NOT suppress. Optional here for the same reason it is optional
    * there: a caller written before the provider could answer a keyword means "it
    * answered nothing", which is exactly what absent resolves to. */
-  providerAnsweredKeyword?: IntakeKeyword | null;
+  providerAnsweredKeyword?: ProviderKeyword | null;
+}
+
+/** The caregiver lane's ports, taken off intake's deps. The names differ on purpose. */
+function caregiverPorts(deps: IntakeDeps): CaregiverDeps {
+  return {
+    transport: deps.transport,
+    threadMessage: deps.threadMessage,
+    openQuestions: deps.openQuestions,
+    consent: deps.consent,
+    ask: deps.consentAsk,
+  };
 }
 
 export async function handleInboundSms(
@@ -455,21 +433,38 @@ export async function handleInboundSms(
   }
   const phoneHash = phoneBlindIndex(phoneE164);
 
-  // 2. Is this a CASL keyword? A pure string test — no I/O, no spend — read BEFORE the
-  // limit so step 3 cannot drop one. STOP is a legal instruction, not traffic: a parent
-  // who has just texted too fast is exactly the parent about to send it, and throttling
-  // it away would leave them subscribed with no record of having asked to leave.
-  const match = matchKeyword(inbound.body);
+  // 2. #868 · no keyword list. The opt-out reader reads every turn, in any wording and
+  // any language; a stop is never throttled away (step 3 still reads an over-limit turn).
+  const reader = deps.optOutReader ?? sharedOptOutReader();
 
   // 3. Rate limit, keyed by the BLIND INDEX (the raw number never reaches the limiter
   // table). Over the limit we go SILENT rather than replying "slow down": a reply is
   // itself an outbound SMS, so answering a flood would hand an SMS-pumping attacker
-  // exactly the amplification they came for. Keywords are the one exemption, and they
-  // are still COUNTED — the flood budget is spent either way, only the drop is skipped.
+  // exactly the amplification they came for. The turn is still read, so a stop in any
+  // wording still revokes; nothing else runs over the limit.
   // A family-group turn the Linq door already charged to the chat spends nothing here.
   if (inbound.budget !== 'chat') {
     const decision = await deps.limiter.check(phoneHash, INTAKE_ROUTE, RATE_LIMITS[INTAKE_ROUTE]);
-    if (!decision.allowed && !match) {
+    if (!decision.allowed) {
+      const reading = await readTurnOnce(reader, inbound, {
+        text: inbound.body,
+        language: null,
+      });
+      await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
+      if (reading?.intent === 'stop') {
+        return handleStop(
+          database,
+          {
+            phoneE164,
+            inbound,
+            session: await loadOpenSession(database, phoneE164),
+            now,
+            providerAnswered: inbound.providerAnsweredKeyword === 'stop',
+            confirmation: reading.confirmation,
+          },
+          deps,
+        );
+      }
       return { status: 'rate_limited' };
     }
   }
@@ -490,12 +485,46 @@ export async function handleInboundSms(
     return { status: 'duplicate' };
   }
 
-  // 5. The keyword read in step 2, acted on. Deliberately UNCLAIMED: STOP is a legal
-  // instruction, its handling is deterministic-fast and idempotent, and a claim here
-  // would refuse the resend that re-runs a STOP whose first attempt crashed —
-  // trading a rare double courtesy-ack for a CASL instruction that cannot be lost.
-  if (match) {
-    return handleKeyword(database, { match, phoneE164, inbound, session, now }, deps);
+  // 5. "Stop texting me" or "start again", in any wording, read by the model. Deliberately
+  // UNCLAIMED: a stop is a legal instruction, its handling is idempotent, and a claim here
+  // would refuse the resend that re-runs a stop whose first attempt crashed. The model
+  // writes the one confirmation; an empty one sends nothing (the revocation still runs).
+  if (inbound.body.trim().length > 0) {
+    const reading = await readTurnOnce(reader, inbound, {
+      text: inbound.body,
+      language: session?.ladderLanguage ?? null,
+    });
+    await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
+    if (reading?.intent === 'stop') {
+      return handleStop(
+        database,
+        {
+          phoneE164,
+          inbound,
+          session,
+          now,
+          providerAnswered: inbound.providerAnsweredKeyword === 'stop',
+          confirmation: reading.confirmation,
+        },
+        deps,
+      );
+    }
+    // A start re-enrols a number that stopped. Not a stopped number with a seat → the
+    // turn goes on as ordinary conversation.
+    if (reading?.intent === 'start') {
+      const restarted = await restartFromReader(
+        database,
+        {
+          phoneE164,
+          inbound,
+          now,
+          confirmation: reading.confirmation,
+          providerAnswered: inbound.providerAnsweredKeyword === 'start',
+        },
+        deps,
+      );
+      if (restarted) return restarted;
+    }
   }
 
   // 5b. Group onboarding v2 — onboarding is this number's 1:1 conversation. A message they
@@ -549,7 +578,7 @@ export async function handleInboundSms(
     // starting an intake and they would be asked for their children's names.
     const invite = await loadOpenInviteByPhone(database, phoneE164, now);
     if (invite?.state === 'awaiting_caregiver_reply') {
-      return handleInviteReply(database, { invite, phoneE164, inbound, now }, deps);
+      return handleInviteReply(database, { invite, phoneE164, inbound, now }, caregiverPorts(deps));
     }
 
     const existing = await resolveVerifiedChannelByPhone(database, phoneE164);
@@ -559,7 +588,7 @@ export async function handleInboundSms(
       const outcome = await handleKnownNumberInbound(
         database,
         { owner: existing, phoneE164, inbound, now },
-        deps,
+        caregiverPorts(deps),
       );
       return outcome ?? { status: 'ignored', reason: 'no_open_conversation' };
     }
@@ -577,9 +606,21 @@ export async function handleInboundSms(
       const lapsed = await loadLapsedInviteByPhone(database, phoneE164, now);
       if (lapsed) {
         return claimedTurn(database, inbound, now, () =>
-          handleLapsedInviteReply(database, { invite: lapsed, phoneE164, inbound, now }, deps),
+          handleLapsedInviteReply(
+            database,
+            { invite: lapsed, phoneE164, inbound, now },
+            caregiverPorts(deps),
+          ),
         );
       }
+    }
+
+    // #868 · an opt-out stops all texting at once. A number whose channel was
+    // revoked (carrier STOP or a model-read opt-out) and not re-enrolled is never
+    // greeted again, 1:1 or in a group, and is not handed to the coach either. Only
+    // START (step 5) brings it back.
+    if (await findRevokedChannelOwner(database, phoneE164)) {
+      return { status: 'ignored', reason: 'opted_out' };
     }
 
     // The pre-session greet is the double-welcome bug's home: no session exists, so
@@ -641,27 +682,6 @@ export async function handleInboundSms(
  * turns ride their own consume-once claims, and the C1 fall-through claims nothing so
  * the hand-off's 0085 arbitration and its crash-heal retry stay untouched.
  */
-/**
- * The moment writer could not send, and the turn is not finished. Thrown so the
- * webhook fails and the provider re-drives the same text once the model is back.
- * The session is left open. Closing it, or saving the provider id, would make the
- * retry a duplicate and the parent would never get the reply.
- */
-export class IntakeMomentDeferred extends Error {
-  readonly reason: string;
-
-  constructor(reason: string) {
-    super(`intake: moment reply unwritten (${reason})`);
-    this.name = 'IntakeMomentDeferred';
-    this.reason = reason;
-  }
-}
-
-function deferUnwrittenMoment(reason: string): never {
-  console.error({ reason }, 'intake: moment reply unwritten; the turn goes back to the queue');
-  throw new IntakeMomentDeferred(reason);
-}
-
 async function claimedTurn(
   database: Database,
   inbound: Inbound,
@@ -671,18 +691,11 @@ async function claimedTurn(
   if (!(await claimIntakeTurn(database, inbound.providerId, now))) {
     return { status: 'duplicate' };
   }
-  try {
-    const outcome = await run();
-    // Stamped only on a turn that returned: a claim whose completed_at stays NULL is
-    // the named crash residue (rule #11), visible to an operator, never a silence.
-    await completeIntakeTurn(database, inbound.providerId, now);
-    return outcome;
-  } catch (err) {
-    if (err instanceof IntakeMomentDeferred) {
-      await releaseIntakeTurn(database, inbound.providerId);
-    }
-    throw err;
-  }
+  const outcome = await run();
+  // Stamped only on a turn that returned: a claim whose completed_at stays NULL is
+  // the named crash residue (rule #11), visible to an operator, never a silence.
+  await completeIntakeTurn(database, inbound.providerId, now);
+  return outcome;
 }
 
 /**
@@ -977,6 +990,9 @@ async function writeChannelMessage(
  * that the composer declined or could not use is not null (VIL-326): that empty
  * fallback was the leak. Safety is the reviewed line alone.
  */
+/** A turn that is answered by silence: the seam ends the turn and sends nothing. */
+const HELD_SILENT = { body: '', source: 'safety' as const };
+
 async function offScriptReply(
   args: {
     parentWords: string;
@@ -986,32 +1002,73 @@ async function offScriptReply(
   },
   deps: IntakeDeps,
 ): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
-  // VIL-333. The locked disclosure is the whole turn: no composed concession,
-  // no return to the watch ask, no model.
-  const disclosure = identityChallengeReply(args.parentWords);
-  if (disclosure) {
-    return { body: disclosure, source: 'identity' };
+  // A crisis was already routed by the turn's reader before this seam (#868). The
+  // identity disclosure is the whole turn, written by the model from the facts.
+  const identity = await identityChallengeReply(
+    args.parentWords,
+    deps.saidLine,
+    await readTextOnce(deps.optOutReader, {
+      text: args.parentWords,
+      language: replyLanguage(args.parentWords),
+    }),
+  );
+  if (identity.challenge) {
+    return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
   const outcome = await deps.answerComposer.compose(args);
-  if (outcome.status === 'mental_crisis' || outcome.status === 'safety') {
-    const moment: Moment = outcome.status === 'mental_crisis' ? 'mental_crisis' : 'child_health';
-    const written = await deps.answerComposer.writeMoment(args.parentWords, moment);
-    if (written.status === 'unwritten') deferUnwrittenMoment(written.reason);
-    return { body: written.reply, source: 'safety' };
+  if (outcome.status === 'mental_crisis') {
+    // The answer model saw a crisis the reader did not. Still the model's words.
+    const written = await deps.saidLine?.write({
+      purpose: 'crisis_mental',
+      language: replyLanguage(args.parentWords),
+      parentWords: args.parentWords,
+      facts: { crisisLine: '988 (call or text, Canada and US)', emergency: '911' },
+    });
+    if (!written) {
+      console.error('intake crisis: answer model flagged a crisis, no reply written - page #ops');
+      return HELD_SILENT;
+    }
+    return { body: written, source: 'safety' };
+  }
+  if (outcome.status === 'safety') {
+    // #868: the 811 line is the model's words; the code checks both numbers are in it.
+    const written = await deps.saidLine?.write({
+      purpose: 'health',
+      language: replyLanguage(args.parentWords),
+      parentWords: args.parentWords,
+      facts: { healthLine: 'Health811 (Ontario), call 811, any time', emergency: '911' },
+      mustInclude: ['811', '911'],
+    });
+    if (!written) {
+      console.error('intake health: no line written - nothing sent, page #ops');
+      return HELD_SILENT;
+    }
+    return { body: written, source: 'safety' };
   }
   if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };
   // VIL-326 / VIL-327: unavailable / empty must not fall back to the greet or
   // the pending ask alone when they asked a real question. Safety stays above.
-  if (isOfficialPageAsk(args.parentWords)) {
-    return { body: officialPageFallbackReply(args.pendingAsk), source: 'composed' };
+  // #868: the not-posted / no-source / cheer-up lines are the model's words now;
+  // the code only picks which one is owed. Nothing written means nothing sent.
+  const purpose = isOfficialPageAsk(args.parentWords)
+    ? 'not_posted'
+    : isLiveLookupAsk(args.parentWords)
+      ? 'no_source'
+      : isCheerUpAsk(args.parentWords)
+        ? 'cheer_up'
+        : null;
+  if (purpose === null) return null;
+  const written = await deps.saidLine?.write({
+    purpose,
+    language: replyLanguage(args.parentWords),
+    parentWords: args.parentWords,
+    facts: {},
+  });
+  if (!written) {
+    console.error({ purpose }, 'intake answer fallback: no line written - nothing sent');
+    return HELD_SILENT;
   }
-  if (isLiveLookupAsk(args.parentWords)) {
-    return { body: liveLookupFallbackReply(args.pendingAsk), source: 'composed' };
-  }
-  if (isCheerUpAsk(args.parentWords)) {
-    return { body: cheerUpIntakeReply(args.pendingAsk), source: 'composed' };
-  }
-  return null;
+  return { body: written, source: 'composed' };
 }
 
 /**
@@ -1097,9 +1154,6 @@ async function greetNewFamily(
       sourceCode,
     );
   } catch (err) {
-    // An unwritten moment is re-driven on the open session. Closing it would
-    // drop the crisis and greet a new one on the retry.
-    if (err instanceof IntakeMomentDeferred) throw err;
     await saveSession(database, session, { closedAt: args.now }, args.now);
     throw err;
   }
@@ -1119,7 +1173,6 @@ async function deliverFirstHelloReporting(
   try {
     return await deliverFirstHello(database, args, deps, sourceCode);
   } catch (err) {
-    if (err instanceof IntakeMomentDeferred) throw err;
     await reportFirstHelloFailure(database, {
       sessionId: args.session.id,
       familyId: args.session.familyId,
@@ -1133,120 +1186,9 @@ async function deliverFirstHello(
   database: Database,
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
   deps: IntakeDeps,
-  sourceCode: string | null,
+  _sourceCode: string | null,
 ): Promise<IntakeOutcome> {
-  const { session } = args;
-  const ctx = sendContext(args);
-
-  if (firstTouchLadderEnabled()) {
-    return openFirstTouch(database, args, deps, ctx);
-  }
-
-  // Names / ages / postal on the first text are DETAILS, not a question — the
-  // existing extractor / handleDetails path, never offScriptReply. A bare hello,
-  // including the /text warm prefill, still takes greeting() below. Rec/camp
-  // questions still answer + COLD_START_ASK (VIL-322).
-  if (!isBareFirstHello(args.inbound.body) && looksLikeIntakeDetails(args.inbound.body)) {
-    await reportIntakeStep(deps, 'intake_started', session.id);
-    return handleDetails(
-      database,
-      { session, phoneE164: args.phoneE164, inbound: args.inbound, now: args.now },
-      deps,
-    );
-  }
-
-  const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
-  const venue = venueForCode(sourceCode);
-  const language = replyLanguage(args.inbound.body);
-  // A first text that is ONLY a postal code ("M4B 2B1", live 2026-08-28) answers half
-  // the cold-start ask before it is asked. It reaches no extractor — this branch never
-  // runs one — so it is captured here, or it is read for nothing and the one follow-up
-  // asks the parent for the postal code they opened with.
-  const postal = parseCanadianPostal(firstInboundWords(args.inbound.body));
-  // ONE message. A bare hi / empty / QR tag still gets the locked greeting. A first
-  // inbound that is a question (the site chips, a rec/camp ask) is answered with the
-  // same off-script path turn 2 already had — then Hale's pending ask, in one text.
-  // VIL-322: two site intakes dropped because greet() never read the inbound body.
-  const postalCollected = postal
-    ? {
-        collected: {
-          children: [],
-          // The FSA when that is all they sent (D2) — the token the extractor is
-          // handed back as `already_known` on the next turn, so it has to read the
-          // way a parent's own postal code does.
-          postalCode: postal.postalCode ?? postal.areaCoarse,
-        },
-      }
-    : {};
-  let body = postal ? greetingWithArea(postal.areaCoarse) : greeting(venue?.name ?? null, language);
-  let outcome: IntakeOutcome = { status: 'greeted' };
-  if (postal === null && !isBareFirstHello(args.inbound.body) && onboardingFriendVoiceEnabled()) {
-    // A crisis is the composer's reading. A first question is answered by the
-    // friend voice below. An unwritten moment throws and the turn is re-driven.
-    const safety = await divertForSafety(deps, { parentWords: args.inbound.body });
-    if (safety) {
-      body = safety.body;
-      outcome = { status: 'question_answered', source: 'safety' };
-    }
-  } else if (postal === null && !isBareFirstHello(args.inbound.body)) {
-    const offScript = await offScriptReply(
-      {
-        parentWords: args.inbound.body,
-        pendingAsk: COLD_START_ASK_BY_LANGUAGE[language],
-        children: [],
-        postalCode: null,
-      },
-      deps,
-    );
-    if (offScript && 'body' in offScript) {
-      body = offScript.body;
-      outcome = { status: 'question_answered', source: offScript.source };
-    }
-  }
-  if (onboardingFriendVoiceEnabled() && outcome.status === 'greeted') {
-    const spoken = await friendSpeak(
-      deps,
-      recorded.transcript,
-      friendFields('legacy_hello', language, friendAddress(ctx), {
-        introduce: true,
-        parentWords: args.inbound.body,
-        placeLabel: postal?.areaCoarse ?? null,
-      }),
-      { attemptTimeoutMs: OPENING_ATTEMPT_TIMEOUT_MS },
-    );
-    const voiced = friendOutbound(spoken);
-    if (!voiced) {
-      await saveSession(
-        database,
-        session,
-        {
-          state: 'awaiting_details',
-          transcript: recorded.transcript,
-          lastProviderId: args.inbound.providerId,
-          ...postalCollected,
-        },
-        args.now,
-      );
-      await reportIntakeStep(deps, 'intake_started', session.id);
-      return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
-    }
-    body = voiced;
-  }
-  const { transcript } = await sendAndRecord(database, ctx, body, deps, recorded.transcript);
-
-  await saveSession(
-    database,
-    session,
-    {
-      state: 'awaiting_details',
-      transcript,
-      lastProviderId: args.inbound.providerId,
-      ...postalCollected,
-    },
-    args.now,
-  );
-  await reportIntakeStep(deps, 'intake_started', session.id);
-  return outcome;
+  return friendOnboardingTurn(database, args, deps, true);
 }
 
 /**
@@ -1266,9 +1208,18 @@ async function friendSpeak(
 ) {
   deps.keepTyping?.();
   const { pageScope, ...speak } = options ?? {};
+  // #868: whether they asked who Hale is comes from the turn's model read, not a regex.
+  const identityAsked =
+    input.identityAsked ??
+    isIdentityReading(
+      await readTextOnce(deps.optOutReader, {
+        text: input.parentWords,
+        language: input.language,
+      }),
+    );
   return speakFriend(
     deps.friendVoice,
-    { ...input, recentTurns: turnsFromTranscript(transcript) },
+    { ...input, identityAsked, recentTurns: turnsFromTranscript(transcript) },
     pageScope ? { ...speak, page: pageOncePerDay(deps.limiter, pageScope) } : speak,
   );
 }
@@ -1330,31 +1281,32 @@ function friendFields(
 }
 
 /**
- * The composer's reading that someone is hurt or in crisis. The moment writer
- * sends the text, and the signup script does not resume. Any other reading is
- * null: the caller continues the turn it was already on. An unwritten reply
- * defers the turn instead of saving a silence.
+ * #868 · a crisis, routed and answered by the model. The turn's one reader call
+ * (opt-out-reader.ts, shared by {@link readTurnOnce}) decides an emergency or a
+ * mental-health crisis in any wording and writes the reply that points to
+ * emergency or crisis help. Null: not a crisis. `body` null: a crisis whose reply
+ * came back empty — the turn still ends there (no onboarding ask to a person in
+ * crisis) and the miss is logged loudly for #ops.
  */
-async function divertForSafety(
+async function crisisReply(
+  inbound: Inbound,
+  language: ReplyLanguage | null,
   deps: IntakeDeps,
-  input: {
-    parentWords: string;
-    pendingAsk?: string;
-    children?: readonly ExtractedChild[];
-    postalCode?: string | null;
-  },
-): Promise<{ body: string; source: 'safety' } | null> {
-  const outcome = await deps.answerComposer.compose({
-    parentWords: input.parentWords,
-    pendingAsk: input.pendingAsk ?? '',
-    children: input.children ?? [],
-    postalCode: input.postalCode ?? null,
+): Promise<{ body: string | null } | null> {
+  const reading = await readTurnOnce(deps.optOutReader, inbound, {
+    text: inbound.body,
+    language,
   });
-  if (outcome.status !== 'safety' && outcome.status !== 'mental_crisis') return null;
-  const moment: Moment = outcome.status === 'mental_crisis' ? 'mental_crisis' : 'child_health';
-  const written = await deps.answerComposer.writeMoment(input.parentWords, moment);
-  if (written.status === 'unwritten') deferUnwrittenMoment(written.reason);
-  return { body: written.reply, source: 'safety' };
+  if (!isCrisisReading(reading)) return null;
+  const body = reading.confirmation.trim();
+  if (body.length === 0) {
+    console.error(
+      { intent: reading.intent },
+      'intake crisis: the model routed a crisis but wrote no reply - nothing sent, page #ops',
+    );
+    return { body: null };
+  }
+  return { body };
 }
 
 /** The kids as the model sees them: name and age only, so a line's age fit lands on the right kid. */
@@ -1446,6 +1398,7 @@ async function pursueNewHouseholdGroup(
     parentPhoneE164: string;
     now: Date;
     inboundBody: string;
+    ask?: import('~/lib/channel/consent-ask').ConsentAskWriter;
   },
   send: (body: string) => Promise<void>,
 ): Promise<void> {
@@ -1453,6 +1406,7 @@ async function pursueNewHouseholdGroup(
     const outcome = await openChosenHouseholdGroup(database, {
       ...args,
       namedPhone: parseCoParentNumberReply(args.inboundBody),
+      ask: args.ask,
     });
     if (outcome.status === 'invite_started') await send(outcome.reply);
   } catch (err) {
@@ -1630,13 +1584,11 @@ async function friendOnboardingTurn(
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
-  const safety = await divertForSafety(deps, {
-    parentWords: inbound.body,
-    children: session.collected.children,
-    postalCode: session.collected.postalCode,
-  });
+  const safety = await crisisReply(inbound, language, deps);
   if (safety) {
-    ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
+    if (safety.body) {
+      ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
+    }
     await saveSession(
       database,
       session,
@@ -1832,201 +1784,12 @@ async function friendOnboardingTurn(
   return { status: 'first_touch', step: opening ? 'place_asked' : 'place_waiting' };
 }
 
-async function openFirstTouch(
-  database: Database,
-  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
-  deps: IntakeDeps,
-  ctx: SendContext,
-): Promise<IntakeOutcome> {
-  if (onboardingFriendVoiceEnabled()) return friendOnboardingTurn(database, args, deps, true);
-  const { session } = args;
-  const stopped = await divertForSafety(deps, { parentWords: args.inbound.body });
-  const identity = stopped === null ? identityChallengeReply(args.inbound.body) : null;
-  if (stopped || identity) {
-    const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
-    const sent =
-      stopped && 'body' in stopped
-        ? await sendAndRecord(database, ctx, stopped.body, deps, recorded.transcript)
-        : identity
-          ? await sendAndRecord(database, ctx, identity, deps, recorded.transcript)
-          : { transcript: recorded.transcript };
-    const language = replyLanguage(args.inbound.body);
-    await saveSession(
-      database,
-      session,
-      {
-        state: 'awaiting_place',
-        transcript: sent.transcript,
-        lastProviderId: args.inbound.providerId,
-        ladderLanguage: language,
-        firstTouch: { language, place: null, locationRequest: null },
-      },
-      args.now,
-    );
-    return { status: 'first_touch', step: 'place_waiting' };
-  }
-  const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
-  const language = replyLanguage(args.inbound.body);
-  const collected = await deps.extractor.extract({
-    message: args.inbound.body,
-    alreadyKnown: session.collected,
-  });
-  const place = placeFromMessage(firstInboundWords(args.inbound.body));
-  const touch: FirstTouchPersisted = {
-    language,
-    place: place ? persistPlace(place) : null,
-    locationRequest: null,
-  };
-  if (!place) {
-    const venue = venueForCode(session.sourceCode);
-    const venuePlace = venue ? placeFromVenue(venue) : null;
-    if (venuePlace) {
-      // Friend voice asks once. A separate hello plus an empty week find is two bubbles.
-      const hello = onboardingFriendVoiceEnabled()
-        ? { transcript: recorded.transcript }
-        : await sendAndRecord(
-            database,
-            ctx,
-            KNOWN_VENUE_HELLO[language],
-            deps,
-            recorded.transcript,
-          );
-      return sendWeekFindThenAgesOrProvision(database, args, deps, ctx, {
-        language,
-        place: venuePlace,
-        collected,
-        transcript: hello.transcript,
-        locationRequest: null,
-        started: true,
-      });
-    }
-    const asked = await sendPlaceAsk(
-      database,
-      ctx,
-      deps,
-      language,
-      recorded.transcript,
-      args.inbound.body,
-    );
-    await saveSession(
-      database,
-      session,
-      {
-        state: 'awaiting_place',
-        transcript: asked.transcript,
-        collected,
-        lastProviderId: args.inbound.providerId,
-        ladderLanguage: language,
-        firstTouch: { ...touch, locationRequest: asked.locationRequest },
-      },
-      args.now,
-    );
-    await reportIntakeStep(deps, 'intake_started', session.id);
-    return { status: 'first_touch', step: 'place_asked' };
-  }
-  return sendWeekFindThenAgesOrProvision(database, args, deps, ctx, {
-    language,
-    place,
-    collected,
-    transcript: recorded.transcript,
-    locationRequest: null,
-    started: true,
-  });
-}
-
 async function continueFirstTouch(
   database: Database,
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
-  if (onboardingFriendVoiceEnabled()) return friendOnboardingTurn(database, args, deps, false);
-  const { session, inbound, now } = args;
-  const ctx = sendContext(args);
-  const language =
-    session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-
-  if (session.state === 'awaiting_ages') {
-    return answerAges(database, args, deps, language, recorded.transcript);
-  }
-
-  const place = placeFromMessage(firstInboundWords(inbound.body));
-  if (!place) {
-    let transcript = recorded.transcript;
-    const baseTouch: FirstTouchPersisted = session.firstTouch ?? {
-      language,
-      place: null,
-      locationRequest: null,
-    };
-    if (onboardingFriendVoiceEnabled()) {
-      const safety = await divertForSafety(deps, {
-        parentWords: inbound.body,
-        children: session.collected.children,
-        postalCode: session.collected.postalCode,
-      });
-      if (safety) {
-        ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
-      } else {
-        const spoken = await friendSpeak(
-          deps,
-          transcript,
-          friendFields('place', language, friendAddress(ctx), {
-            parentWords: inbound.body,
-          }),
-        );
-        const voiced = friendOutbound(spoken);
-        if (voiced) {
-          ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
-        }
-      }
-    } else {
-      const offScript = await offScriptReply(
-        {
-          parentWords: inbound.body,
-          pendingAsk: FIRST_TOUCH_SMS_BY_LANGUAGE[language],
-          children: session.collected.children,
-          postalCode: session.collected.postalCode,
-        },
-        deps,
-      );
-      if (offScript && 'body' in offScript) {
-        ({ transcript } = await sendAndRecord(database, ctx, offScript.body, deps, transcript));
-      } else if (!offScript) {
-        ({ transcript } = await sendAndRecord(
-          database,
-          ctx,
-          FIRST_TOUCH_SMS_BY_LANGUAGE[language],
-          deps,
-          transcript,
-        ));
-      }
-    }
-    await saveSession(
-      database,
-      session,
-      {
-        transcript,
-        collected: session.collected,
-        lastProviderId: inbound.providerId,
-        firstTouch: touchWithClarify(baseTouch, 'place'),
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'place_waiting' };
-  }
-
-  const collected = await deps.extractor.extract({
-    message: inbound.body,
-    alreadyKnown: session.collected,
-  });
-  return sendWeekFindThenAgesOrProvision(database, args, deps, ctx, {
-    language,
-    place,
-    collected,
-    transcript: recorded.transcript,
-    locationRequest: session.firstTouch?.locationRequest ?? null,
-    started: false,
-  });
+  return friendOnboardingTurn(database, args, deps, false);
 }
 
 async function resolveFirstTouchLocation(
@@ -2069,309 +1832,6 @@ async function resolveFirstTouchLocation(
   }
 }
 
-async function sendPlaceAsk(
-  database: Database,
-  ctx: SendContext,
-  deps: IntakeDeps,
-  language: ReplyLanguage,
-  transcript: TranscriptEntry[],
-  parentWords = '',
-): Promise<{
-  transcript: TranscriptEntry[];
-  locationRequest: FirstTouchPersisted['locationRequest'];
-}> {
-  // Linq location sharing is a paid add-on. Off unless the switch is exactly
-  // `true`: the postal sentence goes out and requestLocation is never called.
-  // Provisioning still writes first_touch_location_requested, outcome skipped.
-  // On, the card is asked first. The Tap sentence is only true once Linq
-  // accepted it. A 2011 (feature not available) or any other miss uses the
-  // postal line.
-  const placeBody = async (card: boolean) => {
-    if (!onboardingFriendVoiceEnabled()) {
-      return card
-        ? FIRST_TOUCH_IMESSAGE_BY_LANGUAGE[language]
-        : FIRST_TOUCH_SMS_BY_LANGUAGE[language];
-    }
-    const spoken = await friendSpeak(deps, transcript, {
-      step: card ? 'place_card' : 'place',
-      language,
-      address: ctx.pipe.isGroup ? 'vous' : 'tu',
-      introduce: true,
-      parentWords,
-      placeLabel: null,
-      agesLabel: null,
-      ageMonths: [],
-      findLines: [],
-      listKind: 'none',
-      activity: null,
-      day: null,
-      parentName: null,
-    });
-    return friendOutbound(spoken) ?? '';
-  };
-  const card = await resolveFirstTouchLocation(ctx, deps);
-  const sent = await sendAndRecord(database, ctx, await placeBody(card.accepted), deps, transcript);
-  return { transcript: sent.transcript, locationRequest: card.locationRequest };
-}
-
-async function sendWeekFindThenAgesOrProvision(
-  database: Database,
-  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
-  deps: IntakeDeps,
-  ctx: SendContext,
-  input: {
-    language: ReplyLanguage;
-    place: FirstTouchPlace;
-    collected: IntakeCollected;
-    transcript: TranscriptEntry[];
-    locationRequest: FirstTouchPersisted['locationRequest'];
-    started: boolean;
-  },
-): Promise<IntakeOutcome> {
-  const { session, inbound, now } = args;
-  const children = withKnownAges(input.collected.children);
-  const location = intakeLocationFor(input.place);
-  const agesKnown = Boolean(children && children.length > 0 && location);
-  const friend = onboardingFriendVoiceEnabled();
-  let transcript = input.transcript;
-  if (friend) {
-    // Ages already known: the year list is the one find. An empty week line
-    // ahead of it is the bug this flag exists to stop.
-    // The week search and the ages reply run together. The search is capped
-    // so a slow web lookup cannot hold the parent for the activity timeout.
-    if (!agesKnown) {
-      const voiceInput = friendFields('ages', input.language, friendAddress(ctx), {
-        introduce: input.started && !transcriptHasOutbound(transcript),
-        parentWords: inbound.body,
-        placeLabel: input.place.city || input.place.areaCoarse || null,
-        findLines: [],
-        listKind: 'none',
-      });
-      const [found, spoken] = await Promise.all([
-        findThisWeekWithin({ finder: deps.weekFinder ?? null, place: input.place }),
-        friendSpeak(deps, transcript, voiceInput),
-      ]);
-      let outbound = friendOutbound(spoken);
-      if (outbound && found.outcome === 'found' && found.lines.length > 0) {
-        const listed: FriendVoiceInput = {
-          ...voiceInput,
-          recentTurns: turnsFromTranscript(transcript),
-          findLines: found.lines,
-          listKind: 'week',
-        };
-        const assembled = assembleFriendBody(spoken.prose, listed);
-        const judged = judgeFriendReply(assembled, listed);
-        if (judged.ok) {
-          outbound = assembled;
-        } else {
-          const retry = await friendSpeak(
-            deps,
-            transcript,
-            { ...voiceInput, findLines: found.lines, listKind: 'week' },
-            { prompt: 'short' },
-          );
-          outbound = friendOutbound(retry);
-        }
-      }
-      if (outbound) {
-        transcript = (await sendAndRecord(database, ctx, outbound, deps, transcript)).transcript;
-      }
-    }
-  } else {
-    const found = await findThisWeekWithin({ finder: deps.weekFinder ?? null, place: input.place });
-    const rendered = renderWeekFind(found.lines);
-    const findBody = rendered ?? FIRST_TOUCH_EMPTY_BY_LANGUAGE[input.language];
-    transcript = (await sendAndRecord(database, ctx, findBody, deps, input.transcript)).transcript;
-  }
-  const touch: FirstTouchPersisted = {
-    language: input.language,
-    place: persistPlace(input.place),
-    locationRequest: input.locationRequest,
-  };
-  const located: IntakeSession = {
-    ...session,
-    collected: {
-      ...input.collected,
-      postalCode: input.place.postalCode ?? input.collected.postalCode,
-    },
-    ladderLanguage: input.language,
-    firstTouch: touch,
-  };
-  // An empty list is truthy and means no ages were known. Provision only with real ages.
-  if (children && children.length > 0 && location) {
-    if (input.started) await reportIntakeStep(deps, 'intake_started', session.id);
-    return provision(
-      database,
-      { session: located, phoneE164: args.phoneE164, inbound, now },
-      deps,
-      {
-        collected: located.collected,
-        children,
-        location,
-        transcript,
-      },
-    );
-  }
-  if (!friend) {
-    ({ transcript } = await sendAndRecord(
-      database,
-      ctx,
-      FIRST_TOUCH_AGES_BY_LANGUAGE[input.language],
-      deps,
-      transcript,
-    ));
-  }
-  await saveSession(
-    database,
-    session,
-    {
-      state: 'awaiting_ages',
-      transcript,
-      collected: located.collected,
-      lastProviderId: inbound.providerId,
-      ladderLanguage: input.language,
-      firstTouch: touch,
-    },
-    now,
-  );
-  if (input.started) await reportIntakeStep(deps, 'intake_started', session.id);
-  return { status: 'first_touch', step: 'find_sent' };
-}
-
-async function answerAges(
-  database: Database,
-  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
-  deps: IntakeDeps,
-  language: ReplyLanguage,
-  transcript: TranscriptEntry[],
-): Promise<IntakeOutcome> {
-  const { session, inbound, now } = args;
-  const collected = await deps.extractor.extract({
-    message: inbound.body,
-    alreadyKnown: session.collected,
-  });
-  const children = withKnownAges(collected.children);
-  const place = session.firstTouch?.place;
-  const location = place ? intakeLocationFor(place) : null;
-  if (!children || children.length === 0 || !location || !place) {
-    const partial = knownAgeChildren(collected.children);
-    const prior = session.firstTouch?.clarify?.ages ?? 0;
-    const baseTouch: FirstTouchPersisted = session.firstTouch ?? {
-      language,
-      place: place ?? null,
-      locationRequest: null,
-    };
-    if (prior >= REASK_CAP && partial.length > 0 && location && place) {
-      const located: IntakeSession = {
-        ...session,
-        collected: { ...collected, postalCode: place.postalCode ?? collected.postalCode },
-        ladderLanguage: language,
-        firstTouch: touchWithClarify(baseTouch, 'ages'),
-      };
-      return provision(
-        database,
-        { session: located, phoneE164: args.phoneE164, inbound, now },
-        deps,
-        { collected: located.collected, children: partial, location, transcript },
-      );
-    }
-    let nextTranscript = transcript;
-    if (onboardingFriendVoiceEnabled()) {
-      const spoken = await friendSpeak(
-        deps,
-        transcript,
-        friendFields('ages', language, friendAddress(sendContext(args)), {
-          parentWords: inbound.body,
-          placeLabel: place?.city || place?.areaCoarse || null,
-        }),
-      );
-      const voiced = friendOutbound(spoken);
-      if (voiced) {
-        nextTranscript = (
-          await sendAndRecord(database, sendContext(args), voiced, deps, transcript)
-        ).transcript;
-      }
-    } else {
-      nextTranscript = (
-        await sendAndRecord(
-          database,
-          sendContext(args),
-          FIRST_TOUCH_AGES_BY_LANGUAGE[language],
-          deps,
-          transcript,
-        )
-      ).transcript;
-    }
-    await saveSession(
-      database,
-      session,
-      {
-        transcript: nextTranscript,
-        collected,
-        lastProviderId: inbound.providerId,
-        firstTouch: touchWithClarify(baseTouch, 'ages'),
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'ages_waiting' };
-  }
-  const located: IntakeSession = {
-    ...session,
-    collected: { ...collected, postalCode: place.postalCode ?? collected.postalCode },
-    ladderLanguage: language,
-  };
-  return provision(database, { session: located, phoneE164: args.phoneE164, inbound, now }, deps, {
-    collected: located.collected,
-    children,
-    location,
-    transcript,
-  });
-}
-
-const STOP_ASKING_MS = 30 * 24 * 60 * 60 * 1000;
-
-interface ColdStartTurn {
-  database: Database;
-  session: IntakeSession;
-  inbound: Inbound;
-  now: Date;
-  deps: IntakeDeps;
-  language: ReplyLanguage;
-  familyId: string;
-  userId: string;
-  progress: ColdStartProgress;
-  judged: ColdStartJudgement;
-}
-
-async function googleConfirmedParentName(database: Database, userId: string): Promise<boolean> {
-  const rows = await database
-    .select({
-      targetId: schema.auditLog.targetId,
-      actionTaken: schema.auditLog.actionTaken,
-      after: schema.auditLog.after,
-    })
-    .from(schema.auditLog)
-    .where(eq(schema.auditLog.targetId, userId));
-  return rows.some((row) => {
-    if (row.targetId !== userId || row.actionTaken !== 'parent_name_captured') return false;
-    const after = row.after;
-    return (
-      !!after &&
-      typeof after === 'object' &&
-      (after as { source?: unknown }).source === 'google_confirm'
-    );
-  });
-}
-
-async function loadFamilyStartedAt(database: Database, familyId: string, now: Date): Promise<Date> {
-  const rows = await database
-    .select({ id: schema.families.id, createdAt: schema.families.createdAt })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId));
-  const family = rows.find((row) => row.id === familyId);
-  return family?.createdAt instanceof Date ? family.createdAt : now;
-}
-
 function withColdStart(
   session: IntakeSession,
   language: ReplyLanguage,
@@ -2381,166 +1841,6 @@ function withColdStart(
     ...(session.firstTouch ?? { language, place: null, locationRequest: null }),
     coldStart: progress,
   };
-}
-
-/** Names on the reply after logistics, or the next reply when that day is already spent. */
-async function offerColdStartNames(turn: ColdStartTurn): Promise<IntakeOutcome> {
-  const { database, session, inbound, now, deps, language, familyId, progress, judged } = turn;
-  const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
-  if (progress.step === 'logistics' && judged.intent === 'decline') {
-    const askKey = `logistics:${progress.activity ?? 'that one'}:${progress.day ?? 'then'}`;
-    const declined = await declineOptionalAsk(database, { familyId, askKey });
-    if (!declined.updated) {
-      console.info({ skipped: declined.skipped }, 'cold-start logistics: decline not stored');
-    }
-  }
-  const schoolMentioned = progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body);
-  const googleConfirmed = await googleConfirmedParentName(database, turn.userId);
-  const names = namesAsk(language, process.env, { googleConfirmedParentName: googleConfirmed });
-  const held: ColdStartProgress = { ...progress, schoolMentioned, step: 'names' };
-  if (!names.mayLeave) {
-    console.info({ skipped: 'copy_unlocked', ask: 'names' }, 'cold-start names: not sent');
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    await sendAndRecord(
-      database,
-      ctx,
-      notedAfterLogistics(progress.group, language),
-      deps,
-      recorded.transcript,
-    );
-    await saveSession(
-      database,
-      session,
-      {
-        state: 'complete',
-        closedAt: now,
-        lastProviderId: inbound.providerId,
-        ladderNext: null,
-        transcript: recorded.transcript,
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'find_sent' };
-  }
-  const gate = await gateOptionalAsk(database, {
-    familyId,
-    now,
-    sendClass: 'names',
-    askKey: 'names',
-  });
-  if (!gate.allow) {
-    // The day is already spent. A note here used to stay the reply on every
-    // later text ("ok", a Chinese message). Close instead and hand this text
-    // to the coach. Do not record it here: the handoff inserts that row.
-    console.info({ reason: gate.reason, ask: 'names' }, 'cold-start names: held');
-    await closeColdStartForCoach(database, session, inbound, now);
-    return { status: 'ignored', reason: 'no_open_conversation' };
-  }
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-  await sendAndRecord(database, ctx, names.body, deps, recorded.transcript);
-  await recordOptionalAsk(database, { familyId, now, sendClass: 'names', askKey: 'names' });
-  await saveSession(
-    database,
-    session,
-    {
-      lastProviderId: inbound.providerId,
-      transcript: recorded.transcript,
-      firstTouch: withColdStart(session, language, { ...held, nameLineSent: true }),
-    },
-    now,
-  );
-  return { status: 'first_touch', step: 'find_sent' };
-}
-
-/** Sign-up offer first, then calendar. Email only after a mention, on its own reply. */
-async function offerColdStartFollow(turn: ColdStartTurn): Promise<IntakeOutcome> {
-  const { database, session, inbound, now, deps, language, familyId, progress } = turn;
-  const ctx = sendContext({ session, phoneE164: session.phoneE164, inbound, now });
-  const schoolMentioned = progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body);
-  const familyStartedAt = await loadFamilyStartedAt(database, familyId, now);
-  const follow = planFollowAsk({
-    language,
-    now,
-    familyStartedAt,
-    nameLineSent: true,
-    calendarAlreadyAsked: progress.calendarAsked,
-    emailAlreadyAsked: progress.emailAsked,
-    signupAsked: progress.signupAsked,
-    signupDateKnown: progress.signupDateKnown,
-    parentText: inbound.body,
-    schoolMentioned,
-    activity: progress.activity,
-    day: progress.day,
-    env: process.env,
-  });
-  const base: ColdStartProgress = {
-    ...progress,
-    step: 'follow',
-    nameLineSent: true,
-    schoolMentioned,
-  };
-  const note = notedAfterLogistics(progress.group, language);
-  if (follow.kind === 'none' || !follow.mayLeave) {
-    console.info(
-      { skipped: follow.skipped ?? 'not_due', ask: follow.kind },
-      'cold-start follow: not sent',
-    );
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    await sendAndRecord(database, ctx, note, deps, recorded.transcript);
-    await saveSession(
-      database,
-      session,
-      {
-        state: 'complete',
-        closedAt: now,
-        lastProviderId: inbound.providerId,
-        ladderNext: null,
-        transcript: recorded.transcript,
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'find_sent' };
-  }
-  const gate = await gateOptionalAsk(database, {
-    familyId,
-    now,
-    sendClass: follow.kind,
-    askKey: follow.kind,
-  });
-  if (!gate.allow) {
-    console.info({ reason: gate.reason, ask: follow.kind }, 'cold-start follow: held');
-    await closeColdStartForCoach(database, session, inbound, now);
-    return { status: 'ignored', reason: 'no_open_conversation' };
-  }
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-  await sendAndRecord(database, ctx, follow.body, deps, recorded.transcript);
-  await recordOptionalAsk(database, {
-    familyId,
-    now,
-    sendClass: follow.kind,
-    askKey: follow.kind,
-  });
-  const signupAsked = progress.signupAsked || follow.kind === 'signup';
-  const calendarAsked = progress.calendarAsked || follow.kind === 'calendar';
-  const emailAsked = progress.emailAsked || follow.kind === 'email';
-  const stayOpen = !signupAsked || !calendarAsked || (schoolMentioned && !emailAsked);
-  await saveSession(
-    database,
-    session,
-    {
-      lastProviderId: inbound.providerId,
-      transcript: recorded.transcript,
-      firstTouch: withColdStart(session, language, {
-        ...base,
-        signupAsked,
-        calendarAsked,
-        emailAsked,
-      }),
-      ...(stayOpen ? {} : { state: 'complete' as const, closedAt: now, ladderNext: null }),
-    },
-    now,
-  );
-  return { status: 'first_touch', step: 'find_sent' };
 }
 
 /**
@@ -2759,14 +2059,10 @@ async function friendColdTurn(
   const language =
     session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
   const ctx = sendContext(args);
-  const safety = await divertForSafety(deps, {
-    parentWords: inbound.body,
-    children: session.collected.children,
-    postalCode: session.collected.postalCode,
-  });
+  const safety = await crisisReply(inbound, language, deps);
   if (safety) {
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    await sendAndRecord(database, ctx, safety.body, deps, recorded.transcript);
+    if (safety.body) await sendAndRecord(database, ctx, safety.body, deps, recorded.transcript);
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'first_touch', step: 'find_sent' };
   }
@@ -2933,6 +2229,7 @@ async function friendColdTurn(
       parentPhoneE164: session.phoneE164,
       now,
       inboundBody: inbound.body,
+      ask: deps.consentAsk,
     },
     async (body) => {
       await sendAndRecord(database, ctx, body, deps, recorded.transcript);
@@ -2975,7 +2272,6 @@ async function friendColdTurn(
       now,
       sendClass: ask,
       askKey: ask,
-      onboardingSequence: true,
     });
     let carried = false;
     if (gate.allow) {
@@ -3090,340 +2386,7 @@ async function runColdStartTurn(
     await closeColdStartForCoach(database, session, inbound, now);
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
-  if (onboardingFriendVoiceEnabled()) return friendColdTurn(database, args, deps);
-  const language =
-    session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
-  const ctx = sendContext(args);
-  const judged = await judgeColdStartIntent({ text: inbound.body });
-
-  if (judged.intent === 'stop_asking' && judged.confidence === 'high') {
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    await writeFact(database, {
-      familyId,
-      childId: null,
-      factType: 'logistic',
-      factKey: SHARED_STOP_ASKING_KEY,
-      factValue: {
-        kind: 'duty_stop_asking',
-        until: new Date(now.getTime() + STOP_ASKING_MS).toISOString(),
-      },
-      confidence: 1,
-      inferredBy: 'cold_start_stop_asking',
-      validFrom: now,
-      memoryKind: 'lasting',
-      memorySource: 'parent_message',
-      sourcedAt: now,
-    });
-    let stopBody: string | null = stopAskingReply(language);
-    if (onboardingFriendVoiceEnabled()) {
-      const spoken = await friendSpeak(
-        deps,
-        recorded.transcript,
-        friendFields('stop_asking', language, friendAddress(ctx), {
-          parentWords: inbound.body,
-        }),
-      );
-      stopBody = friendOutbound(spoken);
-    }
-    if (stopBody) {
-      await sendAndRecord(database, ctx, stopBody, deps, recorded.transcript);
-    }
-    await saveSession(
-      database,
-      session,
-      { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
-      now,
-    );
-    return { status: 'first_touch', step: 'place_waiting' };
-  }
-
-  if (judged.intent === 'set_me_up' || judged.intent === 'what_can_you_do') {
-    const place = session.firstTouch?.place;
-    const plan = planPull({
-      intent: judged.intent,
-      language,
-      hasPlace: place != null,
-      hasAges: session.collected.children.length > 0,
-      channel: ctx.pipe.channel,
-      group: ctx.pipe.isGroup,
-      count: 0,
-      place: place?.city || place?.areaCoarse || '',
-      ages: '',
-      now,
-      familyStartedAt: await loadFamilyStartedAt(database, familyId, now),
-      nameLineSent: progress.nameLineSent,
-      calendarAlreadyAsked: progress.calendarAsked,
-      emailAlreadyAsked: progress.emailAsked,
-      signupAsked: progress.signupAsked,
-      signupDateKnown: progress.signupDateKnown,
-      parentText: inbound.body,
-      schoolMentioned: progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body),
-      activity: progress.activity,
-      day: progress.day,
-      env: process.env,
-    });
-    if (!plan.mayLeave) {
-      console.info(
-        { skipped: plan.skipped ?? 'copy_unlocked', intent: judged.intent },
-        'cold-start pull: not sent',
-      );
-      await saveSession(
-        database,
-        session,
-        { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
-        now,
-      );
-      return { status: 'ignored', reason: 'no_open_conversation' };
-    }
-    let pullBody = plan.body;
-    if (
-      onboardingFriendVoiceEnabled() &&
-      (plan.kind === 'place' || plan.kind === 'ages' || plan.kind === 'what')
-    ) {
-      const card =
-        plan.kind === 'place' &&
-        firstTouchLocationCardEnabled() &&
-        ctx.pipe.channel === 'imessage' &&
-        !ctx.pipe.isGroup;
-      const step: FriendStep =
-        plan.kind === 'ages'
-          ? 'ages'
-          : plan.kind === 'place'
-            ? card
-              ? 'place_card'
-              : 'place'
-            : progress.nameLineSent
-              ? 'names'
-              : 'find_empty';
-      const spoken = await friendSpeak(
-        deps,
-        session.transcript,
-        friendFields(step, language, friendAddress(ctx), {
-          parentWords: inbound.body,
-          placeLabel: place?.city || place?.areaCoarse || null,
-        }),
-      );
-      const voiced = friendOutbound(spoken);
-      if (!voiced) {
-        await saveSession(
-          database,
-          session,
-          { lastProviderId: inbound.providerId, ladderNext: null },
-          now,
-        );
-        return { status: 'first_touch', step: 'place_waiting' };
-      }
-      pullBody = voiced;
-    }
-    const askKind =
-      plan.kind === 'signup' || plan.kind === 'calendar' || plan.kind === 'email'
-        ? plan.kind
-        : null;
-    const schoolMentioned = progress.schoolMentioned || mentionsSchoolOrCamp(inbound.body);
-    if (askKind) {
-      const gate = await gateOptionalAsk(database, {
-        familyId,
-        now,
-        sendClass: askKind,
-        askKey: askKind,
-      });
-      if (!gate.allow) {
-        console.info({ reason: gate.reason, ask: askKind }, 'cold-start pull: held');
-        const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-        await sendAndRecord(
-          database,
-          ctx,
-          notedAfterLogistics(progress.group, language),
-          deps,
-          recorded.transcript,
-        );
-        await saveSession(
-          database,
-          session,
-          {
-            lastProviderId: inbound.providerId,
-            transcript: recorded.transcript,
-            firstTouch: withColdStart(session, language, { ...progress, schoolMentioned }),
-          },
-          now,
-        );
-        return { status: 'first_touch', step: 'find_sent' };
-      }
-    }
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    await sendAndRecord(database, ctx, pullBody, deps, recorded.transcript);
-    if (askKind) {
-      await recordOptionalAsk(database, {
-        familyId,
-        now,
-        sendClass: askKind,
-        askKey: askKind,
-      });
-    }
-    await saveSession(
-      database,
-      session,
-      {
-        transcript: recorded.transcript,
-        lastProviderId: inbound.providerId,
-        ...(askKind
-          ? {
-              firstTouch: withColdStart(session, language, {
-                ...progress,
-                schoolMentioned,
-                signupAsked: progress.signupAsked || askKind === 'signup',
-                calendarAsked: progress.calendarAsked || askKind === 'calendar',
-                emailAsked: progress.emailAsked || askKind === 'email',
-              }),
-            }
-          : {}),
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'place_waiting' };
-  }
-
-  const corrected = ageCorrectionMonths(inbound.body);
-  if (corrected != null) {
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    await writeFact(
-      database,
-      ageCorrectionFact({ familyId, childId: null, ageMonths: corrected, now }),
-    );
-    const correctionLines = linesOfFind(progress.findBody);
-    let correctionBody: string | null = DISCOVERY_NEXT_STEP[language];
-    if (onboardingFriendVoiceEnabled()) {
-      const spoken = await friendSpeak(
-        deps,
-        recorded.transcript,
-        friendFields('age_correction', language, friendAddress(ctx), {
-          parentWords: inbound.body,
-          placeLabel:
-            session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
-          findLines: correctionLines,
-          listKind: correctionLines.length > 0 ? 'year' : 'none',
-        }),
-      );
-      correctionBody = friendOutbound(spoken);
-    }
-    if (correctionBody) {
-      await sendAndRecord(database, ctx, correctionBody, deps, recorded.transcript);
-    }
-    await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
-    return { status: 'first_touch', step: 'ages_waiting' };
-  }
-
-  const turn: ColdStartTurn = {
-    database,
-    session,
-    inbound,
-    now,
-    deps,
-    language,
-    familyId,
-    userId,
-    progress,
-    judged,
-  };
-  if (progress.step === 'names' || progress.step === 'follow') {
-    if (!progress.nameLineSent) return offerColdStartNames(turn);
-    return offerColdStartFollow(turn);
-  }
-
-  if (progress.step === 'pick') {
-    if (judged.intent === 'decline') {
-      const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-      await sendAndRecord(
-        database,
-        ctx,
-        notedAfterLogistics(progress.group, language),
-        deps,
-        recorded.transcript,
-      );
-      await saveSession(
-        database,
-        session,
-        { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
-        now,
-      );
-      return { status: 'first_touch', step: 'place_waiting' };
-    }
-    const pick = activityFromFind(progress.findBody, inbound.body);
-    if (!pick) {
-      await saveSession(
-        database,
-        session,
-        { state: 'complete', closedAt: now, lastProviderId: inbound.providerId, ladderNext: null },
-        now,
-      );
-      return { status: 'ignored', reason: 'no_open_conversation' };
-    }
-    const bubble = logisticsBubble({
-      language,
-      day: pick.day,
-      activity: pick.activity,
-      group: progress.group,
-      forwardLink: null,
-    });
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    const askKey = `logistics:${pick.activity}:${pick.day}`;
-    const gate = bubble.body
-      ? await gateOptionalAsk(database, {
-          familyId,
-          now,
-          sendClass: 'logistics',
-          askKey,
-        })
-      : { allow: false as const, reason: 'ask_budget' as const };
-    const body =
-      bubble.body && gate.allow ? bubble.body : notedAfterLogistics(progress.group, language);
-    if (bubble.body && !gate.allow) {
-      console.info(
-        { reason: 'reason' in gate ? gate.reason : 'copy_unlocked' },
-        'cold-start logistics: held',
-      );
-    }
-    if (!bubble.body) {
-      console.info({ skipped: 'copy_unlocked' }, 'cold-start logistics: not sent');
-    } else if (bubble.forwardLink === 'not_offered') {
-      console.info(
-        { forwardLink: 'not_offered' },
-        'cold-start logistics: co-parent link not offered',
-      );
-    }
-    await sendAndRecord(database, ctx, body, deps, recorded.transcript);
-    if (bubble.body && gate.allow) {
-      await recordOptionalAsk(database, { familyId, now, sendClass: 'logistics', askKey });
-    }
-    await saveSession(
-      database,
-      session,
-      {
-        lastProviderId: inbound.providerId,
-        firstTouch: {
-          ...(session.firstTouch ?? {
-            language,
-            place: null,
-            locationRequest: null,
-          }),
-          coldStart: {
-            ...progress,
-            step: bubble.body && gate.allow ? 'logistics' : progress.step,
-            activity: pick.activity,
-            day: pick.day,
-            signupDateKnown: signupDateKnownForPick(progress.findBody, inbound.body),
-          },
-        },
-        ...(bubble.body && gate.allow
-          ? {}
-          : { state: 'complete' as const, closedAt: now, ladderNext: null }),
-      },
-      now,
-    );
-    return { status: 'first_touch', step: 'find_sent' };
-  }
-
-  return offerColdStartNames(turn);
+  return friendColdTurn(database, args, deps);
 }
 
 function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['place']> {
@@ -3454,134 +2417,12 @@ async function handleDetails(
   // With the friend voice and the first-touch walk both on, a pre-family session
   // is one conversation whatever state it was left in: the model reads the text
   // and writes the next ask. No unreadable door, no fixed region line.
-  if (onboardingFriendVoiceEnabled() && firstTouchLadderEnabled()) {
-    return friendOnboardingTurn(
-      database,
-      args,
-      deps,
-      !transcriptHasOutbound(args.session.transcript),
-    );
-  }
-  const { session, inbound, now } = args;
-  const ctx = sendContext(args);
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-  let transcript = recorded.transcript;
-  const language = replyLanguage(inbound.body);
-
-  const collected = await deps.extractor.extract({
-    message: inbound.body,
-    alreadyKnown: session.collected,
-  });
-
-  const base: SessionPatch = { collected, lastProviderId: inbound.providerId };
-
-  // Nothing readable came back. Before falling back to the unreadable door, find out
-  // whether they asked something — a stranger's second text is as likely to be "who is
-  // this?" as it is to be two names and two ages, and the couldn't-read line answers
-  // neither of them.
-  if (collected.children.length === 0) {
-    const offScript = await offScriptReply(
-      {
-        parentWords: inbound.body,
-        // The pending ask is handed to the composer so it can get back to the question in
-        // its own words — in French when that is the question the parent was asked.
-        pendingAsk: COLD_START_ASK_BY_LANGUAGE[language],
-        children: collected.children,
-        postalCode: collected.postalCode,
-      },
-      deps,
-    );
-    if (offScript && 'body' in offScript) {
-      ({ transcript } = await sendAndRecord(database, ctx, offScript.body, deps, transcript));
-      // The step does not move: `state` and `followUpCount` are untouched, so the ask
-      // is still outstanding and the one follow-up is still unspent.
-      await saveSession(database, session, { ...base, transcript }, now);
-      return { status: 'question_answered', source: offScript.source };
-    }
-    ({ transcript } = await sendAndRecord(
-      database,
-      ctx,
-      UNREADABLE_INTAKE_REPLY_BY_LANGUAGE[language],
-      deps,
-      transcript,
-    ));
-    await saveSession(database, session, { ...base, transcript }, now);
-    return { status: 'helped', ack: 'sent' };
-  }
-
-  const location = resolveLocation(collected, session.sourceCode);
-  if (location === 'unsupported_region') {
-    ({ transcript } = await sendAndRecord(
-      database,
-      ctx,
-      REGION_UNAVAILABLE_REPLY_BY_LANGUAGE[language],
-      deps,
-      transcript,
-    ));
-    await saveSession(
-      database,
-      session,
-      { ...base, transcript, state: 'complete', closedAt: now },
-      now,
-    );
-    return { status: 'region_unavailable' };
-  }
-
-  // The two things Hale refuses to make up. They share ONE ladder because they are the
-  // same kind of blocker: a family cannot be set up on a guess, and a guessed age is
-  // worse than a guessed postal code — the date it produces is what every stage,
-  // checkpoint and registration band is computed from ever after.
-  const children = withKnownAges(collected.children);
-  if (children === null || location === null) {
-    const missing: IntakeGap[] = [
-      ...(children === null ? (['ages'] as const) : []),
-      ...(location === null ? (['location'] as const) : []),
-    ];
-    // Exactly ONE targeted follow-up — asking for everything outstanding, because it is
-    // the only ask there will be. After that, Hale states the blocker once and goes
-    // quiet: a third ask is nagging, and the session stays open so an answer sent later
-    // still completes the setup.
-    if (session.followUpCount === 0) {
-      // The one turn in intake whose WORDS are the product: the model writes the "I heard
-      // you" half, the ask is appended deterministically, and any failure comes back as
-      // the template with a named reason (intake-voice.ts).
-      const ack = await deps.ackComposer.compose({
-        parentWords: inbound.body,
-        summary: summarizeChildren(collected.children),
-        children: collected.children,
-        venue: venueForCode(session.sourceCode)?.name ?? null,
-        missing,
-      });
-      ({ transcript } = await sendAndRecord(database, ctx, ack.body, deps, transcript));
-      await saveSession(
-        database,
-        session,
-        { ...base, transcript, state: 'awaiting_follow_up', followUpCount: 1 },
-        now,
-      );
-      return { status: 'follow_up_asked' };
-    }
-    if (session.followUpCount === 1) {
-      ({ transcript } = await sendAndRecord(
-        database,
-        ctx,
-        detailsBlocked(missing),
-        deps,
-        transcript,
-      ));
-      await saveSession(database, session, { ...base, transcript, followUpCount: 2 }, now);
-      return { status: 'details_blocked', missing };
-    }
-    await saveSession(database, session, { ...base, transcript }, now);
-    return { status: 'details_blocked', missing };
-  }
-
-  return provision(database, { session, phoneE164: args.phoneE164, inbound, now }, deps, {
-    collected,
-    children,
-    location,
-    transcript,
-  });
+  return friendOnboardingTurn(
+    database,
+    args,
+    deps,
+    !transcriptHasOutbound(args.session.transcript),
+  );
 }
 
 /**
@@ -3607,28 +2448,6 @@ function knownAgeChildren(children: readonly ExtractedChild[]): ProvisionChild[]
     known.push({ name: child.name, ageMonths: child.ageMonths, agePrecision: child.agePrecision });
   }
   return known;
-}
-
-/**
- * Where the family is, or why we can't say. Three outcomes, and the distinction
- * matters: a postal code we can't place is a COMPLIANCE refusal (rule #1 — Hale is
- * cleared for Canada only), while no postal code at all is just an unanswered
- * question. Conflating them would either turn a shy parent away or quietly onboard a
- * family Hale isn't cleared to serve.
- */
-function resolveLocation(
-  collected: IntakeCollected,
-  sourceCode: string | null,
-): IntakeLocation | null | 'unsupported_region' {
-  if (collected.postalCode) {
-    return parseCanadianPostal(collected.postalCode) ?? 'unsupported_region';
-  }
-  const venue = venueForCode(sourceCode);
-  if (venue) {
-    // The venue's own area — a fact about where the poster hangs, never an address.
-    return { postalCode: null, areaCoarse: venue.areaCoarse };
-  }
-  return null;
 }
 
 /**
@@ -3794,39 +2613,21 @@ async function sendPostYearFindLadder(
     now: args.now,
     inbound: args.inbound,
   });
-  if (args.language === 'fr' && !onboardingFriendVoiceEnabled()) {
-    await sendYearConnectorCards(
-      database,
-      {
-        familyId: args.familyId,
-        parentUserId: args.parentUserId,
-        phoneE164: args.phoneE164,
-        language: args.language,
-        now: args.now,
-        ridesReply: true,
-        only: 'gcal',
-      },
-      { transport: deps.transport, threadMessage: deps.threadMessage },
-    );
-    return 'gmail';
-  }
   const pipe = messagingPipe(args.inbound);
   const asked = await askParentCallName(database, {
     familyId: args.familyId,
     parentUserId: args.parentUserId,
     language: args.language,
     send: args.send,
-    friend: onboardingFriendVoiceEnabled()
-      ? {
-          deps,
-          transcript: [],
-          parentWords: args.inbound.body,
-          address: pipe.isGroup ? 'vous' : 'tu',
-        }
-      : undefined,
+    friend: {
+      deps,
+      transcript: [],
+      parentWords: args.inbound.body,
+      address: pipe.isGroup ? 'vous' : 'tu',
+    },
   });
   // No voice, no fixed line: the ask is skipped and the ladder moves on.
-  return asked ? 'name_reply' : onboardingFriendVoiceEnabled() ? 'gmail' : 'calendar';
+  return asked ? 'name_reply' : 'gmail';
 }
 
 async function provision(
@@ -3884,13 +2685,12 @@ async function provision(
   await seedFirstRadar(database, { familyId, areaCoarse: gathered.location.areaCoarse, now }, deps);
 
   deps.keepTyping?.();
-  const friendTouch = onboardingFriendVoiceEnabled() && session.firstTouch != null;
   const radar = await deps.radar.compose({
     familyId,
     children: gathered.collected.children,
     areaCoarse: gathered.location.areaCoarse,
     language,
-    ...(friendTouch && discoveryOn ? { activityMap: true } : {}),
+    ...(discoveryOn ? { activityMap: true } : {}),
   });
   const placeLabel =
     session.firstTouch?.place?.city ||
@@ -3903,7 +2703,7 @@ async function provision(
     : undefined;
   let friendCold: ColdStartProgress | null = null;
   let connectorSent = false;
-  if (friendTouch) {
+  {
     const given = session.firstTouch?.given ?? null;
     if (given?.parentName) {
       await storeModelParentName(database, {
@@ -4025,13 +2825,6 @@ async function provision(
         schoolMentioned: false,
       };
     }
-  } else if (discoveryOn) {
-    outboundBody = discoveryBubble({
-      language,
-      agesMonths: children.map((child) => child.ageMonths),
-      placeLabel,
-      findBody: radar.message,
-    }).body;
   }
   const sent =
     connectorSent || outboundBody.trim().length === 0
@@ -4050,46 +2843,7 @@ async function provision(
   let ladderNext: IntakeLadderStep | null = null;
   // Friend voice makes the year bubble the name ask. A second ladder bubble
   // would be a second question in the same turn.
-  if (!discoveryOn && !friendTouch) {
-    await shareFreshLinqContactCard(database, {
-      familyId,
-      parentUserId: userId,
-      now,
-      inbound,
-    });
-    const titles = radar.titles ?? [];
-    const poll =
-      ctx.pipe.channel === 'imessage'
-        ? await offerYearFindPoll(database, {
-            channel: 'imessage',
-            chatId: ctx.pipe.chatId,
-            titles,
-            language,
-            familyId,
-            parentUserId: userId,
-            now,
-          })
-        : null;
-    ladderNext =
-      poll?.status === 'sent' || poll?.status === 'prompted'
-        ? language === 'fr'
-          ? 'calendar'
-          : 'name'
-        : await sendPostYearFindLadder(
-            database,
-            {
-              familyId,
-              parentUserId: userId,
-              phoneE164,
-              language,
-              now,
-              inbound,
-              send: (body, templateKey) =>
-                sendAndRecord(database, ctx, body, deps, [], templateKey),
-            },
-            deps,
-          );
-  } else if (!discoveryOn && friendTouch) {
+  if (!discoveryOn) {
     await shareFreshLinqContactCard(database, {
       familyId,
       parentUserId: userId,
@@ -4144,10 +2898,7 @@ async function provision(
     await recordCommitment(database, {
       familyId,
       kind: 'first_find',
-      summary:
-        radar.message === yearOpenEmptyMessage('en') || radar.message === yearOpenEmptyMessage('fr')
-          ? radar.message
-          : FIRST_FIND_BEAT,
+      summary: FIRST_FIND_BEAT,
       dueAt: new Date(now.getTime() + FIRST_FIND_DUE_HOURS * 3_600_000),
       channelMessageId: sent.channelMessageId,
     });
@@ -4165,7 +2916,7 @@ async function provision(
   await offerFounderWelcome(
     database,
     { newFamilyId: familyId, sourceCode: session.sourceCode, now },
-    defaultFounderPingPorts(deps.transport),
+    defaultFounderPingPorts(deps.transport, deps.consentAsk),
   );
 
   await saveSession(
@@ -4173,17 +2924,15 @@ async function provision(
     session,
     {
       collected: gathered.collected,
-      transcript: friendTouch
-        ? [
-            ...gathered.transcript,
-            {
-              direction: 'out' as const,
-              body: outboundBody,
-              providerId: null,
-              at: now.toISOString(),
-            },
-          ]
-        : gathered.transcript,
+      transcript: [
+        ...gathered.transcript,
+        {
+          direction: 'out' as const,
+          body: outboundBody,
+          providerId: null,
+          at: now.toISOString(),
+        },
+      ],
       state: discoveryOn ? 'awaiting_cold_start' : 'awaiting_ladder',
       familyId,
       userId,
@@ -4299,125 +3048,16 @@ async function handleWatchReply(
   // The watch offer is retired under the friend voice: the find is the watch.
   // A session left waiting on it still gets an answer, written by the model,
   // and is closed so the next text reaches the family's own thread.
-  if (onboardingFriendVoiceEnabled()) {
-    const safety = await divertForSafety(deps, {
-      parentWords: inbound.body,
-      children: session.collected.children,
-      postalCode: session.collected.postalCode,
-    });
-    const body = safety ? safety.body : await helpBody(deps, session, language, inbound.body);
-    if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
-    await saveSession(
-      database,
-      session,
-      { state: 'complete', closedAt: now, lastProviderId: inbound.providerId },
-      now,
-    );
-    return { status: 'question_answered', source: safety ? 'safety' : 'composed' };
-  }
-
-  // The QUESTION stays English because the question that was actually asked was English:
-  // WATCH_OFFER rides out appended to the model-composed radar line, which has no
-  // language of its own yet (see the note in copy.ts). What the reader is given must be
-  // what the parent read.
-  const reading = await deps.intentReader.read({ question: WATCH_OFFER, reply: inbound.body });
-
-  // A PARENT WHO ASKED SOMETHING IS NOT A PARENT GIVING A WOBBLY ANSWER, and until this
-  // branch existed the two were the same `ambiguous`. Checked before the clarify budget
-  // and before the conservative no, because a question must cost neither: asking one is
-  // not a refusal to decide, and recording it as a decline would be Hale reading consent
-  // out of a sentence that was never about consent (rule #4).
-  if (reading.intent === 'ambiguous') {
-    const offScript = await offScriptReply(
-      {
-        parentWords: inbound.body,
-        pendingAsk: WATCH_OFFER_ASK,
-        children: session.collected.children,
-        postalCode: session.collected.postalCode,
-      },
-      deps,
-    );
-    if (offScript && 'body' in offScript) {
-      await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
-      // `state` and `clarifyCount` are untouched: the consent ask is still outstanding
-      // and the one clarification is still unspent, so the next inbound lands here again.
-      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
-      return { status: 'question_answered', source: offScript.source };
-    }
-  }
-
-  // One gentle clarification, then Hale decides conservatively. Asking twice about
-  // the same yes/no is pestering; guessing "yes" would manufacture consent.
-  if (reading.intent === 'ambiguous' && session.clarifyCount === 0) {
-    await sendAndRecord(
-      database,
-      ctx,
-      AMBIGUOUS_CLARIFY_BY_LANGUAGE[language],
-      deps,
-      recorded.transcript,
-    );
-    await saveSession(
-      database,
-      session,
-      { state: 'awaiting_clarify', clarifyCount: 1, lastProviderId: inbound.providerId },
-      now,
-    );
-    return { status: 'clarified' };
-  }
-
-  const granted = reading.intent === 'assent';
-  const interpretation =
-    reading.intent === 'ambiguous'
-      ? `still unclear after one clarification — recorded as no (${reading.interpretation})`
-      : reading.interpretation;
-
-  // Consent BEFORE the stage flip, in one transaction (see watch-consent.ts).
-  await recordWatchConsent(
-    database,
-    {
-      familyId: session.familyId as string,
-      userId: session.userId as string,
-      granted,
-      verbatimReply: reading.verbatim,
-      interpretation,
-      channelMessageId: recorded.channelMessageId,
-    },
-    now,
-  );
-
-  const ack = await consentReceipt(deps, recorded.transcript, ctx, language, inbound.body, granted);
-  await sendAndRecord(database, ctx, ack.body, deps, recorded.transcript);
-
-  // A yes that earned the ladder gets the assent only. Turtle waits for the
-  // next reply. A decline closes. Neither turn stacks the name, the cards, or
-  // the co-parent ask onto the acknowledgment.
-  const earned = granted && session.findWon;
+  const safety = await crisisReply(inbound, language, deps);
+  const body = safety ? safety.body : await helpBody(deps, session, language, inbound.body);
+  if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
   await saveSession(
     database,
     session,
-    earned
-      ? {
-          state: 'awaiting_ladder',
-          lastProviderId: inbound.providerId,
-          ladderNext: 'turtle',
-          ladderLanguage: language,
-        }
-      : {
-          state: 'complete',
-          closedAt: now,
-          lastProviderId: inbound.providerId,
-          ladderNext: null,
-        },
+    { state: 'complete', closedAt: now, lastProviderId: inbound.providerId },
     now,
   );
-  return {
-    status: 'watch_recorded',
-    intent: reading.intent,
-    granted,
-    nameAsked: false,
-    connectorOffer: 'not_offered',
-    coParentAsk: 'not_offered',
-  };
+  return { status: 'question_answered', source: safety ? 'safety' : 'composed' };
 }
 
 /**
@@ -4452,34 +3092,21 @@ async function handleLadder(
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
 
-  // With no voice the ladder opens on the calendar card, so a question there
-  // is still the parent's first words after the find and is answered first.
-  // That path composes inside offScriptReply, which already stops for safety.
-  // Diverting as well would ask the model twice for the same text.
-  const openOffScript =
-    step === 'turtle' ||
-    step === 'name_reply' ||
-    ((step === 'calendar' || step === 'gmail') && !onboardingFriendVoiceEnabled());
-  const asksSomething = openOffScript && isQuestionOrNewFind(inbound.body);
-
-  if (!asksSomething) {
-    const crisis = await divertForSafety(deps, {
-      parentWords: inbound.body,
-      children: session.collected.children,
-      postalCode: session.collected.postalCode,
-    });
-    if (crisis) {
-      await sendAndRecord(database, ctx, crisis.body, deps, recorded.transcript);
-      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
-      return { status: 'question_answered', source: 'safety' };
-    }
+  const crisis = await crisisReply(inbound, language, deps);
+  if (crisis) {
+    if (crisis.body) await sendAndRecord(database, ctx, crisis.body, deps, recorded.transcript);
+    await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+    return { status: 'question_answered', source: 'safety' };
   }
 
   let next: IntakeLadderStep | null = step;
   let closed = false;
   let heldForQuestion = false;
 
-  if (asksSomething) {
+  // A question right after the find is answered first; the model decides whether
+  // the parent's words are a question (offScriptReply returns null when not).
+  const openOffScript = step === 'turtle' || step === 'name_reply';
+  if (openOffScript) {
     const offScript = await offScriptReply(
       {
         parentWords: inbound.body,
@@ -4489,8 +3116,10 @@ async function handleLadder(
       },
       deps,
     );
-    if (offScript && 'body' in offScript) {
-      await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+    if (offScript) {
+      if (offScript.body) {
+        await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+      }
       heldForQuestion = true;
     }
   }
@@ -4520,17 +3149,15 @@ async function handleLadder(
       language,
       send: (body, templateKey) =>
         sendAndRecord(database, ctx, body, deps, recorded.transcript, templateKey),
-      friend: onboardingFriendVoiceEnabled()
-        ? {
-            deps,
-            transcript: recorded.transcript,
-            parentWords: inbound.body,
-            address: friendAddress(ctx),
-          }
-        : undefined,
+      friend: {
+        deps,
+        transcript: recorded.transcript,
+        parentWords: inbound.body,
+        address: friendAddress(ctx),
+      },
     });
-    next = asked ? 'name_reply' : onboardingFriendVoiceEnabled() ? 'gmail' : 'calendar';
-  } else if (step === 'name_reply' && onboardingFriendVoiceEnabled()) {
+    next = asked ? 'name_reply' : 'gmail';
+  } else if (step === 'name_reply') {
     // The model reads the name (or a yes to the Google name) and writes the
     // Gmail ask in the same turn. Gmail first: the calendar card rides its receipt.
     const card = await sendLadderFriendCard(database, ctx, deps, {
@@ -4545,20 +3172,7 @@ async function handleLadder(
       nameReply: true,
     });
     next = card.next;
-  } else if (step === 'name_reply' && isSoftLadderAck(inbound.body)) {
-    // The year-find turn already sent the name. "cool" is not a name.
-    next = 'name_reply';
-  } else if (step === 'name_reply') {
-    const captured = await handleNameCaptureReply(
-      database,
-      { familyId, parentUserId: userId, body: inbound.body, now },
-      defaultNameCaptureDeps(),
-    );
-    if (captured.status === 'captured' && captured.reply) {
-      await sendAndRecord(database, ctx, captured.reply, deps, recorded.transcript);
-    }
-    next = 'calendar';
-  } else if ((step === 'calendar' || step === 'gmail') && onboardingFriendVoiceEnabled()) {
+  } else if (step === 'calendar' || step === 'gmail') {
     const card = await sendLadderFriendCard(database, ctx, deps, {
       familyId,
       parentUserId: userId,
@@ -4570,22 +3184,7 @@ async function handleLadder(
       provider: step === 'calendar' ? 'gcal' : 'gmail',
     });
     next = card.next;
-  } else if (step === 'calendar' || step === 'gmail') {
-    await sendYearConnectorCards(
-      database,
-      {
-        familyId,
-        parentUserId: userId,
-        phoneE164,
-        language,
-        now,
-        ridesReply: true,
-        only: step === 'calendar' ? 'gcal' : 'gmail',
-      },
-      { transport: deps.transport, threadMessage: deps.threadMessage },
-    );
-    next = step === 'calendar' ? 'gmail' : 'coparent';
-  } else if (onboardingFriendVoiceEnabled()) {
+  } else {
     const join = coparentJoinFor(ctx, language);
     const spoken = await friendSpeak(
       deps,
@@ -4609,25 +3208,6 @@ async function handleLadder(
     }
     next = null;
     closed = true;
-  } else {
-    const pipe = messagingPipe(inbound);
-    const from = pipe.channel === 'imessage' ? linqFromE164() : null;
-    const coparentAsk =
-      pipe.channel === 'imessage'
-        ? from
-          ? linqCoParentAsk(formatLinqLineForParent(from), language)
-          : LINQ_GROUP_LINE_MISSING_TEXT[language]
-        : CO_PARENT_ASK_BY_LANGUAGE[language];
-    await sendAndRecord(
-      database,
-      ctx,
-      coparentAsk,
-      deps,
-      recorded.transcript,
-      INTAKE_COPARENT_ASK_TEMPLATE_KEY,
-    );
-    next = null;
-    closed = true;
   }
 
   await saveSession(
@@ -4644,35 +3224,6 @@ async function handleLadder(
     now,
   );
   return { status: 'ladder_advanced', step, closed };
-}
-
-/**
- * The consent acknowledgment, whole. The call-name is the next text, not a tail
- * on this one. "Excited to help" and "no action needed" do not belong on a yes.
- *
- * With friend voice on, the model writes it. A failed compose sends nothing
- * canned; the flag-off path below keeps the locked receipt.
- */
-async function consentReceipt(
-  deps: IntakeDeps,
-  transcript: TranscriptEntry[],
-  ctx: SendContext,
-  language: ReplyLanguage,
-  parentWords: string,
-  granted: boolean,
-): Promise<{ body: string; asked: boolean }> {
-  if (!onboardingFriendVoiceEnabled()) {
-    return {
-      body: granted ? ASSENT_ACK_BY_LANGUAGE[language] : DECLINE_ACK_BY_LANGUAGE[language],
-      asked: false,
-    };
-  }
-  const spoken = await friendSpeak(
-    deps,
-    transcript,
-    friendFields('ack', language, friendAddress(ctx), { parentWords, granted }),
-  );
-  return { body: friendOutbound(spoken) ?? '', asked: false };
 }
 
 /**
@@ -4828,7 +3379,6 @@ async function helpBody(
   language: ReplyLanguage,
   parentWords: string,
 ): Promise<string | null> {
-  if (!onboardingFriendVoiceEnabled()) return HELP_REPLY_BY_LANGUAGE[language];
   const given = session?.firstTouch?.given ?? null;
   const children = session?.collected.children ?? [];
   const checklist: OnboardingChecklist = {
@@ -4859,162 +3409,96 @@ async function helpBody(
   return friendOutbound(spoken);
 }
 
-async function handleKeyword(
-  database: Database,
-  args: {
-    match: IntakeKeywordMatch;
-    phoneE164: string;
-    inbound: Inbound;
-    session: IntakeSession | null;
-    now: Date;
-  },
-  deps: IntakeDeps,
-): Promise<IntakeOutcome> {
-  const { match, phoneE164, inbound, session, now } = args;
-  // The language comes WITH the keyword rather than from `replyLanguage`, and this is the
-  // one turn where that matters: the body that got here IS the token, so there is no
-  // sentence to read French out of. AIDE would have resolved to English (the detector
-  // deliberately refuses to decide on it — it is also an English noun) and DEBUT is a word
-  // it has never heard of, which is exactly what CTA v2.1 §3.1 forbids.
-  const { keyword, language } = match;
-  // VIL-348 · WHO ANSWERS. The provider's own keyword handling may have matched this
-  // exact word and already replied to the sender; where it did, the inbound says so and
-  // Hale's acknowledgment would be the second confirmation of one instruction. Every
-  // ledger write below runs either way — the provider's opt-out list is not Hale's
-  // consent record, and a STOP that revoked nothing because a carrier answered first is
-  // the CASL failure, not the extra text.
-  const providerAnswered = inbound.providerAnsweredKeyword === keyword;
+/** #868 · where a failed read's hold is written (tests pass a recorder). */
+export interface OptOutHoldPort {
+  hold(phoneHash: string, now: Date): Promise<void>;
+  release(phoneHash: string): Promise<void>;
+}
 
-  if (keyword === 'stop') {
-    return handleStop(
-      database,
-      { phoneE164, inbound, session, now, language, providerAnswered },
-      deps,
+/**
+ * #868 · after the turn's read: a failed read (null after the reader's retry) holds the
+ * sender from proactive and queued sends; a successful read releases any hold.
+ */
+async function settleOptOutHold(
+  database: Database,
+  phoneHash: string,
+  body: string,
+  reading: OptOutReading | null,
+  now: Date,
+  hold?: OptOutHoldPort,
+): Promise<void> {
+  if (body.trim().length === 0) return;
+  const port = hold ?? {
+    hold: (hash: string, at: Date) => holdSender(database, hash, at),
+    release: (hash: string) => releaseSender(database, hash),
+  };
+  try {
+    if (reading === null) await port.hold(phoneHash, now);
+    else await port.release(phoneHash);
+  } catch (err) {
+    // The hold is a guard, never a reason to drop the turn: logged, and the turn goes on.
+    console.error(
+      { urgent: reading === null, err: err instanceof Error ? err.name : 'unknown' },
+      'opt-out hold: write failed',
     );
   }
+}
 
-  if (keyword === 'help') {
-    const ack: KeywordAck = providerAnswered ? 'provider_answered' : 'sent';
-    if (!session) {
-      // No session to transcribe against, but the number may still be an ENROLLED
-      // parent's (intake long over) — their ledger must show this send (rule #6). A
-      // stranger's HELP stays unrecorded by structural necessity, not omission:
-      // channel_messages.family_id is NOT NULL, so there is no row it could occupy.
-      //
-      // The send and its ledger row go TOGETHER or not at all: a suppressed reply that
-      // still wrote an outbound row would put a message in a parent's receipts that
-      // Hale never sent.
-      if (!providerAnswered) {
-        const body = await helpBody(deps, null, language, inbound.body);
-        if (!body) {
-          console.error({ step: 'help' }, 'onboarding: help reply not sent');
-          return { status: 'helped', ack };
-        }
-        await quietStopTyping(deps);
-        const { providerMessageId } = await deps.transport.send({
-          to: phoneE164,
-          body,
-        });
-        const enrolled = await resolveVerifiedChannelByPhone(database, phoneE164);
-        if (enrolled) {
-          await writeChannelMessage(
-            database,
-            { familyId: enrolled.familyId, parentUserId: enrolled.userId },
-            {
-              direction: 'out',
-              body,
-              providerId: providerMessageId,
-              at: now.toISOString(),
-              ...messagingPipe(inbound),
-            },
-            now,
-          );
-        }
-      }
-      return { status: 'helped', ack };
-    }
-    const ctx = sendContext({ session, phoneE164, inbound, now });
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    // Suppressed at THIS call site rather than inside `sendAndRecord`: that helper is
-    // shared with fourteen other turns and has no business learning about keywords. The
-    // inbound is still recorded and the session still closed on this turn's provider id,
-    // so a carrier retry is still a duplicate rather than a second HELP.
-    const help = providerAnswered ? null : await helpBody(deps, session, language, inbound.body);
-    if (!providerAnswered && !help) {
-      console.error({ step: 'help' }, 'onboarding: help reply not sent');
-      await saveSession(
-        database,
-        session,
-        { transcript: recorded.transcript, lastProviderId: inbound.providerId },
-        now,
-      );
-      return { status: 'helped', ack };
-    }
-    const transcript = providerAnswered
-      ? recorded.transcript
-      : (
-          await sendAndRecord(
-            database,
-            ctx,
-            help ?? HELP_REPLY_BY_LANGUAGE[language],
-            deps,
-            recorded.transcript,
-          )
-        ).transcript;
-    await saveSession(database, session, { transcript, lastProviderId: inbound.providerId }, now);
-    return { status: 'helped', ack };
-  }
+/** What the provider says it already answered (always null on today's transports). */
+export type ProviderKeyword = 'stop' | 'start' | 'help';
 
-  // START. If the number was unsubscribed AND its owner still holds a seat, the keyword
-  // itself is express re-consent (see channel-state.ts) — otherwise it opens a fresh
-  // conversation, because a number whose seat is gone has no household to re-enter.
-  const owner = await findReenrollableChannelOwner(database, phoneE164);
-  if (owner) {
-    await reenrolOnStart(database, { ...owner, phoneE164, verbatimReply: inbound.body }, now);
-    if (providerAnswered) return { status: 'restarted', ack: 'provider_answered' };
-    try {
-      const sent = await sendResolvingNewChat(deps.transport, {
-        to: phoneE164,
-        body: START_ACK_BY_LANGUAGE[language],
-      });
-      const pipe = messagingPipe(inbound);
-      const channel = sent.transport === 'imessage' ? 'imessage' : pipe.channel;
-      // The re-enrolment ack is a real outbound to a known family: ledger it (rule #6).
-      // Inside the try with its own send, so a refused ack writes no row claiming one.
-      await writeChannelMessage(
-        database,
-        { familyId: owner.familyId, parentUserId: owner.userId },
-        {
-          direction: 'out',
-          body: START_ACK_BY_LANGUAGE[language],
-          providerId: sent.providerMessageId,
-          at: now.toISOString(),
-          channel,
-          chatId: channel === 'imessage' ? (sent.chatId ?? pipe.chatId) : pipe.chatId,
-        },
-        now,
-      );
-    } catch (error) {
-      // VIL-348 · THE STOP → DEBUT ASYMMETRY, where it actually bites. An opt-out list
-      // that holds STOP but not the word this parent just sent will refuse every send to
-      // this number — 21610 — although Hale has just re-enrolled them. The refusal is
-      // permanent, so there is nothing to retry: 500ing here would only earn a webhook
-      // retry that fails identically, and it would do it AFTER the consent write.
-      //
-      // The outcome says so rather than swallowing it. Hale cannot fix this from here —
-      // the remedy is that the provider's keyword set has to hold every word Hale prints
-      // (keywords.ts) — but a re-enrolment nobody can be told about must not read the
-      // same as one that landed. A TRANSIENT failure still throws and is still retried.
-      const refusal = readSendRefusal(error);
-      if (!refusal?.permanent) throw error;
-      return { status: 'restarted', ack: 'provider_refused' };
-    }
+/** Re-enrolment from the reader's start reading. Null: nothing to re-enrol. */
+async function restartFromReader(
+  database: Database,
+  args: {
+    phoneE164: string;
+    inbound: Inbound;
+    now: Date;
+    confirmation: string;
+    providerAnswered?: boolean;
+  },
+  deps: IntakeDeps,
+): Promise<IntakeOutcome | null> {
+  const owner = await findReenrollableChannelOwner(database, args.phoneE164);
+  if (!owner) return null;
+  await reenrolOnStart(
+    database,
+    { ...owner, phoneE164: args.phoneE164, verbatimReply: args.inbound.body },
+    args.now,
+  );
+  if (args.providerAnswered) return { status: 'restarted', ack: 'provider_answered' };
+  const body = args.confirmation.trim();
+  if (body.length === 0) {
+    console.error('opt-out reader: start read with no confirmation - re-enrolled, nothing sent');
     return { status: 'restarted', ack: 'sent' };
   }
-  if (session) {
-    return { status: 'ignored', reason: 'no_open_conversation' };
+  let sent: Awaited<ReturnType<typeof sendResolvingNewChat>>;
+  try {
+    sent = await sendResolvingNewChat(deps.transport, { to: args.phoneE164, body });
+  } catch (error) {
+    // VIL-348: an opt-out list that still holds this number refuses the confirmation
+    // permanently (21610) although Hale has re-enrolled them. Named, never a 500 that
+    // would only retry identically after the consent write. A transient failure throws.
+    const refusal = readSendRefusal(error);
+    if (!refusal?.permanent) throw error;
+    return { status: 'restarted', ack: 'provider_refused' };
   }
-  return greet(database, { phoneE164, inbound, now, joinTag: joinTagFromBody(inbound.body) }, deps);
+  const pipe = messagingPipe(args.inbound);
+  const channel = sent.transport === 'imessage' ? 'imessage' : pipe.channel;
+  await writeChannelMessage(
+    database,
+    { familyId: owner.familyId, parentUserId: owner.userId },
+    {
+      direction: 'out',
+      body,
+      providerId: sent.providerMessageId,
+      at: args.now.toISOString(),
+      channel,
+      chatId: channel === 'imessage' ? (sent.chatId ?? pipe.chatId) : pipe.chatId,
+    },
+    args.now,
+  );
+  return { status: 'restarted', ack: 'sent' };
 }
 
 async function handleStop(
@@ -5024,15 +3508,16 @@ async function handleStop(
     inbound: Inbound;
     session: IntakeSession | null;
     now: Date;
-    /** The language of the keyword that got here — ARRET is answered in French. */
-    language: ReplyLanguage;
     /** VIL-348 — the provider matched this STOP and already confirmed it to the sender.
      * Suppresses HALE'S ack and nothing else: every revocation below still runs. */
     providerAnswered: boolean;
+    /** Model-written confirmation (opt-out reader). Empty sends nothing; the
+     * revocation above it has already run. */
+    confirmation?: string;
   },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
-  const { phoneE164, inbound, session, now, language, providerAnswered } = args;
+  const { phoneE164, inbound, session, now, providerAnswered } = args;
 
   // A group STOP the roster answered (roster-stop.ts) never reaches here. One it could
   // not answer — no roster yet, a roster that is not open, an unclaimed chat — takes this
@@ -5077,11 +3562,13 @@ async function handleStop(
   // provider has already sent it, Hale sends nothing and writes no outbound row: a
   // parent who asked to be left alone should not be told twice that they will be.
   if (providerAnswered) return { status: 'stopped', ack: 'provider_answered' };
+  const body = args.confirmation ?? '';
+  if (body.trim().length === 0) return { status: 'stopped', ack: 'voice_unsent' };
 
   try {
     const sent = await sendResolvingNewChat(deps.transport, {
       to: phoneE164,
-      body: STOP_ACK_BY_LANGUAGE[language],
+      body,
     });
     // The ack is the last outbound this family will get, and it must be on the record
     // like every other (rule #6). Only when an OWNER exists: a guest's or invitee's
@@ -5095,7 +3582,7 @@ async function handleStop(
         { familyId: owner.familyId, parentUserId: owner.userId },
         {
           direction: 'out',
-          body: STOP_ACK_BY_LANGUAGE[language],
+          body,
           providerId: sent.providerMessageId,
           at: now.toISOString(),
           channel,

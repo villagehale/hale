@@ -1,0 +1,7 @@
+{
+  "value": {
+    "verdict": "redraft",
+    "reason": "The draft ends with \"That's from the 11 AM forecast,\" which a parent will read as this morning's (Monday's) forecast. The notes say the version found was issued at 11:00 AM EDT on Tuesday, Oct 13, which is tomorrow, not today. Drop the line or state the issue time so it matches the notes."
+  },
+  "latencyMs": 4829
+}

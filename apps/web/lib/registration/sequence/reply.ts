@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
-import { normalizeKeyword } from '~/lib/channel/intake/keywords';
+import { normalizeToken } from '~/lib/channel/normalize-token';
 import { portalForMunicipality } from '~/lib/channel/spots/url';
 import { writeFact } from '~/lib/memory/facts';
 import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
@@ -98,7 +98,7 @@ const POSITION_RE = /(?:#|\bnumber\s+|\bno\.?\s+|\bposition\s+|\bspot\s+)?(\d+)/
 /** A phone keyboard types a curly apostrophe; the word sets are written with a straight
  * one. Folded before matching so "we’re in" and "we're in" are the same answer. */
 function normalizeReply(body: string): string {
-  return normalizeKeyword(body.replace(/[‘’ʼ`]/g, "'"));
+  return normalizeToken(body.replace(/[‘’ʼ`]/g, "'"));
 }
 
 /**

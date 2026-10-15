@@ -1,0 +1,27 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM), 212 West 83rd Street",
+        "age_fit": "exhibits and programs for children ages 0-6",
+        "when": "Tuesday-Sunday, 10 am-5 pm per its plan-your-visit page (Circle Time 10:30-11:00 am); its visitor guidelines say July-September open Monday-Sunday, so Monday is uncertain",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Central Park Zoo",
+        "age_fit": "no preschool-specific program; children 3 to 12 pay $16.95, children 2 and under free",
+        "when": "10:00 AM-5:00 PM Monday-Friday, 10:00 AM-5:30 PM weekends (posted for April 2-October 31, 2026); last entry 1 hour before closing",
+        "price": "Child 3-12 $16.95; adult $22.95",
+        "source_name": "Central Park Zoo (Wildlife Conservation Society)"
+      },
+      {
+        "name": "Brooklyn Children's Museum",
+        "age_fit": "no age range posted on its site; its page mentions the toddler-favorite Totally Tots exhibit",
+        "when": "Wednesday-Sunday, 10 am-5 pm, closed Monday and Tuesday",
+        "price": "General admission $15 per person",
+        "source_name": "Brooklyn Children's Museum"
+      }
+    ]
+  },
+  "latencyMs": 12488
+}

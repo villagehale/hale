@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarChange } from './calendar-alert';
 import type { GmailAlertEnvelope } from './email-alert';
 import type { ActiveConnectorConnection } from './store';
@@ -272,6 +272,43 @@ describe('syncConnection — Calendar', () => {
     expect(cap.errored).toBe(false);
     expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
     expect(cap.mirrored).toEqual([expect.objectContaining({ trustWindow: false, items: [] })]);
+  });
+
+  it('logs the named reason when the mirror holds the window, and nothing when it does not', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const calendarPage = routedFetch([
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: { items: [], nextSyncToken: 'SYNC-2' },
+      },
+    ]).fetchImpl;
+    const counts = { mirrored: 0, updated: 0, removed: 0, alreadyKnown: 0, skipped: 0 };
+
+    const held = stubDeps({
+      googleFetch: calendarPage,
+      mirrorCalendarWindow: async () => ({
+        ...counts,
+        held: true,
+        heldReason: 'untrusted_window' as const,
+      }),
+    });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), held.deps);
+    expect(info).toHaveBeenCalledWith(
+      { connectionId: 'i1', heldReason: 'untrusted_window' },
+      'connector sync: calendar mirror held',
+    );
+
+    info.mockClear();
+    const kept = stubDeps({
+      googleFetch: calendarPage,
+      mirrorCalendarWindow: async () => ({ ...counts, held: false }),
+    });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), kept.deps);
+    expect(info).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'connector sync: calendar mirror held',
+    );
+    info.mockRestore();
   });
 
   it('survives a Google that enforces the syncToken contract (the full sync is legal, the incremental must be too)', async () => {
@@ -583,6 +620,14 @@ describe('syncConnection — Calendar', () => {
 });
 
 describe('syncConnection — Gmail', () => {
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('first run: messages.list then per-message metadata; advances historyId', async () => {
     const fetchImpl: GoogleFetch = async (url) => {
       if (url.includes('/messages/m1')) {
@@ -844,6 +889,14 @@ describe('syncConnection — Gmail', () => {
 });
 
 describe('syncConnection — the gmail alert hand-off', () => {
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   /** A mailbox whose one message carries internalDate and a child's name. */
   function mailbox(internalDate?: string): GoogleFetch {
     return async (url) => {
@@ -1005,6 +1058,311 @@ describe('syncConnection — the gmail alert hand-off', () => {
   });
 });
 
+describe('syncConnection — the gmail alert watermark under the email lane', () => {
+  /** A mailbox whose history depends on where it is read from: m1 arrived after 9002,
+   * m2 after 9100. */
+  function mailbox(): { fetchImpl: GoogleFetch; urls: string[] } {
+    const message = (id: string, internalDate: string) => ({
+      id,
+      snippet: `snippet ${id}`,
+      internalDate,
+      payload: {
+        headers: [
+          { name: 'Subject', value: `Subject ${id}` },
+          { name: 'From', value: 'Pool <info@pool.example>' },
+        ],
+      },
+    });
+    const { fetchImpl, calls } = routedFetch([
+      { match: '/messages/m1', body: message('m1', '1789000000000') },
+      { match: '/messages/m2', body: message('m2', '1789000600000') },
+      {
+        match: 'startHistoryId=9002',
+        body: {
+          history: [
+            { messagesAdded: [{ message: { id: 'm1' } }] },
+            { messagesAdded: [{ message: { id: 'm2' } }] },
+          ],
+          historyId: '9200',
+        },
+      },
+      {
+        match: 'startHistoryId=9100',
+        body: { history: [{ messagesAdded: [{ message: { id: 'm2' } }] }], historyId: '9200' },
+      },
+      { match: 'startHistoryId=9200', body: { history: [], historyId: '9200' } },
+    ]);
+    return {
+      fetchImpl,
+      get urls() {
+        return calls.map((call) => call.url);
+      },
+    };
+  }
+
+  /** The real port's lane behaviour, per envelope: answered lane_off while the lane is off,
+   * sent otherwise. Counts every send by message id across runs. */
+  function laneAwarePort(sent: string[]) {
+    return async (batch: GmailAlertBatch) =>
+      batch.envelopes.map((envelope) => {
+        if (process.env.EMAIL_ALERT_ENABLED !== 'true') {
+          return { alert: 'lane_off' as const, booking: null, going: null };
+        }
+        sent.push(envelope.messageId);
+        return { alert: 'sent' as const, booking: null, going: null };
+      });
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('lane off: the ingest watermark advances, the alert watermark is held and named', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { fetchImpl } = mailbox();
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+
+    const result = await syncConnection(connection('gmail', { historyId: '9100' }), deps);
+
+    expect(cap.cursor).toEqual({ historyId: '9200', alertHistoryId: '9100' });
+    expect(result.gmailCursor).toBe('held_lane_off');
+    expect(cap.enqueued.map((event) => event.payload.id)).toEqual(['m2']);
+    expect(logged).toHaveBeenCalledWith(
+      { connectionId: 'i1', gmailCursor: 'held_lane_off', lane: 'email_alert' },
+      'connector sync: gmail alert watermark',
+    );
+  });
+
+  it('a second sweep with the lane still off keeps the FIRST held watermark', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { fetchImpl } = mailbox();
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+
+    await syncConnection(connection('gmail', { historyId: '9100', alertHistoryId: '9002' }), deps);
+
+    expect(cap.cursor).toEqual({ historyId: '9200', alertHistoryId: '9002' });
+  });
+
+  it('lane on: both advance, nothing is held, and no extra history read is made', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    const mail = mailbox();
+    const { deps, cap } = stubDeps({ googleFetch: mail.fetchImpl });
+
+    const result = await syncConnection(connection('gmail', { historyId: '9100' }), deps);
+
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+    expect(result.gmailCursor).toBe('advanced');
+    expect(mail.urls.filter((url) => url.includes('/history'))).toHaveLength(1);
+  });
+
+  it('off then on: mail that arrived while off is alerted exactly once, and ingested once', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const sent: string[] = [];
+    const { fetchImpl } = mailbox();
+    const { deps, cap } = stubDeps({
+      googleFetch: fetchImpl,
+      alertGmailEnvelopes: laneAwarePort(sent),
+    });
+
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    const off = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    expect(off.emailAlerts.map((result) => result.alert)).toEqual(['lane_off', 'lane_off']);
+    expect(cap.cursor).toEqual({ historyId: '9200', alertHistoryId: '9002' });
+    const heldCursor = cap.cursor ?? {};
+
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    const on = await syncConnection(connection('gmail', heldCursor), deps);
+    expect(on.gmailCursor).toBe('released');
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+    const releasedCursor = cap.cursor ?? {};
+
+    const after = await syncConnection(connection('gmail', releasedCursor), deps);
+    expect(after.gmailCursor).toBe('advanced');
+
+    expect(sent.sort()).toEqual(['m1', 'm2']);
+    // The held mail rides the ALERT pass only: it reached the queue and the travel pass
+    // when it arrived, and neither is idempotent on a message id.
+    expect(cap.enqueued.map((event) => event.payload.id)).toEqual(['m1', 'm2']);
+    expect(cap.travelDetected.flatMap((batch) => batch.envelopes.map((e) => e.messageId))).toEqual([
+      'm1',
+      'm2',
+    ]);
+  });
+
+  it('a held watermark Gmail no longer has is named held_expired and dropped, never re-seeded into texts', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { fetchImpl } = routedFetch([
+      { match: 'startHistoryId=9002', status: 404, body: {} },
+      { match: 'startHistoryId=9100', body: { history: [], historyId: '9200' } },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+
+    const result = await syncConnection(
+      connection('gmail', { historyId: '9100', alertHistoryId: '9002' }),
+      deps,
+    );
+
+    expect(result.gmailCursor).toBe('held_expired');
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+    expect(cap.errored).toBe(false);
+    expect(cap.alerted.flatMap((batch) => batch.envelopes)).toEqual([]);
+    expect(logged).toHaveBeenCalledWith(
+      { connectionId: 'i1', gmailCursor: 'held_expired', lane: 'email_alert' },
+      'connector sync: gmail alert watermark',
+    );
+  });
+
+  /** Mail held since 9002, one history record per message, oldest first; nothing new
+   * since 9100. `endless` makes every held history page point at another one. */
+  function backlog(count: number, options: { endless?: boolean } = {}) {
+    const ids = Array.from({ length: count }, (_, i) => `h${String(i + 1).padStart(2, '0')}`);
+    let served = 0;
+    const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+    const fetchImpl: GoogleFetch = async (url) => {
+      const messageId = /\/messages\/([^?]+)/.exec(url)?.[1];
+      if (messageId !== undefined) {
+        return ok({
+          id: messageId,
+          snippet: `snippet ${messageId}`,
+          internalDate: String(1789000000000 + Number(messageId.slice(1)) * 60_000),
+          payload: { headers: [{ name: 'Subject', value: `Subject ${messageId}` }] },
+        });
+      }
+      if (url.includes('startHistoryId=9002')) {
+        if (options.endless) {
+          served += 1;
+          return ok({
+            history: [
+              { id: String(9002 + served), messagesAdded: [{ message: { id: `e${served}` } }] },
+            ],
+            nextPageToken: `page-${served}`,
+            historyId: '9999',
+          });
+        }
+        return ok({
+          history: ids.map((id, i) => ({
+            id: String(9003 + i),
+            messagesAdded: [{ message: { id } }],
+          })),
+          historyId: '9200',
+        });
+      }
+      if (url.includes('startHistoryId=9100') || url.includes('startHistoryId=9200')) {
+        return ok({ history: [], historyId: '9200' });
+      }
+      throw new Error(`no route for ${url}`);
+    };
+    return {
+      fetchImpl,
+      ids,
+      get served() {
+        return served;
+      },
+    };
+  }
+
+  it('releases a held backlog in one run, oldest first, each message once', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const sent: string[] = [];
+    const mail = backlog(12);
+    const { deps, cap } = stubDeps({
+      googleFetch: mail.fetchImpl,
+      alertGmailEnvelopes: laneAwarePort(sent),
+    });
+
+    const first = await syncConnection(
+      connection('gmail', { historyId: '9100', alertHistoryId: '9002' }),
+      deps,
+    );
+    expect(first.gmailCursor).toBe('released');
+    expect(sent).toEqual(mail.ids);
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+  });
+
+  it('an alert pass that throws on the release leaves the held watermark, and the next run releases it', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sent: string[] = [];
+    const mail = backlog(3);
+    const port = laneAwarePort(sent);
+    let failing = true;
+    const { deps, cap } = stubDeps({
+      googleFetch: mail.fetchImpl,
+      alertGmailEnvelopes: async (batch) => {
+        if (failing && batch.envelopes.length > 0) throw new Error('boom');
+        return port(batch);
+      },
+    });
+
+    const failed = await syncConnection(
+      connection('gmail', { historyId: '9100', alertHistoryId: '9002' }),
+      deps,
+    );
+    expect(failed.gmailCursor).toBe('release_failed');
+    expect(failed.emailAlerts.map((result) => result.alert)).toEqual([
+      'alert_failed',
+      'alert_failed',
+      'alert_failed',
+    ]);
+    expect(cap.cursor).toEqual({ historyId: '9200', alertHistoryId: '9002' });
+    expect(cap.errored).toBe(false);
+
+    failing = false;
+    const retried = await syncConnection(connection('gmail', cap.cursor ?? {}), deps);
+    // The positive control: a backlog of one slice is released in one run.
+    expect(retried.gmailCursor).toBe('released');
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+    expect(sent).toEqual(mail.ids);
+  });
+
+  it('a held drain that hits the page cap carries the last history record it reached forward', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const sent: string[] = [];
+    const mail = backlog(0, { endless: true });
+    const { deps, cap } = stubDeps({
+      googleFetch: mail.fetchImpl,
+      alertGmailEnvelopes: laneAwarePort(sent),
+    });
+
+    const result = await syncConnection(
+      connection('gmail', { historyId: '9100', alertHistoryId: '9002' }),
+      deps,
+    );
+
+    expect(result.gmailCursor).toBe('releasing');
+    expect(sent).toEqual(Array.from({ length: mail.served }, (_, i) => `e${i + 1}`));
+    expect(cap.cursor?.alertHistoryId).toBe(String(9002 + mail.served));
+    expect(cap.cursor?.alertPendingIds).toBeUndefined();
+  });
+
+  it('the lane going off mid-release keeps the ids still owed beside a new held watermark', async () => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', undefined);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { fetchImpl } = backlog(0);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+
+    const result = await syncConnection(
+      connection('gmail', { historyId: '9100', alertPendingIds: ['h11', 'h12'] }),
+      deps,
+    );
+
+    expect(result.gmailCursor).toBe('held_lane_off');
+    expect(cap.cursor).toEqual({
+      historyId: '9200',
+      alertHistoryId: '9100',
+      alertPendingIds: ['h11', 'h12'],
+    });
+  });
+});
+
 describe('syncConnection — Drive', () => {
   it('first run: getStartPageToken then changes.list; advances pageToken', async () => {
     const fetchImpl: GoogleFetch = async (url) => {
@@ -1035,6 +1393,14 @@ describe('syncConnection — Drive', () => {
 });
 
 describe('syncConnection — pagination (drain all pages before advancing)', () => {
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('Calendar drains every page; the terminal nextSyncToken arrives only on the last', async () => {
     const { fetchImpl } = routedFetch([
       // page 2 (matched first): terminal nextSyncToken, no nextPageToken
@@ -1287,6 +1653,10 @@ describe('syncConnection — booked-detection backfill', () => {
       .filter((url) => url.includes('/messages?'))
       .map((url) => new URL(url).searchParams.get('q') ?? '');
   }
+
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  });
 
   afterEach(() => {
     vi.unstubAllEnvs();

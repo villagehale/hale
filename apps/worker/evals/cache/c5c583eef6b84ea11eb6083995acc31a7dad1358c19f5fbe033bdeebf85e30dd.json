@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message answers the venue the parent named. It leads with Cartwheels Gym Centre's own programs by name, Tiny Gym and Rock n' Roll, with age fits matching the picks. Each is attributed with \"their site says\". The one extra venue, Halton Hills Gymnastics Centre, is clearly labelled as itself rather than passed off as Cartwheel. Its dates match the picks, and there are three picks in total. Under no_page_read, the missing days and prices are named correctly as \"I could not get into their pages today\". No day, time or price is invented. watch is true and the message makes the first-person promise \"I'll keep watching and text you\". It is plain text with no link and no question.",
+    "score": 5
+  }
+}

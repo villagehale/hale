@@ -3,11 +3,6 @@ import { z } from 'zod';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import {
-  type Moment,
-  type MomentWrite,
-  createMomentReply,
-} from '~/lib/channel/off-domain/moment-reply';
 import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -15,20 +10,16 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
-import { identityChallengeReply } from './identity-challenge';
 import {
-  cheerUpIntakeReply,
   groundCurrentSource,
   isCheerUpAsk,
   isLiveLookupAsk,
-  liveLookupFallbackReply,
   liveLookupReplyFromNotes,
 } from './live-lookup';
 import {
   deidentifyOfficialQuery,
   isOfficialPageAsk,
   notesGroundADate,
-  officialPageFallbackReply,
   officialPageReplyFromNotes,
 } from './official-page';
 
@@ -56,12 +47,12 @@ import {
  *
  * FOUR THINGS MAKE IT SAFE TO PUT ON A STRANGER'S THIRD TEXT:
  *
- *   A HURT CHILD OR A CRISIS STOPS THE ORDINARY ANSWER. The composer's own reading
- *   returns {@link IntakeAnswerOutcome} `safety` or `mental_crisis`, with no body,
- *   in any language. The machine then asks the moment writer for the reply, in the
- *   parent's language, and does not tack the signup question onto it. When the writer
- *   cannot send, nothing preset goes out and the turn is deferred so it can be
- *   re-driven.
+ *   AN EMERGENCY NEVER REACHES A MODEL. `namesAnEmergency` is checked first, before the
+ *   client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` — the
+ *   machine then sends the model-written crisis reply (#868: routed and written by the turn reader), with no return-to-script
+ *   tacked onto it. Intake has never had the screened safety lane the router has
+ *   (off-domain/lane.ts), so this is the whole of it, and it works during a provider
+ *   outage because it is a substring test.
  *
  *   NOTHING IS AGREED TO YET, and the gates say so in code. Consent is the question
  *   still outstanding on the seam that calls this, so a composed line claiming Hale is
@@ -161,7 +152,14 @@ export type IntakeAnswerRefusal =
 /** Why the stage produced no words. Four separate operational stories, none of them
  * silence (rule #11): `skill_unavailable` is a deploy bug, `model_failed` an outage,
  * `unusable` the model getting it wrong and the gates catching it. */
-export type IntakeAnswerFallback = 'skill_unavailable' | 'model_failed' | 'unusable';
+export type IntakeAnswerFallback =
+  | 'skill_unavailable'
+  | 'model_failed'
+  | 'unusable'
+  /** Search found nothing sendable; the machine has the model say so (#868). */
+  | 'ungrounded'
+  /** A caregiver venting; the machine has the model write the warmth (#868). */
+  | 'cheer_up';
 
 export type IntakeAnswerOutcome =
   /** The whole message: the answer, then Hale's question again in different words. */
@@ -169,13 +167,14 @@ export type IntakeAnswerOutcome =
   /** Not a question. The caller's own reply is the right one and this cost one call. */
   | { status: 'nothing_to_answer' }
   /**
-   * Someone is hurt, ill or in danger. Carries NO body — the machine asks the moment
-   * writer (child health) and does not resume the signup script.
+   * Someone is hurt, ill or in danger. Carries NO body on purpose — the words a parent
+   * gets in that moment are the reviewed ones in off-domain/copy.ts, and a variant with
+   * a text field is one a later edit could fill from a model.
    */
   | { status: 'safety' }
   /**
-   * Caregiver mental crisis. Carries NO body — the machine asks the moment writer
-   * and does not send the child-health reply.
+   * Caregiver mental crisis. Carries NO body — the machine sends
+   * a model-written crisis reply (988 / 911), never the child-health 811 line.
    */
   | { status: 'mental_crisis' }
   | { status: 'unavailable'; reason: IntakeAnswerFallback };
@@ -197,9 +196,6 @@ export interface IntakeAnswerInput {
 
 export interface IntakeAnswerComposer {
   compose(input: IntakeAnswerInput): Promise<IntakeAnswerOutcome>;
-  /** Writes the crisis, emergency, or child-health reply. The ordinary answer has
-   * already stopped. An unwritten reply is named and nothing preset goes out. */
-  writeMoment(text: string, moment: Moment): Promise<MomentWrite>;
 }
 
 const answerSchema = z.object({ answer: z.string(), returnLine: z.string() });
@@ -286,10 +282,10 @@ function unavailable(reason: IntakeAnswerFallback, detail?: string): IntakeAnswe
 /**
  * Read the model's pair.
  *
- * The health-line tripwire runs BEFORE every other gate because it STOPS where the
- * rest refuse: a parent who turns out to be describing a hurt child must not get the
- * flat signup question a refusal would send them. The machine then asks the moment
- * writer for a child-health reply in the parent's language (skill audit P0 #3).
+ * The health-line tripwire runs BEFORE every other gate because it SUBSTITUTES where
+ * the rest refuse: a parent who turns out to be describing a hurt child must get the
+ * reviewed 811/911 line, never the flat signup question a refusal would send them
+ * (skill audit P0 #3, the same ordering off-domain/answer.ts uses).
  */
 export function readPair(
   raw: { answer: string; returnLine: string },
@@ -298,9 +294,7 @@ export function readPair(
   const answer = plainText(raw.answer);
   const returnLine = plainText(raw.returnLine);
   if (reachesForTheHealthLine(`${answer} ${returnLine}`)) {
-    console.error(
-      'intake answer: composer reached for a referral; handing the turn to the moment writer',
-    );
+    console.error('intake answer: composer reached for a referral; sent the fixed line');
     return { status: 'safety' };
   }
   // Read before the gates, not after: an empty answer is the model declining, which is
@@ -366,19 +360,16 @@ async function groundOfficialPages(
 
 export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerComposer {
   return {
-    writeMoment(text, moment) {
-      return createMomentReply(() => client).write(text, moment);
-    },
     async compose(input) {
-      // Whether this is a crisis is the model's reading, returned as `safety` or
-      // `mental_crisis` by the machine that reads the pair. No English word list
-      // stands in front of that reading.
+      // FIRST, and with no model in the loop. See the module note: intake has never had
+      // the screened safety lane, and an emergency must not wait on a provider that may
+      // be the reason this turn is degraded at all.
 
       // VIL-333. Identity / distrust is a locked disclosure, not a composed answer
       // plus the pending ask. The machine short-circuits on the same read; this
       // is the same door for any caller of the composer.
-      const disclosure = identityChallengeReply(input.parentWords);
-      if (disclosure) return { status: 'answered', body: disclosure };
+      // #868: the disclosure is written by the model in the machine's seam (which
+      // holds the writer). Here a challenge is simply not a question to answer.
 
       // VIL-323: adult-learn is a Designer-locked kids-only door, not a model "I
       // don't do that" and not a city clock. Checked before rec-morning so
@@ -406,22 +397,19 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       if (isOfficialPageAsk(input.parentWords)) {
         const ground = await groundOfficialPages(client, input);
         if (ground.status === 'ungrounded') {
-          console.error(
-            { reason: ground.reason },
-            'intake answer: official page not grounded, said the date is not posted',
-          );
-          return { status: 'answered', body: officialPageFallbackReply(input.pendingAsk) };
+          console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
+          return { status: 'unavailable', reason: 'ungrounded' };
         }
-        return {
-          status: 'answered',
-          body: officialPageReplyFromNotes(ground.notes, input.pendingAsk),
-        };
+        const body = officialPageReplyFromNotes(ground.notes, input.pendingAsk);
+        return body === null
+          ? { status: 'unavailable', reason: 'ungrounded' }
+          : { status: 'answered', body };
       }
 
       // VIL-327 caregiver cheer-up: reviewed warmth, not a clinician, then
       // one return ask. Crisis already left above. Therapist-find is live lookup.
       if (isCheerUpAsk(input.parentWords)) {
-        return { status: 'answered', body: cheerUpIntakeReply(input.pendingAsk) };
+        return { status: 'unavailable', reason: 'cheer_up' };
       }
 
       // VIL-327: raising-kids, leftover current-source facts, therapist-find.
@@ -430,16 +418,13 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       if (isLiveLookupAsk(input.parentWords)) {
         const ground = await groundCurrentSource(client, input.parentWords, input.children);
         if (ground.status === 'ungrounded') {
-          console.error(
-            { reason: ground.reason },
-            'intake answer: current source not grounded, said so',
-          );
-          return { status: 'answered', body: liveLookupFallbackReply(input.pendingAsk) };
+          console.error({ reason: ground.reason }, 'intake answer: current source not grounded');
+          return { status: 'unavailable', reason: 'ungrounded' };
         }
-        return {
-          status: 'answered',
-          body: liveLookupReplyFromNotes(ground.notes, input.pendingAsk),
-        };
+        const body = liveLookupReplyFromNotes(ground.notes, input.pendingAsk);
+        return body === null
+          ? { status: 'unavailable', reason: 'ungrounded' }
+          : { status: 'answered', body };
       }
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the

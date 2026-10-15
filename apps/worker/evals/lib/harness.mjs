@@ -18,7 +18,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import { capEnabled, cappedCall, isEstimate } from '../../../web/lib/testing/spend-cap.mjs';
+import {
+  capEnabled,
+  capSdkClient,
+  cappedCall,
+  installSpendCap,
+  isEstimate,
+  readLedger,
+} from '../../../web/lib/testing/spend-cap.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const WORKER_ROOT = join(HERE, '..', '..');
@@ -209,11 +216,27 @@ if (process.env.EVAL_PRINT_TELEMETRY) {
 
 // --- lazy client (never built in --cached-only) -----------------------------
 
-export function lazyAnthropic() {
+/** Prints the ceiling once, before any live call. With neither source set, the cap stays off. */
+export function installEvalSpendCap() {
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.info(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
+  return cap;
+}
+
+export function lazyAnthropic(tag = 'eval') {
   let client;
   return () => {
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    return client;
+    client ??= new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
+      fetch: globalThis.fetch,
+    });
+    return capSdkClient(client, { rates: priceRates, tag });
   };
 }
 
@@ -229,7 +252,12 @@ export function evalSubjectClient(getCurrentClient) {
     apiKey,
     baseURL: 'https://ai-gateway.vercel.sh',
   });
-  return gatewayAnthropic;
+  return capSdkClient(gatewayAnthropic, { rates: gatewayRates, tag: 'gateway' });
+}
+
+/** Gateway model ids are not on the Claude card. An unknown id is priced at the Opus ceiling. */
+function gatewayRates(model) {
+  return PRICE[model] ?? { input: 15, output: 75 };
 }
 
 /** Replace only the subject model. The Gateway's Anthropic-compatible API maps
@@ -506,6 +534,71 @@ function gatewayKey() {
   return key;
 }
 
+function gatewayReportedUsd(body) {
+  const raw = body?.providerMetadata?.gateway?.cost ?? body?.provider_metadata?.gateway?.cost;
+  const parsed = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function gatewayUsageMessage(model, peeked) {
+  const input = peeked.usage?.prompt_tokens ?? peeked.usage?.input_tokens ?? 0;
+  const output = peeked.usage?.completion_tokens ?? peeked.usage?.output_tokens ?? 0;
+  if (input > 0 || output > 0) {
+    return {
+      usage: {
+        input_tokens: input,
+        output_tokens: output,
+        server_tool_use: peeked.usage?.server_tool_use,
+      },
+    };
+  }
+  const reported = gatewayReportedUsd(peeked);
+  if (reported === null) return { usage: { input_tokens: 0, output_tokens: 0 } };
+  return {
+    usage: {
+      input_tokens: Math.round((reported * 1e6) / gatewayRates(model).input),
+      output_tokens: 0,
+    },
+  };
+}
+
+/**
+ * A gateway HTTP call under the same ceiling as the Anthropic client. With the cap off
+ * this is `send()`. A character count stands in for countTokens, which this endpoint
+ * does not offer.
+ */
+export async function spendCappedFetch({ tag = 'gateway', request, send }) {
+  if (!capEnabled()) return send();
+  const priced = { ...request, max_tokens: request.max_tokens ?? 1024 };
+  let sent;
+  await cappedCall({
+    client: {
+      messages: {
+        countTokens: async () => ({
+          input_tokens: Math.ceil(JSON.stringify(priced).length / 3),
+        }),
+      },
+    },
+    request: priced,
+    call: async () => {
+      sent = await send();
+      const peeked = await sent
+        .clone()
+        .json()
+        .catch(() => ({}));
+      return gatewayUsageMessage(priced.model, peeked);
+    },
+    rates: gatewayRates,
+    tag,
+  });
+  if (!sent) {
+    throw new Error(
+      `${tag}: spend-cap estimate returned no gateway response; use the runner --estimate`,
+    );
+  }
+  return sent;
+}
+
 async function gatewayCall(opts, tool) {
   const request = {
     model: opts.model,
@@ -542,53 +635,17 @@ async function gatewayCall(opts, tool) {
   if (opts.cachedOnly) failCachedMiss(opts.tag, key);
 
   const startedAt = performance.now();
-  const send = () =>
-    fetch(GATEWAY_ENDPOINT, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${gatewayKey()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-      signal: AbortSignal.timeout(30_000),
-    });
-  // No Anthropic countTokens on this endpoint. A character count overstates English,
-  // which is the worst case the pre-check can make without a free count. A search
-  // tool on the request still prices at the 250k-input worst case inside cappedCall.
-  const response = capEnabled()
-    ? await (async () => {
-        let sent;
-        await cappedCall({
-          client: {
-            messages: {
-              countTokens: async () => ({
-                input_tokens: Math.ceil(JSON.stringify(request).length / 3),
-              }),
-            },
-          },
-          request,
-          call: async () => {
-            sent = await send();
-            const peeked = await sent
-              .clone()
-              .json()
-              .catch(() => ({}));
-            return {
-              usage: {
-                input_tokens: peeked.usage?.prompt_tokens ?? peeked.usage?.input_tokens ?? 0,
-                output_tokens: peeked.usage?.completion_tokens ?? peeked.usage?.output_tokens ?? 0,
-                server_tool_use: peeked.usage?.server_tool_use,
-              },
-            };
-          },
-          rates: priceRates,
-          tag: opts.tag ?? 'gateway',
-        });
-        if (!sent) {
-          throw new Error(
-            `${opts.tag}: spend-cap estimate returned no gateway response; use the runner --estimate`,
-          );
-        }
-        return sent;
-      })()
-    : await send();
+  const response = await spendCappedFetch({
+    tag: opts.tag ?? 'gateway',
+    request,
+    send: () =>
+      fetch(GATEWAY_ENDPOINT, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${gatewayKey()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(30_000),
+      }),
+  });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`${opts.tag}: Gateway request failed (${response.status})`);
   if (body.choices?.[0]?.finish_reason === 'length') {
@@ -670,6 +727,26 @@ export const JUDGE_SCHEMA = {
 };
 
 /**
+ * Score first, then a short reason. A forced tool call is emitted in schema order, so
+ * the number is already on the verdict when a long reason runs out of tokens. The
+ * shared schema above stays reason-first. A suite opts into this one.
+ */
+export function scoreFirstJudgeSchema(maxChars) {
+  return {
+    type: 'object',
+    properties: {
+      score: { type: 'integer', minimum: 1, maximum: 5 },
+      reason: {
+        type: 'string',
+        maxLength: maxChars,
+        description: `At most ${maxChars} characters. Do not quote the text.`,
+      },
+    },
+    required: ['score', 'reason'],
+  };
+}
+
+/**
  * HOW MANY TIMES THE JUDGE IS ASKED, when one draw is not a measurement.
  *
  * THREE, and it is the smallest number that HAS a median. A judge is a sampled model and
@@ -741,6 +818,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
   async function draw(tag, userMessage, index) {
     const sampleTag =
       index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
+    const schema = options?.toolSchema ?? options?.schema ?? JUDGE_SCHEMA;
     const key = cacheKey(
       sampleTag,
       `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}`,
@@ -748,6 +826,30 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     const cached = await cacheGet(key);
     if (cached && isVerdict(cached.parsed)) return cached.parsed;
     if (cachedOnly) failCachedMiss(sampleTag, key);
+
+    // A score-first suite keeps a draw whose reason was cut off. That path reads the
+    // tool call itself: forceToolJson refuses a max_tokens stop before the score can
+    // be kept, and a cap that already booked the call must not be counted again.
+    if (options?.keepTruncatedScore === true) {
+      const response = await getClient().messages.create({
+        model,
+        max_tokens: options?.maxTokens ?? 4096,
+        system: judgeSystem,
+        tools: [{ name: 'score', description: 'Return the score.', input_schema: schema }],
+        tool_choice: { type: 'tool', name: 'score' },
+        messages: [{ role: 'user', content: userMessage }],
+      });
+      const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'score');
+      if (!toolUse) throw new Error(`judge (${sampleTag}) returned no score tool call`);
+      if (!isVerdict(toolUse.input)) {
+        throw new Error(
+          `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
+        );
+      }
+      if (!response.capBooked) noteUsage(cost, model, response.usage);
+      await cachePut(key, { parsed: toolUse.input });
+      return toolUse.input;
+    }
 
     const agent = await loadAgent();
     let result;
@@ -781,7 +883,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
         userMessage,
         toolName: 'score',
         toolDescription: 'Return the score.',
-        inputJsonSchema: options?.schema ?? JUDGE_SCHEMA,
+        inputJsonSchema: schema,
         schema: ANY_INPUT,
       });
     } catch (err) {

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The research notes back both the closure for Canadian Thanksgiving and Friday's close of 35,664.62, +519.24 (+1.48%). The answer sensibly leaves out the Oct 13 data dated after today. It is brief and states the facts directly. It could sound a little more casual, but it reads fine as a text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: research_notes confirm the Cardinals beat the Tigers 4-1 in the 2006 World Series, and 2006 is the right year for 20 years before Oct 2026. The 'in five games, 4-1' wording is slightly redundant, but it's brief and casual and reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

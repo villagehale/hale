@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "For large eggs dropped into boiling water, the sources mostly give about 10–13 minutes",
+        "from": "the sources mostly give about 10–13 minutes"
+      },
+      {
+        "states": "12 minutes gives a fully set yolk",
+        "from": "12–13 minutes gives a fully set yolk"
+      },
+      {
+        "states": "10 minutes gives a firm yolk that may be slightly soft in the center",
+        "from": "About 10 minutes gives a firm yolk that may be slightly soft in the center"
+      },
+      {
+        "states": "Past about 14 minutes the eggs turn rubbery or dry",
+        "from": "Past about 14–15 minutes the eggs turn rubbery or dry"
+      }
+    ],
+    "answer": "For large eggs dropped into boiling water, 12 minutes gets you a fully set yolk. 10 gets a firm yolk that can be a bit soft in the middle, and past about 14 minutes they go rubbery and dry."
+  },
+  "latencyMs": 4188
+}

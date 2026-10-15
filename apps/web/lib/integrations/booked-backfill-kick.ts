@@ -8,7 +8,13 @@ import { type BookedBackfillRun, backfillBookedMail } from './sync';
  * The 15-minute cron continues whatever this kick does not finish. A failure
  * here is named and does not undo the connect.
  */
-export type GmailBackfillKickOutcome = 'off' | 'completed' | 'partial' | 'quota' | 'failed';
+export type GmailBackfillKickOutcome =
+  | 'off'
+  | 'lane_off'
+  | 'completed'
+  | 'partial'
+  | 'quota'
+  | 'failed';
 
 export async function kickGmailBookedBackfill(
   database: Database,
@@ -47,6 +53,7 @@ export async function kickGmailBookedBackfill(
 
 function kickOutcome(run: BookedBackfillRun): GmailBackfillKickOutcome {
   if (run.status === 'off') return 'off';
+  if (run.status === 'lane_off') return 'lane_off';
   if (run.status === 'quota') return 'quota';
   return run.complete ? 'completed' : 'partial';
 }

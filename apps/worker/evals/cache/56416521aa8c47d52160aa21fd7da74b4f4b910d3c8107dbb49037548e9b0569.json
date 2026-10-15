@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toyota Sienna gets 36 mpg combined, the best in the segment",
+        "from": "It gets 36 mpg combined with front-wheel drive, the best in the segment"
+      },
+      {
+        "states": "Toyota Sienna is the only minivan sold only as a hybrid",
+        "from": "is the only minivan sold only as a hybrid"
+      },
+      {
+        "states": "Edmunds ranks the 2026 Toyota Sienna first",
+        "from": "Its ranking is 1) 2026 Toyota Sienna"
+      },
+      {
+        "states": "U.S. News names the 2026 Honda Odyssey the best minivan",
+        "from": "It names the 2026 Honda Odyssey the best minivan"
+      },
+      {
+        "states": "Car Talk says the Odyssey consistently came out as the best overall minivan in its tests",
+        "from": "It says the Odyssey consistently came out as the best overall minivan in its tests"
+      },
+      {
+        "states": "The Weekly Driver, the newest source, calls the 2026 Kia Carnival Hybrid the best overall minivan for most families",
+        "from": "It calls the 2026 Kia Carnival Hybrid the best overall minivan for most families"
+      }
+    ],
+    "answer": "Toyota Sienna, my pick. It gets 36 mpg combined, the best in the class, and it's hybrid only. Edmunds has it first too. The sources don't agree, though: U.S. News and Car Talk's tests go with the Honda Odyssey, and the newest review, The Weekly Driver, picks the Kia Carnival Hybrid for most families."
+  },
+  "latencyMs": 6077
+}

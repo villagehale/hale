@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a clear pick, the Sienna, and gives reasons the notes support: 36 mpg, hybrid-only, ranked first by Edmunds. It admits there's no consensus and names the Odyssey and Carnival as alternatives with supported strengths. One small slip: the notes tie the 10yr/100k warranty to the Carnival Hybrid, but the answer pins it to the $36,990 base Carnival. Kia's warranty is widely known to cover the whole lineup, so this isn't marked as a wrong fact. It reads like a friend texting, if a bit spec-heavy.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

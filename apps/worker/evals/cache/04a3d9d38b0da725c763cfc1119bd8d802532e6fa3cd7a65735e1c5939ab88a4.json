@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey! You've approved me to send emails on your behalf enough times that I'll just go ahead and do it from now on — no need to ask each time. I'll also reply to emails for you when needed. Just so you know, I never book anything, register for anything, or make any payments. And if you ever want me to stop, just say so and I'll switch it off right away."
+  },
+  "stopReason": "tool_use"
+}

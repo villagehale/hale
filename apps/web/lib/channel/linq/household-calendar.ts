@@ -7,7 +7,6 @@ import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channe
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import { linqGroupCoparentEnabled, linqPollsEnabled } from './config';
-import { groupProactiveCapReached } from './family-outbound';
 import { groupAudienceAllows } from './group-audience';
 import {
   classifyKidCalendarItem,
@@ -55,8 +54,9 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * flag defaults on; `LINQ_GROUP_COPARENT=off` is the kill switch. Mail is
  * never spoken here.
  *
- * Proactive group speech is one bubble: at most one a day and three a week,
- * never during quiet hours. A cancellation, a weekly recap, and an unprompted
+ * Proactive group speech is one bubble per pass, chosen by priority. Quiet
+ * hours still hold on the send. A daily or weekly count is not a hold. A
+ * cancellation, a weekly recap, and an unprompted
  * both-free suggestion are not bubbles.
  *
  * VIL-377, Design locked 2026-09-26: when LINQ_POLLS is on, a conflict is the
@@ -113,9 +113,8 @@ export interface HouseholdNotice {
   kind: 'kid_event' | 'conflict' | 'handoff' | 'followup' | 'who_takes';
   dedupeKey: string;
   /**
-   * `activity_followup` has no frequency counter, so an SMS calendar alert
-   * cannot eat the group's own 1/day and 3/week cap. Quiet hours and consent
-   * still apply. The group's cap is counted on the template keys below.
+   * `activity_followup` has no frequency counter. Quiet hours and consent
+   * still apply. There is no daily or weekly count on this path.
    */
   gateKind: 'activity_followup';
   category: 'calendar_alert' | 'followup';
@@ -956,16 +955,6 @@ export async function narrateHouseholdCalendar(
     );
     return;
   }
-  if (
-    await groupProactiveCapReached(database, {
-      familyId: input.familyId,
-      chatId: context.chatId,
-      now: input.now,
-    })
-  ) {
-    console.warn({ familyId: input.familyId }, 'household calendar: group cap reached');
-    return;
-  }
   const sent = await sendGroupNotice(database, {
     familyId: input.familyId,
     chatId: context.chatId,
@@ -1522,18 +1511,21 @@ export async function familyHasTwoCalendars(
   return context.bothCalendars;
 }
 
-/** Used by the connector sweep. Failures stay inside the caller. */
-export async function rememberAndNarrateCalendar(
+interface HouseholdCalendarSweepInput {
+  integrationId: string;
+  familyId: string;
+  userId: string | null;
+  changes: readonly CalendarChange[];
+  seeding: boolean;
+  now: Date;
+  fetch?: typeof fetch;
+}
+
+/** The remember half alone, for a sweep that may not speak. Blocks left unannounced
+ * are picked up by the next narrate. */
+export async function rememberHouseholdCalendar(
   database: Database,
-  input: {
-    integrationId: string;
-    familyId: string;
-    userId: string | null;
-    changes: readonly CalendarChange[];
-    seeding: boolean;
-    now: Date;
-    fetch?: typeof fetch;
-  },
+  input: HouseholdCalendarSweepInput,
 ): Promise<void> {
   if (!linqGroupCoparentEnabled() || !input.userId) return;
   const context = await loadFamilyCalendarContext(database, input.familyId);
@@ -1547,6 +1539,15 @@ export async function rememberAndNarrateCalendar(
     bothCalendars: context.chatId !== null || context.bothCalendars,
     now: input.now,
   });
+}
+
+/** Used by the connector sweep. Failures stay inside the caller. */
+export async function rememberAndNarrateCalendar(
+  database: Database,
+  input: HouseholdCalendarSweepInput,
+): Promise<void> {
+  if (!linqGroupCoparentEnabled() || !input.userId) return;
+  await rememberHouseholdCalendar(database, input);
   await narrateHouseholdCalendar(database, {
     familyId: input.familyId,
     now: input.now,

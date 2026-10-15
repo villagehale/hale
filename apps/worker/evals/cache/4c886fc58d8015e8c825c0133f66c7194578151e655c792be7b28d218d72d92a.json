@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Everything stated matches the notes: the Blue Jays finished 79-83, missed the playoffs and had no game found for Sunday. The assumption is flagged and the hedge is honest. It does answer the question: Priya's likely mistaken. The closing caveat about the game log reads a bit stiff and report-like rather than a casual text, but it is not a service offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

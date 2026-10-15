@@ -1,0 +1,49 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No single agreed winner; sources split between Sienna, Odyssey, Carnival Hybrid and Pacifica",
+        "from": "There is no single agreed winner."
+      },
+      {
+        "states": "2026 Kia Carnival Hybrid is the best overall minivan for most families (The Weekly Driver, 5 days old)",
+        "from": "It calls the 2026 Kia Carnival Hybrid the best overall minivan for most families."
+      },
+      {
+        "states": "Carnival Hybrid has 32 mpg combined; Sienna has 36 mpg combined",
+        "from": "The Hybrid gets 32 mpg combined. ... The Sienna gets 36 mpg combined"
+      },
+      {
+        "states": "Carnival Hybrid has 44 more cubic feet of cargo space than the comparison",
+        "from": "44 more cubic feet of cargo space"
+      },
+      {
+        "states": "Carnival Hybrid powertrain warranty is 10 years/100,000 miles",
+        "from": "its powertrain warranty is 10 years/100,000 miles"
+      },
+      {
+        "states": "Edmunds gives the Carnival Hybrid 7.8/10, tied with the Sienna",
+        "from": "The Sienna scores 7.8/10. The Carnival Hybrid got the same 7.8 overall."
+      },
+      {
+        "states": "U.S. News rates the 2026 Honda Odyssey 9.3/10, the best minivan",
+        "from": "It names the 2026 Honda Odyssey the best minivan, with a 9.3/10 score."
+      },
+      {
+        "states": "Odyssey drives most like a car",
+        "from": "It is the one that drives most like a car, with a smooth V6."
+      },
+      {
+        "states": "A reported Odyssey rearview camera recall",
+        "from": "KBB's page carries a headline about another Odyssey rearview camera recall."
+      },
+      {
+        "states": "If mpg matters most, the Sienna is the pick (36 mpg combined)",
+        "from": "Toyota Sienna: It gets 36 mpg combined with front-wheel drive"
+      }
+    ],
+    "answer": "Honestly there's no agreed winner, but I'd go with the 2026 Kia Carnival Hybrid. The Weekly Driver, the newest review I found (5 days old), calls it the best overall for most families: 32 mpg combined vs the Sienna's 36, 44 more cubic feet of cargo space, and a 10-year/100,000-mile powertrain warranty. Edmunds ties it with the Sienna at 7.8/10. U.S. News rates the Odyssey highest at 9.3 and it drives most like a car, but a rearview camera recall on the Odyssey has been reported, so look into that before you buy one. If mpg matters most, get the Sienna."
+  },
+  "latencyMs": 8429
+}

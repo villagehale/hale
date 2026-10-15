@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toyota Sienna is the pick",
+        "from": "Its 2026 page calls the Sienna its top-rated minivan"
+      },
+      {
+        "states": "Sienna gets 36 mpg combined, best in the segment",
+        "from": "It gets 36 mpg combined with front-wheel drive, the best in the segment"
+      },
+      {
+        "states": "Honda Odyssey scores 9.3/10 in U.S. News and is named best minivan",
+        "from": "It names the 2026 Honda Odyssey the best minivan, with a 9.3/10 score."
+      },
+      {
+        "states": "Car Talk says the Odyssey came out as the best overall minivan in its tests",
+        "from": "It says the Odyssey consistently came out as the best overall minivan in its tests."
+      }
+    ],
+    "answer": "My pick is the Toyota Sienna. It's the most efficient one, at 36 mpg combined, which is the best in the class, so it's the cheapest to run. Reviewers really do split, though. U.S. News has the Honda Odyssey at 9.3/10 and Car Talk says it tests as the best overall, so if you want the one that drives most like a car, the Odyssey is the one to look at."
+  },
+  "latencyMs": 8100
+}

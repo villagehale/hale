@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in French and makes a real pick (yes, it's acceptable) with a reason: the sweet pineapple against salty ham or cheese. Hawaiian pizza is common knowledge, so nothing is invented. It reads like a friend, but slightly stiff and long-winded. The closing 'c'est une question de goût' softens the pick a little without becoming fence-sitting. 'Tu n'as rien à mettre dessus' is awkward phrasing.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

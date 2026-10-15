@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by research_notes: short-term use at 5 mg or less looks safe, side effects are mild, long-term safety is unclear, the Nov 2025 AHA preliminary study is not peer-reviewed and can't prove cause, a 2026 analysis found no link, and blood thinners and antidepressants may interact. The pharmacist and doctor pointer is a proper safety judgment, and no dosing regimen is given. It answers the question directly. The tone reads more like a summary paragraph than a casual text, so it falls a bit short of the friend register.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

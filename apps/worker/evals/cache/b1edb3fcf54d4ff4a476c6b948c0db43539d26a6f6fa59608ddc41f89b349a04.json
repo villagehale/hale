@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Blue Jays did not make the 2026 postseason",
+        "from": "The Blue Jays did not make the 2026 postseason."
+      },
+      {
+        "states": "Toronto's final regular-season record is 79-83",
+        "from": "Baseball-Reference lists their final record as 79-83, 5th in the AL East."
+      },
+      {
+        "states": "No Blue Jays game was found on Sunday, Oct 11",
+        "from": "The results found no Blue Jays game on Oct 11, and I found no score for one."
+      },
+      {
+        "states": "The ALCS is under way and Toronto is not in it",
+        "from": "The AL Championship Series is under way. Toronto is not in that series."
+      }
+    ],
+    "answer": "Doesn't look like it. I don't see a Blue Jays game last night, and their season is over. They finished 79-83 and missed the playoffs. The ALCS is on now, but Toronto isn't in it."
+  },
+  "latencyMs": 4759
+}

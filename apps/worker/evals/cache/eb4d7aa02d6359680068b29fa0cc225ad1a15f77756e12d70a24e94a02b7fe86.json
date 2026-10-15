@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot matches the page exactly: name, age band, days, times and session dates are all as printed. It is cited to the programme page. The price is correctly null, so no rental figure ($185 or $95) was borrowed. The page prints no registration date, so a null registration field is correct. The message leads with the program by name and attributes the facts with \"their site says\". It is plain ASCII, has no link and asks no question. The negative claim is first person (\"I could not pin down the price\"), which is right under page_has_schedule. With watch=true, the first-person \"I'll keep watching and text you\" is backed by a real commitment. No fault found.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own. The autonomy switch was turned off this turn for both send_email and reply_to_email, so the reply's claim that Hale will now ask before each one is true. It is one short line in the parent's language, with no greeting, no sign-off and no questions. It does the job and stops.",
+    "score": 5
+  }
+}

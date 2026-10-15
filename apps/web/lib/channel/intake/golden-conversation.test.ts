@@ -10,7 +10,6 @@ import {
   emptyAha,
 } from '~/lib/channel/connect/aha-read';
 import { connectedReceiptBody } from '~/lib/channel/connect/connected-notice';
-import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import { routeInboundText } from '~/lib/channel/inbound-route';
 import {
   HALE_CONTACT_FIRST_NAME,
@@ -19,24 +18,11 @@ import {
 import { LINQ_GROUP_TRIGGER_PHRASE } from '~/lib/channel/linq/group';
 import { LINQ_TYPING_REFRESH_MS } from '~/lib/channel/linq/presence';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { DISCOVERY_NEXT_STEP, KNOWN_VENUE_HELLO } from './cold-start/copy';
-import {
-  COLD_START_ASK,
-  FIRST_TOUCH_AGES_BY_LANGUAGE,
-  FIRST_TOUCH_EMPTY_BY_LANGUAGE,
-  FIRST_TOUCH_GROUP_FR,
-  FIRST_TOUCH_IMESSAGE_BY_LANGUAGE,
-  FIRST_TOUCH_SMS_BY_LANGUAGE,
-  HALE_GREETING_EN,
-  HELP_REPLY,
-  SITTING_SESSION_REMINDER,
-} from './copy';
 import {
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeSilentAnswerComposer,
   makeFakeDb,
@@ -45,7 +31,6 @@ import type { FriendVoiceInput } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 import { FakeTransport, type InboundMessage } from './transport';
-import { YEAR_OPEN_LEAD, YEAR_OPEN_LEAD_FR } from './year-open';
 
 /**
  * End-to-end onboarding conversations against the real intake machine.
@@ -59,27 +44,6 @@ const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
 const FROM = '+15555550100';
 const FIND_MESSAGE = '1. Swim at the rec centre - Saturday\n2. Story time - Tuesday';
-
-const CANNED = [
-  FIRST_TOUCH_SMS_BY_LANGUAGE.en,
-  FIRST_TOUCH_SMS_BY_LANGUAGE.fr,
-  FIRST_TOUCH_IMESSAGE_BY_LANGUAGE.en,
-  FIRST_TOUCH_AGES_BY_LANGUAGE.en,
-  FIRST_TOUCH_AGES_BY_LANGUAGE.fr,
-  FIRST_TOUCH_EMPTY_BY_LANGUAGE.en,
-  FIRST_TOUCH_EMPTY_BY_LANGUAGE.fr,
-  FIRST_TOUCH_GROUP_FR,
-  HALE_GREETING_EN,
-  COLD_START_ASK,
-  SITTING_SESSION_REMINDER,
-  YEAR_OPEN_LEAD,
-  YEAR_OPEN_LEAD_FR,
-  KNOWN_VENUE_HELLO.en,
-  DISCOVERY_NEXT_STEP.en,
-  DISCOVERY_NEXT_STEP.fr,
-  HELP_REPLY,
-  googleUnverifiedAppLine('en'),
-];
 
 type Mark = 'typing-start' | 'typing-stop' | 'send' | 'card' | 'search';
 
@@ -280,13 +244,6 @@ function findResult() {
   };
 }
 
-function expectNoCanned(bodies: string[]) {
-  const blob = bodies.join('\n');
-  for (const line of CANNED) {
-    expect(blob, line).not.toContain(line);
-  }
-}
-
 function assertTypingUntilSend(turn: Mark[]) {
   const sendAt = turn.indexOf('send');
   expect(sendAt).toBeGreaterThan(0);
@@ -371,7 +328,6 @@ function conversation(options?: {
         return findResult();
       },
     },
-    ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
@@ -427,7 +383,6 @@ function conversation(options?: {
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
-  vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
   vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_FROM_E164', FROM);
@@ -537,7 +492,6 @@ describe('golden onboarding conversation', () => {
     expect(chat.bodies).toEqual([]);
     expect(chat.marks).toContain('typing-start');
     expect(talk.transport.bodies().join('\n')).not.toMatch(/booked|enrolled|signed up|registered/i);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('puts the phrase under a yes while the flag is off, including words about a new group', async () => {
@@ -625,7 +579,6 @@ describe('golden onboarding conversation', () => {
     expect(body).not.toMatch(/which (one|of these)/i);
     expect(first.bodies.length).toBeGreaterThan(0);
     assertTypingUntilSend(first.marks);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('takes two items from one message, shows the map, and asks the next missing one', async () => {
@@ -640,7 +593,6 @@ describe('golden onboarding conversation', () => {
     expect(first.bodies.join('\n')).not.toMatch(/postal code\?$/);
     expect(first.bodies.join('\n')).not.toMatch(/which (one|of these)/i);
     assertTypingUntilSend(first.marks);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('answers off-script at every step and still asks the current question', async () => {
@@ -702,7 +654,6 @@ describe('golden onboarding conversation', () => {
     expect(coparent.bodies.join('\n')).toContain('Got it.');
     expect(coparent.bodies.join('\n').split('\n')[0]).toMatch(/other parent\?$/);
     expect(talk.transport.bodies().every((body) => body.trim().length > 0)).toBe(true);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('replies to each message in a burst', async () => {
@@ -717,7 +668,6 @@ describe('golden onboarding conversation', () => {
     expect(second.bodies.length).toBeGreaterThan(0);
     assertTypingUntilSend(first.marks);
     assertTypingUntilSend(second.marks);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('shares the contact card as Hale plus hibiscus after the reply', async () => {
@@ -806,14 +756,12 @@ describe('golden onboarding conversation', () => {
     await talk.say('Dana');
     await talk.say("What's next");
     expect(talk.transport.bodies().length).toBeGreaterThan(0);
-    expectNoCanned(talk.transport.bodies());
     const machine = conversation();
     await handleInboundSms(
       machine.fake.db,
       machine.transport.inbound(PHONE, 'hi', { transport: 'imessage', chatId: CHAT }),
       machine.deps,
     );
-    expectNoCanned(machine.transport.bodies());
   });
 
   it('says one useful thing from the calendar or mailbox that just connected', async () => {

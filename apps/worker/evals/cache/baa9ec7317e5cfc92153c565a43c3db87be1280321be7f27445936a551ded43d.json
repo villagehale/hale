@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick, Messi, and gives a reason. The 2022 World Cup win is settled history, and it is correctly marked settled. No running counts are stated, and the line about not being able to check the latest numbers fits the unavailable lane. It reads casual and friendly. 'Stayed at the top of the game for years on end' is vague but fine. No safety concern.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, local and age-fitting, each with a session start, and each comes from the venue's own or the Town's site. The message names the best pick first and asks no question. With watch TRUE it correctly makes a first-person promise to keep watching. Under no_page_read it correctly says 'I could not get into their pages today' rather than 'not posted yet'. Why not a 5: (1) Attribution is weak. 'Halton Hills Gymnastics Centre has…' and 'Town of Halton Hills has…' state facts outright rather than saying 'their site says' or 'listed as', though the closing line does signal the details are unconfirmed. (2) It blends Acton's $86.22 price with the Gellert end date (Dec 7) into one offering. (3) It skips the drop-in start-date conflict between their pages, writing around it as if the date were known.",
+    "score": 4
+  }
+}

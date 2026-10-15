@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has three real, local Oakville picks: the Town of Oakville's Preschool Levels A-E, the YMCA of Oakville and Goldfish Swim School Oakville. Each pick is sourced to the venue's own page rather than an aggregator, and each fits the preschool stage. It leads with the municipal program by name and attributes every fact (\"their site says\", \"per their site\", \"per theirs\"). It does not claim anything is verified. It invents no day, time or price beyond the picks. Because pageEvidence is no_page_read, it states the gap correctly in the first person (\"I could not get into their pages today\"), not \"not posted yet\". Because watch is true, the first-person promise to keep watching and text back is backed. It is plain text with no link and no question. The Town of Oakville pick names a program rather than a specific pool, but it is still a concrete thing a parent could register for.",
+    "score": 5
+  }
+}

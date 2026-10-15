@@ -82,8 +82,6 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'duty tapback and one-line restate on the chat the parent just used; acknowledgeDutyWrite inserts the channel_messages row (category reply, template linq:duty_tapback or linq:duty_restate) before reactToLinqMessage or sendLinqChatMessage, and a missing chat id returns no_proactive_1to1 without calling the transport',
   'apps/web/lib/channel/linq/family-outbound.ts':
     'the household outbound resolver; proactive callers ledger the row beside deliverFamilyOutbound, postGroupDecisionSync inserts its own channel_messages row before the Linq send, and sendClaimedGroupLine does the same before mirroring a memory decision into the claimed group only',
-  'apps/web/lib/billing/upgrade-ask.ts':
-    'year-retention ask and group sync; maybeOfferYearRetention inserts channel_messages (template linq:upgrade_ask) after the Linq send, and closeOffer inserts channel_messages (template linq:upgrade_sync) after the group-sync send',
   'apps/web/lib/channel/linq/poll.ts':
     'sends the placeholder question and the poll, then writes linq:poll and linq_poll_sent',
   'apps/web/lib/channel/router/reply-transport.ts':

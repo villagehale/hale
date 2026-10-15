@@ -244,7 +244,6 @@ describe('ci.yml wiring', () => {
       'eval:village-search',
       'eval:sentinel',
       'eval:intake',
-      'eval:intake-voice',
       'eval:intake-answer',
       'eval:inbound-lane',
       'eval:general-answer',
@@ -272,6 +271,7 @@ describe('ci.yml wiring', () => {
       'eval:activity-deep',
       'eval:travel-extract',
       'eval:kid-relevance',
+      'eval:autonomy-notice',
     ];
     for (const command of commands) {
       expect(evals, command).toContain(command);

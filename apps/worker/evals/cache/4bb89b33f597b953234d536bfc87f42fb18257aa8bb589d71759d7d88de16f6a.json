@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure checks out against research_notes. For Vancouver BC, the notes support cloudy, a high of 14°C, a few showers from late evening and a low of 11°C overnight, all from Environment Canada. For Vancouver WA, the notes support a high of 64°F and dry conditions. Covering both cities and asking which one is meant fits the ambiguity the notes flag. It is short, casual and actually answers. 'Mostly dry' is a slight understatement, since every source expects it to stay fully dry, but it is not wrong.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

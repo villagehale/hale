@@ -7,15 +7,12 @@ import {
 } from '~/lib/channel/linq/family-outbound';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { COPARENT_DUTY_COPY_LOCKED_ENV } from './copy';
 import { DUTY_BURDEN_FACT_KEY, burdenMayLeave, defaultOwnerOffer, noteDutyBurden } from './burden';
-import {
-  COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV,
-  COPARENT_DUTY_MEMORY_ENABLED_ENV,
-} from './flag';
+import { projectDutyOnFamilyEvent } from './calendar';
+import { COPARENT_DUTY_COPY_LOCKED_ENV } from './copy';
+import { COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV, COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
 import { loadDutyMetrics, recordDutyAnswered, recordDutyUndone } from './metrics';
 import { type DutyState, commitDutyUpdate } from './model';
-import { projectDutyOnFamilyEvent } from './calendar';
 import { settleDutyMemory } from './settle';
 
 const GROUP = 'chat-home';
@@ -209,13 +206,15 @@ describe('duty calendar memory', () => {
     expect(facts).toHaveLength(2);
     expect(facts.some((row) => row.validUntil !== null)).toBe(true);
     expect(facts.some((row) => row.validUntil === null)).toBe(true);
-    const events = await db.database.select({ id: schema.familyEvents.id }).from(schema.familyEvents);
+    const events = await db.database
+      .select({ id: schema.familyEvents.id })
+      .from(schema.familyEvents);
     expect(events).toHaveLength(1);
   });
 });
 
 describe('duty group sync', () => {
-  it('echoes a 1:1 duty decision to the group after 10 minutes, in at most 3 lines', async () => {
+  it('echoes every 1:1 duty decision to the group after 10 minutes, in one bubble', async () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
     vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -269,8 +268,12 @@ describe('duty group sync', () => {
       message?: { parts?: Array<{ value?: string }> };
     };
     const spoken = (payload.message?.parts?.[0]?.value ?? '').split('\n');
-    expect(spoken.length).toBeLessThanOrEqual(3);
-    expect(spoken.some((line) => line.includes('piano'))).toBe(false);
+    expect(spoken).toEqual([
+      "Barton has Maya's swim, Saturday at 3:00pm. Say so here if that changes.",
+      "Barton has Maya's daycare, Saturday at 3:00pm. Say so here if that changes.",
+      "Barton has Maya's soccer, Saturday at 3:00pm. Say so here if that changes.",
+      "Barton has Maya's piano, Saturday at 3:00pm. Say so here if that changes.",
+    ]);
     for (const line of spoken) {
       expect(line.endsWith('Say so here if that changes.')).toBe(true);
     }
@@ -296,7 +299,13 @@ describe('duty group sync', () => {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       originChatId: PERSONAL,
-      decision: { decision: 'duty', activity: 'swim', kid: 'Maya', day: 'Saturday', time: '3:00pm' },
+      decision: {
+        decision: 'duty',
+        activity: 'swim',
+        kid: 'Maya',
+        day: 'Saturday',
+        time: '3:00pm',
+      },
       now: new Date(quiet.getTime() - 11 * 60 * 1000),
     });
     expect(queued).toBe('queued');
@@ -325,7 +334,13 @@ describe('duty group sync', () => {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       originChatId: GROUP,
-      decision: { decision: 'duty', activity: 'daycare', kid: 'Maya', day: 'Monday', time: '9:00am' },
+      decision: {
+        decision: 'duty',
+        activity: 'daycare',
+        kid: 'Maya',
+        day: 'Monday',
+        time: '9:00am',
+      },
       now: DAY,
     });
     expect(fromGroup).toBe('skipped');
@@ -338,7 +353,11 @@ describe('duty burden and metrics', () => {
     vi.stubEnv(COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV, 'true');
     const family = await seedFamily(db.database, 'Burden');
     await secondParent(family.familyId, 'Sam');
-    for (const iso of ['2026-08-01T15:00:00.000Z', '2026-08-08T15:00:00.000Z', '2026-08-15T15:00:00.000Z']) {
+    for (const iso of [
+      '2026-08-01T15:00:00.000Z',
+      '2026-08-08T15:00:00.000Z',
+      '2026-08-15T15:00:00.000Z',
+    ]) {
       const subject = `who-takes/${iso}/swim`;
       await writeFact(db.database, {
         familyId: family.familyId,

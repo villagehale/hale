@@ -5,13 +5,19 @@ import type { CoParentInvite } from '~/lib/channel/caregiver/invites';
 import { GENERAL_ANSWER_SEARCH_ENABLED_ENV } from '~/lib/channel/off-domain/answer';
 import { SMS_CONSENT_SCOPE, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { POLICY_VERSION } from '~/lib/consent';
 import { revokeMcpGrant } from '~/lib/mcp/oauth-store';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { CO_PARENT_INVITE_CONSENT_SCOPE, acceptCoParentInvite } from './accept';
 import { departCoParent } from './depart';
+
+// The live search is on by default in production. These tests describe the kill switch
+// (dark) unless a test lights it, so each starts dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * VIL-355 · departure against the REAL DDL, because every promise it makes is a
@@ -918,9 +924,7 @@ describe('departCoParent: the questions Hale left open for the one leaving', () 
     expect(result).toMatchObject({ outcome: 'departed', openQuestionsDeleted: 2 });
     // The parent who stayed keeps theirs, and so does the one who left, in the household
     // they did not leave: the positive control.
-    expect(await openQuestions(db.database)).toEqual(
-      expect.arrayContaining([stayer, elsewhere]),
-    );
+    expect(await openQuestions(db.database)).toEqual(expect.arrayContaining([stayer, elsewhere]));
     expect(await openQuestions(db.database)).toHaveLength(2);
     // The effect is on the departure's own audit row (rule #6), as a count and no more.
     expect(

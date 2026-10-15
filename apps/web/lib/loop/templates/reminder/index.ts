@@ -18,7 +18,7 @@ export const reminderRenderer: TemplateRenderer = {
       case 'email':
         return renderReminderEmail(payload, nameLevel, now);
       case 'sms':
-        return renderReminderSms(payload, nameLevel, now, message.familyId);
+        return renderReminderSms(payload, nameLevel, now);
       default: {
         const exhaustive: never = channel;
         throw new Error(`reminder renderer: unsupported channel ${String(exhaustive)}`);

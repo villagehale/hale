@@ -101,9 +101,7 @@ describe('extractStateClaims — the false positives that would break production
 
   it('leaves an absence assertion alone', () => {
     expect(
-      kinds(
-        "Drafted - reply YES and it goes on your week. Nothing's booked until you call the clinic.",
-      ),
+      kinds('Drafted onto your week. The clinic call is still yours. Want me to keep it?'),
     ).toEqual([]);
   });
 

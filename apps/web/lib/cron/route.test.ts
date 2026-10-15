@@ -10,13 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const runInferenceCronMock = vi.fn();
-const runWeekPlanCronMock = vi.fn();
 const sweepAttachmentsMock = vi.fn();
 const sweepForwardsMock = vi.fn();
 const runNudgeCronMock = vi.fn();
 const runSittingReminderCronMock = vi.fn();
 const runWelcomeCardRedriveMock = vi.fn();
 const runDepartureNoticeRedriveMock = vi.fn();
+const runAutonomyNoticeRedriveMock = vi.fn();
 const sweepDutyAsksMock = vi.fn();
 const runProactiveReviewMock = vi.fn();
 const dbMock = vi.fn();
@@ -37,9 +37,6 @@ vi.mock('next/server', async (importActual) => ({
 vi.mock('~/lib/cron/inference', () => ({
   runInferenceCron: (...a: unknown[]) => runInferenceCronMock(...a),
 }));
-vi.mock('~/lib/loop/cron', () => ({
-  runWeekPlanCron: (...a: unknown[]) => runWeekPlanCronMock(...a),
-}));
 vi.mock('~/lib/coach/attachments', () => ({
   sweepUnlinkedAttachments: (...a: unknown[]) => sweepAttachmentsMock(...a),
 }));
@@ -53,13 +50,14 @@ vi.mock('~/lib/channel/intake/sitting-reminder', () => ({
   runSittingReminderCron: (...a: unknown[]) => runSittingReminderCronMock(...a),
   defaultSittingReminderDeps: () => ({ transport: {} }),
 }));
-// The sitting-reminder route imports these to build friend-voice deps when the
-// flag is on. Stub them so the gate never loads the model client.
+// The sitting-reminder route builds friend-voice deps. Stub them so the gate never
+// loads the model client.
 vi.mock('~/lib/channel/intake/friend-voice', () => ({
   createFriendVoiceComposer: () => ({}),
 }));
-vi.mock('~/lib/channel/intake/friend-voice-flag', () => ({
-  onboardingFriendVoiceEnabled: () => false,
+vi.mock('~/lib/pipeline/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/pipeline/client')>()),
+  budgetedAnthropic: () => ({}),
 }));
 // The nudge route's other riders each read a dark-launch flag and return before they
 // touch a handle; the two 08:00 re-drives deliberately have none (each finishes a send
@@ -69,6 +67,9 @@ vi.mock('~/lib/channel/intake/welcome-card-redrive', () => ({
 }));
 vi.mock('~/lib/channel/coparent/departure-redrive', () => ({
   runDepartureNoticeRedrive: (...a: unknown[]) => runDepartureNoticeRedriveMock(...a),
+}));
+vi.mock('~/lib/channel/autonomy/dispatch', () => ({
+  runAutonomyNoticeRedrive: (...a: unknown[]) => runAutonomyNoticeRedriveMock(...a),
 }));
 // Duty asks have their own flag and return before a read when it is off. Mock
 // the module anyway: the real graph is heavy enough to blow the gate test's
@@ -98,7 +99,6 @@ const ROUTES = [
     path: '~/app/api/cron/attachment-sweep/route',
     mock: sweepAttachmentsMock,
   },
-  { name: 'week-plan', path: '~/app/api/cron/week-plan/route', mock: runWeekPlanCronMock },
   { name: 'nudge', path: '~/app/api/cron/nudge/route', mock: runNudgeCronMock },
   {
     name: 'proactive-review',
@@ -116,12 +116,12 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
   beforeEach(() => {
     vi.resetModules();
     runInferenceCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
-    runWeekPlanCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
     sweepForwardsMock.mockReset().mockResolvedValue({ purged: 0, senders: 0 });
     runNudgeCronMock.mockReset().mockResolvedValue({ enabled: false, evaluated: 0 });
     runWelcomeCardRedriveMock.mockReset().mockResolvedValue({ held: 0, due: 0, sent: 0 });
     runDepartureNoticeRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
+    runAutonomyNoticeRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
     runProactiveReviewMock.mockReset().mockResolvedValue({
       mode: 'off',
       families: 0,
@@ -138,7 +138,6 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
       considered: 0,
       sent: 0,
       invalidated: 0,
-      steppedDown: 0,
       held: 0,
       skipped: 0,
     });
@@ -209,11 +208,17 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
         {},
         expect.objectContaining({ ports: expect.anything() }),
       );
+      expect(runAutonomyNoticeRedriveMock).toHaveBeenCalledTimes(1);
+      expect(runAutonomyNoticeRedriveMock).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ ports: expect.anything() }),
+      );
       expect(sweepDutyAsksMock).toHaveBeenCalledTimes(1);
       expect(sweepDutyAsksMock).toHaveBeenCalledWith({});
     } else {
       expect(runWelcomeCardRedriveMock).not.toHaveBeenCalled();
       expect(runDepartureNoticeRedriveMock).not.toHaveBeenCalled();
+      expect(runAutonomyNoticeRedriveMock).not.toHaveBeenCalled();
       expect(sweepDutyAsksMock).not.toHaveBeenCalled();
     }
   });

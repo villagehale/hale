@@ -141,10 +141,11 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // the teen is notified. The consume side (approving the request → granted=true,
   // and honouring an active grant on read) is a follow-up.
   'teen_content_access',
-  // CASL express consent to receive SMS service messages (weekly plan, reminders,
-  // approvals) on a verified phone. Per-PARENT, not per-family — co-parents enroll
-  // independently, so this never triggers the two-parent-consent rule (#5). Granted
-  // on OTP verify; a granted=false row records a withdrawal (in-app toggle / STOP).
+  // CASL express consent to receive SMS service messages (the kids' year: activities,
+  // registration dates, reminders, approvals) on a verified phone. Per-PARENT, not
+  // per-family — co-parents enroll independently, so this never triggers the
+  // two-parent-consent rule (#5). Granted on OTP verify; a granted=false row records
+  // a withdrawal (in-app toggle, or the parent asking to stop in any wording).
   // The channel seam (VIL-213) gates SMS on the live parent_channels state, not on
   // this append-only ledger.
   'sms_service_messages',
@@ -178,7 +179,7 @@ export const consentTypeEnum = pgEnum('consent_type', [
   'co_parent_access_grant',
   // Village intros v1 · the parent's decision about being INTRODUCED to another Hale
   // household. Two scopes ride this one type and they are different acts: the standing
-  // "you may look for a match for us" (revocable at any time by texting NO INTROS), and
+  // "you may look for a match for us" (revocable at any time, in the parent's own words), and
   // the per-proposal "yes, introduce us to this one". Neither is a watch consent (that
   // is permission to be TEXTED unprompted) and neither is an autonomous action class
   // (that is permission to ACT on the family's behalf) — this is permission to DISCLOSE
@@ -425,7 +426,7 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // first about a seat that has ended. Filing them together would make a PIPEDA
   // right-to-access read describe a departure as part of an invitation. Unmetered by
   // choice rather than by omission — the bound is the departure event itself, one per
-  // (family, departed parent), held by the dedupe key (PROACTIVE_CAP says so).
+  // (family, departed parent), held by the dedupe key.
   'co_parent_departed',
   // VIL-352 · a document a parent FORWARDED to their Hale address, and the answer to it
   // (migration 0120). Its own category and not 'reply': the inbound row files a third
@@ -450,6 +451,13 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // so that budget cannot be spent by a nudge or a calendar alert, and a PIPEDA
   // right-to-access read can tell a duty question from either of those.
   'duty_ask',
+  // VIL-131 · the text when a kind turns on or turns back on, and the text when Hale
+  // then does that kind without asking (migration 0166). Their own categories so
+  // neither spends the weekly nudge budget. Hale making contact first, so the
+  // loop-health digest's exclusion list is correct to leave them out. Unmetered:
+  // the bound is the grant, and the execution, held by the dedupe key.
+  'autonomy_armed',
+  'autonomy_acted',
 ]);
 
 /**
@@ -543,8 +551,7 @@ export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
   // you on it" was on 2026-08-20. Closed by the activity follow-up sweep, which owes the
   // family either the finds or an honest "I looked and could not find it".
   'activity_followup',
-  // "A new family just joined from the Georgetown poster. Reply YES and I'll send them
-  // your welcome note." — the one commitment on this ledger whose SUBJECT is a household
+  // The founder's welcome offer — the one commitment on this ledger whose SUBJECT is a household
   // other than the one the promise was made to, which is why `subject_family_id` exists.
   // It is an offer with the same shape as plan_offer and checkup_offer and it is here for
   // the same reason: a question that lives only as prose inside a sent SMS is a question

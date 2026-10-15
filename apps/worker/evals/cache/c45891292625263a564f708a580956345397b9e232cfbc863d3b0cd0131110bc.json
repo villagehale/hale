@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by the research notes: the short-term safety at 5 mg or less, the common side effects, the preliminary AHA heart-failure link with its caveats, the later 2026 analysis seen only as a summary, the varying supplement strength and the interactions. The doctor or pharmacist pointer is a proper safety judgment, and there is no dosing regimen or diagnosis. It gives a real answer, but it reads more like a dense research summary than a friend texting back, which costs it a little.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

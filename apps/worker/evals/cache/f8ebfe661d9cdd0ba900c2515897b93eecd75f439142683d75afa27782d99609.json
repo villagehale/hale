@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in French, as the question was. It takes a clear side (oui) and gives a light reason: the sweet pineapple against the salty ham and cheese. No current facts or invented specifics are stated. It reads like a friend texting. The last line nods to taste being personal, but only after a firm pick, so it isn't fence-sitting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

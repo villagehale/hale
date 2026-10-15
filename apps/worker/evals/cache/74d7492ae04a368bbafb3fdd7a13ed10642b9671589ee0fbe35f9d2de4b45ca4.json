@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Denver, partly sunny Tuesday Oct 13",
+        "from": "The National Weather Service in Boulder said to expect partly sunny skies Tuesday"
+      },
+      {
+        "states": "daytime high about 65",
+        "from": "The high is expected to reach 65 degrees"
+      },
+      {
+        "states": "other highs range 64 to 67",
+        "from": "Weather Underground has a high of 64°F, AccuWeather has a high of 67°, 9NEWS has a high of 64"
+      },
+      {
+        "states": "north-northeast winds 6 to 10 mph, becoming east to northeast in the afternoon, gusts up to 17 mph",
+        "from": "North-northeast winds of 6 to 10 mph are expected, becoming east to northeast in the afternoon with gusts up to 17 mph"
+      },
+      {
+        "states": "rain may move in Tuesday evening",
+        "from": "with rain and showers possibly moving in Tuesday evening"
+      },
+      {
+        "states": "30% chance of rain after 3 p.m. per the weather service",
+        "from": "The weather service gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "AccuWeather shows rain chances above 40% from 8 PM into the early morning",
+        "from": "AccuWeather shows rain chances above 40% from 8 PM into the early morning"
+      },
+      {
+        "states": "9NEWS shows 24% at 8 PM and 35% at 11 PM",
+        "from": "24% at 8 PM, and 35% at 11 PM"
+      },
+      {
+        "states": "overnight lows in the 30s to low 40s with rain at times",
+        "from": "Lows are expected in the low 40s and 30s on Tuesday night, with increasing clouds and rain"
+      }
+    ],
+    "answer": "Tomorrow in Denver looks mostly partly sunny, with a high around 65 (other forecasts have 64 to 67). Winds are north-northeast at 6 to 10 mph, turning east to northeast in the afternoon, with gusts up to 17 mph. Rain may move in Tuesday evening: the weather service gives about a 30% chance after 3 pm, and AccuWeather has rain chances above 40% from 8 PM into the early morning, while 9NEWS has them at 24% at 8 PM and 35% at 11 PM. Overnight lows are in the 30s to low 40s with rain at times."
+  },
+  "latencyMs": 6242
+}

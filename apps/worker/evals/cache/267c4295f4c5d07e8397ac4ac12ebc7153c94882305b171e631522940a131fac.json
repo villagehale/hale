@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are the venue the parent named, Cartwheels Gym Centre, sourced from its own site, so there is no substitution. They fit a toddler and there are fewer than three. The message leads with Tiny Gym by name and attributes the details with \"their site says\". It is plain text with no link and no question. Under page_has_schedule it correctly owns the gap in the first person (\"I could not pin down the day or the price\") and does not claim the times are not posted. With watch true, the first-person \"I'll keep watching and text you\" is earned. No day, time or price is invented.",
+    "score": 5
+  }
+}

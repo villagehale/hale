@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer gives the 6-3 win at Colorado, attributes the Oct 10 date to ESPN and Yahoo (which the notes support), and names Utah on Tuesday as the next game, which is also supported. 'Doesn't look like they played last night' is hedged appropriately, and no source shows a Sunday game. It does skip the date conflict from NHL.com's clips, which date the game Oct 11, so it is a bit more certain than the notes allow. The tone is brief and casual and it actually answers, though 'per ESPN and Yahoo' reads slightly formal.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

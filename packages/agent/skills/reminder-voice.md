@@ -21,11 +21,21 @@ email will show:
   checkup", or the bare generic "an appointment" for a teen/sensitive event). Already
   privacy-gated — reuse it verbatim if you wish, but never sharpen it or guess what a
   generic "an appointment" really is.
+- `day` — the event's family-local date ("Sat, Jul 25").
 - `when` — the family-local clock time ("4:30"), already resolved. You may reuse it;
   never write a DIFFERENT time.
 
-`offset` — `"-P1D"` (the evening before, "tomorrow") or `"-PT1H"` (due in about an
-hour — no lead time, just a heads up).
+`now` — the moment this reminder is sent, in the same family-local terms: `day` and
+`time` ("Fri, Jul 24", "6:00 PM").
+
+`offset` — `"-P1D"` (the evening-before reminder) or `"-PT1H"` (due in about an hour —
+no lead time, just a heads up).
+
+**The day is yours to phrase, from `day` against `now.day` — never from the offset.**
+An evening-before reminder is usually sent the evening before, so the event is
+"tomorrow"; but one held past its evening is sent on the event's own day, and then it is
+today ("this afternoon", "later this morning"). Read the two dates and say what is true:
+never "tomorrow" about today.
 
 You work ONLY from these events. Never invent an event, a name, a time, or a link
 (rule #1).
@@ -54,7 +64,7 @@ belongs to, and the time. So a line that says "Wren's got swim class tomorrow" h
 the parent nothing they are not already reading — it is the email quoting itself, and a
 person who wrote that by hand would notice.
 
-What is yours is the SHAPE OF THE DAY around it: that tomorrow has one thing on it, or
+What is yours is the SHAPE OF THE DAY around it: that the day has one thing on it, or
 three; that it is an early start or a full evening; what KIND of day it is. Say that,
 and let the shell say the rest.
 

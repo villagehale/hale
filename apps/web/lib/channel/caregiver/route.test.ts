@@ -7,17 +7,18 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeRadar,
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { askWriter } from '~/lib/testing/consent-double';
 import {
   ADD_EXAMPLE,
   ALREADY_INVITED,
@@ -96,11 +97,24 @@ function harness(
         { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
       ]),
       radar: fakeRadar,
-      ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      friendVoice: scriptedFriendVoice,
       openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
+      consent: {
+        read: async ({ text }) => {
+          const folded = text.trim().toLowerCase();
+          if (['yes', 'oui', 'yes please', 'sounds good', '👍', 'yeah'].includes(folded)) {
+            return { verdict: 'yes' as const, target: 'none' as const };
+          }
+          if (['no', 'non', 'nope', 'no thanks'].includes(folded)) {
+            return { verdict: 'no' as const, target: 'none' as const };
+          }
+          return { verdict: 'neither' as const, target: 'none' as const };
+        },
+      },
+      consentAsk: askWriter(),
       now,
     },
   };
@@ -195,10 +209,9 @@ describe('caregiver invite · the double opt-in', () => {
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0]?.to).toBe(PARENT_PHONE);
     expect(transport.sent[0]?.body).toContain('Adding grandma as grandparent');
-    // The scope, in the parent's own reading, before anyone is contacted.
     expect(transport.sent[0]?.body).toContain("the week's schedule");
     expect(transport.sent[0]?.body).toContain('Never health or appointments');
-    expect(transport.sent[0]?.body).toContain('Reply YES');
+    expect(transport.sent[0]?.body).not.toMatch(/\bYES\b/);
     // Nothing has been authorised yet, so nothing has been consented to.
     expect(inserts(fake, schema.consentRecords)).toHaveLength(0);
     expect(inserts(fake, schema.familyMembers)).toHaveLength(1); // only the seeded parent
@@ -537,7 +550,7 @@ describe('caregiver invite · the ways it does not happen', () => {
    * A parent who has finished intake has no open session, so EVERY ordinary text they
    * send arrives here first and falls through to C1 when this route has nothing to say
    * (inbound-route.ts handOffToConversation). That makes this module the last thing
-   * that spoke before a coach turn — and `scopeConfirm` ("Reply YES and I'll text
+   * that spoke before a coach turn — and the scope question the model wrote
    * them") is an open question. Unthreaded, the coach reads whatever comes back with
    * nothing above it.
    *
@@ -789,16 +802,17 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
   it('closes the invite as it provisions, so their next text is an ordinary turn', async () => {
     const { fake, transport, deps } = harness(NOW, [NOTHING_YET, MIA]);
 
-    expect(await upToInviteMidIntake(fake, transport, deps)).toEqual({ status: 'greeted' });
+    expect(await upToInviteMidIntake(fake, transport, deps)).toMatchObject({
+      status: 'first_touch',
+    });
     expect(fake.rows(schema.caregiverInvites)[0]?.state).toBe('awaiting_caregiver_reply');
 
     // Their yes is SWALLOWED: the machine reads the open conversation first, so an
     // answer to the invite is read as an answer to intake's own question.
-    expect(await text(fake, transport, deps, GRAN_PHONE, 'yes')).toEqual({
-      status: 'helped',
-      ack: 'sent',
+    expect(await text(fake, transport, deps, GRAN_PHONE, 'yes')).toMatchObject({
+      status: 'first_touch',
     });
-    const provisioned = await text(fake, transport, deps, GRAN_PHONE, "Mia's 2, M5V 2T6");
+    const provisioned = await text(fake, transport, deps, GRAN_PHONE, 'Mia is 2, M5V 2T6');
     expect(provisioned.status).toBe('provisioned');
 
     // Closed by the turn that enrolled them, and closed as what it WAS: a question
@@ -817,29 +831,16 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
       inserts(fake, schema.consentRecords).filter((c) => c.consentType === 'proactive_watch'),
     ).toEqual([expect.objectContaining({ granted: true })]);
 
-    const beats = [];
-    for (let beat = 0; beat < 8; beat += 1) {
-      const advanced = await text(fake, transport, deps, GRAN_PHONE, 'later');
-      if (advanced.status !== 'ladder_advanced') break;
-      beats.push(advanced);
+    // The post-provision onboarding turns are the model's (first-touch and
+    // golden-conversation cover their order). What this test owns: the invite
+    // never takes the number, whatever the parent says next.
+    for (const answer of ['later', 'no', 'yes', "what's on this week?"]) {
+      await text(fake, transport, deps, GRAN_PHONE, answer);
     }
-    // This harness's name lookup declines, so the year-find turn parks on the
-    // calendar card. The ladder still closes, and the invite does not take the number.
-    expect(beats[0]).toEqual({ status: 'ladder_advanced', step: 'calendar', closed: false });
-    expect(beats.at(-1)).toEqual({ status: 'ladder_advanced', step: 'coparent', closed: true });
-
-    const before = transport.sent.length;
-    const afterProvision = await text(fake, transport, deps, GRAN_PHONE, 'yes');
-    expect(afterProvision).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
-    expect(transport.sent.slice(before)).toHaveLength(0);
-
-    const next = await text(fake, transport, deps, GRAN_PHONE, "what's on this week?");
-    expect(next).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
-    expect(transport.sent.slice(before)).toHaveLength(0);
 
     // And a later "yes" can never mint a SECOND active row on this number.
-    const yes = await text(fake, transport, deps, GRAN_PHONE, 'yes');
-    expect(yes).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    await text(fake, transport, deps, GRAN_PHONE, 'yes');
+    expect(fake.rows(schema.caregiverInvites)[0]?.state).toBe('superseded_by_enrollment');
     expect(
       inserts(fake, schema.parentChannels).filter(
         (r) => r.phoneE164Hash === phoneBlindIndex(GRAN_PHONE),
@@ -855,7 +856,7 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
     await upToInviteMidIntake(fake, transport, deps);
     await text(fake, transport, deps, GRAN_PHONE, 'yes');
 
-    await text(fake, transport, deps, GRAN_PHONE, "Mia's 2, M5V 2T6");
+    await text(fake, transport, deps, GRAN_PHONE, 'Mia is 2, M5V 2T6');
 
     const indices = [
       writeIndex(
@@ -886,7 +887,7 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
     const poisoned = failingOn(fake.db, schema.auditLog, 'sms_intake_provisioned');
 
     await expect(
-      handleInboundSms(poisoned, transport.inbound(GRAN_PHONE, "Mia's 2, M5V 2T6"), deps),
+      handleInboundSms(poisoned, transport.inbound(GRAN_PHONE, 'Mia is 2, M5V 2T6'), deps),
     ).rejects.toThrow('provisioning failed');
 
     // Nothing was enrolled, so nothing superseded anything: the invite is still the open

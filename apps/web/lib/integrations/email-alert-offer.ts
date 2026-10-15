@@ -1,11 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { type Database, schema } from '@hale/db';
-import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
+import type { OfferReceiptFacts } from './offer-receipt';
+
+/**
+ * Coach-originated offers have no Gmail connection. This id is the provenance, not a
+ * row in `integrations`: the column is deliberately not a foreign key. One channel
+ * message is one coach offer, via `messageId`.
+ */
+export const COACH_CALENDAR_INTEGRATION_ID = '00000000-0000-4000-8000-000000000410';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT — the row it lands in, and what it does.
@@ -53,19 +59,6 @@ export const EMAIL_ALERT_OFFER_TTL_MS = 24 * 60 * 60 * 1000;
  * nearly every thing a school or a pool puts in a parent's calendar, and a point event
  * (`ends_at` null) reads as a zero-length slot in the ICS feed. */
 export const EMAIL_ALERT_EVENT_DURATION_MS = 60 * 60 * 1000;
-
-/**
- * How long a SECOND yes is still about the offer the first one took.
- *
- * Minutes, because that is the span a repeated tap lives in — a double send, a "yes"
- * followed by "yes please". Past it the word belongs to whatever has been said since, and
- * the coach, which can see the acknowledgement in the thread, is the honest reader of it.
- * The bound matters: once an offer is resolved it stops being listed, so an unbounded
- * repeat branch would be a handler claiming a bare affirmative with NO open question to
- * make it unambiguous, which is precisely what `soleOpenKind` cannot protect against
- * (an empty question list is vacuously unambiguous).
- */
-export const EMAIL_ALERT_REPEAT_WINDOW_MS = 10 * 60 * 1000;
 
 /**
  * The occasion an email alert is offering to put on the week, already sanitised.
@@ -162,8 +155,8 @@ export interface OpenEmailAlertOffer {
  * the text must not be able to answer it, for the same reason the intro opt-in and the
  * co-parent scope question are per-parent.
  *
- * Newest first, because the gate permits three alerts a day and the newest is the one a
- * bare affirmative is answering. The older ones stay listed as the ambiguity they are.
+ * Newest first. The gate permits three alerts a day, and two standing offers are an
+ * ambiguity the model has to name. This reader does not pick one.
  */
 export async function loadOpenEmailAlertOffers(
   database: Database,
@@ -204,7 +197,10 @@ export async function loadOpenEmailAlertOffers(
  * in the row either.
  */
 export function emailAlertOfferSummary(offer: OpenEmailAlertOffer): string {
-  return `An offer to put ${offer.title} on your week`;
+  // The instant is part of the question the model reads. Two offers can share a title
+  // (Thursday gymnastics, Sunday gymnastics) and a summary without it cannot tell them
+  // apart. ISO, not a rendered sentence: the receipt renderer owns the words.
+  return `An offer to put ${offer.title} on your week, starting ${offer.startsAt.toISOString()}`;
 }
 
 /**
@@ -228,11 +224,12 @@ export function emailAlertOfferSubject(offer: OpenEmailAlertOffer): string {
 }
 
 /** What answering an offer did. Every ending is named (rule #11) — `no_open_offer` is the
- * handler declining to claim, not a silent skip. */
+ * handler declining to claim, not a silent skip. The words the parent reads are not
+ * here: `facts` is what a receipt writer is given, and a missing line is `receipt_unsent`
+ * at the handler, never a template. */
 export type EmailAlertOfferReplyOutcome =
-  | { status: 'added'; offerId: string; reply: string }
-  | { status: 'declined'; offerId: string; reply: string }
-  | { status: 'already_added'; reply: string }
+  | { status: 'added'; offerId: string; facts: OfferReceiptFacts }
+  | { status: 'declined'; offerId: string; facts: OfferReceiptFacts }
   | { status: 'no_open_offer' };
 
 /**
@@ -246,9 +243,7 @@ export type EmailAlertOfferReplyOutcome =
  * picture day on the week and left the swim class open. So a named id is honoured or
  * NOTHING is: an id that is no longer among this parent's open offers declines the turn
  * (the question closed between the two reads) rather than falling back to a neighbour.
- *
- * NULL is the bare-word path — "yes" with no reading behind it — and only then is newest
- * the answer, because the caller has already established there is exactly one.
+ * There is no bare-word path. A reply the model did not name does not reach this function.
  *
  * THE ADD IS CLAIMED BEFORE IT IS WRITTEN. `event_id` is stamped on the offer by a guarded
  * update and the `family_events` row is inserted carrying that id, so the redrive of a
@@ -262,45 +257,34 @@ export async function handleEmailAlertOfferReply(
   input: {
     familyId: string;
     parentUserId: string;
-    /** The offer this answer NAMES, or null when the parent sent a bare word. */
-    offerId: string | null;
+    /** The offer the model named. There is no bare-word path. */
+    offerId: string;
     polarity: 'yes' | 'no';
-    language: ReplyLanguage;
+    /** What the parent wrote, handed to the receipt writer so it can answer in kind. */
+    parentReply: string;
     now: Date;
   },
 ): Promise<EmailAlertOfferReplyOutcome> {
   const open = await loadOpenEmailAlertOffers(database, input);
-  const offer = input.offerId === null ? open[0] : open.find((row) => row.id === input.offerId);
+  const offer = open.find((row) => row.id === input.offerId);
   // A named id that is not open is a closed question, never an invitation to pick another
-  // one — and the repeat branch below is for the bare word only, for the same reason.
-  if (!offer && input.offerId !== null) return { status: 'no_open_offer' };
-  if (!offer) {
-    if (input.polarity === 'no') return { status: 'no_open_offer' };
-    const repeat = await loadRecentlyAddedOffer(database, input);
-    if (!repeat) return { status: 'no_open_offer' };
-    const timeZone = await parentTimeZone(database, input.parentUserId);
-    return {
-      status: 'already_added',
-      reply: ALREADY_ADDED[input.language](
-        repeat.title,
-        when(repeat.startsAt, timeZone, input.now),
-      ),
-    };
-  }
+  // one. A start that has already passed is not open: the reader filters `startsAt > now`.
+  if (!offer) return { status: 'no_open_offer' };
+
+  const timeZone = await parentTimeZone(database, input.parentUserId);
+  const facts: OfferReceiptFacts = {
+    happened: input.polarity === 'yes' ? 'added' : 'declined',
+    title: offer.title,
+    when: when(offer.startsAt, timeZone, input.now),
+    parentReply: input.parentReply,
+  };
 
   if (input.polarity === 'no') {
-    return { status: 'declined', offerId: offer.id, reply: DECLINED[input.language]() };
+    return { status: 'declined', offerId: offer.id, facts };
   }
 
-  const [timeZone] = await Promise.all([
-    parentTimeZone(database, input.parentUserId),
-    placeOfferedEvent(database, offer, input),
-  ]);
-  return {
-    status: 'added',
-    offerId: offer.id,
-    reply: ADDED[input.language](offer.title, when(offer.startsAt, timeZone, input.now)),
-  };
+  await placeOfferedEvent(database, offer, input);
+  return { status: 'added', offerId: offer.id, facts };
 }
 
 /**
@@ -462,77 +446,126 @@ export async function resolveEmailAlertOffer(
     );
 }
 
-/**
- * The offer this parent's last yes already took, and only while it is STILL THE SUBJECT.
- *
- * TWO BOUNDS, and the window alone is not enough. Once an offer resolves it stops being
- * listed, so this branch claims a bare affirmative with no open question behind it — the
- * one case `soleOpenKind` cannot protect (an empty list is vacuously unambiguous). The
- * window says the word is recent; the LAST-WORD rule says it is still about this, by
- * requiring the receipt to be the last thing Hale said to this parent. Without it a coach
- * question asked two minutes after the receipt would lose its answer to a second copy of
- * a text the parent is already holding — the registration ladder solved exactly this with
- * exactly this rule (`readinessAskedLastAt`), off the same ledger.
- */
-async function loadRecentlyAddedOffer(
-  database: Database,
-  input: { familyId: string; parentUserId: string; now: Date },
-): Promise<{ title: string; startsAt: Date } | null> {
-  const [row] = await database
-    .select({
-      title: schema.emailAlertOffers.title,
-      startsAt: schema.emailAlertOffers.startsAt,
-      receiptAt: schema.channelMessages.createdAt,
-    })
-    .from(schema.emailAlertOffers)
-    .innerJoin(
-      schema.channelMessages,
-      eq(schema.channelMessages.id, schema.emailAlertOffers.resolvedChannelMessageId),
-    )
-    // Only while the copy it placed stands: the kid-relevance backfill drops an adult
-    // item's copy but keeps the offer's words for its revert.
-    .innerJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.emailAlertOffers.eventId))
-    .where(
-      and(
-        eq(schema.emailAlertOffers.familyId, input.familyId),
-        eq(schema.emailAlertOffers.parentUserId, input.parentUserId),
-        eq(schema.emailAlertOffers.resolution, 'added'),
-        isNull(schema.familyEvents.deletedAt),
-        gt(
-          schema.emailAlertOffers.resolvedAt,
-          new Date(input.now.getTime() - EMAIL_ALERT_REPEAT_WINDOW_MS),
-        ),
-      ),
-    )
-    .orderBy(desc(schema.emailAlertOffers.resolvedAt))
-    .limit(1);
-  if (!row) return null;
-
-  // SENT_STATUSES rather than every row: a send that failed never reached the phone, so it
-  // did not take the word away from the receipt.
-  const [newer] = await database
-    .select({ id: schema.channelMessages.id })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.parentUserId, input.parentUserId),
-        eq(schema.channelMessages.direction, 'out'),
-        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
-        gt(schema.channelMessages.createdAt, row.receiptAt),
-      ),
-    )
-    .limit(1);
-  return newer ? null : { title: row.title, startsAt: row.startsAt };
-}
-
 /** The parent's wall clock, off their own users row — post-filtered by id as every reader
  * of one row here is. */
-async function parentTimeZone(database: Database, parentUserId: string): Promise<string> {
+export async function parentTimeZoneForOffer(
+  database: Database,
+  parentUserId: string,
+): Promise<string> {
   const rows = await database
     .select({ id: schema.users.id, timezone: schema.users.timezone })
     .from(schema.users)
     .where(eq(schema.users.id, parentUserId));
   return rows.find((row) => row.id === parentUserId)?.timezone ?? DEFAULT_TIMEZONE;
+}
+
+async function parentTimeZone(database: Database, parentUserId: string): Promise<string> {
+  return parentTimeZoneForOffer(database, parentUserId);
+}
+
+/**
+ * The occasion is already on the week the household shares, or on this parent's
+ * kid-related Google block. A mirror row (`google_event_id` set) is one parent's
+ * calendar and is not a household event — the household predicate keeps it out.
+ */
+export async function occasionAlreadyHeld(
+  database: Database,
+  input: { familyId: string; parentUserId: string; title: string; startsAt: Date },
+): Promise<boolean> {
+  const title = input.title.trim().toLowerCase();
+  const [event] = await database
+    .select({ id: schema.familyEvents.id })
+    .from(schema.familyEvents)
+    .where(
+      and(
+        eq(schema.familyEvents.familyId, input.familyId),
+        eq(schema.familyEvents.startsAt, input.startsAt),
+        householdFamilyEvent(),
+        sql`lower(trim(${schema.familyEvents.title})) = ${title}`,
+      ),
+    )
+    .limit(1);
+  if (event) return true;
+
+  const [block] = await database
+    .select({ eventId: schema.parentCalendarBlocks.eventId })
+    .from(schema.parentCalendarBlocks)
+    .where(
+      and(
+        eq(schema.parentCalendarBlocks.familyId, input.familyId),
+        eq(schema.parentCalendarBlocks.userId, input.parentUserId),
+        eq(schema.parentCalendarBlocks.kidRelated, true),
+        eq(schema.parentCalendarBlocks.startAt, input.startsAt),
+        ne(schema.parentCalendarBlocks.status, 'cancelled'),
+        sql`lower(trim(${schema.parentCalendarBlocks.title})) = ${title}`,
+      ),
+    )
+    .limit(1);
+  return block !== undefined;
+}
+
+export type CoachCalendarOfferOutcome =
+  | 'recorded'
+  | 'event_started'
+  | 'already_held'
+  | 'unreadable';
+
+/**
+ * Write the offer a coach sentence named, after the send.
+ *
+ * The model supplied the title and the instant. This function does not read the
+ * sentence. A start that has passed is not an offer. An occasion already on the
+ * calendar is not an offer. Older open offers for this parent expire, because the
+ * sentence the parent is holding is the question now.
+ */
+export async function recordCoachCalendarOffer(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    channelMessageId: string;
+    title: string;
+    startsAt: Date;
+    location: string | null;
+    now: Date;
+  },
+): Promise<CoachCalendarOfferOutcome> {
+  const title = input.title.trim();
+  if (title === '' || Number.isNaN(input.startsAt.getTime())) return 'unreadable';
+  if (input.startsAt.getTime() <= input.now.getTime()) return 'event_started';
+  if (
+    await occasionAlreadyHeld(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      title,
+      startsAt: input.startsAt,
+    })
+  ) {
+    return 'already_held';
+  }
+
+  await database
+    .update(schema.emailAlertOffers)
+    .set({ expiresAt: input.now })
+    .where(
+      and(
+        eq(schema.emailAlertOffers.familyId, input.familyId),
+        eq(schema.emailAlertOffers.parentUserId, input.parentUserId),
+        isNull(schema.emailAlertOffers.resolvedAt),
+        gt(schema.emailAlertOffers.expiresAt, input.now),
+      ),
+    );
+
+  const recorded = await recordEmailAlertOffer(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    integrationId: COACH_CALENDAR_INTEGRATION_ID,
+    messageId: `coach:${input.channelMessageId}`,
+    channelMessageId: input.channelMessageId,
+    draft: { kind: 'new_event', title, startsAt: input.startsAt, location: input.location },
+    now: input.now,
+  });
+  return recorded === 'recorded' ? 'recorded' : 'event_started';
 }
 
 /** `Saturday, Sep 19 at 9:00 a.m.` — the SAME rendering the alert used for the same
@@ -544,53 +577,4 @@ function when(startsAt: Date, timeZone: string, now: Date): string {
     timeZone,
   }).format(startsAt);
   return `${formatDayHeading(startsAt, timeZone, now)} at ${clock}`;
-}
-
-/**
- * The three receipts, per language.
- *
- * "say remove it anytime" is a promise this product can keep: a `family_events` row with
- * `source = 'parent'` is visible to the coach's `lookup_week` and removable through
- * `propose_calendar_cancel`, which drafts the removal for the parent's approval.
- *
- * THE DATE IS RENDERED IN ENGLISH IN BOTH TWINS, and it is parenthesised in the French
- * one so no English preposition leaks into a French sentence. The product has exactly one
- * date renderer, the alert these answer is English-only (an outbound-first path has no
- * language signal to read), and the French month names that would need one are not all
- * spellable in GSM-7 — `août` alone would flip the whole reply to UCS-2. Quoting the
- * occasion back in the words the parent is holding is the honest version of that
- * constraint rather than a gap.
- */
-const ADDED: Record<ReplyLanguage, (title: string, at: string) => string> = {
-  en: (title, at) =>
-    `${end(`Added - ${title} on ${at}`)} It's on your week; say remove it anytime.`,
-  fr: (title, at) =>
-    `${end(`Ajouté - ${title}, ${at}`)} C'est sur votre semaine; dites-le-moi pour l'enlever.`,
-};
-
-const ALREADY_ADDED: Record<ReplyLanguage, (title: string, at: string) => string> = {
-  en: (title, at) => end(`Already on your week - ${title} on ${at}`),
-  fr: (title, at) => end(`Déjà sur votre semaine - ${title}, ${at}`),
-};
-
-/** `9:00 a.m.` already ends the clause; a second period is the kind of thing nobody
- * notices in review and everybody notices on a phone. The alert's renderer keeps the same
- * rule for the same reason, one file over. */
-function end(sentence: string): string {
-  return sentence.endsWith('.') ? sentence : `${sentence}.`;
-}
-
-const DECLINED: Record<ReplyLanguage, () => string> = {
-  en: () => 'Okay - left it off.',
-  fr: () => "Entendu - je ne l'ai pas ajouté.",
-};
-
-/** The three, exported for the encoding guard that holds every fixed line Hale sends to
- * GSM-7 (sms-copy-encoding.test.ts). */
-export function emailAlertOfferReplies(language: ReplyLanguage): string[] {
-  return [
-    ADDED[language]('Swim class', 'Saturday, Sep 19 at 9:00 a.m.'),
-    ALREADY_ADDED[language]('Swim class', 'Saturday, Sep 19 at 9:00 a.m.'),
-    DECLINED[language](),
-  ];
 }

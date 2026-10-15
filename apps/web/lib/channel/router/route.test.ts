@@ -24,8 +24,10 @@ import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   DISCOVERABILITY_ALREADY_ON,
@@ -35,7 +37,7 @@ import {
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
-import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
+import { FLOOD_REPLY, capabilityReply, failureReply } from './copy';
 import type {
   DisambiguationOption,
   DisambiguationStore,
@@ -69,6 +71,12 @@ import {
 } from './route';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
+
+// The live search is on by default in production. These tests describe the kill switch
+// (dark) unless a test lights it, so each starts dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * The router, driven end to end minus the provider and the model.
@@ -440,6 +448,7 @@ function harness(
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
     armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
+    weekdayCareReader?: ChannelRouterDeps['weekdayCareReader'];
     weekdayCareAnswerTarget?: ChannelRouterDeps['weekdayCareAnswerTarget'];
     recordWeekdayCare?: ChannelRouterDeps['recordWeekdayCare'];
     searchWeekdays?: ChannelRouterDeps['searchWeekdays'];
@@ -488,6 +497,10 @@ function harness(
       recordStatedState:
         options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
       // VIL-360. No ask standing by default, for the reason above it.
+      consentAsk: askWriter(),
+      weekdayCareReader: options.weekdayCareReader ?? {
+        read: async () => ({ status: 'nothing_stated' as const }),
+      },
       weekdayCareAnswerTarget:
         options.weekdayCareAnswerTarget ?? (async () => ({ status: 'no_open_ask' as const })),
       recordWeekdayCare:
@@ -509,6 +522,7 @@ function harness(
       questions: options.questions ?? fakeQuestions([]),
       replyResolver:
         options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+      calendarOffers: calendarOffersIdle,
       disambiguation: fakeDisambiguation(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
@@ -787,7 +801,7 @@ describe('routing order', () => {
  *   AHEAD of the coach, which is the entire point.
  */
 describe('VIL-333 identity challenge', () => {
-  it('sends the locked disclosure and does not wake the coach or the off-domain screen', async () => {
+  it('sends the model-written disclosure and does not wake the coach or the off-domain screen', async () => {
     const lane = fakeLane({ status: 'in_domain', fallback: null });
     const coach = fakeCoach();
     const h = harness({
@@ -795,6 +809,14 @@ describe('VIL-333 identity challenge', () => {
       offDomain: lane,
       coach,
     });
+    const asked: unknown[] = [];
+    h.deps.turnReader = { read: async () => ({ intent: 'identity', confirmation: '' }) };
+    h.deps.saidLine = {
+      async write(input) {
+        asked.push(input);
+        return 'Disclosure (test fixture) villagehale.com aloha@villagehale.com';
+      },
+    };
 
     const result = await routeChannelMessage(h.deps, job());
 
@@ -802,8 +824,22 @@ describe('VIL-333 identity challenge', () => {
     expect(coach.calls).toBe(0);
     expect(lane.calls).toBe(0);
     expect(h.transport.bodies()).toEqual([
-      'This is Hale from Village Hale Technologies Inc. (villagehale.com). Barton Dong runs it (aloha@villagehale.com). Reply STOP anytime and we stop.',
+      'Disclosure (test fixture) villagehale.com aloha@villagehale.com',
     ]);
+    expect(asked).toMatchObject([
+      { purpose: 'identity', mustInclude: ['villagehale.com', 'aloha@villagehale.com'] },
+    ]);
+  });
+
+  it('sends nothing when the disclosure cannot be written (no canned fallback)', async () => {
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'who is this??' }, coach });
+    h.deps.turnReader = { read: async () => ({ intent: 'identity', confirmation: '' }) };
+    h.deps.saidLine = { write: async () => null };
+    const result = await routeChannelMessage(h.deps, job());
+    expect(result).toMatchObject({ status: 'handled', handler: 'identity_challenge' });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(coach.calls).toBe(0);
   });
 });
 
@@ -1776,19 +1812,24 @@ describe('failure honesty', () => {
       const result = await routeChannelMessage(h.deps, job());
 
       expect(result.status).toBe('agent_failed');
-      expect(h.transport.bodies()).toEqual([partialFailureReply(2)]);
+      expect(h.transport.bodies()).toEqual([
+        writtenAsk({ kind: 'partial_failure', draftCount: 2 }),
+      ]);
       expect(apology.calls).toBe(0);
-      expect(partialFailureReply(2)).toMatch(/2 changes/);
-      expect(partialFailureReply(2)).not.toMatch(/nothing was changed/i);
-      expect(partialFailureReply(1)).toMatch(/1 change\b/);
+      expect(writtenAsk({ kind: 'partial_failure', draftCount: 2 })).toMatch(/2 changes/);
+      expect(writtenAsk({ kind: 'partial_failure', draftCount: 2 })).not.toMatch(
+        /nothing was changed/i,
+      );
+      expect(writtenAsk({ kind: 'partial_failure', draftCount: 1 })).toMatch(/1 change\b/);
     });
 
     /** The longest line the router sends. A typographic dash in it would flip the
      * message to UCS-2 (70 chars a segment) and cost three segments instead of one —
      * the same rule the coach skill states, and the reason this copy is plain ASCII. */
     it('costs one GSM-7 segment', () => {
-      expect(smsEncoding(partialFailureReply(2))).toBe('gsm7');
-      expect(smsSegments(partialFailureReply(2))).toBe(1);
+      const body = writtenAsk({ kind: 'partial_failure', draftCount: 2 });
+      expect(smsEncoding(body)).toBe('gsm7');
+      expect(smsSegments(body)).toBe(1);
     });
 
     it('composes the apology when the turn drafted nothing', async () => {
@@ -2143,45 +2184,48 @@ describe('the outage smoke alarm', () => {
     };
   }
 
-  it('defers an emergency during an outage and sends nothing preset', async () => {
+  it('sends no fixed line during an outage crisis; it pages #ops urgently instead', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    const result = await routeChannelMessage(h.deps, job());
 
-    expect(h.transport.sent).toEqual([]);
-    expect(h.transport.bodies()).not.toContain(failureReply());
+    expect(result.status).toBe('smoke_alarm_fired');
+    expect(h.transport.bodies()).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, where: 'model_outage' }),
+      expect.stringContaining('URGENT'),
+    );
+    log.mockRestore();
   });
 
-  /** It is a reply like any other: ledgered, audited (rule #6), and in the thread the
-   * parent can read back. A siren that skipped the books would be the one message Hale
-   * sent that nothing recorded. */
-  it('ledgers nothing outbound when the moment reply cannot be written', async () => {
+  it('writes no outbound row for it: nothing was sent', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    await routeChannelMessage(h.deps, job());
 
-    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
-    expect(out).toHaveLength(0);
-    expect(auditRows(h.fake).map((r) => r.actionTaken)).not.toContain('sms_reply_sent');
-    const assistant = messageRows(h.fake).filter((r) => r.role === 'assistant');
-    expect(assistant).toEqual([]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toHaveLength(0);
   });
 
   it('records the alarm against the inbound message so a queue retry cannot re-ring it', async () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
-    expect(claim.fired).toEqual([]);
+    const first = await routeChannelMessage(h.deps, job());
+    expect(first.status).toBe('smoke_alarm_fired');
+    expect(claim.fired).toEqual([job().channel_message_id]);
 
     // The SAME message, re-driven: at-least-once delivery means the drain can hand this
     // job back after a mid-turn crash (lib/cron/drain.ts), and the defer arc means it
     // does so routinely. The alarm's own claim is now the SECOND line of defence — the
     // turn ledger stops the re-drive before the coach is ever woken, because the safety
     // line was this text's answer.
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
-    expect(h.transport.sent).toEqual([]);
-    expect(claim.fired).toEqual([]);
+    // Nothing answered the first time, so the re-drive meets the outage again and is
+    // deferred (it may throw for the drain to retry); the claim keeps it to one page.
+    const retry = await routeChannelMessage(h.deps, job()).catch(() => null);
+    expect(retry?.status).not.toBe('smoke_alarm_fired');
+    expect(h.transport.bodies()).toEqual([]);
+    expect(claim.fired).toHaveLength(1);
   });
 
   /** A different text during the same outage is a different emergency. The claim is
@@ -2190,14 +2234,15 @@ describe('the outage smoke alarm', () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
-    await expect(
-      routeChannelMessage(
-        h.deps,
-        job({ channel_message_id: '44444444-4444-4444-8444-444444444444' }),
-      ),
-    ).rejects.toBeInstanceOf(TurnDeferred);
-    expect(h.transport.sent).toEqual([]);
+    await routeChannelMessage(h.deps, job());
+    const second = await routeChannelMessage(
+      h.deps,
+      job({ channel_message_id: '44444444-4444-4444-8444-444444444444' }),
+    );
+
+    expect(second.status).toBe('smoke_alarm_fired');
+    expect(h.transport.bodies()).toEqual([]);
+    expect(claim.fired).toHaveLength(2);
   });
 
   // ── the non-triggers ───────────────────────────────────────────────────────
@@ -2328,10 +2373,10 @@ describe('the outage smoke alarm', () => {
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
-    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    await routeChannelMessage(h.deps, job());
 
     const dump = JSON.stringify(h.logs);
-    expect(dump).toContain('moment_unwritten');
+    expect(dump).toContain('smoke_alarm_fired');
     expect(dump).not.toContain('not breathing');
   });
 });
@@ -3021,6 +3066,14 @@ describe('the 09:47 sequence', () => {
   function introChain(standing: 'unanswered' | 'granted') {
     const written: boolean[] = [];
     const deps: VillageIntroReplyDeps = {
+      consent: {
+        read: async ({ text }) => {
+          const folded = text.trim().toLowerCase();
+          if (folded === 'yes intros') return { verdict: 'yes', target: 'discoverability' };
+          if (folded === 'no intros') return { verdict: 'no', target: 'discoverability' };
+          return null;
+        },
+      },
       recordDiscoverability: async (_db, input) => {
         written.push(input.granted);
       },
@@ -4059,7 +4112,6 @@ describe('the weekday-care answer', () => {
   function questionsFrom(overrides: Partial<OpenQuestionSources>): OpenQuestionReader {
     const sources: OpenQuestionSources = {
       forwardAddressRevoke: async () => null,
-      yearRetention: async () => null,
       pendingApprovals: async () => [],
       introOptInOpen: async () => false,
       introProposal: async () => null,
@@ -4088,6 +4140,7 @@ describe('the weekday-care answer', () => {
       target?: ChannelRouterDeps['weekdayCareAnswerTarget'];
       questions?: OpenQuestionReader;
       searchWeekdays?: ChannelRouterDeps['searchWeekdays'];
+      reading?: Awaited<ReturnType<ChannelRouterDeps['weekdayCareReader']['read']>>;
     } = {},
   ) {
     const written: Array<{ childId: string; care: string; provider: string | null }> = [];
@@ -4096,6 +4149,9 @@ describe('the weekday-care answer', () => {
       context: { body: options.body ?? "she's home with me" },
       coach,
       questions: options.questions ?? questionsFrom(askStanding),
+      weekdayCareReader: {
+        read: async () => options.reading ?? { status: 'nothing_stated' as const },
+      },
       weekdayCareAnswerTarget:
         options.target ?? (async () => ({ status: 'open' as const, childId: CHILD })),
       searchWeekdays: options.searchWeekdays,
@@ -4112,7 +4168,9 @@ describe('the weekday-care answer', () => {
   }
 
   it('writes the fact, does not claim the turn, and lets the coach answer', async () => {
-    const { h, written, coach } = careHarness();
+    const { h, written, coach } = careHarness({
+      reading: { status: 'read', care: 'home', provider: null },
+    });
 
     const result = await routeChannelMessage(h.deps, job());
 
@@ -4125,8 +4183,11 @@ describe('the weekday-care answer', () => {
     expect(result.status).toBe('agent_replied');
   });
 
-  it('records the provider when the parent named one', async () => {
-    const { h, written } = careHarness({ body: 'she goes to Little Sprouts' });
+  it('records the provider when the reader named one', async () => {
+    const { h, written } = careHarness({
+      body: 'she goes to Little Sprouts',
+      reading: { status: 'read', care: 'daycare', provider: 'Little Sprouts' },
+    });
 
     await routeChannelMessage(h.deps, job());
 
@@ -4329,7 +4390,6 @@ describe('a bare yes while the daycare check-in is standing', () => {
   function sources(overrides: Partial<OpenQuestionSources>): OpenQuestionReader {
     return createOpenQuestionReader({
       forwardAddressRevoke: async () => null,
-      yearRetention: async () => null,
       pendingApprovals: async () => [],
       introOptInOpen: async () => false,
       introProposal: async () => null,

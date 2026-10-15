@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (high 25, humidex 32, SW wind 20 gusting 40, low 15, evening 40% showers with thunderstorm risk, no alerts) matches the Environment Canada notes for Toronto on Tue Oct 13. It answers directly for the right city and day. One small slip: daytime 'showers' reads as certain, while the notes give only a 40% chance late in the afternoon. That is not a contradiction. The tone reads like a pasted forecast bulletin with stacked figures rather than a casual friend's text, so it scores 4, not 5.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

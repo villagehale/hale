@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lima is the capital of Peru",
+        "from": "Lima is the capital of Peru."
+      },
+      {
+        "states": "Cusco is the Inca capital in modern Peru, not the current national capital",
+        "from": "It is the Inca capital in modern Peru. It is not the current national capital."
+      }
+    ],
+    "answer": "Lima. People sometimes mix it up with Cusco, but Cusco was the Inca capital and isn't the current one."
+  },
+  "latencyMs": 2861
+}

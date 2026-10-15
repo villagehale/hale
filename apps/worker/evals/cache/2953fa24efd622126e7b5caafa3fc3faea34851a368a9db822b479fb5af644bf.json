@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Says Lima, which is correct and matches the notes. The three-branches line and the Cusco line both come from research_notes. It doesn't bring up the pending weather question. It's a bit padded and encyclopedic for a quick text, with the 'It's the capital of Peru' restatement and the government detail, but it still reads like a friend answering.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Toronto's forecast for tomorrow is correct. The high of 25°C, the mix of sun and cloud, the 40% chance of showers with thunderstorms late in the afternoon, the SW wind at 20 km/h gusting to 40, and the low of 15°C all match Environment Canada in the notes. 'With showers' Tuesday night slightly overstates the 40% chance, but it is minor. It answers directly as the follow-up to which city was meant. The tone reads more like a forecast readout than a casual text, though it is not service-like.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

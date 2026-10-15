@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto daytime today: mainly cloudy, no rain forecast for the daytime",
+        "from": "Daytime: Environment Canada's 11:00 AM EDT forecast calls for mainly cloudy skies and a high of 23°C... That forecast has no rain for the daytime."
+      },
+      {
+        "states": "Rain likely to start after dark or overnight tonight",
+        "from": "Rain is likely to start after dark or overnight."
+      },
+      {
+        "states": "Risk of a thunderstorm before morning tonight",
+        "from": "The 11:00 AM forecast says mainly cloudy, with a few showers beginning before morning and a risk of a thunderstorm before morning."
+      },
+      {
+        "states": "Sources differ on exactly when the rain starts",
+        "from": "The sources differ on exactly when the rain starts."
+      }
+    ],
+    "answer": "Not during the day. The 11 AM forecast has it mainly cloudy and dry. Rain is likely to start after dark or overnight, and there's a risk of a thunderstorm before morning. The sources don't agree on the exact start time, so it could be later tonight."
+  },
+  "latencyMs": 5016
+}

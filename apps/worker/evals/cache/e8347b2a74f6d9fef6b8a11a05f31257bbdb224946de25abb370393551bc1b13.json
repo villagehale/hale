@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday, Oct 13 high of 25°C (Environment Canada)",
+        "from": "The high is 25°C"
+      },
+      {
+        "states": "Mix of sun and cloud in the afternoon (Environment Canada, Tuesday)",
+        "from": "Becoming a mix of sun and cloud in the afternoon"
+      },
+      {
+        "states": "40 percent chance of showers late in the afternoon (Environment Canada, Tuesday)",
+        "from": "a 40 percent chance of showers late in the afternoon"
+      },
+      {
+        "states": "Risk of a thunderstorm late in the afternoon (Environment Canada, Tuesday)",
+        "from": "There is a risk of a thunderstorm late in the afternoon"
+      },
+      {
+        "states": "Humidex of 32 (Environment Canada, Tuesday)",
+        "from": "The humidex is 32"
+      },
+      {
+        "states": "Tuesday night low of 15°C (Environment Canada)",
+        "from": "Tuesday night is partly cloudy ... and a low of 15°C"
+      }
+    ],
+    "answer": "Tomorrow's warm, around 25°C with a mix of sun and cloud. Showers are likely late in the afternoon, with a chance of a thunderstorm too, and it feels like 32 with the humidity. Overnight it drops to about 15°C."
+  },
+  "latencyMs": 4891
+}

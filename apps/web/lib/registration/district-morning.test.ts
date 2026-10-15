@@ -1,13 +1,13 @@
 import type { ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import { decideRadar } from '~/lib/channel/intake/radar-decide';
-import { renderRadarDeterministically } from '~/lib/channel/intake/radar-voice';
+import { radarFactSlots } from '~/lib/channel/intake/radar-voice';
 import { matchRegistrationWindows } from './match-registration-windows';
 
 /**
  * VIL-360. Toronto opens a cycle on two mornings. A North York family (M2N) must
  * hear the North York morning from the same reply path every other town uses
- * (`decideRadar` → `renderRadarDeterministically`), and an Etobicoke or downtown
+ * (`decideRadar` → `radarFactSlots`, the facts the voice is handed), and an Etobicoke or downtown
  * family must still hear theirs. The dates are synthetic — Winter 2027 is not
  * published — so this does not seed a row the discovery list is still watching.
  */
@@ -73,7 +73,7 @@ function firstReply(postal: string): { text: string; district: string | null } {
     timeZone: 'America/Toronto',
   });
   return {
-    text: renderRadarDeterministically(decision, ''),
+    text: radarFactSlots(decision).join(' | '),
     district: windows[0]?.window.district ?? null,
   };
 }
@@ -82,7 +82,8 @@ describe('a Toronto district morning on the first radar reply (VIL-360)', () => 
   it('names the North York morning for an M2N family, not the Etobicoke one', () => {
     const reply = firstReply('M2N 2K8');
     expect(reply.district).toBe('north_york');
-    expect(reply.text).toContain('Toronto Winter 2027 registration opens');
+    expect(reply.text).toContain('Winter 2027');
+    expect(reply.text).toContain('Toronto');
     expect(reply.text).toContain('Dec 9');
     expect(reply.text).not.toContain('Dec 8');
   });

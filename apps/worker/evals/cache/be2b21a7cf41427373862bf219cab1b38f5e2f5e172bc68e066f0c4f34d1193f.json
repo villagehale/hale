@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto, Tuesday Oct 13: high of 25",
+        "from": "High of 25, with a humidex of 32."
+      },
+      {
+        "states": "Toronto, Tuesday: humidex 32",
+        "from": "High of 25, with a humidex of 32."
+      },
+      {
+        "states": "Toronto, Tuesday afternoon: mix of sun and cloud, 40 percent chance of showers late in the afternoon, risk of thunderstorm late in the afternoon",
+        "from": "Becoming a mix of sun and cloud in the afternoon, with a 40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon."
+      },
+      {
+        "states": "Toronto, Tuesday evening: 40 percent chance of showers with a risk of thunderstorm",
+        "from": "Partly cloudy. 40 percent chance of showers in the evening, with a risk of a thunderstorm."
+      },
+      {
+        "states": "Toronto, Tuesday: wind from the southwest at 20 km/h, gusting to 40",
+        "from": "Wind from the southwest at 20 km/h, gusting to 40."
+      },
+      {
+        "states": "Toronto, Tuesday night: low of 15",
+        "from": "Low of 15."
+      },
+      {
+        "states": "Toronto, Tuesday: no weather alerts in effect",
+        "from": "Environment Canada's hourly page showed no alerts in effect."
+      }
+    ],
+    "answer": "Tuesday in Toronto: a mix of sun and cloud, warm with a high of 25 (humidex 32). There's a 40% chance of showers and a risk of thunderstorms from late afternoon into the evening. Winds southwest at 20 km/h, gusting to 40, and a low of 15 overnight. No weather alerts are in effect, per Environment Canada."
+  },
+  "latencyMs": 5819
+}

@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "large eggs dropped into boiling water: 12 to 13 minutes gives a fully hard-boiled egg",
+        "from": "Healthline says 12 to 13 minutes gives fully hard-boiled eggs that are not over-cooked."
+      },
+      {
+        "states": "large eggs dropped into boiling water: 10 minutes is mostly cooked but slightly soft in the center",
+        "from": "At 10 minutes, the eggs are mostly cooked through but slightly soft in the center."
+      },
+      {
+        "states": "large eggs dropped into boiling water: 15 minutes gives rubbery whites and powdery dry yolks",
+        "from": "RecipeTin Eats (about 12 days old) says 10 minutes is classic hard boiled, and 15 minutes gives rubbery whites and powdery dry yolks."
+      },
+      {
+        "states": "smaller eggs cook quicker than large ones",
+        "from": "Healthline says these times are for large eggs: smaller ones cook quicker while larger ones need extra time."
+      }
+    ],
+    "answer": "For large eggs dropped into boiling water, 12 to 13 minutes gets a fully set yolk. 10 minutes is firm but a bit soft in the middle. Go much past 14 or 15 and the whites go rubbery and the yolk dry and powdery. Smaller eggs need a little less time."
+  },
+  "latencyMs": 4390
+}

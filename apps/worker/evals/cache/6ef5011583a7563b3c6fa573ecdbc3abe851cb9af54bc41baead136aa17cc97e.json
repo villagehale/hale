@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM), 212 West 83rd Street",
+        "age_fit": "children ages 0-6",
+        "when": "Plan Your Visit page lists regular hours Tuesday-Sunday 10am-5pm; its FAQ lists Monday-Sunday for July-September, so the two pages disagree about Mondays. Hours for September 12-15 could not be confirmed.",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Central Park Zoo (includes Tisch Children's Zoo)",
+        "age_fit": "Child (3-12) ticket; 2 & under free",
+        "when": "2026 hours page lists Mon-Fri 10am-5pm and weekends 10am-5:30pm through Oct 31, last entry 1 hour before closing. Hours for September 12-15 could not be confirmed.",
+        "price": "Child (3-12) $16.95; adult $22.95; 2 & under free",
+        "source_name": "Central Park Zoo"
+      }
+    ]
+  },
+  "latencyMs": 5377
+}

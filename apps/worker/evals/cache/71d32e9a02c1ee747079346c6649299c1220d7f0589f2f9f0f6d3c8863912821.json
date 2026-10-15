@@ -1,0 +1,28 @@
+{
+  "urls": [
+    "https://weather.gc.ca/en/location/index.html?coords=49.245%2C-123.115",
+    "https://www.accuweather.com/en/ca/vancouver/v6c/10-day-weather-forecast/53286",
+    "https://www.accuweather.com/en/ca/vancouver/v6c/weather-forecast/53286",
+    "https://www.yr.no/en/forecast/hourly-table/2-6173331/Canada/British%20Columbia/Metro%20Vancouver%20Regional%20District/Vancouver?i=0",
+    "https://www.yr.no/en/forecast/daily-table/2-6173331/Canada/British%20Columbia/Metro%20Vancouver%20Regional%20District/Vancouver",
+    "https://www.wunderground.com/weather/ca/vancouver",
+    "https://www.timeanddate.com/weather/canada/vancouver/ext",
+    "https://www.thomascook.com/holidays/weather/canada/vancouver/forecast/",
+    "https://world-weather.info/forecast/canada/vancouver/14days/",
+    "https://amp.cbc.ca/news/canada/british-columbia/fall-leaves-take-over-vancouver-1.4867779",
+    "https://weather.gc.ca/en/location/index.html?coords=49.245%2C-123.115",
+    "https://www.foxweather.com/local-weather/washington/vancouver",
+    "https://www.weatherbug.com/weather-forecast/10-day-weather/vancouver-wa-98661",
+    "https://www.weather-forecast.com/locations/Vancouver-1/forecasts/latest",
+    "https://www.wunderground.com/weather/us/wa/vancouver",
+    "https://www.wunderground.com/forecast/us/wa/vancouver",
+    "https://www.timeanddate.com/weather/@7174625/ext",
+    "https://www.myforecast.com/30-day-forecast.php?cwid=32387&metric=false&city_count=&zip_code=&condition=act&data=463376914",
+    "https://www.timeanddate.com/weather/usa/vancouver/ext",
+    "https://amp.cbc.ca/news/canada/british-columbia/fall-leaves-take-over-vancouver-1.4867779"
+  ],
+  "notes": "**Research notes: weather for tomorrow, Tuesday Oct 13, 2026**\n\nThe question doesn't say which Vancouver, and no place was given. The results cover two cities, Vancouver, British Columbia, Canada, and Vancouver, Washington, USA.\n\n**Vancouver, BC**\n- Environment Canada's forecast for Tuesday is cloudy with a high of 14°C. The UV index is 2 or low.\n- Environment Canada's forecast for Tuesday night is a few showers beginning late in the evening, with a low of 11°C.\n- Yr (the Norwegian weather service) gives a high and low of 13°/10°, cloudy in the morning and afternoon, with rain in the evening. It forecasts 2.6 mm of precipitation and wind of 4 m/s.\n- Timeanddate gives 57/48°F (about 14/9°C), overcast with sprinkles late. It puts the chance of precipitation at 73%.\n- The sources differ on the morning. AccuWeather says a brief shower or two in the morning, then some sun, then turning cloudy. Wunderground says rain showers in the morning, overcast in the afternoon. Environment Canada (updated 11:00 AM PDT) shows a cloudy day with showers only from late evening.\n- Wunderground expects rain overnight: low around 50°F (10°C).\n\n**Vancouver, WA**\n- Wunderground (Hough station) gives a high of 64°F, a mix of clouds and sun early, then cloudy in the afternoon. Precipitation chance is 1%. The low is 47°F with mostly cloudy skies.\n- Timeanddate gives 64/41°F, overcast, 0% chance of precipitation.\n- Fox Weather says Tuesday night is partly to mostly cloudy with a low of 48°F.\n- Other sources put the high between about 62°F and 67°F. All of them expect it to stay dry.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 13333
+}

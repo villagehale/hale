@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With live set to missing_detail, the right move is to ask which country, and the answer does exactly that. It states no broadcaster and no current fact from memory, so nothing is wrong or invented. The tone is brief and casual like a friend texting, with only a slight extra explanation.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

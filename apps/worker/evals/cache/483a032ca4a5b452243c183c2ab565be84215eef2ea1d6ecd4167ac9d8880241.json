@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every stat matches the research notes: the 2023 YouGov figure of about 59%, the 2017 Slice survey's 54%, and anchovies and eggplant being more disliked. It does take a side with \"Yep, it's ok\", but then hedges with \"people are split\" and \"good company either way\", which drifts toward the diplomatic fence-sitting the watchFor warns against. The poll citations also read a bit more like a report than a playful friend's verdict. Still a correct, casual answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

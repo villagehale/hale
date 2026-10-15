@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real (Preschool A and B, 3-5 years) with the day, times and Sept 12 to Nov 28 dates exactly as printed. Each is cited to the Oakville learn-to-swim page. Price is correctly null because the page prints no fee, and no figure is borrowed from elsewhere. Both slots carry the Aug 11, 7 a.m. resident registration date, and the message does too, so a parent can tell registration has not opened yet. The message leads with the named program, attributes the facts with 'their site says' rather than claiming verification, and is plain ASCII with no link and no question. With page_has_schedule, the missing price is correctly put in the first person ('I could not pin down the price') rather than 'not posted'. With watch=true, 'I'll keep watching' is a legitimate first-person commitment. The Recreation Guide holding fees is mentioned only as text, not as a linked document left unread, so nothing is withheld.",
+    "score": 5
+  }
+}

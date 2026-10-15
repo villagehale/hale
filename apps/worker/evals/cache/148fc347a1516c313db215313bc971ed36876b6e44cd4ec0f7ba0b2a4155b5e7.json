@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Three real, named Oakville providers that fit the stage: the Town of Oakville, the YMCA of Oakville and Goldfish Swim School Oakville. Each is sourced from the venue's own page, not an aggregator. The message leads by name with the Town's program and attributes the first two with \"their sites say\". Under no_page_read it uses the earned form, \"I could not get into their pages today\", for the missing days, times and prices. It invents no detail. watch is true and the message correctly closes with the first-person \"I'll keep watching and text you\". It is plain text with no link and no question. Small gaps: the Goldfish line is stated as fact with no attribution, and it does not carry the not-posted note for that pick.",
+    "score": 4
+  }
+}

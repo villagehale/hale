@@ -44,6 +44,7 @@ import {
   JUDGE_SAMPLES_MEDIAN,
   cachedTextCall,
   evalRunTag,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -521,7 +522,8 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('radar');
   const cost = makeCost();
 
   const skill = await agent.loadSkill(RADAR_SKILL_PATH);

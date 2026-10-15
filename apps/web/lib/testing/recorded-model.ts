@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { basename, dirname } from 'node:path';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 
@@ -104,6 +104,32 @@ export interface RecordedModel {
 export function recordedModel(path: string, live: () => AgentClient): RecordedModel {
   const requests: string[] = [];
   const recordings = read(path);
+  let capped: AgentClient | null = null;
+
+  /**
+   * A recording spends real money, so it goes through the eval spend cap on the shared
+   * HALE_SPEND_LEDGER, the same ledger and the same ceiling the eval suites book to. With
+   * no ceiling set, record mode refuses rather than call uncapped. Loaded only here, so a
+   * replay never imports the eval harness.
+   */
+  async function liveClient(): Promise<AgentClient> {
+    if (capped) return capped;
+    if (!process.env.HALE_MAX_USD) {
+      throw new Error(
+        'recorded-model: HALE_RECORD=1 needs HALE_MAX_USD (and HALE_SPEND_LEDGER); refusing an uncapped recording',
+      );
+    }
+    // spend-cap.mjs is untyped JS; its inferred options type misses `rates`.
+    const { capSdkClient } = (await import('./spend-cap.mjs')) as unknown as {
+      capSdkClient: (client: AgentClient, opts: { rates: unknown; tag: string }) => AgentClient;
+    };
+    const { priceRates } = await import('../../../worker/evals/lib/harness.mjs');
+    capped = capSdkClient(live(), {
+      rates: priceRates,
+      tag: `journey:${basename(path)}`,
+    });
+    return capped;
+  }
 
   async function create(params: Anthropic.MessageCreateParams) {
     const userMessage = firstText(params);
@@ -126,7 +152,7 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
       );
     }
 
-    const response = await live().messages.create(params);
+    const response = await (await liveClient()).messages.create(params);
     recordings[key] = {
       key,
       recordedAt: new Date().toISOString(),

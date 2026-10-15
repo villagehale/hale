@@ -203,8 +203,26 @@ export function standIn(schema) {
 }
 
 function standInMessage(request) {
+  const schema = request.output_config?.format?.schema;
+  if (schema) {
+    return {
+      id: 'estimate',
+      type: 'message',
+      role: 'assistant',
+      model: request.model,
+      content: [{ type: 'text', text: JSON.stringify(standIn(schema)) }],
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+  }
   const forced = request.tool_choice?.type === 'tool' ? request.tool_choice.name : null;
-  const tool = forced && (request.tools ?? []).find((t) => t.name === forced);
+  const sole =
+    forced ??
+    (request.tool_choice?.type === 'auto' && request.tools?.length === 1
+      ? request.tools[0].name
+      : null);
+  const tool = sole && (request.tools ?? []).find((t) => t.name === sole);
   return {
     id: 'estimate',
     type: 'message',
@@ -219,14 +237,25 @@ function standInMessage(request) {
   };
 }
 
+/**
+ * count_tokens rejects a forced tool_choice (`type: "tool"` or `"any"`) with a 400.
+ * The count only needs the tools and the messages, so those two are relaxed to
+ * `auto` here. The request the real call sends is left as it arrived.
+ */
+function toolChoiceForCount(toolChoice) {
+  if (toolChoice?.type === 'tool' || toolChoice?.type === 'any') return { type: 'auto' };
+  return toolChoice;
+}
+
 async function countInputTokens(client, request) {
   const { model, messages, system, tools, tool_choice, thinking } = request;
+  const countedChoice = toolChoiceForCount(tool_choice);
   const res = await client.messages.countTokens({
     model,
     messages,
     ...(system !== undefined ? { system } : {}),
     ...(tools !== undefined ? { tools } : {}),
-    ...(tool_choice !== undefined ? { tool_choice } : {}),
+    ...(tool_choice !== undefined ? { tool_choice: countedChoice } : {}),
     ...(thinking !== undefined ? { thinking } : {}),
   });
   return res.input_tokens;
@@ -340,11 +369,16 @@ export function isSpendCapStop(err) {
   return err instanceof Error && err.message.startsWith('spend-cap:');
 }
 
+const CAPPED = Symbol.for('hale.spendCap');
+
 export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
-  if (!capEnabled()) return client;
+  const raw = client?.[CAPPED]?.raw ?? client;
+  if (!capEnabled()) return raw;
+  // A suite that wraps the harness client again keeps one check and the outer tag.
+  if (client?.[CAPPED]) return capSdkClient(raw, { rates, tag });
   if (!rates) throw new Error('spend-cap: rates are required when the cap is on');
   const messages = client.messages;
-  return {
+  const wrapped = {
     messages: {
       countTokens: (req) => messages.countTokens(req),
       create: (request) =>
@@ -367,4 +401,6 @@ export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
       }),
     },
   };
+  wrapped[CAPPED] = { raw: client };
+  return wrapped;
 }

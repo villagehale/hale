@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot matches the programme page exactly: name, age band, days, times and dates are as printed, and it cites the right URL. Price is correctly null because the page only refers readers to the front desk, and neither rental figure ($185 or $95) was borrowed. No registration date is printed, so a null registration is right. The message leads with the slot by name, attributes the facts ('their site says') and runs two plain-ASCII sentences with no link and no question. Under page_has_schedule it uses the first-person gap ('I could not pin down the price') rather than 'not posted'. With watch true, the first-person 'I'll keep watching and text you' is a commitment that already exists, not an empty promise.",
+    "score": 5
+  }
+}

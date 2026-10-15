@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "C'est reparti ! Tu m'as redonné le feu vert pour les courriels, alors je vais à nouveau envoyer et répondre à des courriels en ton nom sans te demander à chaque fois. Je ne fais jamais de réservation, d'inscription ou de paiement de mon côté. Et si tu veux que j'arrête, un seul message suffit."
+  },
+  "stopReason": "tool_use"
+}

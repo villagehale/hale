@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cg38Z5haXioCHJL1qswYh",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsgcKEAgSGAI4AUIIdGhpbmtpbmcSDG+8OhaysaD1LXoJ9RoMRLQmvKdl+szQDZ2zIjAq+y3CPS6uixGJ9aDIgtg1M1bFkodPz6OKZIJP0cSyH4o9PL0ehhwakKKptcuEx3YqzwZ/Zp998fOn3kF1o5hUfhSK+9XhKBMcQbi6Tf/oygMdelhL3z8HScNUS455B5EYj8/gNSDzNYOz8IHyc9+m5ltna+GOFeVfdESKwchVAz6Stwmu9t2dbmR7lOe8O2Q18Zh+q1EPvkqK8UWYJ4Qk06Yt7OX/KZvo2d5naUE9lTIZ+XVJRxskYe0pjheMGJn65Q71KXLESg2Sp+9vfYLsSZytSIO7BppWwOERux6QBgs7dQ++Jd6MjCsnwbzvMAM2uJvCJul6IoPQdlcY/tDFZFEisDBX2jPmRw4mlxj1o+WRAJVo8B0PljCTeMtwqFmr3g6l18cNwLTr6wt7s31z8fNWKA4/tUq1/1UdMbiHK9AZyaIYi/aFuNt3/c66hoe/uAcQPIOjmgahrr/DCFwmM0DLABKnPyOk+Up2jcRpWLENVCubRBPM/JyquNRha4/IL4kv9ZC/6wRZo29KIyvmzVj2aUmLoUANpd99cg8WCj/66zP9Y/1fpHXTHkXWnq1lk7h6EI9WupePLBR5/5pqTojr/R5Hqaw9lTw4vM/+7ciwNpOCsVjvd8HLs9B3QuCYizu7Tsl2a/qI/TRaTcm4R7DwjFvTvFNAWEtwy8wzyfl0MC9Tbpq/onIcG2xqTubpZKLlxYQ+uRDPBX8QIYyGnGjnXwqUTdHTnoKXakR4XoZWP9rCYfa4v3dCBhYfl6sGyJcv+eZhVxnoRV0JZ9XNdLsxDc3q8tYkXu7JTWHJsGanZs6nfvaFUvlQt1XCk9+jbQSkjrCRnb8Nd2VaoMQ0ijR5ZQrEN4+gmcjzyTF0nYkcah1WPtB8nd7j41iChgbi0hwHD/6leye4+k0G48Rn6v3ZA4+bxpEe2LQybo/cR1XgqEeFbQFxOKJ2nYdU0iWlRKgoLjAPsszXqlB7C1hZM+FK5APX9mSViq6/LHt09/BXxGp7J86cjwMjMIGkNHgtAnCarodDfJGvX/unPbcmDibn7Hx67Hqyjj+EKzyRe2Td/BSo3W0X4+nG34mU58mTjyzg4VuSuOkZqICEwhGK367CySoEN87lhEN38CpvLItB7ZzuMKW/AFmybdSg50o2YBxTOhASynC/yX8e8zBp0U6ocn0xc45OzzIQPn7jsN5YGAE="
+      },
+      {
+        "type": "text",
+        "text": "Okay, Thursday swim stays as it is and nothing's cancelled."
+      }
+    ],
+    "usage": {
+      "input_tokens": 382,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20754,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 175,
+      "output_tokens_details": {
+        "thinking_tokens": 148
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2270
+}

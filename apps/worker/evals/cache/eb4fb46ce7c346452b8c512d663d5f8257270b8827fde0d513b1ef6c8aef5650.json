@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The text matches the `rearmed` occasion perfectly. It is in French, matching the parent's recent inbound message \"tu peux recommencer les courriels.\" The voice is casual and friendly (\"Parfait, je reprends !\"), like a parent texting a friend.\n\nFact one (what the sender may do): \"Je vais envoyer des courriels en ton nom sans te demander à chaque fois\" clearly conveys that the sender will send email on the parent's behalf without asking each time. ✓\n\nFact two (standing.never): \"Je ne fais jamais de réservation, d'inscription ou de paiement\" directly states that the sender does not book (réservation), register (inscription), or pay (paiement). ✓\n\nFact three (standing.stop): \"Un seul message de ta part suffit pour que j'arrête\" conveys that one message from the parent turns this off, meeting the one_message requirement. ✓\n\nThe text asks for nothing, invents no facts beyond what was provided, and reads naturally as a friend and parent communicating. All three required facts are present and properly conveyed."
+  }
+}

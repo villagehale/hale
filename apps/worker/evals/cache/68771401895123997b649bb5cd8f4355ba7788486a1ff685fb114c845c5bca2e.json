@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5, Saturdays at the printed times, Sept 12 to Nov 28. Price is correctly null because the page prints no fee, and the registration date (Aug 11, 7 a.m., residents) is carried and cited to the operator page. No third slot was invented. The message leads with the slots by name and attributes the facts with 'their site says'. It carries the not-yet-open registration date. The price gap is put in the first person rather than as 'not posted', which is acceptable under page_has_schedule. The watch is true, so the first-person 'I'll keep watching' is a real commitment. The message is plain ASCII with no link and no question. One minor omission: it does not mention the page's pointer to the Recreation Guide for fees.",
+    "score": 5
+  }
+}

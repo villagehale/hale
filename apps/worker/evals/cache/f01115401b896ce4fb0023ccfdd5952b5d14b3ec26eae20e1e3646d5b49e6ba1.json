@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Parfait, je reprends ! Je vais envoyer des courriels en ton nom sans te demander à chaque fois. Je ne fais jamais de réservation, d'inscription ou de paiement. Un seul message de ta part suffit pour que j'arrête."
+  },
+  "stopReason": "tool_use"
+}

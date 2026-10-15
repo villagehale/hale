@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { COVERED_BY_COMBINED_NOTICE } from '~/lib/channel/ledger';
 
 /**
  * The `delivery` incident kind — the pageable half of the delivery-truth invariant.
@@ -86,8 +87,8 @@ export async function loadDeliveryStats(database: Database, since: Date): Promis
 
   const [totals] = await database
     .select({
-      attempted: sql<number>`count(*) filter (where ${m.status} in ('queued','sent','delivered','failed'))::int`,
-      failed: sql<number>`count(*) filter (where ${m.status} = 'failed')::int`,
+      attempted: sql<number>`count(*) filter (where ${m.status} in ('queued','sent','delivered','failed') and coalesce(${m.errorCode}, '') <> ${COVERED_BY_COMBINED_NOTICE})::int`,
+      failed: sql<number>`count(*) filter (where ${m.status} = 'failed' and coalesce(${m.errorCode}, '') <> ${COVERED_BY_COMBINED_NOTICE})::int`,
     })
     .from(m)
     .where(scope);
@@ -116,7 +117,7 @@ const ALERT_TOP_CODES = 2;
  * `data.code` through), so the page keeps only an enum-shaped token: no spaces, no
  * URLs, and never a digit run long enough to be a number a parent owns. */
 const ALERT_CODE_MAX_CHARS = 32;
-function alertCode(code: string): string {
+export function alertCode(code: string): string {
   const token = code.replace(/[^A-Za-z0-9_.:-]+/g, '_').slice(0, ALERT_CODE_MAX_CHARS);
   return token.replace(/\d{7,}/g, (digits) => digits.slice(0, 6));
 }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { askWriter } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { defaultFounderPingPorts, offerFounderWelcome } from './ping';
 
@@ -44,11 +45,7 @@ describe('offerFounderWelcome and synthetic probes', () => {
     await db.close();
   });
 
-  async function seedFamily(
-    email: string | null,
-    phone: string,
-    name: string,
-  ): Promise<string> {
+  async function seedFamily(email: string | null, phone: string, name: string): Promise<string> {
     const [user] = await database
       .insert(schema.users)
       .values({ email, name, timezone: TZ })
@@ -98,7 +95,7 @@ describe('offerFounderWelcome and synthetic probes', () => {
     const outcome = await offerFounderWelcome(
       database,
       { newFamilyId: realFamilyId, sourceCode: 'earlyon-georgetown', now: NOW },
-      defaultFounderPingPorts(transport),
+      defaultFounderPingPorts(transport, askWriter()),
     );
 
     expect(outcome).toMatchObject({ status: 'pinged' });

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "ma fille a avalé des pilules de ma mère, elle ne répond plus",
+    "confirmation": "Appelle le 15 (SAMU) ou le 112 maintenant. C'est urgent."
+  },
+  "latencyMs": 1310
+}

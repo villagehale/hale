@@ -2,8 +2,10 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mintChannelSigninTokens } from '~/lib/auth/channel-signin';
+import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -60,6 +62,7 @@ describe('textFreshConnectorLink', () => {
       {
         transport,
         threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(),
       },
     );
 
@@ -67,7 +70,8 @@ describe('textFreshConnectorLink', () => {
     expect(transport.sent).toHaveLength(1);
     const body = transport.sent[0]?.body ?? '';
     expect(body).toContain('to=gmail');
-    expect(body).toContain('unverified app');
+    // The caution reached the line writer as a fact; the writer, not code, words it.
+    expect(body).toContain(`googleCaution=${JSON.stringify(GOOGLE_UNVERIFIED_APP_FACT)}`);
     expect(body).not.toMatch(/connect my calendar/i);
     expect(body).not.toContain('to=gcal');
     const [spent] = await db.database
@@ -114,6 +118,7 @@ describe('textFreshConnectorLink', () => {
           return { providerMessageId: 'out-1' };
         },
         threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(),
       },
     );
 
@@ -170,6 +175,7 @@ describe('textFreshConnectorLink', () => {
           return { providerMessageId: 'out-1' };
         },
         threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(),
       },
     );
 
@@ -196,6 +202,7 @@ describe('textFreshConnectorLink', () => {
       {
         transport: refusing as unknown as FakeTransport,
         threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(),
       },
     );
 

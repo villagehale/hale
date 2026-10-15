@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific is supported by research_notes: Messi's 8 Ballon d'Or to Ronaldo's 5, Ronaldo's higher goal total, the 2022 World Cup, Brady's seven Super Bowls, and Mahomes as the live debate. None is marked settled in grounding. It handles the soccer/NFL ambiguity by covering both and makes a real pick for each. Casual, brief, and in the parent's language.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

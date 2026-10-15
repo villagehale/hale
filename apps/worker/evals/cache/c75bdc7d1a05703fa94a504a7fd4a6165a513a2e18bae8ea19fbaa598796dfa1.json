@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (high 25, humidex 32, 40% showers and thunderstorm risk from late afternoon into the evening, SW wind 20 gusting 40, low 15) matches the Environment Canada forecast in research_notes for Tuesday in Toronto. It doesn't ask for the city, which Hale already had. It reads as a brief, direct text with the source named, though slightly report-like. Mentioning the storm risk is enough care.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

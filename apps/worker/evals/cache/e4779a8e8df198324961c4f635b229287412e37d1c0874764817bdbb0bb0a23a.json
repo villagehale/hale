@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Short-term use at low-to-moderate doses (5 mg daily or less) for short periods appears safe and well tolerated",
+        "from": "melatonin taken in low-to-moderate doses (e.g., 5 mg daily or less) for short periods appears safe and well-tolerated"
+      },
+      {
+        "states": "Common side effects are minor and resolve once use stops; the most frequent are headache and somnolence (fatigue)",
+        "from": "common side effects are minor and resolve once use stops. The most frequent are headache and somnolence (fatigue)"
+      },
+      {
+        "states": "Long-term effects are not well established",
+        "from": "The long-term effects are not well established"
+      },
+      {
+        "states": "A preliminary AHA study linked 12+ months of use in adults with insomnia to higher heart failure risk, but it cannot prove cause and is not peer-reviewed",
+        "from": "The AHA itself says the study cannot prove a cause-and-effect relationship. It also notes that abstracts presented at AHA meetings are not peer-reviewed, and the findings are considered preliminary."
+      },
+      {
+        "states": "A later analysis found no significant association, per a summary; the question remains open",
+        "from": "A Masters of Longevity summary says a 2026 analysis found no significant association, and the different study designs explain why the question remains open."
+      },
+      {
+        "states": "Experts advise against chronic use without a proper indication",
+        "from": "melatonin should not be taken chronically without a proper indication"
+      },
+      {
+        "states": "In the US melatonin is a dietary supplement, not regulated like prescription drugs, and content varies widely",
+        "from": "melatonin is treated as a dietary supplement by the FDA, so it is not subject to the same regulations as prescription drugs. The American Academy of Sleep Medicine site notes that supplement content varies widely."
+      },
+      {
+        "states": "Possible interactions with blood thinners and antidepressants",
+        "from": "One source lists possible interactions with blood thinners and antidepressants"
+      },
+      {
+        "states": "No specific pregnancy guidance was found",
+        "from": "The search did not return specific guidance for pregnancy"
+      }
+    ],
+    "answer": "For short stretches at low doses, 5 mg or less a day, studies found it appears safe and well tolerated. Common side effects are headache and grogginess, and they go away once you stop. Long-term safety isn't well established. A preliminary study presented at a heart association meeting linked 12+ months of use in people with insomnia to more heart failure, but it isn't peer-reviewed and can't prove cause. A later summary of a 2026 analysis found no significant link, so it's still open. Experts say don't use it long-term without a good reason. In the US it's sold as a supplement, so strength varies a lot. It may interact with blood thinners and antidepressants, so check with a doctor or pharmacist if you take either. I didn't find specific guidance on pregnancy."
+  },
+  "latencyMs": 16005
+}

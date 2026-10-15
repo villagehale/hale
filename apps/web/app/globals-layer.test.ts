@@ -30,9 +30,10 @@ import { describe, expect, it } from 'vitest';
 
 /** Unlayered class rules remaining in globals.css. LOWER THIS as surfaces migrate;
  * never raise it for new CSS. Any new component class goes inside `@layer components`.
- * 173 is what remains after the unused onboarding, settings, companion, family-band,
- * page-corner, and choice-card rules left with the components that used them. */
-const UNLAYERED_BASELINE = 173;
+ * 170 is what remains after the unused onboarding, settings, companion, family-band,
+ * page-corner, choice-card and upgrade-prompt rules left with the components that
+ * used them. */
+const UNLAYERED_BASELINE = 170;
 
 const CSS = readFileSync(fileURLToPath(new URL('./globals.css', import.meta.url)), 'utf8');
 const root = postcss.parse(CSS);

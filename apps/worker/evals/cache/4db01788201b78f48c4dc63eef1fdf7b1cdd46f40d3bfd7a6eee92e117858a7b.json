@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "how long is the drive from toronto to montreal",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "driving time between Toronto and Montreal, which can vary with traffic and road conditions",
+    "needs_search": "yes"
+  },
+  "latencyMs": 2237
+}

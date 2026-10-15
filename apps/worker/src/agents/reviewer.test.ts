@@ -372,9 +372,9 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
 
   it("injects the ACTING instant, not the placement's own start time", async () => {
     // Kills: reading payload.startsAt. allowActionsBetween bounds when HALE acts,
-    // not when the family's event begins — and the Sunday loop stamps every weekly
-    // placement at family-local midnight (mint-placements.zonedDayStartInstant), so
-    // a start-time read refuses observedHour 0 on every one of them.
+    // not when the family's event begins — and an all-day placement is stamped at
+    // family-local midnight, so a start-time read refuses observedHour 0 on every one
+    // of them.
     const input = await capturedTimeWindowInput(
       timeWindowDraft(
         'calendar_add',

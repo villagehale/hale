@@ -10,7 +10,9 @@
     "./executor": "./src/services/executor.ts",
     "./google-calendar-api": "./src/services/google-calendar-api.ts",
     "./google-calendar-placement": "./src/services/google-calendar-placement.ts",
-    "./gmail-drafts": "./src/services/gmail-drafts.ts"
+    "./gmail-drafts": "./src/services/gmail-drafts.ts",
+    "./memory-writer": "./src/services/memory-writer.ts",
+    "./autonomy-gate": "./src/orchestrator/autonomy-gate.ts"
   },
   "scripts": {
     "build": "tsc -b",
@@ -26,7 +28,6 @@
     "eval:village-search": "node evals/run-village-search-eval.mjs --cached-only",
     "eval:sentinel": "node evals/run-sentinel-eval.mjs --cached-only",
     "eval:intake": "node evals/run-intake-eval.mjs --cached-only",
-    "eval:intake-voice": "node evals/run-intake-voice-eval.mjs --cached-only",
     "eval:intake-answer": "node evals/run-intake-answer-eval.mjs --cached-only",
     "eval:inbound-lane": "node evals/run-inbound-lane-eval.mjs --cached-only",
     "eval:general-answer": "node evals/run-general-answer-eval.mjs --cached-only",
@@ -42,6 +43,9 @@
     "eval:reminder-voice": "node evals/run-reminder-voice-eval.mjs --cached-only",
     "eval:intro-voice": "node evals/run-intro-voice-eval.mjs --cached-only",
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",
+    "eval:calendar-offer-read": "node evals/run-calendar-offer-read-eval.mjs --cached-only",
+    "eval:crisis-reply": "node evals/run-crisis-reply-eval.mjs --cached-only",
+    "eval:said-line": "node evals/run-said-line-eval.mjs --cached-only",
     "eval:radar": "node evals/run-radar-eval.mjs --cached-only",
     "eval:nudge": "node evals/run-nudge-eval.mjs --cached-only",
     "eval:rsvp": "node evals/run-rsvp-eval.mjs --cached-only",
@@ -49,6 +53,8 @@
     "eval:proactive-decider": "node evals/run-proactive-decider-eval.mjs --cached-only",
     "eval:proactive-writer": "node evals/run-proactive-writer-eval.mjs --cached-only",
     "eval:weekday-care-ask": "node evals/run-weekday-care-ask-eval.mjs --cached-only",
+    "eval:weekday-care-reply": "node evals/weekday-care-reply-eval.mjs --estimate",
+    "eval:autonomy-notice": "node evals/run-autonomy-notice-eval.mjs --cached-only",
     "eval:coach-plan": "node evals/run-coach-plan-eval.mjs --cached-only",
     "eval:civic-hours": "node evals/run-civic-hours-eval.mjs --cached-only",
     "eval:activity-verdict": "node evals/run-activity-verdict-eval.mjs --cached-only",
@@ -60,7 +66,7 @@
     "prompts:push": "node scripts/sync-prompts.mjs push",
     "prompts:pull": "node scripts/sync-prompts.mjs pull",
     "prompts:check": "node scripts/sync-prompts.mjs check",
-    "replay:spend-ceiling": "tsx scripts/replay-spend-ceiling.ts"
+    "eval:opt-out-read": "node evals/run-opt-out-read-eval.mjs --cached-only"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.41.0",

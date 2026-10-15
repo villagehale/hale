@@ -71,6 +71,7 @@ beforeEach(async () => {
   family = await seedFamily(db.database);
   INTEGRATION = randomUUID();
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
   vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -611,9 +612,9 @@ describe('a provider cancellation closes what it cancelled', () => {
       handleEmailAlertOfferReply(db.database, {
         familyId: family.familyId,
         parentUserId: family.parentUserId,
-        offerId: null,
+        offerId: randomUUID(),
         polarity: 'yes',
-        language: 'en',
+        parentReply: 'yes',
         now: later,
       }),
     ).resolves.toEqual({ status: 'no_open_offer' });

@@ -38,6 +38,7 @@ import {
   WORKER_ROOT,
   cachedGatewayToolCall,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -507,7 +508,8 @@ async function main() {
           // name (--models=haiku,sonnet,opus), never a default re-run.
           [...new Set(roles.map((role) => CURRENT_TIER[role]))];
   const judgeModel = models.haiku; // the judge tier the other evals use
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('model-matrix');
   const cost = makeCost();
   const judge = {
     classify: makeJudge(judgeModel, CLASSIFY_JUDGE, 'matrix-classify', cachedOnly, getClient, cost),

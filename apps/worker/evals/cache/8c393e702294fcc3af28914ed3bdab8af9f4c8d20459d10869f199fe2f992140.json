@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Soccer pick: Lionel Messi, per recent 2026 rankings that put him first",
+        "from": "Daily Sabah's 2026 ranking puts him first"
+      },
+      {
+        "states": "Messi is the World Cup's all-time leading scorer with 18 goals",
+        "from": "Messi became the World Cup's all-time leading scorer with 18 goals"
+      },
+      {
+        "states": "Cristiano Ronaldo is the main rival, and the debate is not formally settled",
+        "from": "Cristiano Ronaldo is the main rival... Several outlets note the debate is not formally settled"
+      },
+      {
+        "states": "NFL pick: Tom Brady, the most common answer, with seven championships and five Super Bowl MVPs",
+        "from": "Tom Brady is the most common answer... holds the record with seven championships and has five Super Bowl MVPs"
+      },
+      {
+        "states": "Brady himself named Jerry Rice as the greatest football player of all time",
+        "from": "Brady himself disagrees... he named former San Francisco receiver Jerry Rice as the greatest football player of all time"
+      }
+    ],
+    "answer": "If you mean soccer, I'd say Messi. Recent rankings put him first, and he's the World Cup's all-time leading scorer with 18 goals. Ronaldo is the main rival, and the debate isn't formally settled. If you mean the NFL, it's usually Tom Brady, though Brady himself says Jerry Rice."
+  },
+  "latencyMs": 4882
+}

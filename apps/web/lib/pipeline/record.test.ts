@@ -116,6 +116,8 @@ describe('pipeline cost accounting', () => {
     });
 
     expect(runs[0]?.promptCacheHit).toBe(true);
+    expect(runs[0]?.cacheReadTokens).toBe(900_000);
+    expect(runs[0]?.cacheWriteTokens).toBe(0);
   });
 
   it('does not count a deterministic pre-filter as a cache measurement', async () => {
@@ -141,6 +143,8 @@ describe('pipeline cost accounting', () => {
 
     expect(runs[0]?.costUsd).toBe('0.000000');
     expect(runs[0]?.promptCacheHit).toBeUndefined();
+    expect(runs[0]?.cacheReadTokens).toBeUndefined();
+    expect(runs[0]?.cacheWriteTokens).toBeUndefined();
   });
 
   it('bills the drafter run for its cache tiers instead of dropping them', async () => {
@@ -165,6 +169,8 @@ describe('pipeline cost accounting', () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]?.costUsd).toBe('1.270000');
     expect(runs[0]?.promptCacheHit).toBe(true);
+    expect(runs[0]?.cacheReadTokens).toBe(700_000);
+    expect(runs[0]?.cacheWriteTokens).toBe(200_000);
   });
 
   it('records the cost the reviewer loop measured, never a re-derivation', async () => {

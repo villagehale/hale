@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by research_notes or is settled. Messi has 8 Ballon d'Or to Ronaldo's 5, and Ronaldo has more career goals. Brady has seven rings and Mahomes is the challenger. The Ballon d'Or counts are grounded in the notes, not marked settled. Brady is retired and the 2022 World Cup is past, so marking those settled is fair. It handles the soccer-or-NFL question without stalling and makes real picks, Messi and Brady. Casual and brief, like a friend texting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

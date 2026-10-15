@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Oct 12 Environment Canada notes: today is a mix of sun and cloud with a high of 23 and no daytime rain, so 3pm pickup should be dry. Tonight carries a 60% chance of showers with a thunderstorm risk, and Tuesday shows 60% in this morning's forecast. It answers the pickup question directly, says nothing about the school or family, and reads like a brief, casual text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Thursday 6 PM local is the pre-weekend evening send moment; the Saturday afternoon find fits the 13:00-20:00 free window and the swim registration closes Friday, so both go out together in one text.",
+    "action": "send_now",
+    "item_ids": [
+      "sat-find",
+      "reg-deadline"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

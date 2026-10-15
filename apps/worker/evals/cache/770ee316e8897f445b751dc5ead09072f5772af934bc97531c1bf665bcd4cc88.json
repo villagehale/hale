@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The picks are real and local, drawn from the venues' own sources: Halton Hills Gymnastics Centre and the Town of Halton Hills. They fit the toddler stage and number three. The message leads with the best pick by name and attributes it ('their site says'). It has no link and no question. Since watch is true, the first-person 'I'll keep watching and text you' is correct. Under no_page_read, the skating gap is properly phrased as 'I could not get into their page today'. All times and prices match the picks, and nothing is presented as confirmed. Shortfalls: the skating pick names no specific arena and its source (the Town) goes unnamed in the text. The Parent and Tot price gap is silently omitted rather than named.",
+    "score": 4
+  }
+}

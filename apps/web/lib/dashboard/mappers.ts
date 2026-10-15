@@ -2,7 +2,13 @@ import type { ContentProvenance, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import type { EntryTone } from '../../components/hale/tone';
 import { dayKeyOf, formatDayHeading, formatTime } from '../format/datetime';
-import { targetLink, targetNoun, trailVerb, verbTone } from '../trail/verbs';
+import {
+  EXECUTED_ON_ITS_OWN,
+  targetLink,
+  targetNoun,
+  trailVerb,
+  verbTone,
+} from '../trail/verbs';
 
 export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
 
@@ -133,6 +139,21 @@ function keptReversalHandle(entry: AuditLogEntry): boolean {
   return typeof (after as { reversalHandle?: unknown }).reversalHandle === 'string';
 }
 
+/**
+ * Whether an EXECUTION row records Hale acting on its own: memory-writer's
+ * recordExecution stores the decision on the row, `source: 'autonomous'` when no
+ * parent approved the action. A row written before the decision was recorded has
+ * none, and keeps the plain executed sentence.
+ */
+function executedOnItsOwn(entry: AuditLogEntry): boolean {
+  if (entry.actionTaken !== 'action.executed') return false;
+  const after = entry.after;
+  if (typeof after !== 'object' || after === null) return false;
+  const decision = (after as { decision?: unknown }).decision;
+  if (typeof decision !== 'object' || decision === null) return false;
+  return (decision as { source?: unknown }).source === 'autonomous';
+}
+
 export function toTrailView(
   entry: AuditLogEntry,
   teenContent: boolean,
@@ -141,7 +162,9 @@ export function toTrailView(
   childLabel: string | null = null,
   now: Date = new Date(),
 ): TrailView {
-  const { sentence, family } = trailVerb(entry.actionTaken);
+  const { sentence, family } = executedOnItsOwn(entry)
+    ? EXECUTED_ON_ITS_OWN
+    : trailVerb(entry.actionTaken);
   return {
     actionId: entry.targetTable === 'actions' ? entry.targetId : null,
     reversalKept: keptReversalHandle(entry),

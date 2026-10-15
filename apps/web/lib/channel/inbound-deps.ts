@@ -10,32 +10,35 @@ import {
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
+import { createConsentAskWriter } from '~/lib/channel/consent-ask';
+import { createConsentReader } from '~/lib/channel/consent-reply';
 import {
   type DepartureNoticePorts,
   departureNoticeReaders,
 } from '~/lib/channel/coparent/departure-notice';
 import { createIdentityAskVoice } from '~/lib/channel/identity/ask-voice';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { createIntakeAnswerComposer } from '~/lib/channel/intake/answer';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
-import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
-import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
+import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
 import { createLinqTextTransport } from '~/lib/channel/linq/transport';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { MessageTransport } from '~/lib/channel/transport-address';
+import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { db } from '~/lib/db';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 
 /**
  * VIL-214 · A3 — the production wiring for the inbound webhook. The one place the
@@ -82,22 +85,22 @@ export function buildIntakeDeps(
     openQuestions: (db2, input) => defaultOpenQuestionReader().open(db2, input),
     extractor: createIntakeExtractor(client),
     intentReader: createReplyIntentReader(client),
+    signupStepReader: createSignupStepReader(() => client),
+    consent: createConsentReader(() => client),
+    consentAsk: createConsentAskWriter(() => client),
     radar: createRadarComposer({
       database,
       weather: createOpenMeteoWeather(),
       client,
       yearFinder: createActivityFinder(activityClient),
     }),
-    ackComposer: createIntakeAckComposer(client),
     friendVoice: createFriendVoiceComposer(client),
     answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
+    optOutReader: sharedOptOutReader(),
+    saidLine: createSaidLineWriter(client),
     limiter: new PostgresRateLimiter(database),
-    // The week search stays unwired until friend voice is on. Off, the ladder
-    // still sends the locked empty line (the current production behaviour).
-    ...(onboardingFriendVoiceEnabled()
-      ? { weekFinder: createActivityFinder(activityClient) }
-      : {}),
+    weekFinder: createActivityFinder(activityClient),
   };
 }
 

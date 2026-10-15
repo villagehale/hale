@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Low-to-moderate doses (5 mg daily or less) for short periods appear safe and well tolerated",
+        "from": "melatonin taken in low-to-moderate doses (e.g., 5 mg daily or less) for short periods appears safe and well-tolerated"
+      },
+      {
+        "states": "Common side effects are mild and go away when use stops, mainly headache and drowsiness",
+        "from": "common side effects are minor and resolve once use stops. The most frequent are headache and somnolence (fatigue)"
+      },
+      {
+        "states": "Long-term safety is not well established",
+        "from": "The long-term effects are not well established"
+      },
+      {
+        "states": "A preliminary AHA 2025 study linked 12+ months of use in people with insomnia to higher heart failure risk",
+        "from": "Adults with insomnia who used melatonin for 12 months or more had about a 90% higher chance of incident heart failure over 5 years"
+      },
+      {
+        "states": "The AHA study is preliminary, not peer-reviewed, and cannot prove cause and effect",
+        "from": "The AHA itself says the study cannot prove a cause-and-effect relationship. It also notes that abstracts presented at AHA meetings are not peer-reviewed, and the findings are considered preliminary."
+      },
+      {
+        "states": "A later 2026 analysis found no significant association",
+        "from": "A later analysis disagrees. A Masters of Longevity summary says a 2026 analysis found no significant association"
+      },
+      {
+        "states": "Melatonin should not be taken long-term without a proper medical reason",
+        "from": "Marie-Pierre St-Onge of Columbia, who chaired the writing committee for an AHA 2025 scientific statement, said melatonin should not be taken chronically without a proper indication."
+      },
+      {
+        "states": "Possible interactions with blood thinners and antidepressants",
+        "from": "One source lists possible interactions with blood thinners and antidepressants"
+      }
+    ],
+    "answer": "For most adults, short-term use at low doses (5 mg or less) looks safe. The usual side effects are mild, like headache and drowsiness, and they go away when you stop. Long-term safety isn't well established yet. A preliminary AHA study from November 2025 linked 12+ months of use in people with insomnia to higher heart failure risk, but it isn't peer-reviewed and can't prove cause. A later 2026 analysis found no significant link, so it's still an open question. Don't take it long-term without a proper reason from your doctor. If you take blood thinners or antidepressants, check with a doctor or pharmacist before using it."
+  },
+  "latencyMs": 56504
+}

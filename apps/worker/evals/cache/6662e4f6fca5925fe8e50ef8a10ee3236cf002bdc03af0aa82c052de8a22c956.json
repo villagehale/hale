@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by research_notes: the Environment Canada 11 AM forecast of mainly cloudy, no daytime rain and a high of 23°C; rain likely after dark or overnight with a thunderstorm risk; and timing that varies between sources. It answers the 3 pm pickup question directly with 'daytime looks dry', and says nothing about the school or the family. The tone leans a little report-like for a friend's text, with the forecast issue time cited and the 'sources don't agree' framing.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

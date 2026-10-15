@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes: Vancouver BC is cloudy with a high of 14°C, a few showers late evening and a low of 11°C, and the reply flags that sources disagree about morning showers. Vancouver WA has a high of 64°F, stays dry and has a low of 48°F. Covering both Vancouvers handles the ambiguity well. It's casual and gets straight to the answer, though 'that part isn't confirmed' reads a touch stiff.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

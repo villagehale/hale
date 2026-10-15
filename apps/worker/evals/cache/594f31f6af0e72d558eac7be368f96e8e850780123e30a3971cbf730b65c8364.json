@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "a dark, quiet room can help babies sleep",
+        "from": "Mayo Clinic: A dark, quiet room can help babies sleep."
+      },
+      {
+        "states": "put a baby to bed drowsy but awake",
+        "from": "It also says to put babies to bed drowsy but awake, since they sleep best when drowsy."
+      },
+      {
+        "states": "naps at the same time each day and for about the same length",
+        "from": "Babies get the most out of naps if they take them at the same time each day and for about the same length of time."
+      },
+      {
+        "states": "soft lullabies before the baby gets too tired or cranky",
+        "from": "soft lullabies, swaddling or massage before the baby gets too tired or cranky"
+      },
+      {
+        "states": "a toddler should nap in his own bed or crib",
+        "from": "It adds that a toddler at home should nap in his own bed or crib."
+      },
+      {
+        "states": "avoid lying down with the child until they fall asleep",
+        "from": "avoid lying down with them until they fall asleep"
+      },
+      {
+        "states": "babies sleep on their backs with no blankets or soft toys in the crib",
+        "from": "Put babies to sleep on their backs, with no blankets, stuffed toys or other soft items in the crib or bassinet."
+      },
+      {
+        "states": "the search found no advice for an older child or an adult",
+        "from": "These sources give no advice for an older child or an adult."
+      }
+    ],
+    "answer": "Depends how old he is, but for a baby or toddler: put him down drowsy but still awake, at about the same time and for about the same length each day, in a dark quiet room. A soft lullaby or a calm story before he gets cranky helps. Let him fall asleep on his own, and nap in his own bed or crib. For a baby, always on the back with nothing soft in the crib. The search only turned up tips for babies and toddlers, so for an older kid or an adult I couldn't find anything I can give you."
+  },
+  "latencyMs": 23425
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "3x + 7 = 22 gives x = 5",
+        "from": "settled"
+      }
+    ],
+    "answer": "x = 5. Subtract 7 from both sides to get 3x = 15, then divide by 3."
+  },
+  "latencyMs": 20681
+}

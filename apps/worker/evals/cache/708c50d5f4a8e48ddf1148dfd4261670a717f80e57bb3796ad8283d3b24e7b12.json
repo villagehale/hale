@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in Chinese and makes a real pick (Messi), which is what the question needed. Every fact it gives is supported by the research notes: the 2022 World Cup win, the record eight Ballons d'Or with no one else above five, the long peak, the creativity, and Pelé's three World Cups. Grounding marks nothing as settled. It notes the debate is still open and stays brief and casual, like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

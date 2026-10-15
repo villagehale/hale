@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toyota Sienna is my pick, ranked 1st by Edmunds",
+        "from": "Its ranking is 1) 2026 Toyota Sienna"
+      },
+      {
+        "states": "Sienna gets 36 mpg combined",
+        "from": "It gets 36 mpg combined with front-wheel drive"
+      },
+      {
+        "states": "Sienna is the only minivan sold only as a hybrid",
+        "from": "is the only minivan sold only as a hybrid"
+      },
+      {
+        "states": "Honda Odyssey drives most like a car",
+        "from": "It is the one that drives most like a car, with a smooth V6."
+      },
+      {
+        "states": "Honda Odyssey has the largest maximum cargo figure, 155.8 cubic feet",
+        "from": "It has the largest maximum cargo figure, 155.8 cubic feet."
+      },
+      {
+        "states": "Kia Carnival lowest base price among minivans",
+        "from": "The 2026 Carnival starts at $36,990, the lowest base price among minivans."
+      },
+      {
+        "states": "Carnival Hybrid has a 10 year/100,000 mile powertrain warranty",
+        "from": "its powertrain warranty is 10 years/100,000 miles"
+      },
+      {
+        "states": "Sources do not agree on one winner",
+        "from": "There is no single agreed winner."
+      }
+    ],
+    "answer": "My pick is the Toyota Sienna. It gets 36 mpg combined and it's the only minivan sold only as a hybrid, and Edmunds has it ranked first. It's not a settled call though. The Honda Odyssey is the one that drives most like a car and has the biggest cargo number. If you want the lowest base price, the Kia Carnival starts at $36,990 and has a 10 year/100,000 mile powertrain warranty."
+  },
+  "latencyMs": 15631
+}

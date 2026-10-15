@@ -42,7 +42,6 @@ export type RootRoute = (typeof ROOT_ROUTES)[number];
  * navigation here), so each maps to the tab it belongs under.
  */
 export const DRILL_HEROES: Record<string, DrillHero> = {
-  '/approvals': { crumb: 'Family', title: 'Approvals', backHref: '/family' },
   '/messages': { crumb: 'Family', title: 'Messages', backHref: '/family' },
   // This repo's /plan is the week-ahead activity plan (not subscription/billing —
   // billing lives under /settings), so the drill title reflects the real content.
@@ -56,10 +55,6 @@ export const DRILL_HEROES: Record<string, DrillHero> = {
  * back-to-Family breadcrumb. Static copy — nothing here is interpolated per request.
  */
 export const RECEIPTS_ROOT_HEROES: Record<string, RootHero> = {
-  '/approvals': {
-    title: 'Approvals',
-    subtitle: 'What Hale has drafted, waiting on your yes or no.',
-  },
   '/family': {
     title: 'Family',
     subtitle: 'Your people, your kids, and your area — edit them here.',

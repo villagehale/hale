@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in Chinese and makes a real pick (Messi) while noting the debate is open. Every fact is backed by research_notes: most 2026 lists rank Messi first, he won the 2022 World Cup and eight Ballon d'Ors with nobody else above five, Pelé has three World Cups, and Ronaldo is the top scorer in men's international football and the Champions League but has no World Cup. Nothing in grounding is marked settled. It reads like a friend's casual take, not an assistant's survey.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ActorResolver, AuditLogEntry } from '~/lib/dashboard/mappers';
 import { toTrailView } from '~/lib/dashboard/mappers';
+import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 import { AUDIT_VERBS, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
 
 /** No trail row may ever render a raw table name, a raw snake_case/dotted action
@@ -114,12 +115,49 @@ describe('a departure’s rows never tell the parent who stayed that they did it
   });
 });
 
+describe('the streak sentence names the number the worker enforces', () => {
+  it('says the worker\'s own number, in the words Barton approved', () => {
+    expect(trailVerb('autonomous_action_class.granted').sentence).toBe(
+      `You've approved this ${AUTONOMY_STREAK_REQUIRED} times, so Hale will handle it on its own from now on`,
+    );
+    expect(AUTONOMY_STREAK_REQUIRED).toBe(5);
+  });
+});
+
 describe('trailVerb — neutral fallback for an unknown verb still renders clean', () => {
   it('degrades an unknown verb to a neutral human sentence, never the raw token', () => {
     const unknown = 'families.some_brand_new.token';
     const { sentence, family } = trailVerb(unknown);
     assertCleanHuman(sentence, unknown);
     expect(family).toBe('neutral');
+  });
+});
+
+/**
+ * The spend ceiling, the plan allowance and the plan gate are gone (VIL-131), and their
+ * sentences with them. A family's old rows are still in audit_log, so they read as the
+ * neutral sentence rather than telling a parent about a cap or a plan hold that no
+ * longer exists.
+ */
+describe('retired spend-ceiling, plan-allowance and plan-gate verbs', () => {
+  const RETIRED = [
+    'event.dropped.spend_ceiling',
+    'spend_ceiling_exceeded_warn',
+    'action.gated.over_allowance',
+    'action.entitlement_gated',
+  ];
+
+  it.each(RETIRED)('%s is out of the inventory and reads as the neutral sentence', (verb) => {
+    expect(AUDIT_VERBS as readonly string[]).not.toContain(verb);
+    expect(trailVerb(verb)).toEqual({ sentence: 'recorded an update', family: 'neutral' });
+  });
+
+  it('no sentence in the registry mentions a spending cap, a cost ceiling, a plan allowance or a plan hold', () => {
+    const sentences = AUDIT_VERBS.map((verb) => trailVerb(verb).sentence);
+    expect(sentences).toContain('carried out the action');
+    for (const sentence of sentences) {
+      expect(sentence).not.toMatch(/spending cap|cost ceiling|allowance|for your plan/);
+    }
   });
 });
 
@@ -133,7 +171,6 @@ describe('verbTone — the row tone follows the verb family (failures never read
     expect(verbTone(trailVerb('action.execution_failed').family)).not.toBe('done');
     expect(verbTone(trailVerb('action.reviewer.rejected').family)).not.toBe('done');
     expect(verbTone(trailVerb('action.reviewed.reject').family)).not.toBe('done');
-    expect(verbTone(trailVerb('event.dropped.spend_ceiling').family)).not.toBe('done');
   });
 
   it('a held/awaiting-you gate reads as awaiting or needs-you, not done', () => {
@@ -160,8 +197,8 @@ describe('targetNoun — a stored table name becomes a domain noun, never the ra
 });
 
 describe('targetLink — a UUID becomes a deep link, never a bare id', () => {
-  it('links an action target to the approvals surface', () => {
-    expect(targetLink('actions', 'act-9')).toBe('/approvals');
+  it('does not link an action at the deleted Approvals page', () => {
+    expect(targetLink('actions', 'act-9')).toBeNull();
   });
 
   it('links a plan target to the plan surface', () => {

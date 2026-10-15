@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slots are scored. Both fetches failed. The single slot comes from a search snippet, which is real content from the operator's own site. The age band (4 months to 3 years) matches the toddler stage. When, price and registration are correctly null rather than invented, and the ageFit field says plainly that the information is snippet-only and the page could not be opened. No figures are borrowed from elsewhere and nothing is claimed as 'not posted'. One minor wrinkle: sourceUrl points to a page that could not be opened. The slot itself discloses this, though, and no pages_read claim is shown. This is the correct snippet-grounded outcome.",
+    "score": 5
+  }
+}

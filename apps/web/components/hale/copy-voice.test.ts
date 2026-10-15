@@ -35,11 +35,9 @@ const SURFACES = [
   'components/portal/plan-cards.tsx',
   'components/portal/privacy-view.tsx',
   'components/hale/claim-by-phone-form.tsx',
-  'app/(authed)/approvals/page.tsx',
   'app/sign-in/page.tsx',
   'app/sign-up/page.tsx',
   'components/portal/shell.tsx',
-  'components/hale/approvals-header.tsx',
 ] as const;
 
 /**

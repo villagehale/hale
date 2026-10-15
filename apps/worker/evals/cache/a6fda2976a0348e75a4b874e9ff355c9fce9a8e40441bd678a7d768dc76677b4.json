@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correctly asks for the country with no facts from memory. It's slightly stiff, with the second sentence restating the obvious, but it reads fine as a quick text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

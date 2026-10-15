@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is backed by research_notes: insured 4.34% from Ratehub and Wowa, the conflicting uninsured 4.44% vs 4.64% flagged honestly, a Big 6 bank at 4.54%, Scotiabank at 4.74%, and the rise since early September. No running counts are mislabelled and nothing is invented. It states the rates directly instead of deflecting. It loses a little for leaving out an as-of date. The careful, source-laden phrasing ('I found', 'sources disagree', 'national numbers') reads more like a research summary than a quick friend's text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

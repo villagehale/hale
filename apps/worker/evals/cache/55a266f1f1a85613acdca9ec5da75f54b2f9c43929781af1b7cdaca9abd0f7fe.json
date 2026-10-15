@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Babies get the most out of naps when they nap at the same time each day for about the same length of time",
+        "from": "Babies get the most out of naps if they take them at the same time each day and for about the same length of time."
+      },
+      {
+        "states": "A dark, quiet room can help babies sleep",
+        "from": "A dark, quiet room can help babies sleep."
+      },
+      {
+        "states": "Put babies down drowsy but awake",
+        "from": "put babies to bed drowsy but awake"
+      },
+      {
+        "states": "Avoid lying down with the child until they fall asleep; teach them to fall asleep on their own",
+        "from": "Teach the child to fall asleep on their own and avoid lying down with them until they fall asleep."
+      },
+      {
+        "states": "A toddler should nap in their own bed or crib",
+        "from": "a toddler at home should nap in his own bed or crib."
+      },
+      {
+        "states": "Babies sleep on their backs with no blankets, stuffed toys or other soft items in the crib",
+        "from": "Put babies to sleep on their backs, with no blankets, stuffed toys or other soft items in the crib or bassinet."
+      }
+    ],
+    "answer": "Depends how old he is. For a baby or toddler, keep naps at the same time and about the same length each day, make the room dark and quiet, and put him down drowsy but awake so he learns to drift off on his own. Try not to lie down with him until he's asleep, and have him nap in his own bed or crib. Babies should always sleep on their backs with nothing soft in the crib. How old is he?"
+  },
+  "latencyMs": 5884
+}

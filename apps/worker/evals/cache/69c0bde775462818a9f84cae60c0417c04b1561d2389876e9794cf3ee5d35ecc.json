@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by research_notes: there was no game found, the season is over at 79-83, and they missed the playoffs while the ALCS goes on without Toronto. The answer hedges appropriately with \"doesn't look like it\" and \"I don't see\". The tone is casual and brief, like a friend texting back. It doesn't mention the odd conflicting 'next game' listing or the college-team ambiguity, but the notes treat both as minor, so leaving them out is fine.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

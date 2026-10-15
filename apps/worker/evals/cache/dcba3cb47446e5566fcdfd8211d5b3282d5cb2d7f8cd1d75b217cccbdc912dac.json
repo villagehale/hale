@@ -1,0 +1,7 @@
+{
+  "value": {
+    "verdict": "redraft",
+    "reason": "The draft says rain chances climb past 40% from 8 PM into the early morning, but that is only AccuWeather's figure. 9NEWS has 24% at 8 PM and 35% at 11 PM, so one source's number is presented as the forecast. Attribute it to AccuWeather, give the range across sources (roughly 20s to 40%), or drop it."
+  },
+  "latencyMs": 5389
+}

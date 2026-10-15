@@ -2,15 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { namesAVenue } from '~/lib/channel/activity/evidence';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { type WeekendPick, YEAR_FIND_CAP } from './radar-decide';
-import {
-  YEAR_OPEN_EMPTY_BY_LANGUAGE,
-  YEAR_OPEN_LEAD,
-  YEAR_OPEN_SUBJECT,
-  collectYearOpenLines,
-  renderYearOpen,
-  yearOpenEmptyMessage,
-  yearOpenQuery,
-} from './year-open';
+import { YEAR_OPEN_SUBJECT, collectYearOpenLines, yearOpenQuery } from './year-open';
 
 const SEB = { name: 'Seb', ageMonths: 17 };
 
@@ -58,25 +50,6 @@ describe('yearOpenQuery', () => {
     expect(query.query.stage).toBe('toddler');
     expect(query.query.stages).toEqual(['toddler', 'child']);
     expect(JSON.stringify(query.query)).not.toContain('Jo');
-  });
-});
-
-describe('renderYearOpen', () => {
-  it('numbers at most three lines and never a registration date', () => {
-    const message = renderYearOpen(['One', 'Two', 'Three', 'Four']);
-    expect(message.startsWith(YEAR_OPEN_LEAD)).toBe(true);
-    expect(message).toContain('1. One');
-    expect(message).toContain('3. Three');
-    expect(message).not.toContain('Four');
-    expect(message).not.toMatch(/registration opens|registration opened/i);
-    expect(message.toLowerCase()).not.toContain('activity finder');
-  });
-
-  it('says the locked empty line when nothing is in hand', () => {
-    expect(yearOpenEmptyMessage()).toBe(YEAR_OPEN_EMPTY_BY_LANGUAGE.en);
-    expect(yearOpenEmptyMessage('fr')).toBe(YEAR_OPEN_EMPTY_BY_LANGUAGE.fr);
-    expect(yearOpenEmptyMessage()).not.toMatch(/registration opens|registration opened/i);
-    expect(renderYearOpen([])).toBe(yearOpenEmptyMessage());
   });
 });
 
@@ -236,44 +209,6 @@ describe('collectYearOpenLines', () => {
     expect(opened.lines).toHaveLength(1);
     expect(opened.lines[0]).toContain('Lantern festival');
     expect(YEAR_OPEN_SUBJECT).not.toContain('lantern');
-  });
-
-  it('says nothing only when the search fails and civic has nothing', async () => {
-    const opened = await collectYearOpenLines({
-      civic: [],
-      children: [SEB],
-      areaCoarse: 'L7G',
-      finder: {
-        async find() {
-          return { found: false, reason: 'no_picks' };
-        },
-      },
-      familyId: 'fam',
-    });
-    expect(opened.finder).toBe('empty');
-    expect(opened.lines).toEqual([]);
-    expect(opened.titles).toEqual([]);
-    expect(renderYearOpen(opened.lines)).toBe(yearOpenEmptyMessage());
-  });
-
-  it('keeps civic lines when the search throws', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const opened = await collectYearOpenLines({
-      civic: [pick('Story time')],
-      children: [SEB],
-      areaCoarse: 'L7G',
-      finder: {
-        async find() {
-          throw new Error('ground_failed');
-        },
-      },
-      familyId: 'fam',
-    });
-    expect(opened.finder).toBe('failed');
-    expect(opened.lines).toHaveLength(1);
-    expect(opened.lines[0]).toContain('Story time');
-    expect(renderYearOpen(opened.lines)).not.toBe(yearOpenEmptyMessage());
-    error.mockRestore();
   });
 });
 

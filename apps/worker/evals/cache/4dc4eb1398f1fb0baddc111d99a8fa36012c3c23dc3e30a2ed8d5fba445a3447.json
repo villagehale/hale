@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is about the place the parent named. Cartwheels Gym Centre is in Georgetown, which is in Halton Hills, and the source is its own site. Tiny Gym, a parent-and-child class for ages 1 to 3, fits the toddler stage, and there is one pick. The message leads with the class by name and attributes the registration date with \"their site says\"; that date and time appear in both the picks and the notes. It invents no day, time or price. Under page_has_schedule it names the gap correctly in the first person (\"I could not pin down the class day, time or price\") rather than saying \"not posted.\" Because watch is true, the first-person promise to keep watching is earned. Plain text, no link, no question.",
+    "score": 5
+  }
+}

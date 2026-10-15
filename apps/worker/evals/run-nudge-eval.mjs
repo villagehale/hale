@@ -33,6 +33,7 @@ import {
   JUDGE_MIN,
   cachedTextCall,
   evalRunTag,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -313,7 +314,8 @@ async function main() {
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('nudge');
   const cost = makeCost();
 
   const skill = await agent.loadSkill(NUDGE_SKILL_PATH);
@@ -407,7 +409,9 @@ async function main() {
   console.log(`composed behind a closed gate:${leaked.length}  (0 required — the CASL gate)`);
   console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
   console.log(`messages asking a question:   ${asking.length}  (0 required)`);
-  console.log(`messages writing the opt-out: ${optingOut.length}  (0 required — outbound texts do not carry one)`);
+  console.log(
+    `messages writing the opt-out: ${optingOut.length}  (0 required — outbound texts do not carry one)`,
+  );
   console.log(`mean voice score:             ${meanScore.toFixed(2)}  (each >= ${JUDGE_MIN})`);
   if (segments.length) {
     console.log(

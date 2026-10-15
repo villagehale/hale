@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toyota Sienna is the pick",
+        "from": "Edmunds: 1) 2026 Toyota Sienna"
+      },
+      {
+        "states": "Sienna scores 7.8/10 on Edmunds",
+        "from": "The Sienna scores 7.8/10."
+      },
+      {
+        "states": "Sienna gets 36 mpg combined",
+        "from": "It gets 36 mpg combined with front-wheel drive"
+      },
+      {
+        "states": "Sienna is top-rated on KBB",
+        "from": "Its 2026 page calls the Sienna its top-rated minivan"
+      },
+      {
+        "states": "Honda Odyssey scores 9.3/10 on U.S. News",
+        "from": "It names the 2026 Honda Odyssey the best minivan, with a 9.3/10 score."
+      },
+      {
+        "states": "Odyssey drives most like a car",
+        "from": "It is the one that drives most like a car, with a smooth V6."
+      },
+      {
+        "states": "No single agreed winner across sources",
+        "from": "There is no single agreed winner."
+      },
+      {
+        "states": "Figures are for the U.S. market",
+        "from": "These results are all U.S. market"
+      }
+    ],
+    "answer": "For the US market, I'd go with the Toyota Sienna. Edmunds has it top at 7.8/10 and KBB calls it their top-rated minivan, and it gets 36 mpg combined. The Honda Odyssey is the other strong one, with U.S. News giving it 9.3/10 and it drives most like a car. Reviewers don't agree on a winner, so it comes down to whether you want the Sienna's fuel economy or the Odyssey's driving feel."
+  },
+  "latencyMs": 7026
+}

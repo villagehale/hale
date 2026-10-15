@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "identity",
+    "verbatim": "هل هذه رسالة احتيال؟ ما اسم شركتكم؟",
+    "confirmation": ""
+  },
+  "latencyMs": 1079
+}

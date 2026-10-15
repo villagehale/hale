@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Strong pass. The Tiny Gym slot carries the term dates exactly as the PDF prints them (Sept 14-Nov 1 and Nov 2-Dec 20, 2026) and cites the PDF. It honestly says the jumbled grid could not be matched to weekdays. Price is correctly null, since the site says pricing is only behind the registration login. The July 22, 2026 8:00am registration date is read off the home page, cited, and carried into the message. The message leads with Tiny Gym by name, attributes with \"their site says\", is plain ASCII with no link and no question, and uses the correct first-person gap (\"I could not pin down the day or the price\") for page_has_schedule. With watch true, it properly commits to \"I'll keep watching\". Minor gaps: 1) Rock n' Roll (0+, a toddler fit) was found but dropped from the message, and its schedule rows (apparently Monday 9:00-9:45 and 10:00-10:45) were not extracted. 2) The slot asserts the registration date \"has passed\" without a stated basis. 3) Term 2 dates are omitted from the text.",
+    "score": 4
+  }
+}

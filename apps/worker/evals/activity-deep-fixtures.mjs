@@ -157,7 +157,7 @@ export const DEEP_FIXTURES = [
     expectPagesRead: true,
     registrationMustSay: ['August 11', 'Aug 11', 'Aug. 11'],
     // Calibration: the slot KEEPS the date and the text throws it away — the exact hop that
-    // was broken in production. The gate is `registration_not_in_text`.
+    // was broken in production. The judge grades it from `factChecks.registrationFact`.
     brokenMode: 'text_drops_registration',
     watchFor:
       "Registration has NOT opened yet, which is a different sentence to a parent than 'open since July 22' and the one that decides whether they set an alarm. The page prints no fee, so the price must be null. Both preschool levels are the same class at two times - two slots is right, an invented third is not.",

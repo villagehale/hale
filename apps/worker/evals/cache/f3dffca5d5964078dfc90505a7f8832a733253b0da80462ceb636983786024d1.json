@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC, Tuesday Oct 13: cloudy, high 14°C",
+        "from": "Environment Canada's forecast for Tuesday is cloudy with a high of 14°C"
+      },
+      {
+        "states": "Vancouver, BC, Tuesday night: showers from late evening, low 11°C",
+        "from": "Environment Canada's forecast for Tuesday night is a few showers beginning late in the evening, with a low of 11°C"
+      },
+      {
+        "states": "Vancouver, WA, Tuesday: dry, high 64°F",
+        "from": "Wunderground (Hough station) gives a high of 64°F ... Precipitation chance is 1%"
+      },
+      {
+        "states": "Vancouver, WA, Tuesday night: low 47°F",
+        "from": "The low is 47°F with mostly cloudy skies"
+      },
+      {
+        "states": "Which Vancouver is meant is unknown",
+        "from": "The question doesn't say which Vancouver, and no place was given"
+      }
+    ],
+    "answer": "Tomorrow (Tuesday) depends which Vancouver you mean. Vancouver, BC: cloudy, high of 14°C, with showers starting late in the evening and a low of 11°C overnight. Vancouver, WA: mostly dry, high around 64°F, low 47°F. Which one are you after?"
+  },
+  "latencyMs": 6568
+}

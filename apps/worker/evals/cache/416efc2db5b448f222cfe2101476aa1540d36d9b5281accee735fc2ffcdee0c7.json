@@ -1,0 +1,49 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Denver, Colorado is the place the forecast is for",
+        "from": "Notes are for Denver, Colorado."
+      },
+      {
+        "states": "tomorrow is Tuesday, October 13",
+        "from": "\"Tomorrow\" is Tuesday, October 13, 2026."
+      },
+      {
+        "states": "partly sunny Tuesday",
+        "from": "expect partly sunny skies Tuesday"
+      },
+      {
+        "states": "high of 65 degrees Tuesday",
+        "from": "The high is expected to reach 65 degrees"
+      },
+      {
+        "states": "other highs run from 64 to 67 degrees",
+        "from": "Weather Underground has a high of 64°F, partly cloudy. AccuWeather has a high of 67°. 9NEWS has a high of 64."
+      },
+      {
+        "states": "north-northeast winds of 6 to 10 mph, becoming east to northeast in the afternoon",
+        "from": "North-northeast winds of 6 to 10 mph are expected, becoming east to northeast in the afternoon"
+      },
+      {
+        "states": "gusts up to 17 mph",
+        "from": "with gusts up to 17 mph"
+      },
+      {
+        "states": "30% chance of rain after 3 p.m.",
+        "from": "The weather service gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "rain chances rise through the evening",
+        "from": "Hourly data from 9NEWS shows rain chances rising through the evening"
+      },
+      {
+        "states": "lows in the 30s to low 40s Tuesday night",
+        "from": "Lows are expected in the low 40s and 30s on Tuesday night"
+      }
+    ],
+    "answer": "Tomorrow in Denver looks partly sunny with a high around 65°F, anywhere from 64 to 67 depending on the forecast. Winds are north-northeast at 6 to 10 mph, turning east to northeast in the afternoon with gusts up to 17 mph. Rain could move in after 3 p.m., more likely into the evening, and it gets down to the 30s to low 40s overnight."
+  },
+  "latencyMs": 6046
+}

@@ -1,10 +1,15 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { smsConsentCopyForScope } from '~/lib/channels/sms-consent-copy';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { findReenrollableChannelOwner, findRevokedChannelOwner } from './channel-state';
+import {
+  findReenrollableChannelOwner,
+  findRevokedChannelOwner,
+  reenrolOnStart,
+} from './channel-state';
 
 /**
  * VIL-355 · one revoked `parent_channels` row, two different questions.
@@ -104,5 +109,47 @@ describe('findReenrollableChannelOwner — START may only re-enter a seat that s
 
     expect(await findReenrollableChannelOwner(db.database, PHONE)).toBeNull();
     expect(await findRevokedChannelOwner(db.database, PHONE)).toEqual({ familyId, userId });
+  });
+});
+
+describe('reenrolOnStart — which consent copy a row is recorded under', () => {
+  it('records the new consent under v2 and leaves an earlier v1 consent on its own words', async () => {
+    const { familyId, userId } = await seedRevokedChannel(true);
+    const EARLIER = new Date('2026-08-01T08:30:00.000Z');
+    await db.database.insert(schema.consentRecords).values({
+      userId,
+      familyId,
+      consentType: 'sms_service_messages',
+      granted: true,
+      consentScope: 'sms_service_messages:v1',
+      policyVersion: 'v1',
+      grantedAt: EARLIER,
+    });
+
+    await reenrolOnStart(
+      db.database,
+      { userId, familyId, phoneE164: PHONE, verbatimReply: 'START' },
+      NOW,
+    );
+
+    const ledger = await db.database
+      .select({
+        consentScope: schema.consentRecords.consentScope,
+        grantedAt: schema.consentRecords.grantedAt,
+      })
+      .from(schema.consentRecords)
+      .where(eq(schema.consentRecords.userId, userId));
+    const earlier = ledger.filter((row) => row.grantedAt?.getTime() === EARLIER.getTime());
+    const fresh = ledger.filter((row) => row.grantedAt?.getTime() !== EARLIER.getTime());
+
+    expect(earlier.map((row) => row.consentScope)).toEqual(['sms_service_messages:v1']);
+    expect(smsConsentCopyForScope('sms_service_messages:v1')).toBe(
+      "Hale will text this number your family's weekly plan, reminders, and questions that need your OK. Msg&data rates may apply. Reply STOP anytime to turn this off.",
+    );
+
+    expect(fresh.map((row) => row.consentScope)).toEqual(['sms_service_messages:v2']);
+    expect(smsConsentCopyForScope('sms_service_messages:v2')).toBe(
+      "Hale texts this number about the kids' year: activities, registration dates, reminders, and questions that need the parent's OK. Hale stops when the parent asks, in any wording.",
+    );
   });
 });

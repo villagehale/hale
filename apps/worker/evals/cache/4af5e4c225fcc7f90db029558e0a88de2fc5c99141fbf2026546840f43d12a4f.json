@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi is the soccer pick, per the most recent coverage",
+        "from": "Most recent coverage names Lionel Messi."
+      },
+      {
+        "states": "Messi has 8 Ballon d'Or wins to Ronaldo's 5, per Squawka's career table of about May 2026",
+        "from": "Squawka's career table (published about May 2026) shows what each player leads in: Messi has 8 Ballon d'Or wins to Ronaldo's 5."
+      },
+      {
+        "states": "Messi has more career assists (408 to 261), per Squawka's career table of about May 2026",
+        "from": "Messi has more career assists, 408 to 261."
+      },
+      {
+        "states": "Ronaldo has more career goals (970 to 906), per Squawka's career table of about May 2026",
+        "from": "Ronaldo has more career goals, 970 to 906"
+      },
+      {
+        "states": "Messi won the 2022 World Cup",
+        "from": "settled"
+      },
+      {
+        "states": "Tom Brady is the NFL pick",
+        "from": "Tom Brady is the most common answer."
+      },
+      {
+        "states": "Brady won seven Super Bowls",
+        "from": "settled"
+      },
+      {
+        "states": "Brady said in early 2026 that Jerry Rice is still the GOAT",
+        "from": "In early 2026 he said \"Jerry Rice is still the GOAT.\""
+      }
+    ],
+    "answer": "Soccer: Messi, I'd say. Going by Squawka's career table from about May 2026, he has 8 Ballon d'Or wins to Ronaldo's 5 and more assists, plus the 2022 World Cup. Ronaldo has more career goals, 970 to 906, so it's a real debate. American football: Tom Brady, with seven Super Bowls. He said in early 2026 that Jerry Rice is still the GOAT, though."
+  },
+  "latencyMs": 8231
+}

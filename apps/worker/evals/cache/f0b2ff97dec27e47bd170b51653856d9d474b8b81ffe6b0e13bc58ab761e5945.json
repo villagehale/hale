@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Three real, named Oakville providers fit the preschool stage: the Town of Oakville program, YMCA of Oakville and Making Waves. Each is sourced from the venue's own page, not an aggregator. The message leads with the Town program by name and attributes its facts with \"their site says\". The registration date and the $33.13 price both appear in the picks, and nothing is invented. Under no_page_read it correctly says \"I could not get into their pages today\" rather than \"not posted yet\". With watch=true it gives the first-person continuation (\"I'll keep watching and text you\"), which covers the null when and price fields. It is plain text with no link and no question. One small nitpick: the YMCA line (\"also run them\") is not explicitly attributed, but it does not claim to have verified anything.",
+    "score": 5
+  }
+}

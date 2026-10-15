@@ -1,0 +1,6 @@
+{
+  "value": {
+    "text": "Sure. Connecting is optional. The calendar link lets Hale spot daycare and school dates on your calendar, and the Gmail link lets it spot daycare and school notices in your inbox.\n[[calendarLink]]\n[[gmailLink]]\nEach link works for 15 minutes. Google may show a screen saying the app is unverified. Tapping Advanced and then continuing gets past it."
+  },
+  "latencyMs": 1756
+}

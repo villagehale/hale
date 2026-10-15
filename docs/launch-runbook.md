@@ -6,7 +6,7 @@ Production web is the Vercel project **hale-web**.
 
 ## iMessage onboarding
 
-The parent opens the thread. Each step below is one reply, decided in code. Wording depends on `ONBOARDING_FRIEND_VOICE_ENABLED`.
+The parent opens the thread. Each step below is one reply, decided in code. The model writes every reply (friend voice; #868 removed the fixed ladder copy).
 
 ### Door
 
@@ -39,7 +39,7 @@ Code: `apps/web/lib/channel/intake/session.ts` (read/write the session), `apps/w
 | What the parent does | Hale sends | Code | Session `state` | Rows |
 | --- | --- | --- | --- | --- |
 | Texts the number | Postal-code question. If `FIRST_TOUCH_LOCATION_CARD_ENABLED` is exactly `true` (no trim) and Linq accepts, a location card goes first and the text asks them to tap it. | `openFirstTouch`, `sendPlaceAsk` | `awaiting_place` | `sms_intake_sessions`. Audit `first_touch_location_requested` is written at provisioning, with `outcome`. |
-| Sends a Canadian postal code (or the location share resolves to a city) | Asks only for the kids' ages. No activity list on this step. When `ONBOARDING_FRIEND_VOICE_ENABLED` is not exactly `on`, the locked ladder still sends a this-week list and then the age question. | `friendOnboardingTurn` when friend voice is on; otherwise `sendWeekFindThenAgesOrProvision`, `findThisWeek` in `first-touch-find.ts` | `awaiting_ages` | Same session. Collected place is inside `data_encrypted` (`firstTouch.place`). |
+| Sends a Canadian postal code (or the location share resolves to a city) | Asks only for the kids' ages. No activity list on this step. | `friendOnboardingTurn` | `awaiting_ages` | Same session. Collected place is inside `data_encrypted` (`firstTouch.place`). |
 | Sends the kids' ages | The family is created. Hale sends the first find: age-fit activities for the year. | `provision` → `provisionFromIntake` in `provision.ts`, then `radar.compose` | `awaiting_ladder`, or `awaiting_cold_start` when the cold-start flag is on | See "Family create" below. PostHog `intake_completed`. |
 | Answers the name question | What to call them, and the kids' first names if they want. | `handleLadder` when `ladder_next` is `name` / `name_reply`. Cold-start uses `continueColdStart`. | stays `awaiting_ladder` or `awaiting_cold_start` | `channel_messages`. Name capture writes `audit_log.action_taken = 'parent_name_captured'`. |
 | Next replies | A link to connect Google Calendar, then a link to connect Gmail. Code mints the URL and appends it. | `sendYearConnectorCards` in `connector-offer.ts` | `complete` when the ladder finishes | `channel_messages`, deduped per family. Template keys `intake:calendar_card` and `intake:gmail_card`. |
@@ -63,7 +63,6 @@ PostHog `intake_started` fires on the first reply. `intake_completed` fires when
 
 ### Friend voice
 
-`ONBOARDING_FRIEND_VOICE_ENABLED` is on only when the value is `on` after trim. `true`, `ON`, `1`, and unset stay off. Off keeps the locked sentences in `apps/web/lib/channel/intake/copy.ts` and `cold-start/copy.ts`.
 
 On, the machine still picks the step. The model writes that one reply from `packages/agent/skills/onboarding-friend.md`, via `speakFriend` in `apps/web/lib/channel/intake/friend-voice.ts`. Find lines and connector URLs are appended in code. The model does not choose the next step.
 
@@ -87,7 +86,7 @@ All of these are Vercel Cron routes under `apps/web/app/api/cron`, listed in `ap
 | --- | --- | --- |
 | `/api/cron/drain` | every minute | Drains the queue. Onboarding replies are sent inside the webhook. Replies after onboarding are queued, then drained here. |
 | `/api/cron/inbound-canary` | every 10 minutes | Posts a Linq-signed inbound at the real webhook and checks the previous tick's `channel_messages` row (`provider_message_id` prefix `hale-canary-`). |
-| `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null. |
+| `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null, and pages #ops when the Linq line crosses 70% or 90% of its chat IDs ([linq-chat-capacity.md](linq-chat-capacity.md)). |
 | `/api/cron/intake-sitting-reminder` | hourly | One nudge for a parent who stopped on the place or ages question. |
 
 A cron that returns stamps `cron_heartbeats`. A throw does not. `/api/health/crons` reads that table.
@@ -109,7 +108,6 @@ Redeploy steps, same for every flag:
 
 | Flag | Set Production to | What changes |
 | --- | --- | --- |
-| `ONBOARDING_FRIEND_VOICE_ENABLED` | empty | Locked ladder sentences. `on` is the only value that enables friend voice. |
 | `FIRST_TOUCH_LADDER_ENABLED` | empty | Older first text (kids, ages, and postal code in one ask). `on` is the only value that opens the postal-then-ages ladder. |
 | `FIRST_TOUCH_LOCATION_CARD_ENABLED` | empty | Postal-code sentence. The location card is requested only when the value is exactly `true`. |
 | `COLD_START_LADDER_ENABLED` | empty | Name and connector links can leave on the find turn. Exactly `true` parks the session on `awaiting_cold_start`. |
@@ -128,6 +126,8 @@ Migrations are additive. A bad migration is fixed forward. Do not drop columns f
 ## On call
 
 Slack handles only. Page in **#ops**.
+
+A Linq chat-ID capacity page has its own runbook: [linq-chat-capacity.md](linq-chat-capacity.md).
 
 | Who | Handle | Owns |
 | --- | --- | --- |
@@ -159,6 +159,8 @@ Slack handles only. Page in **#ops**.
 **PostHog.** Event `webhook_route_failed` with `route = linq_inbound` (distinct id `route:linq_inbound`). Events `intake_started` and `intake_completed` for the funnel. The failure event carries the route and the error class.
 
 **Slack #ops.** A thrown webhook posts `Hale ALERT: linq_inbound threw`. The page is at most once per 15 minutes per instance. The inbound canary and cron dead-man also post here. The webhook URL is `OPS_SLACK_WEBHOOK_URL`.
+
+**Daily #ops post.** At 13:14 UTC, `/api/cron/ops-daily` posts one `Hale daily` summary. The 24h block is over every real family (probe-range households, `METRICS_EXCLUDED_FAMILY_IDS` and the founder excluded): reply p50/p95, gaps over 15 minutes, unanswered steps, failed and held sends, failed turns, cache reads and recorded spend. The same post carries the founder counts: W4 retention and open promises as of the window end, and over the trailing 7 days the intake funnel with median time to first answer, medical answers that used the fixed 811/911 line, whether the registration re-verify sweep ran (and the tally that run recorded), plus the database's Linq chat-ID count against the 200 limit. Counts only. Set `METRICS_EXCLUDED_FAMILY_IDS` to the QA family ids before the first post; an empty list counts those households. A post that did not land is retried by `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/ops-daily`; a day already posted answers `already_posted`. It needs `APP_ENCRYPTION_KEY` and throws without it.
 
 ## Linq webhook failure
 

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With live as missing_detail, the right move is to ask for the country, and the answer does that and states no rates from memory, so it is correct. The tone is mostly friendly, but the second sentence is a little explanatory and stiff for a casual text. Still an acceptable answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

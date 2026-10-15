@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No single official 5-year fixed rate; it depends on the lender and on whether the mortgage is insured",
+        "from": "No official, single \"the\" 5-year fixed rate exists. The figure depends on the lender and on whether the mortgage is insured (down payment under 20%) or uninsured."
+      },
+      {
+        "states": "Lowest insured 5-year fixed rate is 4.34%",
+        "from": "Ratehub lists the best high-ratio (insured) 5-year fixed rate in Canada at 4.34%. Wowa gives the same 4.34% as the lowest insured 5-year fixed rate."
+      },
+      {
+        "states": "Rates have been climbing since early September",
+        "from": "Rates are climbing in October 2026, after all six of the largest banks raised select fixed rates since early September."
+      },
+      {
+        "states": "One big bank is at 4.54% and Scotiabank at 4.74%",
+        "from": "Ratehub's table (updated October 13) shows a Big 6 bank at 4.54% and Scotiabank at 4.74%."
+      },
+      {
+        "states": "No Toronto- or Ontario-specific rate found",
+        "from": "The search results don't give a Toronto- or Ontario-specific rate."
+      },
+      {
+        "states": "Insured vs uninsured and new purchase vs renewal change the figure",
+        "from": "I don't know whether the asker means an insured or uninsured mortgage, or a new purchase versus a renewal. That changes which figure applies."
+      }
+    ],
+    "answer": "There's no single 5-year fixed rate, since each lender sets its own. The lowest insured one I found (down payment under 20%) is 4.34%, from Ratehub and Wowa. Big banks are higher: one is at 4.54% and Scotiabank at 4.74%. Rates have been climbing since early September. I didn't find a Toronto-specific number, and I can't tell whether you mean insured or uninsured, or a new purchase versus a renewal. That changes which rate applies."
+  },
+  "latencyMs": 39517
+}

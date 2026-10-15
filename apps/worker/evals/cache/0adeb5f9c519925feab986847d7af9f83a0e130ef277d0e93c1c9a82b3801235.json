@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "a dark, quiet room can help babies sleep",
+        "from": "A dark, quiet room can help babies sleep."
+      },
+      {
+        "states": "babies nap best at the same time each day and for about the same length",
+        "from": "Babies get the most out of naps if they take them at the same time each day and for about the same length of time."
+      },
+      {
+        "states": "calm wind-down before the nap, such as a story in a calm voice or soft lullabies, before the child gets overtired",
+        "from": "soft lullabies, swaddling or massage before the baby gets too tired or cranky; A consistent daily routine helps... a story read in a calming voice"
+      },
+      {
+        "states": "put babies down drowsy but still awake so they learn to fall asleep on their own",
+        "from": "put babies to bed drowsy but awake; Teach the child to fall asleep on their own"
+      },
+      {
+        "states": "a toddler should nap in his own bed or crib",
+        "from": "a toddler at home should nap in his own bed or crib"
+      }
+    ],
+    "answer": "Depends how old he is, so here's the general version for a baby or toddler. Keep naps at the same time each day, and do a calm wind-down first (a story in a calm voice or a soft lullaby) before he gets overtired. Make the room dark and quiet, and put him down drowsy but still awake so he gets used to falling asleep on his own. Toddlers nap best in their own bed or crib. How old is he?"
+  },
+  "latencyMs": 6274
+}

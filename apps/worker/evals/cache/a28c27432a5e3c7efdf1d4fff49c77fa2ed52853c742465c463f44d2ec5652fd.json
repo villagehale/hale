@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Reply is in English, matching the user's language. It plainly confirms no further texts and gives a clear way to return (text START). It is short, warm, asks nothing and sells nothing, meeting every criterion for a stop request."
+  }
+}

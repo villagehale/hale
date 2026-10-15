@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Text is in French and says what links connect, that it is optional, and gives 15-minute validity. But the facts give placeholder values for calendarLink and gmailLink (\"[[calendarLink]]\", \"[[gmailLink]]\"), and the text presents invented-looking URLs as the links, which the facts never provided. It also omits the Google unverified-app caution required for connector_link, and gives the two links without a clear per-link note. Invented link values are a serious failure."
+  }
+}

@@ -7,7 +7,6 @@ import {
   FOUNDER_NOTE_TEMPLATE_KEY,
   FOUNDER_PING_TEMPLATE_KEY,
   founderNote,
-  founderPing,
 } from '~/lib/channel/founder/copy';
 import {
   FOUNDER_WELCOME_TTL_HOURS,
@@ -19,11 +18,11 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeRadar,
   fakeSilentAnswerComposer,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ChannelCoachRuntime } from '~/lib/channel/router/coach-runtime';
 import { founderWelcomeHandler } from '~/lib/channel/router/handlers';
@@ -36,6 +35,7 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
 /**
@@ -142,13 +142,14 @@ describe("the founder's welcome note", () => {
         { intent: 'assent', verbatim: 'yes', interpretation: 'a clear yes' },
       ]),
       radar: fakeRadar,
-      ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),
       seedCivic: async () => 0,
       resolveCenter: async () => null,
       discoveryTrigger: () => {},
       limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
+      consentAsk: askWriter(),
       now: INTAKE_AT,
     };
   }
@@ -367,7 +368,10 @@ describe("the founder's welcome note", () => {
 
     // The ping went to HIS number, and it names the poster and nothing else (rule #1).
     const ping = transport.sent.at(-1);
-    expect(ping).toEqual({ to: FOUNDER_PHONE, body: founderPing('Georgetown') });
+    expect(ping).toEqual({
+      to: FOUNDER_PHONE,
+      body: writtenAsk({ kind: 'founder_ping', location: 'Georgetown' }),
+    });
     expect(ping?.body).not.toContain('Ada');
     expect(ping?.body).not.toContain(PARENT_PHONE);
 
@@ -440,7 +444,9 @@ describe("the founder's welcome note", () => {
     // ping is a question Hale asked and cannot see itself having asked — the coach
     // reads a bare "yes" with nothing above it.
     const turns = await threadTurns(founderFamilyId, founderUserId);
-    expect(turns).toEqual([{ role: 'assistant', content: founderPing('Georgetown') }]);
+    expect(turns).toEqual([
+      { role: 'assistant', content: writtenAsk({ kind: 'founder_ping', location: 'Georgetown' }) },
+    ]);
   });
 
   it("the note lands in the NEW family's thread, on their side of the wall", async () => {
@@ -467,13 +473,13 @@ describe("the founder's welcome note", () => {
       role: 'assistant',
       content: founderNote('Georgetown'),
     });
-    expect(familyTurns.at(0)?.content).toBe('RADAR');
+    expect(familyTurns.at(0)?.content).toEqual(expect.any(String)); // model-written
     expect(familyTurns.at(0)?.content).not.toContain('Want me to keep an eye');
     // And the founder's thread has his ping and his ack, and no trace of the note's
     // recipient (rule #1).
     const founderTurns = await threadTurns(founderFamilyId, founderUserId);
     expect(founderTurns.map((t) => t.content)).toEqual([
-      founderPing('Georgetown'),
+      writtenAsk({ kind: 'founder_ping', location: 'Georgetown' }),
       'yes',
       FOUNDER_NOTE_SENT_ACK,
     ]);
@@ -564,14 +570,16 @@ describe("the founder's welcome note", () => {
       database,
       { newFamilyId: familyId, sourceCode: 'earlyon-georgetown', now: INTAKE_AT },
       {
-        ...defaultFounderPingPorts(pingTransport),
+        ...defaultFounderPingPorts(pingTransport, askWriter()),
         recordCommitment: async () => ({ status: 'not_recorded', reason: 'write_failed' }),
       },
     );
 
     // The founder was told, in the words he would have been told in either way.
     expect(pinged).toEqual({ status: 'not_pinged', reason: 'not_recorded' });
-    expect(pingTransport.sent).toEqual([{ to: FOUNDER_PHONE, body: founderPing('Georgetown') }]);
+    expect(pingTransport.sent).toEqual([
+      { to: FOUNDER_PHONE, body: writtenAsk({ kind: 'founder_ping', location: 'Georgetown' }) },
+    ]);
     expect(await messages(founderFamilyId, FOUNDER_PING_TEMPLATE_KEY)).toHaveLength(1);
 
     expect(await offers()).toEqual([]);

@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Both formulas are third-party tested and NSF Certified for Sport, and the product is well made",
+        "from": "Quality control looks solid. Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "Most people find it tastes decent",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "Innerbody rated it 3.8 overall",
+        "from": "Innerbody rated it 3.8 overall"
+      },
+      {
+        "states": "A dietitian called the science far weaker than consumers are led to believe",
+        "from": "Dietitian Abby Langer (about 88 days old) was harshly critical. She wrote that IM8 is clever marketing wrapped around science that is far weaker than consumers are led to believe."
+      },
+      {
+        "states": "Several blends are underdosed",
+        "from": "getsupplementreviews.com agrees that some blends are underdosed."
+      },
+      {
+        "states": "No independent clinical evidence for the benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "About $89 a month on subscription and about $112 for a one-time box",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription, per getsupplementreviews.com and Live it Up."
+      },
+      {
+        "states": "Reishi and grape seed can interact with blood thinners and blood pressure medication",
+        "from": "It also noted reishi and grape seed can interact with blood thinners and blood pressure medication."
+      }
+    ],
+    "answer": "I'd call it overrated for the price. It's well made, third-party tested, and most people find it tastes decent. But several blends are underdosed, the benefit claims have no independent clinical evidence behind them, and Innerbody gave it 3.8 overall. Around $89 a month on subscription, that's a lot for what you get. If you take blood thinners or blood pressure meds, run it past a pharmacist first, because reishi and grape seed can interact with those."
+  },
+  "latencyMs": 7501
+}

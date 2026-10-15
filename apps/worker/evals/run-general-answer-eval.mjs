@@ -124,6 +124,7 @@ const SANITIZE_SKILL_PATH = join(SKILLS, 'general-answer-sanitize.md');
 const SEARCH_SKILL_PATH = join(SKILLS, 'general-answer-search.md');
 const SKILL_PATH = join(SKILLS, 'general-answer.md');
 const MOMENT_SKILL_PATH = join(SKILLS, 'moment-reply.md');
+const CHECK_SKILL_PATH = join(SKILLS, 'general-answer-check.md');
 /** Production's own request shapes (see the header). */
 const OFF_DOMAIN = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'off-domain');
 const ANSWER_REQUEST_SRC = join(OFF_DOMAIN, 'answer-request.ts');
@@ -1082,6 +1083,9 @@ async function main() {
   const model = agent.pickModel(skill.meta.task);
   const subjectLane = agent.pickLane(skill.meta.task);
   const momentLane = agent.pickLane(momentSkill.meta.task);
+  const checkSkill = await agent.loadSkill(CHECK_SKILL_PATH);
+  const checkModel = agent.pickModel(checkSkill.meta.task);
+  const checkLane = agent.pickLane(checkSkill.meta.task);
   // The rubric-holding tier: this judge has to hold a fact in the answer to the research
   // notes, which is the judgment the whole suite rests on.
   const judgeModel = await readJudgeModel('sonnet');
@@ -1227,27 +1231,72 @@ async function main() {
    * door, and nothing the compose wrote is used then).
    */
   async function compose(fixture, found, draw = 0) {
-    const composed = await cachedToolCall({
-      tag: `general-answer:${drawTag(fixture.id, draw)}`,
-      model,
-      lane: subjectLane,
-      system: skill.instructions,
-      userMessage: request.generalAnswerUserMessage({
-        question: found.question,
-        language: found.language,
-        today: EVAL_TODAY,
-        search: found.search,
-        notes: found.notes,
-        missing: found.missing,
-      }),
-      toolName: 'answer',
-      toolSchema: request.answerJsonSchema,
-      toolDescription: 'Return the one brief answer to this question.',
-      maxTokens: request.ANSWER_MAX_TOKENS,
-      cachedOnly,
-      getClient,
-      cost,
+    // Production's compose, then its pre-send read and at most one redraft (answer.ts).
+    const composeRequest = request.generalAnswerUserMessage({
+      question: found.question,
+      language: found.language,
+      today: EVAL_TODAY,
+      search: found.search,
+      notes: found.notes,
+      missing: found.missing,
     });
+    const draftOnce = (tag, userMessage) =>
+      cachedToolCall({
+        tag,
+        model,
+        lane: subjectLane,
+        system: skill.instructions,
+        userMessage,
+        toolName: 'answer',
+        toolSchema: request.answerJsonSchema,
+        toolDescription: 'Return the one brief answer to this question.',
+        maxTokens: request.ANSWER_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      });
+    let composed = await draftOnce(`general-answer:${drawTag(fixture.id, draw)}`, composeRequest);
+    if (
+      request.preSendReadApplies(found.search, found.notes ?? '') &&
+      request.hurtIllOrDanger(composed.value.hurt_ill_or_danger) === null
+    ) {
+      const read = await cachedToolCall({
+        tag: `general-answer-check:${drawTag(fixture.id, draw)}`,
+        model: checkModel,
+        lane: checkLane,
+        system: checkSkill.instructions,
+        userMessage: request.generalAnswerCheckUserMessage({
+          question: found.question,
+          today: EVAL_TODAY,
+          search: found.search,
+          notes: found.notes ?? '',
+          draft: String(composed.value.answer ?? ''),
+        }),
+        toolName: 'verdict',
+        toolSchema: request.checkJsonSchema,
+        toolDescription: 'Say whether this draft can be sent as written.',
+        maxTokens: request.CHECK_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      });
+      const reason = request.wantsRedraft(read.value ?? {});
+      if (reason !== null) {
+        const first = composed;
+        composed = await draftOnce(
+          `general-answer-redraft:${drawTag(fixture.id, draw)}`,
+          request.generalAnswerRedraftUserMessage(
+            composeRequest,
+            String(first.value.answer ?? ''),
+            reason,
+          ),
+        );
+        composed = {
+          ...composed,
+          latencyMs: first.latencyMs + read.latencyMs + composed.latencyMs,
+        };
+      }
+    }
     const grounding = recordedGrounding(composed.value);
     const kind = request.hurtIllOrDanger(composed.value.hurt_ill_or_danger);
     if (kind !== null) {

@@ -1,10 +1,9 @@
 import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from '~/lib/channel/types';
-import { asCaregiverPlanPayload, asCaregiverReminderPayload } from './payload';
-import { renderCaregiverPlanSms } from './plan-sms';
+import { asCaregiverReminderPayload } from './payload';
 import { renderCaregiverReminderSms } from './reminder-sms';
 
 /**
- * The two caregiver TemplateRenderers.
+ * The caregiver TemplateRenderer.
  *
  * SMS ONLY, and it throws on anything else rather than falling through to an email
  * shell. A caregiver's users row is minted from a phone number and has no address
@@ -23,16 +22,6 @@ function smsOnly(
   }
   return render();
 }
-
-export const caregiverPlanRenderer: TemplateRenderer = {
-  render(message: LoopMessage, channel: ChannelKind): RenderedContent {
-    return smsOnly(
-      channel,
-      () => renderCaregiverPlanSms(asCaregiverPlanPayload(message.payload)),
-      'caregiver plan renderer',
-    );
-  },
-};
 
 export const caregiverReminderRenderer: TemplateRenderer = {
   render(message: LoopMessage, channel: ChannelKind): RenderedContent {

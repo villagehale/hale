@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "lowest insured 5-year fixed rate is 4.34%",
+        "from": "Wowa gives the same 4.34% as the lowest insured 5-year fixed rate"
+      },
+      {
+        "states": "lowest uninsured 5-year fixed rate is 4.44%, sources disagree",
+        "from": "Wowa puts the lowest conventional (uninsurable) 5-year fixed rate at 4.44%. That is a different figure from Wowa's own later line quoting 4.64%"
+      },
+      {
+        "states": "a Big 6 bank's 5-year fixed rate is 4.54%",
+        "from": "Ratehub's table (updated October 13) shows a Big 6 bank at 4.54%"
+      },
+      {
+        "states": "Scotiabank's 5-year fixed rate is 4.74%",
+        "from": "Ratehub's table (updated October 13) shows a Big 6 bank at 4.54% and Scotiabank at 4.74%"
+      },
+      {
+        "states": "fixed rates have risen since early September",
+        "from": "Fixed rates have risen since early September, while variable rates haven't moved."
+      }
+    ],
+    "answer": "It depends on the lender and on whether your down payment is under 20% (insured). From what I can find, the lowest insured 5-year fixed is 4.34%. The lowest uninsured one I found is 4.44%, but the sources disagree on that, so treat it as unconfirmed. Big banks are higher: around 4.54%, and Scotiabank is at 4.74%. Fixed rates have been climbing since early September. I couldn't find a Toronto-specific figure."
+  },
+  "latencyMs": 8562
+}

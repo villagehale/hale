@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "melatonin taken in low-to-moderate doses for short periods appears safe and well-tolerated",
+        "from": "low-to-moderate doses (e.g., 5 mg daily or less) for short periods appears safe and well-tolerated"
+      },
+      {
+        "states": "common side effects are minor, mostly headache and sleepiness, and go away once use stops",
+        "from": "common side effects are minor and resolve once use stops. The most frequent are headache and somnolence (fatigue)"
+      },
+      {
+        "states": "long-term effects are not well established",
+        "from": "The long-term effects are not well established."
+      },
+      {
+        "states": "a preliminary study linked 12 months or more of melatonin use in adults with insomnia to a higher chance of heart failure, but it cannot prove cause and effect",
+        "from": "Adults with insomnia who used melatonin for 12 months or more had about a 90% higher chance of incident heart failure over 5 years. The AHA itself says the study cannot prove a cause-and-effect relationship."
+      },
+      {
+        "states": "that study has not been peer-reviewed",
+        "from": "abstracts presented at AHA meetings are not peer-reviewed"
+      },
+      {
+        "states": "a later 2026 analysis found no significant link, so the question is still open",
+        "from": "A Masters of Longevity summary says a 2026 analysis found no significant association, and the different study designs explain why the question remains open."
+      },
+      {
+        "states": "melatonin can interact with blood thinners and antidepressants",
+        "from": "One source lists possible interactions with blood thinners and antidepressants"
+      }
+    ],
+    "answer": "For short stretches at low to moderate doses, it looks safe. The common side effects are mild, mostly headache and sleepiness, and they go away when you stop. Long-term safety isn't well established. A preliminary heart study from November 2025 linked 12+ months of use in people with insomnia to higher heart failure risk, but it can't prove cause, it hasn't been peer-reviewed, and a later 2026 analysis found no significant link, so that one's still open. It can also interact with blood thinners and antidepressants, so check with a doctor or pharmacist first, especially if you take other meds."
+  },
+  "latencyMs": 8098
+}

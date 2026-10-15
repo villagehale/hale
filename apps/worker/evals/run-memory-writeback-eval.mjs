@@ -26,6 +26,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { register } from 'tsx/esm/api';
+import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
+import { installEvalSpendCap, priceRates } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -105,7 +107,10 @@ function cachingClient({ cachedOnly, cost }) {
           process.exit(1);
         }
 
-        live ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        live ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+          rates: priceRates,
+          tag: 'memory-writeback',
+        });
         const response = await live.messages.create(request);
         cost.liveCalls += 1;
         cost.input +=
@@ -295,6 +300,7 @@ function checkNightly(fixture, { calls, rows }, classify) {
 // --- main ----------------------------------------------------------------------
 
 async function main() {
+  installEvalSpendCap();
   const cachedOnly = process.argv.includes('--cached-only');
   const mode = process.argv.includes('--broken') ? 'broken' : 'real';
 

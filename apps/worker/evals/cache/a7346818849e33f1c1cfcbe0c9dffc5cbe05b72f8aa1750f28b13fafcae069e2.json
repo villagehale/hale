@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by the research notes: 4.34% as the lowest insured 5-year fixed rate per Ratehub and Wowa, no Toronto-specific rate found, and fixed rates climbing since early September. It is also honest that the uninsured figure conflicts in its sources. It states a real answer rather than deflecting. It reads a bit stiff and research-report-like for a friend's text (\"per Ratehub and Wowa\", \"I can't confirm that number\"). It also never says when the rate is from, which watchFor asked for.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

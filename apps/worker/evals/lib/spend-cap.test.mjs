@@ -172,6 +172,110 @@ describe('spend cap at the call site', () => {
     expect(readLedger().refused).toBe(1);
   });
 
+  it('refuses an activity-deep research turn before the stream is opened', async () => {
+    vi.stubEnv('HALE_MAX_USD', '0.5');
+    const m = mockClient();
+    const research = {
+      model: 'claude-sonnet-5-5',
+      max_tokens: 8192,
+      system: 'research',
+      tools: [
+        { name: 'web_search', type: 'web_search_20250305', max_uses: 4 },
+        { name: 'web_fetch', type: 'web_fetch_20260209', max_uses: 4 },
+      ],
+      messages: [{ role: 'user', content: '{"mode":"deep_research"}' }],
+    };
+    const guarded = capSdkClient(m.client, { rates, tag: 'activity-deep' });
+    await expect(guarded.messages.stream(research).finalMessage()).rejects.toThrow(/refusing/);
+    expect(m.stream).not.toHaveBeenCalled();
+    expect(m.countTokens).not.toHaveBeenCalled();
+    const ledger = readLedger();
+    expect(ledger.refused).toBe(1);
+    expect(ledger.calls).toBe(0);
+    expect(ledger.spentUsd).toBe(0);
+    expect(ledger.log[0].tag).toBe('activity-deep:search');
+  });
+
+  it('books a research turn search fee once, including when the client is wrapped twice', async () => {
+    vi.stubEnv('HALE_MAX_USD', '2');
+    const m = mockClient();
+    m.stream.mockImplementation(() => ({
+      finalMessage: async () =>
+        message({
+          input_tokens: 8000,
+          output_tokens: 400,
+          server_tool_use: { web_search_requests: 4 },
+        }),
+    }));
+    const research = {
+      model: 'claude-sonnet-5-5',
+      max_tokens: 8192,
+      tools: [
+        { name: 'web_search', type: 'web_search_20250305', max_uses: 4 },
+        { name: 'web_fetch', type: 'web_fetch_20260209', max_uses: 4 },
+      ],
+      messages: [{ role: 'user', content: 'deep' }],
+    };
+    const guarded = capSdkClient(capSdkClient(m.client, { rates, tag: 'eval' }), {
+      rates,
+      tag: 'activity-deep',
+    });
+    await guarded.messages.stream(research).finalMessage();
+    const ledger = readLedger();
+    expect(m.stream).toHaveBeenCalledTimes(1);
+    expect(ledger.calls).toBe(1);
+    expect(ledger.log[0].tag).toBe('activity-deep:search');
+    expect(ledger.spentUsd).toBeCloseTo((8000 * 2 + 400 * 10) / 1e6 + 4 * USD_PER_WEB_SEARCH, 9);
+    expect(ledger.reservedUsd).toBe(0);
+  });
+
+  it('estimates a json_schema request without calling the model', async () => {
+    vi.stubEnv('HALE_ESTIMATE', '1');
+    const m = mockClient();
+    const guarded = capSdkClient(m.client, { rates, tag: 'eval' });
+    const schema = {
+      type: 'object',
+      properties: { answer: { type: 'string' } },
+      required: ['answer'],
+    };
+    const message = await guarded.messages.create({
+      ...request,
+      output_config: { format: { type: 'json_schema', schema } },
+    });
+    expect(m.create).not.toHaveBeenCalled();
+    expect(m.countTokens).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(message.content[0].text)).toEqual({ answer: 'estimate' });
+  });
+
+  it('relaxes a forced tool_choice for the free count and sends the original on the call', async () => {
+    vi.stubEnv('HALE_MAX_USD', '2');
+    const m = mockClient();
+    const guarded = capSdkClient(m.client, { rates, tag: 'eval' });
+    const tools = [{ name: 'lane', input_schema: { type: 'object' } }];
+    const forced = {
+      ...request,
+      tools,
+      tool_choice: { type: 'tool', name: 'lane' },
+    };
+    await guarded.messages.create(forced);
+    expect(m.countTokens.mock.calls[0][0].tool_choice).toEqual({ type: 'auto' });
+    expect(m.create.mock.calls[0][0].tool_choice).toEqual({ type: 'tool', name: 'lane' });
+    expect(forced.tool_choice).toEqual({ type: 'tool', name: 'lane' });
+
+    await guarded.messages.create({ ...forced, tool_choice: { type: 'any' } });
+    expect(m.countTokens.mock.calls[1][0].tool_choice).toEqual({ type: 'auto' });
+    expect(m.create.mock.calls[1][0].tool_choice).toEqual({ type: 'any' });
+
+    const auto = { type: 'auto', disable_parallel_tool_use: true };
+    await guarded.messages.create({ ...forced, tool_choice: auto });
+    expect(m.countTokens.mock.calls[2][0].tool_choice).toEqual(auto);
+    expect(m.create.mock.calls[2][0].tool_choice).toEqual(auto);
+
+    await guarded.messages.create({ ...forced, tool_choice: { type: 'none' } });
+    expect(m.countTokens.mock.calls[3][0].tool_choice).toEqual({ type: 'none' });
+    expect(m.create.mock.calls[3][0].tool_choice).toEqual({ type: 'none' });
+  });
+
   it('books the projection when the call fails after it was sent', async () => {
     vi.stubEnv('HALE_MAX_USD', '2');
     const m = mockClient();

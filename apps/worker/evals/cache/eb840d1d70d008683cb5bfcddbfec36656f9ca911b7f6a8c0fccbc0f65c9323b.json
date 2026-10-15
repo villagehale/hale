@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (25C, humidex 32, 40% showers, late-afternoon and evening thunderstorm risk, SW wind 20 gusting 40, low 15, Wednesday high 16) matches the Environment Canada notes for Toronto on Tuesday. It uses the known city and answers directly. 'Mostly a mix of sun and cloud' slightly smooths over 'becoming… in the afternoon,' but that is not a wrong fact. The tone reads more like a forecast readout than a casual text, with dense wind and gust detail, so it falls a bit short of a friend texting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

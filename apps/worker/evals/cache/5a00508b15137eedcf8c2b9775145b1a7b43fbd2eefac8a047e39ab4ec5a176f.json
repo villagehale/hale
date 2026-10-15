@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Honda Odyssey is the pick, with reviewers split on the winner",
+        "from": "There is no single agreed winner."
+      },
+      {
+        "states": "2026 Honda Odyssey scores 9.3/10 at U.S. News",
+        "from": "It names the 2026 Honda Odyssey the best minivan, with a 9.3/10 score."
+      },
+      {
+        "states": "Car Talk says the Odyssey consistently came out as the best overall minivan in its tests",
+        "from": "It says the Odyssey consistently came out as the best overall minivan in its tests."
+      },
+      {
+        "states": "Odyssey has the largest max cargo figure, 155.8 cu ft",
+        "from": "It has the largest maximum cargo figure, 155.8 cubic feet."
+      },
+      {
+        "states": "Odyssey drives most like a car",
+        "from": "It is the one that drives most like a car, with a smooth V6."
+      },
+      {
+        "states": "Reported rearview camera recall on the Odyssey, to check before buying",
+        "from": "KBB's page carries a headline about another Odyssey rearview camera recall."
+      },
+      {
+        "states": "Edmunds ranks the Sienna first",
+        "from": "1) 2026 Toyota Sienna"
+      },
+      {
+        "states": "Sienna gets 36 mpg combined",
+        "from": "It gets 36 mpg combined with front-wheel drive, the best in the segment"
+      }
+    ],
+    "answer": "Honda Odyssey, for me. U.S. News gives the 2026 one 9.3/10, Car Talk says it keeps coming out on top in their tests, it has the biggest max cargo room at 155.8 cu ft, and it drives most like a car. Heads up: there's a reported rearview camera recall on the Odyssey, so check that before you buy. The catch: Edmunds ranks the Sienna first, and its 36 mpg beats everything if fuel costs matter most to you. The reviewers don't agree, so it's my pick, not a settled winner."
+  },
+  "latencyMs": 17910
+}

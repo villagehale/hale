@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific is backed by research_notes: Messi as the media pick, his World Cup trophy as the proof people cite, Brady as the usual NFL answer, Brady naming Jerry Rice as the GOAT, and Mahomes as the challenger. It sensibly splits the ambiguous word \"football\" and still gives a firm pick for each sport, which is what watchFor asks for. It reads like a casual friend's text. The phrase \"most of the recent coverage says it now\" is a little report-like but not assistant-like.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

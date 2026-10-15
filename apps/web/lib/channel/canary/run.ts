@@ -7,6 +7,7 @@ import { LINQ_WEBHOOK_VERSION } from '~/lib/channel/linq/signature';
 import {
   CANARY_ANSWERED_ACTION,
   CANARY_BODY,
+  CANARY_CHAT_ID_PREFIX,
   CANARY_PHONE_E164,
   canaryChannel,
 } from './config';
@@ -87,7 +88,7 @@ async function inject(deps: InboundCanaryDeps, now: Date): Promise<void> {
       direction: 'inbound',
       sent_at: now.toISOString(),
       sender_handle: { handle: CANARY_PHONE_E164, is_me: false },
-      chat: { id: `canary-${messageId}`, is_group: false },
+      chat: { id: `${CANARY_CHAT_ID_PREFIX}${messageId}`, is_group: false },
       parts: [{ type: 'text', value: CANARY_BODY }],
     },
   });

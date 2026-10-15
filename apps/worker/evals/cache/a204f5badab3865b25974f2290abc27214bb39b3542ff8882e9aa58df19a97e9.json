@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Chinese text in simplified script answers the parent's question. It names Hale, the company, accountable person Barton Dong, website and email, and offers an opt-out, all from given facts. It does not explain how the parent's number was obtained, which the parent asked, so it misses part of the question. Tone is plain and not defensive."
+  }
+}

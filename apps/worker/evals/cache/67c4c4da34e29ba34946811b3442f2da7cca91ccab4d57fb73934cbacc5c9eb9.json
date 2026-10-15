@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "a dark, quiet room can help babies sleep",
+        "from": "A dark, quiet room can help babies sleep."
+      },
+      {
+        "states": "put babies down drowsy but awake",
+        "from": "put babies to bed drowsy but awake"
+      },
+      {
+        "states": "naps at the same time each day and for about the same length",
+        "from": "take them at the same time each day and for about the same length of time"
+      },
+      {
+        "states": "a consistent daily routine helps, with a story read in a calming voice",
+        "from": "A consistent daily routine helps. ... a story read in a calming voice"
+      },
+      {
+        "states": "babies sleep on their backs with no blankets or soft toys in the crib",
+        "from": "Put babies to sleep on their backs, with no blankets, stuffed toys or other soft items in the crib or bassinet."
+      }
+    ],
+    "answer": "Depends on how old he is. If he's a baby or toddler, a few things help: same nap time and about the same length each day, a dark quiet room, a calm routine like a story read softly, and putting him down drowsy but still awake so he learns to settle himself. For a baby, always on his back with no blankets or soft toys in the crib. How old is he?"
+  },
+  "latencyMs": 27483
+}
