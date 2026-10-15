@@ -807,5 +807,527 @@
       },
       "diagnostics": null
     }
+  },
+  "ab28b1a2e7d5ea75ebb7d896c5ec7915f603f52db232cd109839b652a0ebbd2b": {
+    "key": "ab28b1a2e7d5ea75ebb7d896c5ec7915f603f52db232cd109839b652a0ebbd2b",
+    "recordedAt": "2026-10-15T03:03:44.074Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"subject\":\"things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds\",\"town\":\"New York, NY\",\"stage\":\"preschool\",\"window\":\"September 12 to 15\"}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg3HBsFw3k5Y1tBbn9XMP",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "",
+          "signature": "CAQSqggKEAgSGAI4AUIIdGhpbmtpbmcSDGMx77t5zlpTi4x87RoMCVCsa+HoUGKpbDaMIjBz8VwR07gMZKckFwqEuVjkmCFQwAo8HDjt8h4phBr1s75YN2s4M+Qd1Ku87pSzC6Qqxwd51cv6XwHPhXQ+MH9Tb5ssnHmEn9Giz4LGvvpzadZiC5bFT3Rf+tv1RhNsscHiaDmE3YrWaa3Xpx7GT75TeInx3u8CPcx25XFuT2u01UsV4on/zl2bju0e745lfCb0oevTxdTeUguxtoraHofQU4lQlvO11+Dbojpks3P4+cHOXS+d/DaIj4iMkFQY7WNrQYkqJKeN46edNS+uUy2gFQrwHkTFM8drL9B9fVA7Y+x9h35VpyaCr4x2cwkltR4fvcYJDSts+0PxKkexwJmQTpG+4uCr0zxIRq+9XsfSHmF+MOdQtqQDlDnnFLXQnlgZMxrx+aIT6jJ9a8AbjbmXvsk39xb5xwRGWUxEr4qW4ExGcTRYLKO5IJ2iIDAljZTIjU8I1TO1S5I6uVlP2uDtCmn/tQrvE/xVuYoJg40fL+x57kNvoju8eYcUjRvfJno83mP5MhtzQONbgkGF9MJApDUTlIqsGzB12suCMYd6s1up8Lv9ipssQZOQWhB8foYSj/P6guTStj5DLsCfEIgyO8ppdPhaSCzLeW/ilmlzJzVlO1wEzxUSIQgBdry4+FCUC8lQRwSYi9KNak49jHCP5kLCFFdjh6S03K+SikitOqOfsyu6NEWGck4/Cm57MNfBySRYUl0RzXZ1NBytQU4jPNU2pZT/0hOxj3jyrtSpYL8EZCAVtb/eJzYDh3Ig5SKBMv+u0Eky+ieYGZ/qb6xs9Hqg+4UHS/HV0tkvykGr6oK6Zdg7eGsE34eWgEkCtxqdnjR1fLKgxPInuSiWQWzJjAlsToC0DvqC30vo4wBKyEvtmLcqUs07uwdOJWEd6rSCuFetxQdIZ5YmW+Ide+gpkw5xtXrtceWCUJvBTKnc30zQ3ZpZAKdbh1sq79f9g8/0zA43x4SgBe5/UcKB2JpWhO5cw1SzQltQfJp6BR0Ug2YzZ1Gs+ZMIf0ZMcHLc+WRS70Rh+kY+pP2npECTyLIbPLzIG7eeDANH1ITwkKxBqeZiHz/1pkjA0W/DSaFdk/2PnvDI+0rJmWQM3L7Dgavzjvx2yAKkHKgPJn8sDhoeEDv1rdGvgBvwjW3SuzUNwooWvRd/qZ/SZ+uyJpu7OGczEqMyeXR9mr4ucMGpk7m+UUIBuC0lEHKQTjX0pDjQ3CI64HzgmQb9t4fnKBlpvONe8xY/Fxi2yTUsjC0KaYBTSBnJLyzXOn1qhMAsXHsI09GMrCyLQCZi/nTbFreuJdtpi6GTeEHDP7pOHUcNx5CudCv968aIUHUfTgjU8JbWmqA830dcqQkAO+zRGAE="
+        },
+        {
+          "type": "server_tool_use",
+          "id": "srvtoolu_01S1GVAEr1k4QQkbvEXTA8A4",
+          "name": "web_search",
+          "input": {
+            "query": "Children's Museum of Manhattan hours admission"
+          }
+        },
+        {
+          "type": "server_tool_use",
+          "id": "srvtoolu_01B3LA5gJo4S3oVBdMmiXarE",
+          "name": "web_search",
+          "input": {
+            "query": "Central Park Zoo hours tickets September"
+          }
+        },
+        {
+          "type": "server_tool_use",
+          "id": "srvtoolu_01R9DsavYUy3EKdhoeBkuPjZ",
+          "name": "web_search",
+          "input": {
+            "query": "New York Aquarium Coney Island hours tickets"
+          }
+        },
+        {
+          "type": "server_tool_use",
+          "id": "srvtoolu_01Lk3PycQznZ2PdGgRaPZUAA",
+          "name": "web_search",
+          "input": {
+            "query": "Brooklyn Children's Museum hours Monday Tuesday"
+          }
+        },
+        {
+          "type": "web_search_tool_result",
+          "tool_use_id": "srvtoolu_01S1GVAEr1k4QQkbvEXTA8A4",
+          "content": [
+            {
+              "type": "web_search_result",
+              "title": "Memberships - Children's Museum of Manhattan",
+              "url": "https://cmom.org/members/",
+              "encrypted_content": "EvQJCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDAuqjMsjzPX3jpCcWBoMAlumoUl1ipwGRRAdIjAAXFdT/6LkGqAwd5UlcfOUC68U3ViQIZZKtBdXq5VQLI4mgGvqziV2Dzx319ITNjoq9whRQ9FV/nJU2r1L/EACGa0Fn7KMxDo/bekFwr/G6AgCheenbkFxVjt2RHuQb0pUmBbyacBpe6GJmmG6zsNc2WHDLtJZPmCvp49a9AwGGUURMNipEv3m+EMPtOJ8t6BoGyLBlIPh4n0OxT9q0iiYa5aI0mA51MVzRC9fjH9Bu4OUurTO9C1XJq7iseyVmCk53czL3rFpCiNY9M1/7bYL0vJP008wUizJUKw7hpGBbTIT00jZiJ9afACPh+RaVr61lrroodIyutltwZQdkM01RWU8b8V6gb4k1pUw9zbWS/2CQbvsJTPXVSPFf/BjOX8+Lx1AvemWt/Oql9n5eBaXLL/rB42DZOWUfzfl2psdtpxq9v8W8oRMj/s3hgG/GIlbzsrnKCcCw8EfTnMLU5CRMgUEgmI9nxDsDOc8WcNs8Fy/6jle/FkJ02zrXn3j0Sn3q1FIXT2Q3KeJLshJkqedVXELieWMTSiu05DtWitt7vNHyH1VYQLJpVJ1+X5c3o6KljSbcGi2GmSFSVQwbNCrMkuUUHKcd4+xYC/mOZhxfKpoph+HfkJlQfH/ipdAIn6JYNclj/XYU5ioELkM8Gb9dP8N2Dov3MT+SRC0hjPKY+ykf3srlxpofEhsKU8s8sjGu9V3BPDmYAm+u1My2BEJweX9ZVP1w3lsQ1gK9tecfoi1P/DAvWto2cqvogickRdo7QCK0nOMTU7jApDSY6L/HOnxyelvZVhlQIl3PO7aL9a7sqFc7nLXgCsOzl8vNDsNfURl1+fFDTe/Msr5Ee32S1ijTSVVyS5aq0KF/xtTW1ot4c4ZUAPFXvwmfllogCeHs3gvcrWM9+jb0M23Hsj39KlzJNrqkqj2M2NlvEeJuEMgv2CwdHAfrxVPyctZAM26nXbvfF+Ua1ivUxagUom2HUphvR3sS+9J17gwBX4l1sEqSuL+E0n7DCRCeGY/wSGAykOM03pDlydPWuIVIzTF2zTPyAgMdRBxVRjAY8EumjcQ1wzAndERZPvzmtKbthtCE/bT+dLSQkdObdafxyNKHTdTxCE1MgtrxETYvg5OPtW8lwSWnOtKvvuRY8ykgpTNGDwInQezl3cRFxbp0gaft/nTs3Vve3+94gCckWKZzXYCSARBNKV3tGgHoCwW3j2iQYz33jk/NsdMT9XJoUmK/QrZ5YGRnt7XmhtfPHpLl6iDItqnEtNKLIsjZAs3soaUX4Kl+GCDEc1Zd6dFlbmvkWU1M87qXu4YpVIdI/s3VYVoAFKIS5wHguZGzs2WJvEu9Oy++MJDIX04SQiNWleMofh7Pqc7peu4i9E9pJIaiKypSMdwSIIDfl1RLu+73J9eRDa/rbVVrVZ4Tm/vLQ6CBtwibmSX3RpZG6+kyrzLgOhqU+3aOy5PUEU4FiqUghgohT+Xx2Zw6N75l5x3bgQwyhG5MPx/T0YCwmaQxmmS27XEIPfPoHVC4Xnd8L8cMxSP+71KR9kDIYTeoLgjAyfcM4kg2yKImK30t1GNW2QJk1J/kgtROw4AV34YAw==",
+              "page_age": "41 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Plan Your Visit - Children's Museum of Manhattan",
+              "url": "https://cmom.org/plan-your-visit/",
+              "encrypted_content": "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",
+              "page_age": "41 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Visitor Guidelines & FAQs - Children's Museum of Manhattan",
+              "url": "https://cmom.org/visit/visitor-guidelines/",
+              "encrypted_content": "Es0LCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDJXiQ9919Wx6ZAOXEBoMc5r533eKWemBMlkjIjCDeuIxJu+/5MIw503BpGs569ahmCbpq+bp7MKzhPPUD7Srm8P59TQ4iU8jpDWO3QUq0Aqe+rTlyKFW/svjedopv7eY2+A1+LikCgYLo8WcDWqqJC09i4+EYmXZHAtcov4gGx95j86QZIKd49Fo9tu7HOvYtVXXmykTUbT3vpYQHhcnD25ybXphGShdKwbihFiMln6aPG6VWROD2iuNJqYqxqKUgXa92bWm/LNevGf9YOpdl0IoiXMBMnRP0nMQPpeGI30HnBxQEnH6cJbaN6kBVk5LNZf1O9GD1wq22xHksrTZLmXzCQb2fNSjuM0iwGs0rQC6sVxD4nXeIjIYqR+c06x0feJNFYk3jTrD6BfQsY5X460nbPm1DQzA4K1AqgsNTGrDxjnCeOs4wZOPJwT0rEve5jSlgRl72TkRKAm30aK7//MPJchQk+H/AQc1Z+hPVAtCqPmu6kxg4i4+16hPc9PyzoIb+aehhJ9ir+igxsa0sCQOPcLfuI8Cgd1N5N836p0RJXhpjSVF1x84nQ8qXr72AZDwBJ3vfvEveizZYF695wK+WdYKwkp29jSX2jIQ9+F59MjzC/z7wYAj0HoyX+KIMsAgK2LVQ6Xkd6PBLcqZkoEEANmFbQjr2eqM4YmkDjZJwc3+HFAJ7VG/4VrjAjuHYD3A1V/YChompsHuZOb4mrzp3zN9gfQ3vqEX3LG0lFE53jyi588JdRfNnBtEP+6dvwTCXmE408jLX71T4brDQ6LzM0OvRunnJzl72FWxeWpJDSGC3+Ze6baAIw6aR5lucEmwvCQ8cqjGQ2aysQnVR1eSs9CYNFpZvrGbhe+GXGzAT6H5Mfu4M1ls/Zbn+jSJ/H/esdIqKPEobssn3mVtxZaaAYk2cNKY6B66/geuPodKJwBB0ceivzEd3a12k2qDYEEdAMSSheCj5nMtp6xpPhOVJgalcRYVOLzeP1nuecitgadYRh5MH00toI6x2ytDhFPBJ+na8H1S5qBgGAGPxKszp3kDq14A7QEXDJaS5H/J4Irzx7Yi1P/D8eqPYI6jmRGXojizNQ9mrjUQROjYH+NfF4AicYoi4yEL4KKhDkHIiaKFq5hreqUMTWRUxz9oE66H83zgcEeeu3NCVoJWloGg6P8qPune2HgR2liw22yJ5vrcUKzS1Jd4yvS2hCSxOPgDvRVpZrBRTyJTA1EpL3UAwv0mfq2oWA/nCAf9LII8GKsvNXqvdQVyBOehny375kL76mVob+eOFQUnWvFYPsBn8X1adP/jvRs5PveuBV0HRn+xbLrxDIN911qyMf7d7e6AHB36q38BhiljwDZI2q1gjzZenKNs291j1Jfd9UDw+pvOZ6IyQV/pG13ZTzUBLCiRQPjd4gjaopj9tvIvktNkAAgTCwu6a9iWgwjOtzSgkNlgWlOJIhbitdKmy3zbnpxtqfJYK7gzhZV2c6wolYW5O1Rv5uTq9NxgmIm1KALYRicNZaJInZwCSlT2oxtCClBZh08TePsx3aT/9Q5CM53XG2GX2Kayfgyh12zmKQ8Uom8l/P2WDgJeCb3ntBBWphPQObaldev6Rq+crHJ/Zs2oJ7Snd30sJZoRXKPv+bdMjvjC11nFvFALATY+YaDaDBuZ4jUBDVDK3eBJr+iUgVGI5F8fBk2Wa/xQpn2DYWLvKxvhoI5RXDfXrVaZU83yTGf6hps4Sri/+7uGauTgo3NmAfKZhderRH3jfowj/Z/xdfWHS/0rnhZHMuj9kJvAIdRb1Ax+J0qxwtpJ54YGq8bFYU5vCIo1TyN5IpZ+TZEaNHUOjj7lsLyW8vmGoF3hhD8sOoB7pbn/LwAkWtNUVSCabGxVHmbMUo5NdNI3/z+GKj3MazOi8AxrjJuSc2e9GAM=",
+              "page_age": "131 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Children's Museum of Manhattan",
+              "url": "https://cmom.org/",
+              "encrypted_content": "EtoKCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDBahZ/ODFcC6MyHmORoMl76wg/zx4u/L7K7qIjBnwOA8K8T+VKeqqMNNyr3MA5QRfWTHABRHqWc7x1mAJwQafqtmrsa2krWhZQZOPewq3QkA6juiDrnD+sHGuSChT2q+8wibT3CNY6VFV6DOW59Y3WDMOSP5JLEiUtiwlS92tkT/pv40B3wuoickLQGJwXeppV7KB/9hCWNrP9XbVcPOEOWXtNYS5m1OTMDh7+f8mnf5as8cj2/0sLTP4TBQq/kKyARUj6rCGxz0JaefV89YCdGdaLAtWuIoVozYtsm9XPEIEY67898Yscw3nzkNMuPKLCDjKCD+fDyQtGZnh3Hk00rgrxJrzyJOQmH2drF/Tun5kK8jiCYugHL36L3EloBEUDwHQwGAf+o3PUNPGL0rEKfTE5MrBOVgM7koYIOfTB2YbMgpRVBHGpU2zL+tYtjQbFTEqfS6yZhlalY2O//+yDsyjs+QbCYirByWGgfe+WsoX0KZ/euQMhkPRfKn5Zn0JNuTUvSiwBPjckj4mZSoUmfbGyT+q5JRcodT2BDnaqNXp1gaiAkL5iDUAwhFYPSxCPjwyuYjjbRij3UycXyE8nJ2XDgUH5M/vcGeOiddX7mQpK9r/MyRyXyi2hTMengim0ATQcgo5otuwLWGUtEx14OjiU7tz58swWoHZT0nrt7lQBRtVnArgRSJFqqqpG547xOtLWRFXpcjcdQfzbfEh7Y+HE/exVZOrUnOq7TnTijD5W0bn8RFcj73sWExIixPHVMQ6+MIpKqZfFDFJk3pXFbAOefYSkau+ZGJlDoQW5vw1E2o5vOH8aLWJbTjGAq8jifFSHPNYWs2cO62p9n9smvqcv9Z6v88r2j1BjK0lBwas7qozxk6b4Ol7/qRjDbktB9R6U/dLKnAU4Q0/LoVEx9jnHJvzyZHLrHDGL0I2vkHNjicBr1lOPzRN0yGDMeb4K1m056pbu/0jCxCPhHIc4gs/44wfze+UIRxYSLvss1WrF3hPei2g28/IsaOnHLYAGdLJb0cMCwDFmqW7vme2uw4P8NSu4JjdbV+pwPGv/XAwzBiNAq5bOFJhVtFjPQphGl/5IqFEf8ZNIBbvIPgiOY51zHvFB5OytOpKUwJ0ZO6JUHGr1O92mpBOCMKDmcclIC7pfC0QqEziRUd5x2f1kLqsi+znrBND+oUgOimkTFNkgmfQw3F34zcKfe4lHkoLWpxoHK6+RsMMkzBA83Afclej2+G4OZTabpnDjPiwBYGGg3NTn60mGoruNjdXNPrP8TRQ356m2A8pDwqN2A1pM5dvkgEizoBN3fnPOTwdcmcghSOba/iMfKexNVoXU4YMbx3876f3lDYPGD7P9KmJ1FwNi0GduF4jXIMRHRR7KMtNrJGhC+lzrHiR9Yft0JXX75vqHMDJm4PVlgks1FPb1x5aHjPHW2D54zlmBRkYRA/h48jqVrjR+osZ9PzF74uO+j9BRUkinNKWnJh6NANwKnb+r35ahfGNFbX+8tM40yrwaogBcbkl0/LtRHdobUCENFr3qkYIkknX6Vmtc5au2fd/6QxtRtBUaeXnNeFuodifsFZFyz2MJ2Wky12isQQ4yxtQAJiqrcL5DIfLBE8O4WKKm8SP/P9hmbLjngW00++6PRw+JOGZee6oOrZ6JvABdPAH7md4FlDerpgHV6OSQS8rAfz0x+SW1w59cBttkPne4cFUThSAbbDs28YKl9K5cgCG1GpmGCyWTY07uooZAas+y8hkpFAng/tkykYAw==",
+              "page_age": "34 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Children's Museum of Manhattan - All You SHOULD Know Before Going (2026 Reviews)",
+              "url": "https://www.tripadvisor.com/Attraction_Review-g60763-d110275-Reviews-Children_s_Museum_of_Manhattan-New_York_City_New_York.html",
+              "encrypted_content": "EvYFCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDN/pPSurTjE/NfxJMhoMKaNH8TFzfLtAY+krIjAlU4DWFmU5rzB6/SHEX7ol4qtoa7eiCN6qbRREvd6cRmtssX1/3tcdmZ/gvnsiyRQq+QSYAZqDS+6JLjDnl2ZqN5sCWhsFHS3dVt/AFqu5Nmgzave/YG0Aco4XXi4btXj36fOauzHpnP1EBzW+cVDbfDeZ7xUQ5nGkrRqApRoaIAtD/QP/Z/nf+mUJyaOFT29dn9rpilZoWD1Q9IfT4LRV9Mr/qee2Ycjx6uotwKhnN0pjq5BUZKokwQZisWxUwz98o6m2U8g87lWwdHbT8ApypAOnZUKj/VcJxEWmZH9EUanCNypWffYlGWND9k7TjxV06P404lnys9HsmRh9884ncKjSzRr2kfcmFCoUE/OlNKmTfnxUEvDXG0bCsdxrktmhwuG0T4F5AvlLz57heaIwT2qdZLUSwVzUaCXffUOKPr7wqmJ0uLe3iu8K2zrfFVwcQcM1sJ6zNBJ/rLCqUPdHQlBarMkyzGfFpn6UfaOYnPnKxsP2nnnxAdPAnKBqIBQmLpohMJMzysw917cORHsT3PtfANWL9IY14bg5AXk0HG3+6LZrpkYv03S96iFXHBbz7/NDZupH72y24UR5qE3GrXopaYwXBzUlxO6r+f/w+FPOgP50hUgHqZA1aIDmk/lGOhz7qq2R0ND1Y0gKRAeqjH8ZLXTZQRoAZsM++3SMXHwM+WnwJEldAZlNt12ZQ7RtrZbpxGBeds0v/xzVPxGX5aie44qlUmBGJuyElfDGa/GRDPpycgVsNmDujrSwwdhUKQsT67SeWq+sLBETWxCqZGYFA168QQzbF7vM6WNVTm3PFrFM0fNK0FnC4vqKgO/HUBu+ni99cpSFxdmA0YKNHmui/hZQI0mc+3zmEv9BUD2hx4tqU20QmomYDW1cKbHbUIQPnaBbPJ3rjFAYAw==",
+              "page_age": "2017 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Visit - Children's Museum of Manhattan",
+              "url": "https://cmom.org/visit/",
+              "encrypted_content": "EowOCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDJu6/JRpiXIwszM6oxoMWPgr166owowB2M8RIjCIpwJUP0QKEevGa9vZYv9Jv6TsrI8VYsnYroFIt0Ec01coGopGnOf3srOJSqIvMYsqjw1336t/6LR67mGuHITP9ez59evr6+eDaSAd73zXGxZIt31ObcCF11ZYYh8INqHLNlwGVdiMF3UtrNi1iidBHdxxwhHKXvuNdVZRes9AWJgNloMqamoZY3lES93aZFeB57u33/EfPtJzEpYBcpxsjwwCf12QjI8A26U1IlWWmQfsoJ6jVouIqhF1VtE0eZTy01pfa0MDX6D46nw18eth+iDADc8fbMQycIYCBBWxI+7sSvsACF4imqqTklRC9zmkO41SIMweXrX1zr0D72uukNM1Urjv2ObLhP++XgVRk52P4ttLvFU7ajQs/js2x70bK29e9A+9CloGFsKJedToix3O3yaMwMrzgGRrm2qkfOwz8vhiW4WuLe5FJou7okeJrblGtPDfxGEctNrrNtEVYMTP0nAhJecv8cisyRO77f0WTqrCh1N73QPEsKAKsJ16VR40DMvBL5ye35rOM9EXKfBWPAq643UuTLKGcej7J4cCIcvp1FWwMurTyGtQos2DWIODBhzjDSiQIX19/SYpm3YtS2bmH4a3K6CnQdpzGLowLuzivTo1y1wyOSnOSO5z/Ahs+xo9701469sCMzCslGCQz4QZ0ezzKvHb+1wSfiaEE+fFT+gbkg+XvAX9tcTbZptO/df7hU+2sDYjr6EAg4QH1X1AvuziMEOQW92/lZpJCyTyGjXQNoJ5yhxQ4qpoFvYiPd0jfGauDP5c9zS3cW8MG1mLKBs2Xj2XP3mdtU/ZQ57GYbf6NxpuxWTJ4ncE7CCWsKLmXte+ir9VTu3S3q7bs1Gw32YlMFt04fwS7qWCU3DNHhJ74BPacH4fSIaxIzd4QF/p5AtbmsldQfsF9CCuGRQv71AuTRlinbGPFtpncTvivDufr1qiIqyq7sK4SUy3yI8lMMqZqKB5RqI0tKjzCqXkOmnx6QTs1CvqunaE8dKblLAq0GbA1zTsYQWf7wBY8HzB2suvbeeIFXbN2Nu7ygae9YekFL0p6U7LFrcL9QaasuHUWjcI0U4Ak2tNlNmrK93+qZws66X7rXvt8s9PIPEc/SHlZEG1+KKTxv/k+XRVcBgShmBUyHZiVlwP+bKmDpviB2ZSlHeegCRcfYWDZc//hXVOQYd1QTeNn54AdvjtCFBWuTN/gHpdy0XpjkQ9ChmqEn28EwuKG+1NLrdjXONFpLgWeqOjws1llvbHb5UXRRSRq0nBQz+BkoJpLsOwVBD75o8VW/jo3sslzLRTYhqVc4iMCcdc99B9VrdrHBzHEsmAfq0fbjIGEmqpaASi1+KWAtCIlWz+sPQUERK3jhwU3SbE0E2azRYZKM0fvfxP20Q2VbtRmpFr7ji2B9I2ZE4QCxI4b32ZN6D2D+8JFCv8aKU/X6V+GoJq7YIWX3Z3sDvDz98E633WCDb4/8m/u2TSPeng0dabpssfmSmWWKv53c7iwnyHcO2rpoLUl9xUPIIW9tsqABW2KSpyqQu/N2oj3xmgQ1VhxO/59XYwZaRlhebX5F1yF6HDzFwzP9ejGNlKxHh6NUtW+i4RxrNQ+gSPetJR43XKGwdpAEQF9JQM8+lYH+GEOl7cBGtBVAW5FnQdOixYcxFFCnEqY7QZO1yOt92TsUmJ1aov/eRpeFRzuY74ZEbV1SvYJLLB2q67Hyij23QSW33Iu2ehYo18EcHyl+4pIDUbM4ZFfhIht0TsOODyY8sinTb1pJU0imjayEYt384nCZsGb+knDgZy9FH5ndzHeD3eYXZKFEizpiEzz9wLfnsp0hGNQ6taxpquNMYpmJswNfpPFlUIMkNKSlh6JBHoaASqm5p0y/UzgatQpi2UrPihM63tPLqyolS7Dy4SYFNgFU2f3USJ4YY6HQ1eymkCjZHO9rcwmbHXk/B+6Oa4w0wyNtuIsqE4OA8LyjydtqZd7oGASSd2qGFH/EuYxRVsnAq1fY5IA6qDgZP7LpRqeVLkwWhFDSqdA9d6GbpSW1oKUN5Fb0PMTERmQ7goz92jnW1fe4gI5Pa9UrPQrZ1RVbxR4kJza6RB20mK3SDSEqiPxQG96EnvkGcpwp2SsaVs/uJKOlbU1k3jkiUMrCA/rzUJXmFUzkoRnEyP3p5zg3NNrFNrKG4FqU2OMSgKQBWQ7e4XOG1ryDUhoKUOmf+Eil4rcNInCZHyMVppdSmPMXFpmxaIRgp+KnJ8lXbLRBxoKmJnu9n4PzbH+jc0XSsz399iUdP9uwzCwAk83phYML7xB2jI3VA8VRgD",
+              "page_age": "107 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "8 Things to Love About the Children's Museum of Manhattan",
+              "url": "https://mommypoppins.com/ny-kids/childrens-museum-of-manhattan",
+              "encrypted_content": "EogLCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDOhbIcCTNwmjELVZDxoMtQpceq0GnlV800/SIjChtA95YlVx7Wg/LiOIf1XFHY2PFAvxpQr5fXUXrTOCyF7zMjep65KntQsETPwVnHcqiwokoCEpJr06B8N4rZ+2rn3dKdNDqKxbQIWDpp72nXwisxjsyJsE2VuOromY8MIA2sbZNirGSr1T9B081M7ityvP+F9T8mSxYa0qKlJ8oo1KsYxOIoJQ6O3+uG1rOIOA/zxARY9ttUtu3psDy5ErmKKAlG4CHJBKW69N03VPQOav4OqfDl1iNcut0Z7VPtwGYP2hDaGZkZZuCBkfSX0JL/DJUTi+Zuozyv6sIvm+kUUBZ2mCYAYubvPvya+OAr/163xq3JQkqetaarm8selXNGDfU2+YrxRmI8R+IApce4iTZ14lSS51FkMA/dzHAGlrAxA0ZxW7zEblcN+mhkX0dRJdvJai/UxdbVaODNnFlMXQzCkxkCFYBvExOi/h6ea1+ZoMTz9IyLg679dtWnmRl99jm4cBoQcBLA4Cs2TpYASg89fnURZg0YgxuRXequk36h0azEZaf80FMuvh5b/V4ywsyDYjS0pdtFgekxUkJbCkuyRG1MA6SCkoE4vKyNTwbaRaZMCLGumdw7VSuvLCZr/i1S5sCzxhYIW5zkM6SpoKDIhlu41GBs0XBJoFEWTu796iXTSqHBSzSmHPoxMR0iA3Z7VzTolydFSchoNpLJ2CVMCG7cmfuQMZzz00521tsaQ5ciyZyAWyYvaq1RB6YfFZbhJQ90OpG1/Hvp4Jhigc5xId7NyxXeq6OazQrxx2WG5oJVBIjyqXUb6Jk/m6nS2wIecgfky8551drzzgcQ699eQ4P55w+hgl/tJGnt6ZXzJiD2nVXGQJFq6cCLmcWQ8wk9JGJ6vDctJGSyKADjIygP+LZNoroQE5BbqIQfwQQIdSEaASWoK4nT4yFsCL4CsFiVKxqf6oODZxO+u3y/c7QPIvzFSXYDTL9YlPpaaZTmcr9s7YdpMMPalFeLqj470azFJ31JkWAQLH5YcasaEDZi2BxiPswgYEDl7UGauGnfTftb97cYjll0wHgnudLmwYifz2X1gCc+sbWkdgotpGbR+jogleaFTGl34AlHdIvo5ANYVwP1ywLJ3YBycXKdY+SInHOa4QTBJtYtt/F+mjcArmqkvxNljN05qch4PM/fGx5S5+UX5PGf48+gKI42KUIz0+CAVlHTbkqBxc/gdh6Piz1oTb25HqyGu1nAGy6qL6BgmJXTICTEOXawkF+EnjHeI9tCPMKS0waGR5Ce7i9ASf3RcixXfinb0e/RXtVOt8GgEuhHAkBjzmhB4+82x6A1ITKWnZDcaSLImIEHTbV32rHfohCPPK9nAqG+Pc+SRMWQCPFfRik5Ws2R9eeq6ZLgc2G96Xjb34qPC/uWHtGGE07rYOFz2ISkeV/q1qg6ao17Z1xOAlGFA/AVbPapzaYs/7a/oqwUGFNeuiOypfeRzYpdmfaKkxFDVsAp3XG+lkWT4bFVM7W2avbP9Bfpq8ryWVf9QqoHnZswaRz/W04gZH8uWxQPZXp7HJ4TrMymldVZDwUUYZ6lIAjvOQq8CXDJQg4IkqY9JjwxT6cVGZViNL6s2rELDqxgh533A20PaOvGQ1CRkKDDB1wr3wogZmbMoG5QTT2IH2OqxAABPo1TW1XqGLMB3LTd0v8FZqlDZnu2LRXvf8WnqUXaulKWBVinWzqs6NiLihb2Q5shqjKfeniFyOqcK7Pnyl8598iesWewb3z/t5Gp7awAwfm1UNWOavSs/MetqmTTmFIy1WQluIY6bSK1wEANlXGAM=",
+              "page_age": "2900 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "CHILDREN’S MUSEUM OF MANHATTAN - Updated July 2026 - 493 Photos & 275 Reviews - 212 W 83rd St, New York, New York - Party & Event Planning - Phone Number - Yelp",
+              "url": "https://www.yelp.com/biz/childrens-museum-of-manhattan-new-york",
+              "encrypted_content": "Ep4GCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDGA2uxHV1gknU9bgYhoMD99YsDuguoqTuCbUIjCXRs131dsHCU+U3/rNHQXB2+Be5Bl5nIgEO/pmkJEkF0WMxD9C8Duw9h5GVXeEzlgqoQVzT6wNTp18hufr6KJDf7Qeq9MC/LoNXzC+5z2C72aBozjWbx29kdpqazJq1/0cXHr2+qoJrpW5z1pygFK8IQHJO2x45m43f74UwhXvIDi7adSGFj/bZHtLWetCjkFLyxKUUn9u31BhIe8Sng5WQy0PyNiUfr0px0zoqpPTNka+gSP/lUdBybDn2G0sXbgK8pFu1UVt1z9Kqo+rNwoVG0IFwQoN01v+V+3/M7YUKHbtMkyny2I0bEBnjHxn6/ZSqYq0xlV9y9wOX6Mpq8fm2XVQ+2by3zS5DxB4jGDLb8pf1virI07fL7GBXqdAJje7fgSO6Hm1LGYl3mmUvUuZgrBywnx1kAB+UYbZRy519YRQA9QSYRPgAi61GG1WqHCx1D2jRFf7G25DXcyr4znrL/I9TMgmlvYVZZ2kwDu+MP/r6CS07WZ3IuaQfPjmgoYwsTaZn+LAoHk6U8516atxqI648Dl1HX0mcj0g47KeIXa5RP9X8fLwhj79mGD/MRESTxz4GcQUusmK1LHDkB4lcEbUErUd0eE78h2tVLnnpFnqpDbOxDb7qPhuIA2NP+IklJQ9klc326PhL/LI3zMwZv0Q3MXIUtm4MkrXbHlmVeBn6wZULFxBSRDq9yUwpPoZl8PrhhEIREFdMsfR0STfX00Ib0NfwEBq4CWlbMMwSYJcML1wDYhzWQMmpFg+Atf5wvrLdpOSu6+mn7oX0BQhOY1PYAjFfKwqGbHdcNg4D7CgurVkRjhTrxyJAdkKCaIm58znoJir4A8MXBqfNYczLOUTsYgFqOlHqJ+MuHGx3jB0MMVFUlkQx8y1Bn6rc4nc/Fb+MqgP3/JtnDbeJvg7d4Z45knKPJEd/BPl8oFVs93AKWBkVI617Vzh9Pp11ZM347c9GAM=",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "title": "The Children's Museum of Manhattan - Bodrum",
+              "url": "https://www.bodrumnyc.com/blog/the-childrens-museum-of-manhattan-great-upper-west-side-place-for-kids",
+              "encrypted_content": "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",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "title": "How to Spend the Day at Children’s Museum of Manhattan @ RocklandParent",
+              "url": "https://www.rocklandparent.com/article/exploring-childrens-musuem-of-manhattan",
+              "encrypted_content": "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",
+              "page_age": "1974 days ago"
+            }
+          ],
+          "caller": {
+            "type": "direct"
+          }
+        },
+        {
+          "type": "web_search_tool_result",
+          "tool_use_id": "srvtoolu_01B3LA5gJo4S3oVBdMmiXarE",
+          "content": [
+            {
+              "type": "web_search_result",
+              "title": "Central Park Zoo - All You SHOULD Know Before Going (2026 Reviews)",
+              "url": "https://www.tripadvisor.com/Attraction_Review-g60763-d267703-Reviews-Central_Park_Zoo-New_York_City_New_York.html",
+              "encrypted_content": "EpIQCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDHqAGxjGWZi2guUnPBoMqDVBBwCaLcDO/sELIjDW9VFvaPr7DX3LJVfAHRvTU5k0Az9nFwnxO1hETiQqA3+gILaqytjINVp/wGewrKoqlQ8ATfpDlnksaiK36IGNXPyhe9PKKpQemHmLexhwGcyLCg/2kPkAAvzfzrs6NR0I6Q5kEZTlIhgN3Fz+ycgoLIZIWbmnE6lZkSpzO8ORXsnYWk60qjxLVd9DplrFTDzxxUUzWL2Cjqc7KLJzQWkTjhn54qMherKWJvk1vRa1rMGhwul2UaBdZejLWXj30NO/6nLzoAIe0N7m0d+dc6ceIIpqDrY4DoHa8F1vroaWD6/Gqjm2NEHgYgF5Kau2ll3L+3GmYO2mtk0ihMaGu37iroWXBB5WS3C2XC5ncJflXA1ODI2MsXYqPlwmmedGSmpxYeLbnuw9mE8L7ewbICCLYBkKiqzMpgQu/lB/NDtfujZlezP89X3Pfndmv3h5Fp926SzopXgSh14FuGoKVGtUNuO/z88JMpTXziZnmUO3HxnW/Jkdr9d0O4BoW7b7EA/90ZHKW/YhyidpvzM83yd14Hc/PXraQfVJUpWMWEn9GD1/bwZGkkT4PTqzJ0d/kY7fYu/6BEC3jedv4/KbOohs2B8OBEH7TQwroJRwLtBswz2TpQL/sbWmrNV8VkYSvQhWf2gTw2YHfnaTgW+9HBkE17qUbWGMYc7u7fGmL2sRlGkaCIOp//EHh0W2brMzvpdjg/bvkwr/0kmKBc9Rom8X0chSFdQMNbyxDLmPFAd9WFy5p++iucQVcAXNSPPPuVuf4t023gmvozc9izJr17o1O7S4FeYU6Mj5m+r6H3CPiYrvR8P8mh5ses1zHtN5Cp6wEocVyANNkR0edzp7NIm6AEyHyfe+zqjFOjaEObPws1UztP6ip0Nk0gwA/nK4c656qaGCi14rIW+VsOYxCkCp+ktRF/AzTphw2cKjfumsXezumbJ2Ys/djZs0lq/2TrZRFDQ8wNDJ57Qe9zYHq+tepD3Lb2MqNsh/OGeocqR2J6IjU4cmqLOZifuEKIRAUkbqR6+nQeES9fDhxrFAfYqQoAxBDCbABHruoALuzV6C5bvBYj7wtCPJ3p3eidHCHDNFJgAmP3oQHMB5ewd1CMaB9iCC1T07JsfS1xIhSOAn4KQKi9UfXWIm5nXhfThlS5OErnE4qxHsEHo96gt5davRkEnukDsM5Ifzs4XVx66qDROT90hSZfVnN7JIMNzn6PznN+zjFDCVcUPzF7/h60WqlgF+Zf2bBvbhsEfdxY6/zeIy4BShX4zo36mknh1DnnR3B8bEuHtKaK1ltsUZ/lGmnsO7e1aRrbARwRn7QZ6AhPSLZqCbbadV2Nut+stoDKYoOxg0PJ7iIOOxEc7CHF/MJ0eqFo9VaktzptJz/1CVH3TemdxyYOCsh6WBIRCLODcSZbYbxXDkHLB9zOUr+1IN0rlogUK3sM34tiNt3sp31iOcZIpOKRZK1kyIvKd1KMWffWylH2WoYtnxZqITQg5uTtfE7DipvMoYqpA0hEPrCFNxBNO2zsw+E83zWLQF4vJwvFYLawkoTiA5md14UBaoh2xPftTpp/fet83/i5OXB1VtGeoN/uscbCudmCo3WxC5CfZ+e6qSrEDEB1vrvo22//iScbCsuL9F1WqpBnykJ+gVMw9YNFkj6NXCGMKmWMlXDXrNCVw1f7M6nWzxIaKPnfvgKhqYDwbsXgw6VO7otOCOiAGYocZmJoAIxYacvemD26MJ73pyz3j0Hj8QBwrXuLJlcBNlWy7xRwOksjgyyS6pilhj7TZyPL20FE8soSViRLbEipwn5Ot0RjtUoPWQjD9aoyEPETcB44lhKXVzeIBPflsQ+4RA6HzhOC5v4fKeQU6ts+MbdCgUfWT5ZTzTfi5AX/6Qy1B6RWJoi79zQfLEEfp4L9AAJuXPWwr188UUfVG88YToAGTbQZwJZ59uVtTI6oTIiTYCYJRWWYva2I238p41XOMWs7PAzeTF/9q3vbYxEzBtUZIA4tlHznYLQ/+kMC34UY7HqjY/NkmYcA8MrFGQXwl6OxI0yIlVKDy7PDnq1Mpx1k/iIZNV+3HDfsC3Q8A/YWXbv3147vBmdfRw792/wHm+Jp7WwKfIFNFr0+d2QIR4Ejys0xfjO0Vz+5ZJUVtSz95sI0cEt/2OItHOcpZW/vk1EJuQ7fgkFee6JwBxbbfLIuxIP2NjaXR6KFWs9oVcnNvWjFUTWu61Bnbb7XOtR61r3rWINhPqQna80ksvg/XZHGl2cmiPB9t3yeo1u7YyE10CT8ZT6NzNbd7Rqjjr8FCLTivlNI3/Lzz/Ib5adK4tP2LfJbHLDmYDhkclagWxmMICaE48DG/ZWD6ql+zZWco67htuczNi+cu8T9AO5ZCmGWihCMBPPaPI9urpAVWF/Q0hELMHOtZTePbIv5sZPsLAnH3vtvZEMoJen9E7ufHm0XeJzxrqNFU9qYhfZ0WIgd6Pku3bjHp4ouUVrRDBzr+cBhKmkVfVcNe/VMBkG78hOhQ4Gvy+xUbCSrpwUwuG233qc27FYu6YGkAi/6Bjmc/jcetiJD5y7hWLl9YK2gv2PNCpQii98D05iSmZyUnYSG1tfbj730u8zSZSVR9rrEVz1Zt1Le77IH8c7/N/V0xZXkWcNV9g2/WezpPFP6811awYAw==",
+              "page_age": "291 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Central Park Zoo Admission Ticket 2026 - New York City - BOOK NOW",
+              "url": "https://www.viator.com/tours/New-York-City/Total-Experience-Tickets/d687-156679P2",
+              "encrypted_content": "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",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "title": "Central Park Zoo Tickets and Ways to Save",
+              "url": "https://freetoursbyfoot.com/central-park-zoo/",
+              "encrypted_content": "EuAICioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDPtTFZAAHaKSB3GC2xoMZIMb6POnTIlOpmHDIjCkxansl2+RPJStaqc+wHbCyGmnyISSbg4KcDn33yRIuKKW2ihzO88/1LKuuBhf6x8q4wcjE89c8b0SutpgPJilPEQIqPLJYYbTSq/tPHS48ButZd/FtOAQoRjNjVmE++xdNGbcp2odYVU7II1rVkTcGTDbfV8qInCoPFBs5jM1HuHekcMZAy38DAl1Bb+jHtohflR8xm/6TYPd9MtzmwUPmXVnY07TJHwd0ivr5SqdERE3E46CqxK93yQ9KyzXk+7utBI2c1rdMW+h+vBzqIBKof5oW2ZSjRVim8mDs/bT1gDT8/XK9wP0kt5irv/7DDRSblSQtRgjnqpX0pe29aClXvuLOdhoujVvrKje8pk6ortCKNr3VgRGQQxzbiygV2U+4uXyRkKcPUbqINOZnbg5S8ZyCvc2ppkPcoehbjCeBKnqeqdvfOO6ZQ9pu9noAzh3cUgfYSfNzdsHonixIjuAVaTwC2HzT45ECByriHVNNXm1xS96RJ9VONLJewGqRs2/JhR/MoSeR10zWasKYoRV43st/lHTyZE/yw5hxf9F/ifVVnXQ+sqU21bnGwz+BaikZEcU0/wiZMBRIbYJ2vnTvU+T/QzBzmMlJd87gZyPUUiNBLhX/0SbCEMpT+MLnpfCdDrJB7tKPJzE+1eVcaqnLL1EVcykr1s1mx4zSpRsBSuhyaJFE4cfIZFkj/b96UrVCgJk9eEx4EkdT73LuJ3qRvWpgiP3vsJjtDkWfPVtvcKCTB43NGCsal69pMf8L5l0AgyLI0LZ/CxtG5tk7SbJU54cTgdiHzvrGMOyzmsYpMLQA24LJdLgi3tqYEU2zKpvz4aQWA7oYy1RRq3QM8Vj0eFBfmPtVXqyFdvSk3leCGqBVLTGJq80BU8sIC8LOg6ZfdpQ3EYKESMV13NQ6Wfz9HzzaxILXkagoHpNeedBqhpUHLF+8kmlTM8UXskZZN4drdLYj+FysgonQHoOO5tQ//nTnH7ZY/5N5QSAsxni7L2JqP/LbTzJCCmY+mOqS+K5mqlgdSH934r28tAOX9WWVpj/WBUbEvQSCeALRLKlhLFxs1T6adVrYxt2cb2ZQcjTpyIYHX5L4wVGfLeqihQpnRy6pVaVecB5JLiixUmHaVdgj3IRUZ6RBcAMtC2rDfjHrtQm+7vwh48cRP3VImoTNrwCy0lW/WMuGHrON0rIfDaGuwQNpGjrzk5mpUse0qkL4Jdm548v0LiETd5zTiKKhx7Ss/xr0+/l6WH/fuFyDC/asdPbmka7x+EzArbckQ7q74l6MLK4VszETSd3l4Z5DQ8aXDKlCJ3vd8Hkz1vLdDzhmDdm73F6wjgMG8Y+BCWA5UF0jT21DfrHGMhLyVXusYiHLG3xhbHek2hnOZ9ZXA849gJf+RgD",
+              "page_age": "645 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Central Park Zoo: Entry Ticket",
+              "url": "https://www.tiqets.com/en/new-york-attractions-c260932/tickets-for-central-park-zoo-p975564/",
+              "encrypted_content": "EucICioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDJM4SRU+upQreU+EoBoMWztJyRTklghKvPQeIjCQhM6DVKfzlReVMwK3O5IEiV/sI/2ya3znvvCPMCLejqNm3pvnl19G+4fXN/CwFZgq6gcn2nCcGHgCC/Ok4rFfN7hN3a8I5sXhz5W60ox+S/KolQTDF6d8V6gJ2UhHhc2huheDRlnOe5WbmySkM10c2t4WKelLgG9ge66+Wlf7DzUvqCw8VpThsARoXO3e5q4UyR8GBfaDG/e0wR6KqrXMe45vyBIhgMFTYpdTL6saNc9cSafco0cNWSJ9ECQgl+ZSbZCbaBeRn4beQWey2xbL7y/1Kbsl+3OjWmn9CcEjP5BmGEzym1M73rMmFkXZw6tcaRT7NhdWKEmPxQNbF+08NJfpDxXYPCpgzQs0zBNrinTrxvz+WrAqcigJXL2AhMxzyjEBW+1Aa3Ut4wdlslBr/9nQgqExoq7ATKwMyoyvNK2CVWhXUeUDJ9my3FmkndftXuFv6tnYtlrMFVsj5o7PQL2Bz+wTW2YX5sDgkAT25EHtd5eRMsnAMREmCtFPaITkHKH83p4WJIHmeYjtCV9KRHTXnVTDdtFIZPaeaoea3tjxCy/XWsgP4FBwP4JfAg9hntoKI2o1FWXcZA68cDW6ehwWbGjFZ87Ddi0BADwXOFg3ckRra9WDWxSBo0AyfztmbcHAF+1I4rYYusfdjHmLkBRDiAw2/fAxS++txySRI7umVsNq0hXRahOeBmv1q/mZP8HssqN6x6cxpAWTwYvcR7bOTSo7LYN3KjBWOTqQTewTOKEKcYgQCm4vK4ebb2PVRt4Z2C8amfEQ+SPxqAzpktOMtRRwAJ3TgX6WSS8oy2M1sNSfuFAFFM9kg7udxni3DZzJ7N17fq5m1B1dgkExUkEfOYeLOXIe3MDiit/kyrxggNl/+zaWilchPg9BolekI82sLO2qZy+GPjP1ZZkBgFRl48hIToJkaqvWVWGrRQpTYDqBEYpvzdZ/rNtX1SD2aV4OPeuS1E1Ak8f13J0F8VUk1d/f7cERA195r7LU8uGWri5cehLjCf4SBe3W58rIs/Pw/szkcJAdU0CXN2+YbFDLDL77auraKx/64JLn+kJSHjMpEWUQZHtvmEWbW3GmfBaQ2YGT+e0K1EcHPG1i+CqaCgw2vI4Th7Nfbb+XCYRmKAnBcZMerTmm+Vw99Y0FoYC3pIg06bmaNI5Zz7UOHkSgM1+FPWc+XqkhFO/GX3xeUqq7rTmdRPOoDDNazT0M9su8j36JGbq9zrRxru/+ld4NpQ6afcqwd/TlV0h0M09l+gxokXCAYLUkW9+wW1r4RUvclZiCchNLU8MGIl/SgtTieBxTuXNlvxqYkxIKVWG8B723JIFsNQYjJDKwbwIBbDnNSXqCzcGX92bsbGNrhi+ILGq9v0Wfwo9fq2SaDMhvAHtpAzsoh/KUjX4YAw==",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "title": "Central Park Zoo Tickets - NewYork.co.uk",
+              "url": "https://www.newyork.co.uk/central-park-zoo-tickets/",
+              "encrypted_content": "ErEKCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDDtjDwsbzGhG9TafMBoM7kXAKd3BbKlmnxPIIjBffhTP/xnWoZPZY6oK6tfwrGukiasWjc638K6e6g/ajL1mhgiWmde5ANSV18XNH9QqtAl6fsNB+KwYbh8zIsGOoXWgPUBCf9lXtDg3kjC7AIxa6gb4dSMEyfVA+RzdBDLrOqwy9/VDNax10DnFrDk5EPKovPFVgOwITX5BXLUmX0v5m56dJF/fyR3hHNI2+pOU/7mJ5+mTUApatuy85p6dz7Y2+ITJH1XoznFQNmTGCxxNytLmkReLYzGVZPJ9PgeP5NDSueXE2YZv6NiYubmo6dhZU8NhAz6/gKPemsCsvR3Z6fTZ87bEGrayzEmkD8AWXIM/1DkcKc5XzS3sW/f0CR+2cmQFYHqFPGAPL4M8zLA0Nsp8pLa4j7RO87ML9+pQ3jJGa/Ydx3w5TMiQ9YBNMX2I3LOu8+IHJn9r7lkxCEsdUkijk6T/yqDF0ZH8UDxf9mwdIaRxaqQx1BtKJ8KZNcIw0YyMuoPmsyo7JSqCnOmV8hFz+RKafZNDUCIshIDzdPV9LE3cnciv9aj9eJlM8WZ4DO1hYeqYGbpuRcmZO7ZsPZWQaR3Aojo61X6K+L9LyLVsleYLLxkOagAzrveQjguWRr90+9QuWCXg/XkJ+gt4dWsHczsD9hE9DCLeR/bJvz73Yi6N0a4T/CZ72qUR/+T77y+gRcw+2Sk3GeZuLqfpA1WO5r931PUgLH6DBT2WO9U1hvp3yis/44NxwFeEN0y2K1Nx3Qrwt4zMzxWgm6on757/OSvJhr2wWlVtmX5LvJCAv4F4cROo048t+TvBPqbmY+qqhgAKyZ3WVkBKMFol63qjFWpk8AFfNGiArW+aPzJxpJurg+nk+ZKKmnGJRtvH6Z/CbOYqvJYNfs+wXob/ndmJxBMlVu1LcdJGTzlsoUBT2EWKRrSnSuDjjJxsWTX8M/LQ0NYeZG7oVoml/ldPvqAGhreHpV0EPRLCuMjhvJF36KQFqQ+18SM6O+Ba/Pbmlavv7dXtZM0lUDouuXb2xYTI8T9l7Gw8wZevr0ZG48/9XnTJYb9BFK/hoMnymxqnq/JKaL2cJ13+DseWTTvUhkK0nnOLVo03xqIs5S1LowEsU/RFAQxrAclEYxM6W5zextT4C5BaiRrtSQmqjo/2iuMiuZ4T8wGhilfhZd9s9p5yFLkvNAP39eq0ijN1h6gDZA1h+Uhe4M/dKkyvthHp0aGGAeGxvRTosLNlfvG92En6mIsKpMW/hjOiMaIqIU2yl4j+vXd74pm148PWDKq+wkKQQ84EYrPkWBlu/5cAzCxmZJYwkOPfKW6svzLU9x0vk1idsej5cQKYmNej7akdecafYKwMaAKC+/UQYg6YKdzyM0MsVm06yY6gm8ZSfiEyV1fp6uzP6xaA5deKbxZhOLIp+5dKed1dxQPbOJ94AlMIqqReLwwNQ5ECMYf5FEJgZSgWL1bsZHGKm/MRHImHSR7zXg6JWBJDjRUsvsZM2UBUOoeD6HWOTZ4qtW8NMtO+oahN3axkdWkYmRODLslJ/Jxgt1yNvgrWzfMIRdL+EA0pFjCHmHPPQksirqN34vf2NZ/GvQljlEu9q5yUeffhZIPyqH00RInkJlC2usoBoDYoZLtLdvIT8+bzqGm7iFWQhIvXW+Ph+5It6VH8AyqmKZq9Vlt1MDuQ1vJOYK216oMTUSNXGAM=",
+              "page_age": "83 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "FAQs - Central Park Zoo",
+              "url": "https://centralparkzoo.com/plan-your-visit/faqs",
+              "encrypted_content": "ErUICioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDEtStRoPByXjdpFcPhoMNtsTR5nmtkifVXOBIjBTw8+sNlLVH+7wtckO8IJ4wbnkaz+lQUzmrgf3oyYzfGgJfMPhKyYPJrS7jkc/bf8quAftrKaSx4OqozKQ1teFZV+ljYzCNno38bUxV6bgQxNnRnqcBJHcjamoGy19bfdyAJI57kFgkgCz57UVV0n0eyfd7SK6NuOXkN/oeV6ialYbBZmBKIDB5Pkqdg8ttG084PfIqp/xx3vtwWnd0KEqd4El/sVeVast0rnruhglNwjGPVUatuCs9PiJ4Jj729qWnRr3uBe9Mc8i1WQ2Sz2d5+73YFcErMzJcZC9Ar4of19/M8xFnnSqqYeX5liwI6BtcebSnLCcAp51Ne+Dtsy+LF1TsDuOEEJ29mzLQk2QMa42A7Li2G1w7qbZozZJ4cUiDdjKX0Iqjk3Dq7PF1hnFldZvLprQuK2CWcNQidBOWtkGC8EHJRHBANx+NEfBoZhLe2g0xtW/fQVnuVhX3HU13+0U7R4jbu5poT0mSYFS6msY98LqgKWBZuu/sA2+Rz7+K7aeyCi3RtVY4DCSjmD6gbe29UusGk2vXAp1lMChfvnD4gJp/Yj5kek65x3sMzQ6LqUJpa1g4Jp79UqZ+ltPwX3nmT1UMIskQaE3xLofqlC8z+0JY1YG6bCpYSMq6CS83vzUZIC+dO+CxFk607tV1Bn7znMDCH2hS9ZE4XhhaFQjQtkXS8mAknORVYP0wPyZmL8IwbUDUWW/0vjU193C+9teod6pc7lhPzVxi7M6c7r4zcOh1qonSDTf9d33Ga8+c7/C0EnRLSFfmzLOpIHzR5LbDpohxz8wov5+r0jZXNTEpXhuO/+tyZdTlrbrPuhK3m5uUEvuyjwEse3EubXFVCJdU4hT/AieQIiHcUJFCeVLcNmEqujk1p8qc6ERzrNgG3EpVAguh+7ZA6Bl0Fk/dYpbhd1yDWBMIbR2GW95zz+2e21zzRop5ER2F9dLVaG6c3wZjj313dXwrGuzRnaMsIwPAgd6mebMdkksM3MiSbZq5qSWmPytWxBpJpc/IuoXEukeRJL4L4TJrB5DemaqawQeqUhkdHnKipicC5LEGcKGiYIzpCIQTkfqPvLdOavIOZ/taOfh910YTXbda6hcYdyF30e08KtKk3R2opoNvJO/W+n5e4puC/qKf2njX8pyP2aJCJD4N+XqQkSdIUlUcOWDGzbMi9F2qIUrC/PRrkYIWzCZ4pfmOn4rrMtW3JFR+RPbioyvIGeBOtfQmszSpWvRZSl/VpVTX6ojzmkv8qimEy7hB5G6Ibx3nhBPgTN5TcpzGT0hgNRD1B0SN3ba/3fMUC7HyOjJCO3/Zm4uNqMEGB+v+sK6xvDAGAM=",
+              "page_age": "1951 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "New York's Central Park Zoo Tickets - Hellotickets",
+              "url": "https://www.hellotickets.com/us/new-york/central-park-zoo-tickets/sc-1-3169",
+              "encrypted_content": "EpEGCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDGYWhTzKZIH0JwA7oRoMCTsfnORey6zopJ6FIjBlipF6fP7sZNdAXn4U5bxcdxy3YfnRD+4Q6omvjynAi2K9hajp1+U/iX0ZklZxJWYqlAWMTyIBmOkNJlq6yOwVmepXHBALKynuMP1BAahWmDLD6RD1oRefvzyojMl2BSb4hOIE+25H8C0dTyl1sM4LIJYbs5vreNGWZ8RGQQASgHCbbTxD1ezqpTyMM624CNT8yPVbJPJqHUbDIBg7myVpoRS1fv6RC/i3VLfIyGDvK7ZIdkvFxjkziMrDoa7jElpuP2CWxfKbYuMuMFjQe/gqG/yCixo7wEDP5KNEHrbuGuIYUkJVX2vK2b9QJaqIaMnelKk/A3egVMhuEUkHUsE8CDVQ9JL7Uh/tWrYijc9ChzrQuzNLOwqgzVn8WYcNZjMA2UCgBIof+ab7/7SyiQRygjtTlh1iBltV8HAbIOBPanHIsq3NyhBC2WG2Ka2B98/AkbZM8yF4UwiYWPUrV3MF3ydI5hKdUixkTXS89S3qXVg+u4zdYAI8B+Bp9UcTnE2jRuueIiUMv1oMKm7Gv+CxM3FKIzZ2grnXjZy+DE1kvcR6oahZ2FBBPdwEr45StedVTml21D2tqKtNr/yjnX98Er9/TqY4hbgV/uMa8wu93ddcwagqXTrpRWITKowIjhtEqY3kTjJ2UqJ92gNIy5bc1xEA5QQR+iEr8Q9sx489ITmWbbl7+5WOBDu3ajE45NXW6AjRedRafr7SA5ImaSEdnSOMg3x9Ro0j/WguVd40hogzx5BDy2sMYVKq906TJaB2XkrdCQTwwUdkzkDmlMPOWbXcSWFCnYy+ugT7VrIJwAwNCfVih5zcI7+hlRWmubIq1YUbtT08HsREQjKR0FedNML0dH2PiQAviTETJaj3WPQTS0FF+xOGXgWYVoTHgv+CN1f4er7A9vIEwem+NeXNaNq6gHGXtV/9tAsRgK9xFNsEfDzQM68YAw==",
+              "page_age": "447 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Central Park Zoo",
+              "url": "https://www.centralpark.com/things-to-do/central-park-zoo",
+              "encrypted_content": "EpwFCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDC3B39TlW8gFoP0+VxoMTUzbdhMMwtjiP+BnIjA9jHjqcX1hIJzT3RyO8gk3eCEXV+7zJY3wnIBBRovMCN9XrKfs75QESeaiKecffa0qnwTTI2hap9+n62B8IrylWAj/U9fD+VwKC3xzAeYI1L88+GSO7DghD4Gx2b/c5QM9z8TOMQiMbDAxBT7FQGFd38OVzEO9hVbzwu/WI9kmRjwUkFSviS5VzquW4tZyqDezKbdneIbGzMf4RadmYNsranCWvh52PUMoswlKhvskwS43fitACBG5bw+Ng0/Q6jsKmEhNc0pY2Qx0DkTi/osQDd9OIUhhPGu8nfSQBS+NjncQ3TJamaQU5Vp4Ftscn8ur54x0vHporIXt53w8RprttObrCca79C5z09aTC41b/7qN6md64mre1NSkTTVAUAViBsEU0YG1jtzB9tJ04Z0OL603vFBkl/POss2goWKWiRwNNtU8GLKiq4nhTo+BjTKzirl2bNQjd/dIzlDDApPpg7QBKXMUFnvuHlY8434x7IkRLpuaCW5JfES4yWHSRO6h7H5CsMMC9jeX5XYWKCvzkRcxa0JK8hjjay8Cfrl5wAIlAMvIcI+++WD2cluYow0myplY1o/mRxhhw/3y2I9CN6LwvNw6GweUAK35ZscshS3MxCZT87/qTudTpKwf+JS+nGHmsLPWrJ8sQt40D46nCEdR0/KhmFv3GUcdu2ogl4l9JmW1ZtfD72xL3155Z/hjR5fE96VuhluW8+59YyANVWayX7IOV5xWysll9fB7TrwXR6RDTiGcElvumRbixfSXAhr7s1B9NfSYkTVTU9oxSSAYAw==",
+              "page_age": "1455 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Central Park Zoo: What to See, Hours, Tickets & Family Tips",
+              "url": "https://www.newyorkwelcome.net/explore/what-to-see/parks/central-park-zoo.htm",
+              "encrypted_content": "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",
+              "page_age": "2417 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Central Park Zoo Tickets 2026",
+              "url": "https://www.ticketstodo.com/new-york/central-park-zoo-tickets",
+              "encrypted_content": "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",
+              "page_age": null
+            }
+          ],
+          "caller": {
+            "type": "direct"
+          }
+        },
+        {
+          "type": "web_search_tool_result",
+          "tool_use_id": "srvtoolu_01R9DsavYUy3EKdhoeBkuPjZ",
+          "content": [
+            {
+              "type": "web_search_result",
+              "title": "🐬 Free Admission at the New York Aquarium in Coney Island",
+              "url": "https://brooklynnw.macaronikid.com/events/6970fc901d84e65f477347dc/-free-admission-at-the-new-york-aquarium-in-coney-island",
+              "encrypted_content": "EpgHCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDAte8lbB8skTvqBzWhoMx3OLdbqEjzgpywuVIjALs6NfB76XVGWR3/G5fi3/+lSRPra/bWm2vCZ66YKqAFWGUxx+FqdgUWBXAnUAZ84qmwaSBv/dvLfciTpjbpiZ10jH5ZAJvbl1uSWWnSylSgTq642ayEzyW4oQaqVtQEAGK1qHjUEYMCUZU9vgBVXpUpr66c7iITM4EdQd91QKbFq6KNh1ynSTKim8C0IdJ6SE4VETQqRCnBovXMs3pCIc1pe48Yz0zfYeuIEeGj1Y+F9g3U9MqKnP1UPXdcPQNPKyIF1K0R4by4XS85hFFzYPAPHnJ+ddiEW6vMDEw55wk27CSD9k8LhvdzppcczIkfCPrap8pKPl617nxg2JqOJ7C0df1E1D4NwtxXtkb/bu6s2GF0DXHsOOlIdGNl2xqnmaIG77lFU98bJvKvK2ZfuK+7YWoRU/A3rFdz/wLRXC3bCza0diMG2zlmSIsRuxC9It0YPq8x4zGZqjBfW8dxPQl3PYVgpOOiR/reLIAfK2sThAVnWhQ5InnOWEv+LDsW89duN5zgj0FcmZl7icZ8UpcjvSaDBCPDF/RCrwc35rjtbxVV7POt37IZ4qZIiY90Rs6zGDQ0PR3CJgA3B6JACrRg1yW8nUsJIzudZlIE+dwL0SdwIeMScmmIHx4Qs7iAhJ6eBMVELoVqKJR2nxxesc8JJrH5Mz1PqOyxN+nfFnWrwBTwRq90KIG5w5h7VK9smgDhZazLS5ByPYKQjX8vC95DGM3WttrIocd/65TSgRMQRL9/KFQfeB/zRAW4H6L8D1IZ/KN/6LEWi425WkmUxeX5RYioG+R6K2zFzl6Fz+IGwVg4w+OxCev8gdMW11ZUkbAvk1jnNE4d71rlxdNVriPDIpvBTL0/nZgs/G5qevUxyORe/OO6nPMB5YUkUVj0RqLeI1Rf2uFN9zvqaCfhK5G0Fh8M32ehyZMJkQyEPXPsBv+ZQxU++hb7hWGrEWu0ITghzGreVtWinxDKo/NbQo1s4wxbrdKz3ByzP+85fJmszZq6gjgz6U/41BwsniTSQoxJxwH2ao3a/HYCbbiT3UAe2cU6l6JAX94g/dUZiKfjCmBrsx9Iu0C0XZtuIcsSKDihzAok9e8DniLr8J5cSrE1qGGxattQxYcFDRE9sYAw==",
+              "page_age": "197 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "New York City: New York Aquarium Advance Admission Tickets 2026 - Brooklyn - BOOK NOW",
+              "url": "https://www.viator.com/tours/Brooklyn/Value-Admission-Tickets/d22371-156679P4",
+              "encrypted_content": "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",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "title": "New York Aquarium",
+              "url": "https://www.tiqets.com/en/new-york-aquarium-tickets-l146582/",
+              "encrypted_content": "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",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "title": "New York Aquarium: Entry Ticket",
+              "url": "https://www.tiqets.com/en/new-york-attractions-c260932/tickets-for-new-york-aquarium-p975553/",
+              "encrypted_content": "EsUHCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDJOEkQyxjCrWQFGbVxoMmS8ILlsh/Y4WJXXXIjCNucGhRpKGkYt+D2ayfbuMqy00XQbDXqzpVyx03uOKLKcKqlMfeteNODWXL2gb9/QqyAbVgeOH5RRg8HA0xq0vct7YB/+qLc+3l33zmqx43pklcBT3ptupZ98Ilnl9NUB/ypr/JosAPSVkZiV0AjnrGRvQufh7k8UovgnmjR3L4MXXpmkL+6odYt7W2cOfEbtkWVk4QDK+MYDKh42c2mHVrfT4gccBdpHrwmyQu6LA6EmwejqLFGer/ZqQFYLudNtL0jPyuhsX50z30haUajuYPxUE4yeo3e6swvFW91FTUBxW7ANfGRiPLMGaWEGArG0PBX7OrYKynbAJ/F3rOAxgxpMN1gve1SG7CowZrH6RgfZe6sE7aRzAHmoOttMntng1wAk54k7Nlx2Q7rQX50Oy4jERpxswK8HhwzSBUf0y4JN3nTR6cEL6/phwEE6VAutaKN5r3J6Ab9fR6ddrSybflsLa9ik8UEvgQa/olWjPSa5R7NLtY23tRh0BgyigiM0obbOyaXNRwmKcgKKYgezYjLANx009k6zI4OwGGYyeMet8W/Gu0zcxHD9dF+UXdQXPthy6lR5LxwgUIyKJmHuj0day+Bri+vwFwZbhMtahZH8kvFH92k6kkwjkwAbdFWuTT/l78Ub4jnDRnyJkEN2wTHM6FL/7fAiWqz6p/AF7s9G3XbfN0W19lNjuylDVeiWT0+OOxntwhgoBZjz7/4jEWoXDxXAVpX+twh82jANuMqDI7M7NHvoJd+f+pqdJbw76Q+pjP+pXswCtGU/yHLtLT5150qFukpUVK8eedsMCPMKRbpzFI6Yaq+6D5JFZTjaDr8m8unccgffrPC8M8jGqR2N0LBc2NmU0gn3EwhDZ0Twtu2lqjy3mk9O2gBSf7r37m/X/HH34t0JCEzcvCUysE302Bx9IaUz1tIEWAWpMYpUF3q9uWc9rikz8Kww+6rzPkgZ+Q4Lk+FrxIZS7zX0hxe67icOshqYgOZOuvr71hLOJeXYEf9D3gPB2JNZ2Z5b4RnUfIoQUia08UjWU8v657ccmurUE2kDBtnveB0pbNgQ/Jp41IDmngv8jjJy+eptzMU49PJjmE2mjPgrXiAB32IN9CrXBGyyhOjHDXjpgv4Ek6uVBIJm4YWUnmNQX7Rklf3Mhlu6pTum1+PVSGBxOWwDyorXPN4BRudkYAw==",
+              "page_age": null
+            },
+            {
+              "type": "web_search_result",
+              "title": "New York Aquarium Tickets - Hellotickets",
+              "url": "https://www.hellotickets.com/us/new-york/nyc-aquarium-tickets/sc-1-2035",
+              "encrypted_content": "EpgKCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDIDmt6OWcRckZThLWxoMdMq+UKde5vcaBcVAIjDLET1AiWaMHYipr8Wflf32WowuXJmMVJaZiD7Ngaq24IriFt+Nz6IK7q16NpkgtMgqmwnkvUA/qdQpAOnonPg4kNqfPQZAbTvKEI2F+61yStSl4rp3HyORGRJIpKjy6iP9VEAu27hniXCri3kXEflzT/1FNr0ijbWEKgEZvikY5XTkAghBnPStMgWR7tN55qqv/teDQQKTIFIfv8V32vDSoya6mXAtEwEy1NOktAQ1g42nTjgcFaZ2onK9IRmGWut6PCIRlwH4DFpb9ASHhxgnuvoke5gAar+M3zYRC8CMcrL57k5mcre6pA+5y1LJklOgdTSDDe+Oo1DuriG1NqBlac0WxPibMMZYSnf3g3NGrZhj4j2I8VFQHqucz/7wCVC5naeW88TBE0x5+Is8rwEmpliOrWdDjR7nst0QYbwvCMCuqHler8+nJlrDY8zoHt5B8r8OA6e3u6Y7IYfRNeYshQRHGs0/RowfbbFMxd0kMLXn+jkAriJmCsWxKtdP4ALjJHN4lO6FKVqSshptW8SmeDz1cjhjeSygncH/OL2Mzd/WmuLIIyu0dDVAqunrl5Z3i73O4Rm8LBYtHeY9F6rGl9nFjcc/NpVBGJdTWqRo8NqqP6XDwqS7eUykmQflHZN2lFt6M2FWfvPMyC0SR7BQfT+Hbpo639VtXs3mg/CK7EU5uiBGQ6aFSzKoy+GMP8Tj7Xh/9zx/3NrQWtzwlGI1QnO93UbLYqHYPzJwhIEoErGEXfr+p3yit0KSrqudEk4vqjGIbbQw/pJ5l49D84egTgcKppsUEBTGyiZHJZk2Z5RJ6PR4x2yhEkMB8ccA+NQKi6geoZfhs9FWt5FuI+9f9YfN/ln9OJYK9eq3V7Hvy5o1JH+D9OWEyiHCgo3ocw/o5F3Twa4Lc2BSBCO3xrkJ0RSNjMzuz7WqR+EYLaXNOpWFQ47bL9x1sMxiww4occZqvGjqK/mYoh6DMBAsJLCZqsjzaF43D7sd6TJz6ezFZrkg+UR5t7bCGA/bn+GUZOIEddUiXFVQ6wODUVLDlFt7sDWPTXuDTbMUQBJ5MKEQSw9ZVWVGi6BjRegS+0R1JjpNvuwV3buKtJXjIP00R3yxk5retFXAyE6Mwcl3hqIjeRDNJ+6oz6esS4JcchhNv7GTkyrfKdJlYxDpdJdSsjp8vejC9i8kGt//vAS9zkD+u8aaesNhfi/u+sCGf3rQoi3Jpj8EsFwYseKZDllbALrvgSt4S/BgENNj/3ymjzLEnoGynAumvs27IYMm6yik3MeqXL3d/p+rvXJ3fUTlA/J5vcyf+C+U89SnKSA3mmyai+b5wcaTWKnufW1z1HRCWl6dxnWr5noaEPcp9UMTkgwnDoMY/NOtzv44y0RKMxJUcUB8DTkN2xGKrtuWcIWzVcxpmI5xhAD1DTtSaSLJ6voRV49r27vFICXQnceKYcmYn8d9nz+uqsq4DLJ32jJCcJvFp3e12rCemfH6dcM7GCxOBYk7JddIEolP+UmiFmv6WCqvRdjiEsrV7GzC2N5tjJ/UGeDII2IIV1+HsX9RJvJFaT/uiswd4AZTbejbvXpf8Ng5v52XGhGht9PSSqB3yGVgZwhqZ1zNU2YoK49s47/fuZF74gh+75sps73CTwsYAw==",
+              "page_age": "449 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Hours & Rates - New York Aquarium",
+              "url": "https://nyaquarium.com/plan-your-visit/hours-and-rates",
+              "encrypted_content": "EpIICioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDMZXtPn8rVSvan+sCBoMU8PEziLAx5NRaGrSIjCIR9rXf4xl9jQ260xfl+DQJT2wsO8EzusVClZWR8gseJPraaiBW4mVfOkzeFxTiAIqlQeFnjbOjbsZPSaFjE6KneZtgma8q1TcZ1kCGp8TNQQnCAcYalIUc1gY4T8PE6cc/ZrteCVfwCR7+xt7uWhOaRyh9fXefrCpwnPRsbo/BMM44XyUy2wFn/10uXuhqDZvK4Tj9oKU1f7tz9DjyzOf4Jei21V4yOGqvzpqV3tK2CKLL7Bcl0nfqvQiLGDN4kLXzwDJ8QdrYqTDsj7eRyVDNzFsaYW1o7J0ndlsNxzVgZLXANjkZkpgjuDzVuxuOPflVQfJN1b8dmTa6GeD8fpPid8koITSbYdLRrqDkquQyigf3p77QwQtFC3SbqoOu3Xe40BVmjrOca9NkLL4g66nboOJW2FOvfbnar9UgQu0j1Ee/ksoaV9qI/Vv/LhlV8GxV0kkTg/GITXARGGbmSvu345zt8/ImxDEQIMjED8kYCyvo3C3pIAUlTmjVvAoIXw4y8bWsnD/ES59Y50CceMS3Ms9eMPTGOLSSQNrc2+izliAjGgtEh6YLIcKqEsJyMjBuqgOh6RCpZQYvby2r8x5xSwSpX7RhAu/Z/GbSDdmLB3sFMhEOHWwt+7Kudg0uTVM/xB1P/VN3FrXVKgIeDmRaKTDk5VJt4L9OXYgA8XdV+JVIMmJeg0vGjQtv3ABZZyloQ3N82VZV/2yAlnLJVQcwEzmg+co/MGgKME0Q/iGYniFJJzNw5znExbDYjv8Eksh4yrKP6CH+p810VLg7QODMEgBctXrbZpJRCDY2lIvNhguWEi1NMIN+u30dm1h28qSLJ9tdSrgLTbP9GlDb4TB/qsBj0IxWKffkX8WiKn4AeNv0HL3IZrjFmheKWqwN4SrcrBU/3tILWCIekfkcXKLEzba5wJzBFABKVQkmcmKKOMma2ixDUZ/Eqq+eYYTxbQy65vX2EXRzyA2CVjvWpjRqHRXH85uNRwV6ch5EaKCX3MBzecD78ZxwguQiXfcB0TFnW70DRGoO8y9pgl3DKA/LCZ5j06hNFdsuYCaM+ouJLTW6U7fBmrDC3p+D4YICEOv63vM3jLEDHczwz880zKJl3ZwSi4fLzsXJOPzs+p9LNxD5HWHxKmmheIjRV+uuj2nIm2vIm/pPyAh2J4+/Lni7RlHY+qSohjGp5LmY0ov122cHyp0mn9vs2EsXvVvC2T/p+kLdJ+mxm3Hc9vi6RnssLXkZOy7Ub55+ffouYl3Gg+2pn9SRPgdF36izI5QJQhQyG1DwhZkRBgD",
+              "page_age": "348 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "Tickets - New York Aquarium",
+              "url": "https://nyaquarium.com/shop/ticket-options",
+              "encrypted_content": "EswCCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDJjT0AN0zZNmM67AERoMVJto+wSz8m66N2gTIjD8MRCQSZQR9etlXPIKOcgmfugpO7JBIzftCU81wvAmm+XQ0s9GEwL6kQGgRJCf+WMqzwEId3K4CobhfXRVLev+97gLekfAsR09TmRFZL9G3WwZjsgpB2qCxlrOfHzSvGXK5HnCrwbFpR9uco6V6rvspc5zLJpdLhGQ8XbhUOqbxSOSiKEwZQThMpoBdwBcGxNsCcaxdQ+EPADrvMdFSZKWtUPhef4dvdAewzDxrggvFGU3f+44W+I9+d9zL9ILsiy+yGGc+i5FxZz+M2urbTWzvguIzQ2uLrRpkmMX8+Z0Mav6JI1GABmO+XUudSA7gcyDvZSF15XgRLEft+SlX29PicYYAw==",
+              "page_age": "1626 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "A Guide To New York Aquarium (Coney Island); Tickets, Hours, Parking - Bklyn Designs",
+              "url": "https://bklyndesigns.com/new-york-aquarium/",
+              "encrypted_content": "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",
+              "page_age": "1459 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "New York Aquarium Tickets 2026",
+              "url": "https://www.ticketstodo.com/new-york/new-york-aquarium-tickets",
+              "encrypted_content": "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",
+              "page_age": "526 days ago"
+            },
+            {
+              "type": "web_search_result",
+              "title": "New York Aquarium: Entry Ticket",
+              "url": "https://www.tickadoo.com/new-york/new-york-aquarium-tickets",
+              "encrypted_content": "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",
+              "page_age": "147 days ago"
+            }
+          ],
+          "caller": {
+            "type": "direct"
+          }
+        },
+        {
+          "type": "web_search_tool_result",
+          "tool_use_id": "srvtoolu_01Lk3PycQznZ2PdGgRaPZUAA",
+          "content": {
+            "type": "web_search_tool_result_error",
+            "error_code": "max_uses_exceeded"
+          },
+          "caller": {
+            "type": "direct"
+          }
+        },
+        {
+          "type": "thinking",
+          "thinking": "",
+          "signature": "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"
+        },
+        {
+          "type": "text",
+          "text": "I found three places a family can walk into on September 12 to 15 with a preschooler. I read each one's hours off its own site.\n\nI'm assuming the dates are Sat Sept 12 to Tue Sept 15, 2026. If the trip is a different year, check the days against each site.\n\n```json\n{\n  \"picks\": [\n    {\n      \"name\": \"Children's Museum of Manhattan (CMOM), 212 West 83rd Street\",\n      \"age_fit\": \"children ages 0-6\",\n      \"when\": \"Tuesday-Sunday, 10 am-5 pm; daily programs include Circle Time at 10:30 am\",\n      \"source_name\": \"Children's Museum of Manhattan\"\n    },\n    {\n      \"name\": \"Central Park Zoo (includes the Tisch Children's Zoo)\",\n      \"age_fit\": \"Not stated as an age band on the zoo's own page\",\n      \"when\": \"Opens 10 am daily; closes 5 pm Mon-Fri and 5:30 pm on weekends; last entry 1 hour before closing\",\n      \"source_name\": \"Central Park Zoo\"\n    },\n    {\n      \"name\": \"New York Aquarium, 602 Surf Avenue, Coney Island\",\n      \"age_fit\": \"Child (3 - 12) ticket; Child (2 & Under) free\",\n      \"when\": \"Daily Sept 8 to Oct 31: opens 10 am, last entry 4 pm, closes 5 pm\",\n      \"price\": \"Child (3-12) $25.95 off-peak, $27.95 peak\",\n      \"source_name\": \"New York Aquarium\"\n    }\n  ]\n}\n```\n\n"
+        },
+        {
+          "citations": [
+            {
+              "type": "web_search_result_location",
+              "cited_text": "**Museum Hours:** Tuesday–Sunday, 10 am–5 pm\n\n# Plan Your Visit\n## Admissions\nAdmission to CMOM includes access to all exhibits and daily public progr...",
+              "url": "https://cmom.org/plan-your-visit/",
+              "title": "Plan Your Visit - Children's Museum of Manhattan",
+              "encrypted_index": "Eo8BCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDD64f+i6ugZaVA2VthoMOmPzTuR0DtUU/UJHIjDtZfmPYO9ItIPS/nXnzFm1xSRKTUy92LdO//w+u27h7kJ1XT7DNG2Jxf4kOmpCzPoqE8BbkJJnDy8mAZfr+AlwbwcH2QMYBA=="
+            }
+          ],
+          "type": "text",
+          "text": "CMOM lists its hours as Tuesday-Sunday, 10 am-5 pm"
+        },
+        {
+          "type": "text",
+          "text": ". "
+        },
+        {
+          "citations": [
+            {
+              "type": "web_search_result_location",
+              "cited_text": "Located on the Upper West Side, our engaging exhibits and programs inspire children ages 0-6 to explore arts, science, and culture through hands-on ex...",
+              "url": "https://cmom.org/",
+              "title": "Children's Museum of Manhattan",
+              "encrypted_index": "Eo8BCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDIsjdgIUVwNCso86kxoMRvsb5HPOBWv5B55hIjA41fn4yOTf/0nWZY3cBx9kNpv4Tm5NgZX3Grv2QOCE64pdCWxyyfNAnNNHw7bXhNkqE7thVA2AGNGfHFE4b+I9t801uW4YBA=="
+            }
+          ],
+          "type": "text",
+          "text": "It describes its exhibits and programs as for ages 0-6"
+        },
+        {
+          "type": "text",
+          "text": ". "
+        },
+        {
+          "citations": [
+            {
+              "type": "web_search_result_location",
+              "cited_text": "Tickets can be purchased online in advance or right before your visit, and you’ll save $1 when you book online. ",
+              "url": "https://cmom.org/plan-your-visit/",
+              "title": "Plan Your Visit - Children's Museum of Manhattan",
+              "encrypted_index": "Eo8BCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDAstlzN/nZwjiGPQvBoMhaypHMd1WIFLWZfwIjDgtHmqbJB5g/yZGUj3zKQB8+2bQGwyu0r6NFQvv8lib7vqMdRl7fymGk/eANzrjRcqEyO+l4Zc8jhGfYiPm42Mm0UsmKwYBA=="
+            }
+          ],
+          "type": "text",
+          "text": "You save $1 if you book tickets online."
+        },
+        {
+          "type": "text",
+          "text": " Its pages disagree about Mondays. "
+        },
+        {
+          "citations": [
+            {
+              "type": "web_search_result_location",
+              "cited_text": "**October – June:**\n\nTuesday – Sunday, 10 am – 5 pm and federal holiday Mondays\n\n**July – September:**\n\nMonday – Sunday, 10 am – 5 pm\n\nYes! ",
+              "url": "https://cmom.org/visit/visitor-guidelines/",
+              "title": "Visitor Guidelines & FAQs - Children's Museum of Manhattan",
+              "encrypted_index": "Eo8BCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDOQ8MbmuK0YjUqpq/RoMs5xwEpUSVlsmClyMIjBNCGEYIM9keGL9DKI8CvSbTvanpMUhsdnc/2JQa/6iBdlYiS2dU1k8N5GshL7wVy8qE7z3p7zTpyrF4+TpE8G2Anji5uYYBA=="
+            }
+          ],
+          "type": "text",
+          "text": "One page says it is open Monday-Sunday from July to September"
+        },
+        {
+          "type": "text",
+          "text": ". The main pages say Tuesday-Sunday, and the visit page says daily only "
+        },
+        {
+          "citations": [
+            {
+              "type": "web_search_result_location",
+              "cited_text": "# Plan Your Visit\n**CMOM is open daily (through Labor Day, September 1), 10 am – 5 pm, and Holiday Mondays.",
+              "url": "https://cmom.org/visit/",
+              "title": "Visit - Children's Museum of Manhattan",
+              "encrypted_index": "Eo8BCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDIKl2cZ0EG2h5yvYghoMFn6kZ6P2fN3SnyMAIjAgr4cmxfpI4UkB4jKbSn5KK5WfUU9um10HnlDkiezREiXeRQjMUcyKkljIiFq91bUqExT9JvXJpVwRY4AC8AzyK3F2+ycYBA=="
+            }
+          ],
+          "type": "text",
+          "text": "through Labor Day"
+        },
+        {
+          "type": "text",
+          "text": ". I'd plan around Monday Sept 14 being closed. I did not find a current ticket price on CMOM's own pages, so ring them or check their site.\n\n"
+        },
+        {
+          "citations": [
+            {
+              "type": "web_search_result_location",
+              "cited_text": "We open every day at 10am. April – October, the zoo grounds close at 5pm Monday through Friday, and 5:30pm on weekends and holidays. ",
+              "url": "https://centralparkzoo.com/plan-your-visit/faqs",
+              "title": "FAQs - Central Park Zoo",
+              "encrypted_index": "EpMBCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDAhK7jDUBMctcQW8/RoMDyhhKffoVRxqfHONIjATGZ84mcT60mtjr+dwI1/m+SD78SlC6GMX680a7Eb9cCNpe1vsxXcXtCBVVYagkxwqF7I0ZkwHhmL8Vz5fI6c8rQcgqWC2Jd6cGAQ="
+            },
+            {
+              "type": "web_search_result_location",
+              "cited_text": "Last entry is 1 hour prior to closing.\n\n",
+              "url": "https://centralparkzoo.com/plan-your-visit/faqs",
+              "title": "FAQs - Central Park Zoo",
+              "encrypted_index": "EpEBCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDN/QrEVaXFrMzuSSJxoMvbNM5bs9BXKA+DRTIjA8XcjvQ6RqX4Ds7iY+bMm4SRpypHh9QWdWoLDiDxnF+pDAU8BwhA0sGSU6sFYOedcqFZ3Gh/clROp8P/CabYR1Qn/uJWtVAxgE"
+            }
+          ],
+          "type": "text",
+          "text": "The zoo's FAQ says it opens at 10 am every day and closes at 5 pm Monday-Friday and 5:30 pm on weekends from April to October. Last entry is an hour before closing."
+        },
+        {
+          "type": "text",
+          "text": " "
+        },
+        {
+          "citations": [
+            {
+              "type": "web_search_result_location",
+              "cited_text": "Tickets are managed by entry date, and sales are subject to availability. ",
+              "url": "https://centralparkzoo.com/plan-your-visit/faqs",
+              "title": "FAQs - Central Park Zoo",
+              "encrypted_index": "EpABCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDFLWWhwrSbGZtnOyMhoM18uZrpstM/PgpWF2IjCWj8pNCKcmglEmFn+2y8qazDalDp8UfDLa8zEN7vm30wi/uN1xKLaZ59kiijuITcsqFDMFAW4ZBxkzzKO5au+y0BVqnw42GAQ="
+            }
+          ],
+          "type": "text",
+          "text": "Tickets are managed by entry date."
+        },
+        {
+          "type": "text",
+          "text": " I did not find prices on the zoo's own pages.\n\n"
+        },
+        {
+          "citations": [
+            {
+              "type": "web_search_result_location",
+              "cited_text": "Join us for a full day of family fun, with NEW expanded animal chats, Sea of Illusions, ...\n\n# Hours & Rates\n\nHours & Rates Group Sales Parties & Even...",
+              "url": "https://nyaquarium.com/plan-your-visit/hours-and-rates",
+              "title": "Hours & Rates - New York Aquarium",
+              "encrypted_index": "EpABCioIFBgCIiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODkSDK4og0Vf8Ey+y+gSCxoMinzljDviYfy8NZUGIjCiHA5wss+NjF/k5NR1RL5R+ihwRo6XEqeFhSSvwQ8scSLbtCjcYKNphMs7kCLrqccqFDfZxJqbQy4Zd70d7eMn2TDYqyJDGAQ="
+            }
+          ],
+          "type": "text",
+          "text": "The aquarium's own rates page lists the child (3-12) ticket at $25.95 off-peak and $27.95 peak, and children 2 and under free."
+        },
+        {
+          "type": "text",
+          "text": " I could not tell which of your days count as peak.\n\nThe aquarium is a subway or bus trip out to Coney Island rather than a stop in Manhattan."
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 41126,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 3064,
+        "output_tokens_details": {
+          "thinking_tokens": 1756
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "server_tool_use": {
+          "web_search_requests": 3,
+          "web_fetch_requests": 0
+        }
+      },
+      "diagnostics": null
+    }
+  },
+  "620179d11426d39de447dfaf0028637f5a8a51ce6692d62c78d48ed0aaeebc39": {
+    "key": "620179d11426d39de447dfaf0028637f5a8a51ce6692d62c78d48ed0aaeebc39",
+    "recordedAt": "2026-10-15T03:03:51.215Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"subject\":\"things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds\",\"town\":\"New York, NY\",\"stage\":\"preschool\",\"window\":\"September 12 to 15\",\"research_notes\":\"I found three places a family can walk into on September 12 to 15 with a preschooler. I read each one's hours off its own site.\\n\\nI'm assuming the dates are Sat Sept 12 to Tue Sept 15, 2026. If the trip is a different year, check the days against each site.\\n\\n```json\\n{\\n  \\\"picks\\\": [\\n    {\\n      \\\"name\\\": \\\"Children's Museum of Manhattan (CMOM), 212 West 83rd Street\\\",\\n      \\\"age_fit\\\": \\\"children ages 0-6\\\",\\n      \\\"when\\\": \\\"Tuesday-Sunday, 10 am-5 pm; daily programs include Circle Time at 10:30 am\\\",\\n      \\\"source_name\\\": \\\"Children's Museum of Manhattan\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"Central Park Zoo (includes the Tisch Children's Zoo)\\\",\\n      \\\"age_fit\\\": \\\"Not stated as an age band on the zoo's own page\\\",\\n      \\\"when\\\": \\\"Opens 10 am daily; closes 5 pm Mon-Fri and 5:30 pm on weekends; last entry 1 hour before closing\\\",\\n      \\\"source_name\\\": \\\"Central Park Zoo\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"New York Aquarium, 602 Surf Avenue, Coney Island\\\",\\n      \\\"age_fit\\\": \\\"Child (3 - 12) ticket; Child (2 & Under) free\\\",\\n      \\\"when\\\": \\\"Daily Sept 8 to Oct 31: opens 10 am, last entry 4 pm, closes 5 pm\\\",\\n      \\\"price\\\": \\\"Child (3-12) $25.95 off-peak, $27.95 peak\\\",\\n      \\\"source_name\\\": \\\"New York Aquarium\\\"\\n    }\\n  ]\\n}\\n```\\n\\n\\nCMOM lists its hours as Tuesday-Sunday, 10 am-5 pm\\n. \\nIt describes its exhibits and programs as for ages 0-6\\n. \\nYou save $1 if you book tickets online.\\n Its pages disagree about Mondays. \\nOne page says it is open Monday-Sunday from July to September\\n. The main pages say Tuesday-Sunday, and the visit page says daily only \\nthrough Labor Day\\n. I'd plan around Monday Sept 14 being closed. I did not find a current ticket price on CMOM's own pages, so ring them or check their site.\\n\\n\\nThe zoo's FAQ says it opens at 10 am every day and closes at 5 pm Monday-Friday and 5:30 pm on weekends from April to October. Last entry is an hour before closing.\\n \\nTickets are managed by entry date.\\n I did not find prices on the zoo's own pages.\\n\\n\\nThe aquarium's own rates page lists the child (3-12) ticket at $25.95 off-peak and $27.95 peak, and children 2 and under free.\\n I could not tell which of your days count as peak.\\n\\nThe aquarium is a subway or bus trip out to Coney Island rather than a stop in Manhattan.\"}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg3HDbg8EhaHGvoafkRh9",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "",
+          "signature": "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"
+        },
+        {
+          "type": "text",
+          "text": "{\"picks\":[{\"name\":\"Children's Museum of Manhattan (CMOM), 212 West 83rd Street\",\"age_fit\":\"children ages 0-6\",\"when\":\"Tuesday-Sunday, 10 am-5 pm, so Sat Sept 12, Sun Sept 13 and Tue Sept 15; Circle Time at 10:30 am; its pages disagree about Mondays, so plan on Mon Sept 14 being closed\",\"source_name\":\"Children's Museum of Manhattan\"},{\"name\":\"Central Park Zoo (includes the Tisch Children's Zoo)\",\"age_fit\":\"No age band stated on the zoo's own page; includes the Tisch Children's Zoo\",\"when\":\"Opens 10 am daily; closes 5 pm Mon-Fri and 5:30 pm on weekends; last entry 1 hour before closing\",\"source_name\":\"Central Park Zoo\"},{\"name\":\"New York Aquarium, 602 Surf Avenue, Coney Island\",\"age_fit\":\"Child (3 - 12) ticket; Child (2 & Under) free\",\"when\":\"Daily Sept 8 to Oct 31: opens 10 am, last entry 4 pm, closes 5 pm\",\"price\":\"Child (3-12) $25.95 off-peak, $27.95 peak; 2 and under free\",\"source_name\":\"New York Aquarium\"}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1120,
+        "cache_creation_input_tokens": 5761,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 5761,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 965,
+        "output_tokens_details": {
+          "thinking_tokens": 509
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
   }
 }

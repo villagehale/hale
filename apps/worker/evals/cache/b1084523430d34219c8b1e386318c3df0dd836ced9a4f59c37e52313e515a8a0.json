@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot is accurate. Name, age band, days, times and dates are all exactly as the program page prints them, and it cites that page. Price is null, which is correct: the page sends people to the front desk for fees, and no rental figure ($185 or $95) was borrowed. Registration is null, and the notes print no registration date, so that is correct too. The message leads with the slot by name and attributes the facts with 'their site says'. Under page_has_schedule it uses the first-person 'I could not pin down the price', which is the right form. watch=true, so 'I'll keep watching and text you' is backed by a real commitment. It is plain ASCII, has no link and asks no question. One small nit: it could have said fees are at the front desk, but nothing is wrong.",
+    "score": 5
+  }
+}
