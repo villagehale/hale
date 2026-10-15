@@ -20,6 +20,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tsImport } from 'tsx/esm/api';
 import { CRISIS_FIXTURES } from './crisis-reply-fixtures.mjs';
 import {
   JUDGE_MIN,
@@ -34,6 +35,7 @@ import {
   scoreFirstJudgeSchema,
 } from './lib/harness.mjs';
 
+const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'opt-out-read.md');
 const SUBJECT_MAX_TOKENS = 400; // MAX_TOKENS in opt-out-reader.ts
 const JUDGE_MAX_TOKENS = 4096;
@@ -101,6 +103,7 @@ async function main() {
   }
   const ids = await readModelIds();
   const model = laneModel(skill.task, ids);
+  const lane = (await tsImport(AGENT_SRC, import.meta.url)).pickLane(skill.task);
   const getClient = lazyAnthropic();
   const cost = makeCost();
   const judge = makeJudge(
@@ -122,6 +125,7 @@ async function main() {
       await cachedToolCall({
         tag: `opt-out-read:${f.id}`,
         model,
+        lane,
         system: skill.instructions,
         // optOutUserMessage: a hint only when certain (French), else null.
         userMessage: JSON.stringify({

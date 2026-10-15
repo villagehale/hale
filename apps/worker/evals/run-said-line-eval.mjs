@@ -17,6 +17,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -31,6 +32,7 @@ import {
 } from './lib/harness.mjs';
 import { SAID_LINE_FIXTURES } from './said-line-fixtures.mjs';
 
+const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'said-line.md');
 const SUBJECT_MAX_TOKENS = 500; // SAID_LINE_MAX_TOKENS in said-line.ts
 const JUDGE_MAX_TOKENS = 4096;
@@ -129,6 +131,7 @@ async function main() {
   }
   const ids = await readModelIds();
   const model = laneModel(skill.task, ids);
+  const lane = (await tsImport(AGENT_SRC, import.meta.url)).pickLane(skill.task);
   const getClient = lazyAnthropic();
   const cost = makeCost();
   const judge = makeJudge(
@@ -150,6 +153,7 @@ async function main() {
       await cachedToolCall({
         tag: `said-line:${f.id}`,
         model,
+        lane,
         system: skill.instructions,
         userMessage: userMessage(f),
         toolName: 'said_line',
