@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://weather.gc.ca/en/location/index.html?coords=42.293%2C-83.051",
+    "https://www.accuweather.com/en/ca/windsor/n9a/weather-forecast/1183",
+    "https://windsorite.ca/2026/10/weather-tuesday-october-13th-2026/",
+    "https://weather.gc.ca/en/forecast/hourly/index.html?coords=42.293%2C-83.051",
+    "https://www.theweathernetwork.com/en/city/ca/ontario/windsor/7-days",
+    "https://globalnews.ca/toronto/weather/CAXX0546/hourly/",
+    "https://www.timeanddate.com/weather/canada/windsor/ext",
+    "https://en.wikipedia.org/wiki/Weather_records_in_Windsor,_Ontario",
+    "https://weatherin.org/canada/ontario/windsor",
+    "https://www.weather25.com/north-america/canada/ontario/windsor?page=month&month=October"
+  ],
+  "notes": "Notes are for Windsor, Ontario, for tomorrow, Tuesday 13 October 2026. The results agree on the main points.\n\n- **Overall:** Environment Canada's hourly forecast has sunny skies from late morning through the afternoon, with 29°C at 2–5 pm. The Weather Network has a chance of a shower in the morning (18°C, 40%) and a sunny afternoon at 29°C that feels like 35.\n- **Early morning:** The Windsorite's forecast for the day has a 30 percent chance of showers early in the morning with a risk of a thunderstorm, then clearing in the morning.\n- **High:** The Windsorite gives a high of 29 with a humidex of 35. Global News has a high of 30 and a low of 15, partly cloudy. AccuWeather has a high of 87°F (about 31°C) and says the temperature may break the record high.\n- **Wind:** The Windsorite has southwest wind of 20 km/h gusting to 50, increasing to 40 gusting to 60 late in the morning. Environment Canada's hourly table has west wind of 30 km/h gusting to 50 from mid-afternoon into the evening, easing to northwest 15 km/h by 8 pm.\n- **UV:** The Windsorite lists a UV index of 6 (high).\n- **Evening and overnight:** The Weather Network has a clear evening at 24°C, then a chance of a shower overnight at 15°C. Environment Canada's hourly table has about 20°C near midnight. Its 7-day page says showers are likely overnight, with a risk of a thunderstorm.\n- **Wednesday:** Environment Canada has cloudy skies with a 60 percent chance of showers in the morning, a thunderstorm risk, and a high of 20.\n\nSome of the pages carry timestamps that don't line up with today's date. The Windsorite's 7:00 am post for 13 October and the Weather Network and Environment Canada pages agree with each other.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 17320
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Lead sentence states the checked calendar plainly and names the given cycle, open date, and next cycle correctly; stillOpenPage is false and the message says the next dates are not posted, which matches the contract. The firstFindBeat is reproduced verbatim as instructed. Weekend pick and registration being null are absent without padding. Minor issue: the 'I checked' scope is bare, which is acceptable, and the message is short and specific, though the Winter 2027 'aren't posted yet' phrasing is slightly stiffer than ideal.",
+    "score": 4
+  }
+}

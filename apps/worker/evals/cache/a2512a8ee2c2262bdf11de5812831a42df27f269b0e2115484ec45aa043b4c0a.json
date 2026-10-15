@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Raptors have no game tonight, Monday Oct 12",
+        "from": "The Raptors have no game on Monday, Oct 12."
+      },
+      {
+        "states": "Next game is tomorrow, Tuesday Oct 13, a preseason game vs the New York Knicks",
+        "from": "The next game is tomorrow, Tuesday, Oct 13. It is a preseason game against the New York Knicks."
+      },
+      {
+        "states": "Tip-off 7:00 PM ET",
+        "from": "It is scheduled for 7:00 PM ET."
+      },
+      {
+        "states": "Played at Scotiabank Arena in Toronto",
+        "from": "It is at Scotiabank Arena in Toronto."
+      },
+      {
+        "states": "Broadcast on Sportsnet",
+        "from": "Yahoo Sports/Action Network says it airs live on Sportsnet."
+      }
+    ],
+    "answer": "Not tonight, no game for them today. Their next one is tomorrow, Tuesday Oct 13: a preseason game vs the Knicks at 7:00 PM ET at Scotiabank Arena in Toronto, on Sportsnet."
+  },
+  "latencyMs": 4372
+}

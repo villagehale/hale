@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in Chinese and makes a real pick (Messi). Every fact it states is backed by research_notes: no official verdict, most 2026 lists put Messi first, eight Ballon d'Or awards, the 2022 World Cup win, and Pelé, Maradona and Ronaldo as the usual rivals with the fan vote nearly tied. None of the grounding entries is wrongly marked settled. It reads like a friend's quick take, not a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

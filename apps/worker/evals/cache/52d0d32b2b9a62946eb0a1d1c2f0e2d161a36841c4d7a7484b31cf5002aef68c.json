@@ -1,0 +1,27 @@
+{
+  "urls": [
+    "https://www.nesto.ca/mortgage-rates/fixed/5-year/",
+    "https://www.moneysense.ca/spend/real-estate/mortgages/five-year-fixed-mortgage-rates/",
+    "https://www.ratehub.ca/best-mortgage-rates/5-year/fixed",
+    "https://rates.ca/mortgage-rates/5-year-fixed",
+    "https://www.ratehub.ca/best-mortgage-rates",
+    "https://wowa.ca/mortgage-rates",
+    "https://canadianrates.ca/rates/5-year-fixed",
+    "https://www.forbes.com/advisor/ca/mortgages/best-5-year-fixed-rate-mortgages/",
+    "https://www.nerdwallet.com/ca/?p=14467",
+    "https://www.nerdwallet.com/ca/mortgages/best-5-year-fixed-mortgage-rates-in-canada-2",
+    "https://www.nesto.ca/mortgage-rates/fixed/5-year/",
+    "https://www.nesto.ca/mortgage-basics/mortgage-rates-forecast-canada/",
+    "https://www.ratehub.ca/best-mortgage-rates/5-year/fixed",
+    "https://www.nesto.ca/mortgage-rates/",
+    "https://www.ratehub.ca/best-mortgage-rates",
+    "https://immigrationnewscanada.ca/new-canada-mortgage-rates-increase-2026/",
+    "https://wowa.ca/mortgage-rates",
+    "https://cadtod.com/mortgage-rates",
+    "https://www.nerdwallet.com/ca/p/best/mortgages/5-year-fixed-mortgage-rates"
+  ],
+  "notes": "Research notes for Toronto, Canada, as of Monday, October 12, 2026. No official, single \"the\" 5-year fixed rate exists. The figure depends on the lender and on whether the mortgage is insured (down payment under 20%) or uninsured.\n\n- **Lowest rates:**\n  - Several comparison sites carry dates of October 13, one day after `today`, and I can't explain that.\n  - Ratehub lists the best high-ratio (insured) 5-year fixed rate in Canada at 4.34%.\n  - Wowa gives the same 4.34% as the lowest insured 5-year fixed rate. It says this is 25 bps higher than 30 days ago and 14 bps higher than 7 days ago.\n  - Wowa puts the lowest conventional (uninsurable) 5-year fixed rate at 4.44%. That is a different figure from Wowa's own later line quoting 4.64% for uninsurable mortgages, so its numbers don't agree with each other.\n  - Ratehub's FAQ section said Scotiabank had the lowest Big 6 rate at 4.29% as of September 8, 2026. That is older and out of date.\n- **Big banks:**\n  - Ratehub's table (updated October 13) shows a Big 6 bank at 4.54% and Scotiabank at 4.74%.\n  - Nesto says its own 4.59% compares with a Big 6 average of 5.17% on a 5-year fixed.\n  - An earlier Nesto page (October 8) put the Big 6 average discounted conventional 5-year fixed at 5.14%.\n  - BMO raised its standard 5-year fixed by 20 basis points to 5.14% on October 7.\n  - BMO's high-ratio 5-year fixed rose to 4.99%.\n- **Posted rates:** According to the Bank of Canada, the average 5-year posted rate at the major banks is 6.09%. This comes from a Forbes page that is about 56 days old. Posted rates are the banks' list prices, and borrowers usually get discounted rates instead.\n- **Direction:**\n  - Rates are climbing in October 2026, after all six of the largest banks raised select fixed rates since early September.\n  - Fixed rates have risen since early September, while variable rates haven't moved.\n- **Other context:** The Bank of Canada policy rate is 2.25%, held on September 2. The next Bank of Canada decision is October 28.\n- **Gaps:**\n  - The search results don't give a Toronto- or Ontario-specific rate.\n  - I don't know whether the asker means an insured or uninsured mortgage, or a new purchase versus a renewal. That changes which figure applies.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 11846
+}

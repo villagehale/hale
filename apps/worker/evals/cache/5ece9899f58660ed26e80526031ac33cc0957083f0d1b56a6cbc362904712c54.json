@@ -1,0 +1,6 @@
+{
+  "value": {
+    "text": "Voici les liens pour connecter votre agenda et Gmail, pour que Hale puisse repérer les avis de garderie et d'école. C'est facultatif.\n\nAgenda :\n[[calendarLink]]\n\nGmail :\n[[gmailLink]]\n\nChaque lien fonctionne pendant 15 minutes."
+  },
+  "latencyMs": 1340
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by the research notes: a dry daytime with sun and cloud and a high of 23, a 60% chance of showers tonight with a thunderstorm risk, and a 60% chance Tuesday per this morning's forecast, with the timing disagreement flagged. It directly answers the 3pm pickup question with 'not during the day' and says nothing about the family or the school. The phrasing is a little report-like ('sources don't agree… isn't confirmed'), and the Tuesday detail runs past what was asked, so it's slightly less casual than a friend's text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

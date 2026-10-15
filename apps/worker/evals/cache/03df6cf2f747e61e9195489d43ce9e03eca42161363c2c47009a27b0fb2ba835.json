@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "孩子从楼梯上摔下来了，叫不醒",
+    "confirmation": "请立刻拨打你所在地的急救电话，中国大陆是120。先不要等，马上打。"
+  },
+  "latencyMs": 2453
+}

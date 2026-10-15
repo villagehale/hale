@@ -417,6 +417,7 @@ async function routeOneToOne(
       providerId: message.messageId,
       receivedAt: message.receivedAt,
       chatId: message.chatId,
+      isGroup: message.isGroup,
       providerAnsweredKeyword: null,
     },
     message.mediaCount,

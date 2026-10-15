@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every tip is backed by research_notes: same time and length, a dark quiet room, a story or lullaby routine, drowsy but awake, his own bed or crib, and safe sleep on the back with nothing soft in the crib. It assumes nothing about the child and asks his age briefly. It's practical advice a friend would send. It reads a bit list-like and informational, though not like an assistant offering a service. Including the safe-sleep line is careful.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi is named the greatest in soccer by the most recent sources, including after the 2026 World Cup",
+        "from": "The Week, updated 1 Sept 2026, says that after the 2026 World Cup, Messi \"has established himself as the undisputed greatest\"; Squawka's May 2026 piece also concludes for Messi"
+      },
+      {
+        "states": "Messi's 2022 World Cup win and record eight Ballon d'Or awards are reasons cited for him",
+        "from": "Daily Sabah's 2026 ranking puts him first. It cites his 2022 World Cup win, a record eight Ballon d'Or awards and longevity"
+      },
+      {
+        "states": "Cristiano Ronaldo is the main rival for the title",
+        "from": "Cristiano Ronaldo is the main rival."
+      },
+      {
+        "states": "The soccer debate is not formally settled",
+        "from": "Several outlets note the debate is not formally settled."
+      },
+      {
+        "states": "Tom Brady is the most common answer for American football",
+        "from": "Tom Brady is the most common answer."
+      }
+    ],
+    "answer": "Messi, if you mean soccer. The newest rankings after the 2026 World Cup still have him first, with his 2022 World Cup win and eight Ballon d'Ors doing most of the talking. Ronaldo is the big argument against him, and it's never been formally settled. If you meant American football, it's Tom Brady."
+  },
+  "latencyMs": 5301
+}

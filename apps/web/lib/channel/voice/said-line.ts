@@ -1,8 +1,9 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
+import { CHANNEL_SIGNIN_TTL_MS } from '~/lib/auth/channel-signin';
 import { connectorNoun } from '~/lib/channel/connect/copy';
-import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
+import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import { type ReplyLanguage, certainLanguageHint, replyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
@@ -25,6 +26,8 @@ export type SaidLinePurpose =
   | 'connector_links'
   /** One connect link for the one Google service they asked for. */
   | 'connector_link'
+  /** A co-parent in the family group chat, offered their own Google connect link. */
+  | 'group_connect_ask'
   /** They asked for a date the official page has not posted. */
   | 'not_posted'
   /** They asked for a current fact search could not ground. */
@@ -34,12 +37,20 @@ export type SaidLinePurpose =
   /** Someone is hurt or ill (not a crisis): Health811 and 911, never advice. */
   | 'health';
 
+export type SaidLineFact =
+  | string
+  | number
+  | null
+  | readonly string[]
+  | { readonly [part: string]: string | readonly string[] };
+
 export interface SaidLineInput {
   purpose: SaidLinePurpose;
   language: ReplyLanguage | null;
   /** The parent's own words, when the line answers a text. */
   parentWords?: string | null;
-  facts: Record<string, string | number | null>;
+  /** Plain values, or a small structured fact (a list, or named parts) the model words itself. */
+  facts: Record<string, SaidLineFact>;
   /** Strings that must appear verbatim (numbers, addresses). Never a URL: see links. */
   mustInclude?: readonly string[];
   /**
@@ -159,7 +170,40 @@ export async function writeConnectorLink(
       service: connectorNoun(language, input.provider),
       link: linkSlot('link'),
       minutesValid: LINK_MINUTES,
-      googleCaution: googleUnverifiedAppLine(language),
+      googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
+    },
+    links: { link: input.url },
+  });
+}
+
+/**
+ * The group chat's connect ask, in the model's words: who it is for, what connecting
+ * does, that the link is theirs alone and optional, and the unverified-app caution as
+ * a fact. Code puts the URL in the slot. Null: the caller sends nothing.
+ */
+export async function writeGroupConnectAsk(
+  writer: SaidLineWriter | null | undefined,
+  input: { language: ReplyLanguage; provider: 'gcal' | 'gmail'; name: string; url: string },
+): Promise<string | null> {
+  if (!writer) {
+    console.error('group connect ask: no line writer - nothing sent');
+    return null;
+  }
+  const gmail = input.provider === 'gmail';
+  return writer.write({
+    purpose: 'group_connect_ask',
+    language: input.language,
+    facts: {
+      name: input.name,
+      service: connectorNoun(input.language, input.provider),
+      why: gmail
+        ? 'Hale would catch school and camp emails for them too'
+        : "their calendar joins the kids' year Hale keeps for the family",
+      linkIsTheirs: 'the link is only for this parent, not the rest of the group',
+      minutesValid: LINK_MINUTES,
+      inboxPrivate: gmail ? 'nothing from their inbox is shown in the group chat' : null,
+      link: linkSlot('link'),
+      googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
     },
     links: { link: input.url },
   });
@@ -205,7 +249,8 @@ export async function writeCrisisLine(
 }
 
 /** Minutes a connect link stays live, said by the model (CHANNEL_SIGNIN_TTL_MS). */
-const LINK_MINUTES = 15;
+/** The texted link's real life: the sign-in token's TTL (channel-signin.ts). */
+const LINK_MINUTES = CHANNEL_SIGNIN_TTL_MS / 60_000;
 
 /**
  * One text carrying both Google connect links, in the model's words (#868: the
@@ -228,6 +273,9 @@ export async function writeConnectorLinks(
       gmailLink: linkSlot('gmailLink'),
       minutesValid: LINK_MINUTES,
       why: 'so Hale can spot daycare and school notices',
+      // Both links are Google connect links, and every Google connect link carries the
+      // unverified-app caution, as a fact the writer puts in its own words (text-connect.ts).
+      googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
     },
     links: { calendarLink: input.calendarUrl, gmailLink: input.gmailUrl },
   });

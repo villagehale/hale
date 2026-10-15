@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with the useful pick, states only given facts (free, outdoor, Saturday, Maya), omits venue since none exists rather than inventing one, and plainly notes no registration date is coming up, which the contract requires when both registration fields are null. The 'I looked around and found' lead is the mandated look-up framing with no invented scope. Plain, short, no hype.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single pick is Tiny Gym at Cartwheels Gym Centre. It is real, specific and local: Georgetown is in Halton Hills. It is the venue the parent named, it fits a toddler, and it is sourced from the gym's own site. The message leads with it by name and attributes the registration detail with 'their site says'. That detail (July 22, 8am, online) is in the notes, though 'opened' assumes the date has already passed. With page_has_schedule, the gap is correctly put in the first person ('I could not pin down the class day, time or price') rather than 'not posted'. No price or time is invented. Watch is true, so the first-person promise to keep watching is backed by a real commitment. Plain text, no link, no question.",
+    "score": 5
+  }
+}

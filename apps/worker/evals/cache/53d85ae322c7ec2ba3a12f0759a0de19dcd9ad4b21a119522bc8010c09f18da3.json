@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada forecast in the notes for Tuesday, Oct 13: mix of sun and cloud, high of 25°C, humidex 32, a 40% chance of late-afternoon showers with thunderstorm risk, southwest wind 20 gusting to 40, and an overnight low of 15°C with the same shower and storm risk. It reads 'Toronto' correctly as the city for tomorrow's forecast and answers directly with no deflect or offer. It does read like a recited weather bulletin rather than a casual text, with a lot of detail packed in formally, so it falls a bit short of a friend texting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

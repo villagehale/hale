@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "I'm not interested",
+    "rationale": "Plain refusal of the offer: 'I'm not interested'",
+    "confidence": 0.96
+  },
+  "latencyMs": 1221
+}

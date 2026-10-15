@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in Chinese and makes a real pick (Messi). Every fact it states is supported by research_notes: the 2022 World Cup, eight Ballons d'Or, most lists ranking him first, and the near-tied fan vote. It names the main rivals and reads like a casual friend's text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

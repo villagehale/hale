@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Lima is correct and is common knowledge, so no search was needed even though live is unavailable, matching watchFor. 'Since the 1500s' holds: Lima was founded as the colonial capital in 1535. The reply is brief, casual and answers directly.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

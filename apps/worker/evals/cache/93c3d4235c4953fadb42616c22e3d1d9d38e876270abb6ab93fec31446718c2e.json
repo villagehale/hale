@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "C'est reparti, je recommence à envoyer les courriels pour toi sans te demander à chaque fois. Par contre je ne réponds pas aux courriels qu'on te envoie, et je ne réserve rien, je n'inscris personne et je ne paie rien. Si tu veux que j'arrête, un seul message de ta part suffit."
+  },
+  "stopReason": "tool_use"
+}

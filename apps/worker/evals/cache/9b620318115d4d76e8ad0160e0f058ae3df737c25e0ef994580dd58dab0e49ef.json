@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: x = 5, and that is settled arithmetic. It leads with the answer, and the one line of steps is short and reads like a friend texting, not a lesson. It is a touch tutor-ish next to watchFor's 'the answer, not a worked lesson', but it is still brief and casual.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

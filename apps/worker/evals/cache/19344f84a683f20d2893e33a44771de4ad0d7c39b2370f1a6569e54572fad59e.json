@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The picks are real, local and fit a toddler: Halton Hills Gymnastics Centre, Gellert Community Centre and the Town arenas, each sourced from the operator's own page, with three picks in total. The message leads by name with the best one and attributes it ('their site says'). It is plain text with no link and no question. With watch=true it correctly makes a first-person promise: 'I'll keep watching and text you if anything changes.' Under no_page_read it phrases the gaps in first person ('I could not pin down the price / the day'), which is earned and makes no claim about a page. No price or time is invented. Weaknesses: 'Saturdays 9:00 to 10:45' merges three separate 30-minute slots into one range, which could read as a single long class. Tiny Dancers and the skating are stated flatly with no attribution. The skating pick has no day or session start, which watchFor requires. Tiny Dancers' Sep 26 start and the gymnastics weekday times are left out. A solid message with small accuracy and attribution slips.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly says no such program exists and offers a plausible nearest real alternative instead of inventing a venue. That pick is Parent & Tot swim at Acton Indoor Pool, sourced from the Town of Halton Hills' own site rather than an aggregator. It names the pool first and attributes with \"their site says\", and every date, age range and price comes straight from the pick. The gap is framed correctly for no_page_read: \"I could not get into their page today\", not \"not posted yet\". It makes no coming-back promise, which is right with watch false, and asks no question. A small improvement would be to state what was searched, but nothing is invented or withheld.",
+    "score": 5
+  }
+}

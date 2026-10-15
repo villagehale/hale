@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "d'accord, surveillez ça pour moi",
+    "rationale": "French 'd'accord' (agreed) plus an explicit request 'surveillez ça pour moi' (keep watch on this for me) is a plain yes to the question",
+    "confidence": 0.93
+  },
+  "latencyMs": 1480
+}

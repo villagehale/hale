@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick (Messi) and covers the American football reading with Brady, with Rice as the alternative. Every specific is supported by research_notes: The Week's 'undisputed greatest' line, the 2022 World Cup win, the record eight Ballon d'Ors, Ronaldo as the main rival, and the debate not being formally settled. Nothing in grounding is marked settled. Citing outlets like The Week and 'the most recent rankings' reads more like a research summary than a friend texting back, so it falls short of the top score.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

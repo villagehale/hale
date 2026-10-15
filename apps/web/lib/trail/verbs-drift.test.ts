@@ -142,6 +142,7 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'action.gated.cross_parent_consent',
     'action.gated.teen_redaction',
     'action.gated.autonomy_not_opted_in',
+    'action.gated.parent_commitment',
     'action.gated.lane_off',
     'action.gated.autonomy_denied_kind',
     'action.gated.autonomy_notice_pending',

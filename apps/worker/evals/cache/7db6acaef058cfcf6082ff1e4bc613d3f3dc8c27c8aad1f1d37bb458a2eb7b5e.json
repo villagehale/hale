@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Canada Science and Technology Museum, 1867 St. Laurent Blvd, Ottawa",
+        "age_fit": "Youth (ages 3 to 17) pay a fare; age 2 and under free. No preschool-specific program listed.",
+        "when": "Regular hours Tuesday to Sunday 9am to 5pm, closed Mondays, open on statutory holidays except Dec 25. Current posting only; Sept 4 to 6, 2027 could not be confirmed.",
+        "price": "Youth (3-17) $12.50, family (6 people, max 2 adults) $51, taxes not included. Free daily 4 to 5pm.",
+        "source_name": "Ingenium"
+      },
+      {
+        "name": "Canadian Children's Museum, inside the Canadian Museum of History, 100 Laurier Street, Gatineau",
+        "age_fit": "Children and families. The page states no age range.",
+        "when": "Posted for Sept 8 to Dec 9, 2026: daily 9am to 5pm, Thursdays to 7pm, same hours on statutory holidays. Nothing posted for Sept 2027.",
+        "source_name": "Canadian Museum of History"
+      }
+    ]
+  },
+  "latencyMs": 1202945
+}

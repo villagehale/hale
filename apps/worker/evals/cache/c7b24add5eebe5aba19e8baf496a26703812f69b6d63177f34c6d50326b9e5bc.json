@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "English, gives the link whole, says it works 15 minutes, and conveys the unverified-app caution with the Advanced step. But it asserts \"safe\" as a fact not in the given facts, and it never says connecting is optional, which the purpose requires. The link is also a placeholder-looking string, though it was given as the fact value."
+  }
+}

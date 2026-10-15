@@ -2,17 +2,18 @@
 // Model-per-role comparison (VIL-143, launch question #2).
 //
 // THE QUESTION: which Claude model is the right tier for each agent role? The
-// codebase routes simple-lookup -> Haiku, classify/review -> Sonnet 5,
-// draft/converse -> Sonnet 4.6 (model.ts's TASK_MODEL). This eval RE-TESTS those
-// assignments empirically: it runs the SAME representative inputs for each role
-// across claude-haiku-4-5, claude-sonnet-4-6, claude-sonnet-5, and claude-opus-4-8,
-// and scores quality (reference + LLM-judge), latency, and cost — then prints a
+// codebase routes classify, draft and review to Sonnet 5.5 (model.ts's TASK_LANE).
+// This eval RE-TESTS those assignments empirically: it runs the SAME representative
+// inputs for each role across the Haiku, Sonnet and Opus tiers model.ts names, and
+// scores quality (reference + LLM-judge), latency, and cost — then prints a
 // recommendation table (best model per role with the tradeoff).
 //
 // HOW IT'S FAITHFUL: each role REPLICATES its real request shape — the same prompt
 // (loaded from apps/worker/prompts/*.md), the same tool-forced output schema, the
 // same serialization the real agent uses (classifier.ts / drafter.ts / reviewer.ts).
-// The ONLY variable is `model`. We replicate
+// The current tier runs on the role's own production lane (pickLane); the other
+// tiers run with thinking on at that lane's effort, the one thinking shape every 5.5
+// tier accepts. We replicate
 // rather than import because the agents reach workspace/cross-process modules and
 // the committed dist/ is stale — the same discipline the existing single-agent
 // evals use. The REVIEW role is scored on the single-turn VERDICT (the part model
@@ -32,10 +33,12 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tsImport } from 'tsx/esm/api';
 import {
   WORKER_ROOT,
   cachedGatewayToolCall,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -45,6 +48,7 @@ import {
 import { expandMatrixCases } from './lib/model-matrix-fixtures.mjs';
 
 const PROMPTS = join(WORKER_ROOT, 'prompts');
+const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');
 const FIXTURES = join(WORKER_ROOT, 'evals', 'fixtures', 'model-matrix');
 
 const ROLES = ['classify', 'draft', 'review'];
@@ -52,11 +56,8 @@ const ROLES = ['classify', 'draft', 'review'];
 // The tier each role is CURRENTLY routed to (packages/agent/src/model.ts). The
 // recommendation table compares the empirical best against this baseline, and the
 // competence floor is asserted against THIS row — so a stale entry here silently
-// floors the wrong model. classify and review are sonnet5. draft stays on sonnet,
-// claude-sonnet-4-6, the same 4.6 tier model.test.ts still pins for draft and infer.
-// That rung is also the matrix's middle comparison step, which is why it stays in
-// MODEL_KEYS.
-const CURRENT_TIER = { classify: 'sonnet5', draft: 'sonnet', review: 'sonnet5' };
+// floors the wrong model. All three roles are on the Sonnet tier.
+const CURRENT_TIER = { classify: 'sonnet', draft: 'sonnet', review: 'sonnet' };
 
 // --- role request shapes (replicated) ---------------------------------------
 
@@ -122,8 +123,15 @@ const DRAFT_SCHEMA = {
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     rationale: { type: 'string' },
     recipient_visibility: { type: 'string', enum: ['public', 'internal_only'] },
+    commits_parent_to_enrollment_booking_or_payment: { type: 'boolean' },
   },
-  required: ['payload', 'confidence', 'rationale', 'recipient_visibility'],
+  required: [
+    'payload',
+    'confidence',
+    'rationale',
+    'recipient_visibility',
+    'commits_parent_to_enrollment_booking_or_payment',
+  ],
 };
 
 // Mirrors the reviewer's submit_verdict tool (src/agents/reviewer.ts).
@@ -151,7 +159,22 @@ const DRAFT_JUDGE = [
   'A LOW score is robotic, off-purpose, or contains a fabricated detail. Reply with the score tool.',
 ].join(' ');
 
-const MODEL_KEYS = ['haiku', 'sonnet', 'sonnet5', 'opus'];
+const MODEL_KEYS = ['haiku', 'sonnet', 'opus'];
+
+/**
+ * The knobs an arm runs with. The tier production routes the role to runs on that
+ * role's own lane; another tier runs adaptive at the same effort, because a role's
+ * thinking-off shape (draft's `between_tools`) is a 400 on every other tier. The
+ * candidate arm keeps the knobs VIL-431 compared it with.
+ */
+function armKnobs(mk, role, ctx, candidateKnobs) {
+  if (mk === 'candidate') return candidateKnobs;
+  if (mk === 'gateway') return {};
+  const production = ctx.pickLane(role);
+  const model = ctx.models[mk];
+  if (model === production.model) return { lane: production };
+  return { lane: { model, thinking: 'adaptive', effort: production.effort } };
+}
 
 function modelToolCall(modelKey, options) {
   if (modelKey === 'gateway') return cachedGatewayToolCall(options);
@@ -197,8 +220,7 @@ async function runClassify(models, fx, ctx) {
         getClient: ctx.getClient,
         cost: ctx.cost,
         maxTokens: 1024,
-        thinking: ['sonnet5', 'candidate'].includes(mk) ? { type: 'adaptive' } : undefined,
-        effort: ['sonnet5', 'candidate'].includes(mk) ? 'high' : undefined,
+        ...armKnobs(mk, 'classify', ctx, { thinking: { type: 'adaptive' }, effort: 'high' }),
       });
       latency += latencyMs;
       if (value.event_type === c.expect.eventType) correct += 1;
@@ -297,8 +319,7 @@ async function runDraft(models, fx, ctx) {
         getClient: ctx.getClient,
         cost: ctx.cost,
         maxTokens: 1024,
-        thinking: ['sonnet', 'candidate'].includes(mk) ? { type: 'disabled' } : undefined,
-        effort: ['sonnet', 'candidate'].includes(mk) ? 'high' : undefined,
+        ...armKnobs(mk, 'draft', ctx, { thinking: { type: 'disabled' }, effort: 'high' }),
       });
       latency += latencyMs;
       const payload = value.payload ?? {};
@@ -370,8 +391,7 @@ async function runReview(models, fx, ctx) {
         getClient: ctx.getClient,
         cost: ctx.cost,
         maxTokens: 512,
-        thinking: ['sonnet5', 'candidate'].includes(mk) ? { type: 'adaptive' } : undefined,
-        effort: ['sonnet5', 'candidate'].includes(mk) ? 'high' : undefined,
+        ...armKnobs(mk, 'review', ctx, { thinking: { type: 'adaptive' }, effort: 'high' }),
       });
       latency += latencyMs;
       const acceptable = [c.expect.verdict, ...(c.expect.alsoAcceptable ?? [])];
@@ -395,7 +415,7 @@ const RUNNERS = { classify: runClassify, draft: runDraft, review: runReview };
 // Pick the cheapest model whose quality is within a small epsilon of the best
 // quality for the role — i.e. don't pay for Opus if Sonnet (or Haiku) ties it.
 // "Cheaper" is ranked haiku < sonnet < opus by input list price.
-const TIER_RANK = { gateway: -1, haiku: 0, sonnet: 1, sonnet5: 2, opus: 3, candidate: 4 };
+const TIER_RANK = { gateway: -1, haiku: 0, sonnet: 1, opus: 2, candidate: 3 };
 const QUALITY_EPS = 0.03;
 
 function recommend(rows) {
@@ -484,18 +504,22 @@ async function main() {
       ? [CURRENT_TIER[roleArg], 'gateway']
       : gatewayModel
         ? [...MODEL_KEYS, 'gateway']
-        : MODEL_KEYS;
+        : // The production lanes only. A tier-comparison arm is spend someone asks for by
+          // name (--models=haiku,sonnet,opus), never a default re-run.
+          [...new Set(roles.map((role) => CURRENT_TIER[role]))];
   const judgeModel = models.haiku; // the judge tier the other evals use
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('model-matrix');
   const cost = makeCost();
   const judge = {
     classify: makeJudge(judgeModel, CLASSIFY_JUDGE, 'matrix-classify', cachedOnly, getClient, cost),
     draft: makeJudge(judgeModel, DRAFT_JUDGE, 'matrix-draft', cachedOnly, getClient, cost),
   };
-  const ctx = { cachedOnly, getClient, cost, judge, modelKeys, runId };
+  const { pickLane } = await tsImport(AGENT_SRC, import.meta.url);
+  const ctx = { cachedOnly, getClient, cost, judge, modelKeys, runId, models, pickLane };
 
   console.log(
-    `model-matrix-eval | ${broken ? 'BROKEN (calibration)' : cachedOnly ? 'cached-only' : 'live'}${runId ? ` | run=${runId}` : ''} | haiku=${models.haiku} sonnet=${models.sonnet} sonnet5=${models.sonnet5} opus=${models.opus}${gatewayModel ? ` gateway=${gatewayModel}` : ''}${anthropicModel ? ` candidate=${anthropicModel}` : ''} | judge=${judgeModel}`,
+    `model-matrix-eval | ${broken ? 'BROKEN (calibration)' : cachedOnly ? 'cached-only' : 'live'}${runId ? ` | run=${runId}` : ''} | haiku=${models.haiku} sonnet=${models.sonnet} opus=${models.opus}${gatewayModel ? ` gateway=${gatewayModel}` : ''}${anthropicModel ? ` candidate=${anthropicModel}` : ''} | judge=${judgeModel}`,
   );
   console.log('');
 

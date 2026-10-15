@@ -34,6 +34,7 @@ import {
 } from './deliver';
 import type { PageVerdict } from './evidence';
 import { type FollowUpPick, createFollowUpComposer } from './followup-note';
+import type { EmptySearch } from './lane';
 import { type ActivityFinder, createActivityFinder } from './lane';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
 import { SLOTS_IN_TEXT, defaultActivitySharePorts, mintActivitySharePage } from './share-page';
@@ -342,6 +343,7 @@ async function keepOne(
   let picks: FollowUpPick[] = [];
   let rest: readonly DeepSlot[] = [];
   let researched = false;
+  let searched: EmptySearch | undefined;
   const evidence = noEvidence();
   // WHAT THE PAGES LICENSE, and nothing else licenses a sentence about what a page does
   // not carry (evidence.ts `PageVerdict`). It starts at the most restrictive value and is
@@ -403,6 +405,7 @@ async function keepOne(
       return;
     }
     picks = found.found ? [...found.picks] : [];
+    if (!found.found) searched = found.searched;
   }
   evidence.picks = picks.length;
 
@@ -424,6 +427,7 @@ async function keepOne(
       rest,
       pageEvidence,
       evidence,
+      ...(searched ? { searched } : {}),
     },
     now,
   );

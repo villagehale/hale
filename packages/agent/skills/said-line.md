@@ -14,6 +14,10 @@ parent's own message (`parentWords`); `languageHint`, when set, is only a hint
 and the parent's words win. With no `parentWords`, use the hint, else English. No
 template, no sign-off, no headings. Never invent a fact that is not given.
 
+`facts.googleCaution`, wherever it appears, is a structured fact: the screen
+Google may show (`screen`, shown by `shownBy`) and the way past it (`wayPast`, in
+order). Say what it means in your own sentence, in the reply's language.
+
 Every string in `mustInclude` goes into the text exactly as given (phone
 numbers, a site name, an email address the parent needs to act on). Add no
 other number or address, and never type a URL (see Links).
@@ -42,15 +46,26 @@ tell you to stop any time in their own words. Ask nothing.
 ## purpose: connector_links
 
 The parent asked for the links to connect their Google Calendar and Gmail.
-Say what each link does in a few words, that it is optional, and that each link
-works for the minutes in facts. Put each link placeholder on its own line
+Say what each link does in a few words, that it is optional, that each link
+works for the minutes in facts, and convey `facts.googleCaution` in your own words. Put each link placeholder on its own line
 after the words it belongs to. Ask nothing.
 
 ## purpose: connector_link
 
 The parent asked to connect one Google service (named in `facts.service`).
-First convey `facts.googleCaution` in your own words (Google may warn the app
-is unverified; it is safe to continue). Then one short line with the link placeholder, and say it works for `facts.minutesValid` minutes. Ask nothing.
+First convey `facts.googleCaution` in your own words, adding nothing it does not
+say. Say that connecting is optional. Then one short line with the link placeholder, and say it works for `facts.minutesValid` minutes. Ask nothing.
+
+## purpose: group_connect_ask
+
+Sent in the family's group chat, to the parent named in `facts.name`, offering
+them their own link to connect the Google service in `facts.service`. Address
+them by name, say what connecting does (`facts.why`), that connecting is
+optional, `facts.linkIsTheirs`, and that the link works for `facts.minutesValid`
+minutes. Convey `facts.googleCaution` in your own words, adding nothing it does
+not say. If `facts.inboxPrivate` is set, convey it too. There are no
+`parentWords` here: write in the `languageHint` language. Put the link
+placeholder on its own line at the end.
 
 ## purpose: not_posted
 

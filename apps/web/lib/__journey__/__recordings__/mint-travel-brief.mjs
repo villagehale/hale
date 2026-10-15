@@ -58,7 +58,8 @@ const sha = (value) => createHash('sha256').update(value).digest('hex');
 /** apps/worker/evals/lib/harness.mjs — sha256(tag + "\n" + canonical request). */
 const evalKey = (tag, canonical) => sha(`${tag}\n${canonical}`);
 /** apps/web/lib/testing/recorded-model.ts — sha256(model + "\n" + system + "\n" + user). */
-const journeyKey = (model, system, userMessage) => sha(`${model}\n${system}\n${userMessage}`);
+const journeyKey = (model, system, userMessage, thinking) =>
+  sha(`${model}\n${thinking ? `thinking:${thinking}\n` : ''}${system}\n${userMessage}`);
 
 function readEvalEntry(tag, canonical, howToMint) {
   const key = evalKey(tag, canonical);
@@ -76,9 +77,18 @@ function readEvalEntry(tag, canonical, howToMint) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-/** The forced-tool envelope the journey's client returns. The ANSWER is the model's; only
- * the transport shape is rebuilt, because the eval cache stores the parsed tool input. */
-function toolEnvelope(toolName, input) {
+/** The envelope the journey's client returns, in the transport shape the structured seam
+ * asks for: a JSON output when the schema compiles to a grammar, otherwise a tool call. The
+ * ANSWER is the model's; only the shape is rebuilt, because the eval cache stores the
+ * parsed answer. */
+function toolEnvelope(toolName, input, schema) {
+  if (agent.strictToolSchema(schema)) {
+    return {
+      content: [{ type: 'text', text: JSON.stringify(input) }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+  }
   return {
     content: [{ type: 'tool_use', id: `transcoded-${toolName}`, name: toolName, input }],
     stop_reason: 'tool_use',
@@ -105,8 +115,8 @@ function searchResultsFrom(evidence) {
   return results;
 }
 
-function record(model, system, userMessage, response) {
-  const key = journeyKey(model, system, userMessage);
+function record(model, system, userMessage, response, thinking) {
+  const key = journeyKey(model, system, userMessage, thinking);
   return [
     key,
     { key, recordedAt: new Date().toISOString(), request: { model, userMessage }, response },
@@ -172,9 +182,9 @@ const extractMaxTokens = Number(maxTokensMatch[1]);
 
 const evalModels = await readModelIds();
 const extractLaneModel = agent.laneRequestFields(agent.pickLane(extractSkill.meta.task)).model;
-if (extractLaneModel !== evalModels.sonnet5) {
+if (extractLaneModel !== evalModels.sonnet) {
   throw new Error(
-    `the extract lane sends ${extractLaneModel} and the eval keyed on ${evalModels.sonnet5}; re-mint the eval before transcoding.`,
+    `the extract lane sends ${extractLaneModel} and the eval keyed on ${evalModels.sonnet}; re-mint the eval before transcoding.`,
   );
 }
 
@@ -188,7 +198,7 @@ const extractUser = JSON.stringify({
 const extractEntry = readEvalEntry(
   `travel-extract:${EXTRACT_FIXTURE_ID}`,
   JSON.stringify({
-    model: evalModels.sonnet5,
+    model: evalModels.sonnet,
     system: extractSkill.instructions,
     userMessage: extractUser,
     schema: extractSchema,
@@ -203,7 +213,8 @@ const [extractKey, extractRecording] = record(
   extractLaneModel,
   extractSkill.instructions,
   extractUser,
-  toolEnvelope('travel_booking', extractEntry.value),
+  toolEnvelope('travel_booking', extractEntry.value, extractSchema),
+  agent.laneRequestFields(agent.pickLane(extractSkill.meta.task)).thinking?.type,
 );
 recordings[extractKey] = extractRecording;
 console.info(`travel-extract:${EXTRACT_FIXTURE_ID}  ->  ${extractKey}`);
@@ -305,6 +316,8 @@ const picks = readEvalEntry(
     userMessage: composeUser,
     toolName: 'activity_picks',
     toolSchema: picksSchema,
+    // The harness keys a lane call on the lane too (evals/lib/harness.mjs cachedToolCall).
+    lane: agent.pickLane(finderSkill.meta.task),
   }),
   MINT_FINDER,
 );
@@ -313,7 +326,8 @@ const [picksKey, picksRecording] = record(
   composeModel,
   finderSkill.instructions,
   composeUser,
-  toolEnvelope('activity_picks', picks.value),
+  toolEnvelope('activity_picks', picks.value, picksSchema),
+  agent.laneRequestFields(agent.pickLane(finderSkill.meta.task)).thinking?.type,
 );
 recordings[picksKey] = picksRecording;
 console.info(`activity-picks:${FINDER_FIXTURE_ID}  ->  ${picksKey}`);

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail. The answer asks which city in a few words and states no figure, so it is correct. It is brief, though slightly formal for a friend's text. No wrong fact and no safety concern.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

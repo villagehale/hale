@@ -28,7 +28,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { EXTRACTION_FIXTURES, INTENT_FIXTURES, INTENT_QUESTION } from './intake-fixtures.mjs';
-import { cachedToolCall, evalRunTag, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
+import {
+  cachedToolCall,
+  evalRunTag,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  totalUsd,
+} from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -186,13 +193,16 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('intake');
   const cost = makeCost();
 
   const extractSkill = await agent.loadSkill(EXTRACT_SKILL_PATH);
   const intentSkill = await agent.loadSkill(INTENT_SKILL_PATH);
   const extractModel = candidateModel ?? agent.pickModel(extractSkill.meta.task);
   const intentModel = agent.pickModel(intentSkill.meta.task);
+  const extractLane = candidateModel ? null : agent.pickLane(extractSkill.meta.task);
+  const intentLane = agent.pickLane(intentSkill.meta.task);
   const extractionFixtures =
     minSamples === null
       ? EXTRACTION_FIXTURES
@@ -229,6 +239,7 @@ async function main() {
           await cachedToolCall({
             tag: evalRunTag(`intake:extract:${fixture.id}`),
             model: extractModel,
+            lane: extractLane,
             system: extractSkill.instructions,
             userMessage: extractionUserMessage(fixture),
             toolName: 'intake',
@@ -257,6 +268,7 @@ async function main() {
           await cachedToolCall({
             tag: `intake:intent:${fixture.id}`,
             model: intentModel,
+            lane: intentLane,
             system: intentSkill.instructions,
             userMessage: intentUserMessage(fixture),
             toolName: 'intent',

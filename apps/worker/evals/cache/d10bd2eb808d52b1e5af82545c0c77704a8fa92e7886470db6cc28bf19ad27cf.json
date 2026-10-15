@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No Maple Leafs game on Monday, October 12, 2026",
+        "from": "Daily Faceoff's weekly schedule for the week of October 12 lists \"No games scheduled\" for Monday, October 12. LeafsNation's weekly schedule says the same."
+      },
+      {
+        "states": "Next Leafs game is Tuesday, October 13, away at the Utah Mammoth, 9 p.m. ET",
+        "from": "NHL.com's \"NHL On Tap\" lists Toronto Maple Leafs at Utah Mammoth for 9 p.m. ET. Tom's Guide lists it at 9pm ET."
+      }
+    ],
+    "answer": "Nope, no Leafs game tonight. Next one is tomorrow, Tuesday the 13th, away at Utah at 9 p.m. ET."
+  },
+  "latencyMs": 3709
+}

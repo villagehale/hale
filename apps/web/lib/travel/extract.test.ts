@@ -41,7 +41,7 @@ function scriptedClient(
       async create(req: any) {
         requests.push(req);
         return {
-          content: [{ type: 'tool_use', name: 'travel_booking', input }],
+          content: [{ type: 'text', text: JSON.stringify(input) }],
           usage: { input_tokens: 10, output_tokens: 5 },
           stop_reason: stopReason,
         };
@@ -128,10 +128,7 @@ describe('extractTravelBooking · the schema fails closed on every omission', ()
 describe('extractTravelBooking · what crosses the border', () => {
   it('sends the body and the children FIRST NAMES, and no age and no id', async () => {
     const { client, requests } = scriptedClient({ confidence: 0 });
-    await extractTravelBooking(
-      { ...INPUT, childFirstNames: ['Mia', 'Leo'] },
-      client,
-    );
+    await extractTravelBooking({ ...INPUT, childFirstNames: ['Mia', 'Leo'] }, client);
     const sent = requests[0] as { messages: Array<{ content: string }>; max_tokens: number };
     const payload = JSON.parse(sent.messages[0]?.content ?? '{}');
     expect(payload.household_child_first_names).toEqual(['Mia', 'Leo']);

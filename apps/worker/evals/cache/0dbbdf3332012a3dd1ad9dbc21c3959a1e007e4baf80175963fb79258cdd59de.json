@@ -1,0 +1,28 @@
+{
+  "parsed": {
+    "event_type": "calendar_conflict_detected",
+    "confidence": 0.92,
+    "rationale": "A newly added 6-month checkup calendar event overlaps with an existing Team standup, which is a calendar conflict to surface.",
+    "payload": {
+      "added_event": {
+        "title": "6-month checkup — Dr. Okafor",
+        "start": "2026-06-23T10:15:00-04:00",
+        "end": "2026-06-23T11:00:00-04:00"
+      },
+      "overlaps_with": {
+        "title": "Team standup",
+        "start": "2026-06-23T10:00:00-04:00",
+        "end": "2026-06-23T10:30:00-04:00"
+      },
+      "overlap_minutes": 15
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 335,
+    "output": 365
+  }
+}

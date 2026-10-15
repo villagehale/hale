@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply correctly asks for the missing country and states no broadcaster or current fact, so nothing in it is wrong. But it opens with \"Happy to help,\" which is assistant service phrasing rather than a friend texting back. It also stacks three questions (country, men's or women's, year) where a few casual words asking for the country would do. That service tone caps the score below 4.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

@@ -353,13 +353,14 @@ describe('channelCoachRuntime', () => {
   });
 
   /**
-   * The cached tiers are billed, so they are recorded. A cached turn pays 0.1x the
-   * input rate on every cache-read token and 1.25x on every cache-write token;
-   * pricing promptTokens + completionTokens alone books thousands of billed tokens
-   * at $0 and understates the loop-health $/family the founder reads.
+   * The cached tiers are billed, so they are recorded. A cached turn pays the
+   * cache-read rate on every cache-read token and 1.25x input on every cache-write
+   * token; pricing promptTokens + completionTokens alone books thousands of billed
+   * tokens at $0 and understates the loop-health $/family the founder reads.
    *
-   * Derived from the Sonnet rates ($3/MTok in, $15/MTok out), not from output:
-   * 200*3 + 1024*3*1.25 + 5303*3*0.1 + 90*15 = 7380.9 → $0.0073809.
+   * Derived from the published Sonnet 5.5 rates ($2/MTok in, $10/MTok out, $0.10/MTok
+   * cache read), not from output: 200*2 + 1024*2.5 + 5303*0.1 + 90*10 = 4390.3 →
+   * $0.0043903.
    */
   it('prices the cache-read and cache-write tiers into the recorded cost', async () => {
     const p = ports({
@@ -380,7 +381,7 @@ describe('channelCoachRuntime', () => {
 
     await channelCoachRuntime(p).respond(turn(), []);
 
-    expect(p.recorded[0]?.costUsd).toBeCloseTo(0.0073809, 9);
+    expect(p.recorded[0]?.costUsd).toBeCloseTo(0.0043903, 9);
   });
 
   /** The per-turn draft cap lives in a closure inside the tool set, so a tool set

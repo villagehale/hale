@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cg38vKZbgUjUssRTaTQHy",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStQkKEAgSGAI4AUIIdGhpbmtpbmcSDCLaWGXRkfDXxMBmbhoMqWvBpoUq/AGbvTs0IjCusL565eaB8AxdBe+8BabNrfopXLWQqZegadHCOo2IlrNjWPfmwZhOrHRB+PtAccUq0gjHfdSwo0CL3ad8S4h7ez/g1gcsjN2ObE8tUnr8N1JelZEmtQCbej7gpZyNG/7+lMpVlR52nZZnkEsAoH8HrAXIM09MDi9TiemwZXSdpWtP9xmsO3UQsmRljTaziS1kIwDqlC5z5tqKEeznz1til9X17hwCw64kqrc6/fevkjpAEsLv4B+ltG7ooja3gA1mrZkeX90jPN4FxAQ5jeHD6TpVizdiaOQTtEG6JgXFYuELa7xPJZES968jNKCYJRztNor9c5DfwAqyS6GbOeBbOW2jpVbyCDzjyibeKxejrw+w52dqWQ6JKJCGPbi1u63OWbuVqyw1iwe1ir/6EDgnfEAMX0x54SdIWAg+gqROGHLzlhky8w8yyhl/RKJ9l65oyQ+Z4DM5jvU3ZMj2sXXCCIjwcv/FvsgO7KvoUMy2yE8j4MpllPWnughqnfn0/KQuhRv7oCY9pF80EflzNE1QuXU0Rb97RkeC4/Jr/bHqU+vUTyfvQJ60Xt3L/tSWdzXyKPO4wqzNU5TNpxoIPdSRwVGswaPw4zW0AsNUg2GVEMnjW6bhnSy9C8HCYNVNqOfdY89rEmsojA56rd5cjicMHobZ8/VnajKAtdHelYafr71egedcjYQBhSh1ZRUR4027I+YALK9Re2YHEQSzjDdBi/IoSbQwGDo/zQNJU6qnxU0w5cY0WRFuDET8Yn0Dmba74WOq5vVDF+1yVm20ck6l16JnX+bqYPvaa37nfHhWFz0UjnocE2855EJKvMgS6tBOIYVtyBhpUmXEYjBzFqD1lwz9zv/TyZj/88r6DetdLEGe1WEHTmXA597haknS2Ss9nGM26QilbVmgL68wElGDD4SdrJdk4JsX1nAN3WoYGIbZ1ASluaDPq1+vx1jMS0n7oCTlIQ0pkmrVnbv5lxFLbBNg3RpZBW1r1xKf6HUtGjdz5PwPZjiYi3IGRQUhvl3Ul3Jt7pUbR8DA+afm4NJP01tNiu4wumvFBgtldwjAfxDUVc+Tx9lTd456YioHUOD1Y4xehQBQrB1LE3Pj3VpTIMwiu4MV53pzHyYGHtsvpUtSz3mkg45MybHvzarv1ROYVAPP30HvEU+CvZlv3ofS0b030BULQ54SM05JjuIMuCXMnyi987MSsGoZWfcEaGMypdiMyDTx/D49AYr/s+BFsYZmvDrTlXPUKTOgZSlYa0oONyMbQDpKZGT3sGAR3Ts+zgYWmgu+IYldI9Pd2bcRrK1J/DBt3PIMsy+NQ7y2YBu9u4WVQcGdSVlXJvmllpyaIL3ZecQ4ctCW5AMiu4IjV7D1mM0rd5GTUoTTvqhJnU05V/SW6OQ6cN+ZEhZ+7fy+nd8GGu9NWMdnhBz1jO/Yb0N2r/yh036ytyD3NuH1GsPN8dTFm4+k5BWN8TWigDO5ZqlLdWrgZvZbh+HcyTswWdWkRueqEGOYOSI4o5ALJyVqPZExyBgFYKqYwdpJ2oPfb/bWghgB"
+      },
+      {
+        "type": "text",
+        "text": "Remy would be in Tiny Gym. At 19 months Remy is well under 3.5, and that class is done with a parent. Mini Gym is for after Remy turns 3.5 and is ready to go solo."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1342,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20754,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 327,
+      "output_tokens_details": {
+        "thinking_tokens": 257
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3901
+}

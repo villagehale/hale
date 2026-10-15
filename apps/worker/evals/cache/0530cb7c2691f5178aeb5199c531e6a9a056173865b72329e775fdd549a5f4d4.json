@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a single warm question that ends on it. The word \"honestly\" signals that a bad answer is welcome, which is what the check-in needs. It doesn't name or re-teach the method and has no tip, apology, second question, greeting, sign-off, emoji, or markdown. It's first person and conversational, not a scorecard or template. It's slightly generic and could be a touch more explicit about it going badly, but it does the job well.",
+    "score": 5
+  }
+}

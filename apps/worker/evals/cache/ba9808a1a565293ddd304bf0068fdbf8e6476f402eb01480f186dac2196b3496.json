@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Denver, Tuesday October 13, 2026",
+        "from": "Notes are for Denver, Colorado. \"Tomorrow\" is Tuesday, October 13, 2026."
+      },
+      {
+        "states": "partly sunny skies Tuesday",
+        "from": "The National Weather Service in Boulder said to expect partly sunny skies Tuesday"
+      },
+      {
+        "states": "high around 65 degrees Tuesday",
+        "from": "The high is expected to reach 65 degrees"
+      },
+      {
+        "states": "other highs 64 to 67 degrees",
+        "from": "Weather Underground has a high of 64°F, partly cloudy. AccuWeather has a high of 67°. 9NEWS has a high of 64."
+      },
+      {
+        "states": "north-northeast winds 6 to 10 mph",
+        "from": "North-northeast winds of 6 to 10 mph are expected"
+      },
+      {
+        "states": "rain chance 30% after 3 p.m.",
+        "from": "The weather service gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "rain chances rising through the evening",
+        "from": "Hourly data from 9NEWS shows rain chances rising through the evening"
+      },
+      {
+        "states": "lows in the 30s and low 40s Tuesday night",
+        "from": "Lows are expected in the low 40s and 30s on Tuesday night"
+      }
+    ],
+    "answer": "Tuesday in Denver looks partly sunny with a high around 65°. Winds are light, north-northeast at 6 to 10 mph. Rain has about a 30% chance after 3 p.m. and gets more likely through the evening, with lows in the 30s and low 40s overnight."
+  },
+  "latencyMs": 8640
+}

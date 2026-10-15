@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Since live search was unavailable, the reply correctly says it can't check and gives no result from memory. But it closes by pointing to the box score or the NBA app, which reads as a look-it-up. 'I don't want to guess at a score or a winner' also sounds more like an assistant than a friend's quick text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

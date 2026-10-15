@@ -1,6 +1,6 @@
 {
   "id": "08-activity-signup-reply",
-  "note": "Reply registering interest in a parent-and-baby swim class. Friendly, brief, asks one clarifying question if needed.",
+  "note": "The parent hasn't said yes in the input, so the reply asks whether to hold a spot (one question at most) and doesn't sign them up.",
   "input": {
     "actionType": "reply_to_email",
     "event": {
@@ -16,6 +16,7 @@
   "expect": {
     "requiredPayloadFields": ["to", "subject", "body"],
     "recipientEchoOf": "from",
-    "maxBodyChars": 600
+    "maxBodyChars": 600,
+    "commitsParent": false
   }
 }

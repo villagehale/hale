@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct: Lima is the capital, and the Cusco note matches the research notes. It doesn't bring up the pending weather question. It is casual, brief and answers directly. 'Old Inca capital' is supported by the notes. It reads like a friend texting, though 'It's the capital of Peru' is a little redundant.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

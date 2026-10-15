@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real classes on the page, with day, time and the Sept 12 to Nov 28 dates exactly as printed. Price is correctly null because the page prints no fee. Registration (Aug 11, 7 a.m., residents) is carried in the slots and in the message. Each slot cites the Oakville page it was read from. The message leads with the named program, attributes it ('their site says') and is plain ASCII with no link and no question. With page_has_schedule, the price gap is correctly owned in the first person rather than called 'not posted'. Watch is true, so the first-person 'I'll keep watching' is a real commitment, not an empty promise. No figures are borrowed and no third slot is invented.",
+    "score": 5
+  }
+}

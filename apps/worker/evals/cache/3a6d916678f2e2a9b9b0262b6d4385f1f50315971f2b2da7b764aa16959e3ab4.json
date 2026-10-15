@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Lead sentence carries the mandated 'I looked up' framing and gives the registration fact plainly (Fall 2026, opened Sep 15) with no invented scope, all drawn from registrationAbsence. stillOpenPage is true so stopping at the opened date is correct. The firstFindBeat is reproduced verbatim as instructed. Short, plain, no hype, no padding. It omits weekendPick null handling, but the composer was not required to add a learning-the-area clause here, and the absence is not misrepresented. Minor point: it does not explicitly flag that weekendPick is absent, which a stricter reading might want.",
+    "score": 4
+  }
+}

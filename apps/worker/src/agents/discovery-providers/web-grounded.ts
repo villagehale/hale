@@ -1,10 +1,9 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { DiscoveryQuery } from '@hale/types';
 import { z } from 'zod';
-import { pickLane, pickModel } from '@hale/agent';
+import { forceToolJson, laneRequestFields, pickLane } from '@hale/agent';
 import { anthropicClient } from '../../anthropic/client.js';
 import { loadPrompt } from '../../prompts/loader.js';
-import { forceToolJson } from '../structured.js';
 import type { DiscoveredCandidate, DiscoveryProvider } from './types.js';
 
 /**
@@ -116,7 +115,7 @@ export class WebGroundedDiscoveryProvider implements DiscoveryProvider {
     });
 
     const research = await this.deps.client.messages.create({
-      model: pickModel('discover'),
+      ...(laneRequestFields(pickLane('discover')) as Pick<Anthropic.MessageCreateParams, 'model'>),
       max_tokens: 4096,
       system: instructions,
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
@@ -141,6 +140,7 @@ export class WebGroundedDiscoveryProvider implements DiscoveryProvider {
       toolDescription: 'Return the structured local activity candidates.',
       inputJsonSchema: extractionJsonSchema,
       schema: extractionSchema,
+      maxTokens: 4096,
     });
 
     return value.candidates.slice(0, query.limit).map((c) => {

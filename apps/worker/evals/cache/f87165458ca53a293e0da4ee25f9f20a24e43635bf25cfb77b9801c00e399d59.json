@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cg38fXtbNhaTpRLrGQGtF",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnAgKEAgSGAI4AUIIdGhpbmtpbmcSDBmKXzhy7lqFe1aM8xoMiEYyYWbR6OjkfjgXIjBTv/Zd2vJc1COx2s//vrV6ZHJrNP2otAuwEzIF2wHG14Bm1v/Q/Sex7BuBFVHZ1uQquQeCCFXMBX+EgGtBkiYMhxoaNeAITsPYVRCw8HNQ1TyeudmpAjnbEcK3E5X+KpjOfXjjKYSwFmDcSbAGSMn6UX34VOwJJOhZgNr0VBCZms7f5/genKJKgXqnPelzlg2FQhLiNlK7oyKPAd/PQGs3e5XIHDK753+X57r3h/PvUpr2Z8QOUPrASLYb1Gg635chRD//CqRcBUVe0uIMaevuoDrAZ8pvKAgDM9r0URln/MwBwsG5zEUiEGoA3X5U0c3TPdl57Z77XuDdr6yKJ6cBVk5l8L9cum8iaGxsLCqRrmmpTVkF9ijGFysa3eEHbnAcF+k8SyjLCmAAaViLFrLIXFoVtR1PDZO/bsp2SHJ1Pv78v8+4JtzVnEF6WLcUheSCyjIe1009kMCqDmy2lEEDCV0rnJH/xF7nKhHmAsWJPFQeFTMz0L/oKv2btngLC3LZNtzvp0aRENEqADccQWwYSRXrKzuGTEAOVteZ5/Ffd9tDyBKHd6fDMQFluqVIIIGBorA70Qwj1+du2RY6XbGZP81RrThYlfzD2JBqIVryUyaWe6cuo8cfcsxhKDrbwQMXS6i1WGrnJNnIQdZVLSOBpLZan/Wqs2QBZpA8bnaE4jo6uf1o7ebudPzxIwPj9Qgu6T/SJLcai8IFLNl/5mpPDcbpPOALa2b5WJjDupYoTe6qmqhsGCGpni7gvLpxCJJQ+Zgq97tqLM0yngxaqHA3l7vSmNRXUzNySeuj3cUPry7QUos+7Xbj+JSIBh959WAsvdZT2HSUkmOYzEqu1xsSXSrQGF7tCmHX/gvoWil+kbNNmpGsr+DHPYdrmCAmIx7OWDXccHAck4tEoqahnMKlSC6nFwA/kVu+hgHjQZuKnxjL+fZGg6B1oJsQnYMFE7tmCPCDqsbv087KcGfo0trXuF0PA5N0wEn3yBqL4dlF81YCnbl7s4dgJ1zjjImvDqf9+kF5z3Thdop3s66Xa6Dp5gRCalwg4LP4gFEt6DCXXq/OlLCO2m5zB7Y0tpJoxf95Fyde5N+umq3e7h9oxBvvN3ChK3JVXbyzSwKt9sprCJGkHjwk0bRPnqKDtGCGEv+MPBBAwd7Cw+a6Is6TTdp3dSDDBBSL0no6fa8zxKL/b2iCQr/6pYVCq2s2bMiEuRmVhpIYWaodWuwjM73UXHjPaCrTY9eRNTfwvtVJI9WfsVYZy4OMSTa8fmqTWONU0jXQfk+EEjIg5T0XJR5SB2J3Ze67orpCuLGiqMH7KiQRrfzbskN72zRZxPt0UhgB"
+      },
+      {
+        "type": "text",
+        "text": "Soccer practice is already on Saturday at 10:00am at Cedarvale Park. For after that, High Park (Bloor St W / Parkside Dr) is free, with Jamie Bell Adventure Playground, an animal display and splash pads. The park is open daily, and the water play is seasonal."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1194,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20754,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 236,
+      "output_tokens_details": {
+        "thinking_tokens": 136
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2434
+}

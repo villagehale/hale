@@ -302,8 +302,27 @@ describe('handleLinqInboundRequest', () => {
         channel_message_id: message?.id,
         provider_message_id: MESSAGE_ID,
         received_at: NOW.toISOString(),
+        in_group: false,
       },
     ]);
+  });
+
+  /**
+   * Linq did not say whether the chat is a group. The text is still routed as a 1:1 text
+   * and handed off, and the job says nothing about a group rather than `false`, so the
+   * router's holding line treats it as a chat that might be one (`group_unknown`).
+   */
+  it('hands off a text whose payload has no is_group, and queues no group bit for it', async () => {
+    const h = harness();
+    enrol(h.fake);
+    const body = JSON.parse(messageBody());
+    Reflect.deleteProperty(body.data.chat, 'is_group');
+
+    const res = await handleLinqInboundRequest(request(JSON.stringify(body)), h.deps);
+
+    await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
+    expect(h.jobs).toHaveLength(1);
+    expect(h.jobs[0]?.in_group).toBeUndefined();
   });
 
   it('does not claim a group or hand it to the coach until the trigger', async () => {
@@ -387,6 +406,8 @@ describe('handleLinqInboundRequest', () => {
     await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
     expect(h.reads).toEqual([]);
     expect(h.jobs).toHaveLength(1);
+    // Group onboarding v2 is dark here, and the job still says the text came from a group.
+    expect(h.jobs[0]?.in_group).toBe(true);
     const message = h.fake
       .rows(schema.channelMessages)
       .find((row) => row.providerMessageId === MESSAGE_ID);

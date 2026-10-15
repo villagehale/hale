@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply gives a real pick (Messi) with a reason, as an opinion ask needs. The one fact stated, the 2022 World Cup win, is settled and cannot change. It states no running count, record or current title from memory, so live being unavailable is not a problem. 'Best of his generation for close to two decades' reads as opinion, not a stat. The tone is casual, like a friend texting, and it is in the question's language.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

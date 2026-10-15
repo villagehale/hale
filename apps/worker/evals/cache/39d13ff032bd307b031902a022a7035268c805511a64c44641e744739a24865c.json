@@ -1,0 +1,42 @@
+{
+  "parsed": {
+    "candidates": [
+      {
+        "title": "Community youth soccer club season (Burnaby)",
+        "description": "Local community soccer clubs in Burnaby typically run seasonal recreational leagues for school-age kids, usually fall and spring, with weekly practices and games. This is a good fit for a child who likes soccer and wants a team setting.",
+        "confidence": 0.8,
+        "coverageNote": "General knowledge only. Burnaby almost certainly has youth soccer clubs, but I can't confirm specific clubs, age divisions, schedules, fees or registration dates. Check with the city or a local club. Cadence: seasonal (fall/spring)."
+      },
+      {
+        "title": "City recreation-centre youth sports programs",
+        "description": "Burnaby's municipal recreation centres commonly offer youth sports classes and skill-building programs such as intro soccer, multi-sport and games for school-age kids. These suit a child who wants to build soccer skills and try other sports.",
+        "confidence": 0.7,
+        "coverageNote": "General knowledge only. Offerings change by term and I can't confirm which centres run soccer-specific classes, or their times or prices. Cadence: seasonal (term-based)."
+      },
+      {
+        "title": "Drop-in gym or open field time at a community centre",
+        "description": "Community centres and public school fields in areas like Burnaby often have drop-in gym time or open field access where kids can kick a ball around informally. This is a low-commitment way to play soccer between organized seasons.",
+        "confidence": 0.55,
+        "coverageNote": "Plausible from general patterns, but drop-in availability and age restrictions vary, and I can't confirm a specific location or schedule. Cadence: ongoing."
+      },
+      {
+        "title": "School-holiday and summer sports camps",
+        "description": "Burnaby recreation providers and private sports organizations typically run summer and school-break day camps with a soccer or multi-sport focus for school-age kids. These give concentrated practice time and a chance to meet other kids.",
+        "confidence": 0.65,
+        "coverageNote": "General knowledge only. Camp availability, ages, dates and costs are unconfirmed, and these are only relevant in summer or on school breaks. Cadence: seasonal (summer and holiday breaks)."
+      },
+      {
+        "title": "Neighbourhood park fields for casual soccer",
+        "description": "Burnaby has many public parks with open grass and sports fields where a family can kick a ball around, practise drills or join a pickup game. It's free and flexible, and it works well for supplementing a team or class.",
+        "confidence": 0.8,
+        "coverageNote": "General knowledge. Parks with fields almost certainly exist in the area, but I'm not naming a specific one, and field conditions and bookings vary. Best in drier months. Cadence: ongoing."
+      },
+      {
+        "title": "Multi-sport or skills clinics through local sports organizations",
+        "description": "Local clubs and private sports providers in the Burnaby and Metro Vancouver area often run short skills clinics in soccer and other sports. They suit a child who wants to improve technique or sample different sports before committing to a full season.",
+        "confidence": 0.5,
+        "coverageNote": "Based on general regional patterns, not a verified listing. I can't confirm specific providers, dates or pricing. Cadence: seasonal."
+      }
+    ]
+  }
+}

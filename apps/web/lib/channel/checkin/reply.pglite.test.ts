@@ -554,6 +554,7 @@ describe('a diary answer through the real router', () => {
       smokeAlarm: auditSmokeAlarmClaim(db.database),
       turns: auditTurnLedger(db.database),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
+      holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),
       recordActivityPromise: async () => ({
         status: 'recorded',

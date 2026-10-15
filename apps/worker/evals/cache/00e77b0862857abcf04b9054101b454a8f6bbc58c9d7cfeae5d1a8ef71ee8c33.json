@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.95,
+    "rationale": "Daycare closure notice for a specific dated day affects child's schedule"
+  },
+  "latencyMs": 1479
+}

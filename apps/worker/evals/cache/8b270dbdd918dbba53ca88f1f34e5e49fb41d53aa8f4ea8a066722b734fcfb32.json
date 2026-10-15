@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with a plain 'I checked' clause that the contract requires, names Noor, and states the given checkpoint fact accurately without inventing details. It correctly omits any weekend pick or registration info, since those are null. It doesn't include the offerQuestion prompt, but a question isn't strictly required in the message, so this is a minor gap. Tone is quiet and specific, not hype.",
+    "score": 4
+  }
+}

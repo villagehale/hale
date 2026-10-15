@@ -1,0 +1,7 @@
+{
+  "value": {
+    "verdict": "redraft",
+    "reason": "The voice is off: it refers to Hale in the third person (\"Hale only sees what you type here\") and ends with an assistant-style offer (\"I'm happy to help with it\"). It should read as a friend saying \"I only know what you tell me here, so nothing about your family yet.\""
+  },
+  "latencyMs": 2933
+}

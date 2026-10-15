@@ -77,7 +77,7 @@ export const INTAKE_ANSWER_FIXTURES = [
     parentWords: 'where does all this info about my kids end up',
     children: TWO_KIDS,
     watchFor:
-      'A fair question at the consent moment. It may say plainly that the details stay with Hale and are not sold or handed around; it may NOT invent a certification, a jurisdiction, a retention period or a policy clause.',
+      'A fair question at the consent moment. The expected answer says the details stay with Hale and are not sold or passed around - that is the line the skill sanctions, so it is NOT an invented or unverified assurance and must not lower the score. On data handling, fail only an invented retention period, deletion promise, jurisdiction, certification or encryption claim.',
   },
   {
     id: 'do-i-need-an-app',

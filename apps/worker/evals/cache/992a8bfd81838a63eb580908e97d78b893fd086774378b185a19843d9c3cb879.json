@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in English, matches the weekend_fallback prompt, names no child, and gives no activity, place, time, or price. Quoting the offer: 'Want me to look at weekday stuff too?' is the offer put straight as a plain question, not hedged into a condition or framed as what Hale could or is willing to do. It refers to the family's weekend options already sent, which is accurate. The asks are: the single question of whether to look at weekdays, so one ask. The tone is casual and friend-like, noticing the family's pattern. It does not claim anything has been found. This fits the 5 description closely.",
+    "score": 5
+  }
+}

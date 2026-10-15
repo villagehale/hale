@@ -1,0 +1,10 @@
+{
+  "value": {
+    "destination_city": "Québec",
+    "destination_region": "Quebec",
+    "start_date": "2026-09-04",
+    "end_date": "2026-09-07",
+    "child_evidence": "child_fare",
+    "confidence": 0.95
+  }
+}

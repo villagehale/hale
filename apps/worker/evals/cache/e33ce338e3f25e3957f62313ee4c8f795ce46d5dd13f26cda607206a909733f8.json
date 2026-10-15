@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CfwLCasoCBbsHUw1PD9Ng",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSwAYKEAgSGAI4AUIIdGhpbmtpbmcSDGEvx7IbDCyEwIkQXhoMRYX5vgBNAQG/HQE6IjBdM7CPTBP9DrXReKNgzqv/pRKgK6LPqUhefdnzoCUXccGgTwgpETrTf+7Az33rO4cq3QXEXxQfjaHGE9cqVIT6uwcNqfUWGh323glTb1f5WynNCuIFkjrzmlGFXa534yHwcUQCop/slTJZlcnlC2MARj0WC/tJx7d/wIDCZ8wbtYT5hT/k80VR07JhC8STLuY7HjZiOWsbf5eWpZKWJ7+9zLLn6m4+8j7Lc3dq2jsbEfRIlgrlKQte8Wkp/kfn3uDQvHtwgLz4uyWUrf2AwV32ZZnbR3CrFUV5gmYQDPVduJXzuQ/+O2NTPd/l3bhqBriyJuKnuMQfTL/A8b1BqX1pqlmFPvL3GgyAwvTsh3vDKBpAGxNUP7IKCooxaiw6JsW2F1EOYmmTlgqTGzvE6jzWI/6PCN+kBT2FWIsvm+tIHE6mA2Rw7LJ5eRX18rgnM5B4A5gRuNs09zLiNdbIcPvVlsIYzVLjmvbR7IREjFTHMJSz5+DVGa6jbfpFW91YXP17eDUOSppxkxtSwjkMYWmergx3okGCDKu2OBJaxuvJWg0nrjGTCWDn0SHH3D3U6GH1CUAMdQ3rGXJWWlFo5lWk4YHfN8H20W25R+PFeIT61vqyHpOq5PdCJIyE64aORfD1ZTAqn8T3CYkRMpxBoti+CO+Xf/Q7Kf/lV18U52+Wz8Hi7vtfJ+RkPJz3oxcOWRHSV2Asawhz0LhvpYanuO76tMrDWmaKF4KI+9wfZaeccVJkmhcQd8dkReY/gceXzy6NrCrvpskPupcn6a0qPNRMR06aEE1WQ3ABx816y4IdjZkrVQ7+z/Y36qVyqtXuWWH+cikbVWenzfuBB0/7TpF85JROX7DnfVOwhkOspgUPQIb85NbymDMxNmX4MeCDqbqb8mPFoQDFCadjkbiyoy44iWK+YWMacNAsYR2gHptthtBqzWeJYi90COVoog3jksxgWCIl55Wjyp5jjcfrjhnYSiE1QxbJdqkYBSnSQVCHhlz0PgCIJohKZ6AM9BtSPoZVtmWDrulDmJa32dlPc/msGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01RQLV4tjBFy41z17dNrCnuW",
+        "name": "submit_verdict",
+        "input": {
+          "verdict": "reject",
+          "rationale": "The idempotency check (check_action_idempotency) returned ok:false for action_hash 8bcef2ba…78af7. Under policy, a failed check means reject, and a duplicate of a recent action is a rejection criterion. The result carried no detail, so I can't confirm it was a duplicate. The response was flagged simulated:true. The other action properties look benign: it is internal-only, reversible, and not medical or legal. I did not run the other checks (time window, PII, user override) because only the idempotency check was required.",
+          "remediation": "Check whether an identical add_to_routine action for EarlyON (cand-earlyon-1) was already created for this family in the last 24 hours. If it was, discard this draft. If it wasn't, re-run the idempotency check. The drafter should resubmit only once the check returns ok:true."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 476,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 1364,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 447,
+      "output_tokens_details": {
+        "thinking_tokens": 91
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4167
+}

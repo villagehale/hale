@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const waitUntil = vi.hoisted(() => vi.fn());
 vi.mock('@vercel/functions', () => ({ waitUntil }));
@@ -8,8 +10,16 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
+import {
+  GENERAL_ANSWER_SEARCH_ENABLED_ENV,
+  createGeneralAnswer,
+} from '~/lib/channel/off-domain/answer';
+import {
+  type OffDomainLane,
+  type OffDomainVerdict,
+  offDomainLane,
+  productionOffDomainLane,
+} from '~/lib/channel/off-domain/lane';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
@@ -18,6 +28,7 @@ import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   DISCOVERABILITY_ALREADY_ON,
   DISCOVERABILITY_OFF,
@@ -40,6 +51,7 @@ import {
   healthReplyHandler,
   sequenceReplyHandler,
 } from './handlers';
+import { HOLDING_LINE_ENABLED_ENV, type HoldingLineComposer } from './holding-line';
 import {
   type OpenQuestion,
   type OpenQuestionReader,
@@ -59,6 +71,12 @@ import {
 } from './route';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
+
+// The live search is on by default in production. These tests describe the kill switch
+// (dark) unless a test lights it, so each starts dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * The router, driven end to end minus the provider and the model.
@@ -88,6 +106,7 @@ function job(overrides: Partial<ChannelMessageReceivedJob> = {}): ChannelMessage
     channel_message_id: '33333333-3333-4333-8333-333333333333',
     provider_message_id: 'SM1',
     received_at: NOW.toISOString(),
+    in_group: false,
     ...overrides,
   };
 }
@@ -152,6 +171,18 @@ function fakeCoach(
     },
   };
   return coach;
+}
+
+/** A holding-line composer that always has a line, counting how often it was asked. */
+function fakeHoldingLine(line = "I'm on it."): HoldingLineComposer & { calls: number } {
+  const holding = {
+    calls: 0,
+    async compose() {
+      holding.calls += 1;
+      return { status: 'composed' as const, line };
+    },
+  };
+  return holding;
 }
 
 /** A coach that cannot run at all — the outage the canned choice sentence exists for. */
@@ -424,6 +455,8 @@ function harness(
     dispatchDeepResearch?: ChannelRouterDeps['dispatchDeepResearch'];
     turnDeadlineMs?: number;
     callTimeoutMs?: number;
+    holdingLine?: HoldingLineComposer;
+    holdingLineAfterMs?: number;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -495,6 +528,8 @@ function harness(
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
       apology: options.apology ?? fakeApology(),
+      holdingLine: options.holdingLine ?? fakeHoldingLine(),
+      holdingLineAfterMs: options.holdingLineAfterMs,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
       turnDeadlineMs: options.turnDeadlineMs,
@@ -512,6 +547,7 @@ const conversationRows = (fake: FakeDb) => fake.rows(schema.conversations);
 const messageRows = (fake: FakeDb) => fake.rows(schema.messages);
 const auditRows = (fake: FakeDb) => fake.rows(schema.auditLog);
 const ledgerRows = (fake: FakeDb) => fake.rows(schema.channelMessages);
+const pendingAskRows = (fake: FakeDb) => fake.rows(schema.channelPendingAsks);
 
 // ── the channel a parent wrote in on ─────────────────────────────────────────
 
@@ -808,6 +844,11 @@ describe('VIL-333 identity challenge', () => {
 });
 
 describe('the off-domain lane', () => {
+  // A test here that lights the search must not leave it lit for the next one.
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   // Boundary v3: the general lane ANSWERS. What the router owes it is unchanged — one
   // send, threaded, ledgered, audited, and no coach woken.
   const ANSWERED: OffDomainVerdict = {
@@ -818,6 +859,7 @@ describe('the off-domain lane', () => {
     replySource: 'composed',
     medicalSource: null,
     signal: 'recorded',
+    pendingAsk: null,
   };
 
   /** The lane's other answer: a symptom, answered rather than deflected. */
@@ -825,10 +867,12 @@ describe('the off-domain lane', () => {
     status: 'deflected',
     lane: 'safety_critical',
     category: 'medical-symptom',
-    reply: medicalSource === 'fixed' ? SAFETY_REPLY : 'Fevers at this age are usually viral.',
+    reply:
+      medicalSource === 'fixed' ? 'MOMENT_CHILD_HEALTH' : 'Fevers at this age are usually viral.',
     replySource: medicalSource,
     medicalSource,
     signal: 'not_applicable',
+    pendingAsk: null,
   });
 
   /**
@@ -897,6 +941,331 @@ describe('the off-domain lane', () => {
       expect(sent[0]?.body).toBeNull();
     },
   );
+
+  /**
+   * A reply that left a question open ("which city?") keeps that question beside its own
+   * ledger row, in a table of its own (migration 0167), where the parent's next text can
+   * be read beside it. What is kept is the lane's de-identified question and what it was
+   * missing. `body` stays null: not the parent's words, and not what Hale said.
+   */
+  it('keeps the question a reply left open beside the reply row it sends, body still null', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const h = harness({
+      context: { body: "how's the weather tomorrow" },
+      offDomain: fakeLane({
+        ...ANSWERED,
+        reply: 'Which city are you in?',
+        pendingAsk: { question: 'hows the weather tomorrow', missing: 'which city' },
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ body: null });
+    expect(sent[0]?.id).toEqual(expect.any(String));
+    expect(pendingAskRows(h.fake)).toMatchObject([
+      {
+        channelMessageId: sent[0]?.id,
+        familyId: FAMILY,
+        question: 'hows the weather tomorrow',
+        missing: 'which city',
+      },
+    ]);
+    expect(pendingAskRows(h.fake)).toHaveLength(1);
+    // The reply's own row names no column for it: that table is written by every text.
+    expect(Object.keys(sent[0] ?? {}).filter((column) => /pending/i.test(column))).toEqual([]);
+  });
+
+  /** Only a lit general answer leaves a question open, and the table is its alone. With
+   * the search dark nothing is written there, whatever a lane hands back. */
+  it('keeps no question while the search is dark, whatever the lane hands back', async () => {
+    const h = harness({
+      context: { body: "how's the weather tomorrow" },
+      offDomain: fakeLane({
+        ...ANSWERED,
+        reply: 'Which city are you in?',
+        pendingAsk: { question: 'hows the weather tomorrow', missing: 'which city' },
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Which city are you in?']);
+    expect(pendingAskRows(h.fake)).toEqual([]);
+  });
+
+  /**
+   * The compose writes a `grounding` list before its answer (answer-request.ts). Through
+   * the real composer and the real lane, none of it reaches the parent, the reply's ledger
+   * row or a log line. The answer and the question it left open do.
+   */
+  it('sends, keeps and logs nothing of the grounding the compose wrote', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const consoleLines: unknown[][] = [];
+    for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        consoleLines.push(args);
+      });
+    }
+    const structured = (payload: unknown) => ({
+      content: [{ type: 'text', text: JSON.stringify(payload) }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    const client = () =>
+      ({
+        messages: {
+          async create(request: { system: Array<{ text: string }> }) {
+            const sanitizing = request.system
+              .map((block) => block.text)
+              .join('')
+              .includes('Take the family out, keep the question');
+            return structured(
+              sanitizing
+                ? {
+                    language: 'en',
+                    answers_pending: 'nothing_pending',
+                    question: 'hows the weather tomorrow',
+                    missing_detail: 'which city',
+                    their_place: 'needed',
+                    current_fact: 'the forecast',
+                    needs_search: 'missing_detail',
+                  }
+                : {
+                    grounding: [{ states: 'GROUNDED-SPECIFIC', from: 'GROUNDED-SOURCE-WORDS' }],
+                    answer: 'Which city are you in?',
+                  },
+            );
+          },
+        },
+      }) as unknown as AgentClient;
+    const lane = offDomainLane({
+      screen: {
+        read: async () => ({ lane: 'off_domain_general', category: 'weather', fallback: null }),
+      },
+      answer: createGeneralAnswer(client),
+      today: async () => 'monday, oct 12, 2026',
+      place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      pendingAsk: async () => ({ status: 'none' }),
+      medical: {
+        answer: async () => {
+          throw new Error('not a medical turn');
+        },
+      },
+      moment: { write: async () => ({ status: 'written', reply: 'moment wrote this' }) },
+      recordUnmetIntent: async () => 'recorded',
+    });
+    const h = harness({ context: { body: "how's the weather tomorrow" }, offDomain: lane });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    // Positive control: the answer went out, the question it left open was kept, and the
+    // turn logged.
+    expect(h.transport.bodies()).toEqual(['Which city are you in?']);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ replySource: 'composed' });
+    expect(pendingAskRows(h.fake)).toMatchObject([
+      { question: 'hows the weather tomorrow', missing: 'which city' },
+    ]);
+    expect(consoleLines.length).toBeGreaterThan(0);
+    expect(
+      JSON.stringify([
+        h.transport.sent,
+        ledgerRows(h.fake),
+        pendingAskRows(h.fake),
+        h.logs,
+        consoleLines,
+      ]),
+    ).not.toContain('GROUNDED');
+  });
+
+  /**
+   * The compose's own reading that the text describes someone hurt, ill or in danger
+   * (answer-request.ts). Through the real composer and the real lane the turn is answered
+   * by the lane's safety door, and nothing the model wrote reaches the parent, the
+   * ledger, the table of open questions or a log line. On a turn that would otherwise
+   * have left its question open, so that "kept" has something it could have been.
+   */
+  it('sends, keeps and logs nothing the compose wrote when it read someone hurt', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const consoleLines: unknown[][] = [];
+    for (const level of ['error', 'warn', 'info', 'log', 'debug'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        consoleLines.push(args);
+      });
+    }
+    const structured = (payload: unknown) => ({
+      content: [{ type: 'text', text: JSON.stringify(payload) }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    const client = () =>
+      ({
+        messages: {
+          async create(request: { system: Array<{ text: string }> }) {
+            const sanitizing = request.system
+              .map((block) => block.text)
+              .join('')
+              .includes('Take the family out, keep the question');
+            return structured(
+              sanitizing
+                ? {
+                    language: 'en',
+                    answers_pending: 'nothing_pending',
+                    question: 'is it ok to let a child nap after a fall',
+                    missing_detail: 'which city',
+                    their_place: 'needed',
+                    current_fact: 'none',
+                    needs_search: 'missing_detail',
+                  }
+                : {
+                    hurt_ill_or_danger: 'child-safety',
+                    grounding: [{ states: 'MODEL-GROUNDED-THIS', from: 'settled' }],
+                    answer: 'MODEL-WROTE-THIS',
+                  },
+            );
+          },
+        },
+      }) as unknown as AgentClient;
+    const lane = offDomainLane({
+      screen: {
+        read: async () => ({
+          lane: 'off_domain_general',
+          category: 'general-knowledge',
+          fallback: null,
+        }),
+      },
+      answer: createGeneralAnswer(client),
+      today: async () => 'monday, oct 12, 2026',
+      place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      pendingAsk: async () => ({ status: 'none' }),
+      medical: {
+        answer: async () => {
+          throw new Error('not a medical turn');
+        },
+      },
+      moment: {
+        write: async () => ({ status: 'written', reply: 'moment wrote the safety reply' }),
+      },
+      recordUnmetIntent: async () => 'recorded',
+    });
+    const h = harness({
+      context: { body: 'is it ok to let him nap, he fell off the top bunk' },
+      offDomain: lane,
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    // Positive control: a reply did go out, it is the lane's own fixed line, and the
+    // turn logged.
+    expect(h.transport.bodies()).toEqual(['moment wrote the safety reply']);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ replySource: 'composed', body: null });
+    expect(pendingAskRows(h.fake)).toEqual([]);
+    expect(consoleLines.length).toBeGreaterThan(0);
+    expect(
+      JSON.stringify([
+        h.transport.sent,
+        ledgerRows(h.fake),
+        pendingAskRows(h.fake),
+        messageRows(h.fake),
+        h.logs,
+        consoleLines,
+      ]),
+    ).not.toMatch(/MODEL-WROTE|MODEL-GROUNDED/);
+  });
+
+  it('keeps no question on a reply that left none open, or on a coach answer', async () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+    const answered = harness({
+      context: { body: "how's the weather" },
+      offDomain: fakeLane(ANSWERED),
+    });
+    await routeChannelMessage(answered.deps, job());
+    const coached = harness({ context: { body: 'what should we do this weekend' } });
+    await routeChannelMessage(coached.deps, job());
+
+    for (const h of [answered, coached]) {
+      const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+      expect(sent).toHaveLength(1);
+      expect(pendingAskRows(h.fake)).toEqual([]);
+    }
+  });
+
+  /** A question Hale left open was put to one parent, and is open as of this turn: the
+   * lane is told whose text this is and what time the turn began. */
+  it('tells the lane whose text it is, when the turn began and which thread it arrived in', async () => {
+    const asked: unknown[] = [];
+    const lane: OffDomainLane = {
+      async consider(input) {
+        asked.push(input);
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({ context: { body: 'Toronto' }, offDomain: lane });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(asked).toEqual([
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        channelMessageId: job().channel_message_id,
+        text: 'Toronto',
+        now: NOW,
+        thread: { channel: 'sms', providerChatId: null, inGroup: false },
+      },
+    ]);
+  });
+
+  /**
+   * Sloane's finding 2. The lane ties a question it left open, and a family's home city,
+   * to the thread a text arrived in, so it has to be told the chat and the door's own
+   * group bit. The bit is the job's, not `context.inGroup`, which stays false while group
+   * onboarding v2 is dark however many people are in the chat.
+   */
+  it.each([
+    ["a parent's own iMessage chat", { in_group: false }, false],
+    ['a group chat, with group onboarding v2 dark', { in_group: true }, true],
+  ] as const)('tells the lane the chat and the group bit of %s', async (_label, said, inGroup) => {
+    const threads: unknown[] = [];
+    const lane: OffDomainLane = {
+      async consider(input) {
+        threads.push(input.thread);
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({
+      context: {
+        reply: { channel: 'imessage', to: PHONE, chatId: 'chat-7', replyToMessageId: null },
+        inGroup: false,
+      },
+      offDomain: lane,
+    });
+
+    await routeChannelMessage(h.deps, job(said));
+
+    expect(threads).toEqual([{ channel: 'imessage', providerChatId: 'chat-7', inGroup }]);
+  });
+
+  it('tells the lane the thread is unknown for a job that does not say, never that it is 1:1', async () => {
+    const threads: Array<{ inGroup: boolean | undefined }> = [];
+    const lane: OffDomainLane = {
+      async consider(input) {
+        threads.push(input.thread);
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({ offDomain: lane });
+    const { in_group: _unsaid, ...unsaid } = job();
+
+    await routeChannelMessage(h.deps, unsaid);
+
+    expect(threads).toEqual([{ channel: 'sms', providerChatId: null, inGroup: undefined }]);
+    expect(threads[0]?.inGroup).toBeUndefined();
+  });
 
   /** A coach turn's reply is not a deflection — no provenance stamp belongs on it. */
   it('leaves the reply source null on a coach answer', async () => {
@@ -1023,6 +1392,7 @@ describe('the off-domain lane', () => {
         replySource: 'fixed',
         medicalSource: null,
         signal: 'recorded',
+        pendingAsk: null,
       }),
     });
 
@@ -1888,7 +2258,6 @@ describe('the outage smoke alarm', () => {
     expect(claim.reads).toEqual([]);
     expect(claim.fired).toEqual([]);
     expect(h.transport.bodies()).toEqual(['Splash pad opens at 10.']);
-    expect(h.transport.bodies()).not.toContain(SAFETY_REPLY);
   });
 
   /** An ordinary text during the same outage. The alarm stays quiet — and, since the
@@ -1944,10 +2313,11 @@ describe('the outage smoke alarm', () => {
         status: 'deflected',
         lane: 'safety_critical',
         category: 'other',
-        reply: SAFETY_REPLY,
-        replySource: 'fixed',
+        reply: 'the lane wrote this',
+        replySource: 'composed',
         medicalSource: null,
         signal: 'recorded',
+        pendingAsk: null,
       }),
       coach: outageCoach(),
       smokeAlarm: claim,
@@ -1957,7 +2327,47 @@ describe('the outage smoke alarm', () => {
 
     expect(result.status).toBe('deflected');
     expect(claim.reads).toEqual([]);
-    expect(h.transport.bodies()).toEqual([SAFETY_REPLY]);
+    expect(h.transport.bodies()).toEqual(['the lane wrote this']);
+  });
+
+  it('defers an unwritten moment and answers it once on the re-drive', async () => {
+    let calls = 0;
+    const lane = {
+      async consider() {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            status: 'unwritten' as const,
+            moment: 'emergency' as const,
+            reason: 'model_failed',
+            lane: 'safety_critical' as const,
+            category: 'emergency' as const,
+          };
+        }
+        return {
+          status: 'deflected' as const,
+          lane: 'safety_critical' as const,
+          category: 'emergency' as const,
+          reply: 'Get help where you are.',
+          replySource: 'composed' as const,
+          medicalSource: null,
+          signal: 'recorded' as const,
+          pendingAsk: null,
+        };
+      },
+    };
+    const h = harness({ offDomain: lane });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toMatchObject({
+      name: 'TurnDeferred',
+      reason: 'moment_unwritten',
+    });
+    expect(h.transport.bodies()).toEqual([]);
+
+    const again = await routeChannelMessage(h.deps, job());
+    expect(again.status).toBe('deflected');
+    expect(h.transport.bodies()).toEqual(['Get help where you are.']);
+    expect(calls).toBe(2);
   });
 
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
@@ -4116,5 +4526,745 @@ describe('turn deadline (VIL-400)', () => {
     expect(result.status).toBe('agent_replied');
     expect(h.transport.sent).toHaveLength(1);
     expect(h.turns.unanswered).toEqual([expect.objectContaining({ reason: 'gate_timeout' })]);
+  });
+});
+
+// ── a slow answer: the typing bubble stays up and one holding line goes first ──
+
+describe('a slow answer gets one holding line first', () => {
+  const IMESSAGE_ROUTE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: null,
+  };
+
+  function slowCoach(ms: number, reply: string): ChannelCoachRuntime {
+    const inner = fakeCoach(reply);
+    return {
+      async respond(turn, rejected) {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        return inner.respond(turn, rejected);
+      },
+    };
+  }
+
+  const typingStarts = (logs: unknown[]) =>
+    logs.filter((entry) => (entry as [{ phase?: string }])[0]?.phase === 'start').length;
+
+  /** A limiter that takes `ms` to decide: the slow-DB shape a webhook outage produces. */
+  function slowLimiter(ms: number, allowed: boolean): RateLimiter {
+    return {
+      async check() {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        return { allowed, retryAfterSec: 0 };
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('a slow turn: the bubble is re-armed after ONE holding line, and the answer follows it', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_ROUTE },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
+    expect(holding.calls).toBe(1);
+    expect(typingStarts(h.logs)).toBeGreaterThanOrEqual(2);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([
+      expect.objectContaining({ templateKey: 'holding_line', body: null }),
+      expect.objectContaining({ templateKey: null }),
+    ]);
+  });
+
+  it('a slow deterministic reply (the plan a "yes" composes) never arms it', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const slowPlan: DeterministicHandler = {
+      name: 'plan',
+      handle: async (_db, turn) => {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        await turn.send('the plan, part one');
+        return { claimed: true, outcome: 'plan_sent', reply: null };
+      },
+    };
+    const h = harness({
+      handlers: [slowPlan],
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_ROUTE },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['the plan, part one']);
+    expect(holding.calls).toBe(0);
+  });
+
+  it('an opt-out the handlers claim never arms it, however slow the turn', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const slowOptOut: DeterministicHandler = {
+      name: 'sms_opt_out',
+      handle: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        return { claimed: true, outcome: 'opted_out', reply: 'opted out' };
+      },
+    };
+    const h = harness({
+      context: { body: 'STOP' },
+      handlers: [slowOptOut],
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result).toEqual(expect.objectContaining({ status: 'handled', handler: 'sms_opt_out' }));
+    expect(h.transport.bodies()).toEqual(['opted out']);
+    expect(holding.calls).toBe(0);
+  });
+
+  it('a flood-held turn never arms it, however slow the limiter', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const h = harness({
+      limiter: slowLimiter(120, false),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('flood_held');
+    expect(h.transport.bodies()).toEqual([FLOOD_REPLY]);
+    expect(holding.calls).toBe(0);
+  });
+
+  it('the wait is counted from the gates: a slow gate and a fast answer send no line', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const h = harness({
+      limiter: slowLimiter(200, true),
+      holdingLine: holding,
+      holdingLineAfterMs: 50,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(['coach says hi']);
+    expect(holding.calls).toBe(0);
+  });
+
+  it.each([
+    ['unset', undefined],
+    ['a trailing newline', 'true\n'],
+    ['padded', ' true'],
+  ])(
+    'dark unless HOLDING_LINE_ENABLED is exactly true (%s): no line, and lane_off is named',
+    async (_label, value) => {
+      vi.stubEnv(HOLDING_LINE_ENABLED_ENV, value);
+      const holding = fakeHoldingLine("I'm on it.");
+      const h = harness({
+        coach: slowCoach(120, 'the real answer'),
+        holdingLine: holding,
+        holdingLineAfterMs: 10,
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result.status).toBe('agent_replied');
+      expect(h.transport.bodies()).toEqual(['the real answer']);
+      expect(holding.calls).toBe(0);
+      expect(h.logs).toContainEqual([{ outcome: 'lane_off' }, expect.any(String)]);
+    },
+  );
+
+  it('a fast turn: no holding line is composed or sent', async () => {
+    const holding = fakeHoldingLine();
+    const h = harness({ holdingLine: holding, holdingLineAfterMs: 200 });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['coach says hi']);
+    expect(holding.calls).toBe(0);
+  });
+
+  it('a re-driven turn already had its chance: no second holding line', async () => {
+    const holding = fakeHoldingLine();
+    const turns = fakeTurnLedger();
+    turns.deferred.push(job().channel_message_id);
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+      turns,
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(holding.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 're_driven' }, expect.any(String)]);
+  });
+
+  it("a group thread never gets one: it is not one parent's wait to cover in front of others", async () => {
+    const groupRoute: ReplyRoute = { ...IMESSAGE_ROUTE, chatId: 'chat-family-group' };
+    const turnIn = async (inGroup: boolean) => {
+      const holding = fakeHoldingLine("I'm on it.");
+      const h = harness({
+        coach: slowCoach(120, 'the real answer'),
+        holdingLine: holding,
+        holdingLineAfterMs: 10,
+        context: { reply: groupRoute, inGroup },
+      });
+      const result = await routeChannelMessage(h.deps, job({ in_group: inGroup }));
+      return { result, holding, h };
+    };
+
+    const group = await turnIn(true);
+    expect(group.result.status).toBe('agent_replied');
+    expect(group.h.transport.bodies()).toEqual(['the real answer']);
+    expect(group.holding.calls).toBe(0);
+    expect(group.h.logs).toContainEqual([{ outcome: 'group_thread' }, expect.any(String)]);
+
+    // Positive control: the same slow turn in the parent's own chat still gets its line.
+    const direct = await turnIn(false);
+    expect(direct.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
+    expect(direct.holding.calls).toBe(1);
+    expect(direct.h.logs).toContainEqual([{ outcome: 'sent' }, expect.any(String)]);
+  });
+
+  it("keys the group skip on the inbound's own group bit, so a dark group onboarding v2 cannot arm it", async () => {
+    // With v2 dark, wiring.ts derives `inGroup` as false for every message, a group one
+    // included. The door still knew the chat was a group, and that is the bit that counts.
+    const turnIn = async (in_group: boolean) => {
+      const holding = fakeHoldingLine("I'm on it.");
+      const h = harness({
+        coach: slowCoach(120, 'the real answer'),
+        holdingLine: holding,
+        holdingLineAfterMs: 10,
+        context: { reply: { ...IMESSAGE_ROUTE, chatId: 'chat-some-group' }, inGroup: false },
+      });
+      const result = await routeChannelMessage(h.deps, job({ in_group }));
+      return { result, holding, h };
+    };
+
+    const group = await turnIn(true);
+    expect(group.result.status).toBe('agent_replied');
+    expect(group.h.transport.bodies()).toEqual(['the real answer']);
+    expect(group.holding.calls).toBe(0);
+    expect(group.h.logs).toContainEqual([{ outcome: 'group_thread' }, expect.any(String)]);
+
+    // Positive control: the door said 1:1, and the same slow turn still gets its line.
+    const direct = await turnIn(false);
+    expect(direct.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
+    expect(direct.holding.calls).toBe(1);
+  });
+
+  it('a job that does not say whether it came from a group is not armed, and says so', async () => {
+    // A job queued before the door carried the bit, or re-driven by the reconciler, which
+    // reads the row and cannot know.
+    const holding = fakeHoldingLine("I'm on it.");
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+    });
+    const { in_group: _unsaid, ...unsaid } = job();
+
+    const result = await routeChannelMessage(h.deps, unsaid);
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(holding.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 'group_unknown' }, expect.any(String)]);
+  });
+
+  it('an email turn names why it has none', async () => {
+    const holding = fakeHoldingLine();
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingLine: holding,
+      holdingLineAfterMs: 10,
+      context: {
+        reply: { channel: 'email', to: 'sam@example.com', inReplyTo: '<msg-1@example.com>' },
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(holding.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 'email' }, expect.any(String)]);
+  });
+
+  it('an answer that beats the wait is recorded as answered_first', async () => {
+    const holding = fakeHoldingLine();
+    const h = harness({ holdingLine: holding, holdingLineAfterMs: 200 });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(holding.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 'answered_first' }, expect.any(String)]);
+  });
+});
+
+/**
+ * The reply's ledger row through the REAL send path, against the real DDL. The fake
+ * database above records whatever it is handed, so it cannot fail on a column or a table
+ * the database does not have. Everything else is the harness's: the context, the
+ * transport, the coach. Every row is invented.
+ */
+describe('the reply row, written to a real database', () => {
+  /** The harness, with its database swapped for a real one and its job pointed at a
+   * family that exists there. */
+  async function onRealDatabase(db: TestDb, options: Parameters<typeof harness>[0] = {}) {
+    const h = harness(options);
+    h.deps.database = db.database;
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    const turn = (overrides: Partial<ChannelMessageReceivedJob> = {}) =>
+      job({ family_id: familyId, parent_user_id: parentUserId, ...overrides });
+    return { h, familyId, parentUserId, turn };
+  }
+
+  /**
+   * Sloane's ruling on the pending question: it moves to a side table "so that 0167 no
+   * longer has to run before merge to keep every text from failing". A database migrated
+   * only as far as main is today takes a reply's row.
+   */
+  describe('on a database without migration 0167', () => {
+    let db: TestDb;
+
+    beforeAll(async () => {
+      db = await createTestDb('0163_drop_retired_auth_tables.sql');
+    });
+
+    afterAll(async () => {
+      await db.close();
+    });
+
+    it('sends the reply and writes its row', async () => {
+      const { h, familyId, turn } = await onRealDatabase(db, {
+        coach: fakeCoach('Saturday is dry.'),
+      });
+
+      const result = await routeChannelMessage(h.deps, turn());
+
+      expect(result.status).toBe('agent_replied');
+      expect(h.transport.bodies()).toEqual(['Saturday is dry.']);
+      const sent = await db.database
+        .select({ direction: schema.channelMessages.direction })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.familyId, familyId));
+      expect(sent).toEqual([{ direction: 'out' }]);
+    });
+
+    /**
+     * The same database with the search lit, which is the order the checklist allows:
+     * the flag can be lit before 0167 is applied. The settle after the send then fails on
+     * a table that is not there, and the parent already has the reply, so the turn ends
+     * as it would have and the failure is named.
+     */
+    it('answers with the search lit, and names the question it could not keep', async () => {
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+      const { h, familyId, turn } = await onRealDatabase(db, {
+        coach: fakeCoach('Saturday is dry.'),
+      });
+
+      const result = await routeChannelMessage(h.deps, turn());
+      vi.unstubAllEnvs();
+
+      expect(result.status).toBe('agent_replied');
+      expect(h.transport.bodies()).toEqual(['Saturday is dry.']);
+      expect(
+        await db.database
+          .select({ direction: schema.channelMessages.direction })
+          .from(schema.channelMessages)
+          .where(eq(schema.channelMessages.familyId, familyId)),
+      ).toEqual([{ direction: 'out' }]);
+      expect(
+        h.logs.filter(
+          (entry) =>
+            (entry as unknown[])[1] ===
+            'pending ask: the reply landed; the question it left open was not kept',
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  /**
+   * A question Hale left open, through the real send path and the real read path, with
+   * no row seeded by hand: what the router writes is what the lane's reader finds. The
+   * lane is production's own wiring on a scripted client.
+   */
+  describe('a question left open, and the reply to it', () => {
+    let db: TestDb;
+
+    beforeAll(async () => {
+      db = await createTestDb();
+    });
+
+    afterAll(async () => {
+      await db.close();
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    });
+
+    const OWN_CHAT: ReplyRoute = {
+      channel: 'imessage',
+      to: PHONE,
+      chatId: 'chat-own',
+      replyToMessageId: null,
+    };
+    const OTHER_CHAT: ReplyRoute = { ...OWN_CHAT, chatId: 'chat-other' };
+    const ASKED = { question: 'hows the weather tomorrow', missing: 'which city' };
+    const COMBINED = 'hows the weather tomorrow in Maplewood';
+
+    /** How long a slow stage takes: well past the holding line's shortened wait. */
+    const SLOW_MS = 150;
+    const HOLDING_AFTER_MS = 10;
+
+    /** The lane's one client: the screen files the text as off-topic, the sanitizer reads
+     * a text beside a pending ask as its answer, and the search finds something. `slow`
+     * is the one call that takes {@link SLOW_MS}: the screen's, or the compose's. */
+    function scripted(slow: 'screen' | 'compose' | null = null) {
+      const seen = { sanitize: [] as unknown[], search: [] as unknown[] };
+      const takesAWhile = (stage: 'screen' | 'compose') =>
+        slow === stage ? new Promise((resolve) => setTimeout(resolve, SLOW_MS)) : null;
+      const structured = (payload: unknown) => ({
+        content: [{ type: 'text', text: JSON.stringify(payload) }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+      });
+      const client = () =>
+        ({
+          messages: {
+            async create(request: {
+              system: Array<{ text: string }>;
+              messages: Array<{ content: string }>;
+            }) {
+              const system = request.system.map((block) => block.text).join('');
+              const payload = JSON.parse(request.messages[0]?.content ?? '{}');
+              if (system.includes('Which lane does this text belong in')) {
+                await takesAWhile('screen');
+                return structured({ lane: 'off_domain_general', category: 'weather', reason: 'x' });
+              }
+              if (system.includes('Take the family out, keep the question')) {
+                seen.sanitize.push(payload);
+                return structured(
+                  'pending' in payload
+                    ? {
+                        language: 'en',
+                        answers_pending: 'yes',
+                        question: COMBINED,
+                        missing_detail: 'none',
+                        their_place: 'not_needed',
+                        current_fact: 'the forecast',
+                        needs_search: 'yes',
+                      }
+                    : {
+                        language: 'en',
+                        answers_pending: 'nothing_pending',
+                        question: ASKED.question,
+                        missing_detail: ASKED.missing,
+                        their_place: 'needed',
+                        current_fact: 'the forecast',
+                        needs_search: 'missing_detail',
+                      },
+                );
+              }
+              await takesAWhile('compose');
+              return structured({
+                answer:
+                  payload.live === 'missing_detail'
+                    ? 'Which city are you in?'
+                    : 'Sunny, high of 14.',
+              });
+            },
+            stream(request: { messages: Array<{ content: string }> }) {
+              seen.search.push(JSON.parse(request.messages[0]?.content ?? '{}'));
+              return {
+                async finalMessage() {
+                  return {
+                    content: [
+                      {
+                        type: 'web_search_tool_result',
+                        tool_use_id: 'srvtoolu_1',
+                        content: [{ type: 'web_search_result', url: 'https://weather.example/f' }],
+                      },
+                      { type: 'text', text: 'Sunny tomorrow, high of 14, per the forecast.' },
+                    ],
+                    stop_reason: 'end_turn',
+                    usage: { input_tokens: 10, output_tokens: 5 },
+                  };
+                },
+              };
+            },
+          },
+        }) as unknown as AgentClient;
+      return { client, seen };
+    }
+
+    /** One text from this parent, in one chat, through the router and the production lane.
+     * `options` are the harness's own, for a turn that is not an ordinary one, and `slow`
+     * the lane call that outlasts the holding line's wait. */
+    async function text(
+      parent: { familyId: string; parentUserId: string },
+      body: string,
+      route: ReplyRoute,
+      {
+        slow = null,
+        ...options
+      }: Parameters<typeof harness>[0] & {
+        slow?: 'screen' | 'compose' | null;
+      } = {},
+    ) {
+      const turn = scripted(slow);
+      const h = harness({
+        offDomain: productionOffDomainLane(db.database, turn.client),
+        ...options,
+        context: { body, reply: route, ...options.context },
+      });
+      h.deps.database = db.database;
+      // The reply rows are stamped by the database's clock, so the turn reads on it too.
+      h.deps.now = () => new Date();
+      const [inbound] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          ...parent,
+          channel: 'imessage',
+          providerChatId: route.channel === 'imessage' ? route.chatId : null,
+          direction: 'in',
+          category: 'reply',
+          status: 'delivered',
+          body,
+        })
+        .returning({ id: schema.channelMessages.id });
+      await routeChannelMessage(
+        h.deps,
+        job({
+          family_id: parent.familyId,
+          parent_user_id: parent.parentUserId,
+          channel_message_id: inbound?.id as string,
+        }),
+      );
+      return { said: h.transport.bodies(), seen: turn.seen, logs: h.logs };
+    }
+
+    const keptAsks = (familyId: string) =>
+      db.database
+        .select({
+          question: schema.channelPendingAsks.question,
+          missing: schema.channelPendingAsks.missing,
+          chat: schema.channelMessages.providerChatId,
+          direction: schema.channelMessages.direction,
+        })
+        .from(schema.channelPendingAsks)
+        .innerJoin(
+          schema.channelMessages,
+          eq(schema.channelMessages.id, schema.channelPendingAsks.channelMessageId),
+        )
+        .where(eq(schema.channelPendingAsks.familyId, familyId));
+
+    const lit = () => {
+      vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+      for (const level of ['info', 'warn', 'error'] as const) {
+        vi.spyOn(console, level).mockImplementation(() => {});
+      }
+    };
+
+    it('keeps the question beside the reply that asked, reads it for the next text in that chat, and deletes it once answered', async () => {
+      lit();
+      const parent = await seedFamily(db.database);
+
+      const asked = await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+
+      expect(asked.said).toEqual(['Which city are you in?']);
+      expect(await keptAsks(parent.familyId)).toEqual([
+        { ...ASKED, chat: 'chat-own', direction: 'out' },
+      ]);
+
+      const answered = await text(parent, 'Maplewood', OWN_CHAT);
+
+      // The real reader found what the real send wrote, in the chat it was asked in.
+      expect(answered.seen.sanitize).toEqual([{ text: 'Maplewood', pending: ASKED }]);
+      expect(answered.seen.search).toMatchObject([{ question: COMBINED }]);
+      expect(answered.said).toEqual(['Sunny, high of 14.']);
+      // Answered, so it is gone: the question lived only while it was open.
+      expect(await keptAsks(parent.familyId)).toEqual([]);
+    });
+
+    it('does not read it for a text in another chat, and Hale answering there closes it', async () => {
+      lit();
+      const parent = await seedFamily(db.database);
+      await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+      // Positive control: the question is open.
+      expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+      const elsewhere = await text(parent, 'Maplewood', OTHER_CHAT);
+
+      expect(elsewhere.seen.sanitize).toEqual([{ text: 'Maplewood' }]);
+      expect(JSON.stringify(elsewhere.seen)).not.toContain(COMBINED);
+      // That text was answered as a question of its own, which is Hale's newer word to
+      // this parent. The first question can never be read again, so it is not kept; the
+      // one this reply left open is.
+      expect(await keptAsks(parent.familyId)).toEqual([
+        { ...ASKED, chat: 'chat-other', direction: 'out' },
+      ]);
+    });
+
+    /**
+     * ONLY THE TURN'S ANSWER SETTLES. The holding line goes out through the same send as
+     * the answer does, while the turn is still reading, and it used to close the parent's
+     * open questions like any reply: when it went out before the screen had finished, the
+     * question was deleted before the lane read it, and "Maplewood" after "Which city are
+     * you in?" got the question asked again. Both flags lit, the production lane, a real
+     * database.
+     */
+    describe('the holding line is not an answer', () => {
+      beforeEach(() => {
+        vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+      });
+
+      it.each([
+        [
+          'goes out while the screen is still reading',
+          'screen',
+          ["I'm on it.", 'Sunny, high of 14.'],
+        ],
+        // Controls. The question is read before the compose, and with no slow call the
+        // line never goes out at all.
+        ['goes out while the answer is composed', 'compose', ["I'm on it.", 'Sunny, high of 14.']],
+        ['never goes out', null, ['Sunny, high of 14.']],
+      ] as const)(
+        'still reads the reply beside its question when the holding line %s',
+        async (_label, slow, said) => {
+          lit();
+          const parent = await seedFamily(db.database);
+          const asked = await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+          expect(asked.said).toEqual(['Which city are you in?']);
+          expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+          const answered = await text(parent, 'Maplewood', OWN_CHAT, {
+            slow,
+            holdingLine: fakeHoldingLine("I'm on it."),
+            holdingLineAfterMs: HOLDING_AFTER_MS,
+          });
+
+          expect(answered.said).toEqual(said);
+          expect(answered.seen.sanitize).toEqual([{ text: 'Maplewood', pending: ASKED }]);
+          expect(answered.seen.search).toMatchObject([{ question: COMBINED }]);
+          // The answer closed it: the holding line's own row is in the ledger, and the
+          // question is gone.
+          expect(await keptAsks(parent.familyId)).toEqual([]);
+        },
+      );
+    });
+
+    /**
+     * WHICH SENDS ARE AN ANSWER, each through the router. A question is open only while
+     * the reply that left it is Hale's last word to that parent (lane.ts readPendingAsk),
+     * so every reply that answers the parent's text is a newer word and takes it out:
+     * what the coach says, the line a spent budget gets on either of its two routes, the
+     * line someone who is not a parent gets, and a tapback that stood in for the words.
+     */
+    describe('every answer closes the question', () => {
+      const SPENT: RateLimiter = { check: async () => ({ allowed: false, retryAfterSec: 60 }) };
+
+      it.each([
+        ['what the coach says', {}, ['coach says hi']],
+        ['the line a spent budget gets', { limiter: SPENT }, [FLOOD_REPLY]],
+        [
+          'the line a spent budget gets from a group, on their own phone',
+          { limiter: SPENT, context: { inGroup: true } },
+          [FLOOD_REPLY],
+        ],
+        [
+          'the line someone who is not a parent gets',
+          { context: { role: 'nanny' } },
+          [scopedReply('Sam')],
+        ],
+      ] as const)('%s', async (_label, options, said) => {
+        lit();
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        // Positive control: the question is open.
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        const next = await text(parent, 'never mind, what is on this weekend', OWN_CHAT, {
+          offDomain: fakeLane(IN_DOMAIN),
+          ...options,
+        });
+
+        expect(next.said).toEqual(said);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+      });
+
+      it('a tapback that stood in for the words', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        const reacted: string[] = [];
+        vi.stubGlobal('fetch', async (url: string) => {
+          reacted.push(new URL(url).pathname);
+          return new Response(null, { status: 204 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        const next = await text(
+          parent,
+          'thanks',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          { offDomain: fakeLane(IN_DOMAIN), coach: fakeCoach('Anytime.') },
+        );
+        vi.unstubAllGlobals();
+
+        // Positive control: the reaction went out, and no words did.
+        expect(reacted.filter((path) => path.endsWith('/reactions'))).toEqual([
+          '/api/partner/v3/messages/in-1/reactions',
+        ]);
+        expect(next.said).toEqual([]);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+      });
+    });
+
+    /** One person, two households. A question is put to a parent in one family, and
+     * what Hale says to the same person about another family is not a word in the first. */
+    it('keeps a question open in one household when Hale replies to the same person in another', async () => {
+      lit();
+      const parent = await seedFamily(db.database);
+      const other = await seedFamily(db.database, 'Second Household');
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId: other.familyId, userId: parent.parentUserId, role: 'co_parent' });
+      await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+
+      const elsewhere = await text(
+        { familyId: other.familyId, parentUserId: parent.parentUserId },
+        'what is on this weekend',
+        OTHER_CHAT,
+        { offDomain: fakeLane(IN_DOMAIN) },
+      );
+
+      // Positive control: Hale did reply to them there.
+      expect(elsewhere.said).toEqual(['coach says hi']);
+      expect(await keptAsks(parent.familyId)).toEqual([
+        { ...ASKED, chat: 'chat-own', direction: 'out' },
+      ]);
+    });
   });
 });

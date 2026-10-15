@@ -22,28 +22,38 @@
 //   ... --anthropic-model=claude-sonnet-5-5 --min-samples=50                # latest Sonnet candidate
 //   node apps/worker/evals/run-memory-eval.mjs --broken                     # calibration: gate rejects it → exits NONZERO
 //   node apps/worker/evals/run-memory-eval.mjs --cached-only                # CI: replay only, never calls the API
+//   node apps/worker/evals/run-memory-eval.mjs --estimate                   # no API: price uncached fixtures only
+//   HALE_MAX_USD=2.42 node apps/worker/evals/run-memory-eval.mjs            # stop before a call whose worst case would cross the cap
+//   node apps/worker/evals/run-memory-eval.mjs --max-usd=2.42               # same ceiling; the lower of the two wins
 
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import {
+  CACHE_DIR as HARNESS_CACHE_DIR,
+  PRICE as LIST_PRICE,
   cachedGatewayToolCall,
   cachedToolCall,
   evalRunTag,
+  cacheGet as harnessCacheGet,
+  cacheKey as harnessCacheKey,
   makeCost,
+  priceRates,
   totalUsd,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
+import { priceRecordedCalls } from './lib/recording-price.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
-const PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'memory-inferencer.md');
+export const PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'memory-inferencer.md');
 const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');
-const FIXTURE_DIR = join(HERE, 'fixtures', 'memory-inferencer');
+export const FIXTURE_DIR = join(HERE, 'fixtures', 'memory-inferencer');
 const CACHE_DIR = join(HERE, 'cache');
 
 // List prices (USD per 1M tokens). Source: Anthropic pricing, claude-api skill.
@@ -69,15 +79,15 @@ const SWEEPING_PATTERNS = [
 
 // --- read the single source of truth from worker source --------------------
 
-async function readModelId() {
-  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
-  return pickModel('infer');
+async function readLane() {
+  const { pickLane } = await tsImport(AGENT_SRC, import.meta.url);
+  return pickLane('infer');
 }
 
 // The tool-forced JSON schema MUST mirror inferencerOutputJsonSchema in
 // src/agents/memory-inferencer.ts.
-const INFER_TOOL = 'record_inference';
-const INFER_JSON_SCHEMA = {
+export const INFER_TOOL = 'record_inference';
+export const INFER_JSON_SCHEMA = {
   type: 'object',
   properties: {
     fact_updates: {
@@ -126,7 +136,7 @@ const INFER_JSON_SCHEMA = {
 
 // --- fixtures ---------------------------------------------------------------
 
-async function loadFixtures(dir) {
+export async function loadFixtures(dir) {
   const names = (await readdir(dir)).filter((n) => n.endsWith('.json')).sort();
   const out = [];
   for (const name of names) {
@@ -137,7 +147,7 @@ async function loadFixtures(dir) {
 
 // Must match runMemoryInferencer's exact serialization:
 // { recent_events, recent_actions, current_memory_snapshot }.
-function userMessageFor(fixture) {
+export function userMessageFor(fixture) {
   return JSON.stringify({
     recent_events: fixture.input.recentEvents,
     recent_actions: fixture.input.recentActions,
@@ -167,7 +177,7 @@ async function cachePut(key, value) {
 
 // --- the real inferencer path (replicated forceToolJson) --------------------
 
-function makeRealInferencer(model, prompt, cachedOnly, cost) {
+function makeRealInferencer(model, lane, prompt, cachedOnly, cost) {
   let client;
   return async function infer(fixture) {
     const userMessage = userMessageFor(fixture);
@@ -198,11 +208,13 @@ function makeRealInferencer(model, prompt, cachedOnly, cost) {
           toolDescription: 'Record the derived facts, episodes, and retirements for this family.',
           toolSchema: INFER_JSON_SCHEMA,
           maxTokens: 2048,
-          thinking: { type: 'disabled' },
-          effort: 'high',
+          lane,
           cachedOnly,
           getClient: () => {
-            client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+            client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+              rates: priceRates,
+              tag: 'memory',
+            });
             return client;
           },
           cost,
@@ -222,7 +234,10 @@ function makeRealInferencer(model, prompt, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'memory',
+    });
     const startedAt = performance.now();
     const response = await client.messages.create({
       model,
@@ -354,9 +369,126 @@ function checkFixture(fixture, output) {
   return failures;
 }
 
+// --- no-spend estimate ------------------------------------------------------
+// The system prompt is part of the sonnet cache key (harness `cachedToolCall`),
+// so a prompt edit misses every fixture until it is recorded again. This prices
+// only those misses. The infer lane thinks between tools, so no thinking tokens
+// are added. The first call writes the prefix at 1.25× and the later ones read
+// it at 0.1×.
+
+export async function uncachedMemoryCalls(outputChars) {
+  const lane = await readLane();
+  const prompt = await readFile(PROMPT_PATH, 'utf8');
+  const fixtures = await loadFixtures(FIXTURE_DIR);
+  const calls = [];
+  const shortIds = [];
+  for (const fixture of fixtures) {
+    const userMessage = userMessageFor(fixture);
+    const tag = evalRunTag(`memory:infer:${fixture.id}`);
+    const canonical = JSON.stringify({
+      model: lane.model,
+      system: prompt,
+      userMessage,
+      toolName: INFER_TOOL,
+      toolSchema: INFER_JSON_SCHEMA,
+      lane,
+    });
+    const cached = await harnessCacheGet(harnessCacheKey(tag, canonical));
+    if (cached) continue;
+    shortIds.push(fixture.id);
+    calls.push({
+      model: lane.model,
+      promptCache: true,
+      prefixId: 'memory-infer',
+      prefix: `${prompt}\n${JSON.stringify(INFER_JSON_SCHEMA)}`,
+      user: userMessage,
+      outputChars,
+      thinkingTokens: 0,
+      maxTokens: 2048,
+    });
+  }
+  return { calls, shortIds, model: lane.model };
+}
+
+async function memoryOutputChars() {
+  const names = (await readdir(HARNESS_CACHE_DIR)).filter((name) => name.endsWith('.json'));
+  const chars = [];
+  for (const name of names) {
+    const cached = JSON.parse(await readFile(join(HARNESS_CACHE_DIR, name), 'utf8'));
+    if (
+      Array.isArray(cached.value?.fact_updates) &&
+      cached.value.fact_updates.length > 0 &&
+      Array.isArray(cached.value.episode_summaries) &&
+      Array.isArray(cached.value.pattern_detections) &&
+      Array.isArray(cached.value.retire_facts)
+    ) {
+      chars.push(JSON.stringify(cached.value).length);
+    }
+  }
+  if (chars.length === 0) {
+    throw new Error(
+      'memory estimate: the cache has no non-empty inference to price an output from',
+    );
+  }
+  const sorted = [...chars].sort((a, b) => a - b);
+  return sorted[Math.ceil(sorted.length / 2) - 1];
+}
+
+async function sonnetCharsPerToken() {
+  const ratios = [];
+  const names = (await readdir(HARNESS_CACHE_DIR)).filter((name) => name.endsWith('.json'));
+  for (const name of names) {
+    const cached = JSON.parse(await readFile(join(HARNESS_CACHE_DIR, name), 'utf8'));
+    const usage = cached.response?.usage;
+    if (!usage || cached.response?.model !== 'claude-sonnet-5-5') continue;
+    const thought = usage.output_tokens_details?.thinking_tokens ?? 0;
+    if (thought > 0) continue;
+    if ((usage.output_tokens ?? 0) < 8) continue;
+    const text = (cached.response.content ?? [])
+      .map((block) => (block.type === 'text' ? block.text : JSON.stringify(block.input ?? '')))
+      .join('');
+    if (text.length >= 40) ratios.push(text.length / usage.output_tokens);
+  }
+  if (ratios.length === 0) {
+    throw new Error('memory estimate: the cache has no usage to price a recording from');
+  }
+  const sorted = [...ratios].sort((a, b) => a - b);
+  return sorted[Math.ceil(sorted.length / 2) - 1];
+}
+
+async function printMemoryEstimate() {
+  const charsPerToken = await sonnetCharsPerToken();
+  const outputChars = await memoryOutputChars();
+  const { calls, shortIds, model } = await uncachedMemoryCalls(outputChars);
+  const tokens = (chars) => Math.max(1, Math.round(chars / charsPerToken));
+  const priced = priceRecordedCalls(calls, {
+    priceFor: (name) => LIST_PRICE[name],
+    tokens,
+    thinkingTokens: 0,
+  });
+  console.log(`memory-eval | mode=estimate (no API calls) | inferencer=${model}`);
+  console.log(`fixtures still short: ${shortIds.length === 0 ? 'none' : shortIds.join(', ')}`);
+  console.log(`memory recording estimate: $${priced.usd.toFixed(4)} USD`);
+  console.log(`memory calls: ${calls.length}`);
+  console.log(
+    `method: ${charsPerToken.toFixed(4)} characters per token; thinking tokens not added (infer lane is between_tools); a cached prefix is priced at 1.25× input on its first write and 0.1× on each later read; output characters are the median JSON length of cached inferences that recorded at least one fact.`,
+  );
+}
+
 // --- main -------------------------------------------------------------------
 
 async function main() {
+  if (process.argv.includes('--estimate')) {
+    await printMemoryEstimate();
+    return;
+  }
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.log(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
   const mode = process.argv.includes('--broken') ? 'broken' : 'real';
   const cachedOnly = process.argv.includes('--cached-only');
   const preflight = process.argv.includes('--preflight');
@@ -379,7 +511,8 @@ async function main() {
     throw new Error('--broken is offline and cannot be combined with --anthropic-model');
   }
 
-  const model = process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? (await readModelId());
+  const lane = await readLane();
+  const model = process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? lane.model;
   const prompt = await readFile(PROMPT_PATH, 'utf8');
   const baseFixtures = await loadFixtures(FIXTURE_DIR);
   const allFixtures =
@@ -403,7 +536,7 @@ async function main() {
   const infer =
     mode === 'broken'
       ? makeBrokenInferencer()
-      : makeRealInferencer(model, prompt, cachedOnly, cost);
+      : makeRealInferencer(model, lane, prompt, cachedOnly, cost);
 
   console.log(
     `memory-eval | mode=${mode}${cachedOnly ? ' (cached-only)' : ''} | inferencer=${model}`,
@@ -431,10 +564,11 @@ async function main() {
     }
   }
 
+  // The lane arm prices through the harness table; the hand-rolled arm keeps its own.
   const estUsd =
-    process.env.EVAL_GATEWAY_MODEL || anthropicModel
-      ? totalUsd(cost)
-      : (cost.sonnetIn / 1e6) * PRICE.sonnet.input + (cost.sonnetOut / 1e6) * PRICE.sonnet.output;
+    totalUsd(cost) +
+    (cost.sonnetIn / 1e6) * PRICE.sonnet.input +
+    (cost.sonnetOut / 1e6) * PRICE.sonnet.output;
 
   console.log('');
   console.log('--- cost ---');
@@ -466,7 +600,20 @@ async function main() {
   process.exit(allPass ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error('memory eval harness error:', err);
-  process.exit(2);
-});
+// Imported by the no-spend estimate. A direct `node` run is the eval.
+function runningAsScript() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (runningAsScript()) {
+  main().catch((err) => {
+    console.error('memory eval harness error:', err);
+    process.exit(2);
+  });
+}

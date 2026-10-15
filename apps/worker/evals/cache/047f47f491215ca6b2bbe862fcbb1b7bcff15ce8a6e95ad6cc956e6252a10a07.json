@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a rash in a child, a symptom; symptom is the urgent half"
+  },
+  "latencyMs": 1088
+}

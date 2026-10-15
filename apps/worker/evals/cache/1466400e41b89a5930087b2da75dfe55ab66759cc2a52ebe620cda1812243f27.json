@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes for Denver, CO: partly sunny, high near 65 versus Monday's 80, NNE wind 6-10 mph with gusts to 17, a 30% rain chance after 3 p.m. rising overnight, and lows in the low 40s and 30s. Attaching the gusts to the NNE wind skips the afternoon shift, which is a minor compression, not a wrong fact. It answers directly without asking which city. It reads more like a forecast readout than a casual text, but it is the answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

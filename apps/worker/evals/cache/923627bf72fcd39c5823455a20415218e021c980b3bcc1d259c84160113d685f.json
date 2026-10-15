@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "yes, keep watching for us",
+    "rationale": "Plain 'yes' with an explicit request to keep watching, directly answering the question",
+    "confidence": 0.97
+  },
+  "latencyMs": 1228
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with a real, specific, free drop-in by name: Kids & Me at the Acton library branch. Its Thursday 1-2:30 time and 'free, no registration' are carried in the picks, and the message attributes them to Halton Region's page. Halton Region runs the program, so that is a first-party source. The EarlyON pick comes from Links2Care, the local operator, and fits the toddler stage. The day gap is named in the first person ('I could not pin down their days'), which is correct under no_page_read; it is not an unearned 'not posted yet'. Watch is false and there is no coming-back promise, and the message has no question and no link. Docked slightly for two things. The EarlyON facts ('free for birth to 6') are stated without attribution, unlike the first pick. And the EarlyON pick is a centre network rather than a named single location.",
+    "score": 4
+  }
+}

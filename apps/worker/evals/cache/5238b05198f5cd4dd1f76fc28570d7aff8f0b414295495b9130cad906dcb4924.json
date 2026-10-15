@@ -1,0 +1,28 @@
+{
+  "urls": [
+    "https://www.accuweather.com/en/ca/toronto/m5h/weather-forecast/55488",
+    "https://www.spaceref.com/weather/ontario/toronto/",
+    "https://weather.gc.ca/en/location/index.html?coords=43.655%2C-79.383",
+    "https://www.theweathernetwork.com/en/city/ca/ontario/toronto/hourly",
+    "https://www.theweathernetwork.com/en/city/ca/ontario/toronto/current",
+    "https://www.torontotoday.ca/good-morning/toronto-weather-today-12857952",
+    "https://torontotoday.ca/local/environment-climate/toronto-weather-temperatures-cool-down-rebound-12890487",
+    "https://www.easeweather.com/north-america/canada/ontario/toronto/today",
+    "https://weather.yahoo.com/ca/on/toronto",
+    "https://weather.metoffice.gov.uk/forecast/dpz893tbw",
+    "https://www.yr.no/en/forecast/hourly-table/2-6167864/Canada/Ontario/Toronto?i=0",
+    "https://weather.gc.ca/en/location/index.html?coords=43.650681%2C-79.366692",
+    "https://www.accuweather.com/en/ca/toronto/m5h/october-weather/55488",
+    "https://www.weatherbug.com/weather-forecast/10-day-weather/toronto-ontario-ca",
+    "https://www.torontotoday.ca/local/environment-climate/toronto-weather-temperatures-cool-down-rebound-12890487",
+    "https://beta.weather.gc.ca/en/location/index.html?coords=43.655%2C-79.383",
+    "https://www.timeanddate.com/weather/@6091104/ext",
+    "https://www.weather25.com/north-america/canada/ontario/toronto?page=month&month=October",
+    "https://www.weather25.com/north-america/canada?page=date&date=12-10",
+    "https://globalnews.ca/news/8500163/toronto-weather-extreme-cold-jan-10-2022/amp"
+  ],
+  "notes": "**Research notes: rain in Toronto on Monday, October 12, 2026**\n\nThe best sources are Environment Canada's forecasts and observations for Toronto, issued on October 12.\n\n- **Daytime:** Environment Canada's 11:00 AM EDT forecast calls for mainly cloudy skies and a high of 23°C. Wind is southwest at 20 km/h gusting to 40. That forecast has no rain for the daytime.\n- **Earlier forecast:** The 6:26 AM EDT forecast called for a mix of sun and cloud and fog patches dissipating this morning. It also had no daytime rain.\n- **Observed at 12:00 PM EDT (Pearson Airport):** Cloudy, 18°C, no alerts in effect. The notes record no rain being reported.\n- **Tonight:** Rain is likely to start after dark or overnight.\n  - The 11:00 AM forecast says mainly cloudy, with a few showers beginning before morning and a risk of a thunderstorm before morning. The low is 16°C.\n  - The earlier 6:26 AM forecast was stronger: 60 percent chance of showers before morning with risk of a thunderstorm.\n- **Tomorrow (Tuesday, Oct 13):** A few showers ending near noon, then mainly cloudy with a 60 percent chance of showers.\n\n**Other sources:**\n- Yr.no also shows Monday as cloudy through the afternoon, with rain showers in the evening and about 2.8 mm of precipitation for the day.\n- Timeanddate shows a 5% chance of precipitation and 0.00\" for Monday. Its page was updated at 11:24 AM Monday.\n\n**Summary:** The sources agree that Monday daytime is mostly dry and cloudy. The risk of showers, possibly with a thunderstorm, starts in the evening or overnight into Tuesday. The sources differ on exactly when the rain starts.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 11810
+}

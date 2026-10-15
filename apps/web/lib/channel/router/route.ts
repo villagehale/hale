@@ -52,9 +52,18 @@ import {
 } from '~/lib/channel/linq/group';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
-import { LINQ_TYPING_REFRESH_MS, signalImessageTyping } from '~/lib/channel/linq/presence';
+import {
+  LINQ_TYPING_REFRESH_MS,
+  LINQ_TYPING_SHOW_DELAY_MS,
+  signalImessageTyping,
+} from '~/lib/channel/linq/presence';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
-import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
+import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
+import {
+  type OffDomainLane,
+  type ReplySource,
+  settlePendingAsks,
+} from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
@@ -106,6 +115,14 @@ import {
   readsAsOrdinal,
 } from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
+import {
+  HOLDING_LINE_AFTER_MS,
+  HOLDING_LINE_TEMPLATE_KEY,
+  type HoldingLine,
+  type HoldingLineComposer,
+  armHoldingLine,
+  holdingLineNotArmed,
+} from './holding-line';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
@@ -390,6 +407,10 @@ export interface ChannelRouterDeps {
    * for the same reason the off-domain composer is: a composer that cannot run says so
    * by name, and this router has no preset sentence to fall back on. */
   apology: TurnApology;
+  /** The one line a parent gets while a slow answer is still being composed
+   * (holding-line.ts). Non-nullable (rule #11): a composer that cannot write one says so
+   * by name, and there is no preset line underneath it. */
+  holdingLine: HoldingLineComposer;
   /**
    * Write down a full-plan offer the coach just made, against the message that carried
    * it. Non-nullable (rule #11): an offer sentence a parent can read with no ledger row
@@ -568,6 +589,8 @@ export interface ChannelRouterDeps {
   turnDeadlineMs?: number;
   /** Test seam for GATE 2c / 2c-bis. Production uses {@link CALL_TIMEOUT_MS}. */
   callTimeoutMs?: number;
+  /** How long a turn waits before its holding line. Tests shorten it. */
+  holdingLineAfterMs?: number;
   /**
    * After the reply is on its way, ask the model whether this turn opened,
    * moved, or closed a workstream (VIL-419). Optional so a router assembled
@@ -589,7 +612,11 @@ export interface ChannelRouterDeps {
 /** Why a turn went back to the queue instead of answering. `model_unreachable` is the
  * arc's own reason; the rest are the composer's, and they mean Hale had nothing
  * sendable to say rather than nobody to say it. */
-export type TurnDeferralReason = 'model_unreachable' | 'turn_timeout' | ApologyFallback;
+export type TurnDeferralReason =
+  | 'model_unreachable'
+  | 'turn_timeout'
+  | 'moment_unwritten'
+  | ApologyFallback;
 
 /**
  * The turn is not finished, and the parent gets NOTHING right now.
@@ -696,8 +723,13 @@ export async function routeChannelMessage(
   const signal = AbortSignal.timeout(deadlineMs);
   const trailed: Promise<unknown>[] = [];
   const turnDeps = detachWorkstream(deps, trailed);
+  const wait: TurnWait = { end: async () => undefined };
   try {
-    const result = await runTurnThen(signal, () => routeChannelMessageInner(turnDeps, job), []);
+    const result = await runTurnThen(
+      signal,
+      () => routeChannelMessageInner(turnDeps, job, wait),
+      [],
+    );
     // The extract keeps running after the job returns. Holding the reference
     // is what keeps the rejection handler attached for the life of the call.
     void trailed;
@@ -733,12 +765,22 @@ export async function routeChannelMessage(
       familyId: job.family_id,
     });
     throw new TurnDeferred('turn_timeout', err);
+  } finally {
+    // Every exit, the deadline's included: no bubble left up and no holding line sent
+    // after the turn is over.
+    await wait.end();
   }
+}
+
+/** What covers a parent's wait for one turn, ended however the turn ends. */
+interface TurnWait {
+  end: () => Promise<void>;
 }
 
 async function routeChannelMessageInner(
   deps: ChannelRouterDeps,
   job: ChannelMessageReceivedJob,
+  wait: TurnWait,
 ): Promise<RouterResult> {
   const now = deps.now();
 
@@ -825,6 +867,7 @@ async function routeChannelMessageInner(
         job,
         conversationId: null,
         claim: claimAnswer,
+        openAsks: { leaves: null },
       });
     }
     return done(deps, job, {
@@ -874,31 +917,60 @@ async function routeChannelMessageInner(
     return openQuestions;
   };
 
-  // The typing refresh lives for the think section only. A deterministic handler
-  // sends before it starts, so those replies do not pay for a stop call.
-  // Cleared before a send so a tick cannot put the bubble back up between
-  // "stop" and the message, and cleared in the finally so a turn that sends
-  // nothing does not leave it up.
+  // THE WAIT, covered for as long as the parent waits. The bubble goes up once the turn
+  // outlives LINQ_TYPING_SHOW_DELAY_MS, so a deterministic reply that leaves in a breath
+  // never flashes it, while a slow one (the plan a "yes" composes) shows it; the think
+  // section raises it at once. Cleared before every send so a tick cannot put it back up
+  // between "stop" and the message, and when the turn ends however it ends (`wait.end`).
   let typingLive = false;
   let typingTimer: ReturnType<typeof setInterval> | null = null;
+  let typingDelay: ReturnType<typeof setTimeout> | null = null;
+  let typingStarting: Promise<void> | null = null;
+  let holding: HoldingLine | null = null;
+  const startTyping = async () => {
+    if (typingDelay) {
+      clearTimeout(typingDelay);
+      typingDelay = null;
+    }
+    if (route.channel !== 'imessage' || typingLive) return;
+    typingLive = true;
+    typingStarting = signalImessageTyping(route, 'start', deps.log);
+    typingTimer = setInterval(() => {
+      if (!typingLive) return;
+      void signalImessageTyping(route, 'start', deps.log);
+    }, LINQ_TYPING_REFRESH_MS);
+    await typingStarting;
+  };
   const stopTyping = async () => {
+    // A holding line already on its way lands BEFORE whatever is sent next, never after.
+    if (holding) await holding.settle();
+    if (typingDelay) {
+      clearTimeout(typingDelay);
+      typingDelay = null;
+    }
     if (typingTimer) {
       clearInterval(typingTimer);
       typingTimer = null;
     }
     if (!typingLive) return;
     typingLive = false;
+    if (typingStarting) await typingStarting;
     await signalImessageTyping(route, 'stop', deps.log);
   };
-
+  wait.end = stopTyping;
+  if (route.channel === 'imessage') {
+    typingDelay = setTimeout(() => {
+      void startTyping();
+    }, LINQ_TYPING_SHOW_DELAY_MS);
+    if (typeof typingDelay.unref === 'function') typingDelay.unref();
+  }
   const turn: HandlerContext = {
     familyId: job.family_id,
     parentUserId: job.parent_user_id,
     conversationId,
     body: context.body,
     // A handler that answers for itself sends on the SAME route this turn resolved, and
-    // has no way to reach any other one. stopTyping is a no-op until the think
-    // section has started the bubble.
+    // has no way to reach any other one. stopTyping clears whatever the wait put up.
     send: async (body: string) => {
       await stopTyping();
       return deps.transport.send({ route, body: await withPassport(body) });
@@ -934,6 +1006,7 @@ async function routeChannelMessageInner(
     replySource: ReplySource | null = null,
     templateKey: string | null = null,
     groupSync?: GroupActivityDecision,
+    pendingAsk: PendingAsk | null = null,
   ) =>
     sendReply(deps, {
       route,
@@ -943,6 +1016,7 @@ async function routeChannelMessageInner(
       claim: claimAnswer,
       medicalSource,
       replySource,
+      openAsks: { leaves: pendingAsk },
       groupSync,
       templateKey,
       beforeSend: stopTyping,
@@ -1167,6 +1241,7 @@ async function routeChannelMessageInner(
           job,
           conversationId: null,
           claim: claimAnswer,
+          openAsks: { leaves: null },
         });
       } else {
         await answer(FLOOD_REPLY);
@@ -1175,17 +1250,57 @@ async function routeChannelMessageInner(
     }
   }
 
-  // Typing starts here, not at the top of the turn: the deterministic handlers
-  // above answer in a breath, and a bubble on those would be a stall. Search,
-  // the off-domain screen, and the coach are the waits a person would show.
-  if (route.channel === 'imessage') {
-    typingLive = true;
-    await signalImessageTyping(route, 'start', deps.log);
-    typingTimer = setInterval(() => {
-      if (!typingLive) return;
-      void signalImessageTyping(route, 'start', deps.log);
-    }, LINQ_TYPING_REFRESH_MS);
+  // Past the wait a text normally takes, ONE composed line goes out first, the bubble back
+  // up behind it. Armed only HERE, past every gate above: a deterministic reply, an
+  // opt-out or a flood-held turn never has one, however slow its database. Once per text:
+  // a re-driven turn already had its chance. Not on email, where a reply is not watched
+  // for as it is written, and not in a group thread, which other families read. The group
+  // bit is the door's own, not `context.inGroup`, which stays false while group onboarding
+  // v2 is dark however many people are in the chat.
+  const holdingSkip = redriven
+    ? 're_driven'
+    : route.channel === 'email'
+      ? 'email'
+      : job.in_group === undefined
+        ? 'group_unknown'
+        : job.in_group
+          ? 'group_thread'
+          : null;
+  if (holdingSkip) {
+    holding = holdingLineNotArmed(holdingSkip, deps.log);
+  } else {
+    holding = armHoldingLine({
+      afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
+      language: replyLanguage(context.body),
+      composer: deps.holdingLine,
+      log: deps.log,
+      send: async (line) => {
+        if (typingLive) {
+          if (typingStarting) await typingStarting;
+          await signalImessageTyping(route, 'stop', deps.log);
+          typingLive = false;
+        }
+        await sendReply(deps, {
+          route,
+          body: line,
+          job,
+          conversationId: null,
+          templateKey: HOLDING_LINE_TEMPLATE_KEY,
+          openAsks: 'untouched',
+        });
+        if (typingTimer) {
+          clearInterval(typingTimer);
+          typingTimer = null;
+        }
+        // The send cleared the bubble; the answer is still being written.
+        await startTyping();
+      },
+    });
   }
+
+  // Search, the off-domain screen, and the coach are the waits a person would show: the
+  // bubble goes up now rather than after the show delay.
+  await startTyping();
   try {
     // A yes to the finder ask, after the flood check so the limiter is counted once.
     // A grounded pick claims the turn. No pick, or a pick that cannot be sent, is a
@@ -1216,15 +1331,25 @@ async function routeChannelMessageInner(
     // GATE 4 — the family's week, or the world. The screen reads the LEDGER body (the same
     // words the handlers just declined), stamps its verdict on that same row, and either
     // answers it briefly or hands over one of the two fixed doors — so an off-domain turn
-    // costs two Haiku calls and no coach turn at all. An in-domain verdict, including
-    // every fail-open one, falls through untouched.
+    // costs the screen and the lane's own calls and no coach turn at all. An in-domain
+    // verdict, including every fail-open one, falls through untouched.
     let verdict: Awaited<ReturnType<OffDomainLane['consider']>>;
     try {
       verdict = await withTimeout(
         deps.offDomain.consider({
           familyId: job.family_id,
+          parentUserId: job.parent_user_id,
           channelMessageId: job.channel_message_id,
           text: context.body,
+          now,
+          // The route is this text's own ledger row (wiring.ts): its channel, and the chat
+          // on the one channel that has chats. The group bit is the door's own, as for the
+          // holding line, and absent when the job does not say.
+          thread: {
+            channel: route.channel,
+            providerChatId: route.channel === 'imessage' ? route.chatId : null,
+            inGroup: job.in_group,
+          },
         }),
         OFF_DOMAIN_BUDGET_MS,
         OFF_DOMAIN_TIMEOUT,
@@ -1238,11 +1363,35 @@ async function routeChannelMessageInner(
       await noteUnanswered(deps, job, OFF_DOMAIN_TIMEOUT);
       verdict = { status: 'in_domain', fallback: null };
     }
-    if (verdict.status === 'deflected') {
-      // Null: a crisis with no written line. The lane already logged it urgently.
-      if (verdict.reply !== null) {
-        await answer(verdict.reply, verdict.medicalSource, verdict.replySource);
+    if (verdict.status === 'unwritten') {
+      deps.log.error(
+        { familyId: job.family_id, moment: verdict.moment, reason: verdict.reason },
+        'channel router: moment reply unwritten',
+      );
+      try {
+        await deps.turns.recordDeferred({
+          familyId: job.family_id,
+          parentUserId: job.parent_user_id,
+          channelMessageId: job.channel_message_id,
+          reason: 'moment_unwritten',
+        });
+      } catch (ledgerErr) {
+        deps.log.error(
+          { code: ledgerErr instanceof Error ? ledgerErr.name : 'unknown' },
+          'channel router: could not record the unwritten moment',
+        );
       }
+      throw new TurnDeferred('moment_unwritten', new Error(`moment_unwritten:${verdict.moment}`));
+    }
+    if (verdict.status === 'deflected') {
+      await answer(
+        verdict.reply,
+        verdict.medicalSource,
+        verdict.replySource,
+        null,
+        undefined,
+        verdict.pendingAsk,
+      );
       return done(deps, job, {
         status: 'deflected',
         handler: null,
@@ -2327,6 +2476,23 @@ async function sendReply(
      * papercut digest split real answers from ANSWER_UNAVAILABLE sends; it is a closed
      * vocabulary and never a word of what was said (rule #1). */
     replySource?: ReplySource | null;
+    /**
+     * What this send does to the questions Hale has left open for this parent (migration
+     * 0167). Every caller says, because it is a fact about WHICH send this is and not
+     * about sending: only the turn's ANSWER settles them.
+     *
+     * `{ leaves }` is that answer. Every earlier question is closed, and the one this
+     * reply left open itself, or null on every reply but a general answer's, is kept in a
+     * table of its own beside this reply's row. De-identified by the lane before it gets
+     * here: never the parent's words and never what Hale said, so `body` stays null as
+     * ever (rule #1). The parent's next text is read beside it (off-domain/lane.ts
+     * readPendingAsk).
+     *
+     * `'untouched'` is a line that is not an answer (the holding line). It goes out while
+     * the turn is still reading, and the question the turn is about to read is one it
+     * must not close.
+     */
+    openAsks: { leaves: PendingAsk | null } | 'untouched';
     /** The lane's own name for this receipt, or null for a reply nothing reads back
      * (see {@link HandlerVerdict.templateKey}). */
     templateKey?: string | null;
@@ -2342,6 +2508,24 @@ async function sendReply(
   },
 ): Promise<string> {
   assertTurnLive();
+  // Flag dark, it returns before any read or write. A failure here must not unsend the
+  // reply the parent already has.
+  const settleOpenAsks = async (channelMessageId: string) => {
+    if (args.openAsks === 'untouched') return;
+    try {
+      await settlePendingAsks(deps.database, {
+        familyId: args.job.family_id,
+        parentUserId: args.job.parent_user_id,
+        channelMessageId,
+        ask: args.openAsks.leaves,
+      });
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'pending ask: the reply landed; the question it left open was not kept',
+      );
+    }
+  };
   if (args.beforeSend) await args.beforeSend();
   if (args.route.channel === 'imessage' && args.inboundBody !== undefined) {
     try {
@@ -2360,6 +2544,8 @@ async function sendReply(
           await appendMessage(args.conversationId, 'assistant', moment.threadBody, deps.database);
         }
         await mirrorActivityDecision(deps, args);
+        // A tapback that stood in for the answer is the answer.
+        await settleOpenAsks(moment.channelMessageId);
         return moment.channelMessageId;
       }
     } catch (err) {
@@ -2435,6 +2621,8 @@ async function sendReply(
   if (args.conversationId) {
     await appendMessage(args.conversationId, 'assistant', args.body, deps.database);
   }
+
+  await settleOpenAsks(channelMessageId);
   return channelMessageId;
 }
 

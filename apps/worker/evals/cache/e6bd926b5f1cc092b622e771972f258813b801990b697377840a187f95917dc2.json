@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Correct language, addresses Sam, says optional, link is theirs alone, link whole and matches given fact, Google caution conveyed, and what connecting does. Weaknesses: it does not say how long the link works (required for group_connect_ask? spec for connector_link requires it; group_connect_ask lists specific items, but the caution is incomplete as it lacks the \"unverified app\" wording beyond the screen mention, and no mention that inbox stays out of group, though inboxPrivate was null so that is fine). Reads somewhat form-like."
+  }
+}

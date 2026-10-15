@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in Chinese (zh) and offers, for the named child Nell, to find an after-school option, which matches the after_school_named prompt. It reads naturally and casually, like a friend who has been thinking about the family's week. It contains no activity, place, time or price, and no claim that a search already happened. The offer is put straight as a question: \"要不要我帮她找一个合适的课后活动？\" asks whether they want Hale to look, without any condition about whether it would help. The text contains only one ask (the offer itself), so it has no extra questions about the parent's week. The only blemish is that the phrasing 'the couple of hours after school' is slightly survey-like, but it stays about the family, so it does not drop to the service-offer level.",
+    "score": 5
+  }
+}

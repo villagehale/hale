@@ -1,0 +1,10 @@
+{
+  "value": {
+    "offer": false,
+    "title": "",
+    "startsAt": "",
+    "location": "",
+    "reason": "The sentence asks to add Gymnastics on Thursday, Oct 1 at 4:15 p.m. America/Toronto, which is before the current instant of 2026-10-02T15:00Z, so the occasion has already started and is not an offer."
+  },
+  "latencyMs": 2458
+}

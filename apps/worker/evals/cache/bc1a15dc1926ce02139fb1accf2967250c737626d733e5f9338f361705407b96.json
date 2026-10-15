@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The facts match the notes: a 6-3 Leafs win at Colorado, dated Oct 10 by ESPN and Yahoo, and no separate Sunday game. However, the hedged 'doesn't look like they played' leaves out that NHL.com dates the game Oct 11, so the answer may actually have been yes. The closing 'Want me to check anything else for you?' reads like an assistant offering a service, which caps the score below 4.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real entries on the cited Oakville page. Day, times, session dates, age band and registration date are exactly as printed, and price is correctly null because the page prints no fee. The message leads with Preschool A by name and folds in B. It attributes with \"their site says\" and carries the Aug 11 7am registration opening. It uses a first-person \"I could not pin down the price\", which is correct under page_has_schedule. Because watch is true, the first-person keep-watching commitment is appropriate. It is two plain-ASCII sentences with no link and no question. Minor nit: it does not name the Recreation Guide as the unread fee source, but the first-person price gap covers it adequately.",
+    "score": 5
+  }
+}

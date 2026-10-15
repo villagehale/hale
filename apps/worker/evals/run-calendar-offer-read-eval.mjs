@@ -190,6 +190,7 @@ async function main() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
+  const lane = agent.pickLane(skill.meta.task);
   const fixtures = CALENDAR_OFFER_FIXTURES;
   const quote = estimate(skill.instructions.length, fixtures);
 
@@ -215,6 +216,7 @@ async function main() {
     const call = await cachedToolCall({
       tag: `calendar-offer-read:${MAX_TOKENS}:${fixture.id}`,
       model,
+      lane,
       system: skill.instructions,
       userMessage: userMessage(fixture),
       toolName: coach ? 'read_coach_sentence' : 'read_parent_reply',

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "no, but thanks for asking",
+    "rationale": "Opens with a plain 'no' to the question; 'thanks for asking' is just a courtesy.",
+    "confidence": 0.97
+  },
+  "latencyMs": 1253
+}

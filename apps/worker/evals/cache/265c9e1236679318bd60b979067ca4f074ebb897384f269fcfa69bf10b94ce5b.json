@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday Oct 13: mix of sun and cloud in the afternoon",
+        "from": "Becoming a mix of sun and cloud in the afternoon"
+      },
+      {
+        "states": "Tuesday high 25°C",
+        "from": "the high is 25°C"
+      },
+      {
+        "states": "Tuesday humidex 32",
+        "from": "The humidex is 32"
+      },
+      {
+        "states": "Tuesday late afternoon: 40 percent chance of showers, thunderstorm risk",
+        "from": "a 40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon."
+      },
+      {
+        "states": "Tuesday wind southwest 20 km/h gusting to 40",
+        "from": "Wind is southwest 20 km/h gusting to 40"
+      },
+      {
+        "states": "Tuesday night low 15°C, 40% showers and thunderstorm risk in the evening",
+        "from": "Tuesday night is partly cloudy with a 40 percent chance of showers and a thunderstorm risk in the evening, and a low of 15°C."
+      }
+    ],
+    "answer": "Tomorrow in Toronto should be a mix of sun and cloud, with a high of 25°C and a humidex of 32. Watch for a 40% chance of showers late in the afternoon, with a risk of thunderstorms then too. Wind is southwest at 20 km/h, gusting to 40. Tuesday night drops to a low of 15°C, still partly cloudy with a 40% chance of showers and a thunderstorm risk in the evening."
+  },
+  "latencyMs": 5910
+}

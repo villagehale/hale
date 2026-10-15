@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday in Denver: partly sunny, high around 65",
+        "from": "The National Weather Service in Boulder said to expect partly sunny skies Tuesday... The high is expected to reach 65 degrees"
+      },
+      {
+        "states": "Other Tuesday highs range from 64 to 67",
+        "from": "Weather Underground has a high of 64°F... AccuWeather has a high of 67°. 9NEWS has a high of 64."
+      },
+      {
+        "states": "About 15 degrees cooler than Monday's high of 80",
+        "from": "about 15 degrees cooler than Monday's high of 80"
+      },
+      {
+        "states": "North-northeast winds 6 to 10 mph, becoming east to northeast in the afternoon, gusts up to 17 mph",
+        "from": "North-northeast winds of 6 to 10 mph are expected, becoming east to northeast in the afternoon with gusts up to 17 mph."
+      },
+      {
+        "states": "Rain possibly moving in Tuesday evening; 30% chance after 3 p.m.",
+        "from": "with rain and showers possibly moving in Tuesday evening... The weather service gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "Rain chance about 35% by 11 PM",
+        "from": "35% at 11 PM"
+      },
+      {
+        "states": "Tuesday night lows in the 30s to low 40s, with rain showers at times",
+        "from": "Lows are expected in the low 40s and 30s on Tuesday night, with increasing clouds and rain. Weather Underground gives a low of 46°F with rain showers at times."
+      }
+    ],
+    "answer": "Tuesday in Denver looks partly sunny with a high around 65, about 15 degrees cooler than Monday's 80. Winds are north-northeast at 6 to 10 mph, turning east to northeast in the afternoon with gusts up to 17. Rain could move in Tuesday evening, about a 30% chance after 3 p.m., and it gets more likely overnight, with lows in the 30s to low 40s and showers at times."
+  },
+  "latencyMs": 7668
+}

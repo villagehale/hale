@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real and match the page exactly: two preschool levels, ages 3-5, Saturday times and Sep 12 to Nov 28 dates. Price is correctly null because the page prints no fee, and both slots carry the Aug 11 7am resident registration and cite the right URL. The message leads with the named programs, attributes with 'their site says' and carries the not-yet-open registration date. It is plain ASCII with no link and no question. With watch=true, the first-person 'I'll keep watching and text you' is backed by a real continuation row. With page_has_schedule, the price gap is correctly framed as Hale's own ('I could not pin down the price') rather than 'not posted'. One minor gap: neither slots nor message mention that the page points to the Recreation Guide for fees.",
+    "score": 5
+  }
+}

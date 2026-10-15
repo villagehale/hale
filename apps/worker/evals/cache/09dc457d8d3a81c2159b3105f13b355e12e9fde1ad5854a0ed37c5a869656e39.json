@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are accurate and well cited. The Tiny Gym term dates (Sept 14-Nov 1 and Nov 2-Dec 20, 2026) come straight off the schedule PDF. The July 22, 2026 8:00am online registration comes off the home page. Price is correctly null, since the site says pricing is only behind the registration login. Hale also admits it could not tie times to weekdays in the PDF rather than inventing them. The message is strong: it leads with Tiny Gym by name, says \"their site says\", carries the registration date, uses the correct first-person gap wording for page_has_schedule, and gives the first-person watch commitment (watch=true). It is plain ASCII with no link and no question. Deductions: the message drops the Rock n' Roll (0+) find entirely, which is mild withholding. The Tiny Gym slot cites the PDF but pulls its age band from the programs page, a mixed citation. It also does not tell the parent that pricing is only shown after logging in to register, which would explain the price gap more precisely.",
+    "score": 4
+  }
+}

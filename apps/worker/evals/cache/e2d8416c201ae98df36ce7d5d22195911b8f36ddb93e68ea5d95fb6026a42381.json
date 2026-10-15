@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.8,
+    "rationale": "Employer onboarding email requires the teen's SIN and a signed TD1 before the first shift on June 20, which is first part-time-job paperwork with a deadline.",
+    "payload": {
+      "milestone": "first_part_time_job_paperwork",
+      "deadline": "June 20",
+      "required_items": [
+        "Social Insurance Number (SIN)",
+        "signed TD1 form"
+      ],
+      "sin_application_path": "Service Canada (free)",
+      "sender": "hr@maplemart-grocery.ca",
+      "employer": "Maplemart Grocery",
+      "role": "part-time cashier"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 287,
+    "output": 601
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "do the Raptors play tonight",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "whether the Raptors have a game tonight",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1811
+}

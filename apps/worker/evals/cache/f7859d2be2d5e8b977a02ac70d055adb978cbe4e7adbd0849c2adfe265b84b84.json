@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer claims a 9-0 win last night. The notes say the Leafs didn't play Sunday, and their last game was a 6-3 win over Colorado on Saturday, so both the game and the score are wrong. It also pushes the parent to check an app or a link, which is a deflect, and it reads pushy rather than like a friend texting back.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 1
+  }
+}

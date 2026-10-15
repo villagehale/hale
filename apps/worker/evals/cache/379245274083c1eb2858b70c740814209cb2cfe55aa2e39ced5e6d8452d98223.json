@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "please do",
+    "rationale": "\"please do\" is a plain, direct yes to the offer to keep an eye on things",
+    "confidence": 0.97
+  },
+  "latencyMs": 1266
+}

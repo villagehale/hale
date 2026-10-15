@@ -28,10 +28,11 @@ import {
   cacheGet,
   cacheKey,
   cachePut,
+  installEvalSpendCap,
   lazyAnthropic,
+  liveStructuredCall,
   makeCost,
   noteUsage,
-  readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
 
@@ -82,7 +83,7 @@ function toolSchema(verdicts) {
  */
 async function cachedVerdictCall({
   tag,
-  model,
+  lane,
   system,
   userMessage,
   schema,
@@ -90,6 +91,7 @@ async function cachedVerdictCall({
   getClient,
   cost,
 }) {
+  const model = lane.model;
   const thinking = { type: 'adaptive' };
   const outputConfig = { effort: 'high' };
   const canonical = JSON.stringify({
@@ -111,36 +113,21 @@ async function cachedVerdictCall({
     );
   }
 
-  const response = await getClient().messages.create({
-    model,
-    max_tokens: MAX_TOKENS,
-    thinking,
-    output_config: outputConfig,
+  // Through the production seam: the lane's request shape, a strict schema, the re-ask
+  // and the named truncation / refusal / missing-call guards — none of which is cached.
+  const response = await liveStructuredCall({
+    client: getClient(),
+    lane,
     system,
-    tools: [
-      {
-        name: 'activity_verdict',
-        description: 'Return what this reply amounted to.',
-        input_schema: schema,
-      },
-    ],
-    tool_choice: { type: 'tool', name: 'activity_verdict' },
-    messages: [{ role: 'user', content: userMessage }],
+    userMessage: userMessage,
+    toolName: 'activity_verdict',
+    toolDescription: 'Return what this reply amounted to.',
+    toolSchema: schema,
+    maxTokens: MAX_TOKENS,
   });
-  // A truncated forced tool call is not an answer and must never be cached as one: it
-  // arrives as `input: {}` and reads downstream as "the parent said nothing".
-  if (response.stop_reason === 'max_tokens') {
-    throw new Error(
-      `${tag}: tool call truncated at max_tokens (${MAX_TOKENS}) - raise the budget; nothing cached`,
-    );
-  }
-  const toolUse = response.content.find(
-    (block) => block.type === 'tool_use' && block.name === 'activity_verdict',
-  );
-  if (!toolUse) throw new Error(`${tag}: model returned no activity_verdict tool call`);
   noteUsage(cost, model, response.usage);
-  await cachePut(key, { value: toolUse.input, stopReason: response.stop_reason });
-  return { value: toolUse.input, stopReason: response.stop_reason, cached: false };
+  await cachePut(key, { value: response.value });
+  return { value: response.value, cached: false };
 }
 
 /** Failure strings; empty means the fixture passed. */
@@ -180,9 +167,9 @@ async function main() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
-  const models = await readModelIds();
-  // The skill declares task: classify → Sonnet 5. Read from model.ts, never hardcoded.
-  const model = models.sonnet5;
+  // The skill declares its task; the lane comes from model.ts, never hardcoded.
+  const lane = agent.pickLane(skill.meta.task);
+  const model = lane.model;
   const { verdicts, tags: knownTags } = await readVocabularies();
   const schema = toolSchema(verdicts);
 
@@ -198,7 +185,8 @@ async function main() {
   );
   console.log(`skill=${skill.meta.name} task=${skill.meta.task} max_tokens=${MAX_TOKENS}\n`);
 
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('activity-verdict');
   const cost = makeCost();
   let failed = 0;
   let live = 0;
@@ -206,7 +194,7 @@ async function main() {
   for (const fixture of VERDICT_FIXTURES) {
     const result = await cachedVerdictCall({
       tag: `activity-verdict:${noSkill ? 'no-skill:' : ''}${fixture.id}`,
-      model,
+      lane,
       system,
       userMessage: fixture.body,
       schema,
@@ -234,7 +222,9 @@ async function main() {
 
   if (!noSkill) {
     const ok = failed === 0;
-    console.log(`real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
+    console.log(
+      `real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    );
     process.exit(ok ? 0 : 1);
   }
 

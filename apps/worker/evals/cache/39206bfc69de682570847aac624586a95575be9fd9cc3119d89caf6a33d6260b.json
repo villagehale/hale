@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and traced to the programme page. The age band, the Tuesday and Thursday days, the 9:30-11:00 time and the Sept 8 to Dec 11 dates are all as printed. Price is correctly null because the page refers readers to the front desk. Neither the $185 party figure nor the $95 room-rental figure was borrowed. Registration is null, and the page prints no registration date. The message leads with the program by name and attributes the facts with 'their site says'. Under page_has_schedule it puts the gap in the first person ('I could not pin down the price'). Since watch is true, its first-person promise to keep watching is backed by a real continuation. It is plain ASCII, with no link and no question. One small miss: it could have passed on that the page says fees are available at the front desk or by phone.",
+    "score": 5
+  }
+}

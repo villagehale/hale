@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "to": "frontdesk@littlesprout-pediatrics.ca",
+      "subject": "Re: Confirm well-baby visit",
+      "body": "hi, thanks for holding tuesday, june 23 at 10:15 am with dr. okafor for the 6-month visit."
+    },
+    "confidence": 0.55,
+    "rationale": "No parent yes in the input, so the reply acknowledges the offered slot without accepting it.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  }
+}

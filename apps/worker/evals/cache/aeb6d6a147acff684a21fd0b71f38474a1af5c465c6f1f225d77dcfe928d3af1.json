@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Correct language, addresses Sam, explains what connecting does, says it is optional and the link is theirs alone, includes the Google unverified caution, and the link appears whole and matches the given URL. Minor gaps: it omits how long the link works, which the group_connect_ask purpose does not strictly require but the connector guidance asks for, and it does not mention the inbox-stays-out point (inboxPrivate was null, so that is acceptable). Reads plainly, though slightly form-like."
+  }
+}

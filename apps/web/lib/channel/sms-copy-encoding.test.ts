@@ -13,17 +13,12 @@ import {
   matchForwardAddressRequest,
 } from '~/lib/channel/email/forward-request';
 import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
-import {} from '~/lib/channel/intake/copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { replyLanguage } from '~/lib/channel/language';
 import {
-  ANSWER_UNAVAILABLE_REPLY,
-  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
-  SAFETY_REPLY,
-  SAFETY_REPLY_BY_LANGUAGE,
   UNPLACEABLE_PROVIDER_REPLY,
   UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE,
 } from '~/lib/channel/off-domain/copy';
@@ -402,8 +397,6 @@ describe('the French script stays GSM-7 and inside the English budgets', () => {
   const RENDERED: Record<string, { body: string; maxSegments: number }> = {
     // One segment, for the same reason the English consent ask is: it rides on the end
     // of the radar payload, where every septet comes out of the same budget.
-    ANSWER_UNAVAILABLE_REPLY: { body: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
-    SAFETY_REPLY: { body: SAFETY_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
     PROVIDER_ACCESS_REPLY: { body: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
     UNPLACEABLE_PROVIDER_REPLY: {
       body: UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE.fr,
@@ -448,8 +441,6 @@ describe('the French script stays GSM-7 and inside the English budgets', () => {
  */
 describe('the off-domain lane stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
-    ANSWER_UNAVAILABLE_REPLY,
-    SAFETY_REPLY,
     PROVIDER_ACCESS_REPLY,
     DIRECT_ACCESS_EYE_REPLY,
     UNPLACEABLE_PROVIDER_REPLY,
@@ -459,9 +450,7 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
     expect(smsEncoding(body)).toBe('gsm7');
   });
 
-  it('keeps the remaining fixed lines inside the two-segment ceiling', () => {
-    expect(smsSegments(ANSWER_UNAVAILABLE_REPLY)).toBe(1);
-    expect(smsSegments(SAFETY_REPLY)).toBe(1);
+  it('keeps the provider lines inside the two-segment ceiling', () => {
     expect(smsSegments(PROVIDER_ACCESS_REPLY)).toBeLessThanOrEqual(2);
     expect(smsSegments(DIRECT_ACCESS_EYE_REPLY)).toBeLessThanOrEqual(2);
     expect(smsSegments(UNPLACEABLE_PROVIDER_REPLY)).toBeLessThanOrEqual(2);

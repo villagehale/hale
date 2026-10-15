@@ -1,0 +1,28 @@
+{
+  "urls": [
+    "https://urbantoronto.ca/database/projects/costco-oakville.58376",
+    "https://www.insauga.com/costco-will-open-its-next-ontario-warehouse-in-2027/",
+    "https://www.insauga.com/new-costco-store-expected-to-open-in-2025-in-oakville-ontario/",
+    "https://www.flamboroughtoday.com/local-news/oakvilles-first-costco-clears-final-site-plan-approval-opening-now-set-for-fall-2027-11923428",
+    "https://yepsavings.com/ca-on-mississauga-&-oakville-s-3180-laird-rd-23",
+    "https://oakvilledigest.ca/news/oakville-costco-wyecroft-opening-soon/",
+    "https://peakgrp.com/our-projects/costco-oakville/",
+    "https://www.costco.com/w/-/CA/ontario/947",
+    "https://www.costco.com/warehouse-locations/ontario-showroom-ontario-ca-1700.html",
+    "https://globalnews.ca/news/3059268/costco-opens-second-saskatoon-location/amp/",
+    "https://maps.apple.com/place?place-id=IB90765224661E5F7",
+    "https://www.waze.com/live-map/directions?from=place.w.183632305.1836191982.1193157",
+    "https://www.yellowpages.ca/bus/Ontario/Burlington/Costco-Wholesale/438668.html",
+    "https://www.hnhbhealthline.ca/displayservice.aspx?id=178793",
+    "https://www.waze.com/live-map/directions/costco-wholesale-brant-st-1225-burlington?to=place.w.183632305.1836191982.1193157",
+    "https://www.yelp.com/biz/costco-burlington-2",
+    "https://www.hipinfo.ca/record/BTN5104",
+    "https://www.tripadvisor.ca/Restaurant_Review-g154984-d20204334-Reviews-Costco-Burlington_Ontario.html",
+    "https://www.costcogasprices.com/warehouse/burlington-on",
+    "https://www.costco.com/warehouse-locations/-253.html"
+  ],
+  "notes": "Research notes for the question \"where's the closest costco in Oakville\", asked Monday, Oct 12, 2026.\n\n**Missing information:** No `place` was given, and the question doesn't say which Oakville or where in it the person is. The results all concern Oakville, Ontario, Canada, and nothing was checked for other places named Oakville. \"Closest\" also depends on which part of Oakville they are in.\n\n**Oakville, Ontario has no open Costco yet.**\n- The Oakville Digest (published about 8 days ago) reports that the closest warehouses today are in Burlington and Mississauga.\n- The first Oakville warehouse is under development. An \"Opening Soon\" sign has gone up at the Wyecroft Road site near Burloak Drive. Demolition is done and the target opening is fall 2027.\n- Insauga and FlamboroughToday also give fall 2027 as the opening. FlamboroughToday says this replaces an earlier target around 2025.\n- The site is on Wyecroft Road near Burloak Drive and the QEW, on the Burlington border. The planned address is 3471–3521 Wyecroft Rd (UrbanToronto).\n- The planned store will have a gas bar at the northwest corner near South Service Road West and RioCan Boulevard.\n\n**Nearest open warehouses**\n- **Burlington:** 1225 Brant St, Burlington, ON L7P 1X7, phone (905) 336-6714. The hnhbhealthline.ca listing puts it at Brant St and Plains Rd E. A Costco.com listing gives an opening date of 12/05/1995.\n  - Hours are not consistent across sources. Waze and Yellow Pages show Mon–Fri 9:00 am–8:30 pm, Sat and Sun shorter. Yelp shows 10:00 am opening on weekdays. Apple Maps showed it closed today, Monday Oct 12, which is Canadian Thanksgiving. The Costco.com holiday-hours page I saw is from December, so it doesn't cover today.\n- **Mississauga:** 3180 Laird Rd. This comes from a deals site that says the warehouse serves Mississauga and Oakville. I found no official hours or other details for it.\n\nI found no driving distances or times from any part of Oakville to either warehouse.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 15456
+}

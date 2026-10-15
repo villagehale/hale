@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "A dark, quiet room can help babies sleep",
+        "from": "A dark, quiet room can help babies sleep"
+      },
+      {
+        "states": "Babies get the most from naps taken at the same time each day and for about the same length",
+        "from": "Babies get the most out of naps if they take them at the same time each day and for about the same length of time"
+      },
+      {
+        "states": "Put babies to bed drowsy but awake",
+        "from": "put babies to bed drowsy but awake, since they sleep best when drowsy"
+      },
+      {
+        "states": "A consistent routine with a story read in a calming voice helps",
+        "from": "A consistent daily routine helps... a story read in a calming voice"
+      },
+      {
+        "states": "Teach the child to fall asleep on their own and avoid lying down with them until they fall asleep",
+        "from": "Teach the child to fall asleep on their own and avoid lying down with them until they fall asleep"
+      }
+    ],
+    "answer": "Depends who he is. If he's a baby or toddler, what usually helps: a dark, quiet room, naps at the same time and about the same length each day, and a calm routine like a story read in a soft voice. Try putting him down drowsy but still awake, and let him fall asleep on his own instead of lying down with him. How old is he?"
+  },
+  "latencyMs": 5822
+}

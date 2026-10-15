@@ -24,9 +24,9 @@ function scriptedClient(input: Record<string, unknown>): AgentClient {
     messages: {
       async create() {
         return {
-          content: [{ type: 'tool_use', name: 'coparent_duty', input }],
+          content: [{ type: 'text', text: JSON.stringify(input) }],
           usage: { input_tokens: 10, output_tokens: 5 },
-          stop_reason: 'tool_use',
+          stop_reason: 'end_turn',
         };
       },
     },

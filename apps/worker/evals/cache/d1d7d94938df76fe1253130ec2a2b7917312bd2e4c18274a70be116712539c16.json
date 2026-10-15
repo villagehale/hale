@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.55,
+    "rationale": "A sleep-observation note about a 9-year-old fits no school-age event type, and sleep_pattern_signal is infant-only.",
+    "payload": {
+      "trigger": "sleep_observation",
+      "child_age_months": 108,
+      "observation": "shorter overnight sleep and later bedtimes over the past two weeks"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 235,
+    "output": 537
+  }
+}

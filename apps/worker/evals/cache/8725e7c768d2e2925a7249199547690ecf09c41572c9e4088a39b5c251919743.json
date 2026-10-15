@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The question leaves out the country, and the reply correctly asks for it without stating any current rate from memory. It reads mostly casual, though 'I'll look up the 5 year fixed rate there' leans slightly toward an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

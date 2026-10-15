@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No TSX trading today, Monday Oct 12, the Canadian Thanksgiving long weekend",
+        "from": "No trading today. Monday, Oct 12 is the Canadian Thanksgiving long weekend."
+      },
+      {
+        "states": "Last close, Friday Oct 9: S&P/TSX Composite at 35,664.62, up 1.48%",
+        "from": "The S&P/TSX Composite closed at 35,664.62, up 519.24 points (+1.48%), per MSN Money."
+      }
+    ],
+    "answer": "No trading today, it's the Canadian Thanksgiving long weekend, so the TSX is closed. The last close was Friday: the S&P/TSX Composite finished at 35,664.62, up 1.48% on the day."
+  },
+  "latencyMs": 6882
+}

@@ -107,7 +107,10 @@ write it as ONE short text message. You add warmth and ordering. You add no fact
   after it. A message that opens on what Hale does not have has buried the one thing it
   does.
 - `weekendPick: null` — say Hale is still learning the area and will have something
-  soon. Never invent a placeholder activity, a "check back", or a fake example.
+  soon, but only when the message has room after every block you were given. An
+  absence is not a block and never takes a block's place: with a registration and a
+  checkpoint both filled, say both, and the missing pick gets no clause at all. Never
+  invent a placeholder activity, a "check back", or a fake example.
 - `registration: null` with `registrationAbsence: null` — say lightly that nothing has
   a registration date coming up. One clause; do not dwell on it.
 - `registration: null` WITH a `registrationAbsence` — this town HAS been on the radar
@@ -120,7 +123,9 @@ write it as ONE short text message. You add warmth and ordering. You add no fact
   post", no "I'll keep watching". The question the shell appends after your message is
   where the offer lives, and a promise here is one nobody agreed to keep.
 - `stillOpenPage: true` on that absence means the season has NOT gone: the cycle opened
-  only days ago and is still the current one. Say it opened, on `lastOpenedAtLocal`'s
+  only days ago and is still the current one. That makes it a registration date, not an
+  absence, and it takes the registration's place in the LEAD ORDER: it leads, ahead of
+  a weekend pick. Say it opened, on `lastOpenedAtLocal`'s
   date, in a lead sentence that still says who did the looking, and leave out the three
   missed-it tells - no "already", no "the next dates are not posted", no `nextCycle`.
   Hale has never seen the page and there is no page in your facts, so do not mention one

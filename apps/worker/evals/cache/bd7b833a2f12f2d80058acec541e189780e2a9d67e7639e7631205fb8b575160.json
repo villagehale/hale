@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot matches the programme page exactly: name, age band (12 months to 4 years), Tue/Thu 9:30-11:00 a.m., Sept 8 to Dec 11, and the correct URL. Price is correctly null. No rental figures ($185, $95) were borrowed. The page prints no registration date, so a null registration is right. The message leads with the program by name and attributes it with 'their site says'. It uses first person ('I could not pin down the price'), which is appropriate for page_has_schedule. Because watch is true, the first-person keep-watching commitment is correct. It is plain ASCII with no link and no question. A minor missed detail is that the page says fees are available at the front desk or from reception, which could have been passed on.",
+    "score": 5
+  }
+}

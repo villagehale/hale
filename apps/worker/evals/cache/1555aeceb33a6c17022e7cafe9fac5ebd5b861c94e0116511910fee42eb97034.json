@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The line correctly calls the day as tomorrow (Sat, Jul 25 from Fri, Jul 24 evening), so the timing is right. It does not restate clock times, add hype, guess at the redacted appointment, or give advice. It is a single short sentence. However, 'Tomorrow evening' is slightly off since the 4:00 hockey event is in the afternoon, and 'got three things in it' reads a bit mechanical rather than warm, so it falls short of a 5.",
+    "score": 4
+  }
+}

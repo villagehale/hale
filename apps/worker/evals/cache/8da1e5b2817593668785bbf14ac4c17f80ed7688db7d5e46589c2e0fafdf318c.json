@@ -1,0 +1,18 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Biodôme, Espace pour la vie",
+        "age_fit": "programming designed for all ages",
+        "when": "Museums open Monday Dec 28 as a holiday opening; closed Dec 24 and 25",
+        "source_name": "Espace pour la vie"
+      },
+      {
+        "name": "Kazoom Café, Ville Saint-Laurent (indoor playground with a toddler area)",
+        "age_fit": "toddler play area for children 3 and under",
+        "source_name": "Kazoom Café"
+      }
+    ]
+  },
+  "latencyMs": 8143
+}

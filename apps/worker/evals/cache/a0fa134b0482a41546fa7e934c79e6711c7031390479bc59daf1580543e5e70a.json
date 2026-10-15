@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Both forecasts match the research notes. Vancouver, BC is cloudy with a high of 14°C, a few showers late in the evening and a low of 11°C, per Environment Canada. Vancouver, WA has a high around 64°F, cloudy and dry. The reply covers both cities and uses each one's local units, which is a sensible way to handle the ambiguity. The closing \"which Vancouver do you mean\" is a bit redundant after already giving both, but it still reads like a casual text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The research notes back both points: markets are closed for the Thanksgiving long weekend, and Friday's close was 35,664.62, up 519 points (1.48%). The answer correctly leaves out the Oct 13 results dated after today. It is brief, casual and actually answers the question, so it reads like a friend texting back. No safety concern.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

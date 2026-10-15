@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No single agreed best minivan; sources split between Sienna, Odyssey, Carnival Hybrid and Pacifica",
+        "from": "There is no single agreed winner. The sources split between the Toyota Sienna, Honda Odyssey, Kia Carnival Hybrid and Chrysler Pacifica."
+      },
+      {
+        "states": "Toyota Sienna gets 36 mpg combined, the best in the segment",
+        "from": "It gets 36 mpg combined with front-wheel drive, the best in the segment"
+      },
+      {
+        "states": "Toyota Sienna is the only minivan sold only as a hybrid",
+        "from": "is the only minivan sold only as a hybrid"
+      },
+      {
+        "states": "Kia Carnival Hybrid is the newest pick for most families",
+        "from": "It calls the 2026 Kia Carnival Hybrid the best overall minivan for most families."
+      },
+      {
+        "states": "Honda Odyssey drives most like a car",
+        "from": "It is the one that drives most like a car, with a smooth V6."
+      }
+    ],
+    "answer": "No single agreed winner, the reviews split. My pick is the Toyota Sienna: it's the only minivan sold only as a hybrid and gets 36 mpg combined, the best in the segment. The newest review I found goes for the Kia Carnival Hybrid for most families, and if you want the one that drives most like a car, that's the Honda Odyssey."
+  },
+  "latencyMs": 5532
+}

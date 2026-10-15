@@ -61,6 +61,12 @@ export interface DraftedAction<TPayload = Record<string, unknown>> {
   rationale: string;
   recipientVisibility: RecipientVisibility;
   draftedAt: string;
+  /**
+   * The drafter's own reading: this reply commits the parent to an enrollment,
+   * a booking, or a payment. True holds the action for the parent's tap even
+   * after the autonomy grant. Absent is not that reading.
+   */
+  commitsParentToEnrollmentBookingOrPayment?: boolean;
 }
 
 export interface ToolResult {

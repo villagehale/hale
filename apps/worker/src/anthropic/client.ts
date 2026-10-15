@@ -13,7 +13,7 @@ import { config } from '../config.js';
  * re-export them here so existing worker importers keep their import path.
  */
 
-export { HAIKU_MODEL, SONNET_MODEL, SONNET5_MODEL, OPUS_MODEL } from '@hale/agent';
+export { HAIKU_MODEL, SONNET_MODEL, OPUS_MODEL } from '@hale/agent';
 
 /** Under the web function wall. The SDK default is 600s plus two retries. */
 export const ANTHROPIC_TIMEOUT_MS = 60_000;

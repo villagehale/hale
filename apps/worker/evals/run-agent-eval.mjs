@@ -36,20 +36,28 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Anthropic from '@anthropic-ai/sdk';
+import { tsImport } from 'tsx/esm/api';
+import {
+  PRICE as LIST_PRICE,
+  installEvalSpendCap,
+  judgeLaneFor,
+  lazyAnthropic,
+  liveStructuredCall,
+} from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
 const REPO_ROOT = join(WORKER_ROOT, '..', '..');
 const MODEL_TS_PATH = join(REPO_ROOT, 'packages', 'agent', 'src', 'model.ts');
 const DISCOVERY_PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'discovery.md');
+const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const FIXTURE_ROOT = join(HERE, 'fixtures');
 const CACHE_DIR = join(HERE, 'cache');
 
-// List prices (USD per 1M tokens). Source: Anthropic pricing, claude-api skill.
+// List prices (USD per 1M tokens), from the harness table.
 const PRICE = {
-  sonnet: { input: 3.0, output: 15.0 },
-  haiku: { input: 1.0, output: 5.0 },
+  sonnet: LIST_PRICE['claude-sonnet-5-5'],
+  haiku: LIST_PRICE['claude-haiku-5-5'],
   gateway: { input: 0.15, output: 0.6 },
 };
 
@@ -99,13 +107,7 @@ async function cachePut(key, value) {
 
 // A real Anthropic client created lazily, only when a cache miss forces a live
 // call. In --cached-only mode it is never constructed and no key is read.
-function lazyAnthropic() {
-  let client;
-  return () => {
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    return client;
-  };
-}
+// The client is the harness one, so the spend cap wraps it.
 
 function noteUsage(cost, tier, usage) {
   cost.liveCalls += 1;
@@ -126,11 +128,12 @@ function noteUsage(cost, tier, usage) {
 const JUDGE_TOOL = 'score';
 const JUDGE_JSON_SCHEMA = {
   type: 'object',
+  // Reason BEFORE score: a score emitted first is a score reasoned backwards from.
   properties: {
-    score: { type: 'integer', minimum: 1, maximum: 5 },
     reason: { type: 'string' },
+    score: { type: 'integer', minimum: 1, maximum: 5 },
   },
-  required: ['score', 'reason'],
+  required: ['reason', 'score'],
 };
 
 function makeJudge(model, judgeSystem, tag, cachedOnly, getClient, cost) {
@@ -148,21 +151,19 @@ function makeJudge(model, judgeSystem, tag, cachedOnly, getClient, cost) {
       process.exit(1);
     }
 
-    const response = await getClient().messages.create({
-      model,
-      max_tokens: 256,
+    const response = await liveStructuredCall({
+      client: getClient(),
+      lane: await judgeLaneFor(model),
       system: judgeSystem,
-      tools: [
-        { name: JUDGE_TOOL, description: 'Return the score.', input_schema: JUDGE_JSON_SCHEMA },
-      ],
-      tool_choice: { type: 'tool', name: JUDGE_TOOL },
-      messages: [{ role: 'user', content: userMessage }],
+      userMessage,
+      toolName: JUDGE_TOOL,
+      toolDescription: 'Return the score.',
+      toolSchema: JUDGE_JSON_SCHEMA,
+      maxTokens: 1024,
     });
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === JUDGE_TOOL);
-    if (!toolUse) throw new Error(`judge (${tag}) returned no ${JUDGE_TOOL} tool call`);
     noteUsage(cost, 'haiku', response.usage);
-    await cachePut(key, { parsed: toolUse.input });
-    return toolUse.input;
+    await cachePut(key, { parsed: response.value });
+    return response.value;
   };
 }
 
@@ -235,7 +236,8 @@ function discoveryUserMessageFor(fixture) {
   });
 }
 
-async function realDiscovery(model, prompt, fixture, cachedOnly, getClient, cost) {
+async function realDiscovery(lane, prompt, fixture, cachedOnly, getClient, cost) {
+  const model = lane.model;
   const userMessage = discoveryUserMessageFor(fixture);
   const key = cacheKey('discovery:agent', `${model}\n${prompt}\n${userMessage}`);
 
@@ -249,25 +251,21 @@ async function realDiscovery(model, prompt, fixture, cachedOnly, getClient, cost
     process.exit(1);
   }
 
-  const response = await getClient().messages.create({
-    model,
-    max_tokens: 4096,
+  // Through the shared structured seam, on the converse lane — the request
+  // apps/web/lib/village/discover.ts sends.
+  const response = await liveStructuredCall({
+    client: getClient(),
+    lane,
     system: prompt,
-    tools: [
-      {
-        name: DISCOVERY_TOOL,
-        description: 'Return the structured local activity candidates.',
-        input_schema: DISCOVERY_JSON_SCHEMA,
-      },
-    ],
-    tool_choice: { type: 'tool', name: DISCOVERY_TOOL },
-    messages: [{ role: 'user', content: userMessage }],
+    userMessage,
+    toolName: DISCOVERY_TOOL,
+    toolDescription: 'Return the structured local activity candidates.',
+    toolSchema: DISCOVERY_JSON_SCHEMA,
+    maxTokens: 4096,
   });
-  const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === DISCOVERY_TOOL);
-  if (!toolUse) throw new Error(`${fixture.id}: model returned no ${DISCOVERY_TOOL} tool call`);
   noteUsage(cost, 'sonnet', response.usage);
-  await cachePut(key, { parsed: toolUse.input });
-  return toolUse.input;
+  await cachePut(key, { parsed: response.value });
+  return response.value;
 }
 
 // Deterministic broken stand-in: an out-of-stage candidate, fabricated specifics
@@ -354,7 +352,7 @@ function checkDiscovery(fixture, parsed, judgeScore) {
 }
 
 async function runDiscoverySuite(opts) {
-  const { broken, cachedOnly, getClient, cost, judge, discoveryModel } = opts;
+  const { broken, cachedOnly, getClient, cost, judge, discoveryLane } = opts;
   const fixtures = await loadFixtures('agent-discovery');
   const prompt = await readFile(DISCOVERY_PROMPT_PATH, 'utf8');
   const results = [];
@@ -363,7 +361,7 @@ async function runDiscoverySuite(opts) {
   for (const fixture of fixtures) {
     const parsed = broken
       ? brokenDiscovery()
-      : await realDiscovery(discoveryModel, prompt, fixture, cachedOnly, getClient, cost);
+      : await realDiscovery(discoveryLane, prompt, fixture, cachedOnly, getClient, cost);
     const score = broken ? null : (await judge(discoveryJudgePayload(fixture, parsed))).score;
     const failures = checkDiscovery(fixture, parsed, score);
     record(results, fixture, failures, score);
@@ -396,13 +394,19 @@ function record(results, fixture, failures, score) {
 // --- main -------------------------------------------------------------------
 
 async function main() {
+  installEvalSpendCap();
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const suiteArg = process.argv.find((a) => a.startsWith('--suite='));
   const only = suiteArg ? suiteArg.split('=')[1] : null;
 
-  const { discovery: discoveryModel, judge: judgeModel } = await readModelIds();
-  const getClient = lazyAnthropic();
+  const agent = await tsImport(AGENT_SRC, import.meta.url);
+
+  const { judge: judgeModel } = await readModelIds();
+  // discover.ts reads its model from the converse lane (lib/coach/model.ts).
+  const discoveryLane = agent.pickLane('converse');
+  const discoveryModel = discoveryLane.model;
+  const getClient = lazyAnthropic('agent');
   const cost = {
     liveCalls: 0,
     sonnetIn: 0,
@@ -439,7 +443,7 @@ async function main() {
           getClient,
           cost,
           judge: discoveryJudge,
-          discoveryModel,
+          discoveryLane,
         }),
     ],
   ];

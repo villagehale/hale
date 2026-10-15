@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Paris as the capital of France is settled knowledge rather than a current fact, so no live check was needed. The reply is correct, in French to match the question, and a brief, casual text that just answers.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

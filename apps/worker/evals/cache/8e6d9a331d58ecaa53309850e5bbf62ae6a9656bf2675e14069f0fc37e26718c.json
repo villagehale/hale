@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "definitely",
+    "rationale": "'definitely' is a plain, unhedged yes to the question asked",
+    "confidence": 0.93
+  },
+  "latencyMs": 1221
+}

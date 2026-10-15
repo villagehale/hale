@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://sportssurge.alibaba.com/baseball/who-won-the-baseball-world-series-in-2006",
+    "https://www.ksdk.com/article/life/vintage-ksdk/vintage-ksdk-st-louis-cardinals-world-series-october-27-2006/63-71cad39d-ac0a-43f0-96cb-cfc7e2caf932",
+    "https://en.wikipedia.org/wiki/2006_World_Series",
+    "https://www.baseball-reference.com/bullpen/2006_World_Series",
+    "https://champsorchumps.us/summary/mlb/2006",
+    "https://www.stlredbirds.com/2022/07/24/october-27-2006-cardinals-win-the-2006-world-series-as-jeff-weaver-outpitches-justin-verlander/",
+    "https://www.baseball-reference.com/postseason/2006_WS.shtml",
+    "https://ibwaa.substack.com/p/these-four-world-series-winners-shocked",
+    "https://georgewbush-whitehouse.archives.gov/news/releases/2007/01/20070116-5.html"
+  ],
+  "notes": "Research notes (today is Oct 12, 2026, so \"20 years ago\" means the 2006 World Series):\n\n- The St. Louis Cardinals won the 2006 World Series, beating the Detroit Tigers in five games (4–1). It was the franchise's 10th championship. (Sources: sportssurge.alibaba.com, Wikipedia, Baseball-Reference.)\n- The series ran from Oct 21 to Oct 27, 2006. (champsorchumps.us)\n- The Cardinals clinched with a 4-2 win in Game 5 at Busch Stadium, in which Jeff Weaver outpitched Justin Verlander. (stlredbirds.com)\n- David Eckstein was the World Series MVP. (sportssurge.alibaba.com)\n- The Cardinals finished the regular season 83–78, the worst record ever for a World Series champion. (Wikipedia)\n- It was the Cardinals' first World Series title since 1982. (Baseball-Reference Bullpen)\n- Detroit's regular-season record was 95-67. (Baseball-Reference Bullpen)\n- The sources did not disagree on any of these points.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 5342
+}

@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import { isStage } from '~/lib/testing/structured-reply';
 import type { ActivityQuery } from './deidentify';
 import {
   MAX_SEARCHES,
@@ -59,9 +60,9 @@ const groundResultWithoutNotes = (nResults: number) => ({
 });
 
 const composeResult = (input: unknown) => ({
-  content: [{ type: 'tool_use', name: 'activity_picks', input }],
+  content: [{ type: 'text', text: JSON.stringify(input) }],
   usage: { input_tokens: 5, output_tokens: 5 },
-  stop_reason: 'tool_use',
+  stop_reason: 'end_turn',
 });
 
 const WHOLE_PICK = {
@@ -88,10 +89,10 @@ function makeClient(
     const messages = {
       // biome-ignore lint/suspicious/noExplicitAny: a fake driving the request mechanics
       async create(req: any) {
-        const isCompose = req.tool_choice?.name === 'activity_picks';
+        const isCompose = isStage(req, 'activity_picks', 'picks');
         seen.push({
           tools: req.tools,
-          toolChoice: req.tool_choice?.name,
+          toolChoice: isCompose ? 'activity_picks' : req.tools?.[0]?.name,
           userMessage: req.messages?.[0]?.content,
         });
         const pick = isCompose ? script.compose : script.ground;
@@ -244,7 +245,7 @@ describe('an ungrounded find never ships', () => {
       ...groundResultWithoutNotes(8),
       content: [
         ...groundResultWithoutNotes(8).content,
-        { type: 'tool_use', name: 'activity_picks', input: { picks: [WHOLE_PICK] } },
+        { type: 'text', text: JSON.stringify({ picks: [WHOLE_PICK] }) },
       ],
     };
     const finder = createActivityFinder(
@@ -287,7 +288,7 @@ describe('a pick is whole or it is not a pick', () => {
 
     // Dropping the only pick empties the list, which is the honest `no_picks` outcome and
     // NOT a retry: the search ran.
-    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
+    expect(await finder.find(QUERY)).toMatchObject({ found: false, reason: 'no_picks' });
     restore.mockRestore();
   });
 
@@ -453,8 +454,9 @@ describe('failure is named, and tried twice', () => {
       }),
     );
 
-    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
-    expect(grounds).toBe(1);
+    expect(await finder.find(QUERY)).toMatchObject({ found: false, reason: 'no_picks' });
+    // One grounding plus the one read pass (needsReadPass); the whole attempt is not retried.
+    expect(grounds).toBe(2);
     restore.mockRestore();
   });
 
@@ -489,8 +491,8 @@ describe('the ground turn does not use the 50s non-stream path', () => {
       () =>
         ({
           messages: {
-            async create(req: { tool_choice?: { name?: string } }) {
-              if (req.tool_choice?.name !== 'activity_picks') {
+            async create(req: { tools?: { name?: string }[] }) {
+              if (!isStage(req, 'activity_picks', 'picks')) {
                 throw new Error('Request timed out.');
               }
               return composeResult({ picks: [WHOLE_PICK] });
@@ -506,5 +508,73 @@ describe('the ground turn does not use the 50s non-stream path', () => {
     expect(found.found).toBe(true);
     if (!found.found) return;
     expect(found.picks[0]?.name).toBe(WHOLE_PICK.name);
+  });
+});
+
+describe('the read pass: real search results never end empty without reading pages', () => {
+  const composes = (...outs: unknown[]) => {
+    let n = 0;
+    return () => composeResult(outs[Math.min(n++, outs.length - 1)]);
+  };
+  const fetchGranted = (s: Seen) => (s.tools ?? []).some((t) => t.type === 'web_fetch_20260209');
+  const grounds = (seen: Seen[]) => seen.filter((s) => s.toolChoice === 'web_search');
+
+  it('re-grounds once with the page budget when snippets alone gave no picks', async () => {
+    quiet();
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient(
+        { ground: groundResult(30), compose: composes({ picks: [] }, { picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    );
+    const result = await finder.find(QUERY);
+    expect(result.found).toBe(true);
+    expect(grounds(seen).map(fetchGranted)).toEqual([false, true]);
+  });
+
+  it('pays nothing extra when the first pass already found picks (positive control)', async () => {
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(30), compose: composes({ picks: [WHOLE_PICK] }) }, seen),
+    );
+    expect((await finder.find(QUERY)).found).toBe(true);
+    expect(grounds(seen).map(fetchGranted)).toEqual([false]);
+  });
+
+  it('ends no_picks only after pages were offered, and reads at most once', async () => {
+    quiet();
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(30), compose: composes({ picks: [] }) }, seen),
+    );
+    expect(await finder.find(QUERY)).toMatchObject({ found: false, reason: 'no_picks' });
+    expect(grounds(seen).map(fetchGranted)).toEqual([false, true]);
+  });
+
+  it('a named venue already had its page budget, so no second pass', async () => {
+    quiet();
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(30), compose: composes({ picks: [] }) }, seen),
+    );
+    await finder.find({ ...QUERY, subject: 'Cartwheels Gym parent and tot' });
+    expect(grounds(seen).map(fetchGranted)).toEqual([true]);
+  });
+});
+
+describe('an empty find says what it searched', () => {
+  it('returns the town and the capped research with no_picks', async () => {
+    quiet();
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(5), compose: composeResult({ picks: [] }) }),
+    );
+    const result = await finder.find(QUERY);
+    expect(result).toMatchObject({
+      found: false,
+      reason: 'no_picks',
+      searched: { town: 'Halton Hills' },
+    });
+    expect(result.found === false && result.searched?.notes.length).toBeGreaterThan(0);
   });
 });

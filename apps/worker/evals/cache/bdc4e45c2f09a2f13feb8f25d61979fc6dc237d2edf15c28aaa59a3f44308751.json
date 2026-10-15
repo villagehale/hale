@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "child ingested a toxic substance — reported event, needs poison/emergency line"
+  },
+  "latencyMs": 1871
+}

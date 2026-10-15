@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "A real pick with a reason. The 2022 World Cup win is settled knowledge, since it can't change. No running counts or records are stated, and the reply is casual and friend-like. \"Been at the top of the game for years\" is a vague opinion, not a current fact. Correct and in the right voice.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

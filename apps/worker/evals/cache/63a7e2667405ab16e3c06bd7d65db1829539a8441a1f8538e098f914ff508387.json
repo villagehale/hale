@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The emergency number in the United States is 911",
+        "from": "The emergency number in the United States is 911, the same number the asker says they use."
+      },
+      {
+        "states": "911 is the universal emergency number",
+        "from": "NENA calls 911 the \"Universal Emergency Number\" for citizens throughout the United States to request emergency assistance."
+      },
+      {
+        "states": "One number reaches police, fire and medical help",
+        "from": "The same number reaches police, fire and medical help."
+      },
+      {
+        "states": "Calling 911 is free",
+        "from": "Cities Insider (a relocation guide) says calling 911 is free"
+      },
+      {
+        "states": "An ambulance ride can cost roughly $400 to $2,000+",
+        "from": "ambulance transport can cost roughly $400 to $2,000+."
+      }
+    ],
+    "answer": "Yep, it's 911 in the US, same as you're used to. One number for police, fire and medical help, and the call itself is free. Just know an ambulance ride can run roughly $400 to $2,000+."
+  },
+  "latencyMs": 5379
+}

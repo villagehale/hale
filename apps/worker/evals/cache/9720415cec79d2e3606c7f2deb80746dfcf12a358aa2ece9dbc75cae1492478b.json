@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "I need a therapist",
+    "missing_detail": "which city or area they are in",
+    "their_place": "needed",
+    "sensitive": "yes",
+    "current_fact": "which therapists are available near them",
+    "needs_search": "missing_detail"
+  },
+  "latencyMs": 1362
+}

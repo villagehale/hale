@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi won the 2022 World Cup with Argentina",
+        "from": "settled"
+      }
+    ],
+    "answer": "Messi, for me. He lifted the 2022 World Cup with Argentina, and few players have controlled games for as long. Ronaldo's a strong case, but Messi's the one I'd pick."
+  },
+  "latencyMs": 3190
+}

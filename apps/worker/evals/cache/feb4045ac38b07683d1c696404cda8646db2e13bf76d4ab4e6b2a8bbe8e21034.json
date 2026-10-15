@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by the notes: no daytime rain, mainly cloudy, a high of 23°C, rain likely from evening or overnight with a thunderstorm risk before morning, and the sources disagreeing on timing. It answers the 3pm pickup directly and doesn't mention the school or the family. It reads as a casual text back. 'Mostly no' hedges slightly, but that's fair since the sources differ.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

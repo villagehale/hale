@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: x = 5, and the brief working is accurate. It states the answer first, with only a one-line why, not a lesson. Casual and friend-like, no deflect or service tone.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

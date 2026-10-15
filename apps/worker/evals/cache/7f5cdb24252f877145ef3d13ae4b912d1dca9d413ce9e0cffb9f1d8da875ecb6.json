@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are accurate and cited. Tiny Gym's age band comes from programs.php, and the Term 1 (Sept 14-Nov 1, 2026) and Term 2 (Nov 2-Dec 20, 2026) dates come from the PDF, which was actually read. The July 22, 2026 8:00am online registration date is cited to the homepage. The page says pricing is not on the site, so a null price is correct. No figures are borrowed from other programs. The message has several strengths: it leads with Tiny Gym by name and attributes the facts with 'their site says'. It carries the registration date. It uses the correct first-person gap wording for page_has_schedule ('I could not pin down the day or the price'). It gives the first-person watch commitment, which is correct because watch is true. It has no question and no link. Deductions: the message runs three sentences instead of one or two short ones and is somewhat clunky. The registration date sits in a separate slot rather than on the Tiny Gym slot.",
+    "score": 4
+  }
+}

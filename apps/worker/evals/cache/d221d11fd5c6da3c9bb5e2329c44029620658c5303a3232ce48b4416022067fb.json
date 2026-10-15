@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Paris is settled knowledge, so no live check was needed. The reply is in French, brief and casual, like a friend texting back. \"Depuis des siècles\" is accurate common knowledge.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { textOfFetchSource } from './pdf-text.mjs';
 import { pageCarriesSchedule, preparePage } from './quote-match';
 
 /**
@@ -106,7 +107,7 @@ interface FetchResultBlock {
      * which is not when this turn asked for it. */
     retrieved_at?: string;
     error_code?: string;
-    content?: { source?: { data?: string } };
+    content?: { source?: { data?: string; type?: string; media_type?: string } };
   };
 }
 
@@ -180,7 +181,7 @@ export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): Grou
     if (!readToday(result.retrieved_at, now)) pagesStale += 1;
     const url = result.url ?? '';
     if (url !== '') urlsRead.push(url);
-    const text = readableText(result.content?.source?.data ?? '');
+    const text = readableText(textOfFetchSource(result.content?.source));
     // The URL rides with its text so a downstream extraction can cite the page a fact
     // came off rather than the venue in the abstract.
     if (text !== '') {

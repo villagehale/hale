@@ -197,6 +197,9 @@ jobs:
       - name: Turn-apology composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:turn-apology
 
+      - name: Holding line composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:holding-line
+
       - name: Follow-up ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:followup-voice
 

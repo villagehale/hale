@@ -40,6 +40,7 @@ import { ASK_FIXTURES, NOTE_FIXTURES, REFERENCE_ASK } from './calendar-voice-fix
 import {
   JUDGE_MIN,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -81,7 +82,10 @@ const MAX_NOTE_SUBJECT_CHARS = 120;
 const MAX_NOTE_BODY_CHARS = 320;
 const LINK_SHAPE = /https?:\/\/|www\./i;
 
-const tidy = (raw) => String(raw ?? '').replace(/\s+/g, ' ').trim();
+const tidy = (raw) =>
+  String(raw ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 function askViolations(text, smsEncoding) {
   const out = [];
@@ -118,7 +122,8 @@ function noteViolations(note, context, findInventedFacts) {
   if (!note.body.includes(context.when)) out.push('body_drops_when');
   if (note.subject === '') out.push('subject_empty');
   if (note.body === '') out.push('body_empty');
-  if (note.subject.length > MAX_NOTE_SUBJECT_CHARS) out.push(`subject_over_cap (${note.subject.length})`);
+  if (note.subject.length > MAX_NOTE_SUBJECT_CHARS)
+    out.push(`subject_over_cap (${note.subject.length})`);
   if (note.body.length > MAX_NOTE_BODY_CHARS) out.push(`body_over_cap (${note.body.length})`);
   if (LINK_SHAPE.test(note.subject) || LINK_SHAPE.test(note.body)) out.push('carries_link');
   const slots = [context.summary, context.when];
@@ -133,7 +138,7 @@ function noteViolations(note, context, findInventedFacts) {
 // ── the judges ───────────────────────────────────────────────────────────────
 
 const JUDGE_ASK = [
-  'You are a strict reviewer scoring ONE text message. Hale keeps a family\'s calendar',
+  "You are a strict reviewer scoring ONE text message. Hale keeps a family's calendar",
   'over SMS, has just put something on it, and can also email a real calendar invite -',
   'but has no email address for anyone in the household. This message is the ONE time',
   'it asks for one; there is no follow-up. Score 1-5.',
@@ -142,7 +147,7 @@ const JUDGE_ASK = [
   'greeting, no pressure, and fine to ignore.',
   'A LOW score is any of: not actually asking for an address; not saying what they get',
   'for it; pressure, urgency or a deadline; explaining why it helps Hale; a greeting or',
-  'the parent\'s name; pointing at an app, a website or a settings page; promising',
+  "the parent's name; pointing at an app, a website or a settings page; promising",
   'anything beyond invites; more than about two clauses; hype or an exclamation mark.',
   'You are also given `reference` - the hand-written line this used to be. It is a',
   'yardstick for MEANING and register, NOT a target: a good answer does not have to',
@@ -153,7 +158,7 @@ const JUDGE_ASK = [
 const JUDGE_NOTE = [
   'You are a strict reviewer scoring the SUBJECT and the short NOTE on an email that',
   'carries a calendar invite (an .ics attachment) for one event Hale just put on a',
-  'family\'s calendar. Score 1-5.',
+  "family's calendar. Score 1-5.",
   'The writer was given exactly two facts - `summary` (the event, already written for',
   'this reader) and `when` - and NOTHING else. No place, no duration, no cost, no other',
   'people, no second time exist.',
@@ -181,7 +186,8 @@ const BROKEN_NOTE = {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('calendar-voice');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
@@ -193,6 +199,8 @@ async function main() {
   const noteSamples = await skillSampleSentences(NOTE_SKILL);
   const askModel = agent.pickModel(askSkill.meta.task);
   const noteModel = agent.pickModel(noteSkill.meta.task);
+  const askLane = agent.pickLane(askSkill.meta.task);
+  const noteLane = agent.pickLane(noteSkill.meta.task);
   const judgeModel = await readJudgeModel();
   const judgeAsk = makeJudge(judgeModel, JUDGE_ASK, 'calendar-ask', cachedOnly, getClient, cost);
   const judgeNote = makeJudge(judgeModel, JUDGE_NOTE, 'calendar-note', cachedOnly, getClient, cost);
@@ -215,6 +223,7 @@ async function main() {
           await cachedToolCall({
             tag: `calendar-ask:${fixture.id}`,
             model: askModel,
+            lane: askLane,
             system: askSkill.instructions,
             userMessage,
             toolName: 'ask',
@@ -246,6 +255,7 @@ async function main() {
           await cachedToolCall({
             tag: `calendar-note:${fixture.id}`,
             model: noteModel,
+            lane: noteLane,
             system: noteSkill.instructions,
             userMessage,
             toolName: 'note',
@@ -274,7 +284,12 @@ async function main() {
     });
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
     noteBodies.push({ id: fixture.id, text: note.body });
-    results.push({ surface: 'note', id: fixture.id, rendered: `${note.subject} | ${note.body}`, failures });
+    results.push({
+      surface: 'note',
+      id: fixture.id,
+      rendered: `${note.subject} | ${note.body}`,
+      failures,
+    });
   }
 
   // The variation gate, run over each surface separately.
@@ -342,8 +357,12 @@ async function main() {
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
 
   console.log('\n--- corpus metrics ---');
-  console.log(`GATE FAILURES:           ${gateFails.length}  (0 required - a gated-out draft is a message never sent)`);
-  console.log(`containment misses:      ${containment.length}  (0 required - the redacted summary + time must survive verbatim)`);
+  console.log(
+    `GATE FAILURES:           ${gateFails.length}  (0 required - a gated-out draft is a message never sent)`,
+  );
+  console.log(
+    `containment misses:      ${containment.length}  (0 required - the redacted summary + time must survive verbatim)`,
+  );
   console.log(`invented specifics:      ${invented.length}  (0 required - rule #1)`);
   for (const line of variationLines(askVariation, { pairGated: false })) {
     console.log(`${line}  [asks]`);

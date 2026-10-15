@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in French and makes a clear pick (yes), with a real reason: the sweetness and acidity of the pineapple against salty ham. There are no facts at stake and no invented specifics. It reads mostly like a friend texting, though 'tout à fait acceptable' and the redundant 'ça marche très bien' are a bit stiff. The closing 'question de goût' softens it slightly but does not cancel the pick.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -348,6 +348,7 @@ export const AUDIT_VERBS = [
   'action.reverted_by_human',
   // The sixth ActionGateReason; the other five were curated, this one was not.
   'action.gated.autonomy_not_opted_in',
+  'action.gated.parent_commitment',
   // The execute lane switched off. It reuses an existing sentence: no new copy.
   'action.gated.lane_off',
   // Booking, registration and paying are never autonomous. Same reused sentence.
@@ -1300,6 +1301,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   'action.reverted_by_human': { sentence: 'you reversed a completed action', family: 'done' },
   'action.gated.autonomy_not_opted_in': {
     sentence: 'held for your approval — you haven’t let Hale do this on its own',
+    family: 'awaiting',
+  },
+  // The same line as action.surfaced_to_user. A held commitment is a draft
+  // brought to the parent, and the flag stays off the trail.
+  'action.gated.parent_commitment': {
+    sentence: 'brought a draft to you',
     family: 'awaiting',
   },
   'action.gated.lane_off': { sentence: 'brought a draft to you', family: 'awaiting' },

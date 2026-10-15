@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "guidance question about introducing a food at a developmental stage, not a reported symptom"
+  },
+  "latencyMs": 1064
+}

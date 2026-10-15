@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct against research_notes. The Jays didn't play last night: their last game was Sep 27 and they finished 79-83, fifth in the AL East. Grounding marks that finish as settled, but the season is over and the record can no longer change, as watchFor confirms, so it is not a wrong fact. The reply is short, casual and in the parent's language, and it answers the question directly.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Mostly overrated, in my view, as a pick on the overall evidence",
+        "from": "They disagree on whether it delivers enough to justify the price."
+      },
+      {
+        "states": "Well made and third-party tested",
+        "from": "Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "Most people find it tastes decent",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "Several blends are underdosed",
+        "from": "It also flagged key ingredient amounts hidden in proprietary blends and several underdosed ingredients."
+      },
+      {
+        "states": "Some key amounts are hidden in proprietary blends",
+        "from": "It also flagged key ingredient amounts hidden in proprietary blends"
+      },
+      {
+        "states": "No independent clinical evidence found for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "A dietitian at a competing brand called it one of the most expensive all-in-one supplements",
+        "from": "Live it Up's dietitian (a competing brand, about 57 days old) called it one of the most expensive all-in-one supplements on the market"
+      },
+      {
+        "states": "Doubling up on vitamin A, zinc or niacin creates upper-limit concerns",
+        "from": "doubling up on vitamin A, zinc or niacin creates real upper limit concerns"
+      },
+      {
+        "states": "Reishi and grape seed can interact with blood thinners and blood pressure medication",
+        "from": "reishi and grape seed can interact with blood thinners and blood pressure medication"
+      }
+    ],
+    "answer": "Mostly overrated, I'd say. It's well made and third-party tested, and most people find it tastes decent. But several blends are underdosed, some key amounts are hidden in proprietary blends, and I couldn't find any independent clinical evidence for its benefit claims. A dietitian at a competing brand called it one of the most expensive all-in-one supplements out there. Don't double up on vitamin A, zinc or niacin, since that can push you over upper limits. If you take blood thinners or blood pressure medication, reishi and grape seed can interact with them, so check with a doctor or pharmacist first. If you like the convenience and can afford it, fine, but it doesn't deliver enough to justify the price."
+  },
+  "latencyMs": 6950
+}

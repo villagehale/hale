@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It gives a real pick (Messi) with a reason. The 2022 World Cup win is settled and can't change, so it is correctly marked settled. It states no running counts or records. Saying it can't check current stats is appropriate with live unavailable. 'He kept playing at a level almost nobody else has matched for years' is opinion and not a count. The tone is casual and friend-like, though the last line is slightly assistant-ish. Mostly good.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

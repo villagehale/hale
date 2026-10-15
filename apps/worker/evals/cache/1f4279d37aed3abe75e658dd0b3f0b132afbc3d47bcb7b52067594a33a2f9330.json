@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "English, matches the connector_link purpose: conveys the Google unverified-app caution, tap Advanced then continue, gives one link whole, and states 15 minutes validity. Minor issue: \"That's expected and safe\" asserts safety beyond the given fact, which only said Google may show the screen. Also the link text is shown as a placeholder-like token in facts, but the text uses a concrete URL, so it is not invented per se; it is not in the facts as given, a small invention risk. Tone is plain and friendly."
+  }
+}

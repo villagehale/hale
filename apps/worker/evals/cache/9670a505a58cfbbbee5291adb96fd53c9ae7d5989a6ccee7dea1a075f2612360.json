@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The Tiny Gym slot is a real class on the page, and its age band (walking to 3.5) fits a toddler. Day, time, dates, 7 weeks and the $124 fee all match the page exactly, and the slot cites the programs page. The $25 annual membership is correctly shown as a separate charge that applies to all programs, not passed off as the class fee. The registration fact (opened July 22, runs until classes fill) is in both the slot and the message. The message leads with the slot by name, says 'their site says', and does not claim anything was confirmed. It is plain ASCII with no link, no question and no coming-back promise, which is right since watch is false. It makes no negative claim about the page, so the page_has_schedule state raises nothing, and no unopened PDF is involved. Kinderfun was correctly left out because 3 to 5 years drop-off does not fit the toddler stage.",
+    "score": 5
+  }
+}

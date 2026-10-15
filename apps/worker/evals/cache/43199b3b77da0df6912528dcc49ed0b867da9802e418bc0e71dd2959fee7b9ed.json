@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "Thanks, but please take me off this, I no longer need it",
+    "confirmation": "Got it, Hale won't text you again. If you ever want to come back, just text us back in your own words and we'll pick things up."
+  },
+  "latencyMs": 1987
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment reading as a follow-up to something not visible; default to in_domain"
+  },
+  "latencyMs": 940
+}

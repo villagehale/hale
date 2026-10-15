@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "guidance question about normal development (when solids start), not a reported symptom"
+  },
+  "latencyMs": 1049
+}

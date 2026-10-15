@@ -8,8 +8,8 @@ import {
   createDeepResearcher,
   toDeepSlots,
 } from './deep';
-import { FETCH_FRESHNESS_MS } from './evidence';
 import type { ActivityQuery } from './deidentify';
+import { FETCH_FRESHNESS_MS } from './evidence';
 
 /**
  * THE DEEP PASS — the leg that opens the venue's pages instead of reading snippets.
@@ -80,7 +80,7 @@ function researchTurn(opts: {
 }
 
 function extractTurn(input: unknown) {
-  return message([{ type: 'tool_use', name: 'activity_deep', input }]);
+  return message([{ type: 'text', text: JSON.stringify(input) }]);
 }
 
 /**
@@ -281,7 +281,11 @@ describe('createDeepResearcher', () => {
     expect(tools.find((t) => t.name === 'web_search')?.max_uses).toBe(MAX_DEEP_SEARCHES);
     expect(tools.find((t) => t.name === 'web_fetch')?.max_uses).toBe(MAX_DEEP_FETCHES);
     // The extract leg is blind and toolless — it sees the notes, never the parent.
-    expect(requests[1]?.tools).toHaveLength(1);
+    expect(requests[1]?.tools).toBeUndefined();
+    expect(
+      (requests[1] as { output_config?: { format?: { type?: string } } })?.output_config?.format
+        ?.type,
+    ).toBe('json_schema');
   });
 
   it('returns the slots it read, with the evidence behind them', async () => {

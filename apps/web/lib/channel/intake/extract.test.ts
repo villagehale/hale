@@ -1,4 +1,4 @@
-import { type AgentClient, SONNET5_MODEL } from '@hale/agent';
+import { type AgentClient, SONNET_MODEL } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createIntakeExtractor } from './extract';
 
@@ -6,17 +6,15 @@ function response() {
   return {
     content: [
       {
-        type: 'tool_use',
-        id: 'tool_1',
-        name: 'intake',
-        input: {
+        type: 'text',
+        text: JSON.stringify({
           children: [{ name: 'Mia', age_months: 48, age_precision: 'years' }],
           postal_code: 'M5V 2T6',
           confidence: 0.9,
-        },
+        }),
       },
     ],
-    stop_reason: 'tool_use',
+    stop_reason: 'end_turn',
     usage: {
       input_tokens: 100,
       output_tokens: 20,
@@ -47,7 +45,7 @@ describe('createIntakeExtractor rollout', () => {
       expect(result.children).toHaveLength(1);
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: SONNET5_MODEL,
+          model: SONNET_MODEL,
         }),
       );
     },
@@ -60,7 +58,7 @@ describe('createIntakeExtractor rollout', () => {
 
     await createIntakeExtractor(client, { modelMode: 'candidate' }).extract(INPUT);
 
-    expect(create).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: SONNET5_MODEL }));
+    expect(create).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: SONNET_MODEL }));
   });
 
   it('uses Sonnet 5 when current mode is explicit', async () => {
@@ -69,6 +67,6 @@ describe('createIntakeExtractor rollout', () => {
 
     await createIntakeExtractor(client, { modelMode: 'current' }).extract(INPUT);
 
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ model: SONNET5_MODEL }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ model: SONNET_MODEL }));
   });
 });

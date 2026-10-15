@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with a plain 'I checked' that the contract requires, states the given registration absence and the given firstFindBeat verbatim, and says the next cycle's dates aren't posted, which is what stillOpenPage false calls for. No invented specifics, no hype, short and useful; it omits the no-pick clause, which is acceptable since the instructed clause is optional when weekendPick is null and registration is absent, though slightly thinner than ideal.",
+    "score": 4
+  }
+}

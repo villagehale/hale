@@ -36,7 +36,7 @@ function clientSaying(bodies: string[], seen: Captured[] = []): () => AgentClien
           const ask = bodies[Math.min(call, bodies.length - 1)];
           call += 1;
           return {
-            content: [{ type: 'tool_use', name: 'ask', input: { ask } }],
+            content: [{ type: 'text', text: JSON.stringify({ ask }) }],
             usage: { input_tokens: 10, output_tokens: 5 },
           };
         },

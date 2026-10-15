@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Blue Jays did not make the 2026 postseason",
+        "from": "The Blue Jays did not make the 2026 postseason."
+      },
+      {
+        "states": "Blue Jays finished 79-83",
+        "from": "Baseball-Reference lists their final record as 79-83, 5th in the AL East."
+      },
+      {
+        "states": "No Blue Jays game found on Oct 11",
+        "from": "The results found no Blue Jays game on Oct 11, and I found no score for one."
+      }
+    ],
+    "answer": "Assuming you mean the Blue Jays: they missed the playoffs this year and finished 79-83. I didn't find a game for them on Sunday night, so I don't think they played. I can't fully confirm that, though."
+  },
+  "latencyMs": 5034
+}

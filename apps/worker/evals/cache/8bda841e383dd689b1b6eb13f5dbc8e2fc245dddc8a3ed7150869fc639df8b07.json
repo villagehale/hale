@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick (Messi) with a reason, and the one fact it states is settled: Argentina won the 2022 World Cup. It states no running count or record from memory. It reads like a friend texting back, in English. 'Few players have controlled games for as long' is opinion, not a stated record. Good.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

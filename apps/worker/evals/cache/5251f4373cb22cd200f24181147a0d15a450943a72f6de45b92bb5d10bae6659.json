@@ -1,0 +1,42 @@
+{
+  "parsed": {
+    "candidates": [
+      {
+        "title": "Baby storytime and rhyme time at a Plateau public library branch",
+        "description": "Montreal's public library network usually offers short baby sessions with songs, rhymes and books for infants and their caregivers. It is a gentle, free outing that suits a newborn and is a good way to meet other parents. Category: library, ongoing, newborn fit.",
+        "confidence": 0.7,
+        "coverageNote": "General knowledge: the library network reliably runs baby sessions, but I can't confirm which branch, schedule or registration rules. Check the Montreal libraries listings. Language of sessions (French or English) varies."
+      },
+      {
+        "title": "Stroller walks in Parc La Fontaine",
+        "description": "A large, central park with flat paths, shade and ponds, suited to daily fresh-air walks with a newborn in a carrier or stroller. It is free and needs no registration. Category: outdoor, ongoing, newborn fit.",
+        "confidence": 0.85,
+        "coverageNote": "General knowledge: the park is well known and open year-round. Winter paths can be icy, so conditions vary with the season."
+      },
+      {
+        "title": "Family resource centre drop-in for parents with babies",
+        "description": "Many neighbourhoods in Montreal have community family centres (maisons de la famille) with drop-in times for parents and infants, offering peer support and playtime on a blanket. They are useful for newborn-stage parents looking for company. Category: drop_in, ongoing, newborn fit.",
+        "confidence": 0.6,
+        "coverageNote": "General knowledge: such organizations commonly exist in central Montreal boroughs, but I can't name a specific one or confirm its hours, fees or age range for newborns."
+      },
+      {
+        "title": "CLSC perinatal and breastfeeding support or baby weigh-in",
+        "description": "Quebec's local CLSC health centres typically offer post-natal follow-up, infant weight checks, breastfeeding help and parent information groups. These are practical, low-pressure ways to get support in the early weeks. Category: program, ongoing, newborn fit.",
+        "confidence": 0.65,
+        "coverageNote": "General knowledge: services vary by CLSC and often require an appointment or referral. I can't confirm which CLSC serves a given address or the current offering."
+      },
+      {
+        "title": "Postnatal baby-and-me movement or yoga class",
+        "description": "Studios and community centres in and around the Plateau often run postnatal classes where parents exercise gently with a pre-crawling infant alongside. These suit a newborn once the parent has medical clearance. Category: class, seasonal, newborn fit.",
+        "confidence": 0.5,
+        "coverageNote": "Plausible based on general patterns; I can't name a specific studio, schedule or price. Check minimum infant age requirements, which vary."
+      },
+      {
+        "title": "Baby-friendly cafe and park meetups for new parents",
+        "description": "Informal parent-and-baby groups often meet at cafes or parks in the Plateau and nearby neighbourhoods, usually organized through local online parent communities. They offer relaxed social time with no schedule commitment. Category: community_event, ongoing, newborn fit.",
+        "confidence": 0.45,
+        "coverageNote": "Lean on general patterns; I can't confirm any specific active group. Look at local parent forums for current meetups."
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "8c4e1a70-2b95-4d16-9f38-71a0c5e24b6d",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "The parent says OK, Sunday 9am gymnastics. Sunday 9am in the family's zone matches the offer starting 2026-10-04T13:00Z, which has not started yet; the other offer started 2026-10-01 and is past, so it is excluded."
+  },
+  "latencyMs": 5766
+}

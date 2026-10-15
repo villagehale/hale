@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The picks are real and local: Halton Hills Gymnastics Centre in Georgetown and the Town of Halton Hills' own skating page, both fitting a toddler. There are three of them. The message leads with the best by name, attributes it with 'their site says', and asks no question. The watch=true promise is correctly first person. Under no_page_read it correctly says 'I could not get into their page today' and does not claim nothing is posted. No times or prices are invented. Weaknesses: - The skating pick has no day or session start, against watchFor. - 'Town of Halton Hills arenas' is vague. - The skating price is not clearly attributed to the Town. - The message is silent on the missing Parent and Tot price.",
+    "score": 4
+  }
+}

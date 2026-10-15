@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://www.nhl.com/mapleleafs/video/",
+    "https://en.wikipedia.org/wiki/2026%E2%80%9327_Toronto_Maple_Leafs_season",
+    "https://mapleleafshotstove.com/2026/10/01/game-review-maple-leafs-2-islanders-1/",
+    "https://mapleleafshotstove.com/2026/10/11/game-review-maple-leafs-6-vs-avalanche-3/",
+    "https://www.foxsports.com/nhl/toronto-maple-leafs-team-highlights",
+    "https://www.covers.com/sport/hockey/nhl/teams/main/toronto-maple-leafs",
+    "https://sports.yahoo.com/nhl/teams/toronto/schedule/",
+    "https://en.wikipedia.org/wiki/2022%E2%80%9323_Toronto_Maple_Leafs_season",
+    "https://www.espn.com/nhl/team/_/name/tor/toronto-maple-leafs"
+  ],
+  "notes": "**Short answer:** The Leafs did not play last night (Sunday, Oct 11). Their most recent game was Saturday night, Oct 10, and they won it.\n\n- **Saturday, Oct 10:** William Nylander and Easton Cowan scored 46 seconds apart late in the second period, and the Maple Leafs beat the Colorado Avalanche 6-3. (ESPN.) Nylander tied a career high with 5 points. Maple Leafs Hotstove's recap says Blankenburg scored in his debut. Some sites date the recap Oct 11, but it covers the Saturday game.\n- **Schedule:** The Yahoo Sports schedule lists the Colorado game on Oct 10 as a 6-3 win. Its next entry is Oct 13 at Utah, with nothing listed for Oct 11. The next game is Tuesday, Oct 13, at Utah.\n- **Record:** Six games into the season, the Leafs are 3-2-1. (Maple Leafs Hotstove, Oct 12.) Fox Sports has them 4th in the East, Atlantic.\n- **Injury:** Yahoo's headlines mention a Chris Tanev injury after an early exit from the Colorado game. No details were in the results.\n\nSome pages the search returned were older or looked like projected data. I did not use them.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 7539
+}

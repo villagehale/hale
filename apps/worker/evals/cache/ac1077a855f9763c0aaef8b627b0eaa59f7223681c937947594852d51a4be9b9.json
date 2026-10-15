@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.93,
+    "rationale": "Routine notice from known daycare Maple Grove about a PD-day closure and clothing/water bottle reminders, with no reply requested.",
+    "payload": {
+      "sender": "toddlers@maplegrove-childcare.ca",
+      "daycare": "Maple Grove Childcare",
+      "closure": "next Monday (staff PD day)",
+      "requests": [
+        "send extra set of weather-appropriate clothes",
+        "label water bottle"
+      ],
+      "child_name": "Mia"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 284,
+    "output": 320
+  }
+}

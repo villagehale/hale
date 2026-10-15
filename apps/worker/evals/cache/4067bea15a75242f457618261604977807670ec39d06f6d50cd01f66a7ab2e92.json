@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, named Oakville providers that fit the preschool stage. Each is sourced from the venue's own site rather than an aggregator. The message leads with the Town of Oakville program by name and attributes it with \"their site says\". Under no_page_read it correctly uses \"I could not get into the page today\" rather than claiming nothing is posted. It invents no times or prices. Because watch is true, it rightly makes a first-person promise to keep watching and text back. It is plain text with no link and no question. Two things keep it from a 5. The YMCA and Making Waves picks are stated as fact (\"have preschool classes too\") with no attribution. The phrase \"their site says, but...\" is garbled, so it is unclear what the site says.",
+    "score": 4
+  }
+}

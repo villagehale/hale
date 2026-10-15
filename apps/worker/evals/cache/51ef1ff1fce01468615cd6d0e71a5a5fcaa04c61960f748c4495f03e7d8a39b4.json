@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "how long do I boil an egg for hard boiled",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "none",
+    "needs_search": "yes"
+  },
+  "latencyMs": 3286
+}

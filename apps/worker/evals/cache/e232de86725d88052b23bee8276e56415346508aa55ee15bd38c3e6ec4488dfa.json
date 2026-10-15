@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches Environment Canada's Oct 13 forecast in the notes: high 25°C, mix of sun and cloud, 40% showers, late-afternoon thunderstorm risk, humidex 32, SW wind 20 gusting 40, and a low of 15°C. It correctly reads 'Toronto' as the follow-up to the forecast question and answers for Tuesday directly. The tone is casual and to the point, if a little forecast-heavy.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

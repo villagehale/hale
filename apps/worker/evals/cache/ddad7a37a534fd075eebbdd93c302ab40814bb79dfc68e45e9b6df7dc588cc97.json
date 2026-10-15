@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are faithful to the page. Day, times and the Sept 12 to Nov 28 dates are exactly as printed, the age band (3-5, no parent in the water) is right, and both are cited to the operator's URL. Price is correctly null because the page prints no fee and defers to the Recreation Guide. There are exactly two slots, no invented third. Both slots carry the Aug 11, 7 a.m. resident registration date, and the message does too, framed as not yet open. The message leads with the programs by name, attributes the facts with 'their site says', and is plain ASCII with no link and no question. With watch TRUE, the first-person 'I'll keep watching and text you' is a real commitment. Under page_has_schedule, the price gap is correctly owned in the first person ('I could not pin down the price') rather than called 'not posted'. Minor omissions: the Aug 4 browse date is dropped from the message, and the slots do not explicitly note that the Recreation Guide was not opened.",
+    "score": 5
+  }
+}

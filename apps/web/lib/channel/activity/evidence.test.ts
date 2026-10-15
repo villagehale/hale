@@ -1,3 +1,4 @@
+import { deflateSync } from 'node:zlib';
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
 import { FETCH_FRESHNESS_MS, namesAVenue, readEvidence, readPageVerdict } from './evidence';
@@ -24,7 +25,11 @@ const SEARCH_HIT = block({
 
 const NOW = new Date('2026-08-22T21:00:00.000Z');
 
-function fetched(url: string, data: string, retrievedAt = '2026-08-22T20:30:00.000000+00:00'): Anthropic.ContentBlock {
+function fetched(
+  url: string,
+  data: string,
+  retrievedAt = '2026-08-22T20:30:00.000000+00:00',
+): Anthropic.ContentBlock {
   return block({
     type: 'web_fetch_tool_result',
     content: {
@@ -107,6 +112,37 @@ describe('readEvidence', () => {
     expect(evidence.notes).toContain('$124 per term');
   });
 
+  it('reads a fetched schedule PDF as page text and does not keep the encoding', () => {
+    const content =
+      'BT\n4 0 0 4 20 100 Tm\n[(Tiny) ( Gym)] TJ\n4 0 0 4 20 80 Tm\n[(Monday) ( 9:30-10:15)] TJ\nET';
+    const compressed = deflateSync(Buffer.from(content));
+    const pdf = Buffer.concat([
+      Buffer.from('%PDF-1.6\n1 0 obj\n<< /Length '),
+      Buffer.from(String(compressed.length)),
+      Buffer.from(' /Filter /FlateDecode >>\nstream\n'),
+      compressed,
+      Buffer.from('\nendstream\nendobj\n'),
+    ]);
+    const fetchedPdf = block({
+      type: 'web_fetch_tool_result',
+      content: {
+        type: 'web_fetch_result',
+        url: 'https://x.ca/Term_2_Schedule.pdf',
+        retrieved_at: '2026-08-22T20:30:00.000000+00:00',
+        content: {
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: pdf.toString('base64') },
+        },
+      },
+    });
+
+    const evidence = readEvidence(NOW, [fetchedPdf]);
+
+    expect(evidence.notes).toContain('Tiny Gym');
+    expect(evidence.notes).toContain('Monday 9:30-10:15');
+    expect(evidence.notes).not.toContain('JVBERi0');
+  });
+
   /**
    * A PAGE THE PROVIDER HANDED BACK FROM ITS CACHE IS NOT A PAGE READ TODAY.
    *
@@ -187,9 +223,9 @@ describe('readPageVerdict', () => {
     'Fall programs at Gellert Community Centre. Our fall brochure will be posted soon. Call 905-877-4244.';
 
   it('licenses an absence only when a page opened today publishes nothing', () => {
-    expect(
-      readPageVerdict({ pagesRead: 1, pagesStale: 0, pages: [{ text: SILENT }] }),
-    ).toBe('page_has_no_schedule');
+    expect(readPageVerdict({ pagesRead: 1, pagesStale: 0, pages: [{ text: SILENT }] })).toBe(
+      'page_has_no_schedule',
+    );
     expect(readPageVerdict({ pagesRead: 1, pagesStale: 0, pages: [{ text: GRID }] })).toBe(
       'page_has_schedule',
     );
@@ -228,24 +264,21 @@ describe('readPageVerdict', () => {
  */
 describe('image references are not page text', () => {
   it('drops the filename a figure could be read off, and keeps the words around it', () => {
-    const page = readEvidence(
-      new Date('2026-08-24T12:00:00.000Z'),
-      [
-        block({
-          type: 'web_fetch_tool_result',
+    const page = readEvidence(new Date('2026-08-24T12:00:00.000Z'), [
+      block({
+        type: 'web_fetch_tool_result',
+        content: {
+          type: 'web_fetch_result',
+          url: 'https://cartwheels.example/programs',
+          retrieved_at: '2026-08-24T11:59:00.000Z',
           content: {
-            type: 'web_fetch_result',
-            url: 'https://cartwheels.example/programs',
-            retrieved_at: '2026-08-24T11:59:00.000Z',
-            content: {
-              source: {
-                data: '## Programs\n![](https://cartwheels.example/images/Term_dates_20262027.png)\nTiny Gym runs Sundays 9:30.',
-              },
+            source: {
+              data: '## Programs\n![](https://cartwheels.example/images/Term_dates_20262027.png)\nTiny Gym runs Sundays 9:30.',
             },
           },
-        }),
-      ],
-    );
+        },
+      }),
+    ]);
 
     const text = page.pages[0]?.text ?? '';
     expect(text).not.toContain('2027');

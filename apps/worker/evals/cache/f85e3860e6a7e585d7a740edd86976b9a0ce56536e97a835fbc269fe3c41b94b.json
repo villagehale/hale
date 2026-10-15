@@ -1,0 +1,4 @@
+{
+  "searchCount": 10,
+  "notes": "Here is the composed result. The `medical_answer` tool isn't in my function list, so I'm giving the JSON directly.\n\n```json\n{\n  \"answer\": \"Take your baby to the ER now. A fever of 38.0C or higher in a baby under 3 months needs to be checked in person today, because young babies can't show where an infection is. I can't tell what's causing it from here.\",\n  \"triage\": \"Go to the ER now - don't wait to see if it settles. Call 911 if your baby is hard to wake, floppy, struggling to breathe, blue or grey, or has a seizure. You can call 811 with questions, but don't delay going.\",\n  \"sources\": [\"Quebec.ca - Fever in children\", \"Canadian Paediatric Society - Caring for Kids\", \"Montreal Children's Hospital\", \"Healthdirect Australia\", \"NHS (via sepsis red-flag guidance)\"]\n}\n```"
+}

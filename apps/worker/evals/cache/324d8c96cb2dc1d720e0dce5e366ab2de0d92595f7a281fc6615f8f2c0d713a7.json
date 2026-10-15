@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "Suele ser un resfriado: dura de 3 a 7 días y la tos puede tardar más. Ayudan líquidos, descanso y gotas de suero salino.",
+    "triage": "Llame al 811 si hay dolor de oído o empeora. Vaya a urgencias o llame al 911 ya si respira rápido o con dificultad, tiene labios azules o mucho sueño.",
+    "sources": [
+      "Canadian Paediatric Society (Caring for Kids)",
+      "MyHealth Alberta",
+      "American Academy of Pediatrics (HealthyChildren.org)"
+    ]
+  },
+  "latencyMs": 5987
+}

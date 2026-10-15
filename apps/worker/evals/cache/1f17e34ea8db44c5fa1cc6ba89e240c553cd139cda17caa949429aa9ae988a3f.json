@@ -1,0 +1,49 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday in Denver: partly sunny",
+        "from": "The National Weather Service in Boulder said to expect partly sunny skies Tuesday"
+      },
+      {
+        "states": "Tuesday high around 65 degrees",
+        "from": "The high is expected to reach 65 degrees"
+      },
+      {
+        "states": "About 15 degrees cooler than Monday's high of 80",
+        "from": "about 15 degrees cooler than Monday's high of 80"
+      },
+      {
+        "states": "Other Tuesday highs of 64 to 67",
+        "from": "Weather Underground has a high of 64°F, partly cloudy. AccuWeather has a high of 67°. 9NEWS has a high of 64."
+      },
+      {
+        "states": "North-northeast wind 6 to 10 mph, gusts up to 17 mph",
+        "from": "North-northeast winds of 6 to 10 mph are expected, becoming east to northeast in the afternoon with gusts up to 17 mph"
+      },
+      {
+        "states": "30% chance of rain after 3 p.m. Tuesday",
+        "from": "The weather service gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "Rain chances rising through the evening",
+        "from": "Hourly data from 9NEWS shows rain chances rising through the evening"
+      },
+      {
+        "states": "Tuesday night lows in the low 40s and 30s",
+        "from": "Lows are expected in the low 40s and 30s on Tuesday night"
+      },
+      {
+        "states": "Showers peak late Wednesday",
+        "from": "The Denver Gazette says showers peak late Wednesday"
+      },
+      {
+        "states": "Wednesday high near 49 degrees",
+        "from": "Weather Underground has Wednesday as rain turning steadier in the afternoon, with a high near 49°F"
+      }
+    ],
+    "answer": "Tomorrow in Denver looks partly sunny, with a high around 65 (forecasts run 64 to 67), about 15 degrees cooler than today. Wind is north-northeast at 6 to 10 mph, gusting to 17. Rain could move in Tuesday evening, around 30% after 3 p.m., and the chance climbs into the night. Lows drop into the 30s and low 40s. Showers peak late Wednesday, with a high near 49."
+  },
+  "latencyMs": 7640
+}

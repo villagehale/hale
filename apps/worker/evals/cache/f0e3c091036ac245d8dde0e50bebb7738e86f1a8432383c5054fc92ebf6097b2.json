@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto, Tuesday Oct 13 daytime: mix of sun and cloud in the afternoon",
+        "from": "Becoming a mix of sun and cloud in the afternoon"
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13 late afternoon: 40 percent chance of showers, risk of a thunderstorm",
+        "from": "40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon."
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13 daytime high: 25",
+        "from": "High of 25, with a humidex of 32."
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13 daytime humidex: 32",
+        "from": "High of 25, with a humidex of 32."
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13 daytime wind: from the southwest at 20 km/h, gusting to 40",
+        "from": "Wind from the southwest at 20 km/h, gusting to 40."
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13 evening and night: 40 percent chance of showers, risk of a thunderstorm",
+        "from": "40 percent chance of showers in the evening, with a risk of a thunderstorm."
+      },
+      {
+        "states": "Toronto, Tuesday Oct 13 night low: 15",
+        "from": "Low of 15."
+      },
+      {
+        "states": "Toronto, no weather alerts in effect",
+        "from": "Environment Canada's hourly page showed no alerts in effect."
+      },
+      {
+        "states": "Toronto, Wednesday Oct 14 high: 16, much cooler than Tuesday",
+        "from": "A mix of sun and cloud, with a high of 16. That is much cooler than Tuesday."
+      }
+    ],
+    "answer": "Tomorrow (Tue) in Toronto is warm but unsettled. Mix of sun and cloud, high of 25, humidex 32. From late afternoon there's a 40% chance of showers and a risk of thunderstorms. Wind southwest 20 km/h, gusting to 40. Tuesday night drops to a low of 15, still 40% showers and a thunder risk. No weather alerts in effect. Wednesday is much cooler, high of 16."
+  },
+  "latencyMs": 6496
+}

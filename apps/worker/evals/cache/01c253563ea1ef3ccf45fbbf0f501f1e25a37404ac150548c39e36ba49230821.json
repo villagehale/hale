@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "IM8 is well made and third-party tested",
+        "from": "Quality control looks solid. Both formulas are third-party tested"
+      },
+      {
+        "states": "It tastes decent for most people",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "Several doses fall short of effective ranges",
+        "from": "otherwise its ingredient doses fall short of effective ranges"
+      },
+      {
+        "states": "A dietitian says the science is far weaker than consumers are led to believe",
+        "from": "She wrote that IM8 is clever marketing wrapped around science that is far weaker than consumers are led to believe."
+      },
+      {
+        "states": "No independent clinical evidence for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "About $89 a month on subscription",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription"
+      }
+    ],
+    "answer": "Honestly, I'd call it overrated. It's well made and third-party tested, and most people say it tastes decent. But several of the doses come in under effective ranges, a dietitian says the science is much weaker than the marketing makes it sound, and I found no independent clinical evidence for the benefits. At around $89 a month on subscription, I'd skip it unless the convenience alone is worth that to you."
+  },
+  "latencyMs": 6103
+}

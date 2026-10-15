@@ -53,6 +53,8 @@ export interface ChannelMessageReceivedJob {
   channel_message_id: string;
   provider_message_id: string;
   received_at: string;
+  /** The door's own group bit. Absent only on a job it did not queue (see the contract). */
+  in_group?: boolean;
 }
 
 export interface InboundRouteDeps {
@@ -447,6 +449,9 @@ async function handOffToConversation(
       channel_message_id: channelMessageId,
       provider_message_id: inbound.providerId,
       received_at: inbound.receivedAt.toISOString(),
+      // As the door said it, and absent when the door did not say: an unknown is not a
+      // 1:1 thread (the router's `group_unknown`).
+      in_group: inbound.isGroup,
     });
   } catch (err) {
     // The ids an operator can act on, and nothing the parent typed (rule #1).

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Toronto's forecast for tomorrow matches the Environment Canada notes: high 25, mix of sun and cloud, late-afternoon showers with thunderstorm risk, humidex 32, low 15. It reads like a casual text. One small issue: 'showers are likely' overstates a 40% chance, so it falls short of a perfect score.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

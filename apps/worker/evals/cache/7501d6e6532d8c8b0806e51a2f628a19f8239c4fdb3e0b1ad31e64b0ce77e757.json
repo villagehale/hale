@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://www.goodrx.com/melatonin/is-long-term-melatonin-use-safe",
+    "https://newsroom.heart.org/news/long-term-use-of-melatonin-supplements-to-support-sleep-may-have-negative-health-effects",
+    "https://sleepeducation.org/new-study-raises-questions-about-long-term-melatonin-use/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC10053496/",
+    "https://physicianresources.baptisthealth.net/news/long-term-use-of-sleep-supplement-melatonin-linked-to-potential-heart-risks",
+    "https://www.ynhhs.org/articles/is-melatonin-safe",
+    "https://www.scientificamerican.com/article/how-safe-is-melatonin-and-how-does-the-sleep-aid-work-experts-explain/",
+    "https://health.ucdavis.edu/blog/cultivating-health/melatonin-and-your-sleep-is-it-safe-what-are-the-side-effects-and-how-does-it-work/2025/02",
+    "https://www.nih.gov/news-events/nih-research-matters/use-melatonin-supplements-rising-among-adults"
+  ],
+  "notes": "**Research notes (as of Oct 12, 2026). No place was given, and the question doesn't need one.**\n\n**Short-term use**\n- The NIH says short-term melatonin use appears safe for most people, but information on long-term safety is lacking. That page is dated March 1, 2022.\n- UC Davis Health (Feb 2025) says melatonin is typically safe and well tolerated at low doses, taken appropriately for the shortest time.\n- UC Davis defines short-term as one to two months.\n- GoodRx advises against taking it daily for more than a week or two at a time. The two sources give different time limits.\n\n**Dose**\n- GoodRx says the most common adult dose is about 3 to 5 mg, taken 1 to 2 hours before bed.\n- Yale New Haven Health quotes a doctor saying adults should take only 0.3 to 1 mg, and not long-term.\n- Sources disagree on the right dose.\n- A review in PMC notes that doses over 3 mg of controlled-release products can potentially cause next-day drowsiness.\n\n**Long-term use: new concern (preliminary)**\n- An American Heart Association abstract was presented in November 2025. It linked melatonin use of a year or more in people with chronic insomnia to higher rates of heart failure diagnosis, heart failure hospitalization and death from any cause.\n- It reviewed records of 130,828 adults and found heart failure in 4.6% of long-term melatonin users versus 2.7% of non-users over five years.\n- The AHA says the study cannot prove cause and effect.\n- The AHA also says the findings are preliminary because abstracts at its meetings are not peer-reviewed.\n- Scientific American reports that some experts think the results may reflect the effects of poor sleep rather than melatonin.\n- The search results did not show whether the study has since been published in a peer-reviewed journal.\n\n**Other cautions from the results**\n- The PMC review says the possible fracture risk is a reason to use melatonin with caution in older adults and in people with previous low-impact fractures.\n- GoodRx says melatonin has side effects and drug interactions. It suggests checking with a healthcare team before starting.\n- GoodRx also says long-term sleep problems often point to an underlying condition, and that taking melatonin long term without medical input could let that condition worsen.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 10200
+}

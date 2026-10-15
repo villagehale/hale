@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "There is one slot, and it is a real program read off the program page. The day, time and session dates are exact, the age band fits, and it is cited to the right URL. The price is correctly left null: the page prints no fee, and the $185 and $95 rental figures were not borrowed. The page prints no registration date, so a null registration is correct. The message leads with the program by name, attributes the facts with 'their site says' and admits the price gap in the first person, which is the right framing for page_has_schedule. Because watch is true, it properly carries the first-person continuation. It is two plain-ASCII sentences with no question and no link. The only nit is that 'a.m.' was dropped from the time.",
+    "score": 5
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.9,
+    "rationale": "Known clinic asks the parent to pick a slot for the 6-month checkup within two weeks, which requires action to book.",
+    "payload": {
+      "clinic": "Little Sprout Pediatrics",
+      "visit_type": "6-month checkup",
+      "child_reference": "Baby Chen",
+      "response_window": "next two weeks",
+      "availability": "Mon-Thu mornings",
+      "response_channels": [
+        "phone",
+        "portal"
+      ]
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 276,
+    "output": 324
+  }
+}

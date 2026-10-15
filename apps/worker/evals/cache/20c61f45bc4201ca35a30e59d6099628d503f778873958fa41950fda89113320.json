@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: the Saturday times, the Sept 12 - Nov 28 dates, ages 3-5 and no parent in the water. Price is correctly null because the page prints no fee, and both slots cite the Oakville page. Both carry the Aug 11, 7am resident registration date. The message leads with the named programs, attributes them ('their site says') and carries the registration window. Under page_has_schedule it correctly uses the first-person 'I could not pin down the price'. With watch true, the first-person promise to keep watching is backed by a real row. It is plain ASCII, with no link and no question. Small omissions: the Aug 4 browse date and the note that fees are in the Recreation Guide.",
+    "score": 5
+  }
+}

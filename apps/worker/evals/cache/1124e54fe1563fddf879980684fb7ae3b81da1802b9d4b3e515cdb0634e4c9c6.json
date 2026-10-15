@@ -1,0 +1,9 @@
+{
+  "value": {
+    "language": "en",
+    "clinical_query": "sore throat and fever preschooler, sibling recently had strep throat",
+    "red_flag_sign": "none",
+    "red_flag": "not_emergency"
+  },
+  "latencyMs": 1895
+}

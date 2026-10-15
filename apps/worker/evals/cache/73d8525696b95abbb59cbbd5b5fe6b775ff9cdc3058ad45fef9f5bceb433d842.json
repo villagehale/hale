@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot is real and cited to the page it came from. The Tiny Gym age band comes from the programs page. The Term 1 and Term 2 dates match the PDF exactly, and that slot admits the times could not be matched to weekdays. The July 22, 8:00am online registration is read off the home page. Price is correctly left null, since the site says pricing is only shown after logging in. The message leads with Tiny Gym by name and attributes the term dates to their site. It carries the registration date and time. Because pageEvidence is page_has_schedule, it correctly uses the first person ('I could not pin down the day or the price') rather than 'not posted'. With watch true, the first-person 'I'll keep watching' is correct. It is plain ASCII with no link and no question. Minor nits: Term 2 dates are omitted from the text, and the registration sentence is not explicitly attributed. Neither is material.",
+    "score": 5
+  }
+}

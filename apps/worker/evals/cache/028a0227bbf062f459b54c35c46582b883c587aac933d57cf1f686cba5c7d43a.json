@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to be told about an opening in a full class but sent no link. The capability list says that with no link there is nothing to watch, and asking for it is the right answer. The reply does exactly that in one short question, says what Hale will do with the link, and has no greeting, sign-off or machinery talk. A trivial nit is that it is phrased as a question with an awkward 'so I can' construction, but it is clear.",
+    "score": 5
+  }
+}

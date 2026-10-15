@@ -11,10 +11,11 @@
 // apps/worker/dist/ is STALE (it still references the removed Mastra layer:
 // ../mastra/model.js and a date-suffixed model id), so importing the compiled
 // path would test dead code. We therefore REPLICATE the exact request shape:
-// same prompt file (apps/worker/prompts/classifier.md), same tool-forced JSON
-// output schema and tool_choice that src/agents/structured.ts uses. The model id
-// comes from the classify skill's own pickModel('classify') (@hale/agent source,
-// via tsx), so the gate tests the model production classifies with, and the
+// same prompt file (apps/worker/prompts/classifier.md) and the same output schema,
+// sent through the structured-output seam production uses
+// (packages/agent/src/structured.ts) on the classify lane. The lane comes from
+// pickLane('classify') (@hale/agent source, via tsx), so the gate tests the model
+// and knobs production classifies with, and the
 // autonomy threshold is read from src/orchestrator/index.ts — this harness has
 // no second source of truth for any of those values.
 //
@@ -25,12 +26,14 @@
 //   node apps/worker/evals/run-eval.mjs --cached-only   (CI: replay only, never calls the API)
 
 import { createHash } from 'node:crypto';
-import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
+import { PRICE, installEvalSpendCap, liveStructuredCall, priceRates } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -46,10 +49,6 @@ const FIXTURE_DIR = join(HERE, 'fixtures', 'classifier');
 const HOLDOUT_DIR = join(FIXTURE_DIR, 'holdout');
 const CACHE_DIR = join(HERE, 'cache');
 
-// Haiku 4.5 list price (USD per 1M tokens). Source: Anthropic pricing,
-// cross-checked via the claude-api skill on 2026-06-12.
-const PRICE_PER_MTOK = { input: 1.0, output: 5.0 };
-
 const ACCURACY_BAR = 0.85;
 const ROUTING_BAR = 0.85;
 const ATTRIBUTION_BAR = 0.85;
@@ -60,15 +59,16 @@ const ATTRIBUTION_BAR = 0.85;
 // (src/agents/classifier.ts) resolves it via pickModel('classify'), so we call the
 // same function from @hale/agent source (via tsx, not the stale committed dist) —
 // a TASK_MODEL re-tier is picked up here with no eval edit.
-async function readModelId() {
-  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
-  return pickModel('classify');
+async function readLane() {
+  const { pickLane } = await tsImport(AGENT_SRC, import.meta.url);
+  return pickLane('classify');
 }
 
 async function readAutonomyThreshold() {
   const src = await readFile(ORCHESTRATOR_PATH, 'utf8');
   const m = src.match(/CONFIDENCE_AUTONOMY_THRESHOLD\s*=\s*([\d.]+)/);
-  if (!m) throw new Error(`could not parse CONFIDENCE_AUTONOMY_THRESHOLD from ${ORCHESTRATOR_PATH}`);
+  if (!m)
+    throw new Error(`could not parse CONFIDENCE_AUTONOMY_THRESHOLD from ${ORCHESTRATOR_PATH}`);
   return Number(m[1]);
 }
 
@@ -168,9 +168,7 @@ async function systemPromptFor(basePrompt, fixture) {
 // so stale answers are never silently reused. A present key = no API call.
 
 function cacheKey(model, prompt, userMessage) {
-  return createHash('sha256')
-    .update(`${model}\n${prompt}\n${userMessage}`)
-    .digest('hex');
+  return createHash('sha256').update(`${model}\n${prompt}\n${userMessage}`).digest('hex');
 }
 
 async function cacheGet(key) {
@@ -186,7 +184,8 @@ async function cachePut(key, value) {
 
 // --- the real classifier path (replicated forceToolJson) --------------------
 
-function makeRealClassifier(model, basePrompt, cachedOnly) {
+function makeRealClassifier(lane, basePrompt, cachedOnly) {
+  const model = lane.model;
   let client;
   return async function classify(fixture) {
     const system = await systemPromptFor(basePrompt, fixture);
@@ -205,26 +204,22 @@ function makeRealClassifier(model, basePrompt, cachedOnly) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model,
-      max_tokens: 4096,
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'classifier',
+    });
+    const response = await liveStructuredCall({
+      client,
+      lane,
       system,
-      tools: [
-        {
-          name: TOOL_NAME,
-          description: 'Return the structured classification of the inbound signal.',
-          input_schema: OUTPUT_JSON_SCHEMA,
-        },
-      ],
-      tool_choice: { type: 'tool', name: TOOL_NAME },
-      messages: [{ role: 'user', content: userMessage }],
+      userMessage,
+      toolName: TOOL_NAME,
+      toolDescription: 'Return the structured classification of the inbound signal.',
+      toolSchema: OUTPUT_JSON_SCHEMA,
+      maxTokens: 4096,
     });
 
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === TOOL_NAME);
-    if (!toolUse) throw new Error(`${fixture.id}: model returned no ${TOOL_NAME} tool call`);
-
-    const parsed = toolUse.input;
+    const parsed = response.value;
     const usage = {
       input: response.usage.input_tokens,
       output: response.usage.output_tokens,
@@ -315,12 +310,14 @@ function attributionMatches(fixture, returned) {
 }
 
 async function main() {
+  installEvalSpendCap();
   const arg = process.argv.find((a) => a.startsWith('--classifier='));
   const mode = arg ? arg.split('=')[1] : 'real';
   const includeHoldout = process.argv.includes('--include-holdout');
   const cachedOnly = process.argv.includes('--cached-only');
 
-  const model = await readModelId();
+  const lane = await readLane();
+  const model = lane.model;
   const prompt = await readFile(PROMPT_PATH, 'utf8');
   const threshold = await readAutonomyThreshold();
 
@@ -329,7 +326,7 @@ async function main() {
   const fixtures = [...scored, ...holdout];
 
   const classify =
-    mode === 'broken' ? makeBrokenClassifier() : makeRealClassifier(model, prompt, cachedOnly);
+    mode === 'broken' ? makeBrokenClassifier() : makeRealClassifier(lane, prompt, cachedOnly);
 
   console.log(
     `classifier-eval | mode=${mode}${cachedOnly ? ' (cached-only)' : ''} | model=${model} | autonomy_threshold=${threshold}`,
@@ -411,7 +408,9 @@ async function main() {
 
   console.log('');
   console.log('--- results ---');
-  console.log(`event_type accuracy: ${(accuracy * 100).toFixed(1)}% (${correct}/${typeScoredCount})`);
+  console.log(
+    `event_type accuracy: ${(accuracy * 100).toFixed(1)}% (${correct}/${typeScoredCount})`,
+  );
   if (typeMisses.length) {
     console.log(`type misses (${typeMisses.length}):`);
     for (const m of typeMisses) console.log(`  - ${m.id} (expected ${m.expectedKind})`);
@@ -452,7 +451,8 @@ async function main() {
     console.log('calibration failures: none');
   }
 
-  const estUsd = (totalIn / 1e6) * PRICE_PER_MTOK.input + (totalOut / 1e6) * PRICE_PER_MTOK.output;
+  const price = PRICE[model];
+  const estUsd = (totalIn / 1e6) * price.input + (totalOut / 1e6) * price.output;
   console.log('');
   console.log('--- cost ---');
   console.log(`live API calls this run: ${liveCalls}`);

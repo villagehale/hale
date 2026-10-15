@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "Is it ok to let a child nap after falling off a top bunk about an hour ago, hitting his head and throwing up twice?",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "yes",
+    "current_fact": "current medical guidance on head injury with vomiting and sleeping",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1849
+}

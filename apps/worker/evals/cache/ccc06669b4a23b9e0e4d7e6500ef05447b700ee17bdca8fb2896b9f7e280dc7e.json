@@ -1,0 +1,4 @@
+{
+  "searchCount": 10,
+  "notes": "Step 2's `medical_answer` tool isn't available in this session, so here is the JSON that would be passed to it. This is an active emergency: fever with a non-blanching rash. The search sources describe it as a medical emergency that needs immediate care.\n\n```json\n{\n  \"answer\": \"Call 911 now or go to the ER now. Fever with purple spots that do not fade when pressed can be a sign of a serious infection where hours matter. Don't wait for other symptoms, and don't try to treat it at home.\",\n  \"triage\": \"Call 911 now, or go straight to the nearest ER. Don't call 811 first and don't wait to see if it changes. Tell staff: fever and a rash that does not fade.\",\n  \"sources\": [\"Meningitis Now\", \"Cleveland Clinic\", \"Scottish Intercollegiate Guidelines Network (via Primary Care Notebook)\", \"BMC Pediatrics PiC study protocol\"]\n}\n```"
+}

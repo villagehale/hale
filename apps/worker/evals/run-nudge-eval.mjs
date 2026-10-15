@@ -33,6 +33,7 @@ import {
   JUDGE_MIN,
   cachedTextCall,
   evalRunTag,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -313,11 +314,13 @@ async function main() {
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('nudge');
   const cost = makeCost();
 
   const skill = await agent.loadSkill(NUDGE_SKILL_PATH);
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
+  const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'nudge', cachedOnly, getClient, cost);
 
@@ -356,6 +359,7 @@ async function main() {
       const { text } = await cachedTextCall({
         tag: evalRunTag(`nudge:compose:${fixture.id}`),
         model,
+        lane: subjectLane,
         system: `${skill.instructions}\n\n## Context\n\n${JSON.stringify(context)}`,
         userMessage: JSON.stringify(context),
         maxTokens: MAX_TOKENS,
@@ -405,7 +409,9 @@ async function main() {
   console.log(`composed behind a closed gate:${leaked.length}  (0 required — the CASL gate)`);
   console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
   console.log(`messages asking a question:   ${asking.length}  (0 required)`);
-  console.log(`messages writing the opt-out: ${optingOut.length}  (0 required — outbound texts do not carry one)`);
+  console.log(
+    `messages writing the opt-out: ${optingOut.length}  (0 required — outbound texts do not carry one)`,
+  );
   console.log(`mean voice score:             ${meanScore.toFixed(2)}  (each >= ${JUDGE_MIN})`);
   if (segments.length) {
     console.log(

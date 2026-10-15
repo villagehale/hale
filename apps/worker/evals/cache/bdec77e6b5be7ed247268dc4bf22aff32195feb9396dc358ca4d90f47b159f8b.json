@@ -1,0 +1,10 @@
+{
+  "value": {
+    "destination_city": null,
+    "destination_region": null,
+    "start_date": null,
+    "end_date": null,
+    "child_evidence": "none",
+    "confidence": 0.04
+  }
+}

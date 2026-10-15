@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Identifies Hale and the company, names the accountable person Barton Dong, gives the email and website, all from the given facts. Plain English, non-defensive, asks nothing extra. Offers an opt-out in own words, which is reasonable. It does not explain how the number was obtained, but the facts given do not include that, so it does not invent it."
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Well made and third-party tested, with solid quality control",
+        "from": "Quality control looks solid. Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "Tastes decent for most people",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "Several blends are underdosed",
+        "from": "It also flagged key ingredient amounts hidden in proprietary blends and several underdosed ingredients."
+      },
+      {
+        "states": "No independent clinical evidence for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "One of the most expensive all-in-one supplements on the market",
+        "from": "Live it Up's dietitian (a competing brand, about 57 days old) called it one of the most expensive all-in-one supplements on the market"
+      }
+    ],
+    "answer": "Mostly overrated, I'd say. It's well made, third-party tested, and most people find it tastes decent. But several blends are underdosed, some key amounts are hidden in proprietary blends, and I couldn't find any independent clinical evidence for its benefit claims. A dietitian at a competing brand called it one of the most expensive all-in-one supplements out there. If you like the convenience and can afford it, fine, but it doesn't deliver enough to justify the price."
+  },
+  "latencyMs": 5674
+}

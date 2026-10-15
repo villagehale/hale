@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick, the Sienna, and gives a reason backed by the notes: 36 mpg combined, best in the segment. It also offers the Odyssey as a clear alternative. U.S. News's 9.3/10, Car Talk's tests and 'drives most like a car' all match research_notes. 'Cheapest to run' is a fair inference from the fuel economy, and the notes do qualify the 36 mpg as front-wheel drive. Nothing is invented or unsupported, and it reads like a casual, informed friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

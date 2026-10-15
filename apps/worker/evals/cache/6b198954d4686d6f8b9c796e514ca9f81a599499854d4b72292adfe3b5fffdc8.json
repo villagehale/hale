@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Both forecasts match the research notes: BC cloudy, 14°C, showers late evening; WA 64°F and dry. Covering both Vancouvers and asking which one fits the notes. Brief, casual, and it answers directly.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

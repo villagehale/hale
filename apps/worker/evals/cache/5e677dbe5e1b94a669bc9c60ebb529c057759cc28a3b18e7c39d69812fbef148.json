@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The forecast details all match the Environment Canada notes for Tuesday in Toronto: mix of sun and cloud, high 25, humidex 32, SW wind 20 gusting 40, 40% showers late afternoon, thunderstorm risk, low 15. But the closing line says the forecast is 'from this morning', which would be Monday. The notes say it was issued at 11:00 AM EDT Tuesday, Oct 13. That is a stated specific the notes contradict. The tone is also a bit report-like, with a source citation, rather than a casual text back. Still direct and in English.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 2
+  }
+}

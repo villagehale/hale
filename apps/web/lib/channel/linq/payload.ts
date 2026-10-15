@@ -90,6 +90,10 @@ export interface LinqInboundText {
   /** Other participants when the payload carried them. Empty means the webhook
    * did not list them — message.received does not — not that the chat is empty. */
   otherHandles: string[];
+  /** What Linq said about the chat being a group. Absent when the payload did not say,
+   * which is not a no: such a text is still routed as a 1:1 text, and the absence rides
+   * on to the queued job so the router can treat the chat as one that might be a group. */
+  isGroup?: boolean;
 }
 
 export type LinqLocationEvent = 'location.sharing.started' | 'location.sharing.stopped';
@@ -213,7 +217,8 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
   if (data.sender_handle.is_me === true) return { kind: 'ignored', reason: 'outbound' };
 
   if (!isRecord(data.chat)) return { kind: 'ignored', reason: 'malformed' };
-  const isGroup = data.chat.is_group === true;
+  const saidGroup = typeof data.chat.is_group === 'boolean' ? data.chat.is_group : undefined;
+  const isGroup = saidGroup === true;
 
   const chatId = typeof data.chat.id === 'string' ? data.chat.id : '';
   const messageId = typeof data.id === 'string' ? data.id : '';
@@ -251,6 +256,7 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
       mediaCount,
       receivedAt,
       otherHandles: otherHandles(data.chat),
+      isGroup: saidGroup,
     },
   };
 }

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "maybe later",
+    "rationale": "\"maybe later\" is listed as a decline example: defers and does not agree now",
+    "confidence": 0.8
+  },
+  "latencyMs": 1438
+}

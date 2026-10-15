@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, specific and local: Halton Hills Gymnastics Centre in Georgetown, sourced from the venue's own pages and fitting the toddler stage. Each carries a day or session start. The message leads with Parent and Tot by name and attributes both items with \"their site says\" rather than claiming confirmation. It is plain text with no link and no question. Because watch is true, the first-person \"I'll keep watching and text you\" is correct. The only negative claim, \"I could not confirm this year's dates\", is first person, which is acceptable under no_page_read. All facts stated appear in the picks. The one shortfall is that Parent and Tot has a null price, and the message passes over that gap silently instead of naming it (\"I could not pin down the price\"). It also omits the caveat that open spots are unconfirmed. It does not invent a price, but the rubric's 5 requires naming the gap.",
+    "score": 4
+  }
+}

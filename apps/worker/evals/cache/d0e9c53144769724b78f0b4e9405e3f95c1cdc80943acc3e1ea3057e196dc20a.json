@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Babies get the most out of naps when they nap at the same time each day for about the same length of time",
+        "from": "Babies get the most out of naps if they take them at the same time each day and for about the same length of time."
+      },
+      {
+        "states": "A dark, quiet room can help babies sleep",
+        "from": "A dark, quiet room can help babies sleep."
+      },
+      {
+        "states": "Put babies to bed drowsy but awake",
+        "from": "put babies to bed drowsy but awake, since they sleep best when drowsy"
+      },
+      {
+        "states": "A calming routine such as a story read in a calm voice or soft lullabies helps",
+        "from": "a story read in a calming voice; soft lullabies, swaddling or massage before the baby gets too tired or cranky"
+      },
+      {
+        "states": "For babies, put them to sleep on their backs with no blankets, stuffed toys or other soft items in the crib",
+        "from": "Put babies to sleep on their backs, with no blankets, stuffed toys or other soft items in the crib or bassinet."
+      }
+    ],
+    "answer": "Depends who \"him\" is, so here's the baby version: nap at the same time and for about the same length each day, keep the room dark and quiet, do a calm routine like a story or a lullaby, and put him down drowsy but awake. For a baby, always on his back with nothing soft in the crib. How old is he?"
+  },
+  "latencyMs": 6672
+}

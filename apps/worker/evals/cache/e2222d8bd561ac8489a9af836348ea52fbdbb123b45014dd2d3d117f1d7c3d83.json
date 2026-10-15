@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are named programs at the venue the parent asked about. Each is sourced from that venue's own site, fits a toddler, and stays within the three-pick limit. The message leads with the venue and programs by name and attributes with \"their site says\". It names the gap in the correct form for page_has_schedule: \"I could not pin down the day or price\", in the first person, not \"not posted yet\". The first-person watch commitment is backed by watch=true. It is plain text with no link, no question, and no invented times or prices. Minor nit: \"Cartwheel\" vs \"Cartwheels\" is a reasonable match to the subject.",
+    "score": 5
+  }
+}

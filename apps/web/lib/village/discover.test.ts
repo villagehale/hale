@@ -2,6 +2,7 @@ import { SONNET_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { describe, expect, it, vi } from 'vitest';
+import { structuredReply } from '~/lib/testing/structured-reply';
 import {
   type DiscoverDeps,
   type DiscoveryAnthropicClient,
@@ -132,12 +133,16 @@ function fakeDb(args: {
   return { select, transaction, insert } as never;
 }
 
-/** A fake Anthropic client returning a forced submit_candidates tool_use. */
+/** A fake Anthropic client answering submit_candidates in the shape the seam asked for. */
 function fakeClient(candidates: unknown[]) {
-  const create = vi.fn().mockResolvedValue({
-    content: [{ type: 'tool_use', name: 'submit_candidates', input: { candidates } }],
-    usage: { input_tokens: 10, output_tokens: 20 },
-  });
+  const create = vi.fn(async (request: { messages: { content: unknown }[] }) =>
+    structuredReply(
+      request,
+      'submit_candidates',
+      { candidates },
+      { input_tokens: 10, output_tokens: 20 },
+    ),
+  );
   const client = { messages: { create } } as unknown as DiscoveryAnthropicClient;
   return { client, create };
 }
@@ -292,10 +297,77 @@ describe('discoverForFamily', () => {
     expect(run.modelUsed).toBe(SONNET_MODEL);
     expect(run.promptTokens).toBe(10);
     expect(run.completionTokens).toBe(20);
-    // Sonnet 4.6 $3 in / $15 out per MTok: 10 * 3e-6 + 20 * 15e-6 = $0.00033.
-    expect(run.costUsd).toBe('0.000330');
+    // Sonnet 5.5 $2 in / $10 out per MTok: 10 * 2e-6 + 20 * 10e-6 = $0.00022.
+    expect(run.costUsd).toBe('0.000220');
     expect(typeof run.latencyMs).toBe('number');
     expect(run.status).toBe('completed');
+  });
+
+  it('asks Sonnet 5.5 through the shared seam: no forced tool_choice, a JSON output on the converse lane', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient(SAMPLE_CANDIDATES);
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client));
+
+    const sent = c.create.mock.calls[0]?.[0] as Record<string, unknown> & {
+      output_config?: { effort?: string; format?: { type?: string } };
+    };
+    expect(sent.model).toBe(SONNET_MODEL);
+    // Sonnet 5.5 rejects tool_choice `tool` and `any` with a 400.
+    expect(sent.tool_choice).toBeUndefined();
+    expect(sent.thinking).toEqual({ type: 'adaptive' });
+    expect(sent.output_config?.effort).toBe('high');
+    expect(sent.output_config?.format?.type).toBe('json_schema');
+    expect(sent.max_tokens).toBe(4096);
+  });
+
+  it('asks once more when no structured answer came back, and bills both calls to the run', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: [],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 20 },
+      })
+      .mockImplementationOnce(async (request: unknown) =>
+        structuredReply(
+          request,
+          'submit_candidates',
+          { candidates: SAMPLE_CANDIDATES },
+          { input_tokens: 10, output_tokens: 20 },
+        ),
+      );
+    const client = { messages: { create } } as unknown as DiscoveryAnthropicClient;
+
+    const result = await discoverForFamily(FAMILY_ID, db, deps(client));
+
+    expect(result).toEqual({ status: 'discovered', insertedCount: 2 });
+    expect(create).toHaveBeenCalledTimes(2);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.status).toBe('completed');
+    expect(run.promptTokens).toBe(20);
+    expect(run.completionTokens).toBe(40);
   });
 
   it('honors the ACTIVE saved area over the legacy family field (region switch drives content)', async () => {

@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://weather.gc.ca/en/location/index.html?coords=43.655%2C-79.383",
+    "https://www.timeanddate.com/weather/canada/toronto/ext",
+    "https://www.timeanddate.com/weather/canada/toronto/hourly",
+    "https://www.weather25.com/north-america/canada/ontario/toronto?page=month&month=October",
+    "https://www.weather25.com/amp/north-america/canada/ontario/toronto?page=14",
+    "https://www.weather25.com/amp/north-america/canada/ontario/toronto?page=tomorrow",
+    "https://cs-people.bu.edu/cthay/cs-103/labs/lab4/c/weather/lab4c-weather.html",
+    "https://globalnews.ca/video/3804962/high-winds-heavy-rain-whip-through-toronto",
+    "https://globalnews.ca/news/6846256/toronto-weather-wind-alert-april-21/amp/"
+  ],
+  "notes": "Research notes: Toronto weather for Tuesday, Oct 13, 2026 (the question says \"tomorrow\", and today is Mon, Oct 12).\n\nThe most reliable source is the Environment Canada forecast for Toronto, issued 11:00 AM EDT Monday 12 October 2026:\n- A few showers end near noon, then it is mainly cloudy with a 60 percent chance of showers.\n- There is a risk of a thunderstorm in the morning and afternoon, with a local rainfall amount of 10 to 20 mm.\n- The wind becomes southwest 20 km/h gusting to 40 near noon. The high is 24°C.\n- The humidex is 28 and the UV index is 4 (moderate).\n- Tuesday night is cloudy periods with a 60 percent chance of showers, and a low of 12°C.\n- The next day, Wednesday, is cooler: a mix of sun and cloud with a 30 percent chance of showers, and a high of 19°C.\n\nA second source is timeanddate.com. It shows isolated thunderstorms for Tuesday, Oct 13, with breaks of sun late. Its figures are 76°F (about 24°C) for the high and 61°F (about 16°C) for the low, with an 87% precipitation chance and 0.37\" of rain. The page's \"updated\" stamp reads Oct 13, 5:24 am, which is later than today's date, and the result is marked as old. I'm treating it as less reliable.\n\nWeather25 pages roughly agree on a showery, warm day, but their numbers differ:\n- One page shows light rain, 10.3 mm, and 26°/15°.\n- Another shows 26°/17°.\n- A third, dated 9 days ago, shows 12.3 mm and 19°/15°.\n\nThat third page is stale and should be ignored.\n\nThe location is Toronto, Ontario; the question gave no other place.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 7719
+}

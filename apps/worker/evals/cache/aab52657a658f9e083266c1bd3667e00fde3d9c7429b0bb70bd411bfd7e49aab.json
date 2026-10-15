@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Both forecasts match the research notes. For Vancouver BC, Environment Canada gives cloudy, a high of 14°C, showers late evening and a low of 11°C. For Vancouver WA, the notes give a 64°F high, dry, and a 48°F low Tuesday night. It handles the unclear city by giving both, briefly and casually, which reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

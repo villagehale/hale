@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "to": "admissions@sunnydays-childcare.ca",
+      "subject": "Re: Spot available for September",
+      "body": "hi — thanks for the good news. we'd like to accept the spot for the september intake. please let us know what you need from us next."
+    },
+    "confidence": 0.9,
+    "rationale": "Parent's recorded yes (\"take it\") supports accepting the September spot, which commits them to enrollment.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": true
+  }
+}

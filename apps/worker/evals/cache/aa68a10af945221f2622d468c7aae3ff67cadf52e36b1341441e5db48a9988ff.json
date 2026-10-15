@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "Is im8 good or overrated",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "current reviews and reputation of the IM8 product",
+    "needs_search": "yes"
+  },
+  "latencyMs": 3605
+}

@@ -3,6 +3,7 @@ export * from './channel-signin-tokens.js';
 export * from './notification-prefs.js';
 export * from './loop-prefs.js';
 export * from './channel-messages.js';
+export * from './channel-pending-asks.js';
 export * from './families.js';
 export * from './family-areas.js';
 export * from './family-members.js';

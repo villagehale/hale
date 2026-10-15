@@ -1,6 +1,7 @@
 import { SONNET_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
+import { structuredReply } from '~/lib/testing/structured-reply';
 import { type DiscoverDeps, type DiscoveryAnthropicClient, discoverForFamily } from './discover.js';
 
 /**
@@ -136,20 +137,18 @@ function statefulDb(rows: Row[], children: Array<{ dateOfBirth: string; interest
 }
 
 function fakeClient() {
-  const create = vi.fn().mockResolvedValue({
-    content: [
+  const create = vi.fn(async (request: { messages: { content: unknown }[] }) =>
+    structuredReply(
+      request,
+      'submit_candidates',
       {
-        type: 'tool_use',
-        name: 'submit_candidates',
-        input: {
-          candidates: [
-            { title: 'Fall leaf hike', description: 'x', confidence: 0.7, coverageNote: 'y' },
-          ],
-        },
+        candidates: [
+          { title: 'Fall leaf hike', description: 'x', confidence: 0.7, coverageNote: 'y' },
+        ],
       },
-    ],
-    usage: { input_tokens: 10, output_tokens: 20 },
-  });
+      { input_tokens: 10, output_tokens: 20 },
+    ),
+  );
   const client = { messages: { create } } as unknown as DiscoveryAnthropicClient;
   return { client, create };
 }

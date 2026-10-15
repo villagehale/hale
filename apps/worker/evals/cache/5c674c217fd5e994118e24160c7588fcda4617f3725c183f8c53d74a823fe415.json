@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://weather.gc.ca/en/location/index.html?coords=43.655%2C-79.383",
+    "https://www.wunderground.com/forecast/ca/toronto",
+    "https://www.accuweather.com/en/ca/toronto/m5h/weather-forecast/55488",
+    "https://www.timeanddate.com/weather/canada/toronto/ext",
+    "https://www.thomascook.com/holidays/weather/canada/toronto/forecast/",
+    "https://globalmeteo.com/weather/toronto/oct-13/",
+    "https://www.timeanddate.com/weather/canada/toronto/historic",
+    "https://www.weather25.com/amp/north-america/canada/ontario/toronto?page=14",
+    "https://world-weather.info/forecast/canada/toronto/13-october/",
+    "https://world-weather.info/forecast/canada/toronto/14days/"
+  ],
+  "notes": "Notes for Toronto, Tuesday, October 13, 2026 (the day after today, Monday Oct 12). The results were mostly captured on the 13th itself, so the forecasts below are close to the day.\n\n- **Environment Canada** (forecast issued 11:00 AM EDT, Oct 13): Becoming a mix of sun and cloud in the afternoon, with a 40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon. Wind is southwest 20 km/h gusting to 40, and the high is 25°C. The humidex is 32. Tuesday night is partly cloudy with a 40 percent chance of showers and a thunderstorm risk in the evening, and a low of 15°C.\n- **Observed at Pearson airport, 1:00 PM on the 13th:** Mainly sunny and 26°C.\n- **AccuWeather:** A couple of morning showers and a thunderstorm, otherwise mostly cloudy and warm. The high is 77°F and the low is 57°F. The same page says the coldest air of the season arrives Saturday.\n- **timeanddate** (updated 5:24 am on the 13th): Isolated thunderstorms with breaks of sun late, 76°F high and 61°F low, with an 87% chance of precipitation.\n- **Weather25:** 26°C high and 17°C low, light rain.\n- **Wednesday, Oct 14** (from weather25): Temperatures of 18°C and 12°C.\n\nThe sources agree on a warm day, with highs of about 25–26°C (77–79°F), and a chance of showers or thunderstorms. They differ on timing. AccuWeather and timeanddate put the showers in the morning, while Environment Canada puts them in the late afternoon. Environment Canada's forecast is the newest and the official one.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 7848
+}

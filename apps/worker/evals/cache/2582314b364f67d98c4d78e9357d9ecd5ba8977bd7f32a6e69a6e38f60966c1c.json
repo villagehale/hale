@@ -1,0 +1,22 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Preschool Levels A - E swim lessons, Town of Oakville (Learn to Swim)",
+        "age_fit": "Preschool Levels A - E; children must be the age required for the level by the program start date",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "YMCA Preschool Swim Lessons, YMCA of Oakville",
+        "age_fit": "3-5 years",
+        "source_name": "YMCA of Oakville"
+      },
+      {
+        "name": "Preschool swim lessons, Goldfish Swim School Oakville",
+        "age_fit": "Enrollment begins at four months; programs for children 4 months to 12 years",
+        "source_name": "Goldfish Swim School"
+      }
+    ]
+  },
+  "latencyMs": 4724
+}

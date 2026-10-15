@@ -48,7 +48,7 @@ describe('a judge verdict is a verdict only if it carries a number', () => {
  * not reach the cache to be replayed as a real draw forever.
  */
 describe('the judge refuses to record a truncated draw', () => {
-  const model = 'claude-sonnet-4-6';
+  const model = 'claude-opus-5-5';
   const system = 'score it';
   const payload = { message: 'a body under judgement' };
 
@@ -65,7 +65,7 @@ describe('the judge refuses to record a truncated draw', () => {
       false,
       fakeClient({
         stop_reason: 'max_tokens',
-        content: [{ type: 'tool_use', name: 'score', input: {} }],
+        content: [{ type: 'text', text: '{"reason":"the reply is' }],
         usage: { input_tokens: 10, output_tokens: 1024 },
       }),
       makeCost(),
@@ -89,8 +89,8 @@ describe('the judge refuses to record a truncated draw', () => {
       prefix,
       false,
       fakeClient({
-        stop_reason: 'tool_use',
-        content: [{ type: 'tool_use', name: 'score', input: { reason: 'sound', score: 4 } }],
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: '{"reason":"sound","score":4}' }],
         usage: { input_tokens: 10, output_tokens: 200 },
       }),
       makeCost(),

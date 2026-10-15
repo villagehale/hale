@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail, and the answer rightly asks for the city without stating any current fact or invented place. It is mostly casual, but \"I'll check tomorrow's weather for you\" reads a bit like an assistant offering a service rather than a friend texting. It is still brief and it is the correct move.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

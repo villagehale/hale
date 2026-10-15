@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://www.dailyfaceoff.com/teams/toronto-maple-leafs/schedule/2026-10-12",
+    "https://theleafsnation.com/toronto-maple-leafs-schedule/2026-10-12",
+    "https://sports.yahoo.com/articles/maple-leafs-vs-mammoth-prediction-133000005.html",
+    "https://nhl.com/news/nhl-nationally-televised-games-for-week-of-october-12-2026",
+    "https://mapleleafshotstove.com/schedule/",
+    "https://www.nhl.com/news/toronto-maple-leafs-utah-mammoth-game-preview-october-13-2026",
+    "https://en.wikipedia.org/wiki/2022_Heritage_Classic",
+    "https://en.wikipedia.org/wiki/2026%E2%80%9327_Buffalo_Sabres_season",
+    "https://en.wikipedia.org/wiki/2026%E2%80%9327_Toronto_Raptors_season",
+    "https://en.wikipedia.org/wiki/2025%E2%80%9326_New_York_Rangers_season"
+  ],
+  "notes": "Research notes (today is Monday, Oct 12, 2026):\n\n- The Leafs do not play tonight, Monday, Oct 12. Daily Faceoff's weekly schedule lists \"No games scheduled\" for Monday, October 12.\n- Their last game was Saturday, Oct 10, a 6-3 win at Colorado. That put them at 3-2-1.\n- Their next game is tomorrow, Tuesday, Oct 13, at the Utah Mammoth. Puck drop is 9:00 p.m. EDT at Delta Center in Salt Lake City. Yahoo Sports lists ESPN+ as the broadcast. The mapleleafshotstove.com schedule lists TSN4 for that game. The two sources disagree on the broadcast, and I didn't find which is correct.\n- After that, the schedule shows Thursday, Oct 15 vs. Buffalo at 7:00 PM ET (TSN4) and Saturday, Oct 17 vs. the Islanders at 7:00 PM ET (Sportsnet).\n- One result, from theleafsnation.com, listed Wednesday Oct 14 and Friday Oct 16 as no-game days. That is consistent with the schedule above.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 6896
+}

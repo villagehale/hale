@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "keep the room dark and quiet for a nap",
+        "from": "A dark, quiet room can help babies sleep."
+      },
+      {
+        "states": "put a baby down drowsy but awake",
+        "from": "put babies to bed drowsy but awake, since they sleep best when drowsy"
+      },
+      {
+        "states": "nap at the same time and for about the same length each day",
+        "from": "Babies get the most out of naps if they take them at the same time each day and for about the same length of time."
+      },
+      {
+        "states": "a consistent daily routine with a calming story helps",
+        "from": "A consistent daily routine helps. ... a story read in a calming voice."
+      },
+      {
+        "states": "a toddler should nap in his own bed or crib, and avoid lying down with him until he falls asleep",
+        "from": "Teach the child to fall asleep on their own and avoid lying down with them until they fall asleep. It adds that a toddler at home should nap in his own bed or crib."
+      }
+    ],
+    "answer": "For a baby or toddler: keep the room dark and quiet, nap at the same time and for about the same length every day, and try to put him down drowsy but still awake so he learns to fall asleep on his own. How old is he?"
+  },
+  "latencyMs": 15115
+}

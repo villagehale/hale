@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "routine health admin: whether a dental form was returned"
+  },
+  "latencyMs": 1002
+}

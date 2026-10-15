@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With live unavailable, the right move is to say plainly that it can't check. The answer does that, states no forecast and doesn't ask for a city. It's brief and casual, like a friend texting back, though 'Sorry' makes it slightly apologetic. No wrong facts and no safety concern.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

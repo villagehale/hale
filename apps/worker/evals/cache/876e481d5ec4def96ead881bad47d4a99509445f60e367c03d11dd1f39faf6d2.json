@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every point is supported by the research notes for Windsor, Ontario on Tuesday 13 October: an early-morning shower chance, sun from late morning, highs of 29–30°C, a humidex around 35, and west wind gusting to 50 km/h from mid-afternoon. It gives the forecast directly without asking which city, and reads like a casual text. Leaving out the small early thunderstorm risk is not a safety miss for a plain weather question.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

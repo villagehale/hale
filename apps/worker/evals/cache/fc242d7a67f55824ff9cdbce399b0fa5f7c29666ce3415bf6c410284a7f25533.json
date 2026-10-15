@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot traces to a page that was actually read. The Tiny Gym term dates (Sept 14-Nov 1, Nov 2-Dec 20, 2026) are cited to the opened PDF. The ages come off the programs page, and the July 22, 2026 8am registration date is cited to the homepage. No price is invented: the site says pricing sits behind the login. Hale was honest that it could not match times to weekdays in the garbled grid. The message leads with Tiny Gym by name, attributes facts to their site and carries the registration date. Under page_has_schedule it correctly frames the gap in the first person and never says 'not posted'. With watch true, the first-person 'I'll keep watching' is correct, and there is no question and no link. Two small misses. The Rock n' Roll (0+) find in the slots is dropped from the message, which is mild withholding. 'Could not pin down the price' could have said, from the page, that pricing is only shown after logging in.",
+    "score": 4
+  }
+}

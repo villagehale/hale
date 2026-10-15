@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The picks are real and local to Halton Hills, fit a toddler, and each carries a day or session. The message leads with the best pick by name and attributes it with 'their site says'. Its times and the $15 drop-in price all appear in the picks, and it asks no question and offers nothing. The first-person keep-watching line is correct because watch is true. It makes no negative claim about what a page carries, so `no_page_read` is not breached. Dropping Tiny Dancers whole is fine. It falls short of a 5 for two reasons. It runs to three sentences rather than one or two. And it does not name the Parent and Tot price gap ('I could not pin down the price'), quietly leaving price out instead.",
+    "score": 4
+  }
+}

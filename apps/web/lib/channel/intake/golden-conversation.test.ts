@@ -10,7 +10,6 @@ import {
   emptyAha,
 } from '~/lib/channel/connect/aha-read';
 import { connectedReceiptBody } from '~/lib/channel/connect/connected-notice';
-import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import { routeInboundText } from '~/lib/channel/inbound-route';
 import {
   HALE_CONTACT_FIRST_NAME,
@@ -45,8 +44,6 @@ const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
 const FROM = '+15555550100';
 const FIND_MESSAGE = '1. Swim at the rec centre - Saturday\n2. Story time - Tuesday';
-
-const CANNED = [googleUnverifiedAppLine('en')];
 
 type Mark = 'typing-start' | 'typing-stop' | 'send' | 'card' | 'search';
 
@@ -245,13 +242,6 @@ function findResult() {
     actionHeld: 'no_move' as const,
     voiceFallback: null,
   };
-}
-
-function expectNoCanned(bodies: string[]) {
-  const blob = bodies.join('\n');
-  for (const line of CANNED) {
-    expect(blob, line).not.toContain(line);
-  }
 }
 
 function assertTypingUntilSend(turn: Mark[]) {
@@ -502,7 +492,6 @@ describe('golden onboarding conversation', () => {
     expect(chat.bodies).toEqual([]);
     expect(chat.marks).toContain('typing-start');
     expect(talk.transport.bodies().join('\n')).not.toMatch(/booked|enrolled|signed up|registered/i);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('puts the phrase under a yes while the flag is off, including words about a new group', async () => {
@@ -590,7 +579,6 @@ describe('golden onboarding conversation', () => {
     expect(body).not.toMatch(/which (one|of these)/i);
     expect(first.bodies.length).toBeGreaterThan(0);
     assertTypingUntilSend(first.marks);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('takes two items from one message, shows the map, and asks the next missing one', async () => {
@@ -605,7 +593,6 @@ describe('golden onboarding conversation', () => {
     expect(first.bodies.join('\n')).not.toMatch(/postal code\?$/);
     expect(first.bodies.join('\n')).not.toMatch(/which (one|of these)/i);
     assertTypingUntilSend(first.marks);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('answers off-script at every step and still asks the current question', async () => {
@@ -667,7 +654,6 @@ describe('golden onboarding conversation', () => {
     expect(coparent.bodies.join('\n')).toContain('Got it.');
     expect(coparent.bodies.join('\n').split('\n')[0]).toMatch(/other parent\?$/);
     expect(talk.transport.bodies().every((body) => body.trim().length > 0)).toBe(true);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('replies to each message in a burst', async () => {
@@ -682,7 +668,6 @@ describe('golden onboarding conversation', () => {
     expect(second.bodies.length).toBeGreaterThan(0);
     assertTypingUntilSend(first.marks);
     assertTypingUntilSend(second.marks);
-    expectNoCanned(talk.transport.bodies());
   });
 
   it('shares the contact card as Hale plus hibiscus after the reply', async () => {
@@ -771,14 +756,12 @@ describe('golden onboarding conversation', () => {
     await talk.say('Dana');
     await talk.say("What's next");
     expect(talk.transport.bodies().length).toBeGreaterThan(0);
-    expectNoCanned(talk.transport.bodies());
     const machine = conversation();
     await handleInboundSms(
       machine.fake.db,
       machine.transport.inbound(PHONE, 'hi', { transport: 'imessage', chatId: CHAT }),
       machine.deps,
     );
-    expectNoCanned(machine.transport.bodies());
   });
 
   it('says one useful thing from the calendar or mailbox that just connected', async () => {

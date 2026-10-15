@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "zh",
+    "clinical_query": "drooling, putting everything in mouth, mildly fussy, no fever, feeding normally, is it teething infant",
+    "age_band": "infant",
+    "red_flag_sign": "none",
+    "red_flag": "not_emergency"
+  },
+  "latencyMs": 2046
+}

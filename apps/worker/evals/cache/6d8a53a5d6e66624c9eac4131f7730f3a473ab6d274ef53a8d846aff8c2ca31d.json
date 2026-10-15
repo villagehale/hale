@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday, Oct 13 high of 25°C",
+        "from": "Environment Canada (forecast issued 11:00 AM EDT, Oct 13): high is 25°C"
+      },
+      {
+        "states": "Tuesday: mix of sun and cloud in the afternoon",
+        "from": "Environment Canada: Becoming a mix of sun and cloud in the afternoon"
+      },
+      {
+        "states": "40 percent chance of showers, late afternoon, with a thunderstorm risk late in the afternoon",
+        "from": "Environment Canada: 40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon."
+      },
+      {
+        "states": "Tuesday night low of 15°C",
+        "from": "Environment Canada: Tuesday night is partly cloudy ... and a low of 15°C"
+      }
+    ],
+    "answer": "Tomorrow in Toronto: a mix of sun and cloud, high around 25°C. There's a 40% chance of showers late in the afternoon, with a risk of a thunderstorm then too. Low of 15°C Tuesday night. That's Environment Canada's forecast, which is the official one; other sites have the showers earlier in the day."
+  },
+  "latencyMs": 6516
+}

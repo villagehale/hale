@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The research notes back each fact in the answer: Mark Carney is the current PM, he took office in March 2025, and Trudeau's government had collapsed. 'Fell' is a fair casual paraphrase of 'collapsed'. Grounding cites the notes, not 'settled', for who holds the title. The reply is short and casual, answers directly in English, and reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

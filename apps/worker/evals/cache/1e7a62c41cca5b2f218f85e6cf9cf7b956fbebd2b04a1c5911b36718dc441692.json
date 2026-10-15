@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with a scoped check ('I checked Halton Hills' calendar'), which the contract requires, and gives the given facts plainly: Fall 2026 opened Sep 1 and Winter 2027 dates are not yet posted, matching stillOpenPage false. It carries the firstFindBeat verbatim and adds no invented venue, price, or count. Short, plain, specific, no hype. Minor deduction only because it could be a touch tighter.",
+    "score": 5
+  }
+}

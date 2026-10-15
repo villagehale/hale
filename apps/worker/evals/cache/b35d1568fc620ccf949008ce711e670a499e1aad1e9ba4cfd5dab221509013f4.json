@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://www.espn.com/nhl/boxscore/_/gameId/401892478",
+    "https://www.nhl.com/mapleleafs/video/",
+    "https://www.eliteprospects.com/team/76/toronto-maple-leafs/scores",
+    "https://www.sofascore.com/ice-hockey/team/toronto-maple-leafs/3693",
+    "https://en.wikipedia.org/wiki/2022%E2%80%9323_Toronto_Maple_Leafs_season",
+    "https://sports.yahoo.com/nhl/teams/toronto/schedule/",
+    "https://en.wikipedia.org/wiki/1975%E2%80%9376_Toronto_Maple_Leafs_season",
+    "https://en.wikipedia.org/wiki/2025%E2%80%9326_Toronto_Maple_Leafs_season",
+    "https://en.wikipedia.org/wiki/2018%E2%80%9319_Toronto_Maple_Leafs_season"
+  ],
+  "notes": "**Notes for \"did the leafs win last night\" (today is Monday, Oct 12, 2026, so \"last night\" is Sunday, Oct 11):**\n\n- The most recent completed Leafs game in the results is Toronto at Colorado. ESPN's box score lists it as a Maple Leafs 6–3 win over the Avalanche, dated October 10, 2026. By period, Toronto scored 1, 3 and 2 goals and Colorado scored 2, 1 and 0.\n- Yahoo Sports' October schedule also shows a win at Colorado, 6–3, on Oct 10. Sofascore lists Colorado as the Leafs' previous game, a win with the score shown as 3–6.\n- The NHL.com Leafs highlight clips for the Colorado game are dated Oct 11, 2026, one day later than ESPN and Yahoo. This may be a time-zone or posting-date difference. The sources agree on the score and the opponent, but not on whether the game was Saturday or Sunday.\n- No source in the results shows a separate Leafs game on Sunday, Oct 11. Sofascore lists the Leafs' next game as Oct 14, 2026, 1:00 AM UTC, against the Utah Mammoth. That is the evening of Oct 13 in North America.\n- Before Colorado, Yahoo's schedule shows a win over Nashville (5–4 in the listing), then a 4–3 loss at Vegas on Oct 8.\n\n**Answer to the question:** Yes. The latest Leafs game, at Colorado, was a 6–3 Toronto win. Its date is Oct 10 on ESPN and Yahoo and Oct 11 on NHL.com's clips.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 11853
+}

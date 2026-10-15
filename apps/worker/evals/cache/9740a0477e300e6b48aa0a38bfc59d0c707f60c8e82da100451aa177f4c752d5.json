@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "the US emergency number is 911",
+        "from": "The emergency number in the United States is 911"
+      },
+      {
+        "states": "911 reaches police, fire and medical help",
+        "from": "The same number reaches police, fire and medical help."
+      }
+    ],
+    "answer": "Yes, it's 911 in the US, same as you. It reaches police, fire and ambulance, and calling is free."
+  },
+  "latencyMs": 3780
+}

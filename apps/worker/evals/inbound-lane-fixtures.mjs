@@ -149,6 +149,10 @@ export const LANE_FIXTURES = [
     expect: 'in_domain',
   },
   { id: 'night-wakeups', text: 'how do I stop the 2am wakeups', expect: 'in_domain' },
+  // The general-answer corpus's `nap-question`, word for word. A raising-kids question
+  // belongs with the coach, which knows the child; the general answer is handed nothing
+  // about him and can only ask his age.
+  { id: 'nap-question', text: 'how do I get him to nap', expect: 'in_domain' },
   { id: 'potty-ready', text: 'is it time to potty train her', expect: 'in_domain' },
   { id: 'picky-eater', text: 'he only eats beige food, normal?', expect: 'in_domain' },
   // VIL-295 · the FEEDING cleavage, both sides, because the fix for the solids misroute

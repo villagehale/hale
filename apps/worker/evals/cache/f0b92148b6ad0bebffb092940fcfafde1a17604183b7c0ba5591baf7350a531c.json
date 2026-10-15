@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The emergency number in the United States is 911",
+        "from": "The emergency number in the United States is 911"
+      },
+      {
+        "states": "One number reaches police, fire and medical help, and a dispatcher sends the right help",
+        "from": "The same number reaches police, fire and medical help. Dialing 911 reaches a local Public Safety Answering Point, and a dispatcher sends the right help."
+      },
+      {
+        "states": "Calling 911 is free",
+        "from": "says calling 911 is free"
+      }
+    ],
+    "answer": "Yes, it's 911 in the US, same as you're used to. One number reaches police, fire and medical, and a dispatcher sends the right help. Calling is free."
+  },
+  "latencyMs": 4479
+}

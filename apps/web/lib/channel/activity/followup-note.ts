@@ -2,10 +2,11 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
+import type { EmptySearch } from './lane';
 import type { ActivityPick } from './lane';
 
 /**
@@ -46,9 +47,6 @@ import type { ActivityPick } from './lane';
  * that is only as good as its source is still a find, and withholding it is the silence
  * that started all this.
  */
-
-/** One SMS, two segments — the same ceiling every other unprompted message keeps. */
-export const MAX_FOLLOWUP_SEGMENTS = 2;
 
 /** GSM-7 characters in one segment. The budget the top pick has to land inside. */
 const FIRST_SEGMENT_CHARS = 153;
@@ -124,6 +122,12 @@ export interface FollowUpGrounding {
    * commitment is a row that existed before the sentence claimed it.
    */
   watch: boolean;
+  /**
+   * WHERE AN EMPTY SEARCH LOOKED AND WHAT IT SAW (lane.ts `EmptySearch`). Only an empty
+   * shallow search carries it, and it reaches the composer only when `picks` is empty, so
+   * every message with a find is composed from exactly the payload it always was.
+   */
+  searched?: EmptySearch;
 }
 
 export interface FollowUpComposer {
@@ -176,7 +180,12 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     // is not silence — `picks_empty` is the one fact this message is about, and an omitted
     // key reads to a model as a field it may fill in (rule #11).
     ...(grounding.picks.length === 0
-      ? { picks_empty: true }
+      ? {
+          picks_empty: true,
+          ...(grounding.searched
+            ? { searched: { town: grounding.searched.town, notes: grounding.searched.notes } }
+            : {}),
+        }
       : { page_evidence: grounding.pageEvidence }),
     watch: grounding.watch,
     picks: grounding.picks.map((pick) => ({
@@ -321,72 +330,9 @@ export function claimsVerification(body: string): boolean {
     .some((clause) => VERIFICATION_CLAIM.test(clause) && !FUTURE_OR_NEGATED.test(clause));
 }
 
-/**
- * Whether the body claims A PAGE DOES NOT CARRY SOMETHING.
- *
- * "Fall days, times and prices aren't posted yet" (2026-08-22, production) is a statement
- * about a page somebody opened. Said by a turn that opened nothing, it is a confident
- * report of a schedule that was, in fact, sitting on the venue's own programs page and
- * in a PDF linked off it. The parent stops looking, because they think Hale looked.
- *
- * SENTENCE-SCOPED, AND IT USED TO BE CLAUSE-SCOPED — which is how the 2026-08-24 message
- * went out with this gate green. The sentence was "their site lists these but no day, time
- * or price on the fall page yet", and splitting it on commas tore the negation off the
- * thing negated: one fragment held "no day", the next held "time or price on the fall page
- * yet", and neither fragment carried both halves of the claim. A comma-separated list is
- * the ordinary way to say this and the gate could not see it at all.
- *
- * WHOSE ABSENCE IS IT — the page's, or Hale's? That is the whole distinction, and it is
- * what the widened scope needs a guard for:
- *
- *   "their site lists these but no day or price on the fall page yet"  — the PAGE lacks it.
- *     A claim, and false unless a page was read and really carries nothing.
- *   "their site lists this, I could not confirm the day or the price"  — HALE lacks it.
- *     The honest sentence, and the one this lane must be able to write.
- *
- * Both contain a negation and a publishing word, so only the self-limiting phrase tells
- * them apart. The guard is the shape {@link claimsVerification} already uses for the same
- * reason: a whole-body match would refuse the sentence Hale is supposed to write.
- */
-const UNPUBLISHED_WORD =
-  /\b(?:post(?:ed|s|ing)?|list(?:ed|s|ing)?|publish(?:ed|es|ing)?|announced|available|shown|out|up)\b/i;
-/**
- * The contraction that carries this claim in practice is "aren't", and its "n" is glued to
- * the stem — so this alternative has no LEADING boundary and cannot have one.
- *
- * THE APOSTROPHE IS THEREFORE REQUIRED. With it optional, `n?t\b` matches the last two
- * letters of every word ending in "nt": parent, want, moment, different, recent, consent.
- * Beside a publishing word that reads "Gellert lists Parent and Tot Mondays 10:00, $86.22
- * for nine" as a claim that nothing is posted — the canonical GOOD message for this
- * product's beachhead subject, refused three times and then deferred, which is Hale going
- * quiet on a find it had. Both apostrophes are accepted because this predicate is also
- * read over raw slot fields (deliver.ts `carriesFact`), which have not been through
- * `plainText`'s typographic fold.
- */
-const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n['’]t\b/i;
-/**
- * NAMING THE SURFACE IS THE SAME CLAIM WITHOUT THE VERB. "The fall times aren't on their
- * page yet" carries no publishing word at all and is the identical assertion — the live
- * composer wrote exactly that shape when it had the licence, so it is exactly what an
- * unlicensed one would write too.
- */
-const PAGE_SURFACE =
-  /\bon (?:their|the|its) (?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
 /** Hale saying it could not get at something — never the page saying it has nothing. */
 const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
-const SENTENCE_BOUNDARY = /[.!?\n]/;
-
-export function claimsNotPosted(body: string): boolean {
-  return body
-    .split(SENTENCE_BOUNDARY)
-    .some(
-      (sentence) =>
-        ABSENCE.test(sentence) &&
-        (UNPUBLISHED_WORD.test(sentence) || PAGE_SURFACE.test(sentence)) &&
-        !SELF_LIMITED.test(sentence),
-    );
-}
 
 /**
  * Whether the body says HALE will come back — the sentence the continuation row pays for.
@@ -405,8 +351,7 @@ export function statesTheReturn(body: string): boolean {
 /**
  * WHETHER THE COMING-BACK SENTENCE IS WAITING ON A PAGE THAT HAS ALREADY POSTED.
  *
- * {@link claimsNotPosted} refuses the present tense — "the fall times aren't up yet" —
- * and cannot see the same claim wearing the future. "I'll keep watching and text you
+ * The same claim can wear the future. "I'll keep watching and text you
  * once the details are up" asserts nothing and presupposes everything: that they are not
  * up, and that the venue is the one Hale is waiting on.
  *
@@ -464,34 +409,6 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   const text = plainText(body);
 
   if (text === '') return ['The message was empty.'];
-  // ONE RULER, AND IT IS THIS ONE. The skill used to teach the model to predict the fit
-  // and pre-drop for it ("when it will not fit, cut the SECOND find"), which is a model
-  // eyeballing segment arithmetic it cannot do: on 2026-08-24 it dropped a complete
-  // second find — a price and a schedule — out of a 263-character message with room for
-  // it, and nothing downstream could tell that answer from one that had only one find.
-  // Fit is measured HERE, and the correction says what to give up, so the model never has
-  // to guess whether it is in the losing case.
-  //
-  // AND IT SAYS WHAT MAY NOT GO, because a correction that names only the cut leaves
-  // everything it did not name looking spare. The first version of this sentence ended
-  // "and keep the rest as they are": handed it, the composer kept both finds intact and
-  // deleted the continuation sentence instead — the one thing `watch` had already written
-  // a row for — then spent its last attempt without putting it back and the promise went
-  // out silent about itself. A length correction that can be satisfied by breaking a
-  // different gate is a recompose loop that ends in silence, so the two things a trim may
-  // never reach are named here, in the same breath as the cut.
-  if (smsSegments(text) > MAX_FOLLOWUP_SEGMENTS) {
-    const keep = grounding.watch
-      ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
-      : 'never the facts of the find you led with';
-    violations.push(
-      `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
-        grounding.picks.length > 1
-          ? `Drop the LAST find whole - ${keep}.`
-          : `Shorten the wording around the facts, never the facts themselves - ${keep}.`
-      }`,
-    );
-  }
   if (smsEncoding(text) !== 'gsm7') {
     violations.push(
       'The message contains a character that doubles the cost to send (a curly quote, a dash, or an emoji). Use plain ASCII.',
@@ -522,17 +439,6 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
       'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
     );
   }
-  // THE ABSENCE CLAIM NEEDS POSITIVE EVIDENCE. Two ways to be wrong about a page and they
-  // need two different corrections: nobody opened it, or somebody opened it and it plainly
-  // does publish a schedule this run could not pin down. The second is the 2026-08-24
-  // failure, and it is the one the old boolean could not express (see `pageEvidence`).
-  if (grounding.pageEvidence !== 'page_has_no_schedule' && claimsNotPosted(text)) {
-    violations.push(
-      grounding.pageEvidence === 'no_page_read'
-        ? 'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.'
-        : 'The message says something is not posted or not up. Their page WAS opened today and it does publish times and prices - Hale just could not pin these ones to it. Say their site lists this and that you could not confirm the day or the price, never that they are not posted.',
-    );
-  }
   // BOTH DIRECTIONS, and the second one is not symmetry for its own sake. The first live
   // re-recording of this composer, handed a complete find and `watch: false`, wrote
   // "I'll keep looking and text you what it says" anyway — a promise to come back with
@@ -547,7 +453,7 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   }
   if (grounding.watch !== statesTheReturn(text)) {
     // THE EXAMPLE IS PAGE-STATE-AWARE OR THE TWO CORRECTIONS FIGHT: under
-    // `page_has_schedule` the gate above refuses the very sentence this one used to hand
+    // `page_has_schedule` the page contradicts the very sentence this one used to hand
     // the model as the remedy, and a composer bounced between two contradictory fixes
     // spends its three attempts and sends nothing.
     violations.push(

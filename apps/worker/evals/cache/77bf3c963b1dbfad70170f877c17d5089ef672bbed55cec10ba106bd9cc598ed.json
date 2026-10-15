@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Pineapple on pizza is a matter of taste, with no rule or safety issue against it",
+        "from": "Whether pineapple on pizza is \"ok\" is a matter of taste. The search results contain no rule or safety issue against it."
+      },
+      {
+        "states": "People are split on it, with no consensus",
+        "from": "The results show no consensus."
+      },
+      {
+        "states": "In a March 2023 YouGov poll of 1,000 U.S. adults, about 59% like or love pineapple on pizza",
+        "from": "By this poll, a majority (about 59%) like or love it."
+      }
+    ],
+    "answer": "Totally ok. It's a taste thing, and people are split on it. A 2023 YouGov poll had about 59% of Americans liking or loving it, so you're in good company. If you like it, eat it. If you hate it, that's fine too."
+  },
+  "latencyMs": 42020
+}

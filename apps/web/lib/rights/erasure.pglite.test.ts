@@ -1,8 +1,14 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GENERAL_ANSWER_SEARCH_ENABLED_ENV } from '~/lib/channel/off-domain/answer';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { DELETION_GRACE_MS, requestErasure } from './delete';
+
+// The live search is on by default in production; these tests describe it dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * VIL-355 · WHICH erasure a request means depends on who is asking, and the answer is
@@ -103,6 +109,7 @@ describe('requestErasure — one door, two answers', () => {
         mcpGrantsRevoked: 0,
         connectorsRevoked: 0,
         teenGrantsRevoked: 0,
+        openQuestionsDeleted: 'search_dark',
         membershipRemoved: true,
         consentWithdrawn: 0,
         threadRetained: 0,

@@ -22,26 +22,34 @@
 //   node apps/worker/evals/run-drafter-eval.mjs --cached-only                   # CI: replay only, never calls the API
 
 import { createHash } from 'node:crypto';
-import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { existsSync, realpathSync } from 'node:fs';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
+import {
+  PRICE as LIST_PRICE,
+  installEvalSpendCap,
+  judgeLaneFor,
+  liveStructuredCall,
+  priceRates,
+} from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
-const PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'drafter.md');
+export const PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'drafter.md');
 const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');
 const MODEL_TS_PATH = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'model.ts');
-const FIXTURE_DIR = join(HERE, 'fixtures', 'drafter');
+export const FIXTURE_DIR = join(HERE, 'fixtures', 'drafter');
 const CACHE_DIR = join(HERE, 'cache');
 
-// List prices (USD per 1M tokens). Source: Anthropic pricing, claude-api skill.
-// Sonnet = drafter; Haiku = judge.
+// List prices (USD per 1M tokens), read from the harness table so a re-tier cannot
+// leave this suite pricing a retired model. Sonnet = drafter; Haiku = judge.
 const PRICE = {
-  sonnet: { input: 3.0, output: 15.0 },
-  haiku: { input: 1.0, output: 5.0 },
+  sonnet: LIST_PRICE['claude-sonnet-5-5'],
+  haiku: LIST_PRICE['claude-haiku-5-5'],
 };
 
 // Gate thresholds.
@@ -59,31 +67,38 @@ const PLACEHOLDER_PATTERNS = [
 
 // --- read the single sources of truth from worker source -------------------
 
-async function readModelIds() {
-  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
+export async function readModelIds() {
+  const { pickLane } = await tsImport(AGENT_SRC, import.meta.url);
   const src = await readFile(MODEL_TS_PATH, 'utf8');
   const haiku = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
   if (!haiku) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS_PATH}`);
-  return { drafter: pickModel('draft'), judge: haiku[1] };
+  return { drafter: pickLane('draft'), judge: haiku[1] };
 }
 
 // The tool-forced JSON schema MUST mirror drafterOutputJsonSchema in
 // src/agents/drafter.ts.
 const DRAFTER_TOOL = 'draft_action';
-const DRAFTER_JSON_SCHEMA = {
+export const DRAFTER_JSON_SCHEMA = {
   type: 'object',
   properties: {
     payload: { type: 'object', additionalProperties: true },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     rationale: { type: 'string' },
     recipient_visibility: { type: 'string', enum: ['public', 'internal_only'] },
+    commits_parent_to_enrollment_booking_or_payment: { type: 'boolean' },
   },
-  required: ['payload', 'confidence', 'rationale', 'recipient_visibility'],
+  required: [
+    'payload',
+    'confidence',
+    'rationale',
+    'recipient_visibility',
+    'commits_parent_to_enrollment_booking_or_payment',
+  ],
 };
 
 // --- fixtures ---------------------------------------------------------------
 
-async function loadFixtures(dir) {
+export async function loadFixtures(dir) {
   const names = (await readdir(dir)).filter((n) => n.endsWith('.json')).sort();
   const out = [];
   for (const name of names) {
@@ -94,7 +109,7 @@ async function loadFixtures(dir) {
 
 // Must match runDrafter's exact serialization:
 // { action_type, event, memory_slice, voice_profile, action_template_hint }.
-function userMessageFor(fixture) {
+export function userMessageFor(fixture) {
   return JSON.stringify({
     action_type: fixture.input.actionType,
     event: fixture.input.event,
@@ -110,9 +125,7 @@ function userMessageFor(fixture) {
 // stale answer is never silently reused. `tag` separates draft vs judge calls.
 
 function cacheKey(model, prompt, userMessage, tag) {
-  return createHash('sha256')
-    .update(`${model}\n${prompt}\n${userMessage}\n${tag}`)
-    .digest('hex');
+  return createHash('sha256').update(`${model}\n${prompt}\n${userMessage}\n${tag}`).digest('hex');
 }
 
 async function cacheGet(key) {
@@ -128,7 +141,8 @@ async function cachePut(key, value) {
 
 // --- the real drafter path (replicated forceToolJson) -----------------------
 
-function makeRealDrafter(model, prompt, cachedOnly, cost) {
+function makeRealDrafter(lane, prompt, cachedOnly, cost) {
+  const model = lane.model;
   let client;
   return async function draft(fixture) {
     const userMessage = userMessageFor(fixture);
@@ -144,29 +158,27 @@ function makeRealDrafter(model, prompt, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model,
-      max_tokens: 1024,
-      system: prompt,
-      tools: [
-        {
-          name: DRAFTER_TOOL,
-          description: 'Return the structured draft of the proposed action.',
-          input_schema: DRAFTER_JSON_SCHEMA,
-        },
-      ],
-      tool_choice: { type: 'tool', name: DRAFTER_TOOL },
-      messages: [{ role: 'user', content: userMessage }],
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'drafter',
     });
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === DRAFTER_TOOL);
-    if (!toolUse) throw new Error(`${fixture.id}: model returned no ${DRAFTER_TOOL} tool call`);
+    // The production budget (apps/worker/src/agents/drafter.ts), through the same seam.
+    const response = await liveStructuredCall({
+      client,
+      lane,
+      system: prompt,
+      userMessage,
+      toolName: DRAFTER_TOOL,
+      toolDescription: 'Return the structured draft of the proposed action.',
+      toolSchema: DRAFTER_JSON_SCHEMA,
+      maxTokens: 4096,
+    });
 
     cost.liveCalls += 1;
     cost.sonnetIn += response.usage.input_tokens;
     cost.sonnetOut += response.usage.output_tokens;
-    await cachePut(key, { parsed: toolUse.input });
-    return toolUse.input;
+    await cachePut(key, { parsed: response.value });
+    return response.value;
   };
 }
 
@@ -191,9 +203,9 @@ function makeBrokenDrafter() {
 
 // --- LLM-as-judge (cached, real haiku) --------------------------------------
 
-const JUDGE_SYSTEM = [
+export const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring a single drafted message a parent-assistant',
-  'product would send on a parent\'s behalf to a clinic, daycare, family member, or',
+  "product would send on a parent's behalf to a clinic, daycare, family member, or",
   'an internal daily digest. Score TONE & APPROPRIATENESS on a 1–5 integer scale:',
   '5 = warm, natural, first-person from the parent, appropriate to the recipient;',
   '1 = robotic, corporate, performs emotion, refers to itself as an AI, or is wrong',
@@ -201,13 +213,14 @@ const JUDGE_SYSTEM = [
 ].join(' ');
 
 const JUDGE_TOOL = 'score';
-const JUDGE_JSON_SCHEMA = {
+export const JUDGE_JSON_SCHEMA = {
   type: 'object',
+  // Reason BEFORE score: a score emitted first is a score reasoned backwards from.
   properties: {
-    score: { type: 'integer', minimum: 1, maximum: 5 },
     reason: { type: 'string' },
+    score: { type: 'integer', minimum: 1, maximum: 5 },
   },
-  required: ['score', 'reason'],
+  required: ['reason', 'score'],
 };
 
 function makeJudge(model, cachedOnly, cost) {
@@ -230,25 +243,26 @@ function makeJudge(model, cachedOnly, cost) {
       process.exit(1);
     }
 
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model,
-      max_tokens: 256,
-      system: JUDGE_SYSTEM,
-      tools: [
-        { name: JUDGE_TOOL, description: 'Return the tone score.', input_schema: JUDGE_JSON_SCHEMA },
-      ],
-      tool_choice: { type: 'tool', name: JUDGE_TOOL },
-      messages: [{ role: 'user', content: userMessage }],
+    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+      rates: priceRates,
+      tag: 'drafter-judge',
     });
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === JUDGE_TOOL);
-    if (!toolUse) throw new Error(`${fixture.id}: judge returned no ${JUDGE_TOOL} tool call`);
+    const response = await liveStructuredCall({
+      client,
+      lane: await judgeLaneFor(model),
+      system: JUDGE_SYSTEM,
+      userMessage,
+      toolName: JUDGE_TOOL,
+      toolDescription: 'Return the tone score.',
+      toolSchema: JUDGE_JSON_SCHEMA,
+      maxTokens: 1024,
+    });
 
     cost.liveCalls += 1;
     cost.haikuIn += response.usage.input_tokens;
     cost.haikuOut += response.usage.output_tokens;
-    await cachePut(key, { parsed: toolUse.input });
-    return toolUse.input;
+    await cachePut(key, { parsed: response.value });
+    return response.value;
   };
 }
 
@@ -262,7 +276,8 @@ function makeJudge(model, cachedOnly, cost) {
 function collectStrings(value, out) {
   if (typeof value === 'string') out.push(value);
   else if (Array.isArray(value)) for (const v of value) collectStrings(v, out);
-  else if (value && typeof value === 'object') for (const v of Object.values(value)) collectStrings(v, out);
+  else if (value && typeof value === 'object')
+    for (const v of Object.values(value)) collectStrings(v, out);
 }
 
 function draftText(payload) {
@@ -291,8 +306,9 @@ function ungroundedSpecifics(text, inputSerialized) {
   return [...new Set(tokens)].filter((t) => !inputSerialized.includes(t));
 }
 
-function checkFixture(fixture, payload, judgeScore) {
+function checkFixture(fixture, result, judgeScore) {
   const failures = [];
+  const payload = result.payload ?? {};
   const text = draftText(payload);
   const inputSerialized = JSON.stringify(fixture.input);
   const e = fixture.expect;
@@ -340,23 +356,38 @@ function checkFixture(fixture, payload, judgeScore) {
     failures.push(`tone score ${judgeScore} < ${JUDGE_MIN}`);
   }
 
+  // The model names a commitment. The orchestrator holds a true flag for the
+  // parent's tap. This checks that boolean, never the wording.
+  if (typeof e.commitsParent === 'boolean') {
+    const flagged = result.commits_parent_to_enrollment_booking_or_payment;
+    if (flagged !== e.commitsParent) {
+      failures.push(
+        `commits_parent_to_enrollment_booking_or_payment ${flagged} !== ${e.commitsParent}`,
+      );
+    }
+  }
+
   return failures;
 }
 
 // --- main -------------------------------------------------------------------
 
 async function main() {
+  installEvalSpendCap();
   const arg = process.argv.find((a) => a.startsWith('--drafter='));
   const mode = arg ? arg.split('=')[1] : 'real';
   const cachedOnly = process.argv.includes('--cached-only');
 
-  const { drafter: drafterModel, judge: judgeModel } = await readModelIds();
+  const { drafter: drafterLane, judge: judgeModel } = await readModelIds();
+  const drafterModel = drafterLane.model;
   const prompt = await readFile(PROMPT_PATH, 'utf8');
   const fixtures = await loadFixtures(FIXTURE_DIR);
 
   const cost = { liveCalls: 0, sonnetIn: 0, sonnetOut: 0, haikuIn: 0, haikuOut: 0 };
   const draft =
-    mode === 'broken' ? makeBrokenDrafter() : makeRealDrafter(drafterModel, prompt, cachedOnly, cost);
+    mode === 'broken'
+      ? makeBrokenDrafter()
+      : makeRealDrafter(drafterLane, prompt, cachedOnly, cost);
   const judge = makeJudge(judgeModel, cachedOnly, cost);
 
   console.log(
@@ -376,7 +407,7 @@ async function main() {
     // text already fails, so we never spend a live judge call there.
     const judgeTone = fixture.expect.judgeTone !== false;
     const score = mode === 'broken' || !judgeTone ? null : (await judge(fixture, text)).score;
-    const failures = checkFixture(fixture, payload, score);
+    const failures = checkFixture(fixture, result, score);
     if (failures.length) {
       failedFixtures.push({ id: fixture.id, failures });
       console.log(`  FAIL ${fixture.id}`);
@@ -422,7 +453,20 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('drafter eval harness error:', err);
-  process.exit(2);
-});
+// Imported by the no-spend estimate. A direct `node` run is the eval.
+function runningAsScript() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (runningAsScript()) {
+  main().catch((err) => {
+    console.error('drafter eval harness error:', err);
+    process.exit(2);
+  });
+}

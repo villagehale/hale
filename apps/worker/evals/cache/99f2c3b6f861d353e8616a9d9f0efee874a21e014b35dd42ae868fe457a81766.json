@@ -1,0 +1,8 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [],
+    "answer": "Sorry, I can't check the weather right now, so I don't have tomorrow's forecast for you."
+  },
+  "latencyMs": 2393
+}

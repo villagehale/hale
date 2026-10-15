@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The 4.34% insured figure, the hedged 4.44% uninsured figure, Scotiabank at 4.74% and the climb since early September are all supported by the notes. But \"Big banks are higher: around 4.54%\" stretches one Big 6 bank's rate into a big-bank figure. The notes contradict that: Nesto puts the Big 6 average at 5.14–5.17%, and BMO is at 5.14%. The reply also gives no as-of date. The tone is mostly casual, though a bit report-like.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 2
+  }
+}

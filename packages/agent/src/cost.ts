@@ -1,13 +1,5 @@
 import type { AgentUsage } from './agent.js';
-import {
-  DEEPSEEK_MODEL,
-  HAIKU_MODEL,
-  type ModelId,
-  OPUS_MODEL,
-  SONNET5_MODEL,
-  SONNET55_MODEL,
-  SONNET_MODEL,
-} from './model.js';
+import { DEEPSEEK_MODEL, HAIKU_MODEL, type ModelId, OPUS_MODEL, SONNET_MODEL } from './model.js';
 
 /**
  * The one place a token becomes a dollar. Both processes price through here —
@@ -17,13 +9,11 @@ import {
  * every cached step at $0 for the loop-health $/family telemetry.
  *
  * Per-model token rates, USD per million tokens.
- * Source: Anthropic pricing (platform.claude.com/docs models overview):
- * Sonnet 4.6 $3 in / $15 out; Sonnet 5 $3 in / $15 out list ($2/$10 intro
- * through 2026-08-31); Haiku 4.5 $1 in / $5 out; Opus 5 $5 in / $25 out —
- * unchanged from the Opus 4.8 it replaced, so the re-tier moved the id under
- * this key without moving the rate. Sonnet 5 is booked at LIST, not the intro
- * price: an estimate that silently halves when a promotion lapses is worse than
- * one that is consistently conservative.
+ * Source: platform.claude.com/docs/en/about-claude/pricing, read 2026-10-11:
+ * Sonnet 5.5 $2 in / $10 out, Opus 5.5 $4 / $20 — both with cache hits at 0.05x
+ * input, not the usual 0.1x. Haiku 5.5 has two cards chosen by the call's prompt
+ * length (all input tokens, cache reads and writes included): $0.10 / $0.50 up to
+ * 100K tokens, $0.50 / $2.50 above, each with the usual 0.1x read / 1.25x write.
  * DeepSeek V4.1 Flash is priced from its Vercel AI Gateway model page at
  * $0.15 input / $0.60 output / $0.003 cached input per MTok.
  * Hardcoded by design — billing accuracy is a point-in-time estimate, not a
@@ -38,11 +28,9 @@ interface ModelRate {
 }
 
 const RATES: Record<ModelId, ModelRate> = {
-  [SONNET_MODEL]: { inputPerMTok: 3, outputPerMTok: 15 },
-  [SONNET5_MODEL]: { inputPerMTok: 3, outputPerMTok: 15 },
-  [SONNET55_MODEL]: { inputPerMTok: 2, outputPerMTok: 10 },
-  [HAIKU_MODEL]: { inputPerMTok: 1, outputPerMTok: 5 },
-  [OPUS_MODEL]: { inputPerMTok: 5, outputPerMTok: 25 },
+  [SONNET_MODEL]: { inputPerMTok: 2, outputPerMTok: 10, cacheReadPerMTok: 0.1 },
+  [OPUS_MODEL]: { inputPerMTok: 4, outputPerMTok: 20, cacheReadPerMTok: 0.2 },
+  [HAIKU_MODEL]: { inputPerMTok: 0.1, outputPerMTok: 0.5 },
   [DEEPSEEK_MODEL]: {
     inputPerMTok: 0.15,
     outputPerMTok: 0.6,
@@ -50,6 +38,14 @@ const RATES: Record<ModelId, ModelRate> = {
     cacheWritePerMTok: 0.15,
   },
 };
+
+/**
+ * Haiku 5.5 above 100K prompt tokens. The card is chosen per request, so a priced
+ * {@link agentRunCostUsd} loop — whose usage is summed over its steps — is an upper
+ * bound when its steps together pass the threshold but none does alone.
+ */
+const HAIKU_LONG_PROMPT_TOKENS = 100_000;
+const HAIKU_LONG_PROMPT_RATE: ModelRate = { inputPerMTok: 0.5, outputPerMTok: 2.5 };
 
 const PER_MTOK = 1_000_000;
 
@@ -73,10 +69,15 @@ export interface TokenUsage {
 
 /** USD for one call's tokens. Throws on a model with no configured rate. */
 export function estimateCostUsd(model: string, usage: TokenUsage): number {
-  const rate = RATES[model as ModelId];
-  if (!rate) {
+  const listed = RATES[model as ModelId];
+  if (!listed) {
     throw new Error(`estimateCostUsd: no rate configured for model '${model}'`);
   }
+  const promptTokens = usage.inputTokens + usage.cacheCreationTokens + usage.cacheReadTokens;
+  const rate =
+    model === HAIKU_MODEL && promptTokens > HAIKU_LONG_PROMPT_TOKENS
+      ? HAIKU_LONG_PROMPT_RATE
+      : listed;
   const cacheReadPerMTok = rate.cacheReadPerMTok ?? rate.inputPerMTok * CACHE_READ_RATE_MULTIPLIER;
   const cacheWritePerMTok =
     rate.cacheWritePerMTok ?? rate.inputPerMTok * CACHE_WRITE_RATE_MULTIPLIER;

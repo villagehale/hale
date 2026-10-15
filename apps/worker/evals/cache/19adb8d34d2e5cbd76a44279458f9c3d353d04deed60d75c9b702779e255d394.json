@@ -1,0 +1,26 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Parent and Tot 18 months - 3.11 yrs, Halton Hills Gymnastics Centre",
+        "age_fit": "18 months - 3.11 yrs, with parent participation (30 min class)",
+        "when": "Fall 2026 session Sept 12 - Dec 18; Saturdays 9:00-9:30, 9:35-10:05 and 10:15-10:45, plus weekday times. Registration opened July 20",
+        "source_name": "Halton Hills Gymnastics Centre"
+      },
+      {
+        "name": "Tiny Dancers, Gellert Community Centre",
+        "age_fit": "2-3 yrs",
+        "when": "Saturdays 8:30-9:00 AM, Sep 26 - Dec 12",
+        "price": "$117.00 for 12 classes",
+        "source_name": "Town of Halton Hills"
+      },
+      {
+        "name": "Parent & Tot Skating, Town of Halton Hills arenas",
+        "age_fit": "Children under 6 years accompanied by an adult on the ice",
+        "price": "Adult $4.00, child $2.50",
+        "source_name": "Town of Halton Hills"
+      }
+    ]
+  },
+  "latencyMs": 5513
+}

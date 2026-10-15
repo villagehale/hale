@@ -21,11 +21,13 @@
 //     (deep.ts `toDeepSlots`), so without this gate a skill quietly producing them looks
 //     like a skill finding nothing.
 //   · dropped registration - the notes carry a registration date and no slot does, or a
-//     slot carries it and the TEXT does not. That fact is the entire return on opening the
+//     slot carries it and the TEXT does not. Graded by the judge from `factChecks`. That fact is the entire return on opening the
 //     page, and it has been dropped in production once already: the composer's projection
 //     did not list the field, so the deep pass learned it and the parent never heard it.
-//   · the follow-up gates, mirrored from followup-note.ts - links, segment cap, claiming
+//   · the follow-up gates, mirrored from followup-note.ts - links, claiming
 //     verification, and burying the top pick past the first segment.
+//   · a date credited to a page that does not carry it is the judge's call (JUDGE_SYSTEM),
+//     with every fetched page in its notes (notesForTheJudge). No check reads the wording.
 //
 // SHAPE. It replicates the runtime's request shapes (deep.ts, followup-note.ts) rather than
 // importing them - those modules sit behind the web app's `~/` alias, which the tsx loader
@@ -45,10 +47,14 @@
 //   node --env-file=../../launch.env evals/run-activity-deep-eval.mjs \
 //     --anthropic-model=claude-sonnet-5-5 --only=<id,id>
 
+import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { textOfFetchSource } from '../../web/lib/channel/activity/pdf-text.mjs';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
+import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -61,6 +67,7 @@ import {
   makeCost,
   makeJudge,
   noteUsage,
+  priceRates,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
@@ -76,26 +83,24 @@ const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const DEEP_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-deep.md');
 const FINDER_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 
 // Mirrors the runtime's constants (activity/deep.ts, activity/followup-note.ts,
 // activity/share-page.ts).
 const MAX_DEEP_SEARCHES = 4;
 const MAX_DEEP_FETCHES = 4;
-const RESEARCH_MAX_TOKENS = 8192;
+export const RESEARCH_MAX_TOKENS = 8192;
 // 16384, matching the runtime (activity/deep.ts). It was 4096 here long after production
 // raised it, so this eval was scoring a request production does not make — and on a real
 // municipal page's worth of notes that budget TRUNCATES, which the harness then cached as
 // an empty extraction.
-const EXTRACT_MAX_TOKENS = 16384;
+export const EXTRACT_MAX_TOKENS = 16384;
 const SLOTS_IN_TEXT = 2;
-const MAX_FOLLOWUP_SEGMENTS = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
 const FIRST_SEGMENT_CHARS = 153;
 
 // ── the runtime's request shapes, replicated ─────────────────────────────────
 
-const DEEP_TOOL_SCHEMA = {
+export const DEEP_TOOL_SCHEMA = {
   type: 'object',
   properties: {
     pages_read: { type: 'array', items: { type: 'string' } },
@@ -142,18 +147,18 @@ const STRICT_DEEP_TOOL_SCHEMA = {
   required: ['pages_read', 'slots'],
 };
 
-const FOLLOWUP_TOOL_SCHEMA = {
+export const FOLLOWUP_TOOL_SCHEMA = {
   type: 'object',
   properties: { message: { type: 'string' } },
   required: ['message'],
 };
 
-const RESEARCH_TOOLS = [
+export const RESEARCH_TOOLS = [
   { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_DEEP_SEARCHES },
   { name: 'web_fetch', type: 'web_fetch_20260209', max_uses: MAX_DEEP_FETCHES },
 ];
 
-function deepUserMessage(q) {
+export function deepUserMessage(q) {
   return JSON.stringify({
     mode: 'deep_research',
     subject: q.subject,
@@ -163,7 +168,7 @@ function deepUserMessage(q) {
   });
 }
 
-function deepExtractMessage(q, notes) {
+export function deepExtractMessage(q, notes) {
   return JSON.stringify({ ...JSON.parse(deepUserMessage(q)), research_notes: notes });
 }
 
@@ -224,7 +229,7 @@ function readExtract(raw) {
  * pages: a model that never sees a page fact cannot blame a page for a programme that does
  * not exist ("I could not get into any pages today for toddler underwater basket weaving",
  * 2026-08-24). */
-function followUpUserMessage(subject, slots, pageEvidence, watch) {
+export function followUpUserMessage(subject, slots, pageEvidence, watch) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
@@ -296,7 +301,7 @@ function readEvidence(content, now = Date.now()) {
       pagesRead += 1;
       const at = Date.parse(result.retrieved_at ?? '');
       if (!Number.isFinite(at) || now - at > FETCH_FRESHNESS_MS) pagesStale += 1;
-      const text = readableText(result.content?.source?.data ?? '');
+      const text = readableText(textOfFetchSource(result.content?.source));
       if (text !== '') {
         // Kept APART as well as joined: "does this page publish a schedule" is a question
         // about one page and cannot be asked of a joined blob (evidence.ts).
@@ -467,34 +472,12 @@ function topPickLeads(body, slots) {
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
-/** Mirrors `claimsNotPosted`, `statesTheReturn` and `watchWarranted` — see the same three
- * in run-activity-finder-eval.mjs and in the runtime (followup-note.ts, deliver.ts).
- *
- * SENTENCE-SCOPED since 2026-08-24: clause scoping split "no day, time or price on the
- * fall page yet" on its commas and neither fragment carried both halves of the claim, so
- * the gate was green on the message that shipped. {@link SELF_LIMITED} is what keeps
- * "I could not pin it down" — Hale's gap, not the page's — writable. */
-const UNPUBLISHED_WORD =
-  /\b(?:post(?:ed|s|ing)?|list(?:ed|s|ing)?|publish(?:ed|es|ing)?|announced|available|shown|out|up)\b/i;
-const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n['’]t\b/i;
-const PAGE_SURFACE =
-  /\bon (?:their|the|its) (?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
+/** Mirrors `statesTheReturn` and `watchWarranted` — see the same in
+ * run-activity-finder-eval.mjs and in the runtime (followup-note.ts, deliver.ts). */
 const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
-const SENTENCE_BOUNDARY = /[.!?\n]/;
 const STATES_RETURN =
   /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
-
-function claimsNotPosted(body) {
-  return body
-    .split(SENTENCE_BOUNDARY)
-    .some(
-      (sentence) =>
-        ABSENCE.test(sentence) &&
-        (UNPUBLISHED_WORD.test(sentence) || PAGE_SURFACE.test(sentence)) &&
-        !SELF_LIMITED.test(sentence),
-    );
-}
 
 function watchWarranted(slots) {
   const top = slots[0];
@@ -518,7 +501,7 @@ function watchWarranted(slots) {
  * whether "free" means anything - hence the `kind`.
  */
 function carriesFact(field, kind) {
-  if (!field || String(field).trim() === '' || claimsNotPosted(String(field))) return false;
+  if (!field || String(field).trim() === '') return false;
   if (kind === 'price' && statesNoCost(String(field))) return true;
   return statesAFigure(String(field));
 }
@@ -538,28 +521,9 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
-/** Mirrors the length correction's protected list (followup-note.ts). A cut that can be
- * satisfied by deleting the continuation sentence is a recompose loop ending in silence,
- * so what may NOT go is named beside what may. */
-function keepUnderTrim(watch) {
-  return watch
-    ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
-    : 'never the facts of the find you led with';
-}
-
-function followUpViolations(body, slots, smsSegments, pageEvidence, watch) {
+function followUpViolations(body, slots, pageEvidence, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
-  if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
-    violations.push({
-      tag: 'over_segment_cap',
-      reason: `The message is ${smsSegments(body)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
-        slots.length > 1
-          ? `Drop the LAST find whole - ${keepUnderTrim(watch)}.`
-          : `Shorten the wording around the facts, never the facts themselves - ${keepUnderTrim(watch)}.`
-      }`,
-    });
-  }
   if (LINK_SHAPE.test(body)) {
     violations.push({
       tag: 'links_a_url',
@@ -584,18 +548,6 @@ function followUpViolations(body, slots, smsSegments, pageEvidence, watch) {
       tag: 'asks_for_permission',
       reason:
         'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
-    });
-  }
-  // THE ABSENCE CLAIM NEEDS POSITIVE EVIDENCE. Two ways to be wrong about a page and two
-  // different corrections: nobody opened it, or somebody did and it plainly DOES publish a
-  // schedule this run could not pin down. The second is the 2026-08-24 failure.
-  if (pageEvidence !== 'page_has_no_schedule' && claimsNotPosted(body)) {
-    violations.push({
-      tag: `unearned_absence:${pageEvidence}`,
-      reason:
-        pageEvidence === 'no_page_read'
-          ? 'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.'
-          : 'The message says something is not posted or not up. Their page WAS opened today and it does publish times and prices - Hale just could not pin these ones to it. Say their site lists this and that you could not confirm the day or the price, never that they are not posted.',
     });
   }
   if (waitsOnAPageItCouldNotRead(body)) {
@@ -655,7 +607,18 @@ function untraceablePages(pagesRead, notes) {
   return pagesRead.filter((url) => !notes.includes(String(url).trim()));
 }
 
-const JUDGE_SYSTEM = [
+/**
+ * The fixture's required and forbidden facts, handed to the judge as notes. Only present
+ * when the fixture names them, so every other fixture's judge payload is unchanged.
+ */
+function factChecks(fixture) {
+  const checks = {};
+  if (fixture.registrationMustSay) checks.registrationFact = fixture.registrationMustSay;
+  if (fixture.slotsMustNotContain) checks.figuresFromElsewhere = fixture.slotsMustNotContain;
+  return Object.keys(checks).length > 0 ? { factChecks: checks } : {};
+}
+
+export const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE deep research pass Hale ran to keep a promise it',
   'made a parent about what their young child could do locally. Hale searched, opened the',
   "operator's own pages, extracted structured slots, and wrote one SMS from them. It never",
@@ -666,8 +629,8 @@ const JUDGE_SYSTEM = [
   'exactly as printed, each cited to the page it was read off, and where the page gave a',
   'REGISTRATION date the slot carries it and so does the message. The message leads with the',
   'best slot by name, attributes the facts ("their site says"), carries the registration',
-  'window, attributes rather than claiming to have confirmed, and is one or two short',
-  'plain-ASCII sentences with no link and NO QUESTION AT ALL.',
+  'window, attributes rather than claiming to have confirmed, and is plain ASCII with no',
+  'link and NO QUESTION AT ALL. Do not score the message down for length.',
   'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
   'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
   'down; nothing on this path can write one, so a "want me to..." here is a yes with',
@@ -691,15 +654,23 @@ const JUDGE_SYSTEM = [
   "not tie these facts to it; the gap is HALE'S, so where that sentence is wanted it is",
   'first person - "I could not pin down the day or the price" - never "not posted yet".',
   'Score an UNEARNED negative claim low. Score nothing else off this field.',
-  'Two segments is a hard ceiling. Dropping a second or third find WHOLE to fit the best',
-  'one complete is correct and is not withholding; withholding is going quiet about a find',
-  'when there was room, or hedging instead of naming anything at all.',
+  'Length is not a fault. Dropping a find so the text is shorter is withholding; withholding',
+  'is going quiet about a find, or hedging instead of naming anything at all.',
   'A LOW score is any of: a price or a date that is not on the page it is attributed to;',
   'a figure borrowed from a different program or a room rental on the same site; a slot for',
   'an age band the page does not serve; reporting a schedule as "not posted" when',
   '`pageEvidence` does not say `page_has_no_schedule`; an empty result when the page plainly lists something',
   'fitting; a message that drops the registration date the slots carried; a message that',
   'presents page-read facts as verified.',
+  'You may be given `factChecks`. `registrationFact` is the registration date the page',
+  'prints, in the spellings a reader might see: when the slots carry it and the message',
+  'does not, or when no slot carries it although the notes print it, score low.',
+  '`figuresFromElsewhere` are figures that are on the site but belong to something else',
+  '(another program, a membership, a room rental): a slot that states one as its own',
+  'price, time or date scores low. Judge these by meaning, not by exact wording.',
+  'When `pageEvidence` is `page_has_schedule` and a page that was read links a schedule',
+  'document (a PDF) that was not itself opened, the slots or the notes must say that',
+  'document could not be read; going quiet about it scores low.',
   'An EMPTY slot list is CORRECT when the page was read and genuinely has nothing for this',
   'age. Score that a 5 when the message says so plainly and specifically.',
   'When `message` is NULL no text was composed for this pass - production discards a',
@@ -866,21 +837,30 @@ async function cachedResearch(opts) {
 }
 
 async function main() {
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.info(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
   const candidateModel = process.argv
     .find((arg) => arg.startsWith('--anthropic-model='))
     ?.slice('--anthropic-model='.length);
-  const getClient = lazyAnthropic();
+  const rawClient = lazyAnthropic();
+  const getClient = () => capSdkClient(rawClient(), { rates: priceRates, tag: 'activity-deep' });
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const deepSkill = await agent.loadSkill(DEEP_SKILL);
   const finderSkill = await agent.loadSkill(FINDER_SKILL);
   const model = candidateModel ?? agent.pickModel(deepSkill.meta.task);
   const composerModel = agent.pickModel(finderSkill.meta.task);
+  const subjectLane = candidateModel ? null : agent.pickLane(deepSkill.meta.task);
+  const composerLane = agent.pickLane(finderSkill.meta.task);
   // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
   // behaviours the rubric states in so many words are correct (harness.mjs readJudgeModel).
   const judgeModel = await readJudgeModel('sonnet');
@@ -963,6 +943,7 @@ async function main() {
           await cachedToolCall({
             tag: evalRunTag(`activity-deep-extract:${fixture.id}`),
             model,
+            lane: subjectLane,
             system: deepSkill.instructions,
             userMessage: deepExtractMessage(query, evidence.notes),
             toolName: 'activity_deep',
@@ -999,10 +980,6 @@ async function main() {
     for (const slot of kept) {
       const loose = untraceableFigures(slot, evidence.notes);
       if (loose.length > 0) failures.push(`fabricated_figure:${slot.name}:${loose.join(',')}`);
-      for (const forbidden of fixture.slotsMustNotContain ?? []) {
-        const row = `${slot.when ?? ''} ${slot.price ?? ''} ${slot.registration ?? ''}`;
-        if (row.includes(forbidden)) failures.push(`borrowed_figure:${slot.name}:${forbidden}`);
-      }
     }
 
     // Both directions, and this is the calibration: a real page answered with nothing is
@@ -1012,14 +989,8 @@ async function main() {
     if (fixture.expectSlots === false && kept.length > 0)
       failures.push(`invented_slots:${kept.length}`);
 
-    // THE FACT THE PAGE-OPEN WAS FOR.
-    const saysRegistration = (text) =>
-      (fixture.registrationMustSay ?? []).some((phrase) => text.includes(phrase));
-    if (fixture.registrationMustSay && kept.length > 0) {
-      if (!kept.some((slot) => saysRegistration(slot.registration ?? ''))) {
-        failures.push(`dropped_registration:${fixture.registrationMustSay[0]}`);
-      }
-    }
+    // THE FACT THE PAGE-OPEN WAS FOR is graded by the judge (`factChecks` below), not by
+    // matching the model's wording.
 
     // ── leg 3: THE FOLLOW-UP TEXT, from the deep slots ───────────────────────
     // The text carries the best two; the rest go on a share page (share-page.ts). Composed,
@@ -1046,6 +1017,7 @@ async function main() {
             await cachedToolCall({
               tag: evalRunTag(`activity-deep-followup:${fixture.id}:${attempt}`),
               model: composerModel,
+              lane: composerLane,
               system: finderSkill.instructions,
               userMessage: retryFollowUpMessage(
                 followUpUserMessage(fixture.subject, inText, pageEvidence, watch),
@@ -1061,23 +1033,13 @@ async function main() {
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(body, inText, smsSegments, pageEvidence, watch);
+      violations = followUpViolations(body, inText, pageEvidence, watch);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
     failures.push(...violations.map((v) => v.tag));
 
-    // The last hop, and the one that was broken in production: the slot carried the
-    // registration date and the composer's projection did not list the field, so the fact
-    // died between the page and the phone.
-    if (
-      fixture.registrationMustSay &&
-      inText.some((slot) => saysRegistration(slot.registration ?? ''))
-    ) {
-      if (!saysRegistration(body)) {
-        failures.push(`registration_not_in_text:${fixture.registrationMustSay[0]}`);
-      }
-    }
+    // The last hop, the registration fact reaching the text, is the judge's (`factChecks`).
 
     if (!broken) {
       const verdict = await judge(fixture.id, {
@@ -1086,10 +1048,11 @@ async function main() {
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,
-        notes: evidence.notes.slice(0, 6000),
+        notes: notesForTheJudge(evidence),
         slots: kept,
         message: composesText ? body : null,
         watchFor: fixture.watchFor,
+        ...factChecks(fixture),
       });
       if (verdict.score < JUDGE_MIN) {
         failures.push(`judge:${verdict.score} of ${verdict.samples.join('/')} (${verdict.reason})`);
@@ -1131,9 +1094,6 @@ async function main() {
     `fabricated figures:        ${count('fabricated_figure')}  (a price or a date on no page)`,
   );
   console.log(
-    `borrowed figures:          ${count('borrowed_figure')}  (a real number off the wrong page)`,
-  );
-  console.log(
     `fabricated pages:          ${count('fabricated_page')}  (a URL the turn never opened)`,
   );
   console.log(
@@ -1146,18 +1106,9 @@ async function main() {
   console.log(
     `invented slots:            ${count('invented_slots')}  (stretched to fit an age the page does not serve)`,
   );
-  console.log(
-    `dropped registration:      ${count('dropped_registration')}  (the fact the page-open paid for)`,
-  );
-  console.log(
-    `registration not in text:  ${count('registration_not_in_text')}  (it reached the slot and died in the projection)`,
-  );
   console.log(`claims verification:       ${count('claims_verification')}`);
   console.log(
     `asks for permission:       ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,
-  );
-  console.log(
-    `unearned absence:          ${count('unearned_absence')}  (a page's silence claimed without a page that is silent)`,
   );
   console.log(
     `unbacked promise:          ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
@@ -1166,7 +1117,7 @@ async function main() {
   console.log(`buried top pick:           ${count('buried_top_pick')}`);
   console.log(`links a URL:               ${count('links_a_url')}`);
   console.log(
-    `unsendable:                ${results.filter((r) => r.failures.some((f) => ['empty', 'over_segment_cap'].includes(f))).length}`,
+    `unsendable:                ${results.filter((r) => r.failures.some((f) => f === 'empty')).length}`,
   );
   console.log(`judge below ${JUDGE_MIN}:             ${count('judge')}`);
   const repaired = results.filter((r) => r.firstDraftViolations.length > 0);
@@ -1196,7 +1147,19 @@ async function main() {
   process.exit(calibrated ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error('activity-deep eval harness error:', err);
-  process.exit(2);
-});
+function runningAsScript() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (runningAsScript()) {
+  main().catch((err) => {
+    console.error('activity-deep eval harness error:', err);
+    process.exit(2);
+  });
+}

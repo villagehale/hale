@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are accurate and properly cited. Tiny Gym's age band (1 and walking to 3, with a parent) comes from programs.php. The Term 1 and Term 2 dates come from the PDF, which was actually opened. The July 22, 2026 8am registration comes from the home page. No prices are borrowed from elsewhere; the page says pricing is login-only, and price is correctly null. The slots honestly admit the garbled grid could not be mapped to weekdays. The message leads with Tiny Gym by name and attributes the facts ('their site says'). It carries the registration date and uses the correct first-person 'I could not pin down the day or the price' for page_has_schedule. With watch=true, 'I'll keep watching' is earned. It is plain ASCII, with no link and no question. Deductions: it runs to three sentences rather than one or two short ones. The registration window sits in a separate slot rather than on the lead Tiny Gym slot. The message says registration 'opened' without noting that it has already passed or attributing that fact.",
+    "score": 4
+  }
+}

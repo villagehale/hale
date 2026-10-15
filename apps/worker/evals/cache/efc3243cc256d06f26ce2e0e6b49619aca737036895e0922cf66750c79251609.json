@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots trace to the pages read. Tiny Gym's age band (1 and walking to 3, with a caregiver) comes off programs.php. Term 1 (Sept 14-Nov 1, 2026) and Term 2 (Nov 2-Dec 20, 2026) are cited to the schedule PDF, which was opened. The registration date (Wed July 22, 2026, 8:00am online) is cited to the home page. Price is null, which is correct, since the page says pricing is only on the registration site. The day is honestly left unresolved because the extracted grid text was garbled, and the slot says so and points to the PDF. No figures are borrowed from other programs and no age bands are wrong. The message leads with Tiny Gym by name and attributes its facts ('their site says'). It carries the July 22 registration date. Under page_has_schedule it uses the correct first-person gap ('I could not pin down the day or price') rather than 'not posted'. With watch true, it gives a first-person keep-watching commitment, and it has no question and no link. Minor nits only: it could have said pricing sits behind the registration login, and a closer read of the grid might have tied the times to weekdays.",
+    "score": 5
+  }
+}

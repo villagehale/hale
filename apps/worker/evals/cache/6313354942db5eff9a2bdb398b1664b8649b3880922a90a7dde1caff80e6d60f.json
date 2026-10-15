@@ -1,0 +1,35 @@
+{
+  "value": {
+    "fact_updates": [
+      {
+        "fact_type": "preference",
+        "fact_key": "pediatric_appointment_time_of_day",
+        "fact_value": "evening (approx. 17:30-18:00)",
+        "confidence": 0.7,
+        "rationale": "Three appointment requests from littlesprout-pediatrics.ca (2026-05-12 17:30, 2026-05-26 18:00, 2026-06-09 17:45) were all accepted, with the reply actions approved. No declined or rescheduled counter-examples."
+      }
+    ],
+    "episode_summaries": [
+      {
+        "episode_type": "pediatric_appointment_scheduling",
+        "summary": "Three pediatric appointment requests from Little Sprout Pediatrics were accepted: 2026-05-12 17:30, 2026-05-26 18:00, and 2026-06-09 17:45. All three email replies were approved.",
+        "occurred_at": "2026-06-09T00:00:00Z",
+        "sentiment_score": 0.3
+      }
+    ],
+    "pattern_detections": [
+      {
+        "pattern": "Family accepts evening pediatric appointment slots",
+        "support": "3 of 3 proposed slots from littlesprout-pediatrics.ca fell between 17:30 and 18:00 and were accepted, with the corresponding reply_to_email actions approved.",
+        "confidence": 0.7
+      },
+      {
+        "pattern": "Pediatric appointments proposed about every two weeks (14-day gaps)",
+        "support": "2026-05-12 to 2026-05-26 is 14 days, and 2026-05-26 to 2026-06-09 is 14 days. The cadence is observed but the reason is not stated, so it is not recorded as a fact.",
+        "confidence": 0.5
+      }
+    ],
+    "retire_facts": []
+  },
+  "latencyMs": 5678
+}

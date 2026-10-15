@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked in French to stop sending emails without asking. turnedOffThisTurn confirms send_email and reply_to_email were switched off, so 'C'est fait' is true. The reply answers in the parent's language in one plain sentence, with no greeting and no machinery talk. Covering replies as well as sends is fine, since 'courriels' covers both.",
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks when a scheduled swim class occurs, a schedule question"
+  },
+  "latencyMs": 1390
+}

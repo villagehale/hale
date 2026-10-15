@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "I guess? depends if it's free",
+    "rationale": "Hedged and conditional on cost ('I guess?', 'depends if it's free'), not a plain yes or no",
+    "confidence": 0.97
+  },
+  "latencyMs": 1283
+}

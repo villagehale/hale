@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by research_notes for Denver, Tuesday Oct 13: partly sunny, high near 65 (64–67 range), the winds and gusts, the rain chances, and lows in the 30s to low 40s. It answers directly and needs no city ask. But it reads like a weather-report digest, not a friend texting: it lists three sources' hourly rain percentages side by side, and 'mostly partly sunny' is clunky. A friend would say about 65 and partly sunny, with rain likely by evening.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM)",
+        "age_fit": "children ages 0-6",
+        "when": "Open daily 10 am - 5 pm July-September, with Circle Time at 10:30 am daily",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Central Park Zoo",
+        "age_fit": "Child admission is ages 3-12; ages 2 and under are free",
+        "when": "Through October 31, 2026: Mon-Fri 10 am - 5 pm, weekends 10 am - 5:30 pm; last entry 1 hour before closing",
+        "price": "$16.95 child (3-12), $22.95 adult, free for 2 and under",
+        "source_name": "Central Park Zoo"
+      },
+      {
+        "name": "Brooklyn Children's Museum (Play at BCM, including Totally Tots)",
+        "age_fit": "Totally Tots is described as the toddler favorite",
+        "when": "Wednesday-Sunday 10 am - 5 pm, last entry 4:50 pm; closed Monday and Tuesday",
+        "source_name": "Brooklyn Children's Museum"
+      }
+    ]
+  },
+  "latencyMs": 6783
+}

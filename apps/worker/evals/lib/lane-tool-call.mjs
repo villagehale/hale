@@ -5,6 +5,32 @@
 
 import { cacheGet, cacheKey, cachePut, noteUsage } from './harness.mjs';
 
+/** The cache key `cachedLaneToolCall` reads and writes. Estimators use the same bytes. */
+export function laneToolCacheKey({
+  agent,
+  lane,
+  tag,
+  system,
+  userMessage,
+  toolName,
+  toolSchema,
+  maxTokens,
+}) {
+  const fields = agent.laneRequestFields(lane);
+  const toolChoice =
+    lane.model === agent.SONNET_MODEL ? { type: 'auto' } : { type: 'tool', name: toolName };
+  const canonical = JSON.stringify({
+    fields,
+    system,
+    userMessage,
+    toolName,
+    toolSchema,
+    toolChoice,
+    maxTokens,
+  });
+  return cacheKey(tag, canonical);
+}
+
 export async function cachedLaneToolCall({
   agent,
   lane,
@@ -21,17 +47,17 @@ export async function cachedLaneToolCall({
 }) {
   const fields = agent.laneRequestFields(lane);
   const toolChoice =
-    lane.model === agent.SONNET55_MODEL ? { type: 'auto' } : { type: 'tool', name: toolName };
-  const canonical = JSON.stringify({
-    fields,
+    lane.model === agent.SONNET_MODEL ? { type: 'auto' } : { type: 'tool', name: toolName };
+  const key = laneToolCacheKey({
+    agent,
+    lane,
+    tag,
     system,
     userMessage,
     toolName,
     toolSchema,
-    toolChoice,
     maxTokens,
   });
-  const key = cacheKey(tag, canonical);
   const cached = await cacheGet(key);
   if (cached) return { value: cached.value, key, cached: true };
   if (cachedOnly) return { value: null, key, cached: false, miss: true };

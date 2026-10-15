@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "How's the weather tomorrow",
+    "missing_detail": "which city",
+    "their_place": "needed",
+    "sensitive": "no",
+    "current_fact": "weather forecast for tomorrow",
+    "needs_search": "missing_detail"
+  },
+  "latencyMs": 1619
+}

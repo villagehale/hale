@@ -1,0 +1,9 @@
+{
+  "value": {
+    "language": "es",
+    "clinical_query": "toddler fever with purple spots on legs that do not fade when pressed",
+    "red_flag_sign": "non-blanching purple spots on legs with fever",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 1867
+}

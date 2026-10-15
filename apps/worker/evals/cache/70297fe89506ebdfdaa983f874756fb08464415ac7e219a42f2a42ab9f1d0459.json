@@ -1,0 +1,28 @@
+{
+  "urls": [
+    "https://www.yr.no/en/forecast/daily-table/2-6173331/Canada/British%20Columbia/Metro%20Vancouver%20Regional%20District/Vancouver",
+    "https://weather.gc.ca/en/location/index.html?coords=49.245%2C-123.115",
+    "https://www.accuweather.com/en/ca/vancouver/v6c/weather-forecast/53286",
+    "https://weather.gc.ca/en/location/index.html?coords=49.314%2C-123.067",
+    "https://www.theweathernetwork.com/en/city/ca/british-columbia/vancouver/7-days",
+    "https://www.thomascook.com/holidays/weather/canada/vancouver/forecast/",
+    "https://www.timeanddate.com/weather/canada/vancouver/ext",
+    "https://world-weather.info/forecast/canada/vancouver/14days/",
+    "https://amp.cbc.ca/news/canada/british-columbia/fall-leaves-take-over-vancouver-1.4867779",
+    "https://amp.cbc.ca/news/canada/british-columbia/severe-wind-warning-issued-for-metro-vancouver-vancouver-island-1.3322175",
+    "https://forecast.weather.gov/MapClick.php?lat=45.63&lon=-122.67",
+    "https://www.wunderground.com/forecast/us/wa/vancouver",
+    "https://wsbt.com/weather/morning-drive-forecast/morning-drive-forecast-for-tuesday-october-13",
+    "https://www.weatherbug.com/weather-forecast/10-day-weather/vancouver-wa-98661",
+    "https://www.accuweather.com/en/us/vancouver/98661/weather-forecast/331419",
+    "https://www.timeanddate.com/weather/@7174625/ext",
+    "https://www.foxweather.com/local-weather/washington/vancouver",
+    "https://www.timeanddate.com/weather/usa/vancouver/ext",
+    "https://www.myforecast.com/30-day-forecast.php?cwid=32387&metric=false&city_count=&zip_code=&condition=act&data=463376914",
+    "https://weather.metoffice.gov.uk/forecast/c20gdn"
+  ],
+  "notes": "Research notes. Tomorrow is Tuesday, October 13, 2026. The question doesn't say which Vancouver, and no place was given. Vancouver, BC (Canada) and Vancouver, WA (USA) both fit, so I looked up both.\n\n**Vancouver, BC, Canada**\n- Environment Canada's forecast was issued 5:00 AM PDT on Monday, October 12, 2026. It gives Tuesday as a mix of sun and cloud, with a high of 15°C and UV index 3 (moderate). Tuesday, 13 Oct: a mix of sun and cloud, high 15, UV index 3 or moderate. Tuesday night: showers, low 11.\n- Environment Canada's North Vancouver forecast was issued 4:00 PM PDT on Monday. It has a similar outlook: a mix of sun and cloud, becoming cloudy in the morning, high 15. Tuesday night is cloudy, with a few showers beginning before morning and a low of 11.\n- Other sources are slightly different:\n  - The Weather Network's page shows Tuesday as cloudy with sunny breaks in the morning at 8° and mainly cloudy in the afternoon at 14°, with a 30% chance of precipitation. Overnight it shows light rain, with an 80% chance and 2–4 mm. That page was marked 40 days old, so its timing is uncertain.\n  - Yr.no shows Tuesday 13 Oct as cloudy through the day with rain in the evening, 14°/10°, 1.3 mm precipitation. This page was marked 70 days old, so its timing is uncertain.\n- The general picture across these: mostly cloudy, highs around 14–15°C, with rain or showers arriving Tuesday evening or overnight.\n\n**Vancouver, WA, USA**\n- The National Weather Service forecast for Vancouver WA says Tuesday: mostly sunny, with a high near 64. Tuesday night: mostly cloudy, low around 48. A Frost Advisory runs from 12:00 AM to 8:00 AM on October 13. The page was marked 76 days old, so its timing is uncertain.\n- Weather Underground shows Tue 10/13: 65° / 45°.\n- AccuWeather shows a high of 64° and low of 45° on Tue 10/13. It describes the day as times of clouds and sun, with a mostly cloudy night and a shower late. This page was marked 139 days old, so its timing is uncertain.\n- Timeanddate shows Tue Oct 13: overcast, 64 / 41 °F, with a 0% chance of precipitation.\n- Fox Weather shows times of sun and clouds, highs in the upper 60s and lows in the mid 40s.\n- The general picture across these: dry, highs of about 64–68°F, a cold early morning near freezing with frost possible, and clouds increasing at night.\n\nSeveral of these pages carry stale age labels, so I'm treating the Environment Canada (BC) and NWS (WA) pages as the most reliable.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 14419
+}

@@ -126,6 +126,10 @@ export const channelMessageReceivedPayloadSchema = z.object({
   channel_message_id: z.string().uuid(),
   provider_message_id: z.string().min(1),
   received_at: z.string().datetime(),
+  // Whether the text arrived in a group chat, as the door saw it. The row cannot say, so
+  // the door's bit rides here. Optional because a job queued before it existed, or
+  // re-driven by the reconciler from the row alone, does not carry it.
+  in_group: z.boolean().optional(),
 });
 export type ChannelMessageReceivedPayload = z.infer<typeof channelMessageReceivedPayloadSchema>;
 

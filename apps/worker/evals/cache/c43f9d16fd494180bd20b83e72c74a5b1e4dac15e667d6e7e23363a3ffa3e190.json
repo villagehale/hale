@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Melatonin at low-to-moderate doses (5 mg daily or less) for short periods appears safe and well tolerated",
+        "from": "melatonin taken in low-to-moderate doses (e.g., 5 mg daily or less) for short periods appears safe and well-tolerated"
+      },
+      {
+        "states": "Common side effects are minor, such as headache and sleepiness, and go away when use stops",
+        "from": "common side effects are minor and resolve once use stops. The most frequent are headache and somnolence (fatigue)"
+      },
+      {
+        "states": "Long-term effects are not well established",
+        "from": "The long-term effects are not well established"
+      },
+      {
+        "states": "A preliminary AHA 2025 study linked 12 months or more of use in adults with insomnia to more heart failure, but cannot prove cause and effect",
+        "from": "A preliminary study was presented at the American Heart Association (AHA) Scientific Sessions in November 2025. The AHA itself says the study cannot prove a cause-and-effect relationship."
+      },
+      {
+        "states": "A later 2026 analysis found no significant association",
+        "from": "A later analysis disagrees. A Masters of Longevity summary says a 2026 analysis found no significant association"
+      },
+      {
+        "states": "Some sources flag possible interactions with blood thinners and antidepressants",
+        "from": "One source lists possible interactions with blood thinners and antidepressants"
+      }
+    ],
+    "answer": "Short term, at low doses (5 mg or less a night) for short periods, it looks fine for most adults. The common side effects are headache and feeling drowsy, and they go away when you stop. Long term is the unclear part. A preliminary heart study from the AHA last November linked a year or more of use in people with insomnia to more heart failure, but it can't prove melatonin caused it, and a later 2026 analysis found no significant link, so the long-term picture still isn't settled. Some sources also flag interactions with blood thinners and antidepressants, so if you take either, check with a doctor or pharmacist first."
+  },
+  "latencyMs": 9289
+}

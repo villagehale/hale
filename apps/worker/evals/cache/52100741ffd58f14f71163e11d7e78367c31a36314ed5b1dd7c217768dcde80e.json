@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Hale correctly takes the parent's pasted course link and says it is watching, with texting within about ten minutes, which matches the watch_for_opening capability. But it adds two details nothing in knows backs: the overnight next-morning deferral, and the speculative waitlist caveat. That makes three sentences where one would do, and the extra claims are not traceable.",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with the strongest pick, Halton Hills Gymnastics Centre, by name and attributes it ('their site says'). It has no link and no question. Because watch=true, the first-person 'I'll keep watching and text you' is a real commitment. Under no_page_read, the gap wording 'I could not pin down the price/day' is correctly first person rather than an unearned 'not posted yet'. All three picks are real, local and age-fitting, from the venue's own site or the Town's own site. Three problems hold it back. First, 'Saturdays 9:00 to 10:45' merges three separate 30-minute slots into what reads like one 1h45 class, a distortion of the picks' time data. Second, the skating pick has no day or session start, which watchFor requires of every pick. Third, the Tiny Dancers and skating details carry no attribution and read as stated fact.",
+    "score": 3
+  }
+}

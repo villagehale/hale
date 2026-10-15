@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real and local: Halton Hills Gymnastics Centre in Georgetown, which is within Halton Hills. Both come from the venue's own pages, fit the toddler stage, and carry a session start or a day. The message leads with the best pick by name, attributes with \"their site says\", has no link and no question, and invents no detail; the times and $15 price all match the picks. Since watch is TRUE, the first-person \"I'll keep watching and text you\" is correct. It makes no negative claim about what a page carries; \"I could not confirm this year's dates\" is an earned first-person gap under no_page_read. One gap goes unnamed: Parent and Tot has a null price, and the message does not mention it. It also drops the caveat that spots may already be taken mid-session. Neither invents anything, but the gap is not named in the form the rubric asks for, so this falls just short of a 5.",
+    "score": 4
+  }
+}

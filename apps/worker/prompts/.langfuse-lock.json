@@ -17,12 +17,12 @@
   "drafter": {
     "name": "drafter",
     "version": 1,
-    "sha256": "102257c4cad313b48e7368a70c32cc500caf5c11aaa23c09cd3b985a471c5066"
+    "sha256": "eb64fcfeb6198713d6b34eb61cb3e31dbaff0e2ec423a6062cbdcb4a06f5a8d2"
   },
   "memory-inferencer": {
     "name": "memory-inferencer",
     "version": 1,
-    "sha256": "27bc5302b37eb90ea9f08446b4077e08668d6d6624f7b94c1049f0455a081951"
+    "sha256": "94d65375bc5ce1be4b4331d137479b7ecc2442840a0bd7a36fc1a94d3eb1edde"
   },
   "packs/child": {
     "name": "packs/child",

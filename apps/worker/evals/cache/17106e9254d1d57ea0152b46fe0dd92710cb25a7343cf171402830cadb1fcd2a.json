@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "x = 5 is correct, so no wrong fact. It's short and clear, but it leads with a mini worked solution before the answer, edging toward the 'worked lesson' watchFor warns against rather than a friend just texting back 'x = 5'.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

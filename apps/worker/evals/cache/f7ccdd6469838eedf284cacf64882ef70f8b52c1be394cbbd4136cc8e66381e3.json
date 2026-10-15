@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and correctly cited to the programme page. Age band, days, times and dates are exactly as printed. Price is correctly null: the rental figures ($185 birthday, $95 meeting room) were not borrowed. No registration date is printed, so none is owed. The message leads with the named programme and attributes the facts ('their site says') rather than claiming to have confirmed them. It is plain ASCII, with no link and no question. Under page_has_schedule it uses the correct first-person gap ('I could not pin down the price'), not 'not posted yet'. With watch=true, the first-person keep-watching commitment is correct. Minor nit: it could have relayed that the page says fees are at the front desk, but nothing is fabricated or withheld in a misleading way.",
+    "score": 5
+  }
+}

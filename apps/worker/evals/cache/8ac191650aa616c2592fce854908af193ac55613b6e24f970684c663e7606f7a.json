@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Low-to-moderate short-term doses (around 5 mg or less) appear safe and well tolerated",
+        "from": "melatonin taken in low-to-moderate doses (e.g., 5 mg daily or less) for short periods appears safe and well-tolerated"
+      },
+      {
+        "states": "Common side effects are minor and go away when use stops, mainly headache and sleepiness",
+        "from": "common side effects are minor and resolve once use stops. The most frequent are headache and somnolence (fatigue)"
+      },
+      {
+        "states": "Long-term safety is not well established",
+        "from": "The long-term effects are not well established"
+      },
+      {
+        "states": "A preliminary study linked 12+ months of use with higher heart failure risk, not peer-reviewed, and cannot prove cause",
+        "from": "Adults with insomnia who used melatonin for 12 months or more had about a 90% higher chance of incident heart failure; The AHA itself says the study cannot prove a cause-and-effect relationship; abstracts presented at AHA meetings are not peer-reviewed"
+      },
+      {
+        "states": "A later 2026 analysis found no significant association, and only its summary was seen",
+        "from": "A Masters of Longevity summary says a 2026 analysis found no significant association; I saw only the summary, not the paper"
+      },
+      {
+        "states": "Experts advise against chronic use without a proper indication",
+        "from": "melatonin should not be taken chronically without a proper indication"
+      },
+      {
+        "states": "Supplement content varies widely",
+        "from": "supplement content varies widely"
+      },
+      {
+        "states": "Possible interactions with blood thinners and antidepressants",
+        "from": "possible interactions with blood thinners and antidepressants"
+      }
+    ],
+    "answer": "For short-term use at low doses (around 5 mg or less), it looks fine for most adults. Side effects are usually mild, like headache or grogginess, and they fade when you stop. Long-term safety is less clear. A preliminary study presented in November 2025 linked 12+ months of use with higher heart failure risk, but it isn't peer-reviewed and can't prove cause, and a later analysis found no link (I only saw a summary of that one). Some experts say not to use it long-term without a good reason. Supplement strength also varies a lot, and it can interact with blood thinners and antidepressants, so check with a doctor or pharmacist if you take either."
+  },
+  "latencyMs": 8391
+}

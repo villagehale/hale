@@ -1,6 +1,6 @@
 // Anthropic retired Haiku 3.5. A request that still names that family
 // (the floating alias or the dated snapshot) fails at the API. The house id
-// is HAIKU_MODEL in packages/agent/src/model.ts (`claude-haiku-4-5`).
+// is HAIKU_MODEL in packages/agent/src/model.ts (`claude-haiku-5-5`).
 //
 // The family name is assembled at runtime so this file is not itself a hit.
 
