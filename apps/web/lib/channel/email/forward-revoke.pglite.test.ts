@@ -571,15 +571,18 @@ describe('the confirm survives Hale s own clarifying turn', () => {
       resolver: CANNOT_PLACE,
       coachReply: 'Which one did you mean?',
     });
-    expect(await menuKinds(seeded)).toEqual(['approval', 'forward_address_revoke']);
+    // An unplaced yes carries no polarity, so the menu is not minted. The
+    // later reading names the question.
+    expect(await menuKinds(seeded)).toEqual([]);
   }
 
   it('offers the revoke on the menu and then honours the pick - once, with both rows', async () => {
     const seeded = await seedReachableFamily();
     await askThenMenu(seeded);
+    const askId = await askMessageId(seeded);
 
     const pick = await text(seeded, 'the forwarding address one', PICKED_AT, {
-      resolver: CANNOT_PLACE,
+      resolver: placesTheRevoke(askId),
     });
 
     expect(pick.handler).toBe('forward_address');

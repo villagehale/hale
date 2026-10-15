@@ -857,7 +857,12 @@ async function runToddlerJourney(): Promise<Journey> {
     primaryParentName: null,
     conversationId: null,
     now: SEQUENCE_AT,
-    resolved: null,
+    resolved: {
+      kind: 'approval',
+      questionId: draftedAction.id,
+      polarity: 'yes',
+      confidence: 'high',
+    },
     openQuestions: async () => [],
   } as never);
   const approvedPayload =
