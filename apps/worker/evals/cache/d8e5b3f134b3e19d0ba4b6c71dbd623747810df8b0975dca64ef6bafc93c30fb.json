@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Correctly identifies Hale, the company, accountable person Barton Dong, website and email, all from given facts, in English, not defensive. Minor gap: it doesn't address how the number was obtained, which the parent asked about, though the purpose only required identity and contact. Opt-out line is a reasonable addition, not invented facts."
+  }
+}

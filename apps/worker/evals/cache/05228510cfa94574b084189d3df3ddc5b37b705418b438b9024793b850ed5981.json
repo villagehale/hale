@@ -1,0 +1,27 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Parent and Tot, Halton Hills Gymnastics Centre (36 Armstrong Avenue, Georgetown)",
+        "age_fit": "18 months - 3.11 yrs, with parent participation, 30 min class",
+        "when": "Fall 2026 session Sept 12 - Dec 18 (14 weeks); weekly class times are in their Fall 2026 schedule PDF. Registration opened July 20",
+        "source_name": "Halton Hills Gymnastics Centre"
+      },
+      {
+        "name": "Parent and Tot swimming lessons (Parent and Tot 1/2/3), Acton Lion's Indoor Pool and Gellert Community Centre",
+        "age_fit": "Parent and Tot 2: 12 to 24 months; Parent and Tot 3: 2 to 3 years old (Parent and Tot 1 is 4 to 12 months)",
+        "when": "Fall: Acton Oct 3 - Dec 3, 2026; Gellert evenings and weekends Oct 3 - Dec 7, 2026. Non-residents can register from Tuesday, Sept 8",
+        "price": "$86.22 for 9 lessons (30 minute lesson, Acton fall schedule)",
+        "source_name": "Town of Halton Hills"
+      },
+      {
+        "name": "Pre-school Drop In, Halton Hills Gymnastics Centre",
+        "age_fit": "Under 4 yrs (one of their pages says 4 and under); a parent stays with the child",
+        "when": "Tuesdays and Thursdays 9:30am - 12:00pm, school year only. Their pages disagree on the start date (Sept 15 on one, Oct 9 on another)",
+        "price": "$15 for one parent and up to 4 children; no pre-registration, first come",
+        "source_name": "Halton Hills Gymnastics Centre"
+      }
+    ]
+  },
+  "latencyMs": 12223
+}

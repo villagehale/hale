@@ -83,5 +83,125 @@
       },
       "diagnostics": null
     }
+  },
+  "a74f1d5ff985b0501835cd0b59fdd26126e0634b2eb1d48a35f1742afaac8981": {
+    "key": "a74f1d5ff985b0501835cd0b59fdd26126e0634b2eb1d48a35f1742afaac8981",
+    "recordedAt": "2026-10-15T03:49:09.459Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Gellert Community Centre has Parent and Tot swim Mondays 10:00-10:30AM, Oct 5 to Dec 7, $86.22 for 9 lessons - the Town of Halton Hills site says. Registration opens Tuesday, September 1."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg3LgMK2bZEoCuXon34kM",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":false,\"reason\":\"The message gives the day, time, dates, price, and registration opening date. It does not say the venue has not posted, published or listed any schedule detail.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 438,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 63,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
+  },
+  "6c2843d53352aec97c1daf22f8736f5f5fef76450603e47b9e0a6033ec3630ba": {
+    "key": "6c2843d53352aec97c1daf22f8736f5f5fef76450603e47b9e0a6033ec3630ba",
+    "recordedAt": "2026-10-15T03:49:20.502Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Gellert Community Centre has Parent and Tot 1, 2 and 3 swim, for 4 months to 3 years - Town of Halton Hills' site says, and registration opens Tuesday, Sept 1. I could not pin down the day or the price; I'll keep watching and text you when I do."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg3LhAwiVxFTcES7g4mpu",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":false,\"reason\":\"The message only says the assistant could not pin down the day or price and will keep watching. It does not claim that the venue or the Town of Halton Hills site has not posted, published or listed those details.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 447,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 76,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
+  },
+  "21ef35791626e132b74de7e67cb07a184b6c46d1ed664ecf80ee8d05818af326": {
+    "key": "21ef35791626e132b74de7e67cb07a184b6c46d1ed664ecf80ee8d05818af326",
+    "recordedAt": "2026-10-15T03:49:31.601Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Gellert Community Centre has Parent and Tot swim levels 1, 2 and 3 (4 months to 3 years), the Town of Halton Hills site says, though no days, times or price are on their page yet. Registration opens Tuesday, September 1. I'll keep watching and text you when they post them."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg3Li11CeNRmoExtd5u9f",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":true,\"reason\":\"The message states that no days, times or price are on the venue's page yet, meaning the venue has not posted those schedule details, and that the assistant will watch for them to be posted.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 448,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 71,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
   }
 }

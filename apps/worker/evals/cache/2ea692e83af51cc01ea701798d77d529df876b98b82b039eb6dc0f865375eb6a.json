@@ -1,0 +1,13 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Canada Agriculture and Food Museum",
+        "age_fit": "Youth (ages 3 to 17); Child (age 2 and under) free",
+        "price": "Youth (ages 3 to 17) $12.75 regular, taxes not included; age 2 and under free",
+        "source_name": "Ingenium"
+      }
+    ]
+  },
+  "latencyMs": 6629
+}
