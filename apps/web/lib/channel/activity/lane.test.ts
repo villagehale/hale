@@ -288,7 +288,7 @@ describe('a pick is whole or it is not a pick', () => {
 
     // Dropping the only pick empties the list, which is the honest `no_picks` outcome and
     // NOT a retry: the search ran.
-    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
+    expect(await finder.find(QUERY)).toMatchObject({ found: false, reason: 'no_picks' });
     restore.mockRestore();
   });
 
@@ -454,7 +454,7 @@ describe('failure is named, and tried twice', () => {
       }),
     );
 
-    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
+    expect(await finder.find(QUERY)).toMatchObject({ found: false, reason: 'no_picks' });
     // One grounding plus the one read pass (needsReadPass); the whole attempt is not retried.
     expect(grounds).toBe(2);
     restore.mockRestore();
@@ -548,7 +548,7 @@ describe('the read pass: real search results never end empty without reading pag
     const finder = createActivityFinder(
       makeClient({ ground: groundResult(30), compose: composes({ picks: [] }) }, seen),
     );
-    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
+    expect(await finder.find(QUERY)).toMatchObject({ found: false, reason: 'no_picks' });
     expect(grounds(seen).map(fetchGranted)).toEqual([false, true]);
   });
 
@@ -560,5 +560,21 @@ describe('the read pass: real search results never end empty without reading pag
     );
     await finder.find({ ...QUERY, subject: 'Cartwheels Gym parent and tot' });
     expect(grounds(seen).map(fetchGranted)).toEqual([true]);
+  });
+});
+
+describe('an empty find says what it searched', () => {
+  it('returns the town and the capped research with no_picks', async () => {
+    quiet();
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(5), compose: composeResult({ picks: [] }) }),
+    );
+    const result = await finder.find(QUERY);
+    expect(result).toMatchObject({
+      found: false,
+      reason: 'no_picks',
+      searched: { town: 'Halton Hills' },
+    });
+    expect(result.found === false && result.searched?.notes.length).toBeGreaterThan(0);
   });
 });

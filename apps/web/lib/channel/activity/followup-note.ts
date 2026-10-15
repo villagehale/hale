@@ -6,6 +6,7 @@ import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
+import type { EmptySearch } from './lane';
 import type { ActivityPick } from './lane';
 
 /**
@@ -121,6 +122,12 @@ export interface FollowUpGrounding {
    * commitment is a row that existed before the sentence claimed it.
    */
   watch: boolean;
+  /**
+   * WHERE AN EMPTY SEARCH LOOKED AND WHAT IT SAW (lane.ts `EmptySearch`). Only an empty
+   * shallow search carries it, and it reaches the composer only when `picks` is empty, so
+   * every message with a find is composed from exactly the payload it always was.
+   */
+  searched?: EmptySearch;
 }
 
 export interface FollowUpComposer {
@@ -173,7 +180,12 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     // is not silence — `picks_empty` is the one fact this message is about, and an omitted
     // key reads to a model as a field it may fill in (rule #11).
     ...(grounding.picks.length === 0
-      ? { picks_empty: true }
+      ? {
+          picks_empty: true,
+          ...(grounding.searched
+            ? { searched: { town: grounding.searched.town, notes: grounding.searched.notes } }
+            : {}),
+        }
       : { page_evidence: grounding.pageEvidence }),
     watch: grounding.watch,
     picks: grounding.picks.map((pick) => ({

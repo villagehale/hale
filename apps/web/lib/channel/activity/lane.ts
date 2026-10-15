@@ -192,9 +192,23 @@ export type ActivityFailure =
    */
   | 'over_budget';
 
+/**
+ * WHAT AN EMPTY SEARCH LOOKED AT. Carried on `no_picks` only, so the follow-up text that
+ * reports nothing can say where Hale looked and what it did turn up (r19, 2026-10-15: the
+ * judge scored an honest empty message 3 because the composer had been handed neither).
+ * `notes` is the grounding turn's own research, from a de-identified query, capped.
+ */
+export interface EmptySearch {
+  town: string | null;
+  notes: string;
+}
+
+/** The research handed to an empty-result composer is bounded, like every other payload. */
+export const EMPTY_SEARCH_NOTES_CAP = 4_000;
+
 export type ActivityFindResult =
   | { found: true; picks: ActivityPick[] }
-  | { found: false; reason: ActivityFailure };
+  | { found: false; reason: ActivityFailure; searched?: EmptySearch };
 
 export interface ActivityFinder {
   find(query: ActivityQuery): Promise<ActivityFindResult>;
@@ -204,6 +218,7 @@ class ActivityUnresolvable extends Error {
   constructor(
     readonly reason: ActivityFailure,
     readonly detail?: string,
+    readonly searched?: EmptySearch,
   ) {
     super(reason);
     this.name = 'ActivityUnresolvable';
@@ -435,7 +450,7 @@ async function runActivityOnce(
   // Phase 1 + 2, as one step so the read pass (needsReadPass) can run it again.
   const groundAndCompose = async (
     readPages: boolean,
-  ): Promise<{ picks: ActivityPick[]; searchResults: number }> => {
+  ): Promise<{ picks: ActivityPick[]; searchResults: number; notes: string }> => {
     // Phase 1 — GROUND. Bounded at MAX_SEARCHES: the provider bills per search, and a cost
     // nobody can see is the one that runs away.
     let research: Anthropic.Message;
@@ -501,15 +516,24 @@ async function runActivityOnce(
     } catch (err) {
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
-    return { picks: toPicks(composed.picks), searchResults: evidence.searchResults };
+    return {
+      picks: toPicks(composed.picks),
+      searchResults: evidence.searchResults,
+      notes: researchNotes,
+    };
   };
 
-  let { picks, searchResults } = await groundAndCompose(false);
+  let { picks, searchResults, notes } = await groundAndCompose(false);
   if (needsReadPass(query, { searchResults }, picks)) {
     console.error({ searchResults }, 'activity lane: no picks off snippets - reading pages once');
-    ({ picks } = await groundAndCompose(true));
+    ({ picks, notes } = await groundAndCompose(true));
   }
-  if (picks.length === 0) throw new ActivityUnresolvable('no_picks');
+  if (picks.length === 0) {
+    throw new ActivityUnresolvable('no_picks', undefined, {
+      town: query.town,
+      notes: notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
+    });
+  }
   // The never-a-directory ceiling, enforced after the model rather than asked of it. It
   // TRIMS rather than failing: four good finds is a model being generous, and costing the
   // parent all four over the fourth would be the wrong trade. Logged, because a schema
@@ -552,7 +576,11 @@ export function createActivityFinder(client: () => AgentClient): ActivityFinder 
         } catch (err) {
           logActivityFailure(err, attempt);
           if (err instanceof ActivityUnresolvable && err.reason === 'no_picks') {
-            return { found: false, reason: 'no_picks' };
+            return {
+              found: false,
+              reason: 'no_picks',
+              ...(err.searched ? { searched: err.searched } : {}),
+            };
           }
           if (attempt === 2) {
             return {

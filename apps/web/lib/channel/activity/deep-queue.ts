@@ -183,11 +183,7 @@ export async function dispatchDeepResearch(
       retry: DEEP_RESEARCH_RETRY,
       deadLetter: DEEP_RESEARCH_DLQ,
     });
-    const created = await queue.send(
-      DEEP_RESEARCH_QUEUE,
-      payload,
-      deepResearchJobOptions(payload),
-    );
+    const created = await queue.send(DEEP_RESEARCH_QUEUE, payload, deepResearchJobOptions(payload));
     return created ? { status: 'enqueued' } : { status: 'already_queued' };
   } catch (err) {
     // Ids and a class, never the payload — and the sentence says what the parent loses,

@@ -176,11 +176,18 @@ function composeUserMessage(q, researchNotes) {
  * pages: a model that never sees a page fact cannot blame a page for a programme that does
  * not exist ("I could not get into any pages today for toddler underwater basket weaving",
  * 2026-08-24). */
-function followUpUserMessage(subject, picks, pageEvidence, watch) {
+// Mirrors `EMPTY_SEARCH_NOTES_CAP` (activity/lane.ts).
+const EMPTY_SEARCH_NOTES_CAP = 4_000;
+
+function followUpUserMessage(subject, picks, pageEvidence, watch, searched) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
-    ...(picks.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
+    // An empty search carries where it looked and what it read (lane.ts `EmptySearch`);
+    // a message with a find is composed from exactly the payload it always was.
+    ...(picks.length === 0
+      ? { picks_empty: true, ...(searched ? { searched } : {}) }
+      : { page_evidence: pageEvidence }),
     watch,
     picks: picks.map((pick) => ({
       name: pick.name,
@@ -1240,7 +1247,10 @@ async function main() {
               lane: subjectLane,
               system: skill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, kept, pageEvidence, watch),
+                followUpUserMessage(fixture.subject, kept, pageEvidence, watch, {
+                  town: fixture.town,
+                  notes: ground.notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
+                }),
                 violations,
               ),
               toolName: 'followup_text',

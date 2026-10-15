@@ -19,6 +19,7 @@ import {
   type FollowUpPick,
   asksTheParent,
 } from './followup-note';
+import type { EmptySearch } from './lane';
 import { statesAFigure, statesNoCost } from './quote-match';
 import { type ActivitySharePage, SLOTS_IN_TEXT, withSharePage } from './share-page';
 
@@ -195,6 +196,8 @@ export interface FollowUpDeliveryInput {
    * refutation - see `FollowUpGrounding.pageEvidence`. */
   pageEvidence: PageVerdict;
   evidence: FollowUpEvidence;
+  /** An empty shallow search's area and research (lane.ts `EmptySearch`), if any. */
+  searched?: EmptySearch;
 }
 
 /** What became of one delivery. Named rather than void, and never folded: `deferred` is
@@ -243,6 +246,7 @@ export async function deliverFollowUp(
     picks: input.picks,
     pageEvidence: input.pageEvidence,
     watch,
+    ...(input.searched ? { searched: input.searched } : {}),
   });
   if (composed.status === 'deferred') {
     console.error(

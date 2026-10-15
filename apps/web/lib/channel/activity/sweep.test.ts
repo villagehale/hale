@@ -404,7 +404,15 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
   function payable(overrides: Parameters<typeof harness>[0] = {}) {
     return harness({
       due: [CARTWHEELS_DUE],
-      deep: { status: 'read', slots: SLOTS, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 1, pageVerdict: 'page_has_schedule' },
+      deep: {
+        status: 'read',
+        slots: SLOTS,
+        searchResults: 8,
+        pagesRead: 2,
+        pagesStale: 0,
+        pagesRefused: 1,
+        pageVerdict: 'page_has_schedule',
+      },
       ...overrides,
     });
   }
@@ -520,7 +528,15 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     armed();
     const h = harness({
       due: [CARTWHEELS_DUE],
-      deep: { status: 'read', slots: [], searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0, pageVerdict: 'page_has_schedule' },
+      deep: {
+        status: 'read',
+        slots: [],
+        searchResults: 8,
+        pagesRead: 2,
+        pagesStale: 0,
+        pagesRefused: 0,
+        pageVerdict: 'page_has_schedule',
+      },
       compose: { status: 'composed', message: 'I read their fall page and there is nothing up.' },
     });
 
@@ -542,7 +558,15 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     }));
     const h = harness({
       due,
-      deep: { status: 'read', slots: SLOTS, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0, pageVerdict: 'page_has_schedule' },
+      deep: {
+        status: 'read',
+        slots: SLOTS,
+        searchResults: 8,
+        pagesRead: 2,
+        pagesStale: 0,
+        pagesRefused: 0,
+        pageVerdict: 'page_has_schedule',
+      },
     });
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);

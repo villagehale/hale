@@ -99,7 +99,10 @@ describe('refuteSlots', () => {
 
   it('drops a fact whose quote is on a DIFFERENT page than the one the row cites', () => {
     // The $86.22 is real and is on the municipal page. This row cites the gym.
-    const crossed = backedRow({ price: '$86.22 for nine lessons', price_quote: '$86.22 for nine lessons' });
+    const crossed = backedRow({
+      price: '$86.22 for nine lessons',
+      price_quote: '$86.22 for nine lessons',
+    });
 
     const result = refuteSlots([crossed], PAGES);
 

@@ -536,3 +536,27 @@ describe('a continuation row must be spoken for', () => {
     expect(followUpViolations(promised, grounding({ watch: true }))).toEqual([]);
   });
 });
+
+describe('an empty search tells the composer where it looked', () => {
+  const searched = { town: 'Halton Hills', notes: 'what the search read' };
+  const base = { subject: 'toddler swim', pageEvidence: 'no_page_read' as const, watch: true };
+
+  it('carries the area and the research only when there are no picks', () => {
+    const empty = JSON.parse(followUpUserMessage({ ...base, picks: [], searched }));
+    expect(empty.picks_empty).toBe(true);
+    expect(empty.searched).toEqual(searched);
+  });
+
+  it('leaves a message with a find composed from the payload it always had', () => {
+    const pick = {
+      name: 'n',
+      ageFit: 'a',
+      when: null,
+      price: null,
+      sourceName: 's',
+      source: 'web' as const,
+    };
+    const withFind = followUpUserMessage({ ...base, picks: [pick], searched });
+    expect(withFind).toBe(followUpUserMessage({ ...base, picks: [pick] }));
+  });
+});
