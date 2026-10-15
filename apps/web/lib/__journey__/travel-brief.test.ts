@@ -577,8 +577,13 @@ describe(
         childEvidence: 'named_traveller',
         nights: 3,
       });
+      // The receipt counts the picks the parent got, not a number typed here: the renderer
+      // keeps a pick only while the body stays under the SMS segment ceiling
+      // (travel/copy.ts renderTravelBrief), so a long recorded name can leave one pick out.
+      const sentPicks = picks.filter((pick) => named(pick.name)).length;
+      expect(sentPicks).toBeGreaterThan(0);
       expect(audit.find((e) => e.verb === 'travel_brief_sent')?.after).toEqual({
-        picks: 2,
+        picks: sentPicks,
         merged: 0,
       });
       expect(JSON.stringify(audit)).not.toContain('New York');
