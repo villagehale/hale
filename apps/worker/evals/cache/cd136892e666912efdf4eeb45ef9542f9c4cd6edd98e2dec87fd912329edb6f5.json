@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cg39B1Ex9N2Mr1UawKVSA",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/AYKEAgSGAI4AUIIdGhpbmtpbmcSDC2vG34DwiOgzfyQCBoMsZTm3QBuQq5qx5spIjAAVpn1EUs+oj8y0Tyh7vAw6tBvF3nRlQ7rSEHbbuC3DJ1B2dDuCVEBFIiMJZU4fwwqmQazFsiB1VhwOdWVDYmOuvOnD+H87Tlmpx4CDKjZYSPeppaSrJKsjHAWH5Bv8jHCzUhMjeO9m8olr/2tvJtldvloO7zrc4ua3iCrCvPY9vTM94c/fr2hFv/DZCuezpEy/UvnZVDSXxnzxVdvgdNiRGm1OYHmgQF+P3rqd2cbMPvM8HpBzg1Nif2Qv4d7LAlnPEZqrS+eKfpijB6snJhk8yYEkcWMHBZ1pMP6m/Mf4sRFvmO7AMCSKf4py0IcgzchPW1CZM4neA9+0jg+hAzKae7MDNBH7m4RXtwshDEAzWZkYWY2Rg1LUFogpuwg4uSwPqjcKyR8vXOhqk5rIOwP2zRkNhLir12qhSgXaJq9FrPdQTA+OKtyHC/8yTHOFpSC8Ami7rtoI3EtTnfp1g1ixt5meltOLN47GN48q87pPsWFtcrc4Cf0DYdC4nYYNbg8+YeKLY+iP7QkFFcJA8P18zc3SHc9szq3Ry7ky0CbQW7EOIlSYh2PLc//o2u9zVHLNGVSunMiV1OJ5Cg4Eka1RXA/Pojd0OWbfMFV9byY3SGIm+QUbZscahL7KRXQrZvr4i9p3Ymh1b6jTNGF43QbGMT3Li+xQi/LR5bW/IP3OWEaViJwxK2MGBzjs8sa+7t5nBSGSTGysc67W9eNsLAGfvxD7KPjnnAgz9Xf+n8pQEhtCYf5jS5ooRpSDzdEiq00PieRnYyy1kwL3EKBZwpZ3W/988crdRC4zgGfd/j0MAspQIjKeJTnM/sHtHDZnrH+uF9oKEYMocZFDah+IcVVd0rc1cLa7etq2HlLsagk8I1bg0sxKJSeVRoiLaC73skEBF0cb0y3Exoac9zcaVY7HPJX9DEZcHth7mWYj7pbpHEeU5JVDrdJLU4FvA6oZ/9zPphyE7FuWz3cqKUC+LmF6k1/jq1u7YubJ7AF2kwhrru8toG/6n8IoD8ksPv6MboOSfoVI2WW7orkJbkF23mDupnuBJ1rAe/2q028V6mFi0ImB9TuSKvVTGuUZAihJjVMcCLp5NoI+77HI4v+zbysFYZ+m3O9BvVzXNAhGAE="
+      },
+      {
+        "type": "text",
+        "text": "Saturday you've got soccer practice at 10:00am at Cedarvale Park. Afterward there's Fanous lantern craft, Saturday afternoon and free, per Toronto Public Library's program page. It's listed for ages 6-12, so it suits Ada but Milo is a bit under."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1511,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20754,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 195,
+      "output_tokens_details": {
+        "thinking_tokens": 96
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2301
+}

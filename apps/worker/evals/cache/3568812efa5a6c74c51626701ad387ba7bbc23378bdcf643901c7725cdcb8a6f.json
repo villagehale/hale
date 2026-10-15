@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "There is a single pick, and it is the venue the parent named (Cartwheels Gym Centre). It comes from that venue's own site, and the toddler age fit is plausible. The message leads with it by name and attributes the facts with \"their site says.\" Under page_has_schedule it names the gap correctly in the first person (\"I could not pin down the day or the price\") rather than saying the details are not posted. Since watch is true, the first-person promise to keep watching is backed by a row that exists. It invents no times or prices, contains no link and asks no question.",
+    "score": 5
+  }
+}

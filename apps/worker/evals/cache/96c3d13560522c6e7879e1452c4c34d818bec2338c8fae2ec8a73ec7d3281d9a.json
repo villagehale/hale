@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, named Oakville providers, each sourced from its own site, which fits the preschool stage. The message leads with the Town of Oakville program by name. It handles no_page_read correctly in the first person ('I could not get into the page today') rather than claiming nothing was posted. Because watch is true, it rightly closes with a first-person 'I'll keep watching and text you'. It has no question and no link, and it invents no times or prices. Weaknesses: 'their site says' dangles awkwardly and attaches to nothing concrete. The YMCA and Making Waves classes are stated as fact without attribution, and their own day, time and price gaps are not named.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are on the page, with the Saturday times and the Sept 12 to Nov 28 dates exactly as printed, and both cite the page. Price is correctly null, since the page prints no fee. Both slots carry the Aug 11, 7 a.m. resident registration opening, and the message carries it too. The message leads with the named program, attributes with 'their site says' and is plain ASCII with no link and no question. Under page_has_schedule it phrases the missing price in the first person rather than saying 'not posted'. It also makes the first-person watch commitment, which is backed by watch=true. Minor gaps: it could have said fees are in the Recreation Guide, and the watch line could say it will text when fees post.",
+    "score": 5
+  }
+}

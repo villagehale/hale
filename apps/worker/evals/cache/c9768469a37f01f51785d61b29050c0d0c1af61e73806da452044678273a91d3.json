@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads by name with a real, local, age-fitting pick and attributes it with \"their site says\" rather than claiming to have confirmed it. Its facts match the picks, with no invented time or price. It has no link and no question. Because watch is true, the first-person \"I'll keep watching and text you\" is earned, and it makes no negative claim about a page, so no_page_read is not violated. However, it silently drops the third pick, Tiny Dancers ages 2-3 at Gellert Community Centre, a genuine find whose null day and price should have been named. Under no_page_read the right line was \"I could not pin down the day or the price\", not omission. It also writes around Parent and Tot's missing price rather than saying it could not pin it down. Leaving out a real find is withholding.",
+    "score": 3
+  }
+}
