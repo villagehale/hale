@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { readSameActivityChoice } from './choice';
+import type { SameActivityChoice } from './choice';
 import {
   type SameActivityReply,
   deliverSameActivityReply,
@@ -144,11 +144,13 @@ export async function answerSameActivity(
     body: string;
     activity?: string;
     language?: ReplyLanguage;
+    /** The model's reading. Null is unread. The body is not scanned. */
+    choice: SameActivityChoice | null;
   },
 ): Promise<SameActivityAnswer> {
   const activityKey = parseActivityKey(input.activityKey);
   if (!activityKey) return { status: 'refused', reason: 'invalid_activity' };
-  const choice = readSameActivityChoice(input.body);
+  const choice = input.choice;
 
   if (choice === 'no') {
     const revoked = await revokeHouseholdOptIn(database, {

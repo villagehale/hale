@@ -80,7 +80,6 @@ import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
-import { createHoldingLine } from './holding-line';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
 import {
@@ -105,6 +104,7 @@ import {
   villageIntroHandler,
   weekdayCareHandler,
 } from './handlers';
+import { createHoldingLine } from './holding-line';
 import {
   type OpenQuestionReader,
   type OpenQuestionReaderOptions,
@@ -720,6 +720,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     saidLine: createSaidLineWriter(screenClient),
     turnReader: sharedOptOutReader(),
     weekdayCareReader: createWeekdayCareReader(screenClient),
+    consent: createConsentReader(screenClient),
     consentAsk: createConsentAskWriter(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
     // spent by the next inbound. No model and no client: picking one of a handful of

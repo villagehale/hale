@@ -72,6 +72,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-1',
       body: 'meet',
+      choice: 'meet',
     });
     seen.restore();
 
@@ -91,6 +92,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-opted',
       body: 'meet',
+      choice: 'meet',
     });
     const [optIn] = await db.database
       .select({ id: schema.sameActivityOptIns.id })
@@ -136,6 +138,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-a',
       body: 'Meet.',
+      choice: 'meet',
     });
     expect(first).toMatchObject({ status: 'waiting', recorded: 'created' });
     if (first.status !== 'waiting') throw new Error('expected waiting');
@@ -151,6 +154,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-b',
       body: 'meet',
+      choice: 'meet',
     });
     expect(second).toMatchObject({
       status: 'mutual',
@@ -190,6 +194,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-a-2',
       body: 'meet',
+      choice: 'meet',
     });
     expect(again).toMatchObject({ status: 'mutual', recorded: 'already' });
     const rows = await db.database.select().from(schema.sameActivityOptIns);
@@ -205,6 +210,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-meet',
       body: 'meet',
+      choice: 'meet',
     });
     const joined = await answerSameActivity(db.database, {
       familyId: b.familyId,
@@ -212,6 +218,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-join',
       body: 'join',
+      choice: 'join_group',
     });
     expect(joined.status).toBe('waiting');
     expect(joined).not.toHaveProperty('counterpartFamilyIds');
@@ -223,6 +230,7 @@ describe('same-activity offer', () => {
       activityKey: OTHER_KEY,
       messageId: 'm-other',
       body: 'meet',
+      choice: 'meet',
     });
     expect(elsewhere).toMatchObject({ status: 'waiting' });
     expect(JSON.stringify(elsewhere)).not.toContain(a.familyId);
@@ -237,6 +245,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-a',
       body: 'join',
+      choice: 'join_group',
     });
     await answerSameActivity(db.database, {
       familyId: b.familyId,
@@ -244,6 +253,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-b',
       body: 'join',
+      choice: 'join_group',
     });
 
     vi.stubEnv(SAME_ACTIVITY_MEET_ENABLED_ENV, '');
@@ -253,6 +263,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-no',
       body: 'no',
+      choice: 'no',
     });
     expect(declined).toEqual({
       status: 'declined',
@@ -300,6 +311,7 @@ describe('same-activity offer', () => {
       activityKey: 'parent@example.com',
       messageId: 'm-bad',
       body: 'meet',
+      choice: 'meet',
     });
     expect(refused).toEqual({ status: 'refused', reason: 'invalid_activity' });
 
@@ -309,6 +321,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-stop',
       body: 'STOP',
+      choice: null,
     });
     expect(unread).toMatchObject({ status: 'unread' });
     const stored = await db.database.select().from(schema.sameActivityOptIns);
@@ -323,6 +336,7 @@ describe('same-activity offer', () => {
       activityKey: KEY,
       messageId: 'm-1',
       body: 'meet',
+      choice: 'meet',
     });
     const rls = (await db.database.execute(
       sql`select relrowsecurity from pg_class where relname = 'same_activity_opt_ins'`,

@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
+import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -157,6 +157,8 @@ export interface EmailForwardDeps {
   reply: () => EmailReplyDeps;
   now: () => Date;
   log: Pick<Console, 'info' | 'error'>;
+  /** Reads the parent's answer. Absence is named and the ask is treated as unclear. */
+  consent?: ConsentReader;
 }
 
 export interface EmailForwardInput {
@@ -541,11 +543,8 @@ async function answer(
     return refuse(deps, { familyId: input.familyId }, 'forward_answer_unauthorised');
   }
 
-  // STRIPPED BEFORE IT IS READ, once, and read by both of the things that read it.
-  // `readAffirmative` is an exact-phrase lookup over the whole normalized body, and every
-  // quoting client ships the ask back underneath a one-word reply — so an unstripped
-  // "Yes" normalizes to "yes on tue hale wrote you forwarded …" and reads as unclear.
-  // Every real YES would fail.
+  // STRIPPED BEFORE IT IS READ. Every quoting client ships the ask back underneath
+  // the parent's own line, and the model must see that line, not Hale's question.
   const body = extractReply(input.text ?? '').text;
 
   // CASL FIRST, and this is the reply door's ordering kept identical (inbound.ts), for a
@@ -595,7 +594,8 @@ async function answer(
     );
   }
 
-  const verdict = readAffirmative(body);
+  const read = await readConsent(deps.consent, { question: 'forward_allow', text: body });
+  const verdict = read?.verdict === 'yes' ? 'yes' : read?.verdict === 'no' ? 'no' : 'unclear';
   const domain = sender.senderDomain;
 
   if (verdict === 'unclear') {

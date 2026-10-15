@@ -12,7 +12,6 @@ import {
   type DeepDispatchOutcome,
   dispatchDepthForPromise,
 } from '~/lib/channel/activity/deep-queue';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
@@ -27,6 +26,8 @@ import {
 } from '~/lib/channel/config';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { readConsent } from '~/lib/channel/consent-reply';
+import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -109,12 +110,7 @@ import {
   turnSignalAborted,
   withTimeout,
 } from './deadline';
-import {
-  type DisambiguationOption,
-  type DisambiguationStore,
-  matchDisambiguation,
-  readsAsOrdinal,
-} from './disambiguation';
+import type { DisambiguationOption, DisambiguationStore } from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import {
   HOLDING_LINE_AFTER_MS,
@@ -495,6 +491,11 @@ export interface ChannelRouterDeps {
    * ordinary coach turn. No client is `nothing_stated`, named in the reader's log.
    */
   weekdayCareReader: WeekdayCareReader;
+  /**
+   * Reads a yes or a no the resolver does not own (a weekday search). Absence
+   * is named and the turn is unreadable. Carrier STOP never reaches this reader.
+   */
+  consent?: ConsentReader;
   /**
    * Writes the drafts receipt when a turn breaks after drafting. Absence is
    * named and the parent is not handed a keyword sentence. The drafts remain.
@@ -1437,7 +1438,7 @@ async function routeChannelMessageInner(
 async function consumePendingDisambiguation(
   deps: ChannelRouterDeps,
   turn: HandlerContext,
-  answer: (body: string) => Promise<string>,
+  _answer: (body: string) => Promise<string>,
 ): Promise<
   | { status: 'handled'; handler: string }
   /** Carried on — and whether a digit went with the menu rather than on down the chain. */
@@ -1449,58 +1450,19 @@ async function consumePendingDisambiguation(
     now: turn.now,
   });
   if (!pending) return { status: 'carry_on', ordinalSpent: false };
-  // Read while the menu is known to have been STANDING, and true whatever the match then
-  // makes of it — see the skip at GATE 2.
-  const ordinalSpent = readsAsOrdinal(turn.body);
+  // The menu is spent so a later text is not still "the answer". The model places
+  // which question the words mean. A digit is not a choice.
   const spent = await deps.disambiguation.consume(deps.database, {
     id: pending.id,
     now: turn.now,
   });
   if (spent === 'already_spent') {
-    // Another turn for this parent got there first. One shot means one, so this one does
-    // not also act on it — and the digit is still that menu's.
     deps.log.info(
       { offered: pending.options.length },
       'channel router: the menu was already spent by another turn',
     );
-    return { status: 'carry_on', ordinalSpent };
   }
-
-  const choice = matchDisambiguation(pending, turn.body, await turn.openQuestions());
-  if (choice.status !== 'chosen') {
-    deps.log.info(
-      { reason: choice.reason, offered: pending.options.length, ordinalSpent },
-      'channel router: the reply did not pick one of the options Hale offered',
-    );
-    return { status: 'carry_on', ordinalSpent };
-  }
-
-  const owner = deps.handlers.find((handler) => handler.resolves?.has(choice.option.kind));
-  if (!owner) {
-    deps.log.error(
-      { kind: choice.option.kind },
-      'channel router: no handler owns the option the parent picked',
-    );
-    return { status: 'carry_on', ordinalSpent };
-  }
-  const verdict = await owner.handle(deps.database, {
-    ...turn,
-    resolved: {
-      kind: choice.option.kind,
-      questionId: choice.option.questionId,
-      polarity: choice.polarity,
-      confidence: 'high',
-    },
-  });
-  if (!verdict.claimed) {
-    deps.log.info(
-      { handler: owner.name, kind: choice.option.kind },
-      'channel router: the owning handler declined the option the parent picked',
-    );
-    return { status: 'carry_on', ordinalSpent };
-  }
-  await deliver(verdict, answer);
-  return { status: 'handled', handler: owner.name };
+  return { status: 'carry_on', ordinalSpent: false };
 }
 
 /**
@@ -1641,12 +1603,11 @@ async function recordWeekdayCareAnswer(
   if (target.status !== 'open') return { status: 'not_recorded', reason: target.status };
 
   if ('scope' in target) {
-    const word = readAffirmative(turn.body);
-    if (word === 'yes') {
+    const read = await readConsent(deps.consent, { question: 'weekday_search', text: turn.body });
+    if (read?.verdict === 'yes') {
       return { status: 'search', prompt: target.prompt, eventKey: target.eventKey };
     }
-    if (word === 'no') return { status: 'declined' };
-    // Not a care fact. "she's at daycare" on this ask settles nothing about care.
+    if (read?.verdict === 'no') return { status: 'declined' };
     return { status: 'unreadable' };
   }
 

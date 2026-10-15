@@ -1,11 +1,14 @@
-import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
+import type { AgentClient } from '@hale/agent';
 import { captureInboundRouted } from '~/lib/analytics/server-capture';
-import { db as defaultDb } from '~/lib/db';
+import { createConsentReader } from '~/lib/channel/consent-reply';
 import { enqueueChannelMessageReceived } from '~/lib/channel/inbound-deps';
+import { db as defaultDb } from '~/lib/db';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { requireEmailInboundConfig } from './config';
 import { createResendContentReader } from './content';
-import { productionEmailReply } from './reply-send';
 import type { EmailInboundDeps } from './inbound';
+import { productionEmailReply } from './reply-send';
 
 /**
  * The production wiring for the inbound-email webhook — the one place the leg meets a
@@ -23,6 +26,13 @@ import type { EmailInboundDeps } from './inbound';
  * function. A second copy here would be a second place for that id to drift, and the
  * drifted one is the one that answers a parent twice.
  */
+let cachedClient: AgentClient | undefined;
+
+function screenClient(): AgentClient {
+  cachedClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  return cachedClient;
+}
+
 export function emailInboundDeps(): EmailInboundDeps {
   const database = defaultDb();
   return {
@@ -46,5 +56,6 @@ export function emailInboundDeps(): EmailInboundDeps {
     countOutcome: async (outcome) => {
       await captureInboundRouted('email', outcome);
     },
+    consent: createConsentReader(screenClient),
   };
 }

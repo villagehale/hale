@@ -449,6 +449,7 @@ function harness(
     armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
     weekdayCareReader?: ChannelRouterDeps['weekdayCareReader'];
+    consent?: ChannelRouterDeps['consent'];
     weekdayCareAnswerTarget?: ChannelRouterDeps['weekdayCareAnswerTarget'];
     recordWeekdayCare?: ChannelRouterDeps['recordWeekdayCare'];
     searchWeekdays?: ChannelRouterDeps['searchWeekdays'];
@@ -501,6 +502,7 @@ function harness(
       weekdayCareReader: options.weekdayCareReader ?? {
         read: async () => ({ status: 'nothing_stated' as const }),
       },
+      consent: options.consent,
       weekdayCareAnswerTarget:
         options.weekdayCareAnswerTarget ?? (async () => ({ status: 'no_open_ask' as const })),
       recordWeekdayCare:
@@ -2595,26 +2597,47 @@ describe('the shipped chain, end to end', () => {
     expect(chain.recorded).toEqual([]);
   });
 
-  it('gives a bare "yes" to the drafted action ahead of everything else', async () => {
+  it('approves the drafted action when the model reads a yes', async () => {
     const chain = realChain({ pending: [{ actionId: 'a-1', actionType: 'calendar_add' }] });
     const coach = fakeCoach();
-    const h = harness({ context: { body: 'yes' }, handlers: chain.handlers, coach });
+    const h = harness({
+      context: { body: 'sounds good' },
+      handlers: chain.handlers,
+      coach,
+      questions: fakeQuestions([
+        {
+          id: 'a-1',
+          kind: 'approval',
+          description: 'Add to your calendar',
+          subject: 'add to your calendar',
+          answerable: { yes: true, no: true },
+          askedAt: null,
+          solicited: false,
+        },
+      ]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: 'a-1',
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
 
     expect((await routeChannelMessage(h.deps, job())).handler).toBe('approval');
+    expect(chain.approved).toEqual(['a-1']);
     expect(coach.calls).toBe(0);
   });
 
-  /** VIL-260 · WS4 — the words a parent actually uses now reach the same place "yes"
-   * does, through the real chain rather than only through the grammar unit. */
-  for (const body of ['sounds good', 'do it', '👍']) {
-    it(`approves the drafted action from ${JSON.stringify(body)}`, async () => {
+  for (const body of ['yes', 'sounds good', 'do it', '👍']) {
+    it(`does not approve from the word ${JSON.stringify(body)} alone`, async () => {
       const chain = realChain({ pending: [{ actionId: 'a-1', actionType: 'calendar_add' }] });
       const coach = fakeCoach();
       const h = harness({ context: { body }, handlers: chain.handlers, coach });
 
-      expect((await routeChannelMessage(h.deps, job())).handler).toBe('approval');
-      expect(chain.approved).toEqual(['a-1']);
-      expect(coach.calls).toBe(0);
+      expect((await routeChannelMessage(h.deps, job())).handler).not.toBe('approval');
+      expect(chain.approved).toEqual([]);
+      expect(coach.calls).toBe(1);
     });
   }
 
@@ -2765,9 +2788,9 @@ describe('natural reply resolution', () => {
     });
 
     expect((await routeChannelMessage(h.deps, job())).status).toBe('handled');
-    // A free, exact read always wins. No keyword was removed, only stopped being printed.
-    expect(questions.calls).toBe(0);
-    expect(resolver.calls).toBe(0);
+    // The model reads first. A handler that still claims does so after that read.
+    expect(questions.calls).toBe(1);
+    expect(resolver.calls).toBe(1);
   });
 
   it('hands a resolved answer to the handler that owns that kind, with the parents own words', async () => {
@@ -2789,17 +2812,14 @@ describe('natural reply resolution', () => {
 
     expect(result.status).toBe('resolved');
     expect(result.handler).toBe('owner_approval');
-    // TWO passes: the free one, then the resolved one. The body is untouched on both, so
-    // whatever the owning module records as evidence is the sentence the parent sent.
+    // One pass: the model placed it, and the owner sees the sentence the parent sent.
     expect(owner.seen).toEqual([
-      { body: 'yeah go ahead with the swim move', resolved: null },
       {
         body: 'yeah go ahead with the swim move',
         resolved: {
           kind: 'approval',
           questionId: ACTION,
           polarity: 'yes',
-          // Carried down to the consent ledger, not just used for the grade check.
           confidence: 'high',
         },
       },
@@ -2834,7 +2854,8 @@ describe('natural reply resolution', () => {
 
     await routeChannelMessage(h.deps, job());
 
-    expect(otherCalls).toBe(1);
+    // The resolved pass calls the owner only. The rest of the chain is not swept.
+    expect(otherCalls).toBe(0);
   });
 
   /**
@@ -2893,12 +2914,10 @@ describe('natural reply resolution', () => {
 
     expect(result.status).toBe('agent_failed');
     expect(h.transport.bodies()).toEqual([
-      'Which one - 1) reschedule on your calendar, 2) meeting the family nearby? Reply 1 or 2, or just say which.',
+      'Which one - reschedule on your calendar or meeting the family nearby?',
     ]);
-    // A number is offered and is never the only way in — the 2026-08-13 principle survives
-    // the numbers coming back (VIL-304). No keyword to recite either way.
-    expect(h.transport.bodies()[0]).toContain('or just say which');
     expect(h.transport.bodies()[0]).not.toMatch(/\bYES\b/);
+    expect(h.transport.bodies()[0]).not.toContain('2)');
   });
 
   it('does not offer numbers when no menu was written down', async () => {
@@ -3873,9 +3892,8 @@ describe('the disambiguation a clarifier owns', () => {
     const resolver = replayedResolver({
       // Turn one: an answer, and which one cannot be told from the word.
       YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
-      // Turn two: the target named exactly, and no polarity in the sentence at all —
-      // which `toReading` reads as `no_target`, the coach lane, the bug.
-      [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+      // Turn two: the model places the option the parent named.
+      [NAMED_IT]: { target: OFFER, polarity: 'yes', confidence: 'high' },
     });
     const c = conversation({
       bodies: ['YES', NAMED_IT],
@@ -3904,9 +3922,7 @@ describe('the disambiguation a clarifier owns', () => {
       },
     ]);
     expect(c.h.transport.bodies()[1]).toBe('Sent - your note is in their thread.');
-    // It never cost a resolver call either: naming one of a handful of options Hale just
-    // printed is a selection, not a reading problem.
-    expect(resolver.seen).toEqual(['YES']);
+    expect(resolver.seen).toEqual(['YES', NAMED_IT]);
   });
 
   it('resolves it after the COACH asked which one, in its own words', async () => {
@@ -3921,7 +3937,7 @@ describe('the disambiguation a clarifier owns', () => {
       questions: fakeQuestions([calendarDraft(), founderOffer()]),
       replyResolver: replayedResolver({
         YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
-        [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+        [NAMED_IT]: { target: OFFER, polarity: 'yes', confidence: 'high' },
       }),
     });
 
@@ -3934,7 +3950,7 @@ describe('the disambiguation a clarifier owns', () => {
     expect(coach.calls).toBe(1);
   });
 
-  it('resolves the ordinal it printed', async () => {
+  it('does not treat a digit as a menu pick', async () => {
     const founder = owner('founder_welcome', 'founder_welcome_offer');
     const c = conversation({
       bodies: ['YES', '2'],
@@ -3948,15 +3964,12 @@ describe('the disambiguation a clarifier owns', () => {
     });
 
     const asked = await c.run();
-    // The numbers are IN the sentence, which is the only thing that makes an ordinal an
-    // answer at all: a parent cannot pick "2" off a list they were never shown.
-    expect(c.h.transport.bodies()[0]).toContain('2)');
+    expect(c.h.transport.bodies()[0]).toMatch(/Which one/i);
+    expect(c.h.transport.bodies()[0]).not.toContain('2)');
     expect(asked.status).toBe('agent_failed');
 
-    expect((await c.run()).status).toBe('resolved');
-    expect(founder.seen).toEqual([
-      { kind: 'founder_welcome_offer', questionId: OFFER, polarity: 'yes', confidence: 'high' },
-    ]);
+    expect((await c.run()).status).toBe('agent_failed');
+    expect(founder.seen).toEqual([]);
   });
 
   it('is spent by the next text whatever that text says', async () => {
@@ -4055,7 +4068,8 @@ describe('the disambiguation a clarifier owns', () => {
     });
 
     await c.run();
-    expect(c.h.transport.bodies()[0]).toContain('2)');
+    expect(c.h.transport.bodies()[0]).toMatch(/Which one/i);
+    expect(c.h.transport.bodies()[0]).not.toContain('2)');
     // Option 2 closes between the question and the answer, so the menu cannot place it.
     open.splice(1, 1);
 
@@ -4064,10 +4078,7 @@ describe('the disambiguation a clarifier owns', () => {
     expect(queue.approved).toEqual([]);
   });
 
-  it('reads the same digit against the approvals queue when no menu was standing', async () => {
-    // The positive control for the assertion above, through the identical handler and
-    // the identical spine: without a menu in front of them, "yes 2" is the approval
-    // grammar's own ordinal and still approves the second drafted action.
+  it('does not let a digit approve a drafted action when no menu was standing', async () => {
     const queue = approvalsQueue();
     const c = conversation({
       bodies: ['what time is storytime on saturday', 'yes 2'],
@@ -4080,13 +4091,14 @@ describe('the disambiguation a clarifier owns', () => {
           polarity: 'unclear',
           confidence: 'high',
         },
+        'yes 2': { target: 'none', polarity: 'unclear', confidence: 'high' },
       }),
     });
 
     await c.run();
-    expect((await c.run()).handler).toBe('approval');
+    expect((await c.run()).status).toBe('agent_replied');
 
-    expect(queue.approved).toEqual(['a-2']);
+    expect(queue.approved).toEqual([]);
   });
 });
 
@@ -4141,6 +4153,7 @@ describe('the weekday-care answer', () => {
       questions?: OpenQuestionReader;
       searchWeekdays?: ChannelRouterDeps['searchWeekdays'];
       reading?: Awaited<ReturnType<ChannelRouterDeps['weekdayCareReader']['read']>>;
+      consent?: ChannelRouterDeps['consent'];
     } = {},
   ) {
     const written: Array<{ childId: string; care: string; provider: string | null }> = [];
@@ -4155,6 +4168,7 @@ describe('the weekday-care answer', () => {
       weekdayCareAnswerTarget:
         options.target ?? (async () => ({ status: 'open' as const, childId: CHILD })),
       searchWeekdays: options.searchWeekdays,
+      consent: options.consent,
       recordWeekdayCare: async (_db, input) => {
         written.push({ childId: input.childId, care: input.care, provider: input.provider });
         return {
@@ -4294,12 +4308,19 @@ describe('the weekday-care answer', () => {
   /** The positive control beside it: with no weekday-care ask standing, the SAME bare
    * "yes" and the SAME draft still approve — so the test above is proving a block
    * rather than a chain that never worked. */
-  it('still approves a bare yes when that draft is the only thing standing', async () => {
+  it('still approves when the model reads the draft as the yes', async () => {
     const queue = oneDraft();
     const h = harness({
       context: { body: 'yes' },
       handlers: [approvalHandler(queue.spine as never)],
       questions: questionsFrom({ pendingApprovals: async () => queue.pending as never }),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: 'a-1',
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
     });
 
     await routeChannelMessage(h.deps, job());
@@ -4311,6 +4332,7 @@ describe('the weekday-care answer', () => {
     const searches: Array<{ familyId: string; prompt: string }> = [];
     const { h, written, coach } = careHarness({
       body: 'yes',
+      consent: { read: async () => ({ verdict: 'yes', target: 'none' }) },
       target: async () => ({
         status: 'open' as const,
         scope: 'search' as const,
@@ -4338,6 +4360,7 @@ describe('the weekday-care answer', () => {
   it('a yes with no grounded pick abstains and does not invent a venue', async () => {
     const { h, written, coach } = careHarness({
       body: 'yes',
+      consent: { read: async () => ({ verdict: 'yes', target: 'none' }) },
       target: async () => ({
         status: 'open' as const,
         scope: 'search' as const,
@@ -4448,7 +4471,7 @@ describe('a bare yes while the daycare check-in is standing', () => {
     expect(coach.calls).toBe(1);
   });
 
-  it('still approves it when the check-in is the only thing NOT standing', async () => {
+  it('still approves it when the model reads that draft as the yes', async () => {
     // The positive control, through the identical handler and spine. An absence test
     // that cannot tell "blocked" from "nothing happened" is not a test.
     const queue = draftQueue();
@@ -4456,6 +4479,13 @@ describe('a bare yes while the daycare check-in is standing', () => {
       context: { body: 'yes' },
       handlers: [approvalHandler(queue.spine as never)],
       questions: sources({ pendingApprovals: async () => queue.pending as never }),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: 'a-1',
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
     });
 
     await routeChannelMessage(h.deps, job());

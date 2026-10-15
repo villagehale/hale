@@ -3,7 +3,6 @@ import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import {
   declineOpenInviteOnStop,
   loadLapsedInviteByPhone,
@@ -19,6 +18,7 @@ import {
   handleKnownNumberInbound,
   handleLapsedInviteReply,
 } from '~/lib/channel/caregiver/route';
+import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
@@ -602,16 +602,22 @@ export async function handleInboundSms(
     // the same person texting Hale months later to sign up their own family is not
     // answering anything, and must still reach the greeting (`loadLapsedInviteByPhone`
     // bounds the same shadow by time).
-    if (!invite && readAffirmative(inbound.body) !== 'unclear') {
+    if (!invite) {
       const lapsed = await loadLapsedInviteByPhone(database, phoneE164, now);
       if (lapsed) {
-        return claimedTurn(database, inbound, now, () =>
-          handleLapsedInviteReply(
-            database,
-            { invite: lapsed, phoneE164, inbound, now },
-            caregiverPorts(deps),
-          ),
-        );
+        const read = await readConsent(deps.consent, {
+          question: 'caregiver_invite',
+          text: inbound.body,
+        });
+        if (read && read.verdict !== 'neither') {
+          return claimedTurn(database, inbound, now, () =>
+            handleLapsedInviteReply(
+              database,
+              { invite: lapsed, phoneE164, inbound, now },
+              caregiverPorts(deps),
+            ),
+          );
+        }
       }
     }
 
