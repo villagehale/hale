@@ -1517,5 +1517,45 @@
       },
       "diagnostics": null
     }
+  },
+  "ec363c4d4318bc166248d46608215d7b818d7e9ed8539a21bb949fea28d5026f": {
+    "key": "ec363c4d4318bc166248d46608215d7b818d7e9ed8539a21bb949fea28d5026f",
+    "recordedAt": "2026-10-15T11:45:23.480Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Cartwheel Gym fall spots\",\"picks_empty\":true,\"searched\":{\"town\":\"Halton Hills\",\"notes\":\"Read the fall schedule and registration pages.\"},\"watch\":true,\"picks\":[]}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg3xzexrvoD7oqaU62T3e",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"I went through Cartwheel Gym's fall schedule and registration pages for Halton Hills and found nothing running for that age. I'll keep watching and text you if that changes.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 91,
+        "cache_creation_input_tokens": 5956,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 5956,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 63,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
   }
 }
