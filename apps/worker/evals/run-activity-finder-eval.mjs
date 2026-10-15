@@ -68,6 +68,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { ACTIVITY_FIXTURES } from './activity-finder-fixtures.mjs';
+import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -726,8 +727,9 @@ const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE SMS Hale sent a parent who asked what their young',
   'child could do locally. Hale searched the live web first, then wrote this from what it',
   'found - it never saw the child, only a de-identified subject, the family town and a',
-  'coarse stage. You are given the subject, the town, the stage, the picks Hale extracted,',
-  'the message it wrote, and watchFor (fixture-specific notes). Score 1-5.',
+  'coarse stage. You are given the subject, the town, the stage, `notes` (what the search',
+  'and any opened pages actually said), the picks Hale extracted, the message it wrote, and',
+  'watchFor (fixture-specific notes). Score 1-5.',
   'A 5: every pick is a real, specific, local thing a parent could turn up to - a named',
   'place, plausibly fitting the stage - and at most three of them. The message leads with',
   'the best one by name, says whose information it is ("their site says", "listed as"), and',
@@ -799,8 +801,10 @@ const TRAVEL_JUDGE_SYSTEM = [
   'You are a strict reviewer scoring what Hale FOUND for a family who are visiting a city',
   'they do not live in, with a young child, for a few days. Hale searched the live web and',
   'saw only a de-identified subject, the destination and a coarse stage - never the child.',
-  'You are given the subject, the destination, the stage, the dates, the picks, and',
-  'watchFor (fixture-specific notes). There is NO MESSAGE to score: the caller composes the',
+  'You are given the subject, the destination, the stage, the dates, `pagesRead` and',
+  '`pagesRefused` (how many pages Hale opened or was refused), `notes` (what the search and',
+  'those pages actually said), the picks, and watchFor (fixture-specific notes). Judge the',
+  'picks against the notes. There is NO MESSAGE to score: the caller composes the',
   'text deterministically from these picks, so judge the FINDS. Score 1-5.',
   'A 5: every pick is a real, specific, named place in that destination that this family',
   'could TURN UP TO inside those dates - a museum, a zoo, an aquarium, a science centre, a',
@@ -1182,6 +1186,13 @@ async function main() {
           destination: fixture.town,
           stage: fixture.stage,
           dates: fixture.window,
+          // THE EVIDENCE IS IN THE PAYLOAD, so it is in the key (harness makeJudge keys on
+          // the payload). Without it a verdict on an empty set was replayed after the lane
+          // read new pages (r18, 2026-10-15): same empty picks, same key, a stale verdict.
+          // pagesRead counts every page the lane opened, including the read pass.
+          pagesRead: ground.pagesRead,
+          pagesRefused: ground.pagesRefused,
+          notes: notesForTheJudge(ground),
           picks: kept,
           watchFor: fixture.watchFor,
         });
@@ -1259,6 +1270,9 @@ async function main() {
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,
+        // The evidence the picks and the message stand on, in the payload and so in the key
+        // (see the travel judge above).
+        notes: notesForTheJudge(ground),
         picks: kept,
         message: body,
         watchFor: fixture.watchFor,
