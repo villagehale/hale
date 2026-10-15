@@ -1068,7 +1068,17 @@ async function routeChannelMessageInner(
     });
   }
 
-  // GATE 2 — the deterministic handlers, in order. First claim ends the turn.
+  // GATE 2 — the parent's own words, read by the model before any keyword handler.
+  // A turn Hale is not waiting on costs no model call. Carrier STOP, HELP, and START
+  // never reach this router. A resolved answer is delivered by the handler that owns
+  // the question. An unresolved turn falls through to the handlers that are not a
+  // yes or a no.
+  const natural = await resolveNaturalReply(deps, turn, answer);
+  if (natural.status === 'handled') {
+    return done(deps, job, { ...natural.result, conversationId, lane: null });
+  }
+
+  // GATE 2b — the deterministic handlers, in order. First claim ends the turn.
   //
   // SKIPPED ENTIRELY when the menu above spent a digit it could not place. Hale's other
   // numbered list is the approvals queue, and its ordering has nothing to do with the
@@ -1076,8 +1086,7 @@ async function routeChannelMessageInner(
   // since closed would otherwise be read by the approval grammar as consent to execute
   // the second DRAFTED action — one that may never have been on the menu at all (rule
   // #4). A digit typed while a menu was standing belongs to that menu; when the menu
-  // cannot use it, nobody else may. The turn carries on to the resolver and the coach,
-  // which can ask.
+  // cannot use it, nobody else may. The turn carries on to the coach, which can ask.
   if (!picked.ordinalSpent) {
     for (const handler of deps.handlers) {
       const verdict = await handler.handle(deps.database, turn);
@@ -1090,21 +1099,6 @@ async function routeChannelMessageInner(
         lane: null,
       });
     }
-  }
-
-  // GATE 2b — DID THEY JUST ANSWER SOMETHING? The words a parent uses are theirs, and
-  // Hale never hands them a keyword to recite (resolve.ts). This runs ONLY when both of
-  // its preconditions hold: every free reader above declined, AND Hale is actually
-  // holding a question. On the overwhelming majority of turns the second is false and
-  // this costs one batch of indexed selects and no model call at all.
-  //
-  // It sits ABOVE flood control for the reason the handlers do: answering "yeah go ahead"
-  // is the same act as answering "yes", and a parent whose hour is spent must still be
-  // able to approve, decline and opt out. It sits BELOW them because a free, exact read
-  // must always win — no keyword was removed, only stopped being printed.
-  const natural = await resolveNaturalReply(deps, turn, answer);
-  if (natural.status === 'handled') {
-    return done(deps, job, { ...natural.result, conversationId, lane: null });
   }
 
   // GATE 2c — WHAT DID THE PARENT JUST SETTLE? The inbound half of the reconciliation
@@ -1689,12 +1683,11 @@ async function resolveNaturalReply(
     : await deps.replyResolver.read({ text: turn.body, questions });
   if (reading.status === 'unresolved') {
     if (questions.length > 1 && warrantsClarifying(reading.reason)) {
-      // A calendar-only ambiguity is not a keyword. The coach asks which one.
-      const word = emailOnly ? 'unclear' : readAffirmative(turn.body);
+      // The model did not place the reply. Do not classify the words here.
       return {
         status: 'unplaced',
         questions,
-        answer: { polarity: word === 'unclear' ? null : word },
+        answer: { polarity: null },
       };
     }
     return { status: 'carry_on', questions };
