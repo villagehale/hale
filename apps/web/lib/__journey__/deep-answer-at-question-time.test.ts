@@ -89,46 +89,6 @@ const JUDGE_SYSTEM = [
 ].join('\n');
 const judgeSchema = z.object({ says_not_posted: z.boolean(), reason: z.string() });
 
-/**
- * WHAT THE MESSAGE PROMISED is also a question about meaning (the reconcile gate no
- * longer reads it off the words), so the same recorded judge answers it: does the
- * message promise to watch a REGISTRATION opening, as opposed to coming back with the
- * schedule details?
- */
-const PROMISE_JUDGE_SYSTEM = [
-  'You read one text message a parenting assistant sent a parent about a local activity.',
-  'Decide one fact: does the message promise that the assistant will watch for a registration opening and tell the parent before or when registration opens?',
-  'Stating when registration opens is not a promise. Promising to come back with schedule details, times or prices is not a registration watch.',
-  'Answer with the tool.',
-].join('\n');
-const promiseSchema = z.object({ promises_registration_watch: z.boolean(), reason: z.string() });
-
-async function promisesRegistrationWatch(
-  message: string,
-): Promise<{ promises_registration_watch: boolean; reason: string }> {
-  const judged = recordedModel(JUDGE_RECORDINGS, pipelineClient);
-  const { value } = await forceToolJson({
-    client: judged.client(),
-    lane: pickLane('review'),
-    system: PROMISE_JUDGE_SYSTEM,
-    userMessage: message,
-    toolName: 'verdict',
-    toolDescription: 'Whether the message promises a registration watch, and why.',
-    inputJsonSchema: {
-      type: 'object',
-      properties: {
-        promises_registration_watch: { type: 'boolean' },
-        reason: { type: 'string' },
-      },
-      required: ['promises_registration_watch', 'reason'],
-      additionalProperties: false,
-    },
-    schema: promiseSchema,
-    maxTokens: 4000,
-  });
-  return value;
-}
-
 async function saysNotPosted(
   message: string,
 ): Promise<{ says_not_posted: boolean; reason: string }> {
@@ -1043,11 +1003,6 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     expect(outcome).toMatchObject({ status: 'sent', watch: true });
     const second = transport.bodies()[1] ?? '';
     expect(await saysNotPosted(second)).toMatchObject({ says_not_posted: true });
-    // The watch it promises is the schedule's, and the sweep row backs that; no
-    // registration watch was promised, so none is owed.
-    expect(await promisesRegistrationWatch(second)).toMatchObject({
-      promises_registration_watch: false,
-    });
   });
 
   // ── THE FALLBACK ───────────────────────────────────────────────────────────

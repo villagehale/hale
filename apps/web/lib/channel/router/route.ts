@@ -2220,11 +2220,10 @@ async function composeReconciledReply(
   // the halves swapped: a poll running with no promise, instead of a promise with no
   // poll. So the intent is dropped here, and the drop is named and counted rather than
   // being a quiet nothing (rule #11).
-  // NO WORD LIST SAYS WHETHER THE ACK SURVIVED. Which sentence carried the arming ack is
-  // not something code can read off the words, so a reply that had to be cut never arms
-  // its spot: the conservative half of the same rule, and named below.
   const armingAck = composed.spotWatch;
-  const ackSurvived = armingAck === null;
+  const ackSurvived =
+    armingAck === null ||
+    extractStateClaims(reply).some((claim) => claim.kind === 'registration_watch');
   if (!ackSurvived) {
     deps.log.error(
       { reason: 'ack_cut', host: armingAck?.host },

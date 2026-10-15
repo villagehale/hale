@@ -11,6 +11,12 @@ import { claimsNoLedgerCanBack, extractStateClaims } from './claims';
 const kinds = (body: string) => extractStateClaims(body).map((claim) => claim.kind);
 
 describe('extractStateClaims — the audit sentences', () => {
+  it('reads the Aug 21 registration watch as a registration_watch claim', () => {
+    expect(kinds("I'm watching that morning and I'll text you before it goes live.")).toEqual([
+      'registration_watch',
+    ]);
+  });
+
   it('reads the Aug 12 activity promise as an activity_followup claim', () => {
     expect(kinds("I'm checking details on 5 finds nearby - I'll text you the good ones.")).toEqual([
       'activity_followup',
@@ -30,6 +36,14 @@ describe('extractStateClaims — the audit sentences', () => {
     const [claim] = extractStateClaims(body);
     expect(claim?.sentence).toBe("I'll cut the one sec messages and just answer.");
     expect(body.replace(claim?.sentence ?? '', '').trim()).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('reads several claims out of one body, in order', () => {
+    expect(
+      kinds(
+        "I'm watching that morning and I'll text you before it goes live. Your well-baby visit is booked.",
+      ),
+    ).toEqual(['registration_watch', 'scheduled_event']);
   });
 
   it('reads the 2026-08-20 come-back promise when it names what it is coming back about', () => {
@@ -144,6 +158,12 @@ describe('extractStateClaims — the false positives that would break production
         "Halton Hills Fall 2026 recreation registration opens Sep 1, 7:00 a.m. for Noah. I'll send your plan the evening before.",
       ),
     ).toEqual([]);
+  });
+
+  it('reads a one-sentence watch promise the ladder legs never make', () => {
+    expect(kinds("I'll text you when Halton Hills registration opens.")).toEqual([
+      'registration_watch',
+    ]);
   });
 });
 
