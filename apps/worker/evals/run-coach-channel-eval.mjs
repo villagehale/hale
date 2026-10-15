@@ -1500,8 +1500,7 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
   }
 
   // A drafted change is confirmed in an ordinary sentence. The parent answers in
-  // their own words (affirmative.ts reads yes, sure, oui, sounds good). Telling
-  // them which keyword to send is the failure, not the confirmation.
+  // their own words. Telling them which keyword to send is the failure.
   if (/\b(yes to confirm|reply yes)\b/i.test(lower)) {
     failures.push('asks the parent to reply with a keyword');
   }

@@ -550,8 +550,8 @@ async function answer(
   // CASL FIRST, and this is the reply door's ordering kept identical (inbound.ts), for a
   // reason that bites harder here: the ask is the one message Hale sends to a parent who
   // did not write to it first, its footer promises "Reply STOP and Hale will stop
-  // emailing you", and its Reply-To is this address rather than the plain one. `stop` is
-  // deliberately not a NO (affirmative.ts), so without this gate the word would read as
+  // emailing you", and its Reply-To is this address rather than the plain one. STOP is
+  // a carrier keyword, not a placed no, so without this gate the word would read as
   // `unclear` — and the answer to an unsubscribe would be another email. Before the ref
   // lookup too, because a stale ref replies as well.
   //

@@ -685,7 +685,7 @@ export function forwardAddressHandler(
  *   what ties the pick to the ask it was offered for, and the TTL and the receipts are
  *   what stop it reaching an ask that has lapsed or already been answered.
  *
- *   A BARE WORD, which costs nothing to read (affirmative.ts) and keeps round 6's rule
+ *   A BARE WORD, which the model reads, and which keeps round 6's rule
  *   exactly: EVERY open question must be this one — stricter than `soleOpenKind`, see the
  *   handler's own note — and the ask must still be Hale's LAST WORD to this parent. A word
  *   with no target in it can only mean the thing said last; if Hale has said anything

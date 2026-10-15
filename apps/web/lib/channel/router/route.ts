@@ -1550,15 +1550,12 @@ type NaturalReplyOutcome =
 /**
  * The answer Hale could not place — and, when it can be had for free, WHICH answer it was.
  *
- * `polarity` is what the clarifier's menu is minted with, because the sentence Hale is
- * about to send asks WHICH, never WHETHER: the yes or no was already given, and re-reading
- * it off a reply that only names a target would turn "no thanks" followed by "the calendar
- * one" into a calendar write nobody consented to (rule #4).
+ * The yes or no was already given. A later reply that only names a target is not
+ * read again as yes or no: "no thanks" followed by "the calendar one" must not
+ * become a calendar write nobody consented to (rule #4).
  *
- * It is read by the free, deterministic vocabulary (affirmative.ts) rather than taken from
- * the resolver, and NULL when that vocabulary cannot read it. Null means nothing is minted
- * and the turn behaves exactly as it did before VIL-304: a polarity Hale would have had to
- * guess at is not one it may carry into somebody's calendar or another household's thread.
+ * Polarity comes from the model that read the reply. When that reading does not
+ * place it, polarity is null and nothing is minted. A guess is not a consent.
  */
 interface UnplacedAnswer {
   polarity: 'yes' | 'no' | null;

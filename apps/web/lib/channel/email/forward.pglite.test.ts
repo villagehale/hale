@@ -436,7 +436,7 @@ describe('the forwarding door · the answer', () => {
   it('CASL: a STOP at the ask address unsubscribes, and is not answered with another email', async () => {
     // The ask is the ONE message on this door that Hale sends first, and its footer
     // promises "Reply STOP and Hale will stop emailing you" — over a Reply-To that is
-    // NOT the plain address. `stop` is deliberately not a NO (affirmative.ts), so
+    // NOT the plain address. STOP is a carrier keyword, not a placed no, so
     // without the keyword gate it reads as `unclear` and is answered with a further
     // email to somebody who just asked not to be emailed.
     const ref = await ask();
