@@ -53,12 +53,15 @@ export const CONNECTOR_TRUST_LINE: Record<TextConnectProvider, string> = {
 };
 
 /**
- * A FACT, NOT COPY. Google's unverified-app screen is outside Hale's page, so a parent
+ * A FACT, NOT COPY: structured, so there is no sentence to paste. Google's unverified-app screen is outside Hale's page, so a parent
  * about to open a Google connect link is told about it - by the line writer, in its own
  * words and the parent's language. Nothing appends or prepends this text to a message.
  */
-export const GOOGLE_UNVERIFIED_APP_FACT =
-  'Google may show a screen saying the app is unverified. Tapping Advanced and then continuing gets past it.';
+export const GOOGLE_UNVERIFIED_APP_FACT = {
+  screen: 'unverified app',
+  shownBy: 'Google',
+  wayPast: ['Advanced', 'continue'],
+} as const;
 
 /** What the link unfurls as. Title is the ask. Description is the trust line. */
 export const CONNECTOR_CARD_TITLE: Record<TextConnectProvider, string> = {

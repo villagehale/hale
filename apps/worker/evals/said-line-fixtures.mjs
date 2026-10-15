@@ -24,9 +24,12 @@ const identity = (id, script, language, parentWords) => ({
 });
 
 // Fixed tokens so the cache key is stable. Same shape as a real mint.
-/** GOOGLE_UNVERIFIED_APP_FACT in text-connect.ts. A fact in English; the writer says it in the parent's language. */
-const GOOGLE_CAUTION =
-  'Google may show a screen saying the app is unverified. Tapping Advanced and then continuing gets past it.';
+/** GOOGLE_UNVERIFIED_APP_FACT in text-connect.ts: structured, so there is no sentence to copy. */
+const GOOGLE_CAUTION = {
+  screen: 'unverified app',
+  shownBy: 'Google',
+  wayPast: ['Advanced', 'continue'],
+};
 
 const CAL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gcal';
 const GMAIL = 'https://app.villagehale.com/connect?t=R0FGRUJBQkVDQUZFQkFCRg&to=gmail';
@@ -117,12 +120,13 @@ export const SAID_LINE_FIXTURES = [
     purpose: 'group_connect_ask',
     script: 'en',
     language: 'en',
-    parentWords: 'ready',
+    parentWords: null,
     facts: {
       name: 'Sam',
       service: 'Google Calendar',
       why: "their calendar joins the kids' year Hale keeps for the family",
       linkIsTheirs: 'the link is only for this parent, not the rest of the group',
+      minutesValid: 15,
       inboxPrivate: null,
       link: '[[link]]',
       googleCaution: GOOGLE_CAUTION,
@@ -135,12 +139,13 @@ export const SAID_LINE_FIXTURES = [
     purpose: 'group_connect_ask',
     script: 'fr',
     language: 'fr',
-    parentWords: 'non merci',
+    parentWords: null,
     facts: {
       name: 'Sam',
       service: 'Gmail',
       why: 'Hale would catch school and camp emails for them too',
       linkIsTheirs: 'the link is only for this parent, not the rest of the group',
+      minutesValid: 15,
       inboxPrivate: 'nothing from their inbox is shown in the group chat',
       link: '[[link]]',
       googleCaution: GOOGLE_CAUTION,

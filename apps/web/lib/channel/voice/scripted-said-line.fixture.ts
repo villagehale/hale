@@ -11,7 +11,9 @@ export function scriptedSaidLine(calls: SaidLineInput[] = []): SaidLineWriter {
       calls.push(input);
       const facts = Object.entries(input.facts)
         .filter(([, value]) => value !== null)
-        .map(([key, value]) => `${key}=${value}`)
+        .map(
+          ([key, value]) => `${key}=${typeof value === 'object' ? JSON.stringify(value) : value}`,
+        )
         .join('\n');
       return acceptSaidLine(`[${input.purpose}/${input.language ?? 'en'}]\n${facts}`, input);
     },

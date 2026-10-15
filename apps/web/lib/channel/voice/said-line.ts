@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
+import { CHANNEL_SIGNIN_TTL_MS } from '~/lib/auth/channel-signin';
 import { connectorNoun } from '~/lib/channel/connect/copy';
 import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import { type ReplyLanguage, certainLanguageHint, replyLanguage } from '~/lib/channel/language';
@@ -36,12 +37,20 @@ export type SaidLinePurpose =
   /** Someone is hurt or ill (not a crisis): Health811 and 911, never advice. */
   | 'health';
 
+export type SaidLineFact =
+  | string
+  | number
+  | null
+  | readonly string[]
+  | { readonly [part: string]: string | readonly string[] };
+
 export interface SaidLineInput {
   purpose: SaidLinePurpose;
   language: ReplyLanguage | null;
   /** The parent's own words, when the line answers a text. */
   parentWords?: string | null;
-  facts: Record<string, string | number | null>;
+  /** Plain values, or a small structured fact (a list, or named parts) the model words itself. */
+  facts: Record<string, SaidLineFact>;
   /** Strings that must appear verbatim (numbers, addresses). Never a URL: see links. */
   mustInclude?: readonly string[];
   /**
@@ -191,6 +200,7 @@ export async function writeGroupConnectAsk(
         ? 'Hale would catch school and camp emails for them too'
         : "their calendar joins the kids' year Hale keeps for the family",
       linkIsTheirs: 'the link is only for this parent, not the rest of the group',
+      minutesValid: LINK_MINUTES,
       inboxPrivate: gmail ? 'nothing from their inbox is shown in the group chat' : null,
       link: linkSlot('link'),
       googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
@@ -239,7 +249,8 @@ export async function writeCrisisLine(
 }
 
 /** Minutes a connect link stays live, said by the model (CHANNEL_SIGNIN_TTL_MS). */
-const LINK_MINUTES = 15;
+/** The texted link's real life: the sign-in token's TTL (channel-signin.ts). */
+const LINK_MINUTES = CHANNEL_SIGNIN_TTL_MS / 60_000;
 
 /**
  * One text carrying both Google connect links, in the model's words (#868: the

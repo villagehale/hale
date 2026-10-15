@@ -71,7 +71,7 @@ describe('textFreshConnectorLink', () => {
     const body = transport.sent[0]?.body ?? '';
     expect(body).toContain('to=gmail');
     // The caution reached the line writer as a fact; the writer, not code, words it.
-    expect(body).toContain(`googleCaution=${GOOGLE_UNVERIFIED_APP_FACT}`);
+    expect(body).toContain(`googleCaution=${JSON.stringify(GOOGLE_UNVERIFIED_APP_FACT)}`);
     expect(body).not.toMatch(/connect my calendar/i);
     expect(body).not.toContain('to=gcal');
     const [spent] = await db.database
