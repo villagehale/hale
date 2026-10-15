@@ -36,6 +36,9 @@
     "overrides": {
       "react": "19.2.3",
       "react-dom": "19.2.3"
+    },
+    "patchedDependencies": {
+      "vitest@3.2.6": "patches/vitest@3.2.6.patch"
     }
   }
 }

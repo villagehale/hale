@@ -1,0 +1,12 @@
+diff --git a/dist/chunks/rpc.-pEldfrD.js b/dist/chunks/rpc.-pEldfrD.js
+index a48eb0174a4fbc508a36c46ff78b0f9bf7ba6295..bbf24f7a4c1f792fef236ba31a974c8255762ff2 100644
+--- a/dist/chunks/rpc.-pEldfrD.js
++++ b/dist/chunks/rpc.-pEldfrD.js
+@@ -52,6 +52,7 @@ function createRuntimeRpc(options) {
+ 			if (functionName === "onUnhandledError") message += ` with "${args[0]?.message || args[0]}"`;
+ 			throw new Error(message);
+ 		},
++		timeout: -1,
+ 		...options
+ 	}));
+ 	return {
