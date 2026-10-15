@@ -2,4 +2,4 @@
 -- Bytes are not stored. Null on every row that carried no attachment.
 -- Reversible:
 --   ALTER TABLE "channel_messages" DROP COLUMN "inbound_media";
-ALTER TABLE "channel_messages" ADD COLUMN "inbound_media" jsonb;
+ALTER TABLE "channel_messages" ADD COLUMN IF NOT EXISTS "inbound_media" jsonb;
