@@ -29,12 +29,9 @@ import type { ActivityPick } from './lane';
  *   that silently drops every disappointing promise (rule #11 — the absence of the effect
  *   is a first-class outcome, and here it is an outcome the PARENT is told about).
  *
- * THE TOP PICK LANDS IN SEGMENT ONE, as a gate. A carrier bills 153 GSM-7 characters a
- * part and a phone shows the first of them; every trim in this codebase drops from the end
- * (coach/reply.ts `fitToBudget`). So an answer whose best find is in the last sentence is
- * an answer whose best find is the first thing to disappear — which is the shape of the
- * "later answers trimmed off the end" defect this product already has a name for.
- * Requiring the name in the first segment costs the model nothing and cannot be lost.
+ * THE TOP PICK LANDS EARLY, as a gate. A phone shows the start of a message first, so the
+ * name of the best find belongs in the opening. Chat replies are no longer cut to two
+ * segments (VIL-434); the name still leads because that is what a parent reads first.
  *
  * NEVER CLAIMS WHAT IT DID NOT DO. Every pick here came off the WEB, and
  * {@link claimsVerification} refuses a body that says otherwise. It is deliberately narrow

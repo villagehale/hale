@@ -90,6 +90,48 @@ const AREA_OF: Record<PostalCountry, RegExp> = {
   US: /^(\d{5})(?:-\d{4})?$/,
 };
 
+/** Canada Post's 18 first letters. `W1A` is a London outward code and is not an FSA. */
+const CANADA_POST_FIRST = /^[ABCEGHJ-NPRSTVXY]/i;
+
+/**
+ * A postal token Hale can place in Canada or the US, using the same area patterns as
+ * the off-domain tables. The country is chosen by shape: the two patterns do not overlap.
+ * Anything else (a UK postcode, a neighbourhood name) is null — the caller asks the
+ * model to say so, and does not guess a country.
+ */
+export function matchPostalToken(raw: string): {
+  country: PostalCountry;
+  countryName: string;
+  /** FSA, or ZIP5. The key the postal-city table is indexed by. */
+  areaKey: string;
+  /** Full code when the parent gave one; null for a bare FSA. */
+  postalCode: string | null;
+} | null {
+  const token = raw.trim();
+  if (!token) return null;
+  const us = AREA_OF.US.exec(token);
+  if (us?.[1]) {
+    return {
+      country: 'US',
+      countryName: COUNTRY_NAME.US,
+      areaKey: us[1],
+      postalCode: token.toUpperCase(),
+    };
+  }
+  if (!CANADA_POST_FIRST.test(token)) return null;
+  const ca = AREA_OF.CA.exec(token);
+  if (!ca?.[1]) return null;
+  const fsa = ca[1].toUpperCase();
+  const rest = token.slice(ca[1].length).replace(/[\s-]/g, '');
+  const ldu = rest.length === 3 ? rest.toUpperCase() : null;
+  return {
+    country: 'CA',
+    countryName: COUNTRY_NAME.CA,
+    areaKey: fsa,
+    postalCode: ldu ? `${fsa} ${ldu}` : null,
+  };
+}
+
 /**
  * LOADED WHEN FIRST NEEDED, and only the one country's: a turn that is dark, or whose
  * question does not turn on where the family is, never opens either file, and neither

@@ -7,7 +7,7 @@ import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
+import { type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 import {
@@ -98,11 +98,21 @@ export interface ProvisionResult {
  * `ensureUserRow` because that path requires an email address to mirror and maps a
  * duplicate address to EmailInUseError — neither of which exists here.
  */
-async function ensureIntakeUser(tx: Database, externalAuthId: string): Promise<string> {
+async function ensureIntakeUser(
+  tx: Database,
+  externalAuthId: string,
+  timezone: string,
+): Promise<string> {
   await tx
     .insert(schema.users)
-    .values({ externalAuthId, email: null, name: null })
+    .values({ externalAuthId, email: null, name: null, timezone })
     .onConflictDoNothing({ target: schema.users.externalAuthId });
+  // A row created before this place was known still has the column default.
+  // The postal code is the source of the zone, so the signup write wins.
+  await tx
+    .update(schema.users)
+    .set({ timezone, updatedAt: new Date() })
+    .where(eq(schema.users.externalAuthId, externalAuthId));
 
   const [row] = await tx
     .select({ id: schema.users.id })
@@ -138,7 +148,7 @@ export async function provisionFromIntake(
 
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
-    const userId = await ensureIntakeUser(tx, externalAuthId);
+    const userId = await ensureIntakeUser(tx, externalAuthId, location.timezone);
 
     const [family] = await tx
       .insert(schema.families)
@@ -148,8 +158,9 @@ export async function provisionFromIntake(
         // once the live find is out and the implied watch is recorded. The stage
         // is what the sweeps select on, and it must not flip before that row.
         onboardingStage: 'sms_intake',
-        primaryLanguage: input.language === 'fr' ? 'fr' : 'en',
-        country: INTAKE_COUNTRY,
+        primaryLanguage: input.language && input.language.length > 0 ? input.language : 'en',
+        country: location.country,
+        countryCode: location.countryCode,
         postalCode: location.postalCode,
         areaCoarse: location.areaCoarse,
         ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),
