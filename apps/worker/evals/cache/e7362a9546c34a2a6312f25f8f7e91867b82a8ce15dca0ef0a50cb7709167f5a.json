@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that says what the item is: a generic clinic appointment reminder that names no one. It gives the right reason for unsure: the reminder could equally be a child's checkup or the parent's own appointment, and nothing in the context settles it. It invents no facts and fits the verdict.",
+    "score": 5
+  }
+}

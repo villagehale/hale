@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short plain clause. It correctly calls 'Hold' a bare time block with no activity, child name or other detail, and that leads straight to unsure. It argues for the verdict given and adds no unsupported facts.",
+    "score": 5
+  }
+}

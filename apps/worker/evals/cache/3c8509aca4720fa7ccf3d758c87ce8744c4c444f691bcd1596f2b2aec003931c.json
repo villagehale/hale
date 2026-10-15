@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes. The market is closed for Thanksgiving. Friday's close was 35,664.62, up 519 points or about 1.5%. The cause was the weak jobs report cutting the odds of a Bank of Canada hike, and trading resumes tomorrow at 9:30 ET. 'Surprisingly bad' is a fair gloss of a 68,300 loss against a forecast gain. The reply is brief, casual and direct, with no deflect or service tone.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

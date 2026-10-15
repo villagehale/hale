@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Lima is the capital, and the extra facts (on the coast, the biggest city) are common knowledge and true. The reply states the fact directly in a casual, brief tone, with no hedge or service-speak.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The lead sentence opens with 'I checked Toronto's calendar', an explicit first-person act of looking that attributes the find to Hale, and the fact about Fall 2026 registration lands in that same sentence. The check's scope (Toronto, Fall 2026, Aug 11) is drawn from the facts payload, so it is not invented.",
+    "score": 5
+  }
+}

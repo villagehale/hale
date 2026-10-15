@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads a generic clinic appointment reminder that names no one as open both ways, child checkup or parent's own, which matches the unsure verdict. It is one plain clause and invents no fact.",
+    "score": 5
+  }
+}

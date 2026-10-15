@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that matches the item: a clinic appointment reminder that names no person. It explains why that ambiguity supports the unsure verdict, since the visit could be a child's checkup or the parent's own, and nothing else in the context settles it. It adds no facts the item doesn't support.",
+    "score": 5
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_reminder",
+    "confidence": 0.93,
+    "rationale": "Automated one-way reminder from a known pediatric clinic about an existing well-baby visit, with no request to reply beyond an opt-out.",
+    "payload": {
+      "clinic": "Riverdale Peds",
+      "child_name": "Mira",
+      "appointment_type": "well-baby visit",
+      "appointment_datetime_text": "Tuesday June 23 at 10:15 AM",
+      "provider": "Dr. Okafor"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 1926
+}

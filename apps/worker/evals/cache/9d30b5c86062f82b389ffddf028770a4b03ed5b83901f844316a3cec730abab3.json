@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in Chinese and makes a real pick (Pelé). Its facts are correct settled knowledge: he won three World Cups, in 1958, 1962 and 1970. It reads like a friend's casual take, and the 'no standard answer' line is a light caveat, not a dodge.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

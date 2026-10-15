@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Today (Mon Oct 12) mainly cloudy, daytime high 23°C, per Environment Canada",
+        "from": "Environment Canada (forecast issued 11:00 AM EDT today): Today's forecast is mainly cloudy. Its daytime high is 23°C."
+      },
+      {
+        "states": "Few showers forecast tonight, per Environment Canada",
+        "from": "Tonight it forecasts a few showers, with a low of 16°C."
+      }
+    ],
+    "answer": "Mostly no. Environment Canada has today mainly cloudy with a high of 23°C and no rain forecast for the daytime. It could start with a few showers tonight."
+  },
+  "latencyMs": 3482
+}

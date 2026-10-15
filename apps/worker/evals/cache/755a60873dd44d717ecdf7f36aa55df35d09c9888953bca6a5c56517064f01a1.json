@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason correctly names the adult marks in the item: a 1:1, a surname (Castillo) and a work role (design). Together they show this Wren is a colleague, not the 18-month-old, which supports the adult verdict. It is one plain clause and adds no unsupported facts. Calling 'design' a work title is a slight stretch, but it is a fair reading.",
+    "score": 5
+  }
+}

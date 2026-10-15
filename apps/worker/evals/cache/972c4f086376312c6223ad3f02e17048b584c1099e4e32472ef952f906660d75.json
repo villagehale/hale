@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "short-term melatonin use appears safe for most adults",
+        "from": "short-term melatonin use appears safe for most people"
+      },
+      {
+        "states": "typically safe and well tolerated at low doses, taken for the shortest time",
+        "from": "typically safe and well tolerated at low doses, taken appropriately for the shortest time"
+      },
+      {
+        "states": "use of a year or more linked to higher rates of heart failure in a preliminary study of people with chronic insomnia",
+        "from": "linked melatonin use of a year or more in people with chronic insomnia to higher rates of heart failure diagnosis"
+      },
+      {
+        "states": "the heart failure link is preliminary, not peer-reviewed, and cannot prove cause and effect",
+        "from": "the findings are preliminary because abstracts at its meetings are not peer-reviewed; the study cannot prove cause and effect"
+      },
+      {
+        "states": "check with a healthcare team before starting melatonin",
+        "from": "suggests checking with a healthcare team before starting"
+      }
+    ],
+    "answer": "For short stretches, yes. Most adults handle it fine at low doses for a short time. The bigger question is long-term use: a preliminary study presented in November 2025 linked taking it a year or more, in people with chronic insomnia, to higher rates of heart failure. It hasn't been peer-reviewed and can't prove cause, since poor sleep may be the real factor. If you're thinking of using it regularly for a while, or you take other meds, run it by your doctor first."
+  },
+  "latencyMs": 11087
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is a real program from the operator's own page. Day, time and session dates match the page exactly, and it is cited to the right URL. Price is correctly null: the page prints no fee, and the $185 and $95 rental figures were not borrowed. Registration is null because the page gives no registration date. The message leads with the program by name, attributes the facts with 'their site says', and is two short plain-ASCII sentences with no link and no question. The gap is stated in the first person ('I could not pin down the price'), which fits page_has_schedule and makes no unearned 'not posted' claim. With watch true, the first-person keep-watching commitment is correct.",
+    "score": 5
+  }
+}

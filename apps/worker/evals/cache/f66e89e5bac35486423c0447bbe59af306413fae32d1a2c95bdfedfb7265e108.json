@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason calls the item a bare 'Busy' time block with no detail and says it could be anyone's, which fits the rule for bare time blocks and backs the unsure verdict. It is one short plain clause with no invented facts.",
+    "score": 5
+  }
+}

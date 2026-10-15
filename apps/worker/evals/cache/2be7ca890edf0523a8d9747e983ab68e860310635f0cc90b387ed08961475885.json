@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rules list the parent's own dentist as an adult item, and the reason correctly names the item as a dental cleaning to support the adult verdict. It asserts the visit is the parent's own without giving the 'why', namely that no child is named, so the step from item to verdict is stated rather than argued.",
+    "score": 4
+  }
+}

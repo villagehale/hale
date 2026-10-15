@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.5,
+    "rationale": "Private teen journal entry describing emotional distress (comparison, low motivation, not disclosed to anyone) with no matching routine event type; possible safety concern requires human review.",
+    "payload": {
+      "content_sensitivity": "teen_private_journal",
+      "signal_summary": "Teen expresses emotional distress, social comparison, low mood, and says they have not told anyone. Possible mental health risk indicator.",
+      "safety_flag": true
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": "child-maya",
+    "teen_content": true
+  },
+  "latencyMs": 1718
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short plain clause. It correctly calls the item a bare 'Hold' block with no detail, which is what makes it open either way, and that matches the unsure verdict. It invents no facts. 'Could be anyone's' is slightly loose next to 'child or parent', but it still argues for unsure.",
+    "score": 5
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "language": "zh",
+    "answers_pending": "nothing_pending",
+    "question": "足球史上谁是最伟大的球员",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "current_fact": "none",
+    "needs_search": "no"
+  },
+  "latencyMs": 2049
+}

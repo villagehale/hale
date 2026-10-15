@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a physio appointment for a shoulder, and the rules list the parent's own physio as an adult item, so the adult verdict follows. The classifier's reason is one plain clause that names what the item is and ties it to the parent, and it invents no facts.",
+    "score": 5
+  }
+}

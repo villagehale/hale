@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It correctly calls the item a bare time block, and the rules list that as the clearest case of an item that could be either the child's or the parent's. Nothing in the children, activityTitles or notMineHints settles it, so the reason supports the unsure verdict without inventing any facts.",
+    "score": 5
+  }
+}

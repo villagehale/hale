@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "lowest 5-year fixed insured rate in Canada is 4.34%, as of Oct 12, 2026",
+        "from": "Ratehub says as of October 12, 2026, the lowest high-ratio 5-year fixed rate is 4.34%"
+      },
+      {
+        "states": "Frank Mortgage is named as a best 5-year fixed offer at 4.34%",
+        "from": "It names Frank Mortgage as the best 5-year fixed offer at 4.34%"
+      },
+      {
+        "states": "lowest 5-year fixed conventional rate is 4.44%",
+        "from": "It says the lowest 5-year fixed conventional rate is 4.44%"
+      },
+      {
+        "states": "Big 6 bank rate listed at 4.54%",
+        "from": "4.54% at a Big 6 Bank"
+      },
+      {
+        "states": "fixed rates are climbing in October 2026",
+        "from": "Fixed rates are climbing again in October 2026"
+      }
+    ],
+    "answer": "Lowest 5-year fixed I can find right now is 4.34% for an insured mortgage (under 20% down), as of today. Frank Mortgage is one of the cheapest at that rate. With 20% or more down, the lowest is around 4.44%, and the big banks sit higher, around 4.5% and up. Rates are climbing this month though, so it depends on the lender and your down payment."
+  },
+  "latencyMs": 7632
+}

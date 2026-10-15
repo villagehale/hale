@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "Time window and idempotency checks passed, but the draft references a medical appointment (18-month pediatric visit) and the reviewer policy requires explicit per-action user approval for medical communications; no calendar conflict check or vaccine-schedule verification was supplied, so the verification requirement is not fully met. The event is internal-only and reversible, but the medical nature and missing conflict check warrant human confirmation.",
+    "remediation": "Obtain explicit per-action user approval for this medical appointment, run check_calendar_conflict for 2026-06-23 10:15, and optionally run check_vaccine_schedule to confirm the 18-month visit is correctly labeled before committing the event."
+  },
+  "latencyMs": 5630
+}

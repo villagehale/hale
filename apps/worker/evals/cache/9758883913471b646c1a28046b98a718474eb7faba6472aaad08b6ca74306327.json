@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls this a bare errands block that names no child and could belong to either the parent or a child, which supports the unsure verdict. It is one plain clause with no invented facts; 'a child's errand' is slightly loose but harmless.",
+    "score": 5
+  }
+}

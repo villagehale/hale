@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause. It says what the item is (a date night at a restaurant) and ties that to the adult verdict (the parent's own plan). That matches the rules, which list date nights and restaurant bookings as adult items, and it adds no facts the item does not support.",
+    "score": 5
+  }
+}

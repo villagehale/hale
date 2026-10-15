@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in English, first person, and says Hale has the question and is working on the answer, with the answer coming through. It does not hint at the substance, claim specific actions, apologise, greet, or use third person, matching the watchFor exactly. Slight mention of 'working on it' is acceptable as a generic 'on it' signal.",
+    "score": 5
+  }
+}

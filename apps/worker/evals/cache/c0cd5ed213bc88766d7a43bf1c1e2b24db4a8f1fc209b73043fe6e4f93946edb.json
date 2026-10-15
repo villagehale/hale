@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "live is missing_detail, and the reply correctly asks for the country without stating any rate from memory, so the facts are fine. But \"Happy to check that for you\" is assistant-service phrasing, not a friend texting back. That caps the score below 4.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

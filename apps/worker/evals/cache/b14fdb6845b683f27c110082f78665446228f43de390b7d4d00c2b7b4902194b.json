@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "2006 World Series: St. Louis Cardinals won, beating the Detroit Tigers 4-1",
+        "from": "settled"
+      }
+    ],
+    "answer": "The St. Louis Cardinals won it in 2006, beating the Detroit Tigers 4-1."
+  },
+  "latencyMs": 2585
+}

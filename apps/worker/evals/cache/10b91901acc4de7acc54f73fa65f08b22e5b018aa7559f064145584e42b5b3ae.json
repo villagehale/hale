@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item text '的音乐课' means 'Lina's music class'. Lina is the family's 30-month-old, and a class carrying her name is her activity, so the verdict is kid. The classifier's reason is one plain clause that says what the item is (a music class), gives the reason (Lina's name), and matches the verdict. It invents no facts.",
+    "score": 5
+  }
+}

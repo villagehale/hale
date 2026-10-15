@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.9,
+    "rationale": "Ontario government notice that the teen is eligible to book a G1 driver's licence knowledge test, which is a licence eligibility milestone.",
+    "payload": {
+      "milestone": "G1 knowledge test eligibility",
+      "issuer": "ontario.ca",
+      "next_step": "Book G1 knowledge test online at a DriveTest centre"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": "child-theo",
+    "teen_content": false
+  },
+  "latencyMs": 2046
+}

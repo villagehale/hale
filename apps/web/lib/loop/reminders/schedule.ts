@@ -108,7 +108,11 @@ export type SuppressReason =
    * row and a child has a birthday between the two (VIL-241 · M6). Not 'cancelled': the
    * event is perfectly real, it is the disclosure that is not allowed.
    */
-  | 'out_of_scope';
+  | 'out_of_scope'
+  /** VIL-226. The parent said "that's mine" (untrack.ts). */
+  | 'parent_untracked'
+  /** VIL-226. Cancelled by the one-off backfill after an adult verdict. */
+  | 'kid_relevance_backfill';
 
 export type ReminderDecision =
   | { action: 'fire' }

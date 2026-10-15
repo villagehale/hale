@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a family room booking and points to Wren and Theo being named on it. The item text supports both facts, and the trip rule makes a trip `kid` when it names a child or is plainly a family booking, so the reason backs the `kid` verdict. It is one short, plain clause with nothing invented.",
+    "score": 5
+  }
+}

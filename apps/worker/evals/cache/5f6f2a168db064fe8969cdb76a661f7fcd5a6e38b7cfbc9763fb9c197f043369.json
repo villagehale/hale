@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The advice is general, accurate and usable: consistent wind-down, drowsy but awake, watching for tired cues, a dark quiet room and white noise. It invents nothing about the child, and asking his age alongside real advice is fine. It is slightly long and structured, but it still reads like a knowledgeable friend texting back rather than an assistant offering a service. Napping carries no safety concern.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "clinical_query": "infant difficulty breathing, ribs pulling in with each breath",
+    "age_band": "infant",
+    "language": "fr",
+    "red_flag_sign": "difficulty breathing with chest/ribs pulling in",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 1894
+}

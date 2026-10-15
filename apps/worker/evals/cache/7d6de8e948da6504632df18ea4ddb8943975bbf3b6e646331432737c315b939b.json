@@ -1,0 +1,22 @@
+{
+  "value": {
+    "event_type": "school_communication",
+    "confidence": 0.8,
+    "rationale": "A high school wellness office sent a one-way note about Devon, a teen, and it involves sensitive mental-health content, so it is flagged as teen content and only surfaced.",
+    "payload": {
+      "sender": "wellness@northviewhs.ca",
+      "institution": "Northview High School (wellness office)",
+      "subject": "Following up on Devon",
+      "child_name": "Devon",
+      "communication_kind": "student_wellness_notice",
+      "sensitive": true,
+      "requires_reply": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": "child-devon",
+    "teen_content": true
+  },
+  "latencyMs": 5946
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer matches the Environment Canada 11am forecast in the notes: mainly cloudy, a high of 23°C, no daytime rain, and showers starting overnight. 'Late tonight' fairly reflects 'before morning'. It answers the 3pm question directly, invents nothing, and says nothing about the family's school. It reads like a quick, casual text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

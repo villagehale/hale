@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a bare 'Busy' block with no name, activity or hint, so it could honestly belong to a child or to the parent. The classifier's reason says exactly this in one plain clause, and it supports the given unsure verdict without adding any invented fact.",
+    "score": 5
+  }
+}

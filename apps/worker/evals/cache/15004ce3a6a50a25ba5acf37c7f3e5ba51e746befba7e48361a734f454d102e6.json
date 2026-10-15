@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is correct. The item matches the notMineHints entry for the parent's own choir and names no child, which is exactly why the rules make it adult. It is a single clause that says what the item is and why that gives the adult verdict, and it invents no facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.85,
+    "rationale": "This is a teen's private personal note, not a family logistics signal. It is marked teen content and must not reach the parent digest.",
+    "payload": {
+      "source": "notes_sync",
+      "content_category": "teen_private_personal_note",
+      "author_marked_private": true,
+      "redacted": true,
+      "notes": "Content intentionally not summarized or forwarded. The note is the teen's own private journal-style entry with no family-logistics ask."
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": "child-kai",
+    "teen_content": true
+  },
+  "latencyMs": 9314
+}

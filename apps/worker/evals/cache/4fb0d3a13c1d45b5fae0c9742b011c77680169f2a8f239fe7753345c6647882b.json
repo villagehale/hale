@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short plain clause. It says what the item is (a swim session) and ties it to Mia, a listed child, which supports the kid verdict. It adds no unsupported facts, though it largely restates the title.",
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "check_action_time_window returned ok:false: the event start of 2026-06-23 03:00 -04:00 falls inside the family's configured quiet-hours window. Being outside the time window is a listed rejection criterion, and any red tool result defaults to reject. Idempotency passed (no duplicate). The event is internal-only and reversible, but that does not override the time-window violation. Separately, check_pii_leak and check_user_override were not run, so this draft could not have been approved even without the time-window failure.",
+    "remediation": "Have the Drafter reschedule the reminder to a time outside quiet hours, such as the family's next active-hours morning slot. A 03:00 start may also be a timezone or default-time error, so it should confirm the intended time. Then resubmit with full verification: check_action_time_window, check_action_idempotency, check_pii_leak, check_user_override, and check_calendar_conflict for the new slot."
+  },
+  "latencyMs": 4874
+}

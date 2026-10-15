@@ -1,0 +1,17 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.9,
+    "rationale": "A teen's private personal note about confidential health care that fits no family-logistics event type, so it should not be surfaced to parents or acted on.",
+    "payload": {
+      "reason": "private_teen_note",
+      "details_redacted": true
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": "child-riley",
+    "teen_content": true
+  },
+  "latencyMs": 4299
+}

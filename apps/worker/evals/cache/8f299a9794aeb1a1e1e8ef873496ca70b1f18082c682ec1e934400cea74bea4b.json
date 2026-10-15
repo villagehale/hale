@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toyota Sienna is the pick: Edmunds ranks the 2026 Sienna #1 and Quartz calls it the clear choice for best overall minivan",
+        "from": "Edmunds ranks the 2026 Toyota Sienna #1. / Quartz (about 18 days old) picks the Sienna. It calls the Sienna the clear choice for the best overall minivan."
+      },
+      {
+        "states": "Sienna is also named #1 by Yahoo/AutoGuide",
+        "from": "A Yahoo/AutoGuide four-way comparison (about 55 days old) also puts the Sienna first. It names the Toyota Sienna the #1 winner."
+      },
+      {
+        "states": "Sienna gets 35-36 mpg combined",
+        "from": "MSRP is $41,320 to $58,710, with 35–36 mpg combined."
+      },
+      {
+        "states": "Sienna has all-wheel drive available",
+        "from": "It has a standard hybrid powertrain and available all-wheel drive."
+      },
+      {
+        "states": "Sienna's hybrid system is noisy",
+        "from": "U.S. News notes the hybrid system is noisy."
+      },
+      {
+        "states": "Honda Odyssey drives most like a car",
+        "from": "It drives the most like a car, with responsive steering and a smooth V6."
+      },
+      {
+        "states": "Honda Odyssey is front-wheel drive only",
+        "from": "It is front-wheel drive only."
+      },
+      {
+        "states": "Honda Odyssey gets 22 mpg combined",
+        "from": "KBB lists it at $44,245 starting, 22 mpg combined."
+      },
+      {
+        "states": "Odyssey is ranked best by U.S. News and at the top of KBB's list",
+        "from": "U.S. News ranks the Honda Odyssey best. / KBB currently has the 2026 Honda Odyssey at the top of its list."
+      }
+    ],
+    "answer": "For the US, I'd go with the Toyota Sienna. It's the most efficient of the bunch at 35-36 mpg combined, you can get it with all-wheel drive, and Edmunds, Quartz and AutoGuide all have it on top. The hybrid system can be noisy, though. If you'd rather have something that drives like a car, the Honda Odyssey is the one U.S. News and KBB put first, but it's front-wheel drive only and gets 22 mpg."
+  },
+  "latencyMs": 8448
+}

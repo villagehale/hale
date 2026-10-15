@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the signal as a shipping notification about an order shipping with an expected arrival time, which matches the delivery_update event type. It cites specific content (diapers, wipes, arrival tomorrow by 8 PM) and notes no reply is needed, which is accurate and clear.",
+    "score": 5
+  }
+}

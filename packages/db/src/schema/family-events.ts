@@ -4,6 +4,7 @@ import { children } from './children.js';
 import { familyEventSourceEnum } from './enums.js';
 import { families } from './families.js';
 import { integrations } from './integrations.js';
+import { kidRelevanceVerdicts } from './kid-relevance-verdicts.js';
 import { users } from './users.js';
 
 /**
@@ -114,6 +115,12 @@ export const familyEvents = pgTable(
         onDelete: 'set null',
       },
     ),
+    /** VIL-226. The kid-relevance verdict this connector row was tracked under. Null on
+     * every Hale-authored row and on every mirror written before the judge existed.
+     * Nulled if the verdict goes; the event survives. */
+    kidVerdictId: uuid('kid_verdict_id').references(() => kidRelevanceVerdicts.id, {
+      onDelete: 'set null',
+    }),
   },
   (table) => ({
     // The composer's read is WHERE family_id = ? AND starts_at IN [window] — index

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply picks up the earlier question and gives tomorrow's Toronto forecast directly. Every detail matches Environment Canada in the notes: early showers, then mostly cloudy with a 60% chance of showers and thunderstorm risk, high 24, humidex 28, southwest wind gusting to 40 near noon, and 10–20 mm of rain. The 11 AM issue time fairly counts as \"this morning\". It is stated plainly with a source and nothing invented. The tone is a little forecast-like but still reads as a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

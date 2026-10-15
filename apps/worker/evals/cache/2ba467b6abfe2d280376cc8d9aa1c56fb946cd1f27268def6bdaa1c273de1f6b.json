@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale says the signal matches no event type and should not be surfaced, but the message describes a teen trying vaping and drinking alcohol for the first time and feeling uneasy about it. That is a meaningful wellbeing-relevant disclosure, so calling it 'unclassified' and dismissing it is vague and misses the content. The rationale does not explain why it is non-actionable beyond restating the classification.",
+    "score": 2
+  }
+}

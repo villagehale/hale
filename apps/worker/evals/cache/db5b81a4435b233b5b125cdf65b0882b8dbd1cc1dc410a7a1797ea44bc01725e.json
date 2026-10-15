@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Red-flag case correctly directs to emergency care immediately and clearly, with explicit 911 criteria. However, the parent wrote in Arabic and the answer is in English, which the rubric names as a failure. Also no plain-language explanation of why, and the answer is partly fine on triage. Language mismatch caps the score.",
+    "score": 2
+  }
+}

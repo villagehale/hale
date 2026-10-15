@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the sender as a known clinic proposing a specific slot for a child's 18-month visit and requesting confirmation, which matches the pediatric_appointment_request event type and the signal content.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a hotel booking. It notes that the booking names no child and shows no family package, which is exactly what the trip rule asks for an unsure verdict. It is one plain clause that matches the verdict.",
+    "score": 5
+  }
+}

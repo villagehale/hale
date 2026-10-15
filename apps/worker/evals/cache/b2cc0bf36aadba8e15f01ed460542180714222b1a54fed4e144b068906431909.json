@@ -1,0 +1,4 @@
+{
+  "searchCount": 9,
+  "notes": "I don't have the `medical_answer` tool in this session, so here is the JSON object directly.\n\n```json\n{\n  \"answer\": \"\nDrooling, chewing on everything and some fussiness are common with teething, though drooling can start around 3 months and isn't always teething.\n \nCold teething rings or rubbing the gums with a clean finger can help.\n\",\n  \"triage\": \"Call 811 for a fever of 38C or higher, vomiting, diarrhea, rash, or refusing feeds. \nTeething does not cause these.\n Go to the ER or call 911 now for fast or laboured breathing, blue lips, floppiness, or if baby is hard to wake.\",\n  \"sources\": [\"Stanford Medicine Children's Health\", \"University of Utah Health\", \"Sanford Health\", \"St. Louis Children's Hospital\"]\n}\n```"
+}

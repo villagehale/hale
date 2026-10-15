@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are real programs from programs.php with accurate age bands, and correctly have no day or price, since the page says pricing sits behind the portal. The message leads with Tiny Gym by name, attributes with 'their site says', and carries the registration date. The first-person 'I could not pin down the day or the price' is right for page_has_schedule. The first-person watch line is right because watch is true. There is no question and no link. Faults: (1) The July 22 registration date is taken 'per the home page', yet every slot cites programs.php, and the notes contain no home page text. The date is therefore not traceable to the page it is cited to. (2) The message runs to three sentences, beyond the one-or-two limit. (3) The attribution sits awkwardly mid-sentence.",
+    "score": 3
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "The draft is a reply confirming a pediatric medical appointment (18-month visit for Mira) to a clinic. The schema-defined guidance says medical communications require explicit per-action user approval regardless of allowlist state, and the draft has not been shown to have that approval. Recipient allowlist, sender allowlist, PII, and idempotency checks all returned ok, but no calendar conflict check or medical-schedule verification was supplied for the proposed Tuesday June 23 5:30 PM slot, so the time has not been verified as free or as the correct appointment.",
+    "remediation": "Obtain explicit per-action approval from a parent for this medical confirmation, run check_calendar_conflict for Tuesday June 23 at 5:30 PM, and confirm the slot matches the clinic's offered appointment before sending."
+  },
+  "latencyMs": 6775
+}

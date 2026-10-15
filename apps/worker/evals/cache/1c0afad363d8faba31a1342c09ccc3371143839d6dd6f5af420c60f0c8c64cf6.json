@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It names the item as a child's checkup and says Seb is one of the children (Seb is Sebastian's nickname, and he is 15 months old). That correctly backs the kid verdict, and every fact in it is supported.",
+    "score": 5
+  }
+}

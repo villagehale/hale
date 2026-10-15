@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that says what the item is (a soccer practice), notes it names Ezra, and says that makes it a kid activity. That supports the kid verdict and invents no facts, so it meets every criterion for a 5.",
+    "score": 5
+  }
+}

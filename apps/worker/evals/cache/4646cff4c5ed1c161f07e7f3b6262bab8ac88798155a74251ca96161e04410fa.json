@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CfwR29Z6YvYrLo1pqkeBg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjQgKEAgSGAI4AUIIdGhpbmtpbmcSDA/IdZutwQMstZ1UJxoM8chrO9BMqQ5SuQevIjDO/KwDxFNnbsXPQyPHL261su8Lq+DxG+E7cnE4W6EFNORyu9HCkMy+Ha/JPNK26A8qqgdnbJwBAbKJo756fndcRibrrqs1wZJqLY0XPVzqgwAdEVn67P89B8BlBAbAFvB5EnjWTsNjOfGX6oX0m8yTc7COlM0KDmAskiNbQX+KE3pryngijKMuFWjDbCXt6POICR4g6Pc9cdDgX9VMzrd+C761CLZRkz5QvmR/Yp1NRhCDkMHT3HE9GaXsxmFIpZhMQaRFHMDnH+jxnKqCIWwDgYPF7Rj0+Yt5EY2I4b+wTqqfCNSEv+nw0Fhb2mX5X7sGtv//R1unIU21D93BUuyJdrL02ezSD7rUhCKsHMtgVtG3Xq+Ispq8PlxzIZIPnVsCBOhI93DK6sxvKxdAxVUEG1BcFzvA+5/gA7+ve6WFMKczjJenacqMI5XvIPIGZYLFaKP5BF3Yy2fa+AhEeB3pc4rWn99qm2/YUsIa1tAb3Rve0iCFiwzVR4nsu+acSANfDaXJkhlCnNrK+Xm9br8vQ2FP54zXItaIflx02Th6PSDryyldYTToBJ0R2HrDsOA6Nx+e+EMqlXY3tG/m4nTTZ2jqvi0oRmUxJ0vvmeHDH0rdR4I6wNIXbgDpJRFuTN5rqPUwpi25IoBzYCM6/sp3+HJQF7Ghb0evM0WEx7okBxm3M0PreafRCKyZhlG0LWY2sS6Ramxtmf1EKe8UX2s7NdJg32GlniybdOThZbTogP8StM2N0PlCDYsj3a5jLhzuIcJ/EHSE+Obx5qAjD1X6grgGFTzb5TguKk+oSjBhgZDmN1DpL8x6OoSltP2QwE/R7paEtR+odCM7GU9qSWjZDVl94Uwq00kaMuK5OJQM+pm20tRBAGS/CYyu69ZFJpI/gVsC9gRzDjatpuE0El9ozxjiKRSNka6ygU+AfceYVsaVVT2KQMXy2jKCMsWe7SqJtVBmY+X6As5hj6r2Ewqt/dHHIt51h0E4hh3V5Jg039hl+7xrC6eg20WiqQ67uDHE2p6ZlbBuM1RKfLGD7L/gG2OG05Yarwql4Xi4TuOHOF9LnPQZisIlgtJJHq+m01F7XcB81whfG/ZpgYvtW5lWoz89O+Pe7mtMxGNt/adG3Jk1qBF9R0PHyZi6yb8EbzQisQZzeZ8h/c3oRf9khTppzgtMLqnRae37u67q1h8WG5wBO047PwNFe0I9aDIrsqHVRh9BZqM8np+dmAxFFsJb4eqJpJrrAXJjeWtLluRi1BPtypmQlh2oSGZFcfvwVZmdAK8kPdIch8RgXSnaYyNJw4522gTl369L1QjHaxgB"
+      },
+      {
+        "type": "text",
+        "text": "Soccer practice is Sat 10:00am at Cedarvale Park. For Ada, the Toronto Public Library's program page lists Fanous lantern craft, free, ages 6-12, Saturday afternoon, but it doesn't give a time. Milo is under the age range, so it's one for Ada only."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1206,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20497,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 294,
+      "output_tokens_details": {
+        "thinking_tokens": 191
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3529
+}

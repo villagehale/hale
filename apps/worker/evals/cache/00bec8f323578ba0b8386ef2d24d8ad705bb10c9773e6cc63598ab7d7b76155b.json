@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot is accurate. It names the real toddler program for the right age band, with the day, time and session dates exactly as printed, and cites the programme page. The price is correctly null and not borrowed from the $185 or $95 rental figures, and registration is null because the page gives none. The message leads with the program by name, attributes the facts with 'their site says' and makes no verification claim. It asks no question and has no link. Because watch is true, 'I'll keep watching and text you' is a legitimate first-person commitment. 'I could not pin down the price' is correctly first person under page_has_schedule rather than claiming the price is not posted. The one deduction under strict review: the message is three sentences and about two segments, beyond the one or two short sentences asked for, though still within the segment ceiling.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It correctly says it can't see the result and doesn't invent a score, but it points the parent to specific websites (TSN, Sportsnet), which is explicitly penalized.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as an injected order rather than an activity, and it echoes the rule that order-only text is not about the children. It explains why the item is not kid. It does not explain why the item is unsure rather than adult: concluding 'not about the children' leans away from both kid and unsure without settling on unsure. It is consistent with the verdict but does not fully justify it.",
+    "score": 4
+  }
+}

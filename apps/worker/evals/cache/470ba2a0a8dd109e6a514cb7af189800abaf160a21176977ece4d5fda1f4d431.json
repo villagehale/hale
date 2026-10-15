@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by research_notes. They were off Sunday, played Saturday, and beat Colorado 6-3. The reply is brief and casual and reads like a friend texting back, with nothing assistant-like in it.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

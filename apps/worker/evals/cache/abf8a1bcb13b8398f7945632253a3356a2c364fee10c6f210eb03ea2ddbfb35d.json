@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The answer correctly says it can't see scores, invents no result, and is brief and unapologetic. But it ends by pointing the parent to an outside source ('check the NHL scores or the sports section'), which the rubric penalizes. The clause 'so I don't know whether the Leafs won' is also redundant padding.",
+    "score": 3
+  }
+}

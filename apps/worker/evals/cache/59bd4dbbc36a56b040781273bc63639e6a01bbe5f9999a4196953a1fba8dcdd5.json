@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason calls the item a daycare pickup for Wren, which is what the text says. It ties that to the care-arrangement rule, which supports the kid verdict. It is one short, plain clause and adds no facts the item does not support.",
+    "score": 5
+  }
+}

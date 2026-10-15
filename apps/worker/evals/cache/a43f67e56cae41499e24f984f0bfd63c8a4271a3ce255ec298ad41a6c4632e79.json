@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in English, first person, and says Hale is on it and the answer is coming shortly, matching the watchFor exactly. It avoids hinting at the substance, describing what Hale is doing, apologising, or using support-desk phrasing, though 'shortly' slightly edges toward a timing claim.",
+    "score": 5
+  }
+}

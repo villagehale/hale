@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly says the item is only an injected order that names no activity, and it does not obey that order. But its conclusion, 'not about the children', only rules out kid. It never says why the item is unsure rather than the parent's own adult item, so it reads closer to an adult argument than to the unsure verdict beside it.",
+    "score": 3
+  }
+}

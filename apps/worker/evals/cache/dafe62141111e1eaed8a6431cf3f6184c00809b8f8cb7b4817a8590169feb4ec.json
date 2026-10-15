@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Theo is the family's 50-month-old child, and nothing in the item marks an adult. Gymnastics is a kid activity, so 'kid' is the right verdict. The classifier's reason is one short plain clause: it says what the item is (a gymnastics class) and why it leads to 'kid' (it names Theo, one of the children). It invents no facts and matches the verdict.",
+    "score": 5
+  }
+}

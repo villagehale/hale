@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason correctly says the item is a bare errands block with no child or activity named, which leaves it open either way and so supports unsure; it is one plain clause with no invented facts, though calling it possibly 'a child's errand' is slightly loose.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the useful pick, uses only facts given (High Park playground meetup, Saturday, free, outdoor, Ada and Noor), omits the null venue without inventing a placeholder, and includes the instructed one-clause registration absence line. The 'I found' lead is contract-required and not invented. Concise, plain-spoken, no hype; minor deduction because it doesn't mention the offer question or any next step, though the facts only carry offerQuestion as a flag.",
+    "score": 5
+  }
+}

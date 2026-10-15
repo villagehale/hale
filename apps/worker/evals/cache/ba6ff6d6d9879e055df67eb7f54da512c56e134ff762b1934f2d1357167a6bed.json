@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by research_notes: the daytime has no rain, it is mainly cloudy with a high of 23, there is a 20% chance at 6-7pm, and showers with a possible thunderstorm start overnight. It invents nothing and says nothing about the family or the school. It answers the rain question directly. It reads a little like a forecast summary, with a source citation and stacked details, rather than a quick friend's text, and it doesn't tie the answer back to 3pm pickup.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

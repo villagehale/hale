@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct, settled kitchen knowledge: 10-12 minutes in boiling water, then an ice bath. It gives a real number, is brief and casual, and is in English. It reads like a friend texting, with no offer of service and nothing said about the family.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

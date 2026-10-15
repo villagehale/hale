@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is correct: this is a bare hotel booking that names neither child, shows no family package or children's rooms, and matches no notMineHints entry, so under the trip rule it is unsure. It is one plain clause stating what the item is and why it gets that verdict, and it adds nothing the item does not support.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale restates the signal (a bottle feed of 90 ml over 18 minutes) and labels it a feeding data point, but it does not explain why this event is classified as feeding_pattern_signal, such as its contribution to intake trends or timing patterns. The reasoning is largely descriptive and circular.",
+    "score": 2
+  }
+}

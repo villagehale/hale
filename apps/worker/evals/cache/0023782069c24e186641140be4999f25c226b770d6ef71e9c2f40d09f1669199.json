@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is null, so only the slots are scored. The single slot is grounded in the search snippet: Parent & Tot lessons at Gellert, ages 4 months to 3 years, run by the Town of Halton Hills. It fits the toddler stage. 'when' and 'price' are correctly null, with no figures invented after both fetches were refused. The registration field honestly says the pages could not be opened rather than claiming nothing is posted, which matters because no page was read. The cited URL is the operator's Gellert page that the snippet came from. No fabricated or borrowed figures, so this is the correct snippet-grounded result.",
+    "score": 5
+  }
+}

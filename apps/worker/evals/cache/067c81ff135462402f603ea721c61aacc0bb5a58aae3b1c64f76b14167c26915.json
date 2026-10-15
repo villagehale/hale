@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Gives a real pick (Messi) with a reason, as a friend would. The only fact stated, the 2022 World Cup win, is settled history rather than a count that could have changed since. It avoids citing trophy or goal tallies from memory, and the casual tone fits the question's language.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

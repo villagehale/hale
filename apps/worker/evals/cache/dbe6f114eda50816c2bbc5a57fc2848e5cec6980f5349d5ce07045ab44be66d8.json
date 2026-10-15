@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "Two verification checks failed. check_sender_allowlist reports that the sender's origin is not trusted, which is an explicit rejection criterion. check_recipient_allowlist reports that someone@unknown-domain.example is not on the family's allowlist and could not be verified. The draft is a vague agreement ('Sure, that sounds fine.') to an unknown party, with no context about what is being agreed to. It could be a commitment or a phishing or social-engineering response, and a sent email cannot be recalled. PII and idempotency checks passed. check_action_time_window and check_user_override were never run, and the draft does not establish any autonomy grant for replying to unverified senders.",
+    "remediation": "Do not send. Show the original inbound message to a parent, noting that both the sender and the recipient are unverified. If the parent recognizes the correspondent and wants to reply, they should approve this specific message themselves, optionally add the contact to the allowlist, and then submit a new draft so the time-window, user-override and recipient checks can run again. If the parent does not recognize the sender, treat the inbound message as possible phishing and do not reply."
+  },
+  "latencyMs": 5352
+}

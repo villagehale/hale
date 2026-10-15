@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "hard-boiled egg: about 10 to 12 minutes in boiling water, then into cold water",
+        "from": "settled"
+      }
+    ],
+    "answer": "Drop them in already-boiling water and cook about 10 to 12 minutes for a fully set yolk. Then straight into cold water so they peel easily."
+  },
+  "latencyMs": 1415
+}

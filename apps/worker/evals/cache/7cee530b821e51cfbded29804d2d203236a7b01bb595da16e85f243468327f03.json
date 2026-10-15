@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The draft is a calendar event rather than a family message, so it is off-purpose for a tone evaluation; it also has an abrupt, lowercase, clipped description and a null end time that makes it less polished, though it contains no invented details beyond the provided info.",
+    "score": 2
+  }
+}

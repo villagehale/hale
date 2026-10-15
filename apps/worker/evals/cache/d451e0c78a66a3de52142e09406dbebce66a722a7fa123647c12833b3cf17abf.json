@@ -1,0 +1,26 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM), Upper West Side",
+        "age_fit": "children ages 0-6",
+        "when": "Tuesday-Sunday, 10am-5pm; site lists Monday as closed outside summer",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Central Park Zoo (includes Tisch Children's Zoo)",
+        "age_fit": "children 3-12 ticketed as children; under 3 free",
+        "when": "Opens daily at 10am; April-October closes 5pm Monday-Friday and 5:30pm weekends and holidays; last entry 1 hour before closing",
+        "source_name": "Central Park Zoo"
+      },
+      {
+        "name": "New York Aquarium, Coney Island",
+        "age_fit": "Child (3-12) ticket; children 2 and under free",
+        "when": "Daily Sept 8 - Oct 31, 2026: opens 10am, last entry 4pm, closes 5pm",
+        "price": "Child (3-12) $25.95 off-peak, $27.95 peak; adult $29.95 off-peak, $32.95 peak",
+        "source_name": "New York Aquarium"
+      }
+    ]
+  },
+  "latencyMs": 11630
+}

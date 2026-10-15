@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads 'Hold' as a bare time block with no activity and no child named. Nothing in the context settles it, so 'unsure' follows, and the reason says so. It is one plain clause that states what the item is and why that leads to the verdict, with no invented facts.",
+    "score": 5
+  }
+}

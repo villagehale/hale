@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads the French title as a dentist visit and supports the adult verdict in one plain sentence. It invents no facts and leans on the rule that lists the parent's own dentist as adult. Its logic is a little thin, though: a 30-month-old could also have a dentist checkup, so 'no child named' alone does not show the appointment is the parent's. That leap keeps it from a 5.",
+    "score": 4
+  }
+}

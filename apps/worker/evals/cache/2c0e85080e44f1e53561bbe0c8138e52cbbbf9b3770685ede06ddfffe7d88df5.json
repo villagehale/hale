@@ -1,0 +1,14 @@
+{
+  "value": {
+    "answer": "This needs emergency care now - go to the ER. A high fever with a stiff neck, severe headache and light bothering the eyes, all together, needs urgent assessment in hospital. Please don't wait to see if it settles.",
+    "triage": "Go to the nearest ER right now. Call 911 now if your child is confused, very drowsy or hard to wake, has a seizure, or has a rash that does not fade when pressed. 811 is for non-urgent nurse advice, so don't delay the ER to call it.",
+    "sources": [
+      "Raising Children Network",
+      "KidsHealth (Nemours)",
+      "Penn Medicine",
+      "Cleveland Clinic",
+      "Mayo Clinic"
+    ]
+  },
+  "latencyMs": 4787
+}

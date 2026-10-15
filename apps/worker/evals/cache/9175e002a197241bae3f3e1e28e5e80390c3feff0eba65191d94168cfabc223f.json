@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is quiet and plain, states only what the facts carry, and handles the null pick and null registration plainly: it says there is no pick yet and no registration date, which the contract explicitly permits. The firstFindBeat is reproduced verbatim as instructed. It does not lead with a 'I found/checked' frame or a venue, and does not invent details. Minor deduction: it reads a little like two status updates stacked, and offerQuestion is true yet the message does not ask the parent anything, leaving the reply path unclear.",
+    "score": 4
+  }
+}

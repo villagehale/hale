@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason identifies the item as a child appointment and ties it to Wren by name and age. All of that is supported, since Wren is 18 months and the item names her. It is one short clause that says what the item is and why it is kid, so it matches the verdict.",
+    "score": 5
+  }
+}

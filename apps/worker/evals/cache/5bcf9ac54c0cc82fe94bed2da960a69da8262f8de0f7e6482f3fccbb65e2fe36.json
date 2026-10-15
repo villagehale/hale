@@ -1,0 +1,17 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.4,
+    "rationale": "Private teen journal entry with signs of emotional distress; it matches no family-logistics event type and should not be auto-processed.",
+    "payload": {
+      "sensitivity": "private_teen_journal",
+      "content_withheld": true
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": "child-maya",
+    "teen_content": true
+  },
+  "latencyMs": 3921
+}

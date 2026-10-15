@@ -1,0 +1,14 @@
+{
+  "value": {
+    "answer": "This needs emergency care now - go to the ER. A high fever with a severe headache, a stiff painful neck and light hurting the eyes has to be checked by a doctor right away, because early treatment matters.",
+    "triage": "Go to the ER now or call 911 - do not wait at home. Call 911 if they are hard to wake, confused, floppy, vomiting, having a seizure, or have a rash that does not fade when pressed. 811 is for nurse advice, but do not wait for a callback.",
+    "sources": [
+      "Raising Children Network",
+      "KidsHealth (Nemours)",
+      "Mayo Clinic",
+      "Cleveland Clinic",
+      "Penn Medicine"
+    ]
+  },
+  "latencyMs": 4672
+}

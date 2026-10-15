@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Daily Ultimate Essentials is the product most reviews cover",
+        "from": "mainly Daily Ultimate Essentials and the newer Daily Ultimate Longevity"
+      },
+      {
+        "states": "third-party tested and NSF Certified for Sport",
+        "from": "Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "convenient all-in-one formula; taste acceptable to most",
+        "from": "Reviewers broadly agree on the convenience, the third-party testing and the taste, which most find acceptable."
+      },
+      {
+        "states": "several ingredient doses fall short of effective ranges; some ingredient amounts hidden behind proprietary blends",
+        "from": "otherwise its ingredient doses fall short of effective ranges; also lists key ingredient amounts hidden behind proprietary blends"
+      },
+      {
+        "states": "about $79 to $99 a month",
+        "from": "one review lists $79/month with a subscription. Another lists about $99/month for the Pro"
+      },
+      {
+        "states": "independent critics say evidence for health claims is limited",
+        "from": "Independent critics say the evidence for its health claims is limited."
+      },
+      {
+        "states": "worth it mainly if it replaces several supplements you already buy",
+        "from": "Several reviewers say it's worth it only if it replaces several supplements you already buy."
+      },
+      {
+        "states": "healthy people eating a varied diet generally don't need it",
+        "from": "healthy people eating a varied diet generally don't need supplementation in this many things"
+      }
+    ],
+    "answer": "Mostly overrated, I'd say, at least for most people. It's convenient, it's third-party tested, and if it replaces a few supplements you already buy it can make sense. But several ingredient doses look light, some amounts are hidden behind proprietary blends, and at roughly $79 to $99 a month, independent critics say the evidence for its health claims is limited. If you're healthy and eating a varied diet, you probably don't need it."
+  },
+  "latencyMs": 6467
+}

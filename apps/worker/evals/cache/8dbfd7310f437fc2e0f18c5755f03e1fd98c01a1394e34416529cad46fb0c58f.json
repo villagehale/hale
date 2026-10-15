@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A 15-month checkup is a child's medical appointment, and \"Seb\" is the nickname for 15-month-old Sebastian, so kid fits. The classifier's reason says what the item is and ties it to a named child, all in one clause with no unsupported facts. Calling the doctor's checkup a child's appointment, rather than leaning on the name alone, would sharpen it slightly, but it is still clear and accurate.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item asks who is taking Wren, the 18-month-old, to swim, which is a child's activity and transport arrangement, so it is kid. The classifier's reason is one short clause naming the child and the activity, and it supports the kid verdict. Calling it an \"outing\" rather than a lesson is a fair reading. The reason says what the item is but leaves the 'why' implied rather than stated, so it falls slightly short of a 5.",
+    "score": 4
+  }
+}

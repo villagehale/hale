@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi is the greatest soccer player, per Sportda's 2026 ranking",
+        "from": "Sportda's 2026 ranking names Lionel Messi as the greatest."
+      },
+      {
+        "states": "Messi has eight Ballon d'Or awards",
+        "from": "It cites his eight Ballon d'Or awards"
+      },
+      {
+        "states": "Messi has 672 goals for Barcelona",
+        "from": "672 goals for Barcelona"
+      },
+      {
+        "states": "Messi has the 2022 World Cup title",
+        "from": "the 2022 World Cup title"
+      },
+      {
+        "states": "Tom Brady is the greatest NFL player, per CBS Sports' top-100 list",
+        "from": "CBS Sports' top-100 list, updated for the 2026 season, puts Tom Brady first and Jerry Rice second."
+      },
+      {
+        "states": "Brady has seven Super Bowl titles",
+        "from": "Sports Media X cites seven Super Bowl titles"
+      },
+      {
+        "states": "Brady has five Super Bowl MVPs",
+        "from": "five Super Bowl MVPs"
+      },
+      {
+        "states": "Brady has three NFL MVPs",
+        "from": "three NFL MVPs"
+      }
+    ],
+    "answer": "Depends which football you mean. Soccer: Messi. Eight Ballon d'Ors, 672 goals for Barcelona, and the 2022 World Cup. Ronaldo has plenty of fans, but Messi's my pick. American football: Tom Brady. Seven Super Bowl titles, five Super Bowl MVPs, three NFL MVPs. Jerry Rice gets argued for a lot, but Brady's the pick."
+  },
+  "latencyMs": 6271
+}

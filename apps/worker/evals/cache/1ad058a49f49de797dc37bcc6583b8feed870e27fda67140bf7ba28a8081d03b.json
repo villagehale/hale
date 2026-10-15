@@ -1,0 +1,9 @@
+{
+  "value": {
+    "first": "For the 3am wake-ups I'd use graduated check-ins (the Ferber method). It's one of the best-studied sleep methods there is, and it teaches the skill he needs to fall back asleep alone at 3am. Pick a clear week with no travel or illness. Bedtime 6:30-8:00, same 20-30 minute wind-down, feed before the book. Crib drowsy but awake, say goodnight, leave.",
+    "second": "When he cries, wait, then do a 1-2 minute check: lights off, calm voice, same short phrase, no pickup, no feed. Night 1: wait 3, then 5, then 10 for every check after. Night 2: 5/10/12. Night 3: 10/12/15. Treat a 3am waking exactly like bedtime and restart that night's waits. Expect night 2 or 3 to be worse - that's the old pattern breaking.",
+    "third": "Nights 4-7 keep stretching: 12/15/17, 15/17/20, 17/20/25, 20/25/30. Working looks like falling asleep in minutes and fewer 3am wakings. If you can't stand the waiting, the chair method is the gentler, slower version. Call the doctor if you see snoring, gasping, or breathing pauses, or no progress after 7 solid nights. I'll check in Thursday.",
+    "checkInDays": 3
+  },
+  "latencyMs": 19811
+}

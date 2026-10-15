@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the notes: Denver, high of 65°F (15 degrees below Monday's 80), partly sunny with clouds building, a 30% rain chance after 3 p.m. rising into the evening, lows in the 30s to low 40s, and wind of 6-10 mph gusting to 17. It is the right city, without asking which one. It answers directly with no deflect. It reads more like a weather broadcast ('Expect partly sunny skies…') than a casual text, but it is still a friend's straight answer, not an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

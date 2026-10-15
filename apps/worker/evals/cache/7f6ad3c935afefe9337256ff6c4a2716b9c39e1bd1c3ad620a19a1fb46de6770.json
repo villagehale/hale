@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Quiet, plain, two short sentences, one suggestion. Leads with the forecast, then names the indoor story time, which fits the weekend-suggestion shape. Facts used are all present (wet forecast, Saturday, Central Library, Toronto Public Library, indoors). Minor issue: it omits the 'free' fact, but that is not an invented detail, so it stays faithful. Only slight deduction for not mentioning free and for the mildly advisory 'I'd take'.",
+    "score": 4
+  }
+}

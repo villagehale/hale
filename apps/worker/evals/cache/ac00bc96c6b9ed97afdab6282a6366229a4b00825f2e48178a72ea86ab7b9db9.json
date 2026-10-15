@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It names the item correctly as a bare time block with no detail. It also says why that leaves the verdict open, so it supports unsure. It invents nothing.",
+    "score": 5
+  }
+}
