@@ -10,7 +10,7 @@ import {
   emptyAha,
 } from '~/lib/channel/connect/aha-read';
 import { connectedReceiptBody } from '~/lib/channel/connect/connected-notice';
-import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
+import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import { routeInboundText } from '~/lib/channel/inbound-route';
 import {
   HALE_CONTACT_FIRST_NAME,
@@ -46,7 +46,7 @@ const NOW = new Date('2026-07-30T12:00:00.000Z');
 const FROM = '+15555550100';
 const FIND_MESSAGE = '1. Swim at the rec centre - Saturday\n2. Story time - Tuesday';
 
-const CANNED = [googleUnverifiedAppLine('en')];
+const CANNED = [GOOGLE_UNVERIFIED_APP_FACT];
 
 type Mark = 'typing-start' | 'typing-stop' | 'send' | 'card' | 'search';
 

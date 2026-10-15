@@ -2,7 +2,6 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
-import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
@@ -505,7 +504,7 @@ async function sendAskWithLink(
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     chatId: input.groupChatId,
-    text: `${input.text}\n${googleUnverifiedAppLine(input.language)}\n${url}`,
+    text: `${input.text}\n${url}`,
     templateKey: input.templateKey,
     dedupeKey: input.dedupeKey,
     now: input.now,

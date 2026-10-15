@@ -18,7 +18,6 @@ import {
   type FollowUpFallback,
   type FollowUpPick,
   asksTheParent,
-  claimsNotPosted,
 } from './followup-note';
 import { statesAFigure, statesNoCost } from './quote-match';
 import { type ActivitySharePage, SLOTS_IN_TEXT, withSharePage } from './share-page';
@@ -101,8 +100,7 @@ export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
  * Read as prose those are values; read as facts they are gaps — and a null check alone
  * let the one venue this whole arc is named after come back with nothing to watch for.
  *
- * TWO READINGS, BECAUSE ONE OF THEM MISSES THE POLITE NON-ANSWER. Refusing an absence
- * CLAIM only catches the fields that admit what they are. "Fees set by Council each year,
+ * NO WORD LIST DECIDES IT. "Fees set by Council each year,
  * published in the current Recreation Guide" claims nothing and answers nothing: it is a
  * sentence about where a price lives, offered where a price should be. It survived only
  * by accident until 2026-08-24 — the old absence regex matched the "nt" in "current" —
@@ -120,7 +118,7 @@ export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
  * is being read decides whether "free" means anything, so the field says which it is.
  */
 function carriesFact(field: string | null, kind: 'when' | 'price'): boolean {
-  if (field === null || field.trim() === '' || claimsNotPosted(field)) return false;
+  if (field === null || field.trim() === '') return false;
   if (kind === 'price' && statesNoCost(field)) return true;
   return statesAFigure(field);
 }

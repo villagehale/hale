@@ -318,72 +318,9 @@ export function claimsVerification(body: string): boolean {
     .some((clause) => VERIFICATION_CLAIM.test(clause) && !FUTURE_OR_NEGATED.test(clause));
 }
 
-/**
- * Whether the body claims A PAGE DOES NOT CARRY SOMETHING.
- *
- * "Fall days, times and prices aren't posted yet" (2026-08-22, production) is a statement
- * about a page somebody opened. Said by a turn that opened nothing, it is a confident
- * report of a schedule that was, in fact, sitting on the venue's own programs page and
- * in a PDF linked off it. The parent stops looking, because they think Hale looked.
- *
- * SENTENCE-SCOPED, AND IT USED TO BE CLAUSE-SCOPED — which is how the 2026-08-24 message
- * went out with this gate green. The sentence was "their site lists these but no day, time
- * or price on the fall page yet", and splitting it on commas tore the negation off the
- * thing negated: one fragment held "no day", the next held "time or price on the fall page
- * yet", and neither fragment carried both halves of the claim. A comma-separated list is
- * the ordinary way to say this and the gate could not see it at all.
- *
- * WHOSE ABSENCE IS IT — the page's, or Hale's? That is the whole distinction, and it is
- * what the widened scope needs a guard for:
- *
- *   "their site lists these but no day or price on the fall page yet"  — the PAGE lacks it.
- *     A claim, and false unless a page was read and really carries nothing.
- *   "their site lists this, I could not confirm the day or the price"  — HALE lacks it.
- *     The honest sentence, and the one this lane must be able to write.
- *
- * Both contain a negation and a publishing word, so only the self-limiting phrase tells
- * them apart. The guard is the shape {@link claimsVerification} already uses for the same
- * reason: a whole-body match would refuse the sentence Hale is supposed to write.
- */
-const UNPUBLISHED_WORD =
-  /\b(?:post(?:ed|s|ing)?|list(?:ed|s|ing)?|publish(?:ed|es|ing)?|announced|available|shown|out|up)\b/i;
-/**
- * The contraction that carries this claim in practice is "aren't", and its "n" is glued to
- * the stem — so this alternative has no LEADING boundary and cannot have one.
- *
- * THE APOSTROPHE IS THEREFORE REQUIRED. With it optional, `n?t\b` matches the last two
- * letters of every word ending in "nt": parent, want, moment, different, recent, consent.
- * Beside a publishing word that reads "Gellert lists Parent and Tot Mondays 10:00, $86.22
- * for nine" as a claim that nothing is posted — the canonical GOOD message for this
- * product's beachhead subject, refused three times and then deferred, which is Hale going
- * quiet on a find it had. Both apostrophes are accepted because this predicate is also
- * read over raw slot fields (deliver.ts `carriesFact`), which have not been through
- * `plainText`'s typographic fold.
- */
-const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n['’]t\b/i;
-/**
- * NAMING THE SURFACE IS THE SAME CLAIM WITHOUT THE VERB. "The fall times aren't on their
- * page yet" carries no publishing word at all and is the identical assertion — the live
- * composer wrote exactly that shape when it had the licence, so it is exactly what an
- * unlicensed one would write too.
- */
-const PAGE_SURFACE =
-  /\bon (?:their|the|its) (?:[\w-]+ )?(?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
 /** Hale saying it could not get at something — never the page saying it has nothing. */
 const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
-const SENTENCE_BOUNDARY = /[.!?\n]/;
-
-export function claimsNotPosted(body: string): boolean {
-  return body
-    .split(SENTENCE_BOUNDARY)
-    .some(
-      (sentence) =>
-        ABSENCE.test(sentence) &&
-        (UNPUBLISHED_WORD.test(sentence) || PAGE_SURFACE.test(sentence)) &&
-        !SELF_LIMITED.test(sentence),
-    );
-}
 
 /**
  * Whether the body says HALE will come back — the sentence the continuation row pays for.
@@ -402,8 +339,7 @@ export function statesTheReturn(body: string): boolean {
 /**
  * WHETHER THE COMING-BACK SENTENCE IS WAITING ON A PAGE THAT HAS ALREADY POSTED.
  *
- * {@link claimsNotPosted} refuses the present tense — "the fall times aren't up yet" —
- * and cannot see the same claim wearing the future. "I'll keep watching and text you
+ * The same claim can wear the future. "I'll keep watching and text you
  * once the details are up" asserts nothing and presupposes everything: that they are not
  * up, and that the venue is the one Hale is waiting on.
  *
@@ -491,17 +427,6 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
       'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
     );
   }
-  // THE ABSENCE CLAIM NEEDS POSITIVE EVIDENCE. Two ways to be wrong about a page and they
-  // need two different corrections: nobody opened it, or somebody opened it and it plainly
-  // does publish a schedule this run could not pin down. The second is the 2026-08-24
-  // failure, and it is the one the old boolean could not express (see `pageEvidence`).
-  if (grounding.pageEvidence !== 'page_has_no_schedule' && claimsNotPosted(text)) {
-    violations.push(
-      grounding.pageEvidence === 'no_page_read'
-        ? 'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.'
-        : 'The message says something is not posted or not up. Their page WAS opened today and it does publish times and prices - Hale just could not pin these ones to it. Say their site lists this and that you could not confirm the day or the price, never that they are not posted.',
-    );
-  }
   // BOTH DIRECTIONS, and the second one is not symmetry for its own sake. The first live
   // re-recording of this composer, handed a complete find and `watch: false`, wrote
   // "I'll keep looking and text you what it says" anyway — a promise to come back with
@@ -516,7 +441,7 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   }
   if (grounding.watch !== statesTheReturn(text)) {
     // THE EXAMPLE IS PAGE-STATE-AWARE OR THE TWO CORRECTIONS FIGHT: under
-    // `page_has_schedule` the gate above refuses the very sentence this one used to hand
+    // `page_has_schedule` the page contradicts the very sentence this one used to hand
     // the model as the remedy, and a composer bounced between two contradictory fixes
     // spends its three attempts and sends nothing.
     violations.push(

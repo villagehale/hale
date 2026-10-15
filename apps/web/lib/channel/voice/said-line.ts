@@ -2,7 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { connectorNoun } from '~/lib/channel/connect/copy';
-import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
+import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import { type ReplyLanguage, certainLanguageHint, replyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
@@ -159,7 +159,7 @@ export async function writeConnectorLink(
       service: connectorNoun(language, input.provider),
       link: linkSlot('link'),
       minutesValid: LINK_MINUTES,
-      googleCaution: googleUnverifiedAppLine(language),
+      googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
     },
     links: { link: input.url },
   });
@@ -229,8 +229,8 @@ export async function writeConnectorLinks(
       minutesValid: LINK_MINUTES,
       why: 'so Hale can spot daycare and school notices',
       // Both links are Google connect links, and every Google connect link carries the
-      // unverified-app caution once (text-connect.ts).
-      googleCaution: googleUnverifiedAppLine(input.language ?? 'en'),
+      // unverified-app caution, as a fact the writer puts in its own words (text-connect.ts).
+      googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
     },
     links: { calendarLink: input.calendarUrl, gmailLink: input.gmailUrl },
   });

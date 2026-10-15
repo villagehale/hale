@@ -472,34 +472,12 @@ function topPickLeads(body, slots) {
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
-/** Mirrors `claimsNotPosted`, `statesTheReturn` and `watchWarranted` — see the same three
- * in run-activity-finder-eval.mjs and in the runtime (followup-note.ts, deliver.ts).
- *
- * SENTENCE-SCOPED since 2026-08-24: clause scoping split "no day, time or price on the
- * fall page yet" on its commas and neither fragment carried both halves of the claim, so
- * the gate was green on the message that shipped. {@link SELF_LIMITED} is what keeps
- * "I could not pin it down" — Hale's gap, not the page's — writable. */
-const UNPUBLISHED_WORD =
-  /\b(?:post(?:ed|s|ing)?|list(?:ed|s|ing)?|publish(?:ed|es|ing)?|announced|available|shown|out|up)\b/i;
-const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n['’]t\b/i;
-const PAGE_SURFACE =
-  /\bon (?:their|the|its) (?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
+/** Mirrors `statesTheReturn` and `watchWarranted` — see the same in
+ * run-activity-finder-eval.mjs and in the runtime (followup-note.ts, deliver.ts). */
 const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
-const SENTENCE_BOUNDARY = /[.!?\n]/;
 const STATES_RETURN =
   /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
-
-function claimsNotPosted(body) {
-  return body
-    .split(SENTENCE_BOUNDARY)
-    .some(
-      (sentence) =>
-        ABSENCE.test(sentence) &&
-        (UNPUBLISHED_WORD.test(sentence) || PAGE_SURFACE.test(sentence)) &&
-        !SELF_LIMITED.test(sentence),
-    );
-}
 
 function watchWarranted(slots) {
   const top = slots[0];
@@ -523,7 +501,7 @@ function watchWarranted(slots) {
  * whether "free" means anything - hence the `kind`.
  */
 function carriesFact(field, kind) {
-  if (!field || String(field).trim() === '' || claimsNotPosted(String(field))) return false;
+  if (!field || String(field).trim() === '') return false;
   if (kind === 'price' && statesNoCost(String(field))) return true;
   return statesAFigure(String(field));
 }
@@ -570,18 +548,6 @@ function followUpViolations(body, slots, pageEvidence, watch) {
       tag: 'asks_for_permission',
       reason:
         'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
-    });
-  }
-  // THE ABSENCE CLAIM NEEDS POSITIVE EVIDENCE. Two ways to be wrong about a page and two
-  // different corrections: nobody opened it, or somebody did and it plainly DOES publish a
-  // schedule this run could not pin down. The second is the 2026-08-24 failure.
-  if (pageEvidence !== 'page_has_no_schedule' && claimsNotPosted(body)) {
-    violations.push({
-      tag: `unearned_absence:${pageEvidence}`,
-      reason:
-        pageEvidence === 'no_page_read'
-          ? 'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.'
-          : 'The message says something is not posted or not up. Their page WAS opened today and it does publish times and prices - Hale just could not pin these ones to it. Say their site lists this and that you could not confirm the day or the price, never that they are not posted.',
     });
   }
   if (waitsOnAPageItCouldNotRead(body)) {
@@ -1143,9 +1109,6 @@ async function main() {
   console.log(`claims verification:       ${count('claims_verification')}`);
   console.log(
     `asks for permission:       ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,
-  );
-  console.log(
-    `unearned absence:          ${count('unearned_absence')}  (a page's silence claimed without a page that is silent)`,
   );
   console.log(
     `unbacked promise:          ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,

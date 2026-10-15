@@ -58,9 +58,6 @@
 //   · asks for permission - the follow-up ends on a question. An offer is a PROPOSAL and
 //     every proposal is a row; nothing on this path can write one, so a parent's yes has
 //     nowhere to land (2026-08-22: it landed on an unrelated approvals queue).
-//   · unearned absence - the text says a page does not carry something, and `page_evidence`
-//     does not license it: either nobody opened a page today, or one was opened and it DOES
-//     publish times and prices (a refused fact is Hale not knowing, never a page being empty).
 //   · unbacked promise / silent watch - the text and the ledger disagree about whether
 //     Hale is coming back.
 //   · links a URL / unsendable - Hale never texts a link, and an empty follow-up is unsendable.
@@ -506,44 +503,9 @@ function topPickLeads(body, picks) {
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
-/**
- * Mirrors `claimsNotPosted` in followup-note.ts, regex for regex.
- *
- * SENTENCE-SCOPED, AND IT USED TO BE CLAUSE-SCOPED — which is how the 2026-08-24 message
- * went out with this gate green. The sentence was "their site lists these but no day, time
- * or price on the fall page yet", and splitting it on commas tore the negation off the
- * thing negated: one fragment held "no day", the next held "time or price on the fall page
- * yet", and neither carried both halves of the claim.
- *
- * WHOSE ABSENCE IS IT — the page's, or Hale's? "no day or price on the fall page yet" is a
- * claim about the PAGE; "I could not confirm the day or the price" is Hale saying what it
- * could not get at, and is the sentence this lane must be able to write. Both carry a
- * negation and a publishing word, so only {@link SELF_LIMITED} tells them apart.
- */
-const UNPUBLISHED_WORD =
-  /\b(?:post(?:ed|s|ing)?|list(?:ed|s|ing)?|publish(?:ed|es|ing)?|announced|available|shown|out|up)\b/i;
-/** `n'?t\b` deliberately has no LEADING boundary: the contraction that carries this claim
- * in practice is "aren't", and its "n" is glued to the stem. */
-const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n['’]t\b/i;
-/** Naming the surface is the same claim without the verb. "The fall times aren't on their
- * page yet" carries no publishing word at all and is the identical assertion. */
-const PAGE_SURFACE =
-  /\bon (?:their|the|its) (?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
 /** Hale saying it could not get at something — never the page saying it has nothing. */
 const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
-const SENTENCE_BOUNDARY = /[.!?\n]/;
-
-function claimsNotPosted(body) {
-  return body
-    .split(SENTENCE_BOUNDARY)
-    .some(
-      (sentence) =>
-        ABSENCE.test(sentence) &&
-        (UNPUBLISHED_WORD.test(sentence) || PAGE_SURFACE.test(sentence)) &&
-        !SELF_LIMITED.test(sentence),
-    );
-}
 
 /** Mirrors `statesTheReturn`. */
 const STATES_RETURN =
@@ -574,7 +536,7 @@ function watchWarranted(picks) {
  * whether "free" means anything - hence the `kind`.
  */
 function carriesFact(field, kind) {
-  if (!field || String(field).trim() === '' || claimsNotPosted(String(field))) return false;
+  if (!field || String(field).trim() === '') return false;
   if (kind === 'price' && statesNoCost(String(field))) return true;
   return statesAFigure(String(field));
 }
@@ -627,19 +589,6 @@ function followUpViolations(body, picks, pageEvidence, watch) {
       tag: 'asks_for_permission',
       reason:
         'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
-    });
-  }
-  // THE ABSENCE CLAIM NEEDS POSITIVE EVIDENCE. Two ways to be wrong about a page and they
-  // need two different corrections: nobody opened it, or somebody opened it and it plainly
-  // does publish a schedule this run could not pin down. The second is the 2026-08-24
-  // failure, and it is the one the old boolean could not express.
-  if (pageEvidence !== 'page_has_no_schedule' && claimsNotPosted(body)) {
-    violations.push({
-      tag: `unearned_absence:${pageEvidence}`,
-      reason:
-        pageEvidence === 'no_page_read'
-          ? 'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.'
-          : 'The message says something is not posted or not up. Their page WAS opened today and it does publish times and prices - Hale just could not pin these ones to it. Say their site lists this and that you could not confirm the day or the price, never that they are not posted.',
     });
   }
   if (waitsOnAPageItCouldNotRead(body)) {
@@ -1330,9 +1279,6 @@ async function main() {
   console.log(`links a URL:             ${count('links_a_url')}`);
   console.log(
     `asks for permission:     ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,
-  );
-  console.log(
-    `unearned absence:        ${count('unearned_absence')}  (a page's silence claimed without a page that is silent)`,
   );
   console.log(
     `unbacked promise:        ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,

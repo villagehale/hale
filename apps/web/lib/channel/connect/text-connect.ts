@@ -1,4 +1,3 @@
-import type { ReplyLanguage } from '~/lib/channel/language';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 
 /**
@@ -54,25 +53,12 @@ export const CONNECTOR_TRUST_LINE: Record<TextConnectProvider, string> = {
 };
 
 /**
- * One plain line before a Google connect link. Google's unverified-app screen
- * is outside Hale's page; this is the only coaching for it. Straight quotes,
- * no emoji, GSM-7.
+ * A FACT, NOT COPY. Google's unverified-app screen is outside Hale's page, so a parent
+ * about to open a Google connect link is told about it - by the line writer, in its own
+ * words and the parent's language. Nothing appends or prepends this text to a message.
  */
-export const GOOGLE_UNVERIFIED_APP_LINE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: 'Google may show an "unverified app" screen. Tap Advanced, then continue.',
-  fr: 'Google peut afficher un ecran "application non verifiee". Touchez Avance, puis continuez.',
-};
-
-export function googleUnverifiedAppLine(language: ReplyLanguage): string {
-  return GOOGLE_UNVERIFIED_APP_LINE_BY_LANGUAGE[language];
-}
-
-/** The coaching line, then the link sentence. Every Google connect link carries it once. */
-export function withGoogleConnectCaution(language: ReplyLanguage, body: string): string {
-  const line = googleUnverifiedAppLine(language);
-  if (body.startsWith(line)) return body;
-  return `${line}\n${body}`;
-}
+export const GOOGLE_UNVERIFIED_APP_FACT =
+  'Google may show a screen saying the app is unverified. Tapping Advanced and then continuing gets past it.';
 
 /** What the link unfurls as. Title is the ask. Description is the trust line. */
 export const CONNECTOR_CARD_TITLE: Record<TextConnectProvider, string> = {
