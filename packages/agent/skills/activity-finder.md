@@ -97,6 +97,10 @@ all three in for does not go in the list:
   "Ongoing" is not a when. **Leave it out when the page has not posted one.**
 - **`price`** — what it costs, where the page says. **Leave it out when the page
   does not say.**
+- **One location's facts stay with that location.** When one program runs at more
+  than one location with different dates or prices, each `when` and `price` names
+  the location it belongs to. A date from one location next to a price from
+  another describes a listing that does not exist.
 
 **A DETAIL THE PAGE HAS NOT POSTED IS NOT A MISSING PICK.** This is the mistake
 you are most likely to make here, and it is the expensive one. A real program, on
