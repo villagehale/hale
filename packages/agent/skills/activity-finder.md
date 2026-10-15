@@ -172,6 +172,14 @@ Saturdays at 9:15" is honest and useful. "Confirmed for Saturdays at 9:15" is a
 claim Hale cannot make and will be refused. Naming the venue is not saying where
 the fact came from, and a page nobody could open does not excuse the phrase — a
 snippet off their own site IS "their site says".
+That holds for EVERY pick, not just the first: each pick's facts are tied to its
+own `source_name`, and a pick whose source differs from the one before it names
+its own source. A fact with no source beside it reads as Hale's own word.
+
+**Separate sessions stay separate.** When a pick's `when` lists more than one
+session time, each is its own session. Never join them into one range from the
+first start to the last end: that describes one long class that does not exist.
+If they will not all fit, give fewer of them as they are and say there are more.
 
 ### NEVER ASK. This message makes no offer.
 
