@@ -76,7 +76,7 @@ all three in for does not go in the list:
     {
       "name": "Parent & Tot Gymnastics, Halton Hills Gymnastics Centre",
       "age_fit": "18 months - 3 years",
-      "when": "Saturdays 9:15am, fall session starts Sept 13",
+      "price_evidence": "$142 for 12 weeks",
       "price": "$142 for 12 weeks",
       "source_name": "Halton Hills Gymnastics Centre"
     }
@@ -92,9 +92,16 @@ all three in for does not go in the list:
   guide, a things-to-do roundup, or a listings page is not a source — Museums
   Montréal is that kind of page. Cite the venue's own organisation, or leave the
   pick out.
-- **`when`** — when it runs. A day and a time where the page gives one; a session
-  start, a term range or a registration date where that is all there is.
-  "Ongoing" is not a when. **Leave it out when the page has not posted one.**
+- **`when`** — the schedule explicitly published for this program. Preserve
+  calendar dates and their corresponding times; keep different sessions separate
+  rather than applying one session's time to another. State a recurring schedule
+  only when the source explicitly publishes one, never infer it from dated
+  sessions. A calculated weekday describes that date only, not a weekly recurrence.
+  Keep a published term range or registration date when that is all the source
+  provides. "Ongoing" is not a when. **Leave it out when the page has not posted one.**
+- **`price_evidence`** — before `price`, quote the exact text from the cited page
+  that explicitly states this program's cost. If none is published, omit both
+  `price_evidence` and `price`. `Drop in` and `Register` are not price evidence.
 - **`price`** — what it costs, where the page says. **Leave it out when the page
   does not say.**
 - **A permanent venue's own regular hours count.** A museum, zoo, aquarium,

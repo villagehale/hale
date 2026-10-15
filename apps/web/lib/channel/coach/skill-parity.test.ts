@@ -65,6 +65,21 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).not.toContain('306 characters');
   });
 
+  it('keeps unknown activity prices unknown without suppressing published costs', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+    const instructions = skill.instructions.replace(/\s+/g, ' ');
+    expect(instructions).toContain('Activity prices are source facts, never estimates.');
+    expect(instructions).toContain("only when this turn's tool result explicitly states that cost");
+    expect(instructions).toContain(
+      'A missing price, `null`, or `"unknown"` means unknown, not zero.',
+    );
+    expect(instructions).toContain('Never infer free from a library, EarlyON, drop-in');
+    expect(instructions).toContain('"likely", "usually" or "typically free", even with a caveat');
+    expect(instructions).toContain(
+      'Preserve published pricing conditions, units, mandatory fees and eligibility',
+    );
+  });
+
   it('uses explicit page applicability rather than a date-order inference', async () => {
     const policy = await loadCronSkill('registration-live-truth');
     expect(policy.instructions).toContain("Repeat only the page's explicit applicability");

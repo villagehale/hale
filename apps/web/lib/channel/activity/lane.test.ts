@@ -82,9 +82,10 @@ const WHOLE_PICK = {
 };
 
 interface Seen {
-  tools?: Array<{ type?: string; max_uses?: number }>;
+  tools?: Array<{ name?: string; type?: string; max_uses?: number; input_schema?: unknown }>;
   toolChoice?: string;
   userMessage?: string;
+  system?: string;
 }
 
 type PhaseResponse = unknown | (() => unknown) | Error;
@@ -102,6 +103,10 @@ function makeClient(
           tools: req.tools,
           toolChoice: isCompose ? 'activity_picks' : req.tools?.[0]?.name,
           userMessage: req.messages?.[0]?.content,
+          system:
+            typeof req.system === 'string'
+              ? req.system
+              : req.system?.map((block: { text: string }) => block.text).join('\n'),
         });
         const pick = isCompose ? script.compose : script.ground;
         const resolved = typeof pick === 'function' ? (pick as () => unknown)() : pick;
@@ -143,6 +148,57 @@ describe('the payloads', () => {
       window: 'this fall',
       research_notes: 'the notes',
     });
+  });
+
+  it('omits SMS-writing instructions only from the extraction request', async () => {
+    const seen: Seen[] = [];
+    await createActivityFinder(
+      makeClient(
+        { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    ).find(QUERY);
+    const ground = seen.find((call) => !call.toolChoice)?.system;
+    const compose = seen.find((call) => call.toolChoice === 'activity_picks')?.system;
+    expect(ground).toContain('## Step 3 — THE FOLLOW-UP TEXT');
+    expect(ground).toContain('Tiny Gym Sundays 9:30');
+    expect(compose).toBe(ground?.split('\n## Step 3 — THE FOLLOW-UP TEXT')[0]?.trimEnd());
+    expect(compose).toContain('## Step 2 — EXTRACT');
+    expect(compose).toContain('never invent a');
+    expect(compose).not.toContain('## Step 3');
+    expect(compose).not.toContain('Tiny Gym Sundays 9:30');
+    expect(compose).not.toContain('about 300');
+  });
+
+  it('requests optional price evidence before price without exposing it to callers', async () => {
+    const seen: Seen[] = [];
+    const result = await createActivityFinder(
+      makeClient(
+        {
+          ground: groundResult(2),
+          compose: composeResult({
+            picks: [{ ...WHOLE_PICK, price_evidence: '$142 for 12 weeks' }],
+          }),
+        },
+        seen,
+      ),
+    ).find(QUERY);
+    const compose = seen.find((call) => call.toolChoice === 'activity_picks');
+    const schema = compose?.tools?.find((tool) => tool.name === 'activity_picks')?.input_schema as {
+      properties: { picks: { items: { properties: Record<string, unknown>; required: string[] } } };
+    };
+    const item = schema.properties.picks.items;
+    const fields = Object.keys(item.properties);
+    expect(item.properties.price_evidence).toEqual({ type: 'string' });
+    expect(fields.indexOf('price_evidence')).toBe(fields.indexOf('price') - 1);
+    expect(item.required).not.toContain('price_evidence');
+    expect(item.required).not.toContain('price');
+    expect(compose?.system).toContain('"price_evidence": "$142 for 12 weeks"');
+    expect(compose?.system?.replace(/\s+/g, ' ')).toContain(
+      'omit both `price_evidence` and `price`',
+    );
+    expect(result).toMatchObject({ found: true, picks: [{ price: '$142 for 12 weeks' }] });
+    expect(result.found && result.picks[0]).not.toHaveProperty('price_evidence');
   });
 });
 

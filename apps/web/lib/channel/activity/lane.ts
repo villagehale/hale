@@ -284,6 +284,7 @@ const composeSchema = z.object({
         age_fit: z.string().nullish(),
         source_url: z.string().nullish(),
         when: z.string().nullish(),
+        price_evidence: z.string().nullish(),
         price: z.string().nullish(),
         source_name: z.string().nullish(),
         source_url: z.string().nullish(),
@@ -310,6 +311,7 @@ const composeJsonSchema: Anthropic.Tool.InputSchema = {
           name: { type: 'string' },
           age_fit: { type: 'string' },
           when: { type: 'string' },
+          price_evidence: { type: 'string' },
           price: { type: 'string' },
           source_name: { type: 'string' },
           source_url: {
@@ -568,7 +570,8 @@ async function runActivityOnce(
       ({ value: composed } = await forceToolJson({
         client: resolved,
         lane: pickLane(skill.meta.task),
-        system: skill.instructions,
+        // SMS-writing examples belong only to the follow-up composer.
+        system: skill.instructions.replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '').trimEnd(),
         userMessage: composeUserMessage(query, researchNotes),
         toolName: 'activity_picks',
         toolDescription: 'Return the concrete programs the search actually found.',
