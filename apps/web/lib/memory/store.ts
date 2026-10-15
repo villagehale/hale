@@ -17,7 +17,6 @@ import {
   applyPromotionSignal,
   classifyMemoryWrite,
   deliverMemoryKindCopy,
-  familyMemoryKindsCopyLocked,
   familyMemoryKindsEnabled,
   includeInRecommendations,
   isLastingFactKey,
@@ -450,9 +449,9 @@ async function parentSpokenName(database: Database, userId: string): Promise<str
 
 /**
  * A parent asked what Hale knows, or asked it to forget or correct a fact.
- * Flag off is a no-op before any read. The reply text is withheld unless
- * the copy gate is exactly true. A 1:1 decision is mirrored to the claimed
- * group and nowhere else — this function never opens a 1:1.
+ * Flag off is a no-op before any read. The reply is whatever the model wrote.
+ * A miss holds it. A 1:1 decision is mirrored to the claimed group and
+ * nowhere else — this function never opens a 1:1.
  */
 export async function handleParentMemory(
   database: Database,
@@ -464,7 +463,7 @@ export async function handleParentMemory(
     inboundChannelMessageId: string | null;
     env?: MemoryKindEnv;
     sendGroup?: (chatId: string, body: string) => Promise<unknown>;
-    /** Injected model. Absent: the locked sentence, and the model is not called. */
+    /** Injected model. Absent: nothing is sent, and the model is not called. */
     replyClient?: AgentClient | null;
   },
 ): Promise<ParentMemoryResult> {
@@ -536,7 +535,6 @@ export async function handleParentMemory(
     familyId: input.familyId,
     language,
     audience: 'direct' as const,
-    flagOn: familyMemoryKindsCopyLocked(env),
     surface: 'memory' as const,
   };
 
@@ -545,7 +543,7 @@ export async function handleParentMemory(
     let reply: string | null = null;
     try {
       const parts = memoryRecallParts(language, recallItems(facts));
-      let body: string;
+      let body: string | null;
       if (parts.empty) {
         body = await replyProse(layer, { fallback: parts.empty, facts: [] });
       } else {
@@ -554,9 +552,11 @@ export async function handleParentMemory(
           footer: parts.footer,
           facts: parts.lines,
         });
-        body = paginateMemoryRecall(frame.header, parts.lines, frame.footer).join('\n\n');
+        body = frame
+          ? paginateMemoryRecall(frame.header, parts.lines, frame.footer).join('\n\n')
+          : null;
       }
-      reply = gatedReply(body, env);
+      reply = body ? gatedReply(body, env) : null;
     } catch {
       reply = null;
     }
@@ -582,9 +582,7 @@ export async function handleParentMemory(
       forgotten.forgotten > 0
         ? renderMemoryForgotten(language, forgotten.keys)
         : memoryKindCopy(language, refusedOnly ? 'refused' : 'nothing');
-    const body = refusedOnly
-      ? lockedForget
-      : await replyProse(layer, { fallback: lockedForget, facts: forgotten.keys });
+    const body = await replyProse(layer, { fallback: lockedForget, facts: forgotten.keys });
     const groupSync =
       forgotten.forgotten > 0
         ? await syncMemoryDecisionToGroup(database, {
@@ -601,7 +599,7 @@ export async function handleParentMemory(
       claimed: true,
       outcome:
         forgotten.forgotten > 0 ? 'forgotten' : forgotten.refused > 0 ? 'refused' : 'nothing',
-      reply: gatedReply(body, env),
+      reply: body ? gatedReply(body, env) : null,
       forgotten: forgotten.forgotten,
       corrected: 0,
       groupSync,
@@ -629,16 +627,14 @@ export async function handleParentMemory(
   const lockedCorrect = corrected.corrected
     ? renderMemoryCorrected(language, intent.factKey ?? '', intent.value ?? '')
     : memoryKindCopy(language, 'refused');
-  const correctedBody = corrected.corrected
-    ? await replyProse(layer, {
-        fallback: lockedCorrect,
-        facts: [intent.factKey ?? '', intent.value ?? ''],
-      })
-    : lockedCorrect;
+  const correctedBody = await replyProse(layer, {
+    fallback: lockedCorrect,
+    facts: [intent.factKey ?? '', intent.value ?? ''],
+  });
   return {
     claimed: true,
     outcome: corrected.corrected ? 'corrected' : 'refused',
-    reply: gatedReply(correctedBody, env),
+    reply: correctedBody ? gatedReply(correctedBody, env) : null,
     forgotten: 0,
     corrected: corrected.corrected ? 1 : 0,
     groupSync,

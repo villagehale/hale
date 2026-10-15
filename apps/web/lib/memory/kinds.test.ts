@@ -5,7 +5,6 @@ import {
   applyPromotionSignal,
   classifyMemoryWrite,
   deliverMemoryKindCopy,
-  familyMemoryKindsCopyLocked,
   familyMemoryKindsEnabled,
   includeInRecommendations,
   isExpiredTemporary,
@@ -25,16 +24,13 @@ const NOW = new Date('2026-09-30T15:00:00.000Z');
 describe('family memory kind flag', () => {
   it('is on only for the exact string true', () => {
     expect(familyMemoryKindsEnabled({ FAMILY_MEMORY_KINDS_ENABLED: 'true' })).toBe(true);
-    expect(familyMemoryKindsCopyLocked({ FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true' })).toBe(true);
   });
 
   it('stays off for TRUE, a trailing newline, and unset', () => {
     for (const value of ['TRUE', 'true\n', 'True', '1', 'on', 'yes', '']) {
       expect(familyMemoryKindsEnabled({ FAMILY_MEMORY_KINDS_ENABLED: value })).toBe(false);
-      expect(familyMemoryKindsCopyLocked({ FAMILY_MEMORY_KINDS_COPY_LOCKED: value })).toBe(false);
     }
     expect(familyMemoryKindsEnabled({})).toBe(false);
-    expect(familyMemoryKindsCopyLocked({})).toBe(false);
   });
 });
 
@@ -224,29 +220,21 @@ describe('copy gate', () => {
     expect(MEMORY_KIND_LINES.fr.inferred).toBe("- {key} : je crois que {value} (pour l'instant)");
   });
 
-  it('does not hand copy to the transport unless both gates are exactly true', async () => {
+  it('does not hand an unrendered template to the transport, and stays quiet while the kinds flag is off', async () => {
     const send = vi.fn(async () => undefined);
     for (const body of memoryKindBodies()) {
+      if (!body.includes('{')) continue;
       await sendMemoryKindReply(send, body, { FAMILY_MEMORY_KINDS_ENABLED: 'true' });
-      await sendMemoryKindReply(send, body, {
-        FAMILY_MEMORY_KINDS_ENABLED: 'true',
-        FAMILY_MEMORY_KINDS_COPY_LOCKED: 'TRUE',
-      });
-      await sendMemoryKindReply(send, body, {
-        FAMILY_MEMORY_KINDS_ENABLED: 'true',
-        FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true\n',
-      });
-      await sendMemoryKindReply(send, body, { FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true' });
     }
+    await sendMemoryKindReply(send, 'Done, I forgot pickup.', {});
     expect(send).not.toHaveBeenCalled();
     expect(deliverMemoryKindCopy(MEMORY_KIND_COPY.en.nothing, {}).deliver).toBe(false);
   });
 
-  it('refuses a leftover token even when both gates are exactly true', async () => {
+  it('refuses a leftover token even when the kinds flag is on', async () => {
     const send = vi.fn(async () => undefined);
     const env = {
       FAMILY_MEMORY_KINDS_ENABLED: 'true',
-      FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true',
     };
     for (const body of memoryKindBodies()) {
       if (!body.includes('{')) continue;
@@ -259,11 +247,10 @@ describe('copy gate', () => {
     });
   });
 
-  it('delivers a finished sentence only when both gates are exactly true', async () => {
+  it('delivers a finished sentence when the kinds flag is exactly true', async () => {
     const send = vi.fn(async () => undefined);
     const env = {
       FAMILY_MEMORY_KINDS_ENABLED: 'true',
-      FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true',
     };
     const body = renderMemoryGroupSync('fr', 'forget', 'Sam');
     const result = await sendMemoryKindReply(send, body, env);

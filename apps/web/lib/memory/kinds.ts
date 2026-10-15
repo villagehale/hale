@@ -3,9 +3,8 @@
  *
  * The flag is off unless FAMILY_MEMORY_KINDS_ENABLED is exactly `true`. `TRUE`
  * and `true\n` stay off: a piped env write stores a trailing newline, and a
- * truthiness check would arm this. Parent-facing sentences are Sloane's locked
- * copy (VIL-381). They leave this module only when the flag is on AND
- * FAMILY_MEMORY_KINDS_COPY_LOCKED is exactly `true`. Both stay default off.
+ * truthiness check would arm this. A parent-facing sentence leaves only when
+ * that flag is on and the text is finished. The model writes it.
  *
  * VIL-388 (exportable family memory) has no snapshot builder in this repo.
  * {@link toFamilyMemoryExportFact} is the hook that snapshot should call so
@@ -15,7 +14,6 @@
 import { copyLanguage } from '~/lib/channel/language';
 
 export const FAMILY_MEMORY_KINDS_ENABLED_ENV = 'FAMILY_MEMORY_KINDS_ENABLED';
-export const FAMILY_MEMORY_KINDS_COPY_LOCKED_ENV = 'FAMILY_MEMORY_KINDS_COPY_LOCKED';
 
 export type MemoryKind = 'lasting' | 'temporary' | 'one_off';
 export type MemorySource = 'parent_message' | 'calendar' | 'receipt' | 'inferred' | 'legacy';
@@ -98,10 +96,6 @@ export type MemoryKindCopyKey = keyof (typeof MEMORY_KIND_COPY)['en'];
 
 export function familyMemoryKindsEnabled(env: MemoryKindEnv = process.env): boolean {
   return env[FAMILY_MEMORY_KINDS_ENABLED_ENV] === 'true';
-}
-
-export function familyMemoryKindsCopyLocked(env: MemoryKindEnv = process.env): boolean {
-  return env[FAMILY_MEMORY_KINDS_COPY_LOCKED_ENV] === 'true';
 }
 
 export function memoryKindBodies(): string[] {
@@ -314,17 +308,14 @@ export function memoryKindLanguage(
 }
 
 /**
- * The only way a placeholder may be handed to a transport. Both gates are
- * strict `=== 'true'`. Anything else names why it was withheld.
+ * The only way a placeholder may be handed to a transport. The kinds flag is
+ * strict `=== 'true'`. A leftover token is named rather than sent.
  */
 export function deliverMemoryKindCopy(
   body: string,
   env: MemoryKindEnv = process.env,
-):
-  | { deliver: true; body: string }
-  | { deliver: false; skipped: 'flag_off' | 'copy_not_locked' | 'unrendered' } {
+): { deliver: true; body: string } | { deliver: false; skipped: 'flag_off' | 'unrendered' } {
   if (!familyMemoryKindsEnabled(env)) return { deliver: false, skipped: 'flag_off' };
-  if (!familyMemoryKindsCopyLocked(env)) return { deliver: false, skipped: 'copy_not_locked' };
   if (MEMORY_TOKEN.test(body) || body.includes('TODO-Design') || MEMORY_BANNED.test(body)) {
     return { deliver: false, skipped: 'unrendered' };
   }
@@ -335,7 +326,7 @@ export async function sendMemoryKindReply(
   send: (body: string) => Promise<unknown>,
   body: string,
   env: MemoryKindEnv = process.env,
-): Promise<{ sent: boolean; skipped: 'flag_off' | 'copy_not_locked' | 'unrendered' | null }> {
+): Promise<{ sent: boolean; skipped: 'flag_off' | 'unrendered' | null }> {
   const gated = deliverMemoryKindCopy(body, env);
   if (!gated.deliver) return { sent: false, skipped: gated.skipped };
   await send(gated.body);

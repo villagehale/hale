@@ -2,9 +2,8 @@
  * The gate in front of a model-written duty or family-memory reply.
  *
  * The model may use only the facts it was given. A failure here is not edited:
- * the caller sends the locked sentence already on main (the #738 strings).
- * Compliance replies, refused, group sync, and the recall list lines never
- * come through here. Those stay fixed.
+ * the caller holds the send. Compliance replies, group sync, and the recall
+ * list lines never come through here. Group sync and the list lines stay fixed.
  */
 
 export type ReplyCopyLanguage = string;

@@ -3,21 +3,13 @@ import { classifyKidCalendarItem } from '~/lib/channel/linq/kid-event';
 /**
  * Parent-facing lines for duty asks. Sloane locked these strings (VIL-382).
  *
- * French is ASCII. A line may leave only when {@link dutyCopyLocked} is exactly
- * `true` and the text has no leftover `{token}`. The sends flag is the
- * caller's other gate. Flags stay off here.
+ * A line may leave when the text has no leftover `{token}`. The sends flag is
+ * the caller's other gate. The model writes the sentence that actually goes out.
  *
  * A name is filled only from words a parent said, or from the one parent whose
  * calendar holds the event. Callers pass that decision in. This module does
  * not look a name up and does not invent one.
  */
-
-export const COPARENT_DUTY_COPY_LOCKED_ENV = 'COPARENT_DUTY_COPY_LOCKED';
-
-/** Strict `true`. `TRUE` and `true\n` stay unlocked. */
-export function dutyCopyLocked(): boolean {
-  return process.env[COPARENT_DUTY_COPY_LOCKED_ENV] === 'true';
-}
 
 export const DUTY_WHICH_KID_COPY = '{name}, got it. Which kid is that for: {kids}?';
 export const DUTY_WHICH_KID_COPY_FR = "{name}, note. C'est pour quel enfant: {kids}?";
@@ -283,11 +275,10 @@ export function dutyClockLabel(date: Date, timeZone: string, language: DutyCopyL
 }
 
 /**
- * A line may leave only when Sloane's lock is exactly on and the text is a
- * finished sentence: no design placeholder, no `{token}`, no booking claim.
+ * A finished sentence may leave: no design placeholder, no `{token}`, no
+ * booking claim. The locked template is not itself a send.
  */
 export function dutyCopyMayLeave(text: string): boolean {
-  if (!dutyCopyLocked()) return false;
   if (text.includes('TODO-Design')) return false;
   if (TOKEN_TEST.test(text)) return false;
   if (BANNED.test(text)) return false;
@@ -295,8 +286,8 @@ export function dutyCopyMayLeave(text: string): boolean {
 }
 
 /**
- * Append one duty line to a bubble that is already leaving. A placeholder, an
- * unrendered token, or an unlocked copy flag leaves the bubble unchanged.
+ * Append one duty line to a bubble that is already leaving. A placeholder or
+ * an unrendered token leaves the bubble unchanged.
  */
 export function absorbDutyLine(weekly: string, line: string | null | undefined): string {
   if (!line || line.trim().length === 0) return weekly;
@@ -320,9 +311,9 @@ export function dutyTitleMayBeSpoken(title: string | null | undefined): boolean 
 }
 
 /**
- * One line: the locked owner sentence, then the locked "say so if that
- * changes" next step. Null when copy is unlocked, a token is missing, or
- * the event title is not a kid event (that title is not returned).
+ * One line: the owner sentence, then the "say so if that changes" next step.
+ * Null when a token is missing, or the event title is not a kid event (that
+ * title is not returned).
  */
 export function dutyOwnerEcho(language: DutyCopyLanguage, params: DutyCopyParams): string | null {
   if (!dutyTitleMayBeSpoken(params.event)) return null;

@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
@@ -9,6 +10,8 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { replyProse } from '~/lib/channel/reply-copy/apply';
+import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
@@ -475,7 +478,7 @@ export async function noteGroupSyncConversation(
  */
 export async function flushGroupDecisionSyncs(
   database: Database,
-  input: { now: Date; fetch?: typeof fetch },
+  input: { now: Date; fetch?: typeof fetch; replyClient?: AgentClient | null },
 ): Promise<{ sent: number; held: number }> {
   if (typeof database.select !== 'function') return { sent: 0, held: 0 };
   const waiting = await database
@@ -541,6 +544,8 @@ export async function flushGroupDecisionSyncs(
     rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     const speech = await familySpeech(database, familyId, rows[0]?.parentUserId ?? '');
     const lines: string[] = [];
+    let dutyUnvoiced = false;
+    const replyClient = await resolveReplyClient(input.replyClient);
     for (const row of rows) {
       const name =
         speech.name ?? (copyLanguage(speech.language) === 'fr' ? 'Un parent' : 'A parent');
@@ -562,7 +567,7 @@ export async function flushGroupDecisionSyncs(
         if (line) lines.push(line);
       } else if (row.decision === 'duty' && row.day && row.time) {
         const copy = copyLanguage(speech.language);
-        const line = copy
+        const fallback = copy
           ? dutySyncLine(copy, {
               name: speech.name,
               activity: row.activity,
@@ -571,8 +576,33 @@ export async function flushGroupDecisionSyncs(
               time: row.time,
             })
           : null;
-        if (line && line.split('\n').length <= 1) lines.push(line);
+        const voiced =
+          fallback && copy
+            ? await replyProse(
+                {
+                  client: replyClient,
+                  database,
+                  familyId,
+                  language: copy,
+                  audience: 'group',
+                  surface: 'duty',
+                },
+                {
+                  fallback,
+                  facts: [name, row.activity, row.kid, row.day, row.time],
+                },
+              )
+            : null;
+        if (!voiced || voiced.includes('\n')) {
+          dutyUnvoiced = true;
+          break;
+        }
+        lines.push(voiced);
       }
+    }
+    if (dutyUnvoiced) {
+      held += 1;
+      continue;
     }
     if (lines.length === 0) continue;
     const actor = rows[0]?.parentUserId;
