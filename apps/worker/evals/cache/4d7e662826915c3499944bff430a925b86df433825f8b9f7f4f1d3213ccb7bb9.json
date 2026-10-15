@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "routine health admin — checking whether a form went in",
+    "language": "en"
+  },
+  "latencyMs": 1335
+}

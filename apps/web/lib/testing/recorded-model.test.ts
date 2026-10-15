@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { recordedModel } from './recorded-model';
 
 /**
@@ -98,5 +98,33 @@ describe('recordedModel cache key', () => {
 
     await expect(ask('adaptive')).resolves.toMatchObject({ stop_reason: 'tool_use' });
     await expect(ask('between_tools')).rejects.toThrow(/no recording/);
+  });
+});
+
+describe('recordedModel record mode', () => {
+  it('refuses to record without HALE_MAX_USD and never builds the live client', async () => {
+    vi.stubEnv('HALE_RECORD', '1');
+    vi.stubEnv('HALE_MAX_USD', '');
+    const dir = mkdtempSync(join(tmpdir(), 'recorded-model-'));
+    const live = vi.fn(() => {
+      throw new Error('live client must not be built uncapped');
+    });
+    const recorded = recordedModel(
+      join(dir, 'recordings.json'),
+      live as unknown as () => AgentClient,
+    );
+    try {
+      await expect(
+        recorded.client().messages.create({
+          model: MODEL,
+          max_tokens: 16,
+          system: SYSTEM,
+          messages: [{ role: 'user', content: USER }],
+        }),
+      ).rejects.toThrow(/needs HALE_MAX_USD/);
+      expect(live).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

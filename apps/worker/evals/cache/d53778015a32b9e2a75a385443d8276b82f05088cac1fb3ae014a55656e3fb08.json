@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asking to find an activity (something indoors) for a specific day of the family's week",
+    "language": "en"
+  },
+  "latencyMs": 1598
+}

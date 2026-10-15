@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asking Hale to find a park nearby is an activity search for the family, which is Hale's job",
+    "language": "en"
+  },
+  "latencyMs": 1630
+}

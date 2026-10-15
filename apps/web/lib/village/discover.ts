@@ -369,8 +369,8 @@ export async function discoverForFamily(
       await database.transaction(async (tx) => {
         // REPLACE within THIS run type, don't accumulate: soft-retire this family's
         // prior active set of the SAME run type so a re-run swaps in the new one. A
-        // soft stamp (not DELETE) keeps endorsed / shared candidates alive for their
-        // public /a/:token page (rule #6 audit + the share token both survive); the
+        // soft stamp (not DELETE) keeps an endorsed candidate and its share token
+        // (rule #6 audit + the share token both survive); the
         // live feed filters superseded_at IS NULL. Sets ONLY superseded_at.
         //
         // Scoped by run type so the two feeds COEXIST: a search run supersedes only

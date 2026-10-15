@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child choked and showed signs of severe distress (cyanosis)",
+    "language": "en"
+  },
+  "latencyMs": 1339
+}

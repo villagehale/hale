@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful and correctly cited. Tiny Gym's age band and term dates (Sept 14-Nov 1, Nov 2-Dec 20) come off the opened PDF. Registration (Wed July 22, 2026, 8:00am online) comes off the home page. Price is null, which is correct because the site says pricing is only behind the registration login. No figures are borrowed from elsewhere. Hale honestly notes it could not tie times to weekdays from the PDF grid. The message does most things right: it leads with Tiny Gym by name, attributes with 'their site says', carries the registration date, and is plain ASCII with no link and no question. It uses the correct first-person 'I could not pin down the day or the price' for page_has_schedule, and the first-person watch commitment is backed by watch=true. The one fault is that it drops the Rock n' Roll (0+) find, which fits a toddler and sits in the slots, so the message goes quiet on a fitting find.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5, Saturday times, Sept 12 to Nov 28, each cited to the Town of Oakville page. Price is correctly null because the page prints no fee, and no third slot was invented. Registration (Tues Aug 11, 7 a.m., residents) is in both slots and in the message, framed as not yet open. The message leads with Preschool A by name and attributes the facts to the Town's site. It is plain ASCII, with no link and no question. Under page_has_schedule, the price gap is put in the first person ('I could not pin down the price') rather than as 'not posted'. With watch=true, 'I'll keep watching for it' is a legitimate first-person commitment. One minor omission: the page says fees are in the Recreation Guide, and neither the slots nor the message mention that pointer. It is not clearly a linked PDF, so it is not penalized.",
+    "score": 5
+  }
+}

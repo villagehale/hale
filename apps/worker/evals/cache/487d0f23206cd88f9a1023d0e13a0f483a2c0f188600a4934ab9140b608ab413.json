@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has three real, named Oakville venues that fit the preschool stage, each sourced from the venue's own page rather than an aggregator. It leads with the Town program by name and attributes facts with \"their site says\" and \"per their sites\". The Aug 11 date and $32.50 price both appear in the picks, and nothing is invented. Under no_page_read it correctly says \"I could not get into their pages today\" rather than claiming nothing is posted. Since watch is true, the first-person \"I'll keep watching and text you\" is correct. It is plain text with no link and no question. Small nit: the 3-5 age for the Town program came from a third-party brochure copy but is stated as plain fact.",
+    "score": 5
+  }
+}

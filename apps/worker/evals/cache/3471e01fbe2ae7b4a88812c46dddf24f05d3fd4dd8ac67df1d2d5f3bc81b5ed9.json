@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real on the page, with the exact days, times and session dates. Price is correctly null because the page prints no fee, and each slot carries the registration date and is cited to the page. The message is in Arabic as the fixture requires. It leads with Preschool A by name, attributes the facts to the Town of Oakville site and carries the August 11 resident registration date. It uses a first-person gap statement for the price ('I could not determine the price'), which is correct under page_has_schedule. With watch true, it rightly includes a first-person promise to keep watching. There is no link and no question. The only nit is that Preschool B's date range is left implicit.",
+    "score": 5
+  }
+}

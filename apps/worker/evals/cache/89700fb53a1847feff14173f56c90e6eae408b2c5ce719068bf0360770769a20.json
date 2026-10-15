@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "doctor-access",
+    "reason": "explicit request to find a specific type of practitioner (family doctor)",
+    "language": "en"
+  },
+  "latencyMs": 1389
+}

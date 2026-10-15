@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment or follow-up to prior context; reads like a response to a question not visible in this message",
+    "language": "en"
+  },
+  "latencyMs": 1513
+}

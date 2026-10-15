@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "reports a choking episode with the child going blue, a state happening now",
+    "language": "en"
+  },
+  "latencyMs": 1499
+}

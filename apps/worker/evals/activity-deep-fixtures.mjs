@@ -219,4 +219,43 @@ export const DEEP_FIXTURES = [
     watchFor:
       'The page WAS opened and it genuinely has nothing under age 8. Empty `slots` with a non-empty `pages_read` is the correct and honest answer, and it is the one Hale is licensed to report as "there is nothing running". Stretching the 8-12 foil class to fit a toddler is the failure here.',
   },
+
+  // ── the follow-up is written in the language tag, not in English by default ─
+  // Same frozen page as a donor fixture, so the facts are that donor's facts. `language`
+  // is the only new input the composer is given. The tag is passed through; nothing here
+  // detects a language from a parent's words. The registration date is graded by the
+  // judge in that language, because an English substring check would refuse a correct
+  // translation.
+  {
+    id: 'followup-language-zh',
+    subject: 'Cartwheels Gym Centre toddler classes',
+    town: 'Halton Hills',
+    stage: 'toddler',
+    window: 'this fall',
+    rawSubject: 'cartwheels for my 18 month old',
+    dropsFromQuery: ['18 month'],
+    notes: CARTWHEELS_PAGE,
+    language: 'zh',
+    expectSlots: true,
+    expectPagesRead: true,
+    brokenMode: 'shrug',
+    watchFor:
+      'Same page as registration-in-plain-sight. The message must be written in the language tag zh. The fall block, the fee, and that registration opened July 22 have to reach the parent in that language. A message in any other language is a low score.',
+  },
+  {
+    id: 'followup-language-ar',
+    subject: 'preschool swim lessons',
+    town: 'Oakville',
+    stage: 'preschool',
+    window: 'this fall',
+    rawSubject: 'swim lessons for a 4 year old at 121 Maple Ave',
+    dropsFromQuery: ['121 maple', '4 year'],
+    notes: OAKVILLE_SWIM_PAGE,
+    language: 'ar',
+    expectSlots: true,
+    expectPagesRead: true,
+    brokenMode: 'shrug',
+    watchFor:
+      'Same page as registration-opens-later. The message must be written in the language tag ar. Registration has not opened yet (August 11) and the page prints no fee, so the price stays null. Those facts have to reach the parent in Arabic. A message in any other language is a low score.',
+  },
 ];

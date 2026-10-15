@@ -22,10 +22,10 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
  * thread is derivable from (familyId, parentUserId) alone — the same note anchor C1
  * resolves on an inbound — so there is nothing to be absent, and no absence to handle.
  *
- * THE COMPOSED SENTENCE. Callers pass what they wrote, before any share link. The
- * opt-out line is not appended to the wire (founder decision, 2026-10-01), so this row
- * and the text match except where a share link was added after. This row is both what
- * the parent reads back in the app and what the coach re-reads next turn.
+ * THE COMPOSED SENTENCE, plus any venue page code appended after the model's gates.
+ * The opt-out line is not appended to the wire (founder decision, 2026-10-01). This
+ * row is both what the parent reads back in the app and what the coach re-reads next
+ * turn, except a caller that passes `topic` to mark a note the receipts timeline hides.
  *
  * Recorded as `assistant` because that is who said it. Redaction is the caller's, and
  * already done: every body reaching here has been through its own composer's gates, and
@@ -33,14 +33,17 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
  */
 export async function threadProactiveMessage(
   database: Database,
-  input: { familyId: string; parentUserId: string; body: string },
+  input: { familyId: string; parentUserId: string; body: string; topic?: string | null },
 ): Promise<string> {
   const conversationId = await resolveOrCreateNoteConversation(
     input.familyId,
     channelSmsNoteKey(input.parentUserId),
     database,
   );
-  await appendMessage(conversationId, 'assistant', input.body, database);
+  await appendMessage(conversationId, 'assistant', input.body, database, {
+    childId: null,
+    topic: input.topic ?? null,
+  });
   return conversationId;
 }
 

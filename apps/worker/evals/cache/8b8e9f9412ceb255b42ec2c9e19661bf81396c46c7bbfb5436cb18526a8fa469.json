@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real offerings read off the Oakville page. Each carries the exact Saturday times, the Sept 12 - Nov 28 dates, the right age band and the Aug 11 7 a.m. registration date, and each cites the page. Price is correctly null because the page defers fees to the Recreation Guide; no outside figure was borrowed. The message is in Arabic as required. It leads with Preschool A by name, attributes the facts to the Town of Oakville site and carries the registration date for residents. It contains no question and no link. With watch=true, the first-person 'I'll keep following and message you when I find it' is legitimate. With page_has_schedule, the price gap is correctly framed as Hale's own ('I couldn't pin down the price') rather than 'not posted'. One minor gap: neither the slots nor the message mention that fees sit in the unread Recreation Guide.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot matches the program page exactly: name, ages 12 months to 4 years, Tue/Thu 9:30-11:00 a.m., Sept 8 to Dec 11, cited to the preschool-play URL. The price is correctly null and none of the room-rental figures ($185, $95) were borrowed. No registration date is printed, so a null registration is right. The message leads with the program by name, attributes the facts with \"their site says\", is plain ASCII, has no link and asks no question. With watch TRUE, the first-person \"I'll keep watching and text you\" is a promise that actually exists. The pageEvidence is page_has_schedule, so the first-person \"I could not pin down the price\" is the correct framing rather than \"not posted\". The page prints no fee and points to the front desk, and no unopened PDF is linked. No faults found.",
+    "score": 5
+  }
+}

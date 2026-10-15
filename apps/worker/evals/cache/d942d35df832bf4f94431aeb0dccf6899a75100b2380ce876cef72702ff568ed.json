@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot is traceable to a page it cites. Tiny Gym's age band and parent/caregiver format come off programs.php. The Term 1 and Term 2 dates come off the opened Term 2 schedule PDF, and the slot honestly admits it could not tie times to weekdays from the garbled grid. The July 22, 2026 8:00am registration date comes off the homepage. Price is null, which is correct: the page says pricing sits behind the registration login, and no figure is borrowed from elsewhere. The message leads with Tiny Gym by name, attributes both facts to their site and carries the registration date. Under page_has_schedule it correctly owns the gap in the first person ('I could not pin down the day or price') rather than saying 'not posted'. With watch true, 'I'll keep watching and text you' is the right first-person commitment. It is plain ASCII, with no link and no question. Minor nits only: there are duplicate Tiny Gym slots, the slot's unsupported 'date has passed' aside, and Term 2 dates and the login route for pricing are left out of the text.",
+    "score": 5
+  }
+}

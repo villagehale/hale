@@ -20,8 +20,8 @@ import { loadReconcileView } from './view';
  * promise as unsendable and says so under its own name.
  *
  * IT RUNS LAST, on the string that actually leaves. Everything between a gate and the
- * transport is unchecked by construction — the 2026-08-22 lesson from `withOptOut` and
- * `withSharePage` appending past a green gate (activity/sweep.ts).
+ * transport is unchecked by construction — the 2026-08-22 lesson from an append running
+ * past a green gate (activity/deliver.ts).
  */
 
 /** Why the wire body was refused. The reconcile's own reasons, plus the one this gate

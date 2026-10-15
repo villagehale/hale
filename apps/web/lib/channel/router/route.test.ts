@@ -845,6 +845,90 @@ describe('VIL-333 identity challenge', () => {
   });
 });
 
+describe('the language the inbound screen read', () => {
+  async function parentAt(fake: FakeDb, locale: string) {
+    await fake.db.insert(schema.users).values({
+      id: PARENT,
+      email: 'parent-locale@example.test',
+      locale,
+    });
+  }
+
+  const localeUpdates = (fake: FakeDb) =>
+    fake.writes.filter((write) => write.op === 'update' && write.table === schema.users);
+
+  it('stores zh when an in-domain verdict carries it, and does not write the same tag again', async () => {
+    const h = harness({
+      offDomain: fakeLane({ status: 'in_domain', fallback: null, language: 'zh' }),
+    });
+    await parentAt(h.fake, 'en-CA');
+
+    await routeChannelMessage(h.deps, job());
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({ id: PARENT, locale: 'zh' });
+    expect(localeUpdates(h.fake)).toHaveLength(1);
+
+    await routeChannelMessage(h.deps, nthJob(2));
+    expect(localeUpdates(h.fake)).toHaveLength(1);
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({ locale: 'zh' });
+  });
+
+  it('stores ar from a deflection, and the coach is not woken', async () => {
+    const coach = fakeCoach();
+    const h = harness({
+      coach,
+      offDomain: fakeLane({
+        status: 'deflected',
+        lane: 'off_domain_general',
+        category: 'weather',
+        reply: 'Rain later.',
+        replySource: 'composed',
+        medicalSource: null,
+        signal: 'recorded',
+        language: 'ar',
+        pendingAsk: null,
+      }),
+    });
+    await parentAt(h.fake, 'en-CA');
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('deflected');
+    expect(coach.calls).toBe(0);
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({ locale: 'ar' });
+  });
+
+  it('leaves the stored locale alone when the verdict has no tag or a blank one', async () => {
+    const untouched = harness({ offDomain: fakeLane({ status: 'in_domain', fallback: null }) });
+    await parentAt(untouched.fake, 'en-CA');
+    await routeChannelMessage(untouched.deps, job());
+    expect(localeUpdates(untouched.fake)).toEqual([]);
+    expect(untouched.fake.rows(schema.users)[0]).toMatchObject({ locale: 'en-CA' });
+
+    const blank = harness({
+      offDomain: fakeLane({ status: 'in_domain', fallback: null, language: '   ' }),
+    });
+    await blank.fake.db.insert(schema.users).values({
+      id: PARENT,
+      email: 'blank-locale@example.test',
+      locale: 'ar',
+    });
+    await routeChannelMessage(blank.deps, job());
+    expect(localeUpdates(blank.fake)).toEqual([]);
+    expect(blank.fake.rows(schema.users)[0]).toMatchObject({ locale: 'ar' });
+  });
+
+  it('stores zh-Hant exactly', async () => {
+    const h = harness({
+      offDomain: fakeLane({ status: 'in_domain', fallback: null, language: 'zh-Hant' }),
+    });
+    await parentAt(h.fake, 'en-CA');
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({ locale: 'zh-Hant' });
+  });
+});
+
 describe('the off-domain lane', () => {
   // A test here that lights the search must not leave it lit for the next one.
   afterEach(() => {
@@ -1044,7 +1128,12 @@ describe('the off-domain lane', () => {
       }) as unknown as AgentClient;
     const lane = offDomainLane({
       screen: {
-        read: async () => ({ lane: 'off_domain_general', category: 'weather', fallback: null }),
+        read: async () => ({
+          lane: 'off_domain_general',
+          category: 'weather',
+          fallback: null,
+          language: null,
+        }),
       },
       answer: createGeneralAnswer(client),
       today: async () => 'monday, oct 12, 2026',
@@ -1136,6 +1225,7 @@ describe('the off-domain lane', () => {
           lane: 'off_domain_general',
           category: 'general-knowledge',
           fallback: null,
+          language: null,
         }),
       },
       answer: createGeneralAnswer(client),

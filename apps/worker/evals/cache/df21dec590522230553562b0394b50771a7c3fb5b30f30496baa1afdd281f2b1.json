@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are on the page. Day, times and the Sept 12 to Nov 28 dates match exactly, and both cite the Oakville page. Price is correctly null because the page prints no fee, only a pointer to the Recreation Guide. The registration line (Aug 11 at 7 a.m., browse from Aug 4) is in both slots. The message names Preschool A first, attributes to the Town's site and carries the Aug 11 7am registration date. It uses a first-person 'could not pin down the price', which is correct under page_has_schedule. Since watch=true, the first-person keep-watching line is a real commitment. The text is plain ASCII with no link, no question and no invented third slot. Only nit: the watch line could say 'text you when they post', but it is still a valid first-person continuation.",
+    "score": 5
+  }
+}

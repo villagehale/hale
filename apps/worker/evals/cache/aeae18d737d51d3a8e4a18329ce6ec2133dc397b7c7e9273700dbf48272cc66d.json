@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and cited to the programme page. Its day, time, dates and age band match the page exactly. Price is correctly null, so no rental figure was borrowed. The page prints no registration date, so a null registration is right. The message leads with the slot by name and attributes it ('their site says'). The page sends fees to the front desk, and 'I could not pin down the price' is a first-person gap, not a 'not posted' claim, which fits page_has_schedule. watch is true, so the first-person 'I'll keep watching and text you' is legitimate. The message is plain ASCII with no link and no question. One small gap: it could have passed on that fees are available at the front desk or by calling reception, which would help the parent.",
+    "score": 5
+  }
+}

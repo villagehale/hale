@@ -1,0 +1,18 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Tiny Gym, Cartwheels Gym Centre (12 Armstrong Ave, Georgetown)",
+        "age_fit": "1 and walking to 3 years, with their parent/caregiver, 45 minutes",
+        "when": "Fall registration opened Wednesday July 22, 2026 at 8:00am online; class day and time not seen on the pages read",
+        "source_name": "Cartwheels Gym Centre"
+      },
+      {
+        "name": "Parent & Tot, Halton Hills Gymnastics Centre (36 Armstrong Ave, Georgetown)",
+        "age_fit": "18M-3Y 11M, 30 minutes, with parent participation",
+        "source_name": "Halton Hills Gymnastics Centre"
+      }
+    ]
+  },
+  "latencyMs": 4948
+}

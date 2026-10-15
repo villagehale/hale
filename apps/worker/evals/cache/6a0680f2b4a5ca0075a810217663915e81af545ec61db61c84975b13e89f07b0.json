@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the place the parent asked about, Cartwheels Gym Centre's Tiny Gym, which is a real local program on the venue's own site. It attributes the registration date ('their site says'). It invents no day, time or price, has no link and asks no question. watch is true, and the message correctly makes the first-person 'I'll keep watching and text you' commitment. Under no_page_read it correctly says 'I could not get into their pages today' rather than 'not posted yet'. Weaknesses: the second pick is a different gym, which the watchFor flags as drifting from the one place asked about, though it is clearly named as separate. Its Parent & Tot details are stated flatly without attribution. The age fit also drops the 'walking independently' condition.",
+    "score": 4
+  }
+}

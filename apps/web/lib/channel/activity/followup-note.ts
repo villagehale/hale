@@ -48,9 +48,17 @@ import type { ActivityPick } from './lane';
  * three tries will not fix it on the fourth. */
 export const MAX_FOLLOWUP_ATTEMPTS = 3;
 
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 1000;
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
+
+/**
+ * Told to the model only when options were held back. It is an instruction, not a
+ * sentence to send: the parent-facing words are the model's, in whatever language the
+ * parent writes in.
+ */
+const MORE_REMAINING_INSTRUCTION =
+  'In your own words, in the language named by `language` on this request, say that more options exist and that they can ask in this chat for the next ones. Do not list any option you were not given. Do not use a stock sentence.';
 
 export type FollowUpFallback =
   | 'client_unavailable'
@@ -81,6 +89,12 @@ export type FollowUpPick = ActivityPick & { registration?: string | null };
 export interface FollowUpGrounding {
   /** The de-identified subject the promise was about, off the ledger row. */
   subject: string;
+  /**
+   * The language this parent writes in, as a tag already stored on their profile
+   * (`users.locale`). Passed through as stored. This leg never sees their words, and it
+   * does not detect a language from them.
+   */
+  language: string;
   /** What the re-run search found. EMPTY is a valid, sendable grounding — see the module
    * note on why the bad-news half is the half that makes the promise honest. */
   picks: readonly FollowUpPick[];
@@ -116,6 +130,12 @@ export interface FollowUpGrounding {
    */
   watch: boolean;
   /**
+   * How many options were found and did not fit in this text. Zero omits the fact from
+   * the payload so an unchanged recording stays a hit. Above zero, the model is told to
+   * say, in its own words, that more exist and that the parent can ask here for them.
+   */
+  moreRemaining: number;
+  /**
    * WHERE AN EMPTY SEARCH LOOKED AND WHAT IT SAW (lane.ts `EmptySearch`). Only an empty
    * shallow search carries it, and it reaches the composer only when `picks` is empty, so
    * every message with a find is composed from exactly the payload it always was.
@@ -127,12 +147,25 @@ export interface FollowUpComposer {
   compose(grounding: FollowUpGrounding): Promise<FollowUpComposeOutcome>;
 }
 
-const noteSchema = z.object({ message: z.string() });
+const noteSchema = z.object({ message: z.string(), commits_to_return: z.boolean() });
 
+/**
+ * `commits_to_return` is the model's own reading of what it wrote: does this message tell
+ * the parent Hale will come back to them about it? Code checks that fact against `watch`
+ * (the row the sweep did or did not write). A word list cannot read that sentence in every
+ * language a parent writes in; the model that wrote it can say what it says.
+ */
 const noteJsonSchema = {
   type: 'object',
-  properties: { message: { type: 'string' } },
-  required: ['message'],
+  properties: {
+    message: { type: 'string' },
+    commits_to_return: {
+      type: 'boolean',
+      description:
+        'true when the message tells the parent Hale will come back to them about this (keep watching, check again, text them later), in whatever language it is written; false otherwise.',
+    },
+  },
+  required: ['message', 'commits_to_return'],
 } as const;
 
 /**
@@ -152,9 +185,13 @@ const noteJsonSchema = {
  * might fill in, and a `null` is Hale saying it does not have one.
  */
 export function followUpUserMessage(grounding: FollowUpGrounding): string {
-  return JSON.stringify({
+  // Key order is the recording. `more_remaining` is inserted only when it is above zero,
+  // and only before `picks`, so a follow-up that already fit everything produces the same
+  // JSON it did before this fact existed.
+  const payload: Record<string, unknown> = {
     mode: 'followup_text',
     subject: grounding.subject,
+    language: grounding.language,
     // The two facts about the SWEEP rather than about a pick, and both are here for the
     // reason `registration` is: a projection that does not carry them is a model that
     // cannot act on them. `page_evidence` is what Hale knows about the pages themselves;
@@ -181,16 +218,21 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
         }
       : { page_evidence: grounding.pageEvidence }),
     watch: grounding.watch,
-    picks: grounding.picks.map((pick) => ({
-      name: pick.name,
-      age_fit: pick.ageFit,
-      when: pick.when,
-      price: pick.price,
-      registration: pick.registration ?? null,
-      source_name: pick.sourceName,
-      source: pick.source,
-    })),
-  });
+  };
+  if (grounding.moreRemaining > 0) {
+    payload.more_remaining = grounding.moreRemaining;
+    payload.more_remaining_instruction = MORE_REMAINING_INSTRUCTION;
+  }
+  payload.picks = grounding.picks.map((pick) => ({
+    name: pick.name,
+    age_fit: pick.ageFit,
+    when: pick.when,
+    price: pick.price,
+    registration: pick.registration ?? null,
+    source_name: pick.sourceName,
+    source: pick.source,
+  }));
+  return JSON.stringify(payload);
 }
 
 function message(err: unknown): string {
@@ -328,20 +370,6 @@ const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
 
 /**
- * Whether the body says HALE will come back — the sentence the continuation row pays for.
- *
- * First person and future: "I'll keep watching and text you when they post". A row
- * written with no sentence claiming it is a sweep that texts a parent in a week about
- * something they were never told Hale was still on.
- */
-const STATES_RETURN =
-  /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
-
-export function statesTheReturn(body: string): boolean {
-  return STATES_RETURN.test(body);
-}
-
-/**
  * WHETHER THE COMING-BACK SENTENCE IS WAITING ON A PAGE THAT HAS ALREADY POSTED.
  *
  * The same claim can wear the future. "I'll keep watching and text you
@@ -384,20 +412,24 @@ export function waitsOnAPageItCouldNotRead(body: string): boolean {
  *
  * ONE READER, TWO STRINGS, and that is the whole point of it being a function. The gate
  * below runs on the sentence the MODEL wrote; the sweep runs it again on the body it is
- * about to hand the transport (sweep.ts), because between those two strings sit the
- * append steps — `withSharePage`, `withOptOut` — and nothing used to read what came out
- * of them. A question appended after the gate reached the parent with the gate green,
- * which is the 2026-08-22 defect surviving its own fix one layer down.
+ * about to hand the transport (deliver.ts), because a venue page is appended after the
+ * model's gates. A question appended after the gate reached the parent with the gate
+ * green, which is the 2026-08-22 defect. A question mark inside a venue address is not
+ * a question to the parent, so those addresses are set aside before the check.
  */
 export function asksTheParent(body: string): boolean {
-  return plainText(body).includes('?');
+  return plainText(body).replace(/https?:\/\/\S+/gi, '').includes('?');
 }
 
 /**
  * Everything wrong with this follow-up, phrased for the model that will rewrite it. An
  * empty array means it may be sent.
  */
-export function followUpViolations(body: string, grounding: FollowUpGrounding): string[] {
+export function followUpViolations(
+  body: string,
+  grounding: FollowUpGrounding,
+  commitsToReturn: boolean,
+): string[] {
   const violations: string[] = [];
   const text = plainText(body);
 
@@ -437,18 +469,16 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
       'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     );
   }
-  if (grounding.watch !== statesTheReturn(text)) {
+  if (grounding.watch !== commitsToReturn) {
     // THE EXAMPLE IS PAGE-STATE-AWARE OR THE TWO CORRECTIONS FIGHT: under
     // `page_has_schedule` the page contradicts the very sentence this one used to hand
     // the model as the remedy, and a composer bounced between two contradictory fixes
     // spends its three attempts and sends nothing.
     violations.push(
       grounding.watch
-        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "${
-            grounding.pageEvidence === 'page_has_schedule'
-              ? "I'll keep watching and text you when I can get to them."
-              : "I'll keep watching and text you when they post."
-          }"`
+        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
+            grounding.pageEvidence === 'page_has_schedule' ? 'it can get to the details' : 'the details post'
+          }.`
         : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     );
   }
@@ -493,7 +523,7 @@ export function createFollowUpComposer(client: () => AgentClient): FollowUpCompo
           return deferred('model_failed', [message(err)]);
         }
 
-        violations = followUpViolations(value.message, grounding);
+        violations = followUpViolations(value.message, grounding, value.commits_to_return);
         if (violations.length === 0) {
           return { status: 'composed', message: plainText(value.message) };
         }

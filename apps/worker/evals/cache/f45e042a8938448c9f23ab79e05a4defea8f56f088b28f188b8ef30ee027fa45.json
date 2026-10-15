@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asking about the schedule for an existing activity",
+    "language": "en"
+  },
+  "latencyMs": 1303
+}
